@@ -46,6 +46,9 @@
 # latexrun
 latex.out/
 
+## Custom build output directory
+.build/
+
 ## Auxiliary and intermediate files from other packages:
 # algorithms
 *.alg
