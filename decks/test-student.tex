@@ -1,0 +1,26 @@
+% !TeX program = lualatex
+% Student handout variant of test.tex -- same preamble and the same
+% test-slides.tex slide list, but \studentversion causes every \omitslide{}/
+% \omitslideversion{} call in that shared list to be skipped entirely.
+%
+% Moved into decks/ from the project root 2026-07-08, direct instruction --
+% see test.tex's own header comment for why this needs the
+% \input@path/\graphicspath fallback below.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{gotham}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\input{uni_graz_preamble}
+\studentversion
+
+\newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
+
+\begin{document}
+
+	\input{test-slides}
+
+\end{document}
