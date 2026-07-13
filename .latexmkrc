@@ -8,7 +8,7 @@
 # (pdf_mode 4 uses $lualatex, not $pdflatex -- unlike pdf_mode 1/pdflatex).
 #
 # With this in place, latexmk handles the whole compile loop by itself,
-# including the extra biber step decks/t-Uni-FM-2026s.tex needs (biblatex+
+# including the extra biber step decks/t-Uni-FM2-2027s.tex needs (biblatex+
 # biber is opt-in per deck, not used by every deck in this project) --
 # latexmk auto-detects from the .bcf file whether a given deck needs biber
 # at all, and how many lualatex/biber reruns are actually needed, rather
