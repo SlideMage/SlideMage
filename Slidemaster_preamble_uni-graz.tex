@@ -1,0 +1,77 @@
+% Slidemaster preamble variant for University of Graz decks. Institution-
+% specific content only (colors, logo, logo calibration) -- every frame
+% type, the deck-version system, footer/hyperlink/footnote styling, tikz
+% styles, etc. live in Slidemaster_preamble_base.tex, \input{}ed at the
+% bottom of this file, and are shared verbatim across every institution
+% this project supports (see Slidemaster_preamble_mci.tex and
+% Slidemaster_preamble_uni-ibk.tex for the other two). A deck picks its
+% institution by \input{}ing this file instead of one of those, nothing
+% else changes.
+
+% Color definition (Graz palette, sourced from the original single-preamble
+% version of this project -- these are the University of Graz's own official
+% colors, not derived/approximated).
+\definecolor{c_primary_dark}{HTML}{000000}
+\definecolor{c_primary_highlight}{HTML}{ffd500}
+\definecolor{c_primary_gray}{HTML}{c6c6c6}
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{948dc3}
+\definecolor{c_tertiary_violet}{HTML}{c2bddf}
+\definecolor{c_secondary_blue}{HTML}{689cce}
+\definecolor{c_tertiary_blue}{HTML}{bacce8}
+\definecolor{c_secondary_green}{HTML}{9fcb81}
+\definecolor{c_tertiary_green}{HTML}{cce2ba}
+\definecolor{c_secondary_red}{HTML}{e4684b}
+\definecolor{c_tertiary_red}{HTML}{f1ae95}
+\definecolor{c_secondary_orange}{HTML}{f6a968}
+\definecolor{c_tertiary_orange}{HTML}{fbd0aa}
+\definecolor{c_secondary_yellow}{HTML}{ffe063}
+\definecolor{c_tertiary_yellow}{HTML}{ffeeaf}
+\definecolor{c_tertiary_gray}{HTML}{e3e3e3}
+% Not an official Uni Graz color (hence "custom", not "secondary" like the
+% palette above) -- a softer near-black than c_primary_dark, used for
+% quoteframe's full-bleed dark block, matching the specific dark gray (not
+% pure black) ExampleSlides.pptx used for that same block. Also reused for
+% hyperlink text color, for the same reason it works for quoteframe's
+% attribution text: dark enough for good contrast/legibility on a light
+% background.
+\definecolor{c_custom_gray}{HTML}{333333}
+\definecolor{c_custom_red}{HTML}{C00000}
+\definecolor{c_custom_green}{HTML}{00B050}
+
+% Logo + calibration.
+% scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf -- official vector artwork,
+% user-supplied (scheme_uni_graz/Logo_Uni-Graz_4c.eps, kept alongside as the
+% untouched source), converted to PDF via epstopdf and cropped to its true
+% ink bounding box (computed with Ghostscript's own `-sDEVICE=bbox`, same
+% treatment as MCI's and Innsbruck's own logos -- see
+% Slidemaster_preamble_mci.tex's own comment for the fuller explanation of
+% why the EPS's own %%BoundingBox isn't trusted directly). Vector, not
+% raster, so it stays crisp at any zoom. Supersedes this file's own earlier
+% raster logo (scheme_uni_graz/Logo Uni Graz 4c-cropped.png, itself cropped
+% from scheme_uni_graz/Logo Uni Graz 4c.png's own symmetric transparent
+% margin -- both kept alongside as historical/fallback assets, not deleted).
+\newcommand{\gothamInstituteLogoPath}{scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf}
+\newlength{\gothamLogoHeight}
+\setlength{\gothamLogoHeight}{3ex}
+% Re-measured against the compiled PDF for this specific logo image -- see
+% Slidemaster_preamble_base.tex's own comment on \gothamFrametitleRightpading
+% for why this needs re-measuring per institution rather than reusing
+% another one's value.
+\setlength{\gothamFrametitleRightpading}{0.28cm}
+
+% Itemize bullet color (2026-07-16, direct instruction): Graz keeps the
+% project's original behavior, bullets in the primary highlight color.
+\newcommand{\gothamBulletColor}{c_primary_highlight}
+
+% Title bar and footer box/text colors (2026-07-16, direct instruction):
+% Graz keeps the project's original behavior throughout -- title/footer
+% boxes in the primary highlight color, title/footer text in the primary
+% dark color (unlike MCI/Innsbruck, which switch these to their own
+% secondary blue/white -- see Slidemaster_preamble_mci.tex's own comment).
+\newcommand{\gothamTitleBoxColor}{c_primary_highlight}
+\newcommand{\gothamTitleTextColor}{c_primary_dark}
+\newcommand{\gothamFooterBoxColorDefault}{c_primary_highlight}
+\newcommand{\gothamFooterTextColor}{c_primary_dark}
+
+\input{Slidemaster_preamble_base}

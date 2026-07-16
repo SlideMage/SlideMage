@@ -271,3 +271,6 @@ TSWLatexianTemp*
 
 # standalone packages
 *.sta
+
+## Claude Code local (per-machine) settings:
+.claude/settings.local.json
