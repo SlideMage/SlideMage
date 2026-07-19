@@ -274,3 +274,7 @@ TSWLatexianTemp*
 
 ## Claude Code local (per-machine) settings:
 .claude/settings.local.json
+
+## Python bytecode cache (decks/*.py helper scripts, slidemanager/):
+__pycache__/
+*.pyc
