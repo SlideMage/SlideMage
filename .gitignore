@@ -16,12 +16,19 @@
 *.dvi
 *.xdv
 *-converted-to.*
-# these rules might exclude image files for figures etc.
 # *.ps
 # *.eps
-*.pdf
-*.png
-*.svg
+
+# *.pdf/*.png/*.svg used to be blanket-ignored here (leftover from a
+# generic LaTeX .gitignore template) -- removed 2026-07-20, direct
+# instruction: this project tracks media/ images as real project assets
+# (many were already tracked despite this rule, via git add -f overriding
+# it), including generated vector figures like media/chart-*.pdf. Compiled
+# deck PDFs are a different case -- those regenerate on every compile and
+# would bloat history for no benefit, so they're excluded specifically
+# below instead of via a rule that also caught real assets.
+decks/*.pdf
+pdf/*.pdf
 
 ## Source PowerPoint decks (large binaries, not meant to be tracked):
 *.pptx
