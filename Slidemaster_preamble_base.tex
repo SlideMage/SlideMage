@@ -30,6 +30,29 @@
 % genuinely serif), not FiraSans/CMSS10.
 \usefonttheme[onlymath]{serif}
 
+% \text{} (amsmath, used throughout for plain-word operands inside math,
+% e.g. \text{E}[\tilde{R}_M]) is a separate mechanism from the math
+% alphabets \usefonttheme[onlymath]{serif} above just fixed: unlike
+% \mathrm/\mathit/etc., \text{} is defined to typeset in whatever the
+% *surrounding running text* font is at that point in the document, not a
+% math alphabet -- so on this deck's all-Fira body text, \text{} inside a
+% formula still comes out in Fira Sans (and picks up italic if the
+% enclosing text happens to be italicized), even though the digits/
+% operators around it are correctly Computer Modern. Found 2026-07-20 on
+% slides/2gd-Analyzing-Reward-to-Risk-Ratio-CAPM-current.tex's own
+% \text{E}/\text{Cov} operands. Fixed generally, project-wide, by wrapping
+% \text{}'s argument in an explicit upright-Computer-Modern font switch --
+% \usefont{OT1}{cmr}{m}{n} rather than \mathrm{} (which would pull in
+% \text{}'s own math-alphabet substitution logic unnecessarily) or
+% \textrm{} (which switches *family* only, so still comes out italic
+% inside an italicized context, which \text{} should never do here) --
+% deliberately hardcoding "not italic" (shape n) rather than inheriting
+% the ambient shape, since \text{}'s whole purpose in this deck's formulas
+% is plain upright labels (E, Cov, "the" CAPM, ...), regardless of
+% whatever font context happens to surround the formula itself.
+\let\gothamOrigText\text
+\renewcommand{\text}[1]{\gothamOrigText{\usefont{OT1}{cmr}{m}{n}#1}}
+
 % Color definition, institute logo path, and the two logo-calibration
 % lengths (\gothamLogoHeight, \gothamFrametitleRightpading) all live in the
 % per-university preamble that \input{}s this file, not here -- this file
@@ -2228,6 +2251,92 @@
 % Slidemaster_preamble_*.tex for its \gothamBulletColor setting.
 \newcommand{\gothamBulletDot}{\tikz[baseline=-0.65ex]{\fill[\gothamBulletColor] circle (1.7pt);}}
 
+% "a)"/"b)"/"c)"-labeled list, for exercise sub-tasks that read better
+% lettered than bulleted (2026-07-20, direct instruction, first used on
+% slides/y3a-Exercise-Diversification-2-current.tex's own bottom three
+% items).
+%
+% First attempt (superseded, kept as a documented wrong turn -- see
+% README.md's own "lualatex vs latex" section for why this project keeps
+% wrong write-ups rather than deleting them): reuse itemize's own top-level
+% `\llap`-based label positioning by locally overriding
+% `\setbeamertemplate{itemize item}` inside a plain `\begin{itemize}` --
+% the reasoning being that `\llap` draws its content flush against the
+% text's own left edge "regardless of the label's width." That reasoning
+% turned out to be wrong in a way that only showed up once actually
+% measured against the compiled PDF (not just visually eyeballed): a plain
+% bullet's own `\llap`-drawn footprint (title/Left-Margin-relative-left-
+% edge to text-start) measured only ~9.05pt end-to-end on this deck's real
+% slides, matching the Left-Margin-to-text-start gap exactly -- but "a)"
+% rendered through the *exact same* mechanism measured a ~13.97pt
+% footprint for the same gap, not the ~8.5-9pt `\settowidth` reported for
+% the bare glyphs in isolation. The extra ~5pt was never fully root-caused
+% (this custom itemize's own `\list` call, further below, only overrides
+% `\makelabel` -- it never sets `\leftmargin`/`\labelwidth` itself, so
+% those are left at whatever this deck's global itemize defaults happen to
+% be, and `\llap`'s actual box-width behavior inside that inherited,
+% unexamined list-parameter state is where the extra width most likely
+% comes from) -- rather than keep guessing at *why*, measured the actual
+% failure directly (the compiled "a)" sat ~4.9pt left of the Left Margin,
+% confirmed via exact PDF text-position extraction, not a visual guess)
+% and abandoned the approach once even `\tiny` plus manual per-letter
+% kerning only just barely closed the gap while reading as illegibly small
+% -- a real dead end, not a tuning problem.
+%
+% Working fix: don't reuse itemize's `\llap` label mechanism at all -- use
+% a real, width-reserving `\makebox[W][r]{...}` label instead (the same
+% *kind* of mechanism `\gothamEnumerateLabelWidth` above already uses for
+% a nested enumerate, just with an explicit `\leftmargin`/`\labelwidth`/
+% `\labelsep` this environment sets itself rather than inheriting), inside
+% its own plain `\list`, not a reused `\itemize`. `\leftmargin` (label box
+% + gap) is set to 11.1pt -- 9.1pt label box (fits "a)"/"b)"/"c)" at this
+% deck's normal `\small` itemize size with a little clearance, confirmed
+% directly: measured label-left-edge stays right of the 12.552pt Left
+% Margin for all three letters, closest case (widest letter, "c)") 1.37pt
+% clear) plus 2pt `\labelsep` for a visible gap before the text. Trade-off,
+% accepted deliberately rather than found by accident: item text lands
+% ~2.2pt right of where a plain bulleted item's text would (23.8pt vs.
+% 21.6pt) -- fitting a legible "a)"/"b)"/"c)" at normal reading size plus
+% a real gap simply doesn't fit in the ~9pt a plain bullet's tiny dot
+% leaves, so *exact* text-position parity with plain bullets and a legible
+% label are mutually exclusive here; legibility won given the two-point
+% shift is visually negligible and there's no plain-bulleted item left on
+% the same slide to compare against directly anyway (y3a's own first item
+% moved into its infoblock). Re-derive `\leftmargin`/`\labelwidth` the same
+% way (render, measure with exact text-position extraction, adjust) if
+% this is ever used at a different font size than this deck's normal
+% itemize `\small`.
+\newcounter{gothamalphaitem}
+\newcommand{\gothamAlphaItem}{\stepcounter{gothamalphaitem}\alph{gothamalphaitem})}
+\newenvironment{gothamalphaitemize}{%
+	\setcounter{gothamalphaitem}{0}%
+	\list{\gothamAlphaItem}{%
+		% 4.75pt (2026-07-20, direct instruction: "half the width of the
+		% 'C' in 'Calculate'" -- \settowidth{C} at this deck's normal
+		% itemize \small measured 5.5pt, so 2pt original + 2.75pt half-C).
+		% Only \labelsep changes the text's own start position -- the
+		% label's own box stays exactly where it was (its left edge is
+		% pinned to this list's origin regardless of \labelsep, since
+		% \leftmargin=\labelwidth+\labelsep always cancels \labelsep back
+		% out of the label box's own position), so this widens the gap
+		% without reopening the Left-Margin question already solved above.
+		\setlength{\labelsep}{4.75pt}%
+		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\leftmargin}{\labelwidth}%
+		\addtolength{\leftmargin}{\labelsep}%
+		\setlength{\itemindent}{0pt}%
+		\renewcommand{\makelabel}[1]{\makebox[\labelwidth][r]{##1}}%
+	}
+	\raggedright% plain \list defaults to justified+hyphenated text, unlike
+	% this deck's own itemize (which calls this too, further below) --
+	% missed on the first pass, only caught by comparing a rendered a)/b)/c)
+	% item side by side against a plain bulleted one ("stan-\ndard deviation"
+	% hyphenating where a plain-bulleted version of the same sentence
+	% elsewhere in this deck doesn't).
+}{%
+	\endlist
+}
+
 % Itemize indentation: level 1 bullets should sit flush with the frame title
 % (no extra left margin), and each deeper level should be indented just
 % enough for its bullet to line up under the *text* (not the bullet) of the
@@ -2517,6 +2626,27 @@
 \newcommand{\gothamTocLabelFlushLeft}[1]{%
 	\setlength{\labelwidth}{#1}%
 	\renewcommand{\makelabel}[1]{\makebox[\labelwidth][l]{##1}}%
+}
+
+% Same idea as \gothamTocLabelFlushLeft above, plus an extra fixed
+% \hspace shift before the label (for a list that needs to start further
+% right than the plain nested-list indent, e.g. to line up with a
+% sibling item's own text rather than its bullet -- see
+% slides/scs-Political-Risk-Stability-Index-current.tex's own v1-5-0/
+% v1-6-0 comments for the worked example this was hoisted out of).
+% Found 2026-07-20 that the raw-`#1`-in-frame-body bug documented above
+% is *not* actually \tableofcontents-specific, contrary to that comment's
+% own framing -- slides/scs-Political-Risk-Stability-Index-current.tex has
+% no \tableofcontents anywhere in the deck-wide overlay chain leading to
+% it, yet hit the identical "Illegal parameter number in definition of
+% \iterate" at its own \end{standardframe} from the exact same literal-
+% \renewcommand{\makelabel}[1]{...#1...}-in-frame-body pattern. Whatever
+% the precise trigger condition actually is, the same hoist-to-preamble
+% fix (a bare macro *call*, no `#` token, left in the frame body) sidesteps
+% it either way.
+\newcommand{\gothamEnumerateLabelFlushLeftShifted}[2]{%
+	\setlength{\labelwidth}{#2}%
+	\renewcommand{\makelabel}[1]{\hspace{#1}\makebox[\labelwidth][l]{##1}}%
 }
 
 % Width of a single digit in this deck's normal content font, measured once
