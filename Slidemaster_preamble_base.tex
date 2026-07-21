@@ -562,22 +562,34 @@
 }
 
 % A \frac/\dfrac-stacked formula reads as cramped against a plain-text
-% neighbor in an itemize -- it's visibly taller than a normal line, so it
-% needs a bit of headroom above it that a plain-text \item doesn't. Started
-% as a manually-repeated \vspace{3pt} before/after each such \item (first
-% on slides/u74-Example-Dynamic-Mattress-Company-Periods-current.tex);
-% \gothamFracItem below is that same 3pt convention factored into a single
-% drop-in \item replacement, so a future fraction-heavy slide (or a change
-% to the spacing amount) doesn't mean re-editing several slide files by
-% hand. Only *before* the item, not after too -- adding it on both sides
-% would double up the gap between two back-to-back fraction items (3pt
-% "after" the first plus 3pt "before" the second), where a single leading
-% 3pt already reads as enough breathing room either way. Usage: replace
-% \item with \gothamFracItem on any itemize line containing a stacked
-% fraction, at any nesting level -- it's a plain substitute, not an
+% neighbor in an itemize -- it's visibly taller than a normal line (both
+% above *and* below the line, since the fraction bar sits on the text
+% baseline with numerator/denominator stacked around it), so both the
+% fraction's own item *and* the item that follows it need a bit of extra
+% headroom that a plain-text \item doesn't. Started as a manually-repeated
+% \vspace{3pt} before each such \item (first on
+% slides/u74-Example-Dynamic-Mattress-Company-Periods-current.tex);
+% \tallitem below is that same convention factored into a single drop-in
+% \item replacement, so a future fraction-heavy slide (or a change to the
+% spacing amount) doesn't mean re-editing several slide files by hand.
+% Takes an optional leading multiplier (default 1, i.e. 3pt): \tallitem[1.5]
+% for 4.5pt, for a formula tall enough that the default doesn't read as
+% enough room. Usage: replace \item with \tallitem both on any itemize line
+% containing a stacked fraction *and* on the item immediately following it
+% (same nesting level; skip this second replacement if that next item is
+% itself already a \tallitem for its own fraction, or if the fraction item
+% is the last one in its list) -- it's a plain substitute, not an
 % environment, so it doesn't change how the surrounding list itself is
-% structured.
-\newcommand{\gothamFracItem}{\vspace{3pt}\item}
+% structured. (Named \gothamFracItem originally; renamed 2026-07-21 to the
+% more discoverable \tallitem, and given the optional multiplier and the
+% following-item rule above at the same time -- no behavior change for any
+% existing default-strength call site.)
+\newlength{\gothamTallItemBaseUnit}
+\setlength{\gothamTallItemBaseUnit}{3pt}
+\newlength{\gothamTallItemSpace}
+\newcommand{\tallitem}[1][1]{%
+	\setlength{\gothamTallItemSpace}{#1\gothamTallItemBaseUnit}%
+	\vspace{\gothamTallItemSpace}\item}
 
 % Set logo
 % \gothamInstituteLogoPath (a plain \newcommand storing an image path,
