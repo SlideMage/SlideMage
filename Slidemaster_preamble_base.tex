@@ -1364,12 +1364,13 @@
 % This cache is deliberately *not* self-invalidating by date/content -- it
 % keeps reporting an old timestamp indefinitely once written, across
 % unrelated future compiles, unless something clears it first.
-% compile-all.bat (project root) does exactly that: it deletes every deck's
-% .timestamp before compiling, so a run through that script always gets a
-% fresh stamp. An ad-hoc TeXstudio compile without going through that script
-% first may show a stale stamp if .build/ already has one left over from an
-% earlier session -- delete .build/<jobname>.timestamp by hand (or just run
-% compile-all.bat first) if that matters for what you're checking.
+% SlideManager's compiler.py does exactly that: before every job it deletes
+% that job's own .build/<jobname>.* (which includes <jobname>.timestamp), so
+% a run through SlideManager always gets a fresh stamp. An ad-hoc TeXstudio
+% compile without going through SlideManager first may show a stale stamp if
+% .build/ already has one left over from an earlier session -- delete
+% .build/<jobname>.timestamp by hand (or just compile that job once through
+% SlideManager) if that matters for what you're checking.
 \directlua{
 	function gothamZeroPad(n) if n < 10 then return "0" .. n else return "" .. n end end
 }
