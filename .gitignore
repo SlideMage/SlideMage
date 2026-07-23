@@ -285,3 +285,8 @@ TSWLatexianTemp*
 ## Python bytecode cache (decks/*.py helper scripts, slidemanager/):
 __pycache__/
 *.pyc
+
+## SlideManager's slide-source editor: a local undo net (full timestamped
+## history, kept per slide file) for its own saves -- not meant to be
+## committed (2026-07-23):
+slides/.backups/
