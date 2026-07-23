@@ -51,6 +51,7 @@ pdf/*.pdf
 *.synctex.gz
 *.synctex.gz(busy)
 *.pdfsync
+*.timestamp
 
 ## Build tool directories for auxiliary files
 # latexrun

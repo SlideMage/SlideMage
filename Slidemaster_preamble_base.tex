@@ -4,6 +4,7 @@
 \usetikzlibrary{arrows.meta} % for e.g. arr/.style={-{Stealth[...]}...} on diagram slides
 \usetikzlibrary{positioning} % for `right=<dist> of <node>`-style relative node placement
 \usetikzlibrary{decorations.text} % text-along-a-path, for a circular photo's curved caption
+\usetikzlibrary{decorations.pathreplacing} % the `brace` decoration shape, for \gothamUnderbrace below
 \usepackage{booktabs} % \toprule/\midrule/\bottomrule for gothamtable
 \usepackage{colortbl} % \arrayrulecolor{}, used by gothamtable to color those rules
 \usepackage{pifont} % \ding{51}/\ding{55} checkmark/X-mark glyphs, e.g. slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex's own validity ratings
@@ -109,7 +110,25 @@
 % just looked heavier than intended (direct feedback 2026-07-08, e.g. on
 % slides/6qi-Yield-Spreads-Corporate-Bonds-current.tex). Reverted to
 % 0.4pt -- only the color was ever actually asked to change.
-\hypersetup{colorlinks=true, urlcolor=c_custom_gray, linkcolor=c_custom_gray}
+%
+% `citecolor` (2026-07-23, direct instruction: "make sure the year in the
+% short citation is printed in black", found on
+% slides/64m-APT-Choosing-the-Factors-Chen-Roll-Ross-current.tex's own
+% `\textcite{}` call, "and generally" -- a deck-wide fix, not a one-off):
+% with `colorlinks=true` and no explicit `citecolor`, hyperref falls back
+% to its own factory default (green) for every citation hyperlink --
+% confirmed directly, rendering 64m with the real biblatex/biber setup
+% (this deck's own `\hypersetup` alone, with no citecolor, has no other
+% source that could be coloring it): `\textcite{chen1986}` printed as
+% "Chen, Roll, Ross (\textcolor{green}{1986})", the year in green, nothing
+% else on the line affected (`\textcite` only wraps the year/label itself
+% in the actual hyperlink, not the surrounding author names, which are
+% plain text). `citecolor=black` set explicitly here, alongside
+% urlcolor/linkcolor, rather than left to hyperref's own default, so this
+% applies deck-wide to every citation command (`\cite`, `\textcite`,
+% `\parencite`, ...) that ends up as a colored link, not just 64m's own
+% call site.
+\hypersetup{colorlinks=true, urlcolor=c_custom_gray, linkcolor=c_custom_gray, citecolor=black}
 \let\gothamOrigHref\href
 \newsavebox{\gothamHrefTextBox}
 %
@@ -1373,6 +1392,33 @@
 
 \makeatother
 
+% \gothamUnderbrace{math}{label} - seamless TikZ-drawn brace, replacing plain
+% amsmath \underbrace (2026-07-23, direct instruction, after presenting
+% options on slide ebq -- see SESSION_HANDOFF.md's own entry for that task):
+% amsmath assembles \underbrace's glyph from separate piecewise brace-half
+% characters, which visibly shows a seam/notch at narrow widths (ebq's own
+% "risk-free rate" term is narrow enough to show it plainly); this instead
+% draws one continuous vector brace path via TikZ's `decorate` +
+% `decoration={brace}` (decorations.pathreplacing, loaded above), which has
+% no such seam at any width. #1 is typeset in math mode automatically (do
+% not wrap the call itself in $...$); #2 is the label, set in upright text
+% (font=\small, align=center so a multi-line label via \\ stays centered
+% under the brace, e.g. two-line labels converted from \substack{}). Each
+% call gets its own auto-numbered internal node name (gothamUnderbraceCounter)
+% so multiple calls can coexist on one slide without a caller-supplied name
+% argument colliding (unlike the original \tikzbrace{}{}{} demo macro this
+% replaces, which took the node name as a third argument).
+\newcounter{gothamUnderbraceCounter}
+\newcommand{\gothamUnderbrace}[2]{%
+	\stepcounter{gothamUnderbraceCounter}%
+	\tikz[baseline=(gothamUnderbraceNode\thegothamUnderbraceCounter.base)]{
+		\node[inner sep=0pt] (gothamUnderbraceNode\thegothamUnderbraceCounter) {$#1$};
+		\draw[decorate,decoration={brace,amplitude=4pt,mirror,raise=1pt}]
+			(gothamUnderbraceNode\thegothamUnderbraceCounter.south west) -- (gothamUnderbraceNode\thegothamUnderbraceCounter.south east)
+			node[midway,below=6pt,black,font=\small,align=center] {#2};
+	}
+}
+
 % PDF accessibility: mark purely decorative/running content (footer, below;
 % also reused on titleframe's/quoteframe's own decorative background boxes;
 % logo not yet included, see README.md's own accessibility section for that
@@ -2415,7 +2461,7 @@
 % \gothamMinipageTopCorrection above went stale -- \gothamContentTopShift
 % itself changed (7.33pt -> 11.5964pt) without a matching update here.
 % Re-measured directly against three independent flat-itemize slides using
-% this constant unmodified (574, 5cr, c8e): all three landed their own
+% this constant unmodified (3ce, 5cr, c8e): all three landed their own
 % first line at an identical y=39.76pt, 1.82pt short of this deck's
 % current 41.58pt Top Margin reference -- coincidentally, the recalibrated
 % \gothamContentTopAlign reference now already accounts for almost all of
