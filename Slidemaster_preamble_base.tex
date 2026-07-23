@@ -353,6 +353,75 @@
 \setlength{\gothamImageBorderWidth}{2.5pt}
 \tikzset{gothamImageBorder/.style={draw=c_primary_highlight, line width=\gothamImageBorderWidth}}
 
+% The "padding gotcha" promised above, finally root-caused (2026-07-23,
+% background-task follow-up to the IA2 fine-tuning batch #2 anomaly on
+% slides/m2k-Exercise-CAPM-2-current.tex/
+% slides/n8e-Tail-Risk-Variance-Clustering-current.tex/
+% slides/fm6-Tail-Risk-Market-vs-Simulated-current.tex/
+% slides/xqq-Fat-Tails-current.tex, all fixed there with a pragmatic
+% `line width=1.2pt` override and an explicitly *unresolved* root cause at
+% the time -- "declares an identical stroke width and CTM in the compiled
+% PDF's own raw content stream, yet renders at a genuinely different pixel
+% thickness", with CTM scale/clips/dash/cap/join all directly checked and
+% ruled out). Confirmed via a controlled reproducer (four `gothamImageBorder`
+% nodes -- plain opaque image, nested pgfplots axis, plain image at
+% `inner sep=3pt`, nested plain tikzpicture at `inner sep=3pt` -- rendered
+% at 600dpi and measured by a half-max cross-section profile, not just
+% eyeballed): the one variable that actually predicts the rendered width is
+% `inner sep`, not content type at all. At `inner sep=0pt` a *fully opaque*
+% image measured 1.2pt; the exact same image at `inner sep=3pt` measured
+% 2.52pt (matching the declared 2.5pt); a nested pgfplots axis and a plain
+% nested tikzpicture, both at `inner sep=3pt`, also measured 2.52pt. Two
+% more points confirmed it's a smooth transition, not a binary switch:
+% `inner sep=0.6pt` measured 1.8pt (= the 1.2pt floor plus that 0.6pt gap,
+% exactly); `inner sep=1.25pt` (= \gothamImageBorderWidth/2, the stroke's
+% own half-width) already measured the full 2.52pt.
+%
+% The mechanism: tikz draws a node's border stroke centered on the node's
+% own boundary path, then paints the node's *content* on top of it,
+% afterwards. At `inner sep=0`, the content's own bounding box coincides
+% exactly with that boundary path, so if the content is opaque all the way
+% to its own edge, it paints directly over the stroke's inner half,
+% visually leaving only the outer half (`\gothamImageBorderWidth`/2,
+% ~1.2pt) -- not a rendering bug, just tikz's normal draw order interacting
+% with zero padding. A gap of at least `\gothamImageBorderWidth`/2 (or
+% content that's transparent right at its own edge -- see below) leaves the
+% border with nothing opaque to cover it, so it renders at its true
+% declared width instead.
+%
+% This also explains why the fix landed on exactly the 4 slides it did,
+% each for a different reason: slides/m2k-Exercise-CAPM-2-current.tex
+% used `inner sep=3pt` for unrelated layout reasons (room for the axis's
+% own tick labels), well past the 1.25pt threshold, so nothing ever covered
+% its border. slides/n8e-Tail-Risk-Variance-Clustering-current.tex/
+% slides/fm6-Tail-Risk-Market-vs-Simulated-current.tex/
+% slides/xqq-Fat-Tails-current.tex all use `inner sep=0pt` -- matching the
+% deck's own overwhelming convention -- but their own chart PNGs
+% (`chart-index-daily-returns-*.png`/`chart-index-fat-tails-histogram*.png`,
+% matplotlib exports with a transparent background) measured alpha=0 at
+% every edge pixel (confirmed directly, Pillow), so there was no opaque
+% content to cover their own border either. Every other `gothamImageBorder`
+% use in this project that was never flagged uses an opaque image (a JPG,
+% or a PNG with no transparent margin) at `inner sep=0pt` -- which
+% *accidentally* renders at the ~1.2pt covered-half width instead of the
+% full 2.5pt this constant nominally declares, and that accidental width is
+% what reads as "the deck's normal border thickness" throughout, since it's
+% by far the most common case.
+%
+% Practical upshot for a *new* slide: a `gothamImageBorder` node with
+% `inner sep=0pt` wrapping opaque content (the common case) needs no
+% special handling -- it will match the rest of the deck automatically. A
+% node that instead uses a nonzero `inner sep`, or wraps content with a
+% transparent edge (a matplotlib export, an SVG-derived PDF with padding,
+% ...), will render at the *full* \gothamImageBorderWidth and look
+% noticeably heavier next to the deck's other borders -- either add an
+% explicit `line width=\gothamImageBorderWidth/2` (matching the 4 fixed
+% slides' own literal 1.2pt) to match the accidental deck-wide look, or
+% reduce `inner sep` below \gothamImageBorderWidth/2 so the same coverage
+% effect kicks in naturally. The 4 existing per-slide overrides above are
+% left as-is -- they're already the correct fix for what's now a fully
+% understood cause, not a mystery workaround needing revisiting.
+
 % Reusable "mugshot" -- a circular-cropped photo, bordered like any other
 % gothamImageBorder image, with a caption curving along its own bottom arc
 % (2026-07-06, direct instruction, generalized from
@@ -584,12 +653,80 @@
 % more discoverable \tallitem, and given the optional multiplier and the
 % following-item rule above at the same time -- no behavior change for any
 % existing default-strength call site.)
+% Ratio, not a frozen length (2026-07-22, direct instruction: "modify
+% \tallitem and \tallitemnobullet to also use scaling relative to font
+% size") -- the original \newlength+\setlength{...}{3pt} pair freezes to
+% one fixed pt value the moment \setlength runs, the same issue (and same
+% fix) as \gothamItemsepRatioI/II/III/IV further below: converted to a
+% bare ratio macro, with the "em" unit written back on inside \tallitem's
+% and \tallitemnobullet's own bodies (not here), so it's recomputed fresh
+% against whatever font is actually live at each call site -- correct
+% regardless of nesting level or a \footnotesize/\scriptsize override,
+% unlike the old fixed 3pt (calibrated against one specific level's font,
+% silently wrong at any other). 0.3 reproduces the original 3pt exactly
+% at level 2's own font (10pt) -- the level \tallitem was first used at,
+% on slides/u74-Example-Dynamic-Mattress-Company-Periods-current.tex (see
+% this macro's own comment above) -- so no visual change there, while now
+% correctly scaling up/down at every other level and font override.
+\newcommand{\gothamTallItemBaseRatio}{0.3}
 \newlength{\gothamTallItemBaseUnit}
-\setlength{\gothamTallItemBaseUnit}{3pt}
 \newlength{\gothamTallItemSpace}
 \newcommand{\tallitem}[1][1]{%
+	\setlength{\gothamTallItemBaseUnit}{\gothamTallItemBaseRatio em}%
 	\setlength{\gothamTallItemSpace}{#1\gothamTallItemBaseUnit}%
 	\vspace{\gothamTallItemSpace}\item}
+
+% For a line that needs \tallitem's own extra headroom but no bullet at
+% all -- a display equation continuing the previous \item's own sentence,
+% rather than a new bulleted point of its own (see README.md's own
+% \tallitem section, which already documents this exact combination as a
+% rare, previously hand-written case: "\vspace{\gothamTallItemBaseUnit}\item[]").
+% \tallitemnobullet (2026-07-21, direct instruction) factors that hand-
+% written idiom into the same kind of drop-in replacement \tallitem
+% already is for its own case, same optional multiplier: \tallitemnobullet[1.5].
+\newcommand{\tallitemnobullet}[1][1]{%
+	% Recomputes \gothamTallItemBaseUnit itself, fresh, rather than reusing
+	% whatever \tallitem's own body last left it at -- since it's now a
+	% per-call, live "em"-based value (see \tallitem's own comment above),
+	% not the one-time preamble-load-time constant it used to be, relying
+	% on call order/a preceding \tallitem to have set it correctly would
+	% silently break the moment \tallitemnobullet is used on its own, or
+	% at a different font size than whichever \tallitem last ran.
+	\setlength{\gothamTallItemBaseUnit}{\gothamTallItemBaseRatio em}%
+	\setlength{\gothamTallItemSpace}{#1\gothamTallItemBaseUnit}%
+	\vspace{\gothamTallItemSpace}\item[]}
+
+% flalign* (used to left-align a display equation inside an itemize --
+% see CONVERSION_NOTES.md's "flalign* for left-aligning..." entry) inherits
+% plain LaTeX's \abovedisplayskip/\belowdisplayskip, sized for a full
+% document page, not a compact slide itemize -- reads as far too much blank
+% space above/below the equation next to the surrounding item text (found
+% 2026-07-21, direct instruction; most visible on
+% slides/bwi-Pearson-Correlation-Definition-current.tex's own single-line
+% equation, but the same oversized gap is present everywhere flalign* is
+% used this way, e.g. slides/7se-Portfolio-Risk-Three-Assets-current.tex
+% and slides/rb3-Asset-Allocation-Example-CAL-current.tex). \gothamTightDisplaySkips
+% tightens both skips -- and their "short" variants, since amsmath picks
+% between the two depending on how much text precedes the display, so
+% setting only one pair left the gap unfixed whenever the preceding line
+% happened to be short -- down to something that reads as part of the
+% same list rather than a separate floating display. Usage: wrap the
+% *real*, unmodified flalign* in a plain TeX group together with this
+% command, `{\gothamTightDisplaySkips\begin{flalign*} ... \end{flalign*}}`,
+% rather than a new same-named environment -- tried that first
+% (`\newenvironment{gothamtightflalign*}{...\begin{flalign*}}{\end{flalign*}}`)
+% and it broke LaTeX's own environment-nesting tracking (`\@currenvir`),
+% surfacing as "\begin{flalign*} ... ended by \end{gothamtightflalign*}"
+% and a fatal, PDF-less compile on the very first slide that used it. A
+% plain group sidesteps that class of bug entirely since it never
+% introduces a same-named wrapper environment.
+\newlength{\gothamTightDisplaySkip}
+\setlength{\gothamTightDisplaySkip}{3pt}
+\newcommand{\gothamTightDisplaySkips}{%
+	\abovedisplayskip=\gothamTightDisplaySkip
+	\abovedisplayshortskip=\gothamTightDisplaySkip
+	\belowdisplayskip=\gothamTightDisplaySkip
+	\belowdisplayshortskip=\gothamTightDisplaySkip}
 
 % Set logo
 % \gothamInstituteLogoPath (a plain \newcommand storing an image path,
@@ -1177,6 +1314,48 @@
 % Usage: \conditionalpause[instructor,during-course] or \conditionalpause[after-course]
 \newcommand{\conditionalpause}[1][instructor]{%
 	\ifdeckversioninlist{\gothamDeckVersion}{#1}{\pause}{}%
+}
+
+% \deckreveal[step]{content} - the "hidden answer, click-revealed for the
+% instructor, absent for during-course, pre-shown for after-course" pattern
+% already documented by hand on several exercise slides (e.g. mbz/x7q/37s/
+% 3cv's own header comments: "a slide/reveal-step that is hidden in the
+% source PowerPoint should, by default, only be made visible on the
+% instructor version"). A bare, unconditional \only<N->{content} looks like
+% it does this, but doesn't: \only's overlay range registers with beamer's
+% own overlay-counting pass regardless of \ifgothamInstructorVersion/
+% \conditionalpause -- neither of those touch \only itself, they only guard
+% *other* content around it -- so a frame with nothing else establishing a
+% second overlay step still gets a real second slide out of a bare
+% \only<2->, in *every* deck version, not just the instructor one. Confirmed
+% directly (2026-07-21, direct instruction) on 37s/3cv: both a) leaked the
+% "hidden" content to during-course as a genuine second slide, the exact
+% thing this pattern exists to prevent, and b) showed a blank second bullet/
+% cell first on that leaked slide's own step 1 -- \only<2-> hides the
+% *content*, not the space it would occupy, so during-course's own step 1
+% still had nothing else deciding where the bullet/cell landed.
+% \deckreveal fixes both by picking a genuinely different rendering per
+% version rather than reusing the same overlay-restricted \only call
+% everywhere: instructor gets the real overlay build (\only<step->,
+% default step 2, matching \tallitem's own default-multiplier convention);
+% during-course gets nothing at all (no token emitted, so beamer's overlay
+% pass never sees an overlay spec to register); after-course gets the
+% content unconditionally, with no overlay spec of its own either, so it
+% doesn't silently force a second slide there either. Content-level only
+% (wraps a value/expression, like \only itself) -- doesn't cover an
+% itemize \item's own bullet marker, which needs its own overlay spec
+% (`\item<step->`) directly on the \item, not wrapped from outside; see
+% 37s's own comment for that variant, hand-written rather than factored
+% into a second macro since only one call site needs it so far.
+\newcommand{\deckreveal}[2][2]{%
+	\ifgothamDuringCourseVersion
+	\else
+		\ifgothamInstructorVersion
+			\only<#1->{#2}%
+		\else
+			#2%
+		\fi
+	\fi
 }
 
 % \conditionalslide[versions]{ID-slug} - \slide{}, but only included in the
@@ -1926,15 +2105,29 @@
 % pattern used throughout this deck's converted slides) whose *top edge*
 % should line up with the content text's own top edge -- distance from the
 % page's own top edge to the cap-height top of a standardframe's first body
-% line, measured directly against the compiled PDF's own text coordinates
-% (44.0pt on this deck's 16cm-wide page), not derived from
-% \gothamContentTopShift or guessed. Previous per-slide image placements
-% each guessed their own downward shift (e.g. a bare "-1.3cm") independently
-% -- close, but not exact, landing the image's top a couple mm above the
-% text's own top; use this constant instead of a fresh guess for any new
-% "text top edge"-aligned image.
+% line, measured directly against the compiled PDF's own text coordinates,
+% not derived from \gothamContentTopShift or guessed. Previous per-slide
+% image placements each guessed their own downward shift (e.g. a bare
+% "-1.3cm") independently -- close, but not exact, landing the image's top
+% a couple mm above the text's own top; use this constant instead of a
+% fresh guess for any new "text top edge"-aligned image.
+%
+% 41.58pt (2026-07-22, re-measured): the previous value, 44.0pt, went stale
+% the moment \gothamContentTopShift itself was increased (7.33pt -> 11.5964pt,
+% "reduce the Top Margin", see that length's own comment above) without a
+% matching update here -- that change pulls plain body text up, but this
+% length is a separate, hand-measured constant with no formula tying it to
+% \gothamContentTopShift, so it kept anchoring images at the *old*, lower
+% position. Confirmed directly (pymupdf against this same freshly-compiled
+% preview deck, not assumed from the \gothamContentTopShift delta alone):
+% three independent plain-first-line standardframes with no per-slide
+% top-shift correction (slides/5v4-CML-vs-SML-current.tex,
+% slides/u5j-Exercise-CAPM-4-current.tex,
+% slides/nt4-Exercise-CAPM-5-current.tex) all land their first line's own
+% top edge at y=41.58pt post-change, not 44.0pt. Re-measure and adjust
+% again if \gothamContentTopShift ever changes in the future.
 \newlength{\gothamContentTopAlign}
-\setlength{\gothamContentTopAlign}{44pt}
+\setlength{\gothamContentTopAlign}{41.58pt}
 
 % For a "side filler image" -- a decorative image stuck flush to the page's
 % own right edge (zero margin) with its top edge flush against the title
@@ -2013,7 +2206,17 @@
 % slides/zgz-EBIT-Definition-current.tex's own v1-2-0 comment for a case
 % where an earlier, wrong correction was carried over uncritically).
 \newlength{\gothamContentTopShift}
-\setlength{\gothamContentTopShift}{7.33pt}
+% 11.5964pt (2026-07-22, direct instruction: "reduce the Top Margin"
+% generally, tested at 20%/30%/40% smaller against
+% slides/8s8-Unit-Investment-Trusts-current.tex before settling on 40% --
+% up from the original 7.33pt so the *resulting* gap (this length pulls
+% content up by, so a bigger value means a smaller visible margin) comes
+% out to 60% of its old size: measured directly on 8s8 at 10.67pt before,
+% 6.42pt after (target was 6.40pt, within 0.02pt). Since every
+% standardframe applies this same pull-up before any per-slide
+% \gothamIncreaseContentTopShift/\gothamReduceContentTopShift correction,
+% changing it here shifts the baseline project-wide, not just on 8s8.
+\setlength{\gothamContentTopShift}{11.5964pt}
 
 % "Top Margin" (above) is one of four deck-wide margin names introduced in
 % conversation from 2026-07-12 onward (direct instruction) for the plain
@@ -2072,7 +2275,22 @@
 % lands within 0.1pt of slides/jyn-Categorization-current.tex's own
 % (200.917pt vs. 200.871pt/200.980pt in the compiled PDF).
 \newlength{\gothamMinipageTopCorrection}
-\setlength{\gothamMinipageTopCorrection}{7.6pt}
+% 9.38pt (2026-07-22, re-measured): the previous 7.6pt value went stale
+% the moment \gothamContentTopShift itself was increased (7.33pt ->
+% 11.5964pt, "reduce the Top Margin", see that length's own comment above)
+% without a matching update here -- confirmed directly (pymupdf against a
+% freshly-compiled preview deck, not assumed from the \gothamContentTopShift
+% delta alone, which doesn't translate 1:1 into a minipage's own \topskip
+% behavior): four independent slides all using this constant completely
+% unmodified (slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex,
+% slides/za2-Startup-Financing-Categorization-current.tex,
+% slides/yke-Implications-of-Homemade-Dividends-current.tex,
+% slides/6j4-Modigliani-Miller-Assumptions-current.tex) all land their
+% own first line at an identical y=39.80pt post-change, 1.78pt short of
+% this deck's current 41.58pt Top Margin reference -- not slide-specific
+% noise, the same deterministic amount on every one of them. Re-measure
+% and adjust again if \gothamContentTopShift ever changes in the future.
+\setlength{\gothamMinipageTopCorrection}{9.38pt}
 
 % A *third* minipage-top correction, on top of \gothamMinipageTopCorrection
 % above rather than replacing it, for a minipage whose own first internal
@@ -2137,6 +2355,25 @@
 \newlength{\gothamSideImageFrameMinipageCorrection}
 \setlength{\gothamSideImageFrameMinipageCorrection}{8.2pt}
 
+% 6.26pt (2026-07-22, re-measured): stale for the same reason
+% \gothamMinipageTopCorrection above went stale -- \gothamContentTopShift
+% itself changed (7.33pt -> 11.5964pt) without a matching update here.
+% Re-measured directly against a freshly-compiled preview deck across six
+% independent sideimageframe slides using this constant unmodified: four
+% (ezz, xmp, hzx, u6n) land their own first line at an identical
+% y=39.64pt, 1.94pt short of this deck's current 41.58pt Top Margin
+% reference (i.e. already pulled up *too far*); the other two (c7w, dfc)
+% are close but not identical (39.53pt/-2.05, 40.18pt/-1.4) -- no single
+% value fixes all six exactly, so this recalibrates to the four-way
+% cluster (the majority case) and accepts a small (<0.6pt) residual on the
+% two outliers. Since this constant feeds
+% `\gothamIncreaseContentTopShift{}` (more pull-up, i.e. *smaller* y), and
+% the observed y was already short of target, the fix is a *decrease*
+% (8.2pt - 1.94pt), not an increase -- caught by re-measuring after a
+% first, wrong-direction attempt at 10.14pt drove the four-slide cluster
+% to y=37.70pt, further from target instead of closer.
+\setlength{\gothamSideImageFrameMinipageCorrection}{6.26pt}
+
 % Opt-in override: reduces standardframe's \gothamContentTopShift pull-up by
 % this amount for the frame currently being opened. Empty-default-style flag
 % (mirrors \gothamChapterLogoPath etc.): 0pt by default (no effect), set via
@@ -2173,6 +2410,21 @@
 % standardframes only, never combined with \gothamMinipageTopCorrection.
 \newlength{\gothamFlatItemizeTopCorrection}
 \setlength{\gothamFlatItemizeTopCorrection}{1.834pt}
+
+% 0.01pt (2026-07-22, re-measured): stale for the same reason
+% \gothamMinipageTopCorrection above went stale -- \gothamContentTopShift
+% itself changed (7.33pt -> 11.5964pt) without a matching update here.
+% Re-measured directly against three independent flat-itemize slides using
+% this constant unmodified (574, 5cr, c8e): all three landed their own
+% first line at an identical y=39.76pt, 1.82pt short of this deck's
+% current 41.58pt Top Margin reference -- coincidentally, the recalibrated
+% \gothamContentTopAlign reference now already accounts for almost all of
+% what this correction used to supply on its own, leaving next to nothing
+% left to add. Effectively zeroed out rather than removing the call
+% itself, so every flat-itemize slide's own
+% `\gothamIncreaseContentTopShift{\gothamFlatItemizeTopCorrection}` line
+% keeps working unchanged.
+\setlength{\gothamFlatItemizeTopCorrection}{0.01pt}
 
 % Opposite-direction counterpart to \gothamReduceContentTopShift: *increases*
 % the pull-up instead of reducing it (needed for \gothamFlatItemizeTopCorrection
@@ -2233,7 +2485,21 @@
 	\setbeamertemplate{itemize subitem}{\gothamBulletDot}%
 	\setbeamertemplate{itemize subsubitem}{\gothamBulletDot}%
 	\setbeamertemplate{itemize subsubsubitem}{\gothamBulletDot}% 4th level, see its own comment further below (search "subsubsub")
-	\vspace*{-\dimexpr\gothamContentTopShift-\gothamContentTopShiftReduction\relax}%
+	% Only for top-aligned frames (the default, #1=t): a [c]-centered frame
+	% (2026-07-22, direct instruction, found while centering
+	% slides/bw9-Pearson-Correlation-Illustration-current.tex/agc/crj) was
+	% landing its content almost flush against the title bar instead of
+	% truly centered -- root cause was this same pull-up firing
+	% unconditionally regardless of #1. beamer's own [c] option already
+	% centers the frame body within the available space; stacking this
+	% deck's *own* top-alignment pull-up on top of that just drags the
+	% already-centered box further upward by the same fixed amount, which
+	% is exactly the asymmetry that was measured (a [c] figureframe's image
+	% landing ~0pt from the title bar and ~10pt from the footer instead of
+	% symmetric). Guarded with \ifstrequal (etoolbox, already loaded above)
+	% rather than \ifx, matching this file's own \ifstrequal{##1}{...}
+	% pattern elsewhere (\ifx would need #1 fully expanded first).
+	\ifstrequal{#1}{c}{}{\vspace*{-\dimexpr\gothamContentTopShift-\gothamContentTopShiftReduction\relax}}%
 }{%
 	\end{frame}%
 	\global\def\gothamChapterLogoPath{}% opt-in only for the frame just closed
@@ -2338,7 +2604,33 @@
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
 		\setlength{\itemindent}{0pt}%
-		\renewcommand{\makelabel}[1]{\makebox[\labelwidth][r]{##1}}%
+		% \itemsep/\parsep left at plain \list's own defaults otherwise --
+		% since this environment is built directly on \list rather than
+		% reusing beamer's own itemize template, it never got beamer's own
+		% itemize spacing hooks at all, only whatever \list falls back to.
+		% Measured directly (2026-07-21, direct instruction, found on
+		% slides/nt4-Exercise-CAPM-5-current.tex): that default reads as
+		% *less* space between two items (13.7pt, item-to-item) than
+		% between two wrapped lines within one *single* item (15.6pt,
+		% pure \baselineskip) -- backwards from how a list should read
+		% (item boundaries should be at least as open as a same-item line
+		% wrap, not tighter). \itemsep set explicitly so the total gap at
+		% an item boundary (baselineskip + itemsep) reads as clearly more
+		% open than a plain wrapped line, not accidentally tighter.
+		% Reduced from the original 6pt to 2.5pt (2026-07-22, found during
+		% a full-project check after the itemize-rules work, not part of
+		% that work itself): 6pt overshot by more than needed to clear the
+		% 1.9pt gap (15.6 vs. 13.7), and slides/kmf-Exercise-CAPM-6-current.tex's
+		% own 5-item list -- longer than nt4's own -- compounded that
+		% excess across 4 item boundaries into a ~25pt overfull frame, its
+		% own last item cut off by the footer (confirmed directly,
+		% rendered and compared against a pre-regression PDF). 2.5pt
+		% keeps a real, visible margin over the 1.9pt needed (not just
+		% barely crossing it) while re-measuring clean (no overfull) on
+		% kmf; re-verify against both nt4 and kmf directly if this is
+		% ever changed again -- they're this environment's own tightest
+		% (most items) and originally-tuned-against cases respectively.
+		\setlength{\itemsep}{2.5pt}%
 	}
 	\raggedright% plain \list defaults to justified+hyphenated text, unlike
 	% this deck's own itemize (which calls this too, further below) --
@@ -2449,6 +2741,23 @@
 			}
 	\fi%
 	\beamer@cramped%
+	% \beamer@cramped (beamerbaselocalstructure.sty, unmodified upstream
+	% code) unconditionally does `\itemsep0pt\topsep0.5pt`, every single
+	% time -- called right here, in this project's own copy of beamer's
+	% own \itemize body, same position as upstream. Setting \itemsep any
+	% earlier (first tried as a separate \AtBeginEnvironment{itemize} hook,
+	% run *before* this whole macro body even starts) gets silently wiped
+	% out by this same line a moment later -- confirmed directly via
+	% \typeout debugging (not assumed): the hook's own \setlength really
+	% did run with the right values, \itemsep still read back as 0pt
+	% immediately after. Setting it *here*, right after \beamer@cramped
+	% already ran (not before), is what actually survives.
+	\ifcase\@itemdepth
+	\or\setlength{\itemsep}{\gothamItemsepRatioI em}% level 1
+	\or\setlength{\itemsep}{\gothamItemsepRatioII em}% level 2
+	\or\setlength{\itemsep}{\gothamItemsepRatioIII em}% level 3
+	\or\setlength{\itemsep}{\gothamItemsepRatioIV em}% level 4
+	\fi%
 	\raggedright%
 	\beamer@firstlineitemizeunskip%
 }
@@ -2491,6 +2800,94 @@
 % margin, re-confirmed against the recompiled PDF.
 \newcommand{\gothamEnumerateLabelWidth}{\renewcommand{\makelabel}[1]{\makebox[20.33pt][r]{##1}}}
 
+% Automatic version of the above (2026-07-23, background-task follow-up
+% flagged in slides/kfh-Asset-Allocation-Process-current.tex's own v1-1-0
+% comment: "fix the enumerate behavior generally, if possible", task
+% `task_bb3fbb66`). That comment's first attempt, an
+% `\AtBeginEnvironment{enumerate}{...}` hook, failed because the hook fires
+% *before* `\enumerate`'s own body runs, and that body's own internal
+% `\list{...}{\def\makelabel...}` setup (the beamer copy directly below the
+% `\itemize` override above) clobbers whatever a hook that early leaves
+% behind -- the exact same "template runs its own setting, external pre-set
+% gets overwritten" problem `\itemize`'s own `\itemsep` comment above
+% already documents. The real fix, same idea `\itemize` itself used above:
+% override beamer's own low-level piece directly rather than hooking
+% \AtBeginEnvironment. Unlike `\itemize` (declared via
+% `\@protected@testopt`, needing a full re-declaration to reach -- see the
+% `\itemize` override's own comment for the full story), `\enumerate`'s
+% relevant piece, `\beamer@enum@` (beamerbaselocalstructure.sty), is a
+% plain `\def` with no optional-argument indirection, so it can be
+% `\renewcommand`'d directly, verbatim from upstream except for the
+% `\ifnum\@itemdepth>1` branch added below.
+%
+% Only fires for a *nested* enumerate (`\@itemdepth>1`, i.e. already inside
+% at least one `\itemize`/`\enumerate` when this one opens) -- a top-level
+% enumerate (`\@itemdepth=1`, e.g.
+% slides/t9z-Outland-Steel-Hedging-Borrowing-Investing-current.tex/
+% slides/g4c-Outland-Steel-Hedging-Forward-Sale-current.tex/
+% slides/j84-Outland-Steel-No-Hedging-current.tex's own outermost numbered
+% list, or slides/nkj-Agenda-current.tex's own \tableofcontents-driven one)
+% is left at beamer's stock label position entirely untouched, matching
+% this project's own established behavior for that shape (never reported
+% as misaligned, unlike the nested case) -- and, for nkj specifically,
+% doesn't matter either way, since that slide's own
+% `\gothamTocLabelFlushLeft` call (right after its own `\begin{enumerate}`)
+% overrides `\makelabel` again regardless of whatever this default sets.
+%
+% Reuses the exact same 20.33pt calibration as the manual
+% `\gothamEnumerateLabelWidth` above, confirmed (pymupdf, compiled PDF) to
+% land correctly not just at `\@itemdepth=2` (one `\itemize` above the
+% enumerate -- slides/kfh-Asset-Allocation-Process-current.tex/
+% slides/f6m-Recovery-Rates-current.tex/
+% slides/6pz-Outland-Steel-Hedging-Strategies-Overview-current.tex, all
+% previously needing the manual call) but also at `\@itemdepth=3` (two
+% `\itemize`s above it -- slides/bdh-Working-Capital-Example-current.tex's
+% own "Development of balance sheet:" list, also previously needing the
+% manual call, with the identical 20.33pt value) -- this deck's itemize/
+% enumerate templates don't shrink font size by nesting depth (only the
+% bullet glyph/margin step does), so the numeral's own glyph width -- the
+% only thing \gothamEnumerateLabelWidth's own box width actually
+% compensates for -- stays the same at every depth, and one constant covers
+% both cases without needing a depth-dependent formula. Not verified beyond
+% depth 3 (no slide currently nests an enumerate that deep); if one ever
+% does, re-measure before trusting this constant that far down, same as any
+% other empirical calibration in this file.
+% (slides/scs-Political-Risk-Stability-Index-current.tex also matches
+% "`\gothamEnumerateLabelWidth`" in a grep -- but only inside its own prose
+% comments describing the general technique; its actual call is the
+% bespoke `\gothamEnumerateLabelFlushLeftShifted{16pt}{10.2pt}` for its own
+% alphabetic, left-aligned, narrower-box labels, unaffected by this
+% override either way since that call runs after `\begin{enumerate}` opens,
+% same ordering as every other post-open `\makelabel` override here.)
+%
+% Former per-slide manual `\gothamEnumerateLabelWidth` calls removed from
+% the 4 slides above now that this covers them automatically; the macro
+% itself is kept defined, both for this override to reuse and as a manual
+% escape hatch (e.g. a differently-calibrated width some future slide might
+% need).
+\makeatletter
+\renewcommand{\beamer@enum@}{%
+	\beamer@computepref\@itemdepth% sets \beameritemnestingprefix
+	\usebeamerfont{itemize/enumerate \beameritemnestingprefix body}%
+	\usebeamercolor[fg]{itemize/enumerate \beameritemnestingprefix body}%
+	\usebeamertemplate{itemize/enumerate \beameritemnestingprefix body begin}%
+	\expandafter
+		\list
+			{\usebeamertemplate{\beamer@enumtempl}}
+			{\usecounter\@enumctr%
+				\ifnum\@itemdepth>1
+					\def\makelabel##1{\makebox[20.33pt][r]{##1}}%
+				\else
+					\def\makelabel##1{{\hss\llap{{%
+							\usebeamerfont*{enumerate \beameritemnestingprefix item}%
+							\usebeamercolor[fg]{enumerate \beameritemnestingprefix item}##1}}}}%
+				\fi}%
+	\beamer@cramped%
+	\raggedright%
+	\beamer@firstlineitemizeunskip%
+}
+\makeatother
+
 % Extra breathing room when a nested itemize closes and control returns to
 % its *parent* list, right before that parent's next \item -- e.g. sub-items
 % under "Mid-Term Exam" followed by the next top-level "Final Exam" -- so a
@@ -2517,27 +2914,213 @@
 % of it unconditionally -- \vspace's own stacking behavior was the other
 % half of why the old flat version could look like too much space.
 \makeatletter
-\newlength{\gothamItemizeLevelDropSpaceI}
-\newlength{\gothamItemizeLevelDropSpaceII}
-\newlength{\gothamItemizeLevelDropSpaceIII}
-\setlength{\gothamItemizeLevelDropSpaceI}{0.5em}
-\setlength{\gothamItemizeLevelDropSpaceII}{0.3em}
+% Ratios, not lengths (2026-07-21, direct instruction: "all of these
+% spacings should scale with font size") -- a \newlength+\setlength{...}{0.5em}
+% pair, the way this used to be written, freezes to a fixed *pt* value the
+% one time \setlength runs (at preamble-load time, using whatever font is
+% active then), despite the "em" in its own definition -- it does NOT
+% re-track whichever font size is actually active on a given slide/level
+% later. Confirmed directly: a \typeout{\f@size} placed at the point each
+% of these actually gets used (inside \AtEndEnvironment{itemize}'s own
+% hook body, further below) showed the *closing* list's own font still
+% active there (9pt/10pt/10.95pt for a level-4/3/2 list closing,
+% respectively -- not yet restored to the parent's own font), confirming
+% this hook fires early enough in `\end{itemize}`'s own processing that a
+% live "0.5em" computed *there* would correctly track whichever level is
+% actually involved. Fixed by storing the bare ratio as a plain macro
+% instead, and writing the literal "em" back on at the point of use
+% (`\addvspace{\gothamItemizeLevelDropSpaceRatioI em}`), so it's
+% recomputed fresh, against whatever font is live, every time.
+\newcommand{\gothamItemizeLevelDropSpaceRatioI}{0.5}
+\newcommand{\gothamItemizeLevelDropSpaceRatioII}{0.3}
 % Level 3's own drop-space, for when a closed *4th*-level list returns
 % control to a level-3 item -- added 2026-07-15 alongside the 4th itemize
 % level itself (search "subsubsub" further above). Interpolated from the
-% existing I/II progression (0.5em, 0.3em -- each step roughly 60% of the
-% one before) rather than empirically re-measured against a compiled PDF
-% the way I/II themselves were: no slide used a 4th level before
+% existing I/II progression (0.5, 0.3 -- each step roughly 60% of the one
+% before) rather than empirically re-measured against a compiled PDF the
+% way I/II themselves were: no slide used a 4th level before
 % slides/hrg-Exchange-Rate-Quotation-Forward-current.tex to measure
 % against. Re-derive properly (render, measure, adjust) if this ever
 % looks visibly off on a real slide.
-\setlength{\gothamItemizeLevelDropSpaceIII}{0.2em}
+\newcommand{\gothamItemizeLevelDropSpaceRatioIII}{0.2}
+% Level 4's own drop-space, for when a closed level-4 list returns control
+% to a level-3 item -- added 2026-07-21 alongside \gothamItemsepRatioIV.
+% \@itemdepth at this hook's fire time is the depth of the list that *just
+% closed*, confirmed directly via a temporary \typeout{\the\@itemdepth}
+% (not assumed): closing the level-4 list on
+% slides/ZZO-Itemize-Spacing-Reference-current.tex measured itemdepth=4
+% there, closing level-3 measured 3, level-2 measured 2, and the outermost
+% level-1 list itself closing measured 1 (never 0 -- \@itemdepth's own
+% restore to the parent's depth happens *after* this hook runs, so the "0:
+% outermost list itself closed" case below is dead code, kept only because
+% removing a genuinely unreachable \ifcase branch isn't worth the risk of
+% getting the numbering wrong a second time). So this is very much a real,
+% reachable case -- not decorative symmetry -- and needed its own
+% \addvspace branch (previously missing entirely, silently leaving the
+% level-4-to-level-3 closing transition with no drop-space at all).
+% Interpolated from the existing I/II/III progression as a starting guess,
+% then re-measured directly against the compiled ZZO reference and bumped:
+% 0.13 measured at 12.6pt, still *less* than level 4's own same-level gap
+% of 13.4pt (violates rule III -- a level's own same-level gap must be
+% smaller than that level's own closing-transition gap); raised until
+% re-measurement cleared it with a comfortable margin again, matching the
+% margin every other level's own pair already has.
+\newcommand{\gothamItemizeLevelDropSpaceRatioIV}{0.5}
 \AtEndEnvironment{itemize}{%
 	\ifcase\@itemdepth
-		% 0: outermost list itself closed -- no parent item follows, nothing to add.
-	\or\addvspace{\gothamItemizeLevelDropSpaceI}% back to a level-1 item
-	\or\addvspace{\gothamItemizeLevelDropSpaceII}% back to a level-2 item
-	\or\addvspace{\gothamItemizeLevelDropSpaceIII}% back to a level-3 item
+		% 0: dead code -- @itemdepth is never actually 0 when this hook
+		% fires (see \gothamItemizeLevelDropSpaceRatioIV's own comment
+		% just above); kept only for alignment with the \ifcase branches
+		% below, each keyed on the depth of the list that just closed.
+	\or\addvspace{\gothamItemizeLevelDropSpaceRatioI em}% level-1 (outermost) list itself closed -- a pre-existing quirk (not introduced by this comment's own edit): there's no parent item above level 1 for this to visually separate from, so this only actually matters if something follows the outermost list directly on the same frame; harmless on every slide seen so far since nothing does. Out of scope to redesign here.
+	\or\addvspace{\gothamItemizeLevelDropSpaceRatioII em}% level-2 list closed, back to a level-1 item
+	\or\addvspace{\gothamItemizeLevelDropSpaceRatioIII em}% level-3 list closed, back to a level-2 item
+	\or\addvspace{\gothamItemizeLevelDropSpaceRatioIV em}% level-4 list closed, back to a level-3 item
+	\fi
+}
+
+% Per-level \itemsep -- the item-to-item gap *within* one list, at one
+% fixed nesting depth (as opposed to the drop-space mechanism just above,
+% which only fires when a nested list *closes* back up to its parent).
+% Ratios, not lengths -- same "scale with font size" reasoning and fix as
+% \gothamItemizeLevelDropSpaceRatioI/II/III above (that comment has the
+% full story on why a plain \newlength+\setlength pair here would freeze
+% to one fixed pt value instead of actually tracking each level's own
+% font size). Values only, defined here for discoverability alongside the
+% drop-space ones above -- actually *applied* inside the `\itemize`
+% redefinition itself (search "\beamer@cramped (beamerbaselocalstructure.sty"
+% further above), not via a separate hook here; see that comment for why.
+% Found missing entirely (2026-07-21, direct instruction, see
+% slides/ZZO-Itemize-Spacing-Reference-current.tex's own header comment
+% for the rules this and the drop-space mechanism together need to
+% satisfy): this deck's own itemize never set \itemsep itself at any
+% level -- confirmed directly, grepping this whole file -- so every depth
+% shared whatever bare default beamer's own theme happens to leave
+% \itemsep at, uniformly. That produced two visible problems, both
+% measured directly (pymupdf against slides/2c2-Topics-Around-the-CAPM-Empirical-Validity-current.tex
+% and an isolated bisection test, not guessed): (a) level-2 and level-3
+% same-level item-to-item gaps came out *identical* (12.6pt each,
+% confirmed against an isolated reproduction), since nothing distinguished
+% them by depth at all -- only a closing transition ever got a
+% level-dependent gap, never a same-level one; (b) that shared default
+% \itemsep read as *smaller* than a single item's own wrapped-line
+% \baselineskip (13.7-13.8pt within a wrap vs. 12.6pt between items),
+% backwards from how a list should read -- an item boundary should never
+% be tighter than a same-item line wrap.
+% Ratios themselves are not arbitrary -- each chosen, then re-measured
+% against the compiled ZZO reference slide and adjusted, specifically to
+% satisfy all three of that slide's own header-comment rules together
+% (extended to level 4 the same way, 2026-07-21), not just "level 1
+% biggest" in isolation:
+% - Rule I (level-1 same-level gap > level-2's > level-3's > level-4's)
+%   falls straight out of \gothamItemsepRatioI > ...II > ...III > ...IV,
+%   added on top of the same \baselineskip every level shares (itself
+%   already smaller per level here, since this theme's own itemize/
+%   enumerate body font shrinks with depth too -- confirmed directly,
+%   10.95pt/10pt/9pt/9pt for levels 1-4 respectively, level 4 sharing
+%   level 3's own font since this theme has no distinct "subsubsub" size
+%   of its own).
+% - Rule II (every level's own same-level gap > that level's own wrapped-
+%   line gap) needs \gothamItemsepRatioIV alone (the smallest, hence the
+%   binding case) to still be positive and large enough that it clearly
+%   reads as more open than a plain wrapped line once rendered, not just
+%   bigger on paper.
+% - Rule III (a level's own same-level gap < that same level's own
+%   *closing*-transition gap) is *not* automatic just because
+%   \gothamItemizeLevelDropSpaceRatio* was already bigger than the old
+%   shared default -- \addvspace's own coalesce-to-the-larger-value
+%   behavior (documented above) means the closing gap is
+%   max(natural glue, that *drop-space* ratio), not a sum of the two. Each
+%   drop-space ratio's own \ifcase branch is keyed on the depth of the
+%   list that *just closed* (see \gothamItemizeLevelDropSpaceRatioIV's own
+%   comment for the full story on why, confirmed via \typeout, not
+%   assumed), so it lines up with the same-numbered itemsep ratio despite
+%   describing a different transition -- \gothamItemizeLevelDropSpaceRatioIV
+%   governs the level-4-list-closing-back-to-level-3 transition and is the
+%   one that has to individually stay bigger than \gothamItemsepRatioIV.
+%   This branch was missing entirely at first (only I/II/III existed, a
+%   leftover from before level 4 existed) -- confirmed directly on ZZO: the
+%   level-4-to-level-3 closing transition measured 12.6pt with no drop-space
+%   branch at all, less than level 4's own same-level gap of 13.4pt, a real
+%   rule III violation. Adding the branch (\gothamItemizeLevelDropSpaceRatioIV,
+%   starting at 0.5) fixed it. Re-verify rule III directly against ZZO's own
+%   compiled PDF (don't assume it still holds on paper) if any of these ratios is
+%   ever changed again.
+\newcommand{\gothamItemsepRatioI}{0.4}
+\newcommand{\gothamItemsepRatioII}{0.24}
+\newcommand{\gothamItemsepRatioIII}{0.15}
+\newcommand{\gothamItemsepRatioIV}{0.09}
+
+% Per-level "opening" space -- the gap between a level-n item and the
+% first item of a level-(n+1) list that immediately follows it, as
+% opposed to \gothamItemizeLevelDropSpaceRatio* (a nested list *closing*
+% back up) or \gothamItemsepRatio* (two items at the *same* depth).
+% Added 2026-07-21, direct instruction, replacing the original three
+% separate rules on slides/ZZO-Itemize-Spacing-Reference-current.tex's
+% own header comment with one multi-part inequality stated per level n:
+%   level-n -> level-(n-1) close  >  level-n same-level  >
+%   level-n -> level-(n+1) open  >  level-n's own wrap gap
+% The "open" term was entirely unhandled before this -- confirmed
+% directly on ZZO: every opening transition (level 1 into level 2, level
+% 2 into level 3, level 3 into level 4) measured *smaller* than that same
+% level's own wrap gap, backwards from what the rule needs, since nothing
+% but beamer's own bare default \topsep governed it.
+% \AtBeginEnvironment{itemize}, not \topsep -- \topsep was tried first
+% (set via the same \ifcase\@itemdepth block, right after \itemsep,
+% inside the `\itemize` redefinition above) and measured *unreliable*:
+% two of the three levels barely moved despite a sizeable ratio, while
+% the third moved by roughly the right amount -- \topsep's own value is
+% evidently consulted by `\list` at some point this override comes too
+% late for, at least for some levels, not evenly. \addvspace via
+% \AtBeginEnvironment instead measured consistently and predictably
+% (each level's own change matched its own ratio's calculated pt value
+% directly), the same mechanism \gothamItemizeLevelDropSpaceRatio* already
+% relies on for the closing side. This hook fires with \@itemdepth
+% reflecting the *parent* item's own depth (confirmed via \typeout, not
+% assumed: opening the outermost level-1 list itself measured 0, opening
+% a level-2 list from within a level-1 item measured 1, level-3-from-
+% level-2 measured 2, level-4-from-level-3 measured 3) -- the opposite of
+% \gothamItemizeLevelDropSpaceRatio*'s own hook, which keys on the depth
+% of the list that *just closed*. That makes the \ifcase numbering here
+% match the "n" in the rule directly: case 1 is level-1's own open-to-
+% level-2 ratio, case 2 is level-2's own open-to-level-3, case 3 is
+% level-3's own open-to-level-4; case 0 (opening the outermost list
+% itself) is a genuine no-op, correctly -- there's no parent item above
+% level 1 for that transition to separate from.
+% Ratios chosen, then re-measured against the compiled ZZO reference and
+% adjusted, the same way as every other ratio here: each has to
+% individually land strictly between that level's own \gothamItemsepRatio*
+% (the ceiling) and its own wrap gap (the floor). Re-verify directly
+% against ZZO's own compiled PDF (don't assume it still holds on paper)
+% if any of these, or the itemsep/drop-space ratios they're measured
+% against, are ever changed again.
+% \gothamItemizeLevelOpenSpaceRatioI trimmed from 0.28 to 0.02 (2026-07-21,
+% direct instruction: "the level-1 to level-2 distance...seems a bit
+% much"). Confirmed directly: even at 0, this transition still measured
+% ~16.3pt -- \addvspace's own coalesce-to-the-larger-value behavior means
+% the ratio can only ever push this *above* whatever glue the list
+% mechanism inserts here regardless (that natural floor, not the ratio),
+% so 0.28 down to 0 only ever moved the actual gap by ~2pt (18.5->16.3);
+% 0.02 splits the difference, keeping the mechanism nominally "in effect"
+% rather than reading as accidentally disabled. \gothamItemizeLevelOpenSpaceRatioIII
+% (level-3-to-level-4) had to come down too, from 0.08 to 0.02, purely to
+% restore its own margin -- changing RatioI shifted that unrelated
+% transition's own measured gap closer to level 3's own same-level gap
+% (12.1 vs. 12.0, too thin), confirmed directly on ZZO, not assumed;
+% ratios elsewhere in this file have shown the same small-ripple behavior
+% before (see \gothamItemizeLevelDropSpaceRatioIV's own comment) --
+% re-measure the *whole* table after touching any single one of these,
+% not just the transition being changed.
+\newcommand{\gothamItemizeLevelOpenSpaceRatioI}{0.02}
+\newcommand{\gothamItemizeLevelOpenSpaceRatioII}{0.15}
+\newcommand{\gothamItemizeLevelOpenSpaceRatioIII}{0.02}
+\AtBeginEnvironment{itemize}{%
+	\ifcase\@itemdepth
+		% 0: opening the outermost (level-1) list itself -- no parent item
+		% precedes it, nothing to add.
+	\or\addvspace{\gothamItemizeLevelOpenSpaceRatioI em}% opening a level-2 list from a level-1 item
+	\or\addvspace{\gothamItemizeLevelOpenSpaceRatioII em}% opening a level-3 list from a level-2 item
+	\or\addvspace{\gothamItemizeLevelOpenSpaceRatioIII em}% opening a level-4 list from a level-3 item
 	\fi
 }
 \makeatother
@@ -3176,6 +3759,45 @@
 	\end{infoblock}
 	\end{minipage}
 }
+
+% Every gothamfloatinginfoblock anchored top-right against the institute
+% logo (the deck's standard
+% "(current page.north east)+(-\gothamFrametitleRightpading,-\gothamContentTopAlign)"
+% corner pattern) lands its own visible right edge short of the logo's,
+% by a fixed amount independent of the block's own chosen width (#1) --
+% \infoblock's underlying template insets its colored fill by
+% \gothamBlockSideMargin from *both* sides of whatever width it's given
+% (that margin exists to match a first-level bullet's own left-hand
+% position, see its own comment above; the fact that it also narrows the
+% *right* side is just a side effect of reusing one symmetric
+% hspace+minipage trick for both, not a deliberate right-margin choice),
+% partly offset by beamer's own beamercolorbox "colsep*" background bleed
+% (colsep* pads the colored fill outward past its own nominal box edge
+% without also insetting the text, unlike unstarred "colsep" -- see
+% beamerbasecolor.sty's own \beamercolorbox definition). Root-caused and
+% measured directly (pymupdf against a compiled probe deck, not derived
+% purely on paper) 2026-07-21, after
+% slides/j8y-Asset-Allocation-Example-Weights-current.tex's own one-off
+% "+2.2pt" nudge (measured that same day against just the institute
+% logo's yellow chip) turned out to disagree with
+% slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex's
+% own older "+3.165pt" nudge (2026-07-06, measured against the logo's
+% *full* gray-bordered footprint, shadow/card included) -- both slides'
+% own nudges were each individually correct for their own chosen
+% reference edge, they just didn't agree on what "the logo's own edge"
+% means. Direct instruction, 2026-07-21: the *full* gray-bordered
+% footprint is the deck's intended reference, so 3.165pt is the value
+% kept here; j8y's own newer 2.2pt nudge was the one revised to match,
+% not this one.
+%
+% Use "-\gothamFloatingInfoblockRightAlign" (not the bare
+% "-\gothamFrametitleRightpading") for a gothamfloatinginfoblock's own
+% anchor node whenever its right edge is meant to align with the logo --
+% every current use of this pattern across the deck has been updated to
+% match; new slides using this same corner pattern should use this
+% length from the start rather than re-measuring their own one-off nudge.
+\newlength{\gothamFloatingInfoblockRightAlign}
+\setlength{\gothamFloatingInfoblockRightAlign}{\dimexpr\gothamFrametitleRightpading-3.165pt\relax}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Special frame types (converted from ExampleSlides.pptx; see README.md)
