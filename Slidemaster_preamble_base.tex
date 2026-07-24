@@ -532,6 +532,68 @@
 	}
 }
 
+% Reusable "warning sign" -- a rotated, no-fill, thick-bordered box with
+% centered bold text, generalized (2026-07-24, direct instruction: "build a
+% GENERAL reusable command for placing such signs") from the red
+% "Extremely skewed outcomes!" callout on slides/awe-Example-Investment-
+% Return-Simulation-current.tex's own source PPTX slide (233) -- read
+% directly from that slide's `ppt/slides/slide233.xml`: a rotated
+% no-fill rectangle (`rot="20410887"`, i.e. 340.18 degrees clockwise =
+% -19.82 degrees), a thick solid border in the same color as the text
+% (`<a:ln w="57150">` = 4.5pt, color C00000 = this project's own
+% `c_custom_red`), text centered inside.
+%
+% Usage: \gothamWarningSign[color]{x}{y}{text}{aspect ratio}{rotation}
+% #1 (optional) the border/text color, defaults to \c_custom_red; #2/#3
+% the sign's own center, as a page-absolute (x,-y) offset from
+% "current page.north west" in pt -- the same coordinate convention as
+% this deck's other absolute-overlay figures (e.g.
+% slides/ivw-Divestment-of-Polluting-Plants-Overview-current.tex's own
+% photo nodes); #4 the sign's text; #5 the desired width:height aspect
+% ratio of the box; #6 the rotation angle in degrees, tikz convention
+% (counterclockwise positive) -- note OOXML's own `rot` attribute on a
+% source PPTX shape is clockwise positive instead, so a value read
+% directly off a source slide needs negating first.
+%
+% The box is sized to fit the text *wrapped* at the requested aspect
+% ratio, not a caller-supplied width -- matching how the source PPTX's
+% own sign isn't a single unwrapped line either (rendering the actual
+% source deck's own slide 233 to a flat image for comparison confirmed
+% its text wraps across 3 lines inside a squarish box, not one long
+% strip). #5 drives that wrap width via a closed-form estimate (start
+% from the unwrapped text's own natural width #4 and single-line height
+% #4, i.e. `sqrt(ratio*width*height)`, the width at which a box of
+% roughly that many lines would hit the target ratio if text-ink area
+% stayed constant under rewrapping) plus one correction pass (rewrap at
+% that estimate, remeasure the real height, then solve
+% `sqrt(width*height*ratio)` again treating the *measured* width*height
+% as the area instead of the rough estimate) -- not exact, since
+% rewrapping to a handful of lines isn't a smooth function of width, but
+% close enough for the short warning-sign text this is meant for; a
+% caller can always nudge #5 if a specific case lands visibly off.
+\newlength{\gothamWarningSignPadding}
+\setlength{\gothamWarningSignPadding}{6pt}
+\newlength{\gothamWarningSignBorderWidth}
+\setlength{\gothamWarningSignBorderWidth}{4.5pt}
+\newsavebox{\gothamWarningSignBox}
+\newlength{\gothamWarningSignW}
+\newlength{\gothamWarningSignH}
+\newcommand{\gothamWarningSign}[6][c_custom_red]{%
+	\savebox{\gothamWarningSignBox}{\bfseries\color{#1}#4}%
+	\pgfmathsetlength{\gothamWarningSignW}{sqrt((#5)*\wd\gothamWarningSignBox*(\ht\gothamWarningSignBox+\dp\gothamWarningSignBox))}%
+	\savebox{\gothamWarningSignBox}{\parbox{\gothamWarningSignW}{\centering\bfseries\color{#1}#4}}%
+	\pgfmathsetlength{\gothamWarningSignW}{sqrt((#5)*\gothamWarningSignW*(\ht\gothamWarningSignBox+\dp\gothamWarningSignBox))}%
+	\savebox{\gothamWarningSignBox}{\parbox{\gothamWarningSignW}{\centering\bfseries\color{#1}#4}}%
+	\setlength{\gothamWarningSignH}{\ht\gothamWarningSignBox+\dp\gothamWarningSignBox}%
+	\begin{tikzpicture}[overlay, remember picture]
+		\node[rotate=#6, draw=#1, line width=\gothamWarningSignBorderWidth,
+		      minimum width=\dimexpr\gothamWarningSignW+2\gothamWarningSignPadding\relax,
+		      minimum height=\dimexpr\gothamWarningSignH+2\gothamWarningSignPadding\relax,
+		      inner sep=0pt] at ($(current page.north west)+(#2,-#3)$)
+			{\usebox{\gothamWarningSignBox}};
+	\end{tikzpicture}%
+}
+
 % Reusable "operating/cash conversion cycle" bar diagram (FM2_2026s_ps_deck.pptx
 % slides 22/24/25/26 all embed the exact same picture -- an EMF, not a native
 % shape/table -- so rather than convert that EMF and re-embed it 4 times over,
@@ -930,10 +992,27 @@
 				% page top down to the title bar's true bottom, so this
 				% column is already blank regardless of which placement is
 				% used.
+				%
+				% 2026-07-24 (direct instruction, general rule for this
+				% "below" placement, not just 6vt): sized by *width* to
+				% \gothamLogoWidth (the institute logo's own rendered
+				% width) instead of by height to \gothamLogoHeight --
+				% the two icons' aspect ratios differ enough that
+				% height-matching (the "beside" case's own convention,
+				% still correct there) left the chapter logo narrower
+				% than the institute logo above it, reading as
+				% off-center underneath it despite sharing the same right
+				% edge. Matching *width* instead, with the *same*
+				% `anchor=north east`/`inner xsep=\gothamFrametitleRightpading`
+				% the institute logo itself uses, makes the two share
+				% both edges (not just the right one) automatically --
+				% equal width plus a shared right edge means a shared
+				% left edge and a shared horizontal center for free, no
+				% separate centering computation needed.
 				\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
 				      inner ysep=\dimexpr\gothamTitleBarBottomAlign+\gothamFrametitleRightpading\relax,
 				      outer sep=0pt] at (current page.north east)
-					{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};
+					{\includegraphics[width=\gothamLogoWidth]{\gothamChapterLogoPath}};
 			\fi
 		\fi
 	\end{tikzpicture}%
