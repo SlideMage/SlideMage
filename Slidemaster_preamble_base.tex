@@ -585,13 +585,27 @@
 	\pgfmathsetlength{\gothamWarningSignW}{sqrt((#5)*\gothamWarningSignW*(\ht\gothamWarningSignBox+\dp\gothamWarningSignBox))}%
 	\savebox{\gothamWarningSignBox}{\parbox{\gothamWarningSignW}{\centering\bfseries\color{#1}#4}}%
 	\setlength{\gothamWarningSignH}{\ht\gothamWarningSignBox+\dp\gothamWarningSignBox}%
+	% \vbox to 0pt{\vss ...} keeps this at zero space in the normal vertical
+	% list, the same reason every other absolute-page-coordinate tikz overlay
+	% in this file uses it (footer/logo/title-bar boxes, y5z's/22s's own
+	% corner images, ...): a bare tikzpicture here is otherwise sized from
+	% its own local origin (wherever this macro happens to be called in the
+	% flow) out to the far-away absolute page coordinate the node is drawn
+	% at, so without this wrapper the "sign" silently pushes real, sizeable
+	% blank space into the frame's own body -- confirmed directly on
+	% slides/awe-Example-Investment-Return-Simulation-current.tex: with this
+	% call gated behind `\deckreveal[3]{...}`, the reveal step where it first
+	% turns on pushed the *unrelated* left-column text down by about 100pt
+	% relative to the steps before it, a "content moves between reveal
+	% steps" bug rather than anything wrong with that text itself.
+	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
 		\node[rotate=#6, draw=#1, line width=\gothamWarningSignBorderWidth,
 		      minimum width=\dimexpr\gothamWarningSignW+2\gothamWarningSignPadding\relax,
 		      minimum height=\dimexpr\gothamWarningSignH+2\gothamWarningSignPadding\relax,
 		      inner sep=0pt] at ($(current page.north west)+(#2,-#3)$)
 			{\usebox{\gothamWarningSignBox}};
-	\end{tikzpicture}%
+	\end{tikzpicture}}%
 }
 
 % Reusable "operating/cash conversion cycle" bar diagram (FM2_2026s_ps_deck.pptx
