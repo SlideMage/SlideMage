@@ -892,21 +892,49 @@
 		% needing a second length constant.
 		\ifx\gothamChapterLogoPath\empty\else
 			\settowidth{\gothamChapterLogoWidth}{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}}%
-			% The patch's right edge is nudged 0.5pt *past* gothamMainPatch's own
-			% west edge (i.e. slightly overlapping it) rather than exactly
-			% touching it -- both are solid white, so the overlap itself is
-			% invisible, but touching them exactly left a hairline yellow seam
-			% at the join (a real, if sub-millimetre, gap that persisted across
-			% recompiles, most likely PDF fill-antialiasing at the shared edge
-			% of two separately-filled abutting shapes). The logo image itself
-			% (below) is *not* shifted, so the actual margin it defines is
-			% unaffected.
-			\path let \p1=(current page.north east), \p2=(gothamTitleBottom) in
-				node[fill=white, anchor=east, inner sep=0pt, outer sep=0pt,
-				     minimum width=\gothamChapterLogoWidth+\gothamFrametitleRightpading+0.5pt,
-				     minimum height=\y1-\y2] at ($(gothamMainPatch.west)+(0.5pt,0)$) {};
-			\node[anchor=east, inner sep=0pt, outer sep=0pt] at (gothamMainPatch.west |- gothamLogoAnchor.center)
-				{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};
+			\ifx\gothamFrametitleLogoFixed\empty
+				% The patch's right edge is nudged 0.5pt *past* gothamMainPatch's own
+				% west edge (i.e. slightly overlapping it) rather than exactly
+				% touching it -- both are solid white, so the overlap itself is
+				% invisible, but touching them exactly left a hairline yellow seam
+				% at the join (a real, if sub-millimetre, gap that persisted across
+				% recompiles, most likely PDF fill-antialiasing at the shared edge
+				% of two separately-filled abutting shapes). The logo image itself
+				% (below) is *not* shifted, so the actual margin it defines is
+				% unaffected.
+				\path let \p1=(current page.north east), \p2=(gothamTitleBottom) in
+					node[fill=white, anchor=east, inner sep=0pt, outer sep=0pt,
+					     minimum width=\gothamChapterLogoWidth+\gothamFrametitleRightpading+0.5pt,
+					     minimum height=\y1-\y2] at ($(gothamMainPatch.west)+(0.5pt,0)$) {};
+				\node[anchor=east, inner sep=0pt, outer sep=0pt] at (gothamMainPatch.west |- gothamLogoAnchor.center)
+					{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};
+			\else
+				% \gothamFrametitleLogoFixed frames (currently: sectionframe)
+				% have no inline logo/gothamLogoAnchor node at all (see
+				% uni_graz_no_inline_logo's own comment above) -- the "beside"
+				% placement above relies on that node for its own vertical
+				% position, so it can't be reused here. Direct instruction
+				% (2026-07-24, first raised on
+				% slides/6vt-Sustainable-Investments-Section-Overview-current.tex):
+				% "place the green symbol below the logo on the top right" --
+				% sectionframe's own much taller title bar leaves real room
+				% below the (fixed-position, near-the-top) institute logo, so
+				% stack the chapter logo directly under it instead of beside
+				% it, same right edge (\gothamFrametitleRightpading from the
+				% page's own right edge), separated by one more
+				% \gothamFrametitleRightpading of vertical gap -- reusing that
+				% same length keeps every gap in this hook equal, same
+				% reasoning as the "beside" case's own comment above. No
+				% separate white patch needed here: gothamMainPatch (above)
+				% already spans this exact column's full height, from the
+				% page top down to the title bar's true bottom, so this
+				% column is already blank regardless of which placement is
+				% used.
+				\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
+				      inner ysep=\dimexpr\gothamTitleBarBottomAlign+\gothamFrametitleRightpading\relax,
+				      outer sep=0pt] at (current page.north east)
+					{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};
+			\fi
 		\fi
 	\end{tikzpicture}%
 }
@@ -3388,6 +3416,26 @@
 \newlength{\gothamBlockSideMargin}
 \setlength{\gothamBlockSideMargin}{4.20pt}
 
+% Bullets inside any block type render black (c_primary_dark), not this
+% deck's usual yellow \gothamBulletColor -- yellow-on-gray (a block's own
+% c_tertiary_gray body background) reads far weaker than yellow-on-white,
+% and doesn't match this deck's own definition/example/reference/info/alert
+% marker symbols, which are already black (2026-07-24, direct instruction,
+% first raised on slides/tbi-Definitions-Moral-Licensing-Cleansing-current.tex,
+% "in blocks generally"). Scoped to each block's own outer minipage (opened
+% in "block ... begin", closed in "block ... end" -- a genuine TeX group
+% boundary, confirmed by rendering: the black override doesn't leak into
+% the frame's ordinary itemize bullets outside the block), so calling this
+% once per block-begin template is enough -- no matching "reset" call is
+% needed at block-end.
+\newcommand{\gothamBulletDotBlack}{\tikz[baseline=-0.65ex]{\fill[c_primary_dark] circle (1.7pt);}}
+\newcommand{\gothamSetBlockBullets}{%
+	\setbeamertemplate{itemize item}{\gothamBulletDotBlack}%
+	\setbeamertemplate{itemize subitem}{\gothamBulletDotBlack}%
+	\setbeamertemplate{itemize subsubitem}{\gothamBulletDotBlack}%
+	\setbeamertemplate{itemize subsubsubitem}{\gothamBulletDotBlack}%
+}
+
 % Shared helper for a block title bar that carries a marker symbol flush
 % right, opposite the title text (currently: infoblock's circled "i",
 % definitionblock's $\triangleq$, exampleblock's $\in$ -- see each of
@@ -3513,6 +3561,7 @@
 \defbeamertemplate*{block reference begin}{default}[1][]
 {
 	\hspace{\gothamBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\gothamBlockSideMargin\relax}
+	\gothamSetBlockBullets%
 	\par\vskip\medskipamount%
 	\begin{beamercolorbox}[colsep*=.75ex,#1]{block title reference}
 		\usebeamerfont*{block title reference}\strut\insertblocktitle%
@@ -3569,6 +3618,7 @@
 \defbeamertemplate*{block info begin}{default}[1][]
 {
 	\hspace{\gothamBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\gothamBlockSideMargin\relax}
+	\gothamSetBlockBullets%
 	\par\vskip\medskipamount%
 	\begin{beamercolorbox}[colsep*=.75ex,#1]{block title info}
 		\usebeamerfont*{block title info}%
@@ -3615,6 +3665,7 @@
 \defbeamertemplate*{block definition begin}{default}[1][]
 {
 	\hspace{\gothamBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\gothamBlockSideMargin\relax}
+	\gothamSetBlockBullets%
 	\par\vskip\medskipamount%
 	\begin{beamercolorbox}[colsep*=.75ex,#1]{block title}
 		\usebeamerfont*{block title}\gothamBlockTitleWithMarker{$\triangleq$}{\insertblocktitle}%
@@ -3674,6 +3725,7 @@
 % `\strut` added directly instead.
 \setbeamertemplate{block begin}{
 	\hspace{\gothamBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\gothamBlockSideMargin\relax}
+	\gothamSetBlockBullets%
 	\par\vskip\medskipamount%
 	\begin{beamercolorbox}[colsep*=.75ex]{block title}
 		\usebeamerfont*{block title}\strut\insertblocktitle%
@@ -3705,6 +3757,7 @@
 }
 \setbeamertemplate{block alerted begin}{
 	\hspace{\gothamBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\gothamBlockSideMargin\relax}
+	\gothamSetBlockBullets%
 	\par\vskip\medskipamount%
 	\begin{beamercolorbox}[colsep*=.75ex]{block title alerted}
 		\usebeamerfont*{block title alerted}\gothamBlockTitleWithMarker{\gothamAlertMarker}{\insertblocktitle}%
@@ -3735,6 +3788,7 @@
 % definitionblock through its own shared template.
 \setbeamertemplate{block example begin}{
 	\hspace{\gothamBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\gothamBlockSideMargin\relax}
+	\gothamSetBlockBullets%
 	\par\vskip\medskipamount%
 	\begin{beamercolorbox}[colsep*=.75ex]{block title example}
 		\usebeamerfont*{block title example}\gothamBlockTitleWithMarker{$\in$}{\insertblocktitle}%
