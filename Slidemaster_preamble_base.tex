@@ -4393,6 +4393,64 @@
 \setlength{\gothamSectionframeContentDrop}{10pt}
 \newlength{\gothamSectionframeBoxHeight}
 \setlength{\gothamSectionframeBoxHeight}{85.04pt}
+% \gothamSectionframeTrueBoxBottom (2026-07-25, direct instruction: "the
+% image extends into the title box" on neb/u97 -- followed by "tyn actually
+% looks fine, find out what is really driving this issue/difference"):
+% \gothamSectionframeBoxHeight above is only the *target* the toppading
+% formula below solves for -- by construction that formula makes
+% toppading+title-height+title-depth+bottompading algebraically equal
+% boxHeight+\gothamSectionframeHeightCorrection regardless of title content,
+% so the *rendered* bar height should be a fixed, title-independent
+% 97.14pt... except it measurably isn't (confirmed directly, PyMuPDF vector
+% fill): neb/u97 ("Market Environment"/"Household Finance") render at
+% 89.19pt, while tyn/vtm ("Capital asset pricing model"/"Measuring and
+% managing risk") render at 85.04pt -- a real, reproducible ~4.15pt
+% difference driven entirely by the title text itself, not by anything
+% neb/u97 did wrong.
+%
+% Root cause (traced into gotham.dtx's own
+% \gotham@frametitlestrut@start/@end, not just inferred): the toppading
+% formula's own `-\dp\gothamSectionframeTitleBox` term assumes the title's
+% real descender depth gets reintroduced somewhere else in the box so it
+% nets out -- it doesn't. `@start` is a zero-depth `\rule` whose height is
+% `toppading+\totalheightof{X}` (a *fixed reference glyph*, not the real
+% title), so the line's rendered height is toppading-driven, independent of
+% the title's own real height. `@end` is a zero-height `\rule` of depth
+% `\gothamFrametitleBottompading` (19.90pt for sectionframe) -- also fixed,
+% not the real title's own depth. The real title text sits between these
+% two struts and contributes its own real height/depth to the same TeX
+% line, but a line's rendered depth is the *max* of every contributor, not
+% a sum -- and 19.90pt comfortably exceeds any real title's own descender
+% depth (measured directly: 0.25pt with none, e.g. "Market
+% Environment"/"Household Finance"; 4.42pt with any single descender
+% present -- g/j/p/q/y, letter/count doesn't matter, e.g. "Capital asset
+% pricing model"/"Measuring and managing risk"/a plain "Testing gjpqy"),
+% so bottompading always wins there and the title's real depth is never
+% actually given back. Net effect: every point of a title's own real
+% descender depth shrinks toppading (and therefore the whole visible box)
+% by that same amount, with nothing compensating -- confirmed exactly:
+% 4.42pt-0.25pt=4.17pt predicted vs. 89.19pt-85.04pt=4.15pt measured, a
+% match well within measurement noise. \gothamSectionframeHeightCorrection
+% (12.1pt) was presumably calibrated against a descender'd test title (it
+% lands tyn/vtm almost exactly on the 85.04pt target), leaving every
+% no-descender title's own bar ~4.15pt taller than that target instead.
+% Full derivation, and why this means \gothamSectionframeBoxHeight was
+% never actually title-independent, in README.md's own "Section overview
+% (sectionframe)" section.
+%
+% \gothamSectionframeTrueBoxBottom below is the *measured* value for a
+% no-descender title specifically (matching neb/u97, the only two slides
+% using it) -- it is NOT a general replacement for
+% \gothamSectionframeBoxHeight: a sectionframe whose title has any
+% descender (tyn/vtm, confirmed landing on the *other* value, 85.04pt) must
+% keep anchoring against \gothamSectionframeBoxHeight directly instead
+% (already correct for them, so left untouched). Anything new needing the
+% bar's own true rendered bottom should re-measure per its own actual title
+% text (real vector fill, not a visual guess, and not an assumption that
+% either existing constant transfers) rather than reuse this length
+% unless its own title also has zero descenders.
+\newlength{\gothamSectionframeTrueBoxBottom}
+\setlength{\gothamSectionframeTrueBoxBottom}{89.19pt}
 % \gothamSectionframeBottomGap is the *visual* target -- one huge-font line
 % height (baselineskip, measured directly from a deliberately 2-line test
 % title: the gap between the two lines' own rendered top edges). It is NOT
