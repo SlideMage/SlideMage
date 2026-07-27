@@ -4588,6 +4588,24 @@
 \makeatletter
 \newcommand{\quoteframe}[2]{%
 	\begin{frame}[t]%
+	% Disable hyphenation for the quote text (2026-07-26, direct
+	% instruction: "do not allow words to be broken across lines" --
+	% confirmed directly first, e.g. on `n3q`'s own long quote,
+	% "limi-tations"/"finan-cial" both landed as real mid-word line
+	% breaks). Same standard, sufficient technique already used for
+	% `sectionframe`'s own title (see that environment's own comment,
+	% right before \gothamSectionframeTitleBox) -- setting the penalties
+	% to 10000 makes TeX treat a hyphenated break as forbidden rather than
+	% just discouraged, so one is never chosen even over an otherwise
+	% ragged/short line; the hyphenmin lengths are redundant insurance on
+	% top of that. Scoped to this frame only via the enclosing
+	% \begin{frame}/\end{frame} group, same as sectionframe's own
+	% \begingroup/\endgroup scoping -- doesn't leak into any other frame
+	% type.
+	\hyphenpenalty=10000
+	\exhyphenpenalty=10000
+	\lefthyphenmin=100
+	\righthyphenmin=100
 	% \gothamArtifactBegin/\gothamArtifactEnd (defined with the footer, "PDF
 	% accessibility" comment): same reasoning as titleframe's own background
 	% box above -- purely decorative, marked so a screen reader skips it. The
