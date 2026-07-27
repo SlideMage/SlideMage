@@ -291,3 +291,18 @@ __pycache__/
 ## history, kept per slide file) for its own saves -- not meant to be
 ## committed (2026-07-23):
 slides/.backups/
+
+## RStudio per-user session state (R_Slidemaster/), untracked 2026-07-27,
+## direct instruction. `.Rproj.user/` is RStudio's own scratch state --
+## pane layouts, breakpoints, and cached copies of open/unsaved editor
+## buffers (`sources/per/t/*-contents`) -- and is gitignored by RStudio's
+## own project template; 24 of its files plus three `.Rhistory` console
+## logs had nevertheless been committed here. The project file itself
+## (`R_Slidemaster/R_Slidemaster.Rproj`) stays tracked, as is conventional,
+## and so does every real package file (DESCRIPTION/NAMESPACE/LICENSE/
+## R/*.R/man/*.Rd). `.RData`/`.Ruserdata` are listed pre-emptively: same
+## category, not currently present.
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
