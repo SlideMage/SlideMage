@@ -1,0 +1,57 @@
+# Line-ending policy for this repo (added 2026-07-27, direct instruction).
+#
+# The problem this fixes: with no .gitattributes and `core.autocrlf=false`
+# (Git for Windows' own system default here), git neither converts on
+# commit nor on checkout -- it stores whatever bytes the last tool to
+# write a file happened to produce. The tools used on this project
+# disagree: a Windows editor (TeXstudio) and anything writing through
+# Python's default text mode (`Path.write_text()` on Windows) emit CRLF,
+# while other tooling emits LF. So slides/ had drifted to a 533 CRLF /
+# 130 LF mix, and simply opening four HFT slides in an editor and saving
+# them produced a 200-line, content-free diff (2026-07-27, batch #15).
+#
+# The fix: `text eol=crlf` -- git normalizes to LF *in the repository* on
+# commit (so it no longer matters which convention the writing tool used:
+# same content = no diff, ever), and checks the file back out with CRLF
+# in the working directory, which is what Windows editors and .bat files
+# want. Cost: one one-time renormalization commit rewriting the stored
+# bytes of every file that was previously stored with CRLF.
+#
+# Deliberately an explicit per-extension list rather than the usual
+# blanket `* text=auto`: `text=auto` decides text-vs-binary by looking for
+# a NUL byte in a file's first 8000 bytes, and this repo contains real
+# binaries that pass that test -- beameruserguide.pdf,
+# gotham-safetybox.pdf and three media/*.eps charts have no NUL that
+# early, so a blanket rule could silently EOL-mangle (i.e. corrupt) them.
+# Anything not listed below keeps today's behaviour of being left
+# completely alone, and the binary declarations at the bottom make that
+# guarantee explicit for the formats where it actually matters.
+
+# --- Text: stored LF, checked out CRLF ---------------------------------
+*.tex        text eol=crlf
+*.bib        text eol=crlf
+*.sty        text eol=crlf
+*.dtx        text eol=crlf
+*.ins        text eol=crlf
+*.latexmkrc  text eol=crlf
+*.md         text eol=crlf
+*.txt        text eol=crlf
+*.py         text eol=crlf
+*.csv        text eol=crlf
+*.svg        text eol=crlf
+*.R          text eol=crlf
+*.Rd         text eol=crlf
+# .bat in particular *must* be CRLF in the working tree; this guarantees it
+*.bat        text eol=crlf
+
+# --- Binary: never touched, never sniffed ------------------------------
+*.pdf        binary
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.eps        binary
+*.xlsx       binary
+*.pptx       binary
+*.docx       binary
+*.lnk        binary
+*.synctex.gz binary
