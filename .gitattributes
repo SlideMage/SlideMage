@@ -43,6 +43,11 @@
 *.Rd         text eol=crlf
 # .bat in particular *must* be CRLF in the working tree; this guarantees it
 *.bat        text eol=crlf
+# The two R-package text files that carry no extension this list catches;
+# both are tool-generated (roxygen2, RStudio) and so are exactly the kind
+# of file that flips convention when the tool is upgraded or swapped.
+*.Rproj      text eol=crlf
+NAMESPACE    text eol=crlf
 
 # --- Binary: never touched, never sniffed ------------------------------
 *.pdf        binary
