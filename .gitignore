@@ -29,6 +29,12 @@
 # below instead of via a rule that also caught real assets.
 decks/*.pdf
 pdf/*.pdf
+# decks/render/: baseline PDFs for a deck's front-to-back final-check
+# render/diff pass (see decks/render/compare_render.py's own docstring) --
+# same regenerate-on-every-compile reasoning as decks/*.pdf above, just one
+# directory deeper than that glob reaches. The .py tooling alongside them
+# stays tracked as normal (not covered by this pattern).
+decks/render/*.pdf
 
 ## Source PowerPoint decks (large binaries, not meant to be tracked):
 *.pptx

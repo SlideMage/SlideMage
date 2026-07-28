@@ -1717,6 +1717,36 @@
 % .build/ already has one left over from an earlier session -- delete
 % .build/<jobname>.timestamp by hand (or just compile that job once through
 % SlideManager) if that matters for what you're checking.
+%
+% \ifgothamShowCompileTimestamp: on by default (unchanged existing
+% behavior); a deck can call \gothamShowCompileTimestampfalse (e.g. right
+% after \input{Slidemaster_preamble_uni-graz}) to drop the timestamp from
+% every footer for that compile -- added 2026-07-28 so a deck's own
+% front-to-back final-check pass (recompiling repeatedly to diff pages
+% against a saved baseline render) doesn't see every single page as
+% "changed" purely because a fresh compile embeds a fresh timestamp,
+% jobname-caching quirks aside. \gothamShowCompileTimestamptrue switches it
+% back on again once that pass is done.
+%
+% \gothamFooterTimestampOverride: SlideManager's own hook into the above,
+% mirroring \deckversionoverride's own pattern (compiler.py's wrapper file
+% \def's it, before \input{}ing the real deck, whenever the GUI's "Footer
+% timestamp" checkbox is unticked for a batch) -- \ifdefined here, not
+% \IfFileExists or similar, since it's a plain macro a wrapper either
+% defines or doesn't, not a file. A deck's own explicit
+% \gothamShowCompileTimestampfalse/true call (like the one above) runs
+% *after* this block, so it always overrides whatever the GUI checkbox says
+% for that one deck.
+\newif\ifgothamShowCompileTimestamp
+\ifdefined\gothamFooterTimestampOverride
+	\ifnum\gothamFooterTimestampOverride=0
+		\gothamShowCompileTimestampfalse
+	\else
+		\gothamShowCompileTimestamptrue
+	\fi
+\else
+	\gothamShowCompileTimestamptrue
+\fi
 \directlua{
 	function gothamZeroPad(n) if n < 10 then return "0" .. n else return "" .. n end end
 }
@@ -1763,7 +1793,7 @@
 		\FooterText%
 	\fi
 	\hfill%
-	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ | \gothamDeckVersionText\ | \gothamCompileTimestamp)}\hspace*{2em}\insertframenumber%
+	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
 	\hspace*{-\gothamFooterRightShift}%
 	\vspace*{0.4ex}%
