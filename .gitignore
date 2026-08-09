@@ -293,6 +293,15 @@ TSWLatexianTemp*
 __pycache__/
 *.pyc
 
+## Project-local virtual environment (slidemanager's PySide6 migration,
+## see slidemanager/PYSIDE6_MIGRATION.md) -- created here rather than in
+## the system/Microsoft-Store Python's own user site-packages because
+## PySide6 ships files nested deep enough to exceed Windows' default
+## 260-char path limit there; a short project-root-relative venv path
+## avoids that entirely. Never meant to be committed -- machine-specific,
+## regenerated via `python -m venv .venv` + `pip install -r requirements.txt`.
+.venv/
+
 ## SlideManager's slide-source editor: a local undo net (full timestamped
 ## history, kept per slide file) for its own saves -- not meant to be
 ## committed (2026-07-23):
