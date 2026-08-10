@@ -2839,6 +2839,66 @@
 	\endlist
 }
 
+% Three siblings of \gothamalphaitemize above, same measured \list metrics
+% (labelsep/labelwidth/leftmargin/itemindent/itemsep), only the label text
+% itself differs -- added 2026-08-09 for slides whose numbering has to
+% match a real external scheme (statute paragraph numbers, PowerPoint's
+% own "1./2." or "a./b." auto-numbering) rather than plain letters-with-
+% parenthesis. Not merged into one parameterized environment: each name is
+% called directly from a slide file, and duplicating six short \setlength
+% lines three times is cheaper to read at the call site than a macro
+% layer over \newenvironment for four near-identical bodies.
+\newcounter{gothamnumitem}
+\newcommand{\gothamNumItem}{\stepcounter{gothamnumitem}\arabic{gothamnumitem})}
+\newenvironment{gothamnumitemize}{%
+	\setcounter{gothamnumitem}{0}%
+	\list{\gothamNumItem}{%
+		\setlength{\labelsep}{4.75pt}%
+		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\leftmargin}{\labelwidth}%
+		\addtolength{\leftmargin}{\labelsep}%
+		\setlength{\itemindent}{0pt}%
+		\setlength{\itemsep}{2.5pt}%
+	}
+	\raggedright%
+}{%
+	\endlist
+}
+
+\newcounter{gothamalphaperioditem}
+\newcommand{\gothamAlphaPeriodItem}{\stepcounter{gothamalphaperioditem}\alph{gothamalphaperioditem}.}
+\newenvironment{gothamalphaperioditemize}{%
+	\setcounter{gothamalphaperioditem}{0}%
+	\list{\gothamAlphaPeriodItem}{%
+		\setlength{\labelsep}{4.75pt}%
+		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\leftmargin}{\labelwidth}%
+		\addtolength{\leftmargin}{\labelsep}%
+		\setlength{\itemindent}{0pt}%
+		\setlength{\itemsep}{2.5pt}%
+	}
+	\raggedright%
+}{%
+	\endlist
+}
+
+\newcounter{gothamnumperioditem}
+\newcommand{\gothamNumPeriodItem}{\stepcounter{gothamnumperioditem}\arabic{gothamnumperioditem}.}
+\newenvironment{gothamnumperioditemize}{%
+	\setcounter{gothamnumperioditem}{0}%
+	\list{\gothamNumPeriodItem}{%
+		\setlength{\labelsep}{4.75pt}%
+		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\leftmargin}{\labelwidth}%
+		\addtolength{\leftmargin}{\labelsep}%
+		\setlength{\itemindent}{0pt}%
+		\setlength{\itemsep}{2.5pt}%
+	}
+	\raggedright%
+}{%
+	\endlist
+}
+
 % Itemize indentation: level 1 bullets should sit flush with the frame title
 % (no extra left margin), and each deeper level should be indented just
 % enough for its bullet to line up under the *text* (not the bullet) of the
