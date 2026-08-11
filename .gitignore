@@ -293,14 +293,36 @@ TSWLatexianTemp*
 __pycache__/
 *.pyc
 
-## Project-local virtual environment (slidemanager's PySide6 migration,
-## see slidemanager/PYSIDE6_MIGRATION.md) -- created here rather than in
-## the system/Microsoft-Store Python's own user site-packages because
-## PySide6 ships files nested deep enough to exceed Windows' default
-## 260-char path limit there; a short project-root-relative venv path
-## avoids that entirely. Never meant to be committed -- machine-specific,
-## regenerated via `python -m venv .venv` + `pip install -r requirements.txt`.
+## Virtual environment (slidemanager's PySide6 migration, see
+## slidemanager/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
+## committed -- kept here as a legacy-path safety net only. As of
+## 2026-08-11, the real venv no longer lives inside the project folder at
+## all: this whole folder is Dropbox/SyncBackPro-synced, and a venv is
+## tens of thousands of small files whose absolute interpreter path is
+## baked in per-machine anyway (confirmed directly: a venv synced over
+## from a second PC pointed at a python.exe that doesn't exist here and
+## failed outright; the sync clients also locked/indexed its files badly
+## enough that even deleting it repeatedly timed out). The venv now lives
+## machine-locally at `%USERPROFILE%\SlideMaster\venv` (not
+## `%LOCALAPPDATA%` -- that's virtualized per-app on a machine whose
+## system Python is the Microsoft Store package, which silently broke venv
+## isolation entirely; confirmed directly, 2026-08-11), outside any synced
+## folder, one real venv per machine, auto-created/auto-migrated by
+## `SlideManager.bat` on first run -- see its own comments. This `.venv/`
+## entry just stays as a guard in case one ever gets created here again by
+## habit (e.g. `python -m venv .venv` run by hand).
 .venv/
+
+## PyInstaller build output (see slidemanager/PYSIDE6_MIGRATION.md and
+## build_slidemanager_exe.bat) -- `build/` is disposable intermediate
+## PyInstaller cache, not the shippable artifact, and is directed outside
+## this synced folder entirely by the build script for the same file-count
+## reason as the venv above. `dist/` is the actual compiled app -- NOT
+## git-ignored from Dropbox's own sync (only from git: a large frequently-
+## rebuilt binary doesn't belong in git history), so building once on
+## either machine syncs the up-to-date .exe to the other automatically.
+build/
+dist/
 
 ## SlideManager's slide-source editor: a local undo net (full timestamped
 ## history, kept per slide file) for its own saves -- not meant to be
