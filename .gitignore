@@ -345,7 +345,12 @@ slides/.backups/
 .Ruserdata
 
 # Accessibility outputs: generated on demand, never committed (see
-# ALT_TEXT_NOTES.md). Transcripts are regenerated from the deck + slide files
-# + their %%ALT blocks; the bake-off is a one-off model comparison.
+# ALT_TEXT_NOTES.md). Transcripts are regenerated from the deck + slide
+# files + media/alt-text.json; the bake-off is a one-off model comparison.
 transcripts/
 alt-text-bakeoff.md
+
+# Compile-time slide preview PNGs (slide_snapshot.py) -- a best-effort
+# cache refreshed opportunistically on every compile that touches a slide,
+# not a build artifact worth keeping in history.
+slide_previews/
