@@ -343,3 +343,9 @@ slides/.backups/
 .Rhistory
 .RData
 .Ruserdata
+
+# Accessibility outputs: generated on demand, never committed (see
+# ALT_TEXT_NOTES.md). Transcripts are regenerated from the deck + slide files
+# + their %%ALT blocks; the bake-off is a one-off model comparison.
+transcripts/
+alt-text-bakeoff.md

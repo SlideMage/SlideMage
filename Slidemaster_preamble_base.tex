@@ -982,8 +982,35 @@
 					node[fill=white, anchor=east, inner sep=0pt, outer sep=0pt,
 					     minimum width=\gothamChapterLogoWidth+\gothamFrametitleRightpading+0.5pt,
 					     minimum height=\y1-\y2] at ($(gothamMainPatch.west)+(0.5pt,0)$) {};
-				\node[anchor=east, inner sep=0pt, outer sep=0pt] at (gothamMainPatch.west |- gothamLogoAnchor.center)
-					{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};
+				% 2026-08-10 (direct instruction, after an initial "already
+				% centered" measurement was corrected by direct instruction):
+				% this bare `gothamLogoAnchor.center` placement centers the
+				% chapter logo's own *bounding box* against the institute
+				% logo's, and for most chapter-logo artwork (a single
+				% roughly-solid icon) that's also its *visual* center -- but
+				% the "beyond CAPM" logo specifically (the only chapter logo
+				% asset in current use built from two stacked elements, a
+				% small "beyond" wordmark in italic script sitting above the
+				% larger boxed "CAPM") has a transparent background behind
+				% "beyond", so the eye reads the *box*'s own top edge as the
+				% logo's visual top, not the ascender of the "d" in "beyond"
+				% poking up above it -- bounding-box-centering this specific
+				% asset reads as sitting too low. Nudged up by 1.53pt, keyed
+				% specifically to this one asset's own path (not a general
+				% chapter-logo correction -- every other chapter logo in this
+				% deck is a single solid icon with no such ascender-above-a-
+				% box composition, so a project-wide nudge would be wrong for
+				% those): 1.53pt solves for the perceived center (the "CAPM"
+				% box's own top-to-bottom span, y=11.25-25.12pt in the
+				% asset's native page, i.e. perceived center y=18.19pt) to
+				% land on the institute logo's own true center (y=16.66pt),
+				% both measured directly against a compiled page, not
+				% guessed.
+				\ifstrequal{\gothamChapterLogoPath}{media/chapter-logo-beyond-capm-cropped.pdf}
+					{\node[anchor=east, inner sep=0pt, outer sep=0pt] at ($(gothamMainPatch.west |- gothamLogoAnchor.center)+(0,1.53pt)$)
+						{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};}
+					{\node[anchor=east, inner sep=0pt, outer sep=0pt] at (gothamMainPatch.west |- gothamLogoAnchor.center)
+						{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};}
 			\else
 				% \gothamFrametitleLogoFixed frames (currently: sectionframe)
 				% have no inline logo/gothamLogoAnchor node at all (see
@@ -1023,6 +1050,17 @@
 				% equal width plus a shared right edge means a shared
 				% left edge and a shared horizontal center for free, no
 				% separate centering computation needed.
+				%
+				% 2026-08-10 (direct instruction): a same-day attempt to also
+				% vertically center this "below" placement (reworking this to
+				% \anchor=east at the midpoint of a same-height-as-the-
+				% institute-logo notional slot) was reverted the same day, on
+				% direct instruction -- this "below" placement (sectionframe/
+				% 65b's own chapter-divider slide) was already fine as-is; the
+				% actual vertical-centering request was about the *other*
+				% ("beside") chapter-logo placement below instead, used by
+				% every other slide in the chapter. See that placement's own
+				% comment for the real fix.
 				\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
 				      inner ysep=\dimexpr\gothamTitleBarBottomAlign+\gothamFrametitleRightpading\relax,
 				      outer sep=0pt] at (current page.north east)
@@ -1541,9 +1579,11 @@
 }
 
 % PDF accessibility: mark purely decorative/running content (footer, below;
-% also reused on titleframe's/quoteframe's own decorative background boxes;
-% logo not yet included, see README.md's own accessibility section for that
-% open question) as a PDF "Artifact", so screen readers skip it -- via
+% also reused on titleframe's/quoteframe's own decorative background boxes,
+% and -- since 2026-08-14, via the \includegraphics wrapper further down --
+% on every image the alt-text manifest classifies as decorative, the
+% institute logo among them) as a PDF "Artifact", so screen readers skip it
+% -- via
 % LuaTeX's raw \pdfextension literal
 % primitive. \ifluatex-guarded (iftex is already loaded, via beamer.cls
 % itself) because \pdfextension is LuaTeX-only -- this project's README
@@ -1588,6 +1628,108 @@
 	\ifluatex\pdfextension literal direct{/Artifact <<#1>> BDC}\fi
 }
 \newcommand{\gothamArtifactEnd}{\ifluatex\pdfextension literal direct{EMC}\fi}
+
+% ---------------------------------------------------------------------------
+% Alt-text manifest: automatic /Artifact marking of decorative images
+% ---------------------------------------------------------------------------
+% See ALT_TEXT_NOTES.md for the whole design; this is phase 1 of it. Every
+% image in the project has a row in media/alt-text.csv saying whether it is
+% "decorative" (carries no information beyond the slide text -- Midjourney
+% illustrations, icons, chapter logos, institute logos) or "informative" (a
+% chart/screenshot/photo a reader actually needs described). Decorative ones
+% get wrapped in /Artifact here, so a screen reader skips them instead of
+% announcing a bare filename. Informative ones are left alone for now; their
+% descriptions are authored per slide and emitted later (phases 4 and 5).
+%
+% Why wrap \includegraphics rather than change the 265 call sites: the call
+% sites don't need to change at all this way, including the ones inside tikz
+% \node{}s and the ones that pass the filename through a macro argument
+% (\gothamInstituteLogoPath, or a #1 inside another macro's definition) --
+% those only know their filename at expansion time, which a source-level
+% rewrite couldn't have handled anyway. An image with no manifest row simply
+% renders exactly as before, so a missing or unreadable CSV degrades to
+% today's behavior rather than breaking every image in the deck.
+%
+% LuaTeX-only, same \ifluatex reasoning as \gothamArtifactBegin above -- and
+% here the guard covers the whole redefinition, not just the marking, since
+% the lookup itself is Lua. Under any other engine \includegraphics is left
+% completely untouched.
+\ifluatex
+	% The Lua itself lives in Slidemaster_alt.lua rather than inline here --
+	% see that file's own header for why (short version: TeX tokenizes a
+	% \directlua argument first, so every "%" in a Lua string pattern
+	% silently comments out the rest of its line, and the first version of
+	% this failed exactly that way). This loader snippet is deliberately
+	% free of "%" and "#" so it is safe to keep inline. Same two candidate
+	% paths as everything else here, for compiling from the project root or
+	% from inside decks/.
+	\directlua{
+		for _, path in ipairs({"Slidemaster_alt.lua", "../Slidemaster_alt.lua"}) do
+			local handle = io.open(path, "r")
+			if handle then
+				handle:close()
+				dofile(path)
+				break
+			end
+		end
+	}
+
+	\newif\ifgothamAltDecorative
+
+	% Deferred to \AtBeginDocument so it cannot possibly run before beamer has
+	% loaded graphicx, and so a deck that loads further graphics packages of
+	% its own still ends up with this wrapper outermost.
+	\AtBeginDocument{%
+		\directlua{
+			local loaded = gothamalt.load()
+			if loaded == nil then
+				texio.write_nl("gothamalt: media/alt-text.csv not found -- "
+					.. "decorative images will not be marked as artifacts.")
+			end
+		}%
+		% \NewCommandCopy (LaTeX 2020-10-01 and later) rather than \let: it
+		% copies a robust command's full definition correctly, which \let
+		% does not for commands whose top level is a \protected wrapper.
+		\NewCommandCopy{\gothamOrigIncludegraphics}{\includegraphics}%
+		% Signature "s o o m": the starred form and the legacy two-optional
+		% bounding-box form aren't used anywhere in this project today
+		% (checked, 2026-08-14: zero occurrences of either), but graphicx
+		% accepts them, so the wrapper accepts and forwards them rather than
+		% silently breaking the day one gets used. "o" (not "O{}") because
+		% only -NoValue- distinguishes an absent optional argument from an
+		% empty one, and graphicx reads [a][b] and [a] as different things.
+		\RenewDocumentCommand{\includegraphics}{s o o m}{%
+			\begingroup
+			% \edef so a filename reaching this through a macro
+			% (\gothamInstituteLogoPath, or a #1 in another macro's body) is
+			% resolved to the actual path before the lookup. Every path-valued
+			% macro in this project is a plain expandable string; a fragile one
+			% would need \protected@edef here instead.
+			\edef\gothamAltReference{#4}%
+			\gothamAltDecorativefalse
+			\directlua{gothamalt.mark("\luaescapestring{\gothamAltReference}")}%
+			% /Type /Layout is the PDF spec's artifact type for cosmetic design
+			% elements, which is what a decorative illustration is. Not
+			% /Background: that one means a fill or image behind the whole
+			% page, and is already used for exactly that by titleframe and
+			% quoteframe above.
+			\ifgothamAltDecorative\gothamArtifactBegin{/Type /Layout}\fi
+			\IfBooleanTF{#1}%
+				{\IfNoValueTF{#2}%
+					{\gothamOrigIncludegraphics*{#4}}%
+					{\IfNoValueTF{#3}%
+						{\gothamOrigIncludegraphics*[#2]{#4}}%
+						{\gothamOrigIncludegraphics*[#2][#3]{#4}}}}%
+				{\IfNoValueTF{#2}%
+					{\gothamOrigIncludegraphics{#4}}%
+					{\IfNoValueTF{#3}%
+						{\gothamOrigIncludegraphics[#2]{#4}}%
+						{\gothamOrigIncludegraphics[#2][#3]{#4}}}}%
+			\ifgothamAltDecorative\gothamArtifactEnd\fi
+			\endgroup
+		}%
+	}
+\fi
 
 % Footer
 % Smaller footer + a bit of padding under it
@@ -4179,7 +4321,17 @@
 \newbox\gothamTitleframeBox
 \makeatletter
 \newcommand{\titleframe}[2]{%
-	\begin{frame}[plain,noframenumbering,t]%
+	% No noframenumbering (2026-08-11, direct instruction): this frame has
+	% no footer at all ("plain"), so removing it has no visible effect on
+	% the title slide itself -- but it does mean the title slide now
+	% consumes a real "framenumber" step, same as any other frame, so the
+	% deck's first real content slide is numbered 2, not 1 (matching this
+	% slide's own physical position in the compiled PDF -- SlideManager's
+	% own deck-editor "Render" preview relies on this: it derives a
+	% previewed slide's page number from its plain list position, which
+	% only equals the real compiled frame number when every \slide{}-family
+	% call -- including this one -- consumes exactly one framenumber step).
+	\begin{frame}[plain,t]%
 	% A bare tikzpicture behaves like an hbox (same reasoning as the footer
 	% box's own \vbox-to-0pt wrapper further up): sitting directly in the
 	% frame's vertical list, it silently opens an implicit paragraph,
@@ -4301,7 +4453,10 @@
 % backdrop) that only happen to want the same value today.
 \definecolor{gothamFullBleedBlack}{HTML}{000000}
 \newcommand{\fullbleedframe}[1]{%
-	\begin{frame}[plain,noframenumbering,t]%
+	% No noframenumbering -- see \titleframe's own comment above for why
+	% (same reasoning, same 2026-08-11 change: this frame has no footer
+	% either, so nothing here changes visibly, only later slides' numbers).
+	\begin{frame}[plain,t]%
 	% \gothamArtifactBegin/\gothamArtifactEnd (defined with the footer, "PDF
 	% accessibility" comment): the black backdrop is purely decorative
 	% letterboxing, marked the same way as titleframe's/quoteframe's own
