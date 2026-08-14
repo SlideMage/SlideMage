@@ -15,6 +15,10 @@
 
 gothamalt = { by_name = {}, by_stem = {} }
 
+-- Each entry is { role = "...", short = "..." }. The short alt is what the
+-- invisible-text layer (phase 5) emits next to an informative image; the role
+-- is what phase 1 uses to mark a decorative one as an /Artifact.
+
 -- Minimal RFC-4180-ish field splitter: handles quoted fields with embedded
 -- commas and doubled quotes, because short_alt (column 4) will contain both
 -- once the SlideManager review tab starts writing it. A trailing empty field
@@ -77,13 +81,15 @@ function gothamalt.load()
 				elseif line ~= "" then
 					local fields = parse_line(line)
 					local image, role = fields[1], fields[2]
+					local short = fields[4] or ""
 					if image and role and image ~= "" then
 						local name = image:match("([^/\\]+)$") or image
 						name = name:lower()
 						local stem = name:match("^(.*)%.[^.]*$") or name
-						gothamalt.by_name[name] = role
+						local entry = { role = role, short = short }
+						gothamalt.by_name[name] = entry
 						if gothamalt.by_stem[stem] == nil then
-							gothamalt.by_stem[stem] = role
+							gothamalt.by_stem[stem] = entry
 						end
 					end
 				end
@@ -100,15 +106,53 @@ end
 -- stem, so "media/foo.png", "../media/foo.png" and a bare "media/foo"
 -- (graphicx picking the suffix itself, as the institution preambles do) all
 -- resolve to the same row.
-function gothamalt.role(reference)
+function gothamalt.lookup(reference)
 	reference = reference:gsub("\\", "/")
 	local name = (reference:match("([^/]+)$") or reference):lower()
-	local role = gothamalt.by_name[name]
-	if role then
-		return role
+	local entry = gothamalt.by_name[name]
+	if entry then
+		return entry
 	end
 	local stem = name:match("^(.*)%.[^.]*$") or name
-	return gothamalt.by_stem[stem] or ""
+	return gothamalt.by_stem[stem]
+end
+
+function gothamalt.role(reference)
+	local entry = gothamalt.lookup(reference)
+	return entry and entry.role or ""
+end
+
+-- TeX specials, escaped rather than stripped, so the alt text a screen
+-- reader speaks is exactly the text the author reviewed. Backslash first:
+-- escaping it afterwards would also escape the backslashes just inserted.
+function gothamalt.escape(text)
+	text = text:gsub("\\", "\\textbackslash ")
+	text = text:gsub("([%%%$&#_{}])", "\\%1")
+	text = text:gsub("%^", "\\textasciicircum ")
+	text = text:gsub("~", "\\textasciitilde ")
+	return text
+end
+
+-- Emit the short alt for an *informative* image, or nothing at all.
+-- Decorative images are silenced by the /Artifact marking instead, and an
+-- image with no short alt yet contributes nothing -- so this degrades to
+-- today's behaviour until the manifest is filled in.
+-- Sets a TeX conditional and stashes the text in a macro, rather than simply
+-- printing it. The caller has to know whether there *is* any alt text before
+-- it opens the invisible-text box: otherwise an image with no description yet
+-- still emits the "Image: " prefix, and a screen reader announces an image
+-- and then says nothing about it -- worse than staying silent.
+function gothamalt.altText(reference)
+	local entry = gothamalt.lookup(reference)
+	if entry == nil or entry.role == "decorative" then
+		return
+	end
+	local short = (entry.short or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if short == "" then
+		return
+	end
+	tex.sprint("\\gothamAltHasTexttrue\\def\\gothamAltShort{"
+		.. gothamalt.escape(short) .. "}")
 end
 
 -- Called once per \includegraphics. Sets the TeX-side conditional rather

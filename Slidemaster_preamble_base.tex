@@ -1675,6 +1675,58 @@
 	}
 
 	\newif\ifgothamAltDecorative
+	\newif\ifgothamAltHasText
+	\newsavebox{\gothamAltTextBox}
+	\newcommand{\gothamAltShort}{}
+
+	% Invisible alt text (ALT_TEXT_NOTES.md phase 5). An untagged PDF is read
+	% by *text extraction*, so text placed in the content stream at the image's
+	% position is what a screen reader encounters there -- text rendering mode
+	% 3 ("neither fill nor stroke", PDF spec 9.3.6) makes it invisible on the
+	% page while leaving it fully extractable.
+	%
+	% Two deliberate properties:
+	%
+	% - The box's three dimensions are zeroed after typesetting, so the text
+	%   contributes nothing whatsoever to layout. Setting \wd/\ht/\dp of an
+	%   already-built box is the only way to be sure of that: \rlap/\smash
+	%   each zero only some of them, and a stray descender would shift a
+	%   hand-positioned slide.
+	% - "Image: " prefixes the description so a listener can tell it apart
+	%   from the slide's own prose, which they otherwise cannot.
+	%
+	% Known and accepted side effect: this text is real text, so it appears in
+	% copy-paste and in Ctrl-F. That was the explicit tradeoff for reaching a
+	% screen reader at all without a structure tree, which beamer cannot give
+	% us (see README.md's accessibility section).
+	\newcommand{\gothamAltInvisible}[1]{%
+		\begingroup
+		% A long alt string in an unbreakable hbox would otherwise flood the
+		% log with overfull-box warnings on every image.
+		\hbadness=10000 \hfuzz=\maxdimen
+		% Wrapped in a \parbox, and set \tiny, so the text stays *inside the
+		% page*. Neither is cosmetic: an unbreakable line starting at the
+		% image's own x-position runs past the right page edge after about 80
+		% characters, and every PDF text extractor tested (pdftotext with and
+		% without -layout, PyMuPDF) silently drops whatever falls outside the
+		% page rectangle -- so a longer alt was being truncated mid-sentence
+		% with no error anywhere. \tiny is free here (the text is invisible)
+		% and fits several times more characters per line, which keeps even a
+		% long description to one or two lines.
+		\sbox{\gothamAltTextBox}{%
+			\parbox[t]{\textwidth}{%
+				\tiny\raggedright
+				\pdfextension literal direct{3 Tr}%
+				Image: #1%
+				\pdfextension literal direct{0 Tr}%
+			}%
+		}%
+		\wd\gothamAltTextBox=0pt
+		\ht\gothamAltTextBox=0pt
+		\dp\gothamAltTextBox=0pt
+		\usebox{\gothamAltTextBox}%
+		\endgroup
+	}
 
 	% Deferred to \AtBeginDocument so it cannot possibly run before beamer has
 	% loaded graphicx, and so a deck that loads further graphics packages of
@@ -1714,6 +1766,17 @@
 			% page, and is already used for exactly that by titleframe and
 			% quoteframe above.
 			\ifgothamAltDecorative\gothamArtifactBegin{/Type /Layout}\fi
+			% Emitted *before* the image, so the description precedes it in the
+			% content stream and therefore in extraction order -- a listener
+			% hears what the image is before reaching it, rather than after.
+			% gothamalt.altText prints nothing for a decorative image or one
+			% with no short alt yet, so this line is inert until the manifest
+			% is filled in.
+			\gothamAltHasTextfalse
+			\ifgothamAltDecorative\else
+				\directlua{gothamalt.altText("\luaescapestring{\gothamAltReference}")}%
+				\ifgothamAltHasText\gothamAltInvisible{\gothamAltShort}\fi
+			\fi
 			\IfBooleanTF{#1}%
 				{\IfNoValueTF{#2}%
 					{\gothamOrigIncludegraphics*{#4}}%
