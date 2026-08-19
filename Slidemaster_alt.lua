@@ -15,15 +15,18 @@
 
 gothamalt = { by_name = {}, by_stem = {} }
 
--- Each entry is { role = "...", short = "..." }. The short alt is what the
--- invisible-text layer (phase 5) emits next to an informative image; the role
--- is what phase 1 uses to mark a decorative one as an /Artifact.
+-- Each entry is { role = "...", short = "...", source = "..." }. The short
+-- alt is what the invisible-text layer (phase 5) emits next to an
+-- informative image; the role is what phase 1 uses to mark a decorative one
+-- as an /Artifact; source (added phase 6 step 3) feeds the per-frame
+-- "Image source(s):" auto-footnote further below.
 
 -- Minimal RFC-4180-ish field splitter: handles quoted fields with embedded
--- commas and doubled quotes, because short_alt (column 4) will contain both
--- once the SlideManager review tab starts writing it. A trailing empty field
--- is not reported, which is fine -- only columns 1 (image) and 2 (role) are
--- ever read here.
+-- commas and doubled quotes, because short_alt (column 4) and source
+-- (column 5) both contain both once the SlideManager review tab writes
+-- them. A trailing empty field is not reported, which is fine -- only
+-- columns 1 (image), 2 (role), 4 (short_alt) and 5 (source) are ever read
+-- here.
 local function parse_line(line)
 	local fields, pos, len = {}, 1, #line
 	repeat
@@ -82,11 +85,12 @@ function gothamalt.load()
 					local fields = parse_line(line)
 					local image, role = fields[1], fields[2]
 					local short = fields[4] or ""
+					local source = fields[5] or ""
 					if image and role and image ~= "" then
 						local name = image:match("([^/\\]+)$") or image
 						name = name:lower()
 						local stem = name:match("^(.*)%.[^.]*$") or name
-						local entry = { role = role, short = short }
+						local entry = { role = role, short = short, source = source }
 						gothamalt.by_name[name] = entry
 						if gothamalt.by_stem[stem] == nil then
 							gothamalt.by_stem[stem] = entry
@@ -161,4 +165,87 @@ function gothamalt.mark(reference)
 	if gothamalt.role(reference) == "decorative" then
 		tex.sprint("\\gothamAltDecorativetrue")
 	end
+end
+
+-- ---------------------------------------------------------------------------
+-- Per-frame "Image source(s):" auto-footnote (ALT_TEXT_NOTES.md phase 6
+-- step 3)
+-- ---------------------------------------------------------------------------
+-- Unlike short/alt above, source applies regardless of role -- a decorative
+-- Midjourney illustration still needs attribution -- so recordSource() is
+-- called unconditionally from the \includegraphics wrapper, for every image,
+-- not just informative ones.
+--
+-- frame_sources is an ordered list (first-appearance order, matching
+-- reading/content-stream order the same way the alt-text layer already
+-- does) and frame_sources_seen is a parallel set, so the same image used
+-- twice in one frame (or two different images that happen to share
+-- identical source text, e.g. two panels of one figure) contributes its
+-- source only once. Reset once per \begin{standardframe} pass -- beamer
+-- replays a frame's whole body once per overlay step, and standardframe's
+-- own opening code already resets its side-footnote box the same way on
+-- every one of those replays (see \gothamClearSideFootnotesBox), so this
+-- follows the identical pattern: every overlay step of a multi-step frame
+-- sees the frame's full, identical set of images (only their *visibility*
+-- is gated per step, not whether the \includegraphics call itself runs),
+-- so the emitted footnote is the same on every step too -- consistent with
+-- how a hand-authored \source{} written outside any overlay conditional
+-- already behaves.
+gothamalt.frame_sources = {}
+gothamalt.frame_sources_seen = {}
+
+function gothamalt.resetFrameSources()
+	gothamalt.frame_sources = {}
+	gothamalt.frame_sources_seen = {}
+end
+
+function gothamalt.recordSource(reference)
+	local entry = gothamalt.lookup(reference)
+	if entry == nil then
+		return
+	end
+	local source = (entry.source or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if source == "" then
+		return
+	end
+	if not gothamalt.frame_sources_seen[source] then
+		gothamalt.frame_sources_seen[source] = true
+		gothamalt.frame_sources[#gothamalt.frame_sources + 1] = source
+	end
+end
+
+-- Strips trailing period(s) (plus any trailing whitespace) from one source
+-- entry before joining -- most stored citations already end in "." (e.g.
+-- "Source: Datastream."), some don't (a bare \fullcite{key} call), and
+-- joining raw would produce a stray ".." wherever a period-ending entry
+-- isn't last. Normalizing every entry to no trailing period, then joining
+-- with ". " and adding exactly one final period, gives a clean result
+-- regardless of how any individual entry was originally punctuated.
+local function strip_trailing_period(text)
+	return (text:gsub("%.+%s*$", ""))
+end
+
+-- Sets a TeX-side conditional plus a stashed macro, same pattern as
+-- gothamalt.altText above, rather than tex.sprint-ing a \source{...} call
+-- directly -- keeps "whether/how to call \source{}" a TeX-side decision
+-- (gothamEmitImageSourceFootnote below) rather than baked into this string.
+-- Deliberately NOT run through gothamalt.escape(): unlike the invisible
+-- alt-text layer (which types literal PDF-string glyphs via a raw
+-- \pdfextension primitive and therefore needs every TeX special character
+-- escaped to appear as its own glyph), this text is fed back into the real
+-- TeX token stream and expanded as ordinary LaTeX -- \href{}/\fullcite{}
+-- calls inside a stored source value need to actually execute as macros,
+-- exactly as they would if hand-typed inside a \source{...} call, which is
+-- literally where this text was extracted from.
+function gothamalt.emitSourceFootnote()
+	if #gothamalt.frame_sources == 0 then
+		return
+	end
+	local parts = {}
+	for i, source in ipairs(gothamalt.frame_sources) do
+		parts[i] = strip_trailing_period(source)
+	end
+	local joined = table.concat(parts, ". ") .. "."
+	tex.sprint("\\gothamImageSourcesHasTexttrue\\def\\gothamImageSourcesText{"
+		.. joined .. "}")
 end

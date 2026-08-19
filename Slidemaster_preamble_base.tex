@@ -1629,6 +1629,106 @@
 }
 \newcommand{\gothamArtifactEnd}{\ifluatex\pdfextension literal direct{EMC}\fi}
 
+% Per-frame "Image source(s):" auto-footnote (ALT_TEXT_NOTES.md phase 6 step
+% 3). The \includegraphics wrapper further down calls
+% gothamalt.recordSource() for every image (decorative or informative --
+% source is independent of role, same reasoning as media/alt-text.json's own
+% ImageEntry.source), accumulating each frame's distinct, order-of-first-
+% -appearance source strings in Lua. These two commands are standardframe's
+% own hooks into that: reset at frame open (same per-overlay-replay reset
+% \gothamClearSideFootnotesBox already does), emit at frame close.
+%
+% Defined here (outside/before the "Alt-text manifest" \ifluatex block
+% further down that actually loads Slidemaster_alt.lua and redefines
+% \includegraphics) rather than inside it, matching \gothamArtifactBegin/End
+% just above: standardframe unconditionally calls both, so they need to
+% exist regardless of engine, each independently \ifluatex-guarded inside
+% -- under any non-LuaTeX engine \gothamResetImageSources/
+% \gothamEmitImageSourceFootnote are both no-ops, same degradation as the
+% rest of this accessibility system under a non-LuaTeX engine. Safe to
+% define before Slidemaster_alt.lua is actually loaded (\AtBeginDocument,
+% further down): these are only ever *called* from inside a real frame,
+% well after \begin{document} has fired.
+\newif\ifgothamImageSourcesHasText
+\newcommand{\gothamImageSourcesText}{}
+\newcommand{\gothamResetImageSources}{%
+	\ifluatex\directlua{gothamalt.resetFrameSources()}\fi
+}
+% \source{} is itself implemented as an empty-marker \footnote{} (see its
+% own definition further below) -- calling it here gives the auto-footnote
+% the exact same rendering (font, spacing, right-alignment, stretch-to-
+% -sit-above-the-footer, side-footnote redirection under \sidefootnotes) as
+% a hand-authored \source{} line, for free, rather than reimplementing any
+% of that. Coexists with a real hand-authored \source{} call elsewhere in
+% the same frame -- both are just separate unmarked footnote-styled lines,
+% stacking the same way multiple real \footnote{}s already do.
+\newcommand{\gothamEmitImageSourceFootnote}{%
+	\ifluatex
+	\gothamImageSourcesHasTextfalse
+	\directlua{gothamalt.emitSourceFootnote()}%
+	\ifgothamImageSourcesHasText
+		\source{Image source(s): \gothamImageSourcesText}%
+	\fi
+	\fi
+}
+
+% Invisible slide-id stamp for footer-less frame types. \titleframe and
+% \fullbleedframe (both defined further down) render via beamer's "plain"
+% frame option, which suppresses the footline entirely -- so the visible
+% footer's own "(slide id: ...)" text (see the footer template below) never
+% reaches those pages. SlideManager's own compile-time preview snapshot
+% (slide_snapshot.py) identifies which slide a compiled page belongs to
+% purely by scanning its extracted text for that "slide id: XXX" string, so
+% a plain frame with none of that text never gets a snapshot captured at
+% all (caught 2026-08-15: titleframe's own title slide and 25 straight
+% fullbleedframe "Excursus" slides in the IA2 deck all had no preview).
+% This stamps the same marker, invisibly (PDF text-render mode 3, the same
+% technique \gothamAltInvisible below uses for image alt text) and wrapped
+% as a /Pagination/Footer artifact, same as the real footer's own slide-id
+% text -- so it reaches neither a sighted reader nor a screen reader,
+% purely a technical marker for the compile pipeline. Only \slideID itself
+% is stamped, not the omitted-slide/version/timestamp suffix the visible
+% footer also carries: nothing here is ever read by a human, and
+% slide_snapshot.py's own regex only looks for the id.
+%
+% \vbox to 0pt{\vss ...}: same reasoning as every other absolute/zero-space
+% overlay in this file (see \titleframe's own comment on this) -- \sbox
+% builds an hbox, and a bare hbox placed directly in a frame's vertical
+% list silently opens an implicit paragraph, switching following material
+% into horizontal mode. Wrapping in a vbox contains that entirely within
+% its own internal vertical mode instead of leaking out to the frame body.
+\newsavebox{\gothamSlideIDStampBox}
+\newcommand{\gothamInvisibleSlideIDStamp}{%
+	\ifluatex
+	\vbox to 0pt{\vss
+	\begingroup
+	\hbadness=10000 \hfuzz=\maxdimen
+	\sbox{\gothamSlideIDStampBox}{%
+		\parbox[t]{\textwidth}{%
+			\tiny\raggedright
+			\gothamArtifactBegin{/Type /Pagination /Subtype /Footer}%
+			\pdfextension literal direct{3 Tr}%
+			% Trailing \space before the closing paren, not just "\slideID)":
+			% slide_snapshot.py's own regex ("slide id:\s*(\S+)") reads
+			% everything up to the next whitespace as the id, and without a
+			% space there it would capture "gcs)" instead of "gcs" (caught
+			% by testing the actual compiled+extracted text, not assumed --
+			% the real footer's own "... \slideID ... | ..." format always
+			% has a space after \slideID for the same reason).
+			(slide id: \slideID\space)%
+			\pdfextension literal direct{0 Tr}%
+			\gothamArtifactEnd
+		}%
+	}%
+	\wd\gothamSlideIDStampBox=0pt
+	\ht\gothamSlideIDStampBox=0pt
+	\dp\gothamSlideIDStampBox=0pt
+	\usebox{\gothamSlideIDStampBox}%
+	\endgroup
+	}%
+	\fi
+}
+
 % ---------------------------------------------------------------------------
 % Alt-text manifest: automatic /Artifact marking of decorative images
 % ---------------------------------------------------------------------------
@@ -1760,6 +1860,9 @@
 			\edef\gothamAltReference{#4}%
 			\gothamAltDecorativefalse
 			\directlua{gothamalt.mark("\luaescapestring{\gothamAltReference}")}%
+			% Unconditional -- unlike gothamAltInvisible below (informative
+			% images only), a source is recorded regardless of role.
+			\directlua{gothamalt.recordSource("\luaescapestring{\gothamAltReference}")}%
 			% /Type /Layout is the PDF spec's artifact type for cosmetic design
 			% elements, which is what a decorative illustration is. Not
 			% /Background: that one means a fill or image behind the whole
@@ -2883,6 +2986,7 @@
 	% stops stale footnotes leaking in if a previous frame ever collected
 	% without shipping a footline.
 	\gothamClearSideFootnotesBox%
+	\gothamResetImageSources%
 	\setbeamertemplate{itemize item}{\gothamBulletDot}%
 	\setbeamertemplate{itemize subitem}{\gothamBulletDot}%
 	\setbeamertemplate{itemize subsubitem}{\gothamBulletDot}%
@@ -2903,6 +3007,13 @@
 	% pattern elsewhere (\ifx would need #1 fully expanded first).
 	\ifstrequal{#1}{c}{}{\vspace*{-\dimexpr\gothamContentTopShift-\gothamContentTopShiftReduction\relax}}%
 }{%
+	% Must run *before* \end{frame}: like any other frame content, a
+	% \footnote{}/\source{} call has to happen while the frame body is
+	% still open -- everything in this closing block from \end{frame}
+	% onward runs *after* the frame has already closed (see README.md's
+	% own \titleframe comment on beamer's \beamer@collect@@body for the
+	% general shape of this constraint).
+	\gothamEmitImageSourceFootnote%
 	\end{frame}%
 	\global\def\gothamChapterLogoPath{}% opt-in only for the frame just closed
 	\global\def\gothamContentTopShiftReduction{0pt}% opt-in only for the frame just closed
@@ -4395,6 +4506,11 @@
 	% only equals the real compiled frame number when every \slide{}-family
 	% call -- including this one -- consumes exactly one framenumber step).
 	\begin{frame}[plain,t]%
+	% This frame has no footer to carry the usual "(slide id: ...)" marker
+	% -- see \gothamInvisibleSlideIDStamp's own comment above for why that
+	% breaks SlideManager's compile-time preview snapshot, and what this
+	% stamps instead.
+	\gothamInvisibleSlideIDStamp%
 	% A bare tikzpicture behaves like an hbox (same reasoning as the footer
 	% box's own \vbox-to-0pt wrapper further up): sitting directly in the
 	% frame's vertical list, it silently opens an implicit paragraph,
@@ -4520,6 +4636,9 @@
 	% (same reasoning, same 2026-08-11 change: this frame has no footer
 	% either, so nothing here changes visibly, only later slides' numbers).
 	\begin{frame}[plain,t]%
+	% This frame has no footer either -- same \gothamInvisibleSlideIDStamp
+	% need as \titleframe above, see its own comment for why.
+	\gothamInvisibleSlideIDStamp%
 	% \gothamArtifactBegin/\gothamArtifactEnd (defined with the footer, "PDF
 	% accessibility" comment): the black backdrop is purely decorative
 	% letterboxing, marked the same way as titleframe's/quoteframe's own
