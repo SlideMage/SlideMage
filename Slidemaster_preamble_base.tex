@@ -1191,6 +1191,42 @@
 }
 \makeatother
 
+% \setSlideVersion{X-Y-Z} -- footer's own version display (added
+% 2026-08-20, direct instruction: show the slide's version next to its id
+% in every compiled deck). Takes the same filename-safe hyphenated form a
+% version file's own "-vX-Y-Z.tex" suffix and \slideversion{}'s own second
+% argument already use, and reformats it with dots ("1.0.0") for display,
+% the conventional way semver is written -- \setSlideVersion@aux splits it
+% the same way \setSlideID@aux above splits an id-slug, just at both
+% hyphens instead of the first one only. \ifgothamSlideVersionSet tracks
+% whether *this* frame actually has a tracked version to show at all --
+% reset false at the top of every \slide{}/\omitslide{}/\conditionalslide{}
+% call (current.tex may or may not embed a \setSlideVersion{} of its own,
+% see SlideManager's own automatic-versioning save flow) so an untracked
+% slide's footer never inherits whatever the immediately preceding frame
+% last set. \slideversion{}/\omitslideversion{} instead set it directly
+% from their own second argument -- already an explicit version number at
+% the call site, so there is nothing to read from the pinned file itself.
+\newcommand{\slideVersion}{}%
+\newif\ifgothamSlideVersionSet
+\makeatletter
+\newcommand{\setSlideVersion}[1]{%
+	\edef\gothamTempSlideVersion{#1}%
+	% No trailing "-" appended before \relax here, unlike \setSlideID@aux's
+	% own \tempa-\relax above -- that extra hyphen is harmless there since
+	% \setSlideID@aux's own #2 (everything after the first "-") is thrown
+	% away entirely, but this pattern's #3 is a *used* greedy match
+	% ("everything up to \relax"), so an appended "-" would land inside it
+	% verbatim (confirmed directly: produced "v2.3.1-" instead of
+	% "v2.3.1" the first time this was compiled).
+	\expandafter\setSlideVersion@aux\gothamTempSlideVersion\relax
+	\global\gothamSlideVersionSettrue
+}
+\def\setSlideVersion@aux#1-#2-#3\relax{%
+	\renewcommand{\slideVersion}{#1.#2.#3}%
+}
+\makeatother
+
 % Define a new \slide command to automatically pick the current version of the slide
 % 2026-07-08 (direct instruction): slide filenames dropped their leading
 % "s-" (e.g. slides/ab3-Some-Slide-current.tex, not the old
@@ -1202,6 +1238,7 @@
 % match needed no changes anywhere else (not the deck files, not
 % slide_ids.csv, which only ever stored bare IDs to begin with).
 \newcommand{\slide}[1]{%
+	\global\gothamSlideVersionSetfalse
 	\setSlideID{#1}%
 	\input{slides/#1-current.tex}%
 }
@@ -1238,6 +1275,7 @@
 % Usage: \slideversion{ID-slug}{M-m-p} loads slides/ID-slug-vM-m-p.tex
 \newcommand{\slideversion}[2]{%
 	\setSlideID{#1}%
+	\setSlideVersion{#2}%
 	\input{slides/#1-v#2.tex}%
 }
 
@@ -1378,6 +1416,7 @@
 		\stepcounter{framenumber}%
 	\else
 		\global\gothamOmittedSlidetrue
+		\global\gothamSlideVersionSetfalse
 		\setSlideID{#1}%
 		\input{slides/#1-current.tex}%
 		\global\gothamOmittedSlidefalse
@@ -1389,6 +1428,7 @@
 	\else
 		\global\gothamOmittedSlidetrue
 		\setSlideID{#1}%
+		\setSlideVersion{#2}%
 		\input{slides/#1-v#2.tex}%
 		\global\gothamOmittedSlidefalse
 	\fi
@@ -1544,7 +1584,8 @@
 % Usage: \conditionalslide[instructor,after-course]{xyz-Answer-key}
 \newcommand{\conditionalslide}[2][instructor,during-course,after-course]{%
 	\ifdeckversioninlist{\gothamDeckVersion}{#1}%
-		{\setSlideID{#2}%
+		{\global\gothamSlideVersionSetfalse
+		 \setSlideID{#2}%
 		 \input{slides/#2-current.tex}}%
 		{\stepcounter{framenumber}}%
 }
@@ -2101,7 +2142,7 @@
 		\FooterText%
 	\fi
 	\hfill%
-	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
+	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ifgothamSlideVersionSet\ | v\slideVersion\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
 	\hspace*{-\gothamFooterRightShift}%
 	\vspace*{0.4ex}%
