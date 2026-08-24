@@ -354,3 +354,12 @@ alt-text-bakeoff.md
 # cache refreshed opportunistically on every compile that touches a slide,
 # not a build artifact worth keeping in history.
 slide_previews/
+
+# SlideManager's own local UI preferences (app_settings.py -- currently
+# just dark mode) -- a personal taste, not project content worth
+# version-controlling/diffing on every toggle, same category as
+# .claude/settings.local.json above. Still a plain file physically inside
+# slidemanager/ (not the Windows registry), so the folder's own cloud-sync
+# client -- not git -- carries it across machines; see dist/ above for the
+# identical git-ignored-but-not-sync-ignored precedent.
+slidemanager/app_settings.json

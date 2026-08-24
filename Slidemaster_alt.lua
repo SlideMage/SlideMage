@@ -15,18 +15,26 @@
 
 gothamalt = { by_name = {}, by_stem = {} }
 
--- Each entry is { role = "...", short = "...", source = "..." }. The short
--- alt is what the invisible-text layer (phase 5) emits next to an
--- informative image; the role is what phase 1 uses to mark a decorative one
--- as an /Artifact; source (added phase 6 step 3) feeds the per-frame
--- "Image source(s):" auto-footnote further below.
+-- Each entry is { role = "...", short_en = "...", short_de = "...",
+-- source_en = "...", source_de = "..." } (widened 2026-08-24 for
+-- multi-language -- see LANGUAGE_NOTES.md; role stays a single shared
+-- field, since decorative/informative is a property of the picture, not
+-- of which language is being read). The short alt is what the
+-- invisible-text layer (phase 5) emits next to an informative image; the
+-- role is what phase 1 uses to mark a decorative one as an /Artifact;
+-- source (added phase 6 step 3) feeds the per-frame "Image source(s):"/
+-- "Bildquelle(n):" auto-footnote further below. Which language's pair
+-- (_en/_de) actually gets used is decided per-call by gothamalt.altText/
+-- recordSource's own `language` argument (the compiling deck's
+-- \gothamDeckLanguage), not by anything stored here.
 
 -- Minimal RFC-4180-ish field splitter: handles quoted fields with embedded
--- commas and doubled quotes, because short_alt (column 4) and source
--- (column 5) both contain both once the SlideManager review tab writes
--- them. A trailing empty field is not reported, which is fine -- only
--- columns 1 (image), 2 (role), 4 (short_alt) and 5 (source) are ever read
--- here.
+-- commas and doubled quotes, because every short_alt/source column can
+-- contain both once the SlideManager review tab writes them. A trailing
+-- empty field is not reported, which is fine -- only columns 1 (image),
+-- 2 (role), 4/5 (short_alt_en/source_en) and 7/8 (short_alt_de/source_de)
+-- are ever read here (3 and 6, status_en/status_de, are for SlideManager's
+-- own UI, not compile-time gating -- see alt_images.py's own docstring).
 local function parse_line(line)
 	local fields, pos, len = {}, 1, #line
 	repeat
@@ -84,13 +92,19 @@ function gothamalt.load()
 				elseif line ~= "" then
 					local fields = parse_line(line)
 					local image, role = fields[1], fields[2]
-					local short = fields[4] or ""
-					local source = fields[5] or ""
+					local short_en = fields[4] or ""
+					local source_en = fields[5] or ""
+					local short_de = fields[7] or ""
+					local source_de = fields[8] or ""
 					if image and role and image ~= "" then
 						local name = image:match("([^/\\]+)$") or image
 						name = name:lower()
 						local stem = name:match("^(.*)%.[^.]*$") or name
-						local entry = { role = role, short = short, source = source }
+						local entry = {
+							role = role,
+							short_en = short_en, short_de = short_de,
+							source_en = source_en, source_de = source_de,
+						}
 						gothamalt.by_name[name] = entry
 						if gothamalt.by_stem[stem] == nil then
 							gothamalt.by_stem[stem] = entry
@@ -146,12 +160,21 @@ end
 -- it opens the invisible-text box: otherwise an image with no description yet
 -- still emits the "Image: " prefix, and a screen reader announces an image
 -- and then says nothing about it -- worse than staying silent.
-function gothamalt.altText(reference)
+--
+-- `language` ("en"/"de", the compiling deck's own \gothamDeckLanguage,
+-- passed through by the \includegraphics wrapper) picks which pair to
+-- read (2026-08-24). Unlike source below, short_alt has no default+
+-- override fallback: an untranslated German short_alt just means no
+-- invisible alt text for that image under a German compile, same as an
+-- empty English one does today -- real "is this deck's alt text
+-- complete" gating belongs in the SlideManager review UI, not here.
+function gothamalt.altText(reference, language)
 	local entry = gothamalt.lookup(reference)
 	if entry == nil or entry.role == "decorative" then
 		return
 	end
-	local short = (entry.short or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local raw = (language == "de") and entry.short_de or entry.short_en
+	local short = (raw or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if short == "" then
 		return
 	end
@@ -199,12 +222,28 @@ function gothamalt.resetFrameSources()
 	gothamalt.frame_sources_seen = {}
 end
 
-function gothamalt.recordSource(reference)
+-- `language` picks source_en/source_de the same way altText() above picks
+-- short_en/short_de -- except source_de *does* fall back to source_en
+-- when empty (2026-08-24, mirrors alt_images.ImageEntry.source_for_de()
+-- on the Python side exactly): most citations are proper nouns/
+-- publication names ("KAL, 1989, Baltimore Sun") that don't need
+-- translating, so a translator only has to fill in source_de for the
+-- genuine exceptions rather than copy every citation by hand.
+function gothamalt.recordSource(reference, language)
 	local entry = gothamalt.lookup(reference)
 	if entry == nil then
 		return
 	end
-	local source = (entry.source or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local source
+	if language == "de" then
+		source = entry.source_de
+		if source == nil or source == "" then
+			source = entry.source_en
+		end
+	else
+		source = entry.source_en
+	end
+	source = (source or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if source == "" then
 		return
 	end

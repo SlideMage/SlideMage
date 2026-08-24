@@ -982,35 +982,41 @@
 					node[fill=white, anchor=east, inner sep=0pt, outer sep=0pt,
 					     minimum width=\gothamChapterLogoWidth+\gothamFrametitleRightpading+0.5pt,
 					     minimum height=\y1-\y2] at ($(gothamMainPatch.west)+(0.5pt,0)$) {};
-				% 2026-08-10 (direct instruction, after an initial "already
-				% centered" measurement was corrected by direct instruction):
-				% this bare `gothamLogoAnchor.center` placement centers the
+				% This bare `gothamLogoAnchor.center` placement centers the
 				% chapter logo's own *bounding box* against the institute
-				% logo's, and for most chapter-logo artwork (a single
-				% roughly-solid icon) that's also its *visual* center -- but
-				% the "beyond CAPM" logo specifically (the only chapter logo
-				% asset in current use built from two stacked elements, a
-				% small "beyond" wordmark in italic script sitting above the
-				% larger boxed "CAPM") has a transparent background behind
-				% "beyond", so the eye reads the *box*'s own top edge as the
-				% logo's visual top, not the ascender of the "d" in "beyond"
-				% poking up above it -- bounding-box-centering this specific
-				% asset reads as sitting too low. Nudged up by 1.53pt, keyed
-				% specifically to this one asset's own path (not a general
-				% chapter-logo correction -- every other chapter logo in this
-				% deck is a single solid icon with no such ascender-above-a-
-				% box composition, so a project-wide nudge would be wrong for
-				% those): 1.53pt solves for the perceived center (the "CAPM"
-				% box's own top-to-bottom span, y=11.25-25.12pt in the
-				% asset's native page, i.e. perceived center y=18.19pt) to
-				% land on the institute logo's own true center (y=16.66pt),
-				% both measured directly against a compiled page, not
-				% guessed.
-				\ifstrequal{\gothamChapterLogoPath}{media/chapter-logo-beyond-capm-cropped.pdf}
-					{\node[anchor=east, inner sep=0pt, outer sep=0pt] at ($(gothamMainPatch.west |- gothamLogoAnchor.center)+(0,1.53pt)$)
-						{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};}
-					{\node[anchor=east, inner sep=0pt, outer sep=0pt] at (gothamMainPatch.west |- gothamLogoAnchor.center)
-						{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};}
+				% logo's, which is also its *visual* center for every
+				% chapter-logo asset in current use (a single roughly-solid
+				% icon). One asset -- "beyond CAPM" (media/chapter-logo-
+				% beyond-capm-cropped.pdf), built from two stacked elements,
+				% a small "beyond" wordmark in italic script sitting above
+				% the larger boxed "CAPM" -- used to read as sitting too low
+				% under plain bounding-box centering, since its transparent
+				% background above "beyond" pulls the bbox's own center
+				% upward relative to the box's visual center. Originally
+				% "fixed" with a per-asset \ifstrequal{\gothamChapterLogoPath}
+				% nudge here (+1.53pt for this one path only) -- removed
+				% 2026-08-24, direct instruction, once that nudge turned out
+				% to have never actually applied: etoolbox's \ifstrequal
+				% compares via \detokenize, which does not expand its
+				% argument, so \ifstrequal{\gothamChapterLogoPath}{...} always
+				% stringified the *macro's name*, never its value, and
+				% silently took the false (unnudged) branch on every compile
+				% (same root cause documented on \decklanguage's own
+				% \ifstrequal fix, LANGUAGE_NOTES.md). Fixed at the asset
+				% level instead of in code: media/chapter-logo-beyond-capm-
+				% cropped.pdf now carries ~82.34pt of solid white padding
+				% added to its own bottom edge (measured, not guessed --
+				% shifts the "CAPM" box's own outline, drawn at native y
+				% [85.35, 463.15] on a 466.15pt-tall original page, to sit
+				% exactly at the padded page's own vertical center, so plain
+				% bounding-box centering places it correctly with no
+				% special-cased LaTeX branch at all; confirmed on a real
+				% compile: the box's rendered center landed at y=16.67pt,
+				% matching the institute logo's own true center of 16.66pt
+				% to within rounding). Every other chapter logo needs no such
+				% treatment and is untouched.
+				\node[anchor=east, inner sep=0pt, outer sep=0pt] at (gothamMainPatch.west |- gothamLogoAnchor.center)
+					{\includegraphics[height=\gothamLogoHeight]{\gothamChapterLogoPath}};
 			\else
 				% \gothamFrametitleLogoFixed frames (currently: sectionframe)
 				% have no inline logo/gothamLogoAnchor node at all (see
@@ -1227,6 +1233,54 @@
 }
 \makeatother
 
+% \setSlideLanguageFromSlug{ID-slug} -- multi-language support (added
+% 2026-08-24). Language lives in the id-slug's own *second* hyphen segment
+% rather than a separate in-body macro call, so it's visible directly in
+% Explorer/grep and in every \slide{}/\slideversion{}/etc. call site, not
+% just inside the file it names: slides/<id>-EN-<slug>-current.tex,
+% slides/<id>-DE-<slug>-current.tex, slides/<id>-mult-<slug>-current.tex
+% (mult = multilingual, i.e. a single file holding both languages via
+% \multilingualtext{}{} below, picked at compile time by \ifgothamGerman).
+% A slide that predates this feature simply has no such segment (its own
+% second hyphen segment is the first word of an ordinary slug, e.g.
+% "neb-Market-Environment-...") -- \ifgothamSlideLanguageSet stays false
+% for it, exactly like an untracked \setSlideVersion{} today shows no
+% "v..." footer segment, so the other ~665 files need no migration.
+% Same three-way split idiom as \setSlideVersion@aux above, but the
+% trailing padding ("-zzz-zzz") is load-bearing here in a way it isn't
+% there: \setSlideVersion@aux's own caller (X-Y-Z) always has exactly two
+% hyphens, but an id-slug can legally have as few as *one* (e.g. a
+% single-word slug like "abc-Word"), which would leave #2-#3\relax with no
+% closing delimiter to match at all ("Use of ... doesn't match its
+% definition") without this padding. #3 (and the padding itself) is never
+% read, so its exact content doesn't matter -- only that the two extra
+% hyphens are guaranteed to exist.
+\newcommand{\slideLanguage}{}%
+\newif\ifgothamSlideLanguageSet
+% \ifgothamSlideLanguageMult -- set alongside \slideLanguage whenever it's
+% specifically "mult", so the footer tag below never has to run
+% \ifstrequal against \slideLanguage itself: etoolbox's \ifstrequal
+% compares via \detokenize, which does not expand its argument -- fed a
+% bare control sequence like \slideLanguage it would stringify the
+% *macro's name*, not its meaning, and always take the false branch (see
+% \decklanguage's own comment above, where this was caught the same way).
+% A dedicated boolean, set right here where the value is still a plain
+% matched string (#2, not a macro), sidesteps the trap entirely.
+\newif\ifgothamSlideLanguageMult
+\makeatletter
+\newcommand{\setSlideLanguageFromSlug}[1]{%
+	\global\gothamSlideLanguageSetfalse
+	\global\gothamSlideLanguageMultfalse
+	\edef\gothamTempSlideLangSlug{#1}%
+	\expandafter\setSlideLanguageFromSlug@aux\gothamTempSlideLangSlug-zzz-zzz\relax
+}
+\def\setSlideLanguageFromSlug@aux#1-#2-#3\relax{%
+	\ifstrequal{#2}{EN}{\renewcommand{\slideLanguage}{EN}\global\gothamSlideLanguageSettrue}{%
+	\ifstrequal{#2}{DE}{\renewcommand{\slideLanguage}{DE}\global\gothamSlideLanguageSettrue}{%
+	\ifstrequal{#2}{mult}{\renewcommand{\slideLanguage}{mult}\global\gothamSlideLanguageSettrue\global\gothamSlideLanguageMulttrue}{}}}%
+}
+\makeatother
+
 % Define a new \slide command to automatically pick the current version of the slide
 % 2026-07-08 (direct instruction): slide filenames dropped their leading
 % "s-" (e.g. slides/ab3-Some-Slide-current.tex, not the old
@@ -1240,6 +1294,7 @@
 \newcommand{\slide}[1]{%
 	\global\gothamSlideVersionSetfalse
 	\setSlideID{#1}%
+	\setSlideLanguageFromSlug{#1}%
 	\input{slides/#1-current.tex}%
 }
 
@@ -1275,6 +1330,7 @@
 % Usage: \slideversion{ID-slug}{M-m-p} loads slides/ID-slug-vM-m-p.tex
 \newcommand{\slideversion}[2]{%
 	\setSlideID{#1}%
+	\setSlideLanguageFromSlug{#1}%
 	\setSlideVersion{#2}%
 	\input{slides/#1-v#2.tex}%
 }
@@ -1401,6 +1457,56 @@
 }
 \makeatother
 
+% Deck language system (added 2026-08-24) -- fixed per deck, like
+% \FooterText or the institution \input{} choice, not a per-compile-run
+% toggle like \deckversion above: a German course is its own deck file
+% with mostly \setSlideLanguageFromSlug-tagged German/multilingual slide
+% IDs, not the same deck file recompiled twice. \decklanguage[en]/
+% \gothamDeckLanguage/\ifgothamGerman mirror \deckversion/\gothamDeckVersion
+% mechanically (same \xdef for the same \deckversion[\deckversionoverride]-
+% style macro-argument reason documented above), so every deck gets the
+% same \ifdefined\decklanguageoverride ... \fi override door
+% \deckversionoverride already has, for SlideManager's own one-off render
+% preview (slide_preview.py) and for ad-hoc hand-testing via
+% decks/#workdeck.tex -- never wired into the Active-decks table itself.
+\newif\ifgothamGerman
+\gdef\gothamDeckLanguage{en}
+\makeatletter
+\newcommand{\decklanguage}[1][en]{%
+	\xdef\gothamDeckLanguage{#1}%
+	\global\gothamGermanfalse
+	% \ifstrequal{<macro>}{...} is a trap, not just here but anywhere in this
+	% file: its etoolbox implementation compares via
+	% \edef\tempX{\detokenize{<arg>}} -- \detokenize does NOT expand its
+	% argument first, so handed a bare control sequence it stringifies the
+	% *macro's name* ("\gothamDeckLanguage"), never its meaning ("de"),
+	% and the comparison silently always takes the false branch (confirmed
+	% directly: \ifgothamGerman never went true this way, even under
+	% \decklanguage[de]). \deckversion's own \do@deckversions above sidesteps
+	% this by building the comparison inside an \edef first, so \ifstrequal
+	% only ever sees an already-expanded literal string -- same fix here.
+	\def\do@decklanguage##1{\ifstrequal{##1}{de}{\global\gothamGermantrue}{}}%
+	\edef\gotham@decklanguage@call{\noexpand\do@decklanguage{\gothamDeckLanguage}}%
+	\gotham@decklanguage@call
+	% Document-level PDF /Lang, independent of (and not blocked by) the
+	% structural PDF/UA tagging this project can't use under beamer -- see
+	% \gothamArtifactBegin's own comment above for why full tagging is out;
+	% a screen reader still uses this Catalog-level entry to pick
+	% pronunciation for the whole document.
+	\hypersetup{pdflang=\ifgothamGerman de-DE\else en-US\fi}%
+}
+\makeatother
+
+% \multilingualtext{EN text}{DE text} -- for the handful of light,
+% image-only/title-only slides (id-slug's own language segment "mult",
+% see \setSlideLanguageFromSlug above) that hold both languages in one
+% file rather than being split into two separate slide IDs, switching on
+% whichever language the *deck* is compiling as. Two arguments for now,
+% matching the current EN/DE-only scope -- a third language later would
+% grow this macro's own arity (or move to a keyed variant), not require
+% renaming anything else in this system.
+\newcommand{\multilingualtext}[2]{\ifgothamGerman #2\else #1\fi}
+
 \newif\ifgothamOmittedSlide
 \newcommand{\gothamOmittedSlideMarker}{ | omitted from student deck}
 % \stepcounter{framenumber} in the skipped branch below keeps the student
@@ -1418,6 +1524,7 @@
 		\global\gothamOmittedSlidetrue
 		\global\gothamSlideVersionSetfalse
 		\setSlideID{#1}%
+		\setSlideLanguageFromSlug{#1}%
 		\input{slides/#1-current.tex}%
 		\global\gothamOmittedSlidefalse
 	\fi
@@ -1428,6 +1535,7 @@
 	\else
 		\global\gothamOmittedSlidetrue
 		\setSlideID{#1}%
+		\setSlideLanguageFromSlug{#1}%
 		\setSlideVersion{#2}%
 		\input{slides/#1-v#2.tex}%
 		\global\gothamOmittedSlidefalse
@@ -1586,6 +1694,7 @@
 	\ifdeckversioninlist{\gothamDeckVersion}{#1}%
 		{\global\gothamSlideVersionSetfalse
 		 \setSlideID{#2}%
+		 \setSlideLanguageFromSlug{#2}%
 		 \input{slides/#2-current.tex}}%
 		{\stepcounter{framenumber}}%
 }
@@ -1703,12 +1812,17 @@
 % of that. Coexists with a real hand-authored \source{} call elsewhere in
 % the same frame -- both are just separate unmarked footnote-styled lines,
 % stacking the same way multiple real \footnote{}s already do.
+% \gothamImageSourceLabel -- the "Image source(s):"/"Bildquelle(n):" label,
+% driven by \ifgothamGerman (set from the compiling deck's own
+% \decklanguage) rather than hardcoded, so a German deck's auto-footnote
+% reads naturally instead of showing an English label on German content.
+\newcommand{\gothamImageSourceLabel}{\ifgothamGerman Bildquelle(n)\else Image source(s)\fi}
 \newcommand{\gothamEmitImageSourceFootnote}{%
 	\ifluatex
 	\gothamImageSourcesHasTextfalse
 	\directlua{gothamalt.emitSourceFootnote()}%
 	\ifgothamImageSourcesHasText
-		\source{Image source(s): \gothamImageSourcesText}%
+		\source{\gothamImageSourceLabel: \gothamImageSourcesText}%
 	\fi
 	\fi
 }
@@ -1833,13 +1947,17 @@
 	%   already-built box is the only way to be sure of that: \rlap/\smash
 	%   each zero only some of them, and a stray descender would shift a
 	%   hand-positioned slide.
-	% - "Image: " prefixes the description so a listener can tell it apart
+	% - \gothamAltImagePrefix ("Image: "/"Bild: ") prefixes the description so a listener can tell it apart
 	%   from the slide's own prose, which they otherwise cannot.
 	%
 	% Known and accepted side effect: this text is real text, so it appears in
 	% copy-paste and in Ctrl-F. That was the explicit tradeoff for reaching a
 	% screen reader at all without a structure tree, which beamer cannot give
 	% us (see README.md's accessibility section).
+	% \gothamAltImagePrefix -- language-conditional counterpart to
+	% \gothamImageSourceLabel above, for this invisible layer's own "Image: "/
+	% "Bild: " prefix.
+	\newcommand{\gothamAltImagePrefix}{\ifgothamGerman Bild: \else Image: \fi}
 	\newcommand{\gothamAltInvisible}[1]{%
 		\begingroup
 		% A long alt string in an unbreakable hbox would otherwise flood the
@@ -1858,7 +1976,7 @@
 			\parbox[t]{\textwidth}{%
 				\tiny\raggedright
 				\pdfextension literal direct{3 Tr}%
-				Image: #1%
+				\gothamAltImagePrefix#1%
 				\pdfextension literal direct{0 Tr}%
 			}%
 		}%
@@ -1903,7 +2021,7 @@
 			\directlua{gothamalt.mark("\luaescapestring{\gothamAltReference}")}%
 			% Unconditional -- unlike gothamAltInvisible below (informative
 			% images only), a source is recorded regardless of role.
-			\directlua{gothamalt.recordSource("\luaescapestring{\gothamAltReference}")}%
+			\directlua{gothamalt.recordSource("\luaescapestring{\gothamAltReference}", "\luaescapestring{\gothamDeckLanguage}")}%
 			% /Type /Layout is the PDF spec's artifact type for cosmetic design
 			% elements, which is what a decorative illustration is. Not
 			% /Background: that one means a fill or image behind the whole
@@ -1918,7 +2036,7 @@
 			% is filled in.
 			\gothamAltHasTextfalse
 			\ifgothamAltDecorative\else
-				\directlua{gothamalt.altText("\luaescapestring{\gothamAltReference}")}%
+				\directlua{gothamalt.altText("\luaescapestring{\gothamAltReference}", "\luaescapestring{\gothamDeckLanguage}")}%
 				\ifgothamAltHasText\gothamAltInvisible{\gothamAltShort}\fi
 			\fi
 			\IfBooleanTF{#1}%
@@ -2134,6 +2252,21 @@
 % "after" hook appends to it without needing to touch that upstream file.
 \addtobeamertemplate{standout}{}{\global\gothamHideFooterTexttrue}
 
+% \gothamSlideLanguageFooterTag -- resolved once here rather than inlined
+% into the footer template below, same reason \gothamDeckVersionText is
+% precomputed rather than built inline in \deckversion. Only ever appears
+% appended directly onto the version digits ("v1.1.0EN"), so it's a no-op
+% whenever \ifgothamSlideVersionSet is false -- ties the language tag's
+% rollout to the same version-bump touchpoint slides already go through,
+% instead of needing a one-time pass over every slide. For an "mult"
+% slide (\multilingualtext above) this shows whichever language the deck
+% itself is compiling as, not a fixed value -- \MakeUppercase{en} = "EN".
+\newcommand{\gothamSlideLanguageFooterTag}{%
+	\ifgothamSlideLanguageSet
+		\ifgothamSlideLanguageMult\MakeUppercase{\gothamDeckLanguage}\else\slideLanguage\fi
+	\fi
+}
+
 \setbeamertemplate{frame footer}{%
 	\vspace*{\gothamFooterTextDrop}%
 	\ifgothamHideFooterText
@@ -2142,7 +2275,7 @@
 		\FooterText%
 	\fi
 	\hfill%
-	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ifgothamSlideVersionSet\ | v\slideVersion\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
+	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ifgothamSlideVersionSet\ | v\slideVersion\gothamSlideLanguageFooterTag\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
 	\hspace*{-\gothamFooterRightShift}%
 	\vspace*{0.4ex}%

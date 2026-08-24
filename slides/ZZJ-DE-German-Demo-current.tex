@@ -1,0 +1,19 @@
+% Demo slide showcasing the multi-language system: this slide's own
+% id-slug carries the "DE" language segment (ZZJ-DE-German-Demo), parsed
+% by \setSlideLanguageFromSlug in Slidemaster_preamble_base.tex -- its
+% footer should read "v1.0.0DE" regardless of which language the
+% compiling deck itself is set to (\decklanguage), since a fixed EN/DE
+% slide's own language never follows the deck. See README.md's
+% multi-language section (and LANGUAGE_NOTES.md) for the full design;
+% copy from here when creating a genuinely German-content slide.
+%% Included in decks: (none)
+%%
+
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Deutsche Demo-Folie}
+	\begin{itemize}
+		\item Diese Folie ist fest auf Deutsch eingestellt (id-slug-Segment \texttt{DE})
+		\item Die Fusszeile sollte \texttt{v1.0.0DE} anzeigen, unabhaengig von der Sprache des Decks
+		\item Fuer echten deutschsprachigen Inhalt sollte \texttt{polyglossia} geladen werden (siehe LANGUAGE\_NOTES.md)
+	\end{itemize}
+\end{standardframe}
