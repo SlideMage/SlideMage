@@ -29,6 +29,10 @@
 # below instead of via a rule that also caught real assets.
 decks/*.pdf
 pdf/*.pdf
+# Same reasoning, one export step further downstream (pptx_export.py,
+# 2026-08-27): a deck's own "Export PPTX" button regenerates this from a
+# fresh compile too, every time it's clicked.
+pdf/*.pptx
 # decks/render/: baseline PDFs for a deck's front-to-back final-check
 # render/diff pass (see decks/render/compare_render.py's own docstring) --
 # same regenerate-on-every-compile reasoning as decks/*.pdf above, just one
@@ -354,6 +358,12 @@ alt-text-bakeoff.md
 # cache refreshed opportunistically on every compile that touches a slide,
 # not a build artifact worth keeping in history.
 slide_previews/
+
+# Rendered PNGs of .pdf media (media_render.py, 2026-08-26) -- same
+# regeneratable-cache reasoning as slide_previews/ above, for the Images
+# tab's own preview and Ollama drafting, both of which need a raster image
+# a .pdf media file itself isn't.
+pdf_render_cache/
 
 # SlideManager's own local UI preferences (app_settings.py -- currently
 # just dark mode) -- a personal taste, not project content worth
