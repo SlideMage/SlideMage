@@ -365,6 +365,12 @@ slide_previews/
 # a .pdf media file itself isn't.
 pdf_render_cache/
 
+# Rendered/cropped PNGs of \tikzillustration{} bodies (tikz_render.py) --
+# same regeneratable-cache reasoning again: entirely derived, on demand,
+# from a slide's own current tikz source, for the Images tab's preview and
+# Ollama drafting of a hand-drawn diagram that has no media/ file at all.
+tikz_illustration_previews/
+
 # SlideManager's own local UI preferences (app_settings.py -- currently
 # just dark mode) -- a personal taste, not project content worth
 # version-controlling/diffing on every toggle, same category as

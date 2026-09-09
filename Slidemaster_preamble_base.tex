@@ -2056,6 +2056,57 @@
 	}
 \fi
 
+% \tikzillustration{ID}: extends the alt-text system above -- which only
+% ever sees a real \includegraphics file -- to a hand-drawn tikz diagram
+% with no file behind it at all (ALT_TEXT_NOTES.md). #2 is the
+% illustration's own opaque, SlideManager-assigned ID (never hand-invented
+% -- same "permanent ID" convention slides themselves use, so a description
+% survives edits to the drawing itself); #1 (optional) is passed straight
+% through as the inner tikzpicture's own options. The body between
+% \begin/\end is the tikzpicture's content, completely unmodified.
+%
+% Role (decorative/informative) is looked up exactly the way an image's is
+% -- gothamalt.mark(), the same Lua call \includegraphics's own wrapper
+% above makes, against the same media/alt-text.csv -- rather than a second
+% bracket argument SlideManager would otherwise have to text-edit into this
+% call in place every time the role changes. SlideManager writes this
+% illustration's own row into media/alt-text.json (and its compile-time
+% media/alt-text.csv projection) keyed "tikz:ID", never a real media/ path;
+% gothamalt.mark() itself needed no changes, since it already keys purely
+% on whatever string it is given (slidemanager/alt_images.py).
+%
+% A decorative illustration is wrapped in the same \gothamArtifactBegin{/Type
+% /Background}/\End pair sideimageframe's/fullbleedframe's own decorative
+% filler content already uses, so a screen reader skips it entirely; an
+% informative one is left completely unmarked, same as real content in
+% figureframe/fullbleedframe. Unlike an informative *image*, it gets no
+% invisible-text alt layer (phase 5) of its own -- that layer's positioning
+% is built around \includegraphics's own bounding box, which a freeform
+% tikzpicture doesn't have the same way. The per-deck accessible transcript
+% (README.md) is this illustration's own route to a screen reader instead,
+% the same status phase 5 already carries for every image.
+%
+% \ifluatex-guarded exactly like \gothamArtifactBegin/\gothamArtifactEnd
+% above (both \gothamAltDecorativefalse/\ifgothamAltDecorative only exist
+% inside that same guard) -- under any other engine this degrades to a
+% plain, unmarked tikzpicture, the same "no accessibility marking, but
+% still compiles and renders" degradation the rest of this system already
+% has. Safe even though those two control sequences are otherwise undefined
+% under a non-LuaTeX engine: TeX's own \iffalse-branch skipping never looks
+% up a token's meaning, so an unrecognized name inside the untaken
+% \ifluatex branch is simply skipped over, never executed.
+\newenvironment{tikzillustration}[2][]{%
+	\ifluatex
+		\gothamAltDecorativefalse
+		\directlua{gothamalt.mark("\luaescapestring{tikz:#2}")}%
+		\ifgothamAltDecorative\gothamArtifactBegin{/Type /Background}\fi
+	\fi
+	\begin{tikzpicture}[#1]
+}{%
+	\end{tikzpicture}%
+	\ifluatex\ifgothamAltDecorative\gothamArtifactEnd\fi\fi
+}
+
 % Footer
 % Smaller footer + a bit of padding under it
 \setbeamerfont{frame footer}{size=\fontsize{5}{3}\selectfont} % {font size}{baseline skip} in pt
