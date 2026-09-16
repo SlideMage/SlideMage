@@ -1527,6 +1527,20 @@
 }
 \makeatother
 
+% \deckoutputfolder[version]{path} - declares where SlideManager should
+% place this deck's own compiled PDF, read directly out of this file's own
+% source text by slidemanager/deck_scan.py (OUTPUT_FOLDER_RE) at deck-scan
+% time -- never expanded by LaTeX itself. A silent no-op here (2026-09-16,
+% direct instruction) purely so a deck carrying this directive still
+% compiles cleanly under a plain lualatex/TeXstudio run, the same reason
+% \deckversionoverride's own \ifdefined door (used elsewhere in this file)
+% never needs a real definition either. #1 (the optional [version]) is
+% intentionally unused: unlike \deckversion above, this macro's own
+% argument is never inspected by LaTeX at all, only by SlideManager's own
+% Python-side regex -- see README.md's "Custom output folder" section for
+% the actual directive syntax.
+\newcommand{\deckoutputfolder}[2][]{}
+
 % Deck language system (added 2026-08-24) -- fixed per deck, like
 % \FooterText or the institution \input{} choice, not a per-compile-run
 % toggle like \deckversion above: a German course is its own deck file
