@@ -129,6 +129,25 @@
 % `\parencite`, ...) that ends up as a colored link, not just 64m's own
 % call site.
 \hypersetup{colorlinks=true, urlcolor=c_custom_gray, linkcolor=c_custom_gray, citecolor=black}
+
+% Non-linear navigation (direct instruction, 2026-09-15): beamer's own
+% \beamergotobutton{}/\beamerreturnbutton{}/\beamerskipbutton{} (the
+% pill-shaped buttons meant to pair with \hyperlink{}, see this project's
+% own "Non-linear navigation" README section) render in beamer's stock
+% structure-derived gray by default -- confirmed directly by rendering
+% one, since gotham's own color theme never touches the "button"/"button
+% border" beamer colors at all. Restyled to this project's own
+% c_custom_gray (institution-specific -- defined once per institution
+% preamble before this file is \input{}ed, same "value supplied
+% externally, referenced lazily" idiom as \gothamInstituteLogoPath just
+% above's own \hypersetup line already relies on) with white text/glyph,
+% border matching the fill for a clean solid pill rather than a
+% mismatched outline color. \color{bg}/\usebeamercolor[fg]{button
+% border} inside beamerinnerthemedefault.sty's own "button" template are
+% exactly what these two \setbeamercolor calls feed.
+\setbeamercolor{button}{bg=c_custom_gray, fg=white}
+\setbeamercolor{button border}{fg=c_custom_gray}
+
 \let\gothamOrigHref\href
 \newsavebox{\gothamHrefTextBox}
 %
@@ -867,6 +886,29 @@
 \newlength{\gothamLogoWidth}
 \settowidth{\gothamLogoWidth}{\includegraphics[height=\gothamLogoHeight]{\gothamInstituteLogoPath}}
 
+% \gothamInstituteLogoGraphic: the *visible* logo redraw (both call sites
+% below use this, not a literal \includegraphics) -- an invisible link to
+% the generated appendix's own agenda slide, but only on a compile that
+% actually has one (\ifdefined\gothamAppendixTocOverride, \def'd by
+% compiler.py's wrapper exactly when SlideManager's "Generate appendix
+% TOC" checkbox is on, the same \ifdefined-hook pattern as
+% \gothamPresenterModeOverride/\deckversionoverride). \hypertarget{
+% gothamAppendixAgenda}{} is placed on that generated agenda slide itself
+% (appendix_toc.py) -- direct instruction, 2026-09-15: "invisibly link the
+% university logo on the top right to the agenda slide in the appendix in
+% those versions of a deck that include the appendix agenda setup."
+% Deliberately not applied to \gothamInstituteLogoSquare above (the
+% invisible in-flow instance, covered by a white patch and never seen or
+% clicked as "the logo" by a reader) or to \gothamLogoWidth's own
+% measurement just above (a \settowidth box, never actually shown).
+\newcommand{\gothamInstituteLogoGraphic}{%
+	\ifdefined\gothamAppendixTocOverride
+		\hyperlink{gothamAppendixAgenda}{\includegraphics[height=\gothamLogoHeight]{\gothamInstituteLogoPath}}%
+	\else
+		\includegraphics[height=\gothamLogoHeight]{\gothamInstituteLogoPath}%
+	\fi
+}
+
 % Let the yellow title bar visually stop short of the page's right edge, so
 % the logo sits on white instead of on yellow: paint a white patch spanning
 % the full height of the title bar behind the logo, then redraw the logo
@@ -937,7 +979,7 @@
 		% top down to the box's true bottom edge (above), so it's already
 		% blank there regardless of which position is used.
 		\ifx\gothamFrametitleLogoFixed\empty
-			\node[anchor=center, inner sep=0pt] at (gothamLogoAnchor.center) {\includegraphics[height=\gothamLogoHeight]{\gothamInstituteLogoPath}};
+			\node[anchor=center, inner sep=0pt] at (gothamLogoAnchor.center) {\gothamInstituteLogoGraphic};
 		\else
 			% inner ysep is derived, not \gothamFrametitleRightpading again:
 			% the inline logo this fixed redraw must line up with is
@@ -953,7 +995,7 @@
 			% constant keeps both in sync if the bar ever changes.
 			\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
 			      inner ysep=\dimexpr\gothamTitleBarBottomAlign-\gothamLogoHeight\relax,
-			      outer sep=0pt] at (current page.north east) {\includegraphics[height=\gothamLogoHeight]{\gothamInstituteLogoPath}};
+			      outer sep=0pt] at (current page.north east) {\gothamInstituteLogoGraphic};
 		\fi
 		% Optional per-frame "chapter logo" (see \chapterlogo{} below): drawn
 		% immediately to the left of the main logo's white patch, on its own
@@ -1194,6 +1236,34 @@
 }
 \def\setSlideID@aux#1-#2\relax{%
 	\renewcommand{\slideID}{#1}%
+	% Non-linear navigation (direct instruction, 2026-09-15): every real
+	% slide inclusion -- \slide{}, \slidefinal{} (delegates to \slide{}),
+	% \slideversion{}, \omitslide{}, \omitslideversion{}, \conditionalslide{}
+	% -- calls \setSlideID{} immediately before \input{}ing the slide file,
+	% regardless of which frame type (standardframe, sideimageframe,
+	% figureframe, sectionframe, highlightframe, ...) that file happens to
+	% use internally. This is the one place all of them funnel through, so
+	% it is the correct place for a single, frame-type-independent
+	% \hypertarget{} -- giving every slide a free, permanent jump target
+	% keyed to its own existing id, with no per-slide authoring and no new
+	% bookkeeping. Deliberately \hypertarget (hyperref's own mechanism, not
+	% plain LaTeX \label{}: slides/ZZM-EN-Slidemaster-colors-current.tex's
+	% own comment documents a real, already-hit collision between \label{}
+	% and pgffor's \foreach inside a tikz loop, which this sidesteps
+	% entirely. Used by \hyperlink{<bare id>}{...} anywhere in the deck
+	% (README.md's own "Non-linear navigation" section) to jump straight to
+	% this slide -- e.g. an excursus link's own "Back" button, or a
+	% generated appendix's thumbnail grid (SlideManager's "Generate
+	% appendix TOC" checkbox, appendix_toc.py).
+	%
+	% Known, pre-existing limitation, not introduced by this: if the same
+	% id is genuinely \slide{}'d twice in one deck (it happens -- e.g. a
+	% \slidefinal{} recap of an earlier slide), hyperref just warns
+	% ("multiply defined") and the *later* occurrence's target wins, so a
+	% link to that id lands on whichever instance is last in the document
+	% -- inherent to any permanent-id-keyed target scheme, not specific to
+	% this one.
+	\hypertarget{\slideID}{}%
 }
 \makeatother
 
@@ -2264,6 +2334,128 @@
 	\fi
 \else
 	\gothamShowCompileTimestamptrue
+\fi
+
+% \gothamPresenterModeOverride: SlideManager's own hook for a "Presenter"
+% compile -- a separate output alongside the plain instructor PDF, never a
+% toggle on it (see slidemanager/compiler.py's own CompileJob.presenter
+% field and slidemanager/qt_deck_table.py's own "Presenter" checkbox,
+% independent of the three version checkboxes the same way "After-course,
+% per chapter" already is). Same \ifdefined-hook pattern as
+% \gothamFooterTimestampOverride just above: compiler.py's wrapper file
+% \def's it, before \input{}ing the real deck, whenever that checkbox is
+% ticked for a job.
+%
+% Turns on beamer's own built-in dual-screen presenter mechanism:
+% \note{...} content (see "Speaker notes" below -- already authored
+% throughout this project's own slides, previously never actually emitted
+% anywhere at all) becomes a facing "notes page" after every real slide,
+% which presenter software (pympress is this project's own recommended
+% choice -- see README.md's "Presenting" section) auto-detects and splits
+% across the projector (plain slides only) and the presenter's own screen
+% (current slide, next slide, and the note text). \usepackage{pgfpages} is
+% loaded explicitly rather than trusted to \setbeameroption's own
+% auto-load, since which beamer versions actually do that on their own
+% isn't worth depending on.
+%
+% A presenter compile's own CompileJob always carries version="instructor"
+% (or the deck's own hardcoded content, for a deck with no
+% \deckversionoverride at all) regardless of whether the plain "Instructor"
+% checkbox is *also* ticked in the same batch -- notes and full \pause
+% reveals only make sense against the instructor's own content, so
+% Presenter never needs (or offers) During-course/After-course versions of
+% itself. slide_snapshot.py's own compile-time preview refresh is
+% deliberately skipped for a presenter job (compiler.py's own
+% _relocate_pdf_and_finish()) -- its page count and per-page layout are
+% nothing like a normal compile's, so reading it the normal way would
+% silently corrupt the real preview cache with wrong or missing pages.
+\ifdefined\gothamPresenterModeOverride
+	\usepackage{pgfpages}
+	\setbeameroption{show notes on second screen=right}
+	% Presenter-mode note page (direct instruction, 2026-09-10): beamer's
+	% own default "note page" template (beamerouterthemedefault.sty,
+	% \defbeamertemplate*{note page}{default}) reserves its top quarter for
+	% a thumbnail of the current slide (\insertslideintonotes) plus a
+	% rotated compile-date printed beside it, then gives the title band
+	% (short title + section/subsection/frametitle breadcrumb) the same
+	% 0.25\paperheight, leaving only the bottom 0.75 for \insertnote. Both
+	% the thumbnail and date are redundant here -- pympress (this project's
+	% own recommended presenter software, see README.md) already shows the
+	% current and next slide on its own -- so this redefinition drops that
+	% whole top block (thumbnail + date) outright and shrinks the title
+	% band from 0.25\paperheight to 0.08\paperheight (still one line for
+	% the short title plus room for the breadcrumb, per beamer's own
+	% layout below, copied unchanged apart from widening each line from
+	% beamer's own 0.71-0.75\textwidth, sized to leave room for the now-
+	% removed thumbnail, to 0.85-0.95\textwidth), giving \insertnote the
+	% remaining ~0.92\paperheight instead of 0.75. No color-theme "note
+	% title"/"note page" background is set anywhere in this project (a
+	% plain grep confirms it), so beamer's own \ifbeamercolorempty guards
+	% around both of those bands are dropped too -- they were already
+	% pure no-ops.
+	%
+	% Registered as a new named variant ("gothampresenter"), not a
+	% redefinition of beamer's own "default" -- confirmed directly that
+	% \defbeamertemplate*{note page}{default}{...} here errors ("Command
+	% \beamer@@tmpop@note page@default already defined"): both the
+	% starred and unstarred \defbeamertemplate forms register a variant
+	% name via a plain \newcommand internally (beamerbasetemplates.sty),
+	% which always errors on a name beamer's own outer theme already
+	% registered, star or not. Same pattern this file's own footnote
+	% template already uses just above (\defbeamertemplate{footnote}
+	% {gothamfn}{...} then \setbeamertemplate{footnote}[gothamfn]) --
+	% define-then-select instead of overwrite-in-place.
+	%
+	% \makeatletter/\makeatother wraps this specific block (not the whole
+	% \ifdefined) because \beamer@tempbox below is an @-command: this
+	% point in the preamble sits between two of this file's own
+	% \makeatletter/\makeatother pairs (the previous one closes well
+	% above, the next opens well below), so @ is still catcode-other here
+	% otherwise -- confirmed directly rather than assumed.
+	\makeatletter
+	\defbeamertemplate{note page}{gothampresenter}{%
+		{%
+			\scriptsize
+			\usebeamerfont{note title}\usebeamercolor[fg]{note title}%
+			% Natural-height \vbox (no "to <len>"/\vfil): this project's own
+			% real decks call \section{}/subsection ones sometimes not (a
+			% plain grep of decks/*.tex confirms both), so a fixed-height
+			% band sized for the *shortest* case overlaps \insertnote below
+			% on any slide needing all three breadcrumb lines -- confirmed
+			% directly: a first attempt at a fixed 0.08\paperheight did
+			% exactly that against a real slide's own \note{}. A natural-
+			% height box is exactly as tall as whichever of these three
+			% lines are non-empty for *this* slide, never more, so it can
+			% never collide with the notes below it, and hands \insertnote
+			% every bit of space a section/subsection-free slide doesn't
+			% need for a breadcrumb. \insertshorttitle (beamer's own first
+			% line here, normally the deck's own \title{}) is dropped
+			% outright rather than shrunk -- confirmed via grep that
+			% \title{} is never called anywhere in this project, so that
+			% line has always been silently empty.
+			\vbox{\vskip0.3em
+				\setbox\beamer@tempbox=\hbox{\insertsection}%
+				\hbox{\ifdim\wd\beamer@tempbox>1pt{\hskip4pt\raise3pt\hbox{\vrule
+							width0.4pt height7pt\vrule width 9pt
+							height0.4pt}}\hskip1pt\hbox{\begin{minipage}[t]{0.95\textwidth}\def\breakhere{}\insertsection\end{minipage}}\fi%
+				}%
+				\setbox\beamer@tempbox=\hbox{\insertsubsection}%
+				\hbox{\ifdim\wd\beamer@tempbox>1pt{\hskip17.4pt\raise3pt\hbox{\vrule
+							width0.4pt height7pt\vrule width 9pt
+							height0.4pt}}\hskip1pt\hbox{\begin{minipage}[t]{0.95\textwidth}\def\breakhere{}\insertsubsection\end{minipage}}\fi%
+				}%
+				\setbox\beamer@tempbox=\hbox{\insertshortframetitle}%
+				\hbox{\ifdim\wd\beamer@tempbox>1pt{\hskip30.8pt\raise3pt\hbox{\vrule
+							width0.4pt height7pt\vrule width 9pt
+							height0.4pt}}\hskip1pt\hbox{\insertshortframetitle[width=0.9\textwidth]}\fi%
+				}%
+				\vskip0.3em}%
+		}%
+		\nointerlineskip
+		\insertnote
+	}
+	\setbeamertemplate{note page}[gothampresenter]
+	\makeatother
 \fi
 \directlua{
 	function gothamZeroPad(n) if n < 10 then return "0" .. n else return "" .. n end end
