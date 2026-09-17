@@ -5074,10 +5074,14 @@
 	% accessibility" comment): the black backdrop is purely decorative
 	% letterboxing, marked the same way as titleframe's/quoteframe's own
 	% background boxes so a screen reader skips it. The image itself is left
-	% unmarked -- same as everywhere else in this file, since this project
-	% has no alt-text infrastructure yet for imported images generally (a
-	% separate, not-yet-made decision -- see README.md's accessibility
-	% section for the same open question about the institute logo).
+	% unmarked *here* -- not because it goes undescribed, but because
+	% \includegraphics's own global wrapper (this file's own
+	% \RenewDocumentCommand{\includegraphics}, "PDF accessibility" section)
+	% already does that job for every \includegraphics call site, this one
+	% included: it records the image's role/source with
+	% gothamalt.mark()/recordSource() and, for an informative image, emits
+	% its short alt text as an invisible layer via \gothamAltInvisible
+	% before the image itself. Nothing extra is needed at this call site.
 	\gothamArtifactBegin{/Type /Background}%
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
