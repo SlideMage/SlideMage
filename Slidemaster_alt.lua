@@ -30,10 +30,10 @@ gothamalt = { by_name = {}, by_stem = {} }
 
 -- Minimal RFC-4180-ish field splitter: handles quoted fields with embedded
 -- commas and doubled quotes, because every short_alt/source column can
--- contain both once the SlideManager review tab writes them. A trailing
+-- contain both once the SlideMage review tab writes them. A trailing
 -- empty field is not reported, which is fine -- only columns 1 (image),
 -- 2 (role), 4/5 (short_alt_en/source_en) and 7/8 (short_alt_de/source_de)
--- are ever read here (3 and 6, status_en/status_de, are for SlideManager's
+-- are ever read here (3 and 6, status_en/status_de, are for SlideMage's
 -- own UI, not compile-time gating -- see alt_images.py's own docstring).
 local function parse_line(line)
 	local fields, pos, len = {}, 1, #line
@@ -167,7 +167,7 @@ end
 -- override fallback: an untranslated German short_alt just means no
 -- invisible alt text for that image under a German compile, same as an
 -- empty English one does today -- real "is this deck's alt text
--- complete" gating belongs in the SlideManager review UI, not here.
+-- complete" gating belongs in the SlideMage review UI, not here.
 function gothamalt.altText(reference, language)
 	local entry = gothamalt.lookup(reference)
 	if entry == nil or entry.role == "decorative" then

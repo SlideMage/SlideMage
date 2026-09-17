@@ -293,12 +293,12 @@ TSWLatexianTemp*
 ## Claude Code local (per-machine) settings:
 .claude/settings.local.json
 
-## Python bytecode cache (decks/*.py helper scripts, slidemanager/):
+## Python bytecode cache (decks/*.py helper scripts, slidemage/):
 __pycache__/
 *.pyc
 
-## Virtual environment (slidemanager's PySide6 migration, see
-## slidemanager/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
+## Virtual environment (slidemage's PySide6 migration, see
+## slidemage/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
 ## committed -- kept here as a legacy-path safety net only. As of
 ## 2026-08-11, the real venv no longer lives inside the project folder at
 ## all: this whole folder is Dropbox/SyncBackPro-synced, and a venv is
@@ -312,13 +312,13 @@ __pycache__/
 ## system Python is the Microsoft Store package, which silently broke venv
 ## isolation entirely; confirmed directly, 2026-08-11), outside any synced
 ## folder, one real venv per machine, auto-created/auto-migrated by
-## `SlideManager.bat` on first run -- see its own comments. This `.venv/`
+## `SlideMage.bat` on first run -- see its own comments. This `.venv/`
 ## entry just stays as a guard in case one ever gets created here again by
 ## habit (e.g. `python -m venv .venv` run by hand).
 .venv/
 
-## PyInstaller build output (see slidemanager/PYSIDE6_MIGRATION.md and
-## build_slidemanager_exe.bat) -- `build/` is disposable intermediate
+## PyInstaller build output (see slidemage/PYSIDE6_MIGRATION.md and
+## build_slidemage_exe.bat) -- `build/` is disposable intermediate
 ## PyInstaller cache, not the shippable artifact, and is directed outside
 ## this synced folder entirely by the build script for the same file-count
 ## reason as the venv above. `dist/` is the actual compiled app -- NOT
@@ -328,7 +328,7 @@ __pycache__/
 build/
 dist/
 
-## SlideManager's slide-source editor: a local undo net (full timestamped
+## SlideMage's slide-source editor: a local undo net (full timestamped
 ## history, kept per slide file) for its own saves -- not meant to be
 ## committed (2026-07-23):
 slides/.backups/
@@ -371,11 +371,11 @@ pdf_render_cache/
 # Ollama drafting of a hand-drawn diagram that has no media/ file at all.
 tikz_illustration_previews/
 
-# SlideManager's own local UI preferences (app_settings.py -- currently
+# SlideMage's own local UI preferences (app_settings.py -- currently
 # just dark mode) -- a personal taste, not project content worth
 # version-controlling/diffing on every toggle, same category as
 # .claude/settings.local.json above. Still a plain file physically inside
-# slidemanager/ (not the Windows registry), so the folder's own cloud-sync
+# slidemage/ (not the Windows registry), so the folder's own cloud-sync
 # client -- not git -- carries it across machines; see dist/ above for the
 # identical git-ignored-but-not-sync-ignored precedent.
-slidemanager/app_settings.json
+slidemage/app_settings.json

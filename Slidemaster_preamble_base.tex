@@ -890,7 +890,7 @@
 % below use this, not a literal \includegraphics) -- an invisible link to
 % the generated appendix's own agenda slide, but only on a compile that
 % actually has one (\ifdefined\gothamAppendixTocOverride, \def'd by
-% compiler.py's wrapper exactly when SlideManager's "Generate appendix
+% compiler.py's wrapper exactly when SlideMage's "Generate appendix
 % TOC" checkbox is on, the same \ifdefined-hook pattern as
 % \gothamPresenterModeOverride/\deckversionoverride). \hypertarget{
 % gothamAppendixAgenda}{} is placed on that generated agenda slide itself
@@ -1253,7 +1253,7 @@
 	% entirely. Used by \hyperlink{<bare id>}{...} anywhere in the deck
 	% (README.md's own "Non-linear navigation" section) to jump straight to
 	% this slide -- e.g. an excursus link's own "Back" button, or a
-	% generated appendix's thumbnail grid (SlideManager's "Generate
+	% generated appendix's thumbnail grid (SlideMage's "Generate
 	% appendix TOC" checkbox, appendix_toc.py).
 	%
 	% Known, pre-existing limitation, not introduced by this: if the same
@@ -1278,7 +1278,7 @@
 % whether *this* frame actually has a tracked version to show at all --
 % reset false at the top of every \slide{}/\omitslide{}/\conditionalslide{}
 % call (current.tex may or may not embed a \setSlideVersion{} of its own,
-% see SlideManager's own automatic-versioning save flow) so an untracked
+% see SlideMage's own automatic-versioning save flow) so an untracked
 % slide's footer never inherits whatever the immediately preceding frame
 % last set. \slideversion{}/\omitslideversion{} instead set it directly
 % from their own second argument -- already an explicit version number at
@@ -1527,16 +1527,16 @@
 }
 \makeatother
 
-% \deckoutputfolder[version]{path} - declares where SlideManager should
+% \deckoutputfolder[version]{path} - declares where SlideMage should
 % place this deck's own compiled PDF, read directly out of this file's own
-% source text by slidemanager/deck_scan.py (OUTPUT_FOLDER_RE) at deck-scan
+% source text by slidemage/deck_scan.py (OUTPUT_FOLDER_RE) at deck-scan
 % time -- never expanded by LaTeX itself. A silent no-op here (2026-09-16,
 % direct instruction) purely so a deck carrying this directive still
 % compiles cleanly under a plain lualatex/TeXstudio run, the same reason
 % \deckversionoverride's own \ifdefined door (used elsewhere in this file)
 % never needs a real definition either. #1 (the optional [version]) is
 % intentionally unused: unlike \deckversion above, this macro's own
-% argument is never inspected by LaTeX at all, only by SlideManager's own
+% argument is never inspected by LaTeX at all, only by SlideMage's own
 % Python-side regex -- see README.md's "Custom output folder" section for
 % the actual directive syntax.
 \newcommand{\deckoutputfolder}[2][]{}
@@ -1550,7 +1550,7 @@
 % mechanically (same \xdef for the same \deckversion[\deckversionoverride]-
 % style macro-argument reason documented above), so every deck gets the
 % same \ifdefined\decklanguageoverride ... \fi override door
-% \deckversionoverride already has, for SlideManager's own one-off render
+% \deckversionoverride already has, for SlideMage's own one-off render
 % preview (slide_preview.py) and for ad-hoc hand-testing via
 % decks/#workdeck.tex -- never wired into the Active-decks table itself.
 \newif\ifgothamGerman
@@ -1915,7 +1915,7 @@
 % \fullbleedframe (both defined further down) render via beamer's "plain"
 % frame option, which suppresses the footline entirely -- so the visible
 % footer's own "(slide id: ...)" text (see the footer template below) never
-% reaches those pages. SlideManager's own compile-time preview snapshot
+% reaches those pages. SlideMage's own compile-time preview snapshot
 % (slide_snapshot.py) identifies which slide a compiled page belongs to
 % purely by scanning its extracted text for that "slide id: XXX" string, so
 % a plain frame with none of that text never gets a snapshot captured at
@@ -2143,7 +2143,7 @@
 % \tikzillustration{ID}: extends the alt-text system above -- which only
 % ever sees a real \includegraphics file -- to a hand-drawn tikz diagram
 % with no file behind it at all (ALT_TEXT_NOTES.md). #2 is the
-% illustration's own opaque, SlideManager-assigned ID (never hand-invented
+% illustration's own opaque, SlideMage-assigned ID (never hand-invented
 % -- same "permanent ID" convention slides themselves use, so a description
 % survives edits to the drawing itself); #1 (optional) is passed straight
 % through as the inner tikzpicture's own options. The body between
@@ -2152,12 +2152,12 @@
 % Role (decorative/informative) is looked up exactly the way an image's is
 % -- gothamalt.mark(), the same Lua call \includegraphics's own wrapper
 % above makes, against the same media/alt-text.csv -- rather than a second
-% bracket argument SlideManager would otherwise have to text-edit into this
-% call in place every time the role changes. SlideManager writes this
+% bracket argument SlideMage would otherwise have to text-edit into this
+% call in place every time the role changes. SlideMage writes this
 % illustration's own row into media/alt-text.json (and its compile-time
 % media/alt-text.csv projection) keyed "tikz:ID", never a real media/ path;
 % gothamalt.mark() itself needed no changes, since it already keys purely
-% on whatever string it is given (slidemanager/alt_images.py).
+% on whatever string it is given (slidemage/alt_images.py).
 %
 % A decorative illustration is wrapped in the same \gothamArtifactBegin{/Type
 % /Background}/\End pair sideimageframe's/fullbleedframe's own decorative
@@ -2312,13 +2312,13 @@
 % This cache is deliberately *not* self-invalidating by date/content -- it
 % keeps reporting an old timestamp indefinitely once written, across
 % unrelated future compiles, unless something clears it first.
-% SlideManager's compiler.py does exactly that: before every job it deletes
+% SlideMage's compiler.py does exactly that: before every job it deletes
 % that job's own .build/<jobname>.* (which includes <jobname>.timestamp), so
-% a run through SlideManager always gets a fresh stamp. An ad-hoc TeXstudio
-% compile without going through SlideManager first may show a stale stamp if
+% a run through SlideMage always gets a fresh stamp. An ad-hoc TeXstudio
+% compile without going through SlideMage first may show a stale stamp if
 % .build/ already has one left over from an earlier session -- delete
 % .build/<jobname>.timestamp by hand (or just compile that job once through
-% SlideManager) if that matters for what you're checking.
+% SlideMage) if that matters for what you're checking.
 %
 % \ifgothamShowCompileTimestamp: on by default (unchanged existing
 % behavior); a deck can call \gothamShowCompileTimestampfalse (e.g. right
@@ -2330,7 +2330,7 @@
 % jobname-caching quirks aside. \gothamShowCompileTimestamptrue switches it
 % back on again once that pass is done.
 %
-% \gothamFooterTimestampOverride: SlideManager's own hook into the above,
+% \gothamFooterTimestampOverride: SlideMage's own hook into the above,
 % mirroring \deckversionoverride's own pattern (compiler.py's wrapper file
 % \def's it, before \input{}ing the real deck, whenever the GUI's "Footer
 % timestamp" checkbox is unticked for a batch) -- \ifdefined here, not
@@ -2350,10 +2350,10 @@
 	\gothamShowCompileTimestamptrue
 \fi
 
-% \gothamPresenterModeOverride: SlideManager's own hook for a "Presenter"
+% \gothamPresenterModeOverride: SlideMage's own hook for a "Presenter"
 % compile -- a separate output alongside the plain instructor PDF, never a
-% toggle on it (see slidemanager/compiler.py's own CompileJob.presenter
-% field and slidemanager/qt_deck_table.py's own "Presenter" checkbox,
+% toggle on it (see slidemage/compiler.py's own CompileJob.presenter
+% field and slidemage/qt_deck_table.py's own "Presenter" checkbox,
 % independent of the three version checkboxes the same way "After-course,
 % per chapter" already is). Same \ifdefined-hook pattern as
 % \gothamFooterTimestampOverride just above: compiler.py's wrapper file
@@ -4931,7 +4931,7 @@
 	% the title slide itself -- but it does mean the title slide now
 	% consumes a real "framenumber" step, same as any other frame, so the
 	% deck's first real content slide is numbered 2, not 1 (matching this
-	% slide's own physical position in the compiled PDF -- SlideManager's
+	% slide's own physical position in the compiled PDF -- SlideMage's
 	% own deck-editor "Render" preview relies on this: it derives a
 	% previewed slide's page number from its plain list position, which
 	% only equals the real compiled frame number when every \slide{}-family
@@ -4939,7 +4939,7 @@
 	\begin{frame}[plain,t]%
 	% This frame has no footer to carry the usual "(slide id: ...)" marker
 	% -- see \gothamInvisibleSlideIDStamp's own comment above for why that
-	% breaks SlideManager's compile-time preview snapshot, and what this
+	% breaks SlideMage's compile-time preview snapshot, and what this
 	% stamps instead.
 	\gothamInvisibleSlideIDStamp%
 	% A bare tikzpicture behaves like an hbox (same reasoning as the footer
