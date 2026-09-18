@@ -1,0 +1,1514 @@
+"""SlideMage's own version string, shown in the main window's title bar and
+the Info menu's version-history dialog (formerly gui.py's own toolbar,
+back when that was the only display for it). Renamed from "SlideManager"
+to "SlideMage" in v3.20.0 (see that entry below) -- older history entries
+below intentionally still say "SlideManager"/"slidemanager", since they're
+a dated record of what was true at each past release, not living
+documentation.
+
+VERSION_NUMBER below is hand-maintained, not derived -- a semantic-looking
+"v2.9.0" says a lot more at a glance than a bare git hash ever did, but
+only as long as it's kept current. IMPORTANT, standing instruction: bump it
+in the same commit as any change to this app's code (SlideMage/ and
+add_deck_headers.py) -- patch for a small fix, minor for a new feature or
+UI change, major for a breaking/structural change. Never leave it stale;
+a version number nobody trusts is worse than none at all.
+
+Estimated at v2.9.0 on 2026-07-28 from this app's commit history (`git log
+--oneline -- slidemanager/`): v1.x covered the original compile/archive
+tool through its Stop-compilation button; v2.0 began with the deck
+slide-list editor, slide-source editor, and render-to-PDF, followed by
+syntax highlighting, dark mode, several rounds of layout/UX fixes, the
+deck-editor Undo button, a slide-edit render overhaul, the deck-source
+"Source" button, return-to-originating-tab, and horizontal auto-scroll --
+roughly nine minor-feature rounds into the v2 line by the time of this
+estimate. This own version-display feature, plus this same round's
+PDF-relocation copy-instead-of-move fix, round it up to v2.9.0. Continue
+incrementing from here; this estimate does not need to be re-derived.
+
+The nine entries below (v2.10.0 through v2.33.0) were backfilled on
+2026-08-26 -- direct instruction, after it was pointed out that a real
+v2.34.0 had existed for several days before the multi-language work's own
+v3.0.0 correction (see that entry below), which this docstring's own
+history skipped straight past. VERSION_NUMBER itself was kept current the
+whole time (every commit in this range does carry its own real bump --
+confirmed directly via `git show <commit>:slidemanager/version.py` at
+each one, not assumed), but no dated paragraph was ever written for any
+of them; the per-bump prose-history habit these entries model only began
+with v3.0.0. Reconstructed the same way the v2.9.0 estimate above was --
+from `git log`/`git show` against the real commits, not from memory.
+
+v2.10.0 (2026-07-28 to 2026-08-11, reconstructed 2026-08-26): A slide search box, a formatting toolbar, and the full Tkinter to PySide6 migration, followed by a long run of Qt-specific polish. A top-right
+slide search box; a second toolbar row for text-formatting/insertion
+shortcuts; and the full PySide6 migration -- ten phases (environment
+scaffold, QSS theme builder, main window shell, deck table + compile
+threading, deck slide-list editor, slide editor, add-slide dialog, a
+polish pass, and the actual cutover from Tkinter) -- followed immediately
+by a long run of Qt-specific fixes and polish: tab elision, richer syntax
+highlighting, header-comment fold, title-bar version display, a distinct
+format toolbar, an extended insert-command menu, visible checkboxes,
+itemize-wrap indentation, red Close buttons, a checkbox tick mark,
+colored Text-color dropdown items, selected-tab text clipping,
+active/inactive tab background colors, compile status dots kept next to
+their own checkbox, hidden (not just disabled) checkboxes for unsupported
+deck versions, an Underline formatting button, the app icon (rebuilt
+several times from updated source art), and "Close and save" greyed out
+until a slide actually has unsaved changes. Also: "Stop compilation" made
+to actually interrupt a stuck PDF move, and the PyInstaller build
+infrastructure (fixing the machine-local venv path on a machine whose
+system Python is the Microsoft Store package).
+
+v2.19.0 (2026-08-14, reconstructed 2026-08-26): Image descriptions and accessible transcripts shipped in four phases: decorative-image marking, a review tab, Ollama batch drafting, and transcript generation. Image descriptions and
+accessible transcripts, in four phases (see ALT_TEXT_NOTES.md) --
+decorative-image marking (a LuaTeX \\includegraphics wrapper tags them
+/Artifact so screen readers skip them, verified with pikepdf across every
+awkward call site); a review tab backed by per-slide %%ALT comment blocks
+with a three-state staleness model (hashing comment-stripped slide source
+plus every referenced image's own bytes, so a version-note edit doesn't
+cry wolf but a re-cropped chart does); local-Ollama batch drafting,
+resumable across sessions, that never overwrites a reviewed description
+and detects the classic "faint scanned chart -> fabricated evenly-spaced
+values" failure mode; and Markdown/HTML transcript generation that
+resolves deck versions exactly as the PDF compile does. This one commit
+jumps nine minor versions from v2.10.0 -- almost certainly several
+same-session internal bumps that were never individually committed, the
+same pattern this project's own later sessions repeat.
+
+v2.20.0 (2026-08-14, reconstructed 2026-08-26): The invisible alt-text PDF layer: an informative image's short alt is typeset invisibly on the page for screen-reader text extraction. The invisible alt-text
+PDF layer (phase 5) -- an informative image's short alt is typeset beside
+it in PDF text rendering mode 3 (invisible on the page, returned by text
+extraction), verified via pdftotext/PyMuPDF and a pixel-identical render
+with and without it; plus citation rendering gained volume/issue/page
+numbers.
+
+v2.20.6 (2026-08-14, reconstructed 2026-08-26): A checkpoint before retiring the %%ALT block format: a drafting truncation fix, dark-mode contrast, a non-previewable-image button, and two transcript Markdown leaks fixed. A checkpoint before
+retiring the %%ALT block format -- a drafting truncation fix (retry at a
+larger token budget on dense charts), dark-mode scrollbar handle
+contrast, an open-externally button for non-previewable images, per-image
+role/status layout for multi-image slides, a collapsible alt-text comment
+block in the source editor, and two systemic LaTeX-to-Markdown leaks
+fixed in transcript.py.
+
+v2.23.0 (2026-08-15, reconstructed 2026-08-26): Alt-text centralized into a single media/alt-text.json, compile-time PNG previews, per-slide transcript summaries, and a backgrounded fix for a PDF-move hang. Alt-text centralized into
+a single media/alt-text.json (role/short/long/takeaway-default shared
+once per image instead of split across a CSV and a per-slide comment
+block, migrated with no real conflicts to resolve), compile-time PNG
+previews refreshed by any compile that already happens, free-text
+per-slide transcript summaries, and a real hang fixed -- a stuck PDF move
+(cloud sync holding a lock) could freeze the whole compile queue; it now
+runs on its own detached, safely-retrying background thread instead.
+
+v2.24.0 (2026-08-15, reconstructed 2026-08-26): Template- and resolution-aware slide previews, a thumbnail-grid view, bulk preview regeneration, and automatic per-image source footnotes. Slide previews made
+template- and resolution-aware (so two institutions' decks stop sharing,
+and corrupting, one cache), each rendered directly from the compiled PDF
+page instead of downsampled; a thumbnail-grid view for the deck editor;
+and a bulk "Update previews" regenerate. The same version number also
+covers 2026-08-20's automatic "Image source(s):" footnote (every image's
+citation stored once and rendered automatically at compile time instead
+of a hand-authored \\source{} per slide -- 167 of 281 images given a real
+source, 152 slides' now-redundant \\source{} calls removed) -- committed
+five days later with no version bump of its own.
+
+v2.31.0 (2026-08-20, reconstructed 2026-08-26): Slidemaster.bib now auto-sorts on every Edit .bib tab open and close. Slidemaster.bib
+auto-sorted on every "Edit .bib" tab open/close. Jumps seven minor
+versions from v2.24.0, the same same-session-internal-bumps pattern as
+v2.19.0 above.
+
+v2.32.0 (2026-08-20, reconstructed 2026-08-26): A deck editor List/Thumbnail/Grid view toggle, deck-driven Update Previews, Edit/Duplicate deck-row buttons, and a source-editor Find bar. The deck editor's
+List/Thumbnail/Grid view toggle; "Update previews" made deck-driven
+(scans every deck for which template/slide combinations are actually in
+use, rather than asking which single institution to compile everything
+under); "Quick compile" replaced by separate Edit/Duplicate deck-row
+buttons; and a Find bar in the slide-source editor (also covering
+Slidemaster.bib and deck .tex files, which open through the same editor).
+
+v2.33.0 (2026-08-21, reconstructed 2026-08-26): The whole per-slide version-tracking system -- \\setSlideVersion{}, the footer's version display, and the freeze-then-bump Save dialog -- migrated onto all 650 slides at once. The whole per-slide
+version-tracking system this project still uses today --
+\\setSlideVersion{}, the footer's "v1.2.0" display, and SlideManager's own
+freeze-then-bump Save dialog (slide_versioning.py), migrated onto all 650
+existing slide files at once; "Include footer timestamp" defaulted off;
+and a compiled PDF's byte size is now verified before declaring a
+relocation successful, instead of trusting "no exception raised" (a
+cloud-sync-interrupted copy could previously produce a silently-accepted
+0-byte PDF).
+
+v3.0.0 (2026-08-24, direct instruction): Multi-language (EN/DE) support: slide-language filenames, deck-level \\decklanguage, rename/cross-reference tooling, and alt-text translation. Multi-language (EN/DE) support
+-- new slide-language filename convention, deck-level \\decklanguage,
+the slide-rename/cross-reference tooling, alt-text translation, language-
+aware transcripts/preview cache (see LANGUAGE_NOTES.md) -- was first
+landed as a minor bump (v2.34.0), then corrected to major on direct
+instruction: a project-wide new capability like this warrants major even
+though it's additive/non-breaking, not just "new feature or UI change."
+
+v3.1.0 (2026-08-25, direct instruction): The app's first menu bar (Settings), plus per-(model, source language, target language) translation prompt configuration. A Settings menu (this app's
+first menu bar) -- dark mode moved there from its own toolbar checkbox,
+plus per-(model, source language, target language) translation prompt
+configuration (translation_prompts.py, qt_settings_dialog.py), used by
+alt_draft.OllamaTranslationBackend instead of the built-in default
+whenever a matching entry exists. Also switched that backend from one
+combined structured-JSON call per image to three separate plain "translate
+this text" calls (short/long/takeaway) after direct testing showed the
+combined approach unreliable on a dedicated MT model (sun_leaf/HY-MT).
+
+v3.2.0 (2026-08-25, direct instruction): A user-editable default translation prompt, and one real bug caught in the same round: a storage-format change had silently dropped two already-saved per-model prompts. A user-editable *default*
+translation prompt (translation_prompts.get_effective_prompt(),
+Settings dialog's own "Default prompt" group), used for any model/pair
+with no specific override -- get_prompt() alone is no longer the whole
+story. Seeded with the translategemma:27b prompt. Also widened the
+Settings dialog's From/To language combos, which an editable QComboBox
+had sized down to a near-invisible sliver around their own 2-character
+text. Caught and fixed one real bug in the same round: the storage
+format change needed for the default prompt (a bare {model: ...} dict
+becoming {"default": ..., "models": {...}}) silently dropped the two
+already-saved per-model prompts the first time it ran, since the old
+loader read the old flat file shape as empty -- caught by re-verifying
+get_effective_prompt()'s exact-match resolution afterward, not assumed
+correct, and fully recoverable since both prompts' exact wording was
+still known. No real translation work was affected -- the corruption
+happened after all 91 images from this same session were already done.
+
+v3.2.1 (2026-08-25, direct instruction): Moved translation_prompts.json and dark mode's own storage into slidemanager/ itself, off the Windows registry, so both travel with the synced project folder. "everything pertaining to
+SlideManager" belongs inside slidemanager/ itself and must keep working
+purely from that folder being synced (this project's whole tree already
+lives in a synced location) -- moved `translation_prompts.json` from the
+project root into slidemanager/ (STORE_PATH now resolved from
+`__file__`, not PROJECT_ROOT), and replaced dark mode's one-day-old
+QSettings/registry storage with a plain gitignored `slidemanager/
+app_settings.json` file (new module, app_settings.py) -- a registry key
+is tied to one PC and would never have traveled with the folder to
+another machine the way a file inside it does.
+
+v3.3.0 (2026-08-25, direct instruction): Eight UI/workflow requests in one round, including a transcript-preview button, a Tabs menu, a Housekeeping menu, and a Duplicate-slide dialog with optional auto-translate. Eight UI/workflow requests in one
+round -- a "Render transcript" button on the slide-source editor (one-slide
+transcript preview in its own tab, transcript.py's generate_single_slide(),
+qt_transcript_preview_tab.py); a "Tabs" menu (Archived decks/Images/Edit
+.bib, none open by default any more, all closable -- previously two of
+those three were permanent tabs and the third was a toolbar button); a
+"Housekeeping" menu replacing the five maintenance buttons that used to
+fill the bottom toolbar row, which is now gone entirely; unused_content.py
+now strips LaTeX comments before matching, so a commented-out reference no
+longer masks an otherwise genuinely unused file; "Quick navigation:" label
+added before the deck editor's chapter combo; the slide-source editor's
+toolbar split into two rows (Save/Revert/Find/Duplicate/Language above,
+every render-related control -- Preview/Render version/Render language
+(now hidden unless the slide's own text actually uses
+\\multilingualtext{}{})/Render to PDF/Render transcript -- below); the find
+bar repositioned to sit below the formatting toolbar rather than below the
+folded header-comment block; and a "Duplicate slide" button
+(qt_duplicate_slide_dialog.py) offering a plain same-language copy or a
+cross-referenced translation into another language, the latter with an
+optional (EN->DE only) machine-translation pass over the raw slide body
+via alt_draft.OllamaTranslationBackend's new translate_text() method.
+
+v3.3.1 (2026-08-25, direct instruction): The Images tab's Draft all… button now visually doubles as a red Stop button for as long as a batch is running. The Images tab's "Draft all…"
+button now reuses the Close buttons' own red-outline/red-fill-on-hover
+style (qt_theme.py's CLOSE_BUTTON) for as long as it doubles as "Stop" --
+a drafting run in progress used to be signalled by text alone ("Stop"),
+easy to miss in a long log-scrolling session; same
+setObjectName()-then-unpolish()/polish() fix qt_slide_preview_popup.py's
+own status_label already used to pick up a QSS rule change on an
+already-styled widget.
+
+v3.3.2 (2026-08-25, direct instruction): Three live-use fixes: the Render-language row's visibility now recomputes live, open deck editors refresh after a rename, and Stop is now rescindable. Three small fixes reported while
+using the app live. The render bar's "Render language:" row previously
+computed its own visibility once, from the file as opened -- renaming a
+slide EN -> mult (or typing in a fresh \\multilingualtext{}{} call) left
+it hidden until a close/reopen; new _update_render_language_visibility()
+recomputes it from live state (current tag + current buffer) after both a
+rename and a save, and now also shows as soon as a slide is tagged "mult"
+at all, not only once the body already uses the macro. Renaming a slide's
+language also left any already-open deck-editor tab showing it under its
+old id-slug (that reference no longer resolving to a file on disk) --
+new SlideManagerWindow.refresh_open_deck_editors() reloads the Active/
+Archived tables and every open deck-editor tab from disk, called right
+after a successful rename. And the Images tab's "Stop" button (mid-
+drafting-batch) is now rescindable: clicking it again while it reads
+"Stopping…" flips the stop flag back off instead of being a one-way
+commitment.
+
+v3.3.3 (2026-08-25, direct instruction): The Insert command… combo gained \\multilingualtext{EN}{DE}, seeding a selection into the first braces. "Insert command..." combo (the
+slide-source editor's own formatting toolbar) gained
+\\multilingualtext{EN}{DE} -- a selection goes into the *first* braces
+(assumed English, matching that macro's own argument order) and the
+cursor lands in the empty second braces ready for the translation; with
+no selection, both pairs are empty and the cursor lands in the first one.
+New _insert_multilingual(), a two-argument sibling of _wrap_or_insert's
+existing single-argument \\macro{...} wrapping.
+
+v3.3.4 (2026-08-25, direct report against a real "mult" slide, g6q):
+Fixed a "mult" slide's transcript showing both languages concatenated together, from a title-stripping regex that collapsed both braces into one. Transcript.render_slide() never resolved \\multilingualtext{EN}{DE} calls
+before extracting the title/body, so a "mult" slide's transcript showed
+*both* languages concatenated together -- alt_blocks._slide_title()'s own
+macro-name-stripping regex only removes the bare "\\multilingualtext"
+token, then strips every remaining brace indiscriminately, collapsing
+"{EN}{DE}" into "ENDE" rather than picking one. New
+_resolve_multilingual_text() (brace-matched, so a nested \\textbf{...}
+inside either argument survives) runs on the raw source text first, before
+anything else derives from it. Verified directly against g6q's own file,
+read-only: EN and DE renders each now show only their own language's
+title.
+
+v3.3.5 (2026-08-25, direct report -- running image drafting and
+translation at the same time crashed): A single app-wide Ollama mutex now serializes every drafting/translation call, after running two at once crashed the local Ollama server. SlideManagerWindow gained a single
+app-wide Ollama mutex (try_start_ollama_task()/end_ollama_task()) that
+every Ollama-calling entry point now goes through -- single and batch
+drafting, single and batch translation, the "Tune prompt…" dialog, and
+qt_duplicate_slide_dialog.py's auto-translate option. A second attempt
+while one is already running is refused with a message naming what's
+currently running, rather than being allowed to fire a second concurrent
+Ollama request; the crash is presumed to come from two different models
+being loaded into VRAM at once, a limit of the local Ollama server itself,
+not something this app can negotiate around, so a hard "one at a time" is
+the reliable answer rather than trying to detect which combinations are
+actually safe.
+
+v3.3.6 (2026-08-25, direct instruction): "Mark reviewed" renamed "Save and mark reviewed", and a plain "Save draft" now correctly un-reviews just that slide's own use of the image. Images tab's "Mark reviewed"
+button renamed "Save and mark reviewed" (it always saved too; the old
+name undersold that). More substantively, "Save draft" now explicitly
+un-reviews this slide's own use of the image it saves (use.reviewed = "")
+instead of leaving review status untouched -- previously, hand-editing a
+reviewed description via "Save draft" left it showing as "Reviewed"
+against text nobody had actually re-checked; only entry.status (shared
+across every slide using the image) is left alone, so another slide that
+already reviewed the same image is unaffected.
+
+v3.3.7 (2026-08-25, direct instruction): The drafting/translation model pickers now remember your last choice, and the menu bar gained System/Info entries including this version-history window. The Images tab's drafting-model
+and translation-model pickers, plus the "Duplicate slide" dialog's own
+auto-translate model choice, now remember the last one picked
+(app_settings.json's "drafting_model"/"translation_model" keys),
+preselected again on next launch if still installed --
+DEFAULT_TRANSLATION_MODEL stays as the fresh-install/not-installed-anymore
+fallback underneath that. Menu bar rearranged: "Settings" renamed
+"System" with "Exit SlideManager" added below Preferences; a new
+top-level "Info" action opens a version-history window that reads this
+module's own docstring directly via the new parse_history() (no separate
+changelog to maintain); Housekeeping's five actions now sit under two
+labelled QMenu sections, "Cleanup" and "Updating".
+
+v3.3.8 (2026-08-25, direct instruction/report): Three fixes to the per-image German translation workflow: a live staleness label, a backgrounded "Translate now", and an unsaved-edits prompt. Three fixes to the Images
+tab's per-image German translation workflow. The "translation matches
+current English text" label only ever reflected translated_from_hash as
+of when the editor was built -- editing the English short/long text, even
+saving it via "Save draft", never updated it until the whole editor was
+rebuilt from a fresh disk read; it now flips to the stale message the
+instant either field is edited and deliberately stays that way for the
+rest of the session (no live re-check against the original wording).
+"Translate now" blocked the whole app for the duration of three sequential
+Ollama calls -- backgrounded via a new per-_ImageEditor translation_done
+Signal, with a try/except around the cross-thread emit so a translation
+that outlives its own editor (the user navigated to a different slide
+while it was running) can't raise into the background thread instead of
+being silently discarded; the Ollama mutex is released from the
+background thread itself, not the GUI-thread signal handler, so it's
+never left held just because the editor is gone by the time the request
+finishes. And clicking "Translate now" with unsaved English edits now
+asks whether to translate the current draft or the version on disk,
+rather than silently always preferring the in-form draft.
+
+v3.3.9 (2026-08-25, direct instruction): Switching slides while a translation is in flight now asks first, instead of silently discarding the result. Switching to a different slide
+in the Images tab while one of the current slide's images has a
+translation in flight now asks first ("Switch anyway?") instead of
+silently discarding the result when it lands on a since-destroyed editor
+-- QListWidget.currentRowChanged is the one funnel this goes through, so
+a declined switch means reverting the list's own already-moved selection,
+not preventing it (confirmed directly: the selection has already changed
+by the time the signal fires). Deliberately does not fire during
+_populate_list()'s own systemic clear()+reselect after a save (a
+_suppress_switch_warning flag covers that whole call) -- confirmed
+directly that QListWidget.clear() itself fires currentRowChanged(-1) as a
+side effect, which would otherwise trip this check on a list that's
+mid-rebuild for reasons that have nothing to do with the user choosing to
+navigate away.
+
+v3.3.10 (2026-08-25, direct instruction): The Settings dialog gained an Ollama models tab that lists and can delete installed models. Settings dialog gained an
+"Ollama models" tab -- lists every installed model with its on-disk size
+(alt_draft.list_installed_models_detailed()) and can delete one via
+Ollama's own DELETE /api/delete (alt_draft.delete_model()), which removes
+its actual files from the local model store, not just something this app
+was tracking. Routed through the same app-wide Ollama mutex every
+drafting/translation call already uses, so a model can't be deleted out
+from under a batch that's actively using it.
+
+v3.3.11 (2026-08-26, direct instruction): Every closable tab now always shows its close ×, instead of only revealing it on hover. Every closable tab (deck/slide
+editors, Archived decks, Images, a transcript preview) now reserves extra
+width and always draws its close "x", instead of only revealing it -- into
+existing padding, no extra width reserved -- on hover. qt_closable_tab_bar.py's
+own hover-tracking machinery (mouseMoveEvent/leaveEvent/_hovered_index) is
+gone with it, since revealing the glyph on demand was its only reason to
+exist; hit-testing now just checks whichever tab a click actually landed
+on.
+
+v3.3.12 (2026-08-26, direct instruction): Backfilled the nine missing v2.10.0-v2.33.0 history entries this docstring had skipped straight over. Backfilled the nine missing
+v2.10.0-v2.33.0 history entries this file's own docstring had skipped
+straight over (see that block's own explanatory note, right after the
+v2.9.0 estimate above) -- a real documentation gap, not lost history: the
+version *number* was current the whole time, just never accompanied by a
+dated paragraph until v3.0.0. No functional change; parse_history()
+picks these up exactly like any other entry, so the Info window's
+version-history window now actually starts where the app's real history
+does.
+
+v3.3.13 (2026-08-26, direct report): Fixed settings/prompts silently resetting on every exe launch (a frozen-build temp-path bug), plus two smaller Images-tab and menu polish fixes. Fixed app_settings.py and
+translation_prompts.py both silently resetting on every launch of the
+compiled exe -- hand-edited translation prompts and the last-picked
+drafting/translation models never survived a restart. Root cause: both
+resolved their on-disk STORE_PATH from Path(__file__).resolve().parent,
+which inside a frozen PyInstaller one-file build points into a fresh temp
+extraction directory that's deleted on exit, not the real, persistent
+slidemanager/ folder next to the actual .exe -- every save "worked" (no
+error) but landed somewhere gone by the next launch. Never showed up in
+this session's headless tests since none of those ran from the actual
+compiled exe. Fixed both to resolve STORE_PATH from deck_scan.PROJECT_ROOT
+instead, reusing the frozen-vs-dev resolution deck_scan.py already had to
+solve the same problem for. Also: the Images tab was stretching far wider
+than its own content needed and its label wasn't left-aligned -- Qt's
+default QTabBar expanding=True was filling leftover bar width regardless
+of tabSizeHint()'s own close-glyph allowance from v3.3.11; fixed via
+setExpanding(False) plus an explicit text-align: left on QTabBar::tab. And
+the System menu's dropdown had almost no right-hand padding around its
+text -- this app's own blanket QWidget {...} QSS rule was already forcing
+Qt to render menus through QSS instead of native Windows chrome, whose
+default item padding is tighter, especially on the right; fixed with
+explicit QMenu/QMenu::item/QMenu::separator rules.
+
+v3.3.14 (2026-08-26, direct report): The Images tab now resets its own scroll position on every slide switch, and two stale doc references were fixed. The Images tab's form now resets its
+scroll position to the top on every slide switch -- previously the
+QScrollArea kept whatever position the just-destroyed previous slide's
+form had been scrolled to, so e.g. clicking "Save and mark reviewed" and
+landing on the next slide could show it scrolled partway down instead of
+from the top. Also, readme.md's "Translating image descriptions/
+citations" section still pointed at Settings -> Preferences... for
+per-model translation prompts -- stale since v3.3.x's menu rename to
+System; fixed, and added a line documenting the Ollama model-deletion tab
+from v3.3.10, which had no documentation anywhere.
+
+v3.3.15 (2026-08-26, direct report): Fixed the Images tab's still-centered label by hand-painting closable tabs instead of relying on Qt's own centered default. The Images tab's label still wasn't
+left-aligned after v3.3.14's `text-align: left` QSS attempt -- confirmed
+directly that Qt's built-in tab styles hardcode centered label painting
+and simply ignore that property, unlike most other QSS-styled controls.
+qt_closable_tab_bar.py's paintEvent() now draws each tab's shape via the
+style (still fully QSS-themed) but paints the label itself -- left-
+aligned, elided, underlined when selected, colored per its
+setTabTextColor() role -- instead of letting Qt's own always-centered
+label painting run at all. Also: the Settings dialog's Ollama models list
+is now multi-selectable (ctrl/shift-click), and "Delete selected..."
+deletes every selected model in one confirmation, reporting which ones
+(if any) failed rather than stopping at the first.
+
+v3.3.16 (2026-08-26, direct instruction/report): "Save draft" no longer jumps the Images tab back to the top, and "Translate now" gained a "Save, then translate" option. "Save draft" on the
+Images tab no longer jumps the form back to the top -- v3.3.14's scroll
+reset now only fires on an actual switch to a *different* slide (compared
+by path), not on the same-slide reload every save triggers. Fixing this
+surfaced a real pre-existing bug in _populate_list(): its own "re-show
+explicitly" fallback after setCurrentRow() could run unconditionally even
+when the currentRowChanged signal had already fired and handled the same
+row, silently double-building that slide's editors on every reload --
+harmless before (the second build just replaced the first with an
+identical one), but very much not once an editor's own in-flight work
+could get thrown away by it. Now only runs when _current_row_index shows
+the signal genuinely didn't fire. Also: an image's "Translate now" dialog,
+when the English draft has unsaved changes, now offers a third option
+alongside "Unsaved draft"/"Version on disk" -- "Save, then translate"
+-- which runs the same whole-slide Save draft the tab's own button does,
+then automatically starts translating this image's just-saved text on
+the freshly rebuilt editor, no second prompt needed.
+
+v3.3.17 (2026-08-26, direct report): Retuned the closable-tab close-× gap, and fixed "Save draft" still jumping to the top plus "Render to PDF" ignoring the footer-timestamp checkbox. The gap between a closable tab's
+label and its close "x" (e.g. the Images tab) was still visibly wide
+after v3.3.15's left-alignment fix -- confirmed directly (measuring the
+actual painted label/box positions) that the reserved width and the
+resulting visual gap don't move 1:1, since the tab's natural width
+already carries some built-in right-side slack before the close box's
+own allowance is added; retuned so the gap is genuinely half what it was
+(16px -> 8px), not just the reserved width. Also: "Save draft" on the
+Images tab was *still* jumping to the top of the form despite v3.3.16 --
+that fix compared the new slide against self._current, but
+_populate_list()'s own slide_list.clear() fires a transient
+_show_slide(None) as a side effect partway through every reload
+(confirmed directly), which was zeroing self._current, then the
+scrollbar itself, before the real same-slide reshow that followed it ever
+got a chance to matter. Now tracked via a dedicated
+self._last_shown_path that transient None call never touches, and the
+scrollbar is left alone entirely while view is None (nothing is visibly
+scrolled during that heartbeat anyway). And: the slide-source editor's
+own "Render to PDF" always showed the footer timestamp regardless of the
+main toolbar's "Include footer timestamp" checkbox -- that render path
+never read it at all. render_slide_text_to_pdf() gained a
+footer_timestamp parameter, mirroring compiler.py's own
+\\gothamFooterTimestampOverride hook for a full deck compile.
+
+v3.3.18 (2026-08-26, direct instruction): The Settings dialog now warns before closing with unsaved translation-prompt edits. The Settings dialog now warns
+before closing if either translation-prompt form (the shared default, or
+the per-model/per-language override currently shown) has unsaved edits --
+neither field saves on its own, only its own dedicated Save button does,
+so text sitting there when the dialog closed used to just vanish
+silently. Save/Discard/Cancel, routed through a reject() override (the
+one point the window's X button, Escape, and the Close button all already
+funnel through) so all three close paths are covered by a single check.
+Choosing Save re-runs each dirty form's own existing Save handler and
+only actually closes if that succeeds (an empty prompt, say, stays open
+with its own validation error already shown, same as clicking Save
+directly always did).
+
+v3.3.19 (2026-08-26, direct report): Another attempt at the persistent scroll-jump bug, this time by explicitly restoring the scroll position after Qt's own layout pass finishes. "Save, then translate" was still
+jumping to the top of the Images tab form, even with v3.3.17's fix
+(comparing the same-slide check against a dedicated
+self._last_shown_path rather than self._current). Root cause this time:
+that fix only ever left the scrollbar's *existing* value alone rather
+than actively restoring it -- and every editor on the slide is destroyed
+and rebuilt in between (setParent(None) on each, then new ones added),
+which can itself shrink this scroll area's content down to nothing for a
+moment. A real running Qt event loop can process that intermediate
+resize and clamp the scrollbar's value right then, before the new editors
+are even added back -- invisible to a synchronous headless test, since
+nothing yields to the event loop for that intermediate layout pass to
+actually run mid-test. _show_slide() now explicitly captures the
+scrollbar's value before tearing anything down and restores it via
+QTimer.singleShot(0, ...) afterward -- deferred one real event-loop tick,
+so it runs *after* Qt has already sized the scroll area for the new
+editors instead of racing that resize.
+
+v3.3.20 (2026-08-26, direct instruction): A project-wide full-text slide search, plus on-demand PNG rendering of .pdf media for the Images tab preview and Ollama drafting. Two new features. First, a
+project-wide full-text slide search (slide_search.py) -- unlike the
+toolbar's existing "Find slide:" box, which only autocompletes on a
+slide's own id/slug, this searches every slide's raw .tex body text
+(case-insensitive substring, re-scanned fresh each search rather than a
+maintained index, since ~665 small files scan in well under a second once
+the OS has them in its own file cache). A new "Search text..." button
+next to "Find slide:" (also Ctrl+Shift+F) opens a results dialog
+(qt_slide_search_dialog.py) showing each match's slide id/title and a
+snippet of context; double-clicking one opens it in the slide editor.
+Second, .pdf media (media_render.py, PyMuPDF-backed, mirroring
+slide_snapshot.py's own mtime-based cache-freshness check) is now
+rendered to a cached PNG on demand for both the Images tab's own preview
+(previously just "not previewable here" for every .pdf) and Ollama
+drafting (previously silently skipped as undraftable, same as .eps still
+is) -- the slide's own \\includegraphics{...pdf} is untouched either way,
+only this SlideManager-side pipeline ever reads the rendered PNG. Minor
+bump, matching this session's own precedent for a new capability sized
+like this one (e.g. v3.3.9's switch-away warning, v3.3.10's Ollama model
+deletion).
+
+v3.3.21 (2026-08-26, direct instruction): Renamed the slide-search button and lengthened its result snippets. The slide-search button reads
+"Search all slide texts..." (was "Search text..."), and its results'
+context snippets are longer (150 characters of context on each side of a
+match, up from 60 -- long enough to actually place a match in context).
+
+v3.3.22 (2026-08-27, direct report): Two more attempts at the persistent scroll-jump bug, plus a try/except around the auto-translate call so a failure there stops being silent. "Save, then translate" was *still*
+jumping to the top, even with v3.3.19's fix (a headless test of the exact
+same mechanism had passed) -- and separately reported not visibly
+starting the translation at all. Two changes, since the offscreen/headless
+environment this project's own tests run in can't fully confirm either
+theory (no real window, so no real native resize/paint round-trips to
+race, and stderr from an uncaught exception is invisible in the compiled
+app's windowed build regardless): the scroll-position restore now keeps
+re-applying its target value in response to the scroll area's own
+rangeChanged signal for 300ms, rather than trusting a single deferred
+QTimer.singleShot(0, ...) call to land after Qt has *fully* finished
+resizing for the rebuilt editors (a real onscreen window, with several
+stacked editor panels each carrying their own nested layout, may need
+more than one event-loop tick to settle that -- unconfirmable headlessly
+either way). And the "Save, then translate" auto-triggered
+_on_translate() call is now wrapped in its own try/except that logs
+whatever it raises -- a direct Python call this deep inside a synchronous
+save/reload/rebuild chain would otherwise abort silently partway through
+_show_slide() on any exception, translation and the scroll-restore call
+after it alike, with nothing visible pointing at why.
+
+v3.3.23 (2026-08-27, direct instruction): Reordered the Images tab's fields so source comes after takeaway instead of before. Reordered each image editor's
+fields on the Images tab so source/source_de come *after* takeaway/
+takeaway_de instead of before -- short, long, takeaway, source (English),
+then short_de, long_de, takeaway_de, source_de (German). Field order
+only; nothing about how any of them are read, saved, or translated
+changed.
+
+v3.3.24 (2026-08-27, direct report): Added logging at every step of the translate pipeline, since "Save, then translate" was still silently not translating with no clue why. "Save, then translate" still not
+visibly translating, with the log pane showing only "Saved draft for
+..." and nothing past it -- reproduced the exact real slide/image
+end-to-end (mocking only the Ollama HTTP call and the disk-touching
+sync/update_store calls a test can't safely run for real) and it worked,
+so the remaining, most likely explanation is one of several points in
+this pipeline that failed *silently*, logging nothing at all either way:
+whether the rebuilt editor's own auto-translate pickup ever found a
+matching image, whether the background translation thread actually got
+started, whether its result made it back to a still-live editor, and
+whether it succeeded or failed once it did. Every one of those now logs
+something to the log pane -- "Translating <image> into German
+(<model>)...", "Translated <image> into German." / "*** Translation of
+<image> failed: ... ***", "*** ... could not find <image> among this
+slide's own images after saving ***", and "*** ... its editor panel was
+already gone -- discarded ***" -- so whichever of these turns out to be
+what's actually happening becomes visible instead of indistinguishable
+from every other silent failure.
+
+v3.3.25 (2026-08-27, direct report): Found the real root cause of the translate bug (a QListWidget signal firing mid-rebuild), plus a related bug where a plain save could land on the wrong slide. Found and fixed the actual root
+cause behind "Save, then translate" not starting a translation, plus
+three more Images tab fixes. The real bug (reproduced end-to-end against
+the exact real slide/image from the report): QListWidget.addItem()
+fires currentRowChanged repeatedly *while* refilling a previously-cleared
+list, not just once via clear()'s own -1 (already relied on elsewhere in
+this file) -- invisible with only a handful of rows, but a real, hundred-
+row filtered list reliably landed a real, premature _show_slide() call on
+some unrelated mid-rebuild row, silently consuming "Save, then
+translate"'s one-shot state before the real final selection ever ran.
+_populate_list() now blocks slide_list's signals for the whole clear()+
+rebuild, so only the one, deliberate final selection can ever trigger a
+rebuild. Separately, but discovered chasing the same report: a plain,
+non-review save always clears *this slide's own* "reviewed" flag, which
+can flip its state to something the *currently active filter* excludes
+(e.g. viewing an already-reviewed image under a "Reviewed" filter) --
+dropping it out of the filtered list the instant it's saved, so
+reload()'s preserve-by-path matching can no longer find it and lands on
+an unrelated slide instead. This explains "Save draft" jumping to the
+top too (a real different-slide landing, not a scroll bug) and would have
+broken the translate pickup even without the addItem() bug above. Fixed
+with a one-shot _pin_visible_path that keeps the slide being saved
+visible through its own reload regardless of the active filter (not for
+"Save and mark reviewed" -- moving to a slide that still needs attention
+stays the wanted behavior there).
+
+Also: the "translation matches current English text" label used to
+appear the moment an English edit was *saved*, before any real
+translation ran -- root cause, the save's own mutate() re-stamped
+translated_from_hash to the new English text whenever short_de/long_de
+merely had *some* (possibly old, untouched) content, not only when the
+German text itself had actually just changed to match; now compared
+against the editor's own on-disk snapshot to tell "German changed this
+save" from "German just happens to already exist." And every image in
+the Images tab's own preview now has a thin gray border, so its edges
+are visible even against the panel's own white background.
+
+v3.3.26 (2026-08-27, direct report): Fixed the Images tab's image-preview border framing empty space around the image instead of the image itself. V3.3.25's image-preview border
+framed the wrong box -- it was on the preview QLabel itself, which a
+QVBoxLayout stretches to the panel's full width regardless of the
+image's own, often-narrower, aspect-ratio-preserved size, so it outlined
+empty space around the image rather than the image itself (visible
+directly in a screenshot: a square logo, a wide gray-bordered rectangle
+around it). The label is now sized exactly to its own scaled pixmap and
+centered in a thin wrapper, so the border traces the image's actual
+edges/dimensions instead.
+
+v3.3.27 (2026-08-27, direct report): Fixed a stray dark-mode-colored gap left visible around a narrower-than-panel image preview. V3.3.26's fix (sizing the image
+preview's label to its own scaled pixmap, rather than letting a
+QVBoxLayout stretch it to the panel's width) left the space its own
+centering wrapper opens up on either side of a narrower-than-panel image
+rendering as this app's normal dark-mode widget background instead of
+white -- previously invisible since the label's own white background,
+before being fixed-size, covered that whole area regardless. The wrapper
+now has the same explicit white background the label already did.
+
+v3.3.28 (2026-08-27, direct instruction): Changed the Images tab's image-preview border from gray to magenta so it stands out against light images. The Images tab's image-preview
+border is magenta (#ff00ff) now, not gray -- gray didn't stand out enough
+against the many images with light/white backgrounds it exists to mark
+the edges of.
+
+v3.4.0 (2026-08-27, direct instruction): A new Export PPTX button compiles a deck and exports it as a real .pptx, one image per PDF page, for PowerPoint's own recording tools. A new "Export PPTX" button on
+each active deck row -- compiles the deck (instructor version) and
+exports the result as a real .pptx, one full-page image per PDF page
+(pptx_export.py), so PowerPoint's own recording/presenter tools can be
+used with a SlideMaster deck, which PowerPoint can't open directly. Every
+PDF page becomes its own slide, including every beamer overlay/reveal
+step -- what you actually want for a recording, not one slide per
+\\slide{} call collapsing all its reveals into one. Uses the python-pptx
+package (a new dependency, weighed directly against hand-building the
+OOXML package by hand: this project has otherwise stayed deliberately
+stdlib-first, PyMuPDF the one prior exception, but real stakes here --
+an actual recording -- favored the well-tested standard way over a
+hand-rolled package only as correct as this project's own understanding
+of OOXML). Minor version bump, not patch: a genuinely new capability, not
+a fix to an existing one (matches how multi-language support warranted a
+major bump and this session's smaller feature/fix work has otherwise
+stayed at patch level).
+
+v3.5.0 (2026-08-28, direct instruction): Redesigned Export PPTX's reveal-step handling to stack one slide's steps with click-triggered fade animations, so ink annotations survive across reveals. Redesigned Export PPTX's own
+reveal-step handling -- every PDF page belonging to one beamer \\slide{}
+call (its own overlay/reveal sequence) is now stacked full-page onto a
+*single* PowerPoint slide instead of getting one slide per page, first
+reveal step on top, with a click-triggered "Fade" ("Verblassen") exit
+animation on every image but the bottommost to peel each one away in
+order. Motivation: PowerPoint's own ink annotations paint in a layer
+above everything on a slide, so an annotation drawn during a live
+recording now stays visible across that slide's own later reveal steps
+instead of vanishing the moment the deck moves to the next PDF-page
+slide, which is what v3.4.0's one-page-per-slide version did.
+python-pptx has no animation API at all, so the click-triggered timing is
+hand-assembled OOXML (pptx_export.py) -- verified directly against a real
+PowerPoint installation via computer-use: built the real "Verblassen"
+effect (and, before this feature settled on Fade, "Verschwinden") by hand
+in PowerPoint's own UI, saved, and read its own generated XML back as
+ground truth, then confirmed the generator's own output against it the
+same way (Animation Pane populated correctly, a live slideshow run
+clicking through an actual multi-reveal-step slide from a real compiled
+deck). That verification pass caught two real bugs this session: a
+missing nesting level in the click-effect XML (found via the ground-truth
+diff) and, more subtly, a namespace URI typo in the generator's own `_P_NS`
+constant ("openxml.org" instead of "openxmlformats.org") that made
+PowerPoint silently discard every generated animation with no error and
+no repair prompt -- caught only because a *multi*-effect export (unlike
+the single-effect XML validated by hand-patching a real PowerPoint file,
+which inherits its namespace from that file and so never exercises this
+constant) showed an empty Animation Pane despite structurally correct-
+looking XML. Patch-level in spirit (redesigning a feature from the same
+session that was never actually shipped in a built .exe), but the visible
+behavior change is substantial enough to warrant its own minor bump
+rather than folding into v3.4.0's own entry after the fact.
+
+v3.5.1 (2026-08-28, direct instruction): Fixed the slide-source editor's Tab key rendering far wider than intended. The slide-source editor's Tab
+key rendered about 6 characters wide -- Qt's own QPlainTextEdit default
+tab stop distance (80px) has nothing to do with SOURCE_FONT's own
+character width, it just happened to work out that wide with Consolas
+10pt. Now explicitly set to 2 characters, computed from SOURCE_FONT's own
+QFontMetricsF rather than a hardcoded pixel count so it stays exactly 2
+characters if that font ever changes (qt_slide_source_tab.py).
+
+v3.6.0 (2026-08-29, direct instruction): Tab width is now a user-configurable, live-applied spinbox in Settings. The slide-source editor's Tab
+width (v3.5.1, just above) is now user-settable -- a spinbox on the
+Settings dialog's own General tab, right below the dark-mode checkbox,
+persisted the same way (app_settings.py, key "tab_width_chars",
+DEFAULT_TAB_WIDTH_CHARS=2 as the fallback when nothing's saved yet) and
+applied live, the same live-refresh pattern set_dark_mode() already uses
+for every open editor's highlighter: qt_gui.py's new
+set_tab_width_chars() persists the choice, then calls a new
+refresh_tab_width() on every tab in self._slide_source_tabs so an editor
+already open when the setting changes picks it up immediately, not just
+the next one opened. Minor bump: a genuinely new (if small) piece of user
+-facing configuration, not a fix to existing behavior.
+
+v3.6.1 (2026-08-29, direct instruction): Fixed the editor buffer not updating after a version-bump save, and the Language combo silently going unapplied if you saved without clicking Set. Two slide-source editor bugs.
+(1) Saving a slide while bumping its version wrote the new
+\\setSlideVersion{} line to disk correctly, but never updated the live
+editor buffer (self.widget) to match -- the just-saved slide immediately
+looked out of date in its own edit tab, still showing the pre-bump
+version. Fixed with a new _apply_minimal_text_replace() (_on_save(),
+qt_slide_source_tab.py): patches only the differing region between the
+buffer text and what was actually saved, via a common-prefix/common-
+suffix diff and a targeted QTextCursor edit, rather than a wholesale
+setPlainText() that would have fixed the text but reset the cursor to the
+top, discarded undo history, and jumped the scroll position on every
+single save. (2) The "Language:" combo next to a slide's own Save button
+is a genuinely separate action from Save (its own "Set" button, its own
+confirmation dialog, since it renames the file and rewrites every deck
+reference) -- but changing the combo and then saving without clicking
+"Set" silently left the combo showing a value that no longer matched
+reality, with nothing pending actually applied. New
+_maybe_apply_pending_language_change(), called at the end of _on_save():
+if the combo is left on a different, valid language than the slide is
+actually tagged with, offers to apply it right there via the same
+_on_set_language() the button itself calls (same confirmation dialog,
+same rename machinery) -- but only then, since calling it unconditionally
+would otherwise pop its own "can't be set back to untagged" error on
+every single save of every still-untagged slide (the vast majority of
+this project's 665 slides), where the combo correctly shows "(untagged)"
+and nothing is actually pending.
+
+v3.6.2 (2026-08-30, direct instruction): The Duplicate-slide dialog now hides irrelevant controls by mode, and "Preview"'s "Render now" finally respects the footer-timestamp checkbox. Two more small fixes. (1) The
+"Duplicate slide" dialog's "New slide's language:" dropdown, auto-
+translate checkbox, and model picker now hide entirely (not just gray
+out) whenever "Just a duplicate (same language)" is selected -- none of
+them mean anything in that mode, so leaving them visible-but-disabled was
+just clutter (qt_duplicate_slide_dialog.py's _on_mode_change()/
+_sync_translate_state()). The model row specifically stays hidden until a
+translation will actually happen (checkbox checked AND the direction is
+supported), not just whenever "another language" is picked. (2) The
+"Include footer timestamp" toolbar checkbox was ignored by the "Preview"
+button's own "Render now" (slide_preview.render_slide_to_pdf(), used by
+both qt_slide_source_tab.py's _on_preview() and qt_deck_editor_tab.py's
+_render_to_pdf()) -- a sibling bug to the one already fixed 2026-08-26 in
+render_slide_text_to_pdf() (the separate "Render to PDF" button), which
+this function was missed by at the time. Same fix: a new
+footer_timestamp parameter, read live from the checkbox at both call
+sites and threaded through the same _footer_timestamp_line() hook the
+other render path already uses.
+
+v3.7.0 (2026-08-31, direct instruction): The Add-slide dialog gained a "Duplicate existing slide" mode, the editor gained a smart Enter key, and "Refresh decks" now shows a wait cursor. Three editor/deck-table
+improvements. (1) The
+deck editor's "+ before"/"+ after" Add-slide dialog gains a third mode,
+"Duplicate existing slide", alongside "Use existing slide"/"Create new
+slide" -- picks a source slide, then launches the existing
+DuplicateSlideDialog (qt_duplicate_slide_dialog.py, previously only
+reachable from a slide's own source-editor tab) as a nested modal to do
+the actual duplication (same language, or another language with an
+optional auto-translate pass), and inserts the result into the deck at
+the requested position once that dialog completes -- a one-step
+duplicate-and-insert instead of duplicate-from-the-source-tab-then-
+separately-add-it. Reuses that dialog rather than reimplementing
+duplication, so the two entry points can never drift apart on what
+"duplicate" means. (2) The slide-source editor's QPlainTextEdit
+(qt_slide_source_tab.py) gains a smart Enter key (a new LatexPlainTextEdit
+subclass): a new line always continues its predecessor's own leading
+(tab) indentation, and pressing Enter right at the end of a
+`\\begin{ENV}` line additionally opens the matching `\\end{ENV}` one line
+below at the same indentation, cursor left in between at one extra tab of
+indentation -- pre-seeded with `\\item ` when ENV is
+`itemize`/`enumerate`. Detects the env name via the bare `\\begin{ENV}`
+token rather than trying to regex-match the rest of the line, so it
+still fires correctly when `\\begin{}` is followed by its own further
+arguments on the same line (`\\begin{standardframe}{Title}`, a title
+itself containing nested braces, etc.) -- confirmed directly against
+that exact real-world case (kcc-Reasons-Repurchases's own title). (3)
+The Active/Archived decks tables' own "Refresh decks" button now shows a
+wait cursor (QApplication.setOverrideCursor) for the duration of the
+rescan -- every deck file re-read and re-parsed, both tables' full row
+widget trees rebuilt -- so a scan slow enough to notice has some visible
+sign it's working. A thin qt_gui.py wrapper
+(_on_refresh_decks_clicked()) around reload_decks() itself, not a change
+to reload_decks() directly, since that function's many other callers
+(after_deck_edit() and friends) are already fast/frequent enough that a
+cursor flash on each one would just be noise.
+
+v3.8.0 (2026-08-31, direct instruction): The Slidemaster.bib editor gained an A-Z jump bar to navigate its alphabetically sorted citations. The Slidemaster.bib editor tab
+gains an A-Z "Jump to:" bar -- one button per letter, clicking one moves
+the cursor (and scrolls, centered) to the first entry whose citation key
+starts with that letter. Meaningful navigation specifically because the
+file is already kept alphabetically sorted by key (bibliography.py's own
+sort_entries(), run on open/close of this tab). Only appears for
+Slidemaster.bib itself (a new self._is_bib flag, path ==
+bibliography.DEFAULT_BIB) -- this same SlideSourceTab class also opens a
+deck's raw .tex source, where a citation-key jump bar would be
+meaningless. A letter with no matching entry logs a message instead of
+silently doing nothing.
+
+v3.9.0 (2026-08-31, direct instruction): A Reindent button recomputes a slide's own indentation from its \\begin{}/\\end{} nesting, and smart Enter now also continues \\item lines. Two more editor improvements.
+(1) A "Reindent" button (slide files only, i.e. self._is_slide) recomputes
+every line's own leading whitespace from its \\begin{}/\\end{} nesting
+depth (one tab per level) -- reindent_latex(), a pure module-level
+function so it's independently testable, with qt_slide_source_tab.py's
+own _on_reindent() just the Qt-buffer/undo-step wrapper (the whole
+document replaced as one edit block, so a single Ctrl+Z undoes the
+entire pass). Deliberately scoped to \\begin{}/\\end{} line-start tokens
+only, the same scope the smart-Enter feature below already commits
+to -- not a full brace-nesting indenter, which would also have to reason
+about braces inside math/macro arguments this project's slides use
+constantly (\\textcolor{}{}, nested \\footnote{\\fullcite{}}, tikz node
+options, ...). Confirmed directly against real content: a full scan of
+every slide file found 230 of 651 with genuine drifted indentation (e.g.
+22s-EN-More-Exotic-Bonds's own \\begin{minipage} body left at the same
+depth as \\begin{minipage} itself rather than one tab in), all fixed
+correctly; the other 421 are already-correct and reindent to a byte-for-
+byte no-op. One known, accepted side effect: hand-added *extra*
+indentation used to visually align a wrapped multi-line command argument
+(e.g. a \\node[...] at (...) whose own {content} sits on the next line,
+indented an extra level purely for readability, not environment nesting)
+gets flattened back to the enclosing environment's own depth, since this
+function has no concept of "argument continuation," only \\begin{}/
+\\end{} depth. (2) LatexPlainTextEdit's smart Enter (see v3.7.0 above)
+now also continues a `\\item` line: pressing Enter at the end of a line
+starting with `\\item` inserts a new `\\item ` at the *same* indentation
+(sibling items in one list, not nested content) -- checked only after
+the existing \\begin{ENV} trigger finds nothing, so a line like
+`\\item \\begin{itemize}` (an item that itself opens a nested list)
+still gets that more specific begin/end handling instead.
+
+v3.10.0 (2026-08-31, direct instruction): A Check syntax button asks a local Ollama model to flag likely LaTeX problems, offering a fix only when its claimed original text still matches exactly. A "Check syntax" button in the
+slide and deck edit tabs (self._is_slide or a deck's own raw .tex source
+-- excluded only for the Slidemaster.bib editor). Sends the editor's
+current buffer to a local Ollama model (syntax_check.py, new module,
+same call/parse shape as alt_draft.py's own OllamaBackend/
+OllamaTranslationBackend, kept as a self-contained second copy rather
+than importing that file's private helpers) asking it to find likely
+LaTeX syntax problems -- unbalanced braces, mismatched \\begin{}/\\end{}
+pairs, unescaped special characters -- and, only when confident, a
+corrected replacement line. Explicitly framed everywhere in the UI as a
+heuristic check via a language model, never a real LaTeX compile: it can
+miss real problems and flag things that are fine, and the system prompt
+tells it not to flag this project's own many custom macros just for
+being unfamiliar.
+
+The "offer to fix" half (direct instruction: implement it unless too
+complex -- it wasn't) is safe specifically because every reported issue
+carries the model's own claimed *original* text for the line it is
+pointing at, alongside its suggested fix: SyntaxIssue.fix_is_safe()
+only allows "Apply fix" when that original text matches the *live*
+buffer's own line content exactly, so a hallucinated line number or
+misremembered content just makes the fix unavailable rather than ever
+overwriting the wrong line. Applying one edits the source tab's own
+QPlainTextEdit as a single Undo step. New non-modal results dialog
+(qt_syntax_check_dialog.py) -- deliberately not exec()'d, so the editor
+underneath stays clickable while reviewing findings against it; clicking
+an issue's own line number jumps/centers the editor there. Verified with
+a mocked Ollama response, not just read over: a real slide's buffer, one
+genuine matching issue (fix applied and confirmed undoable in one step)
+and one deliberately mismatched "original" (confirmed its own Apply
+button stays disabled).
+
+v3.11.0 (2026-08-31, direct instruction): An AI draft button proposes an open-ended slide rewrite from a local Ollama model, shown as a diff, with the file's own header/version/overlay blocks mechanically protected from it. An "AI draft" button, slide
+files only (self._is_slide -- unlike Check Syntax above, not offered for
+a deck's own raw .tex source). An open, free-text prompt describing a
+wanted change is sent, with the slide's current buffer, to a local
+Ollama model (ai_draft.py, new module), which proposes a full revision;
+shown as a line-level diff (difflib.ndiff, a small QSyntaxHighlighter
+coloring +/- lines) in a new non-modal dialog (qt_ai_draft_dialog.py) --
+nothing touches the editor until "Accept", which replaces the whole
+buffer as one Undo step, same mechanism Reindent/Check-syntax-fixes
+already use.
+
+Asked first whether this was worth building at all, given an open
+rewrite has no ground truth to verify a proposal against the way Check
+Syntax's per-line fixes do (direct instruction: "tell me first how
+feasible this is and what could go wrong" before implementing). Answer
+implemented, not just discussed: mask_protected_regions()/unmask()
+mechanically hide this slide's own leading header-comment block, its
+\\setSlideVersion{} line, and every \\vbox to 0pt{...} block (this
+project's own absolute-overlay idiom, README.md's "Available layouts"
+section) behind opaque %%%PROTECTED_N%%% tokens *before* the model ever
+sees the slide -- not a prompt-only request not to touch them. A
+proposal that comes back missing, duplicating, or inventing one of
+these tokens is refused outright (DraftProposal.error, never reaches the
+dialog) rather than silently applied with a corrupted footer or an
+altered version marker. This does not make the *rest* of a proposal
+trustworthy (still an open rewrite from a local model -- the dialog's
+own disclaimer says so plainly, and Accept is never automatic), only
+removes one specific, mechanically-preventable failure mode.
+
+Deliberately *not* protecting tikz/overlay content in general -- an
+ordinary chart or diagram built with tikz is exactly the kind of thing a
+rewrite prompt might legitimately need to touch; only the specific
+\\vbox to 0pt{...} absolute-positioning wrapper is off-limits, since
+that is calibrated pixel-level math with no meaning for a language
+model to reason about.
+
+Verified against every one of this project's own 651 real slide files
+(not just synthetic examples): mask then unmask with no tampering
+reproduces each file's exact original bytes, zero regressions. Also
+verified with a mocked Ollama response end-to-end through the real Qt
+dialog: prompt refused before any network call when empty; a legitimate
+proposal shown correctly in the diff with protected content restored;
+Accept applied and confirmed undoable in one step; a proposal that drops
+a placeholder token refused rather than applied; the app-wide Ollama
+mutex (try_start_ollama_task/end_ollama_task, shared with drafting/
+translation/Check-syntax) correctly blocks a second concurrent request
+and is released after the call whether it succeeded or not.
+
+The displayed string also appends the commit date *and time* (not just
+the date, per explicit request) of HEAD -- still git-derived, since
+unlike VERSION_NUMBER itself it can't be hand-maintained without
+drifting from reality (a launched GUI process never re-reads its own
+source files, so this is still the only reliable way to tell which
+commit a *running* instance actually started from). An earlier version
+also appended a "+uncommitted" flag whenever the working tree had
+uncommitted changes -- removed (2026-09-16, direct instruction): this
+project is worked on directly in place, not from a clean checkout per
+release, so that flag was true almost every time the app was actually
+launched during active development, making it noise rather than signal.
+
+v3.12.0 (2026-09-07, direct instruction): The alt-text workflow now covers hand-drawn tikz illustrations via \\tikzillustration{ID}, describable and role-markable the same way a real image is. The Images tab's alt-text
+workflow now covers hand-drawn tikz illustrations, not just
+\\includegraphics-ed files -- see ALT_TEXT_NOTES.md's "Phase 9" for the
+full design. `\\tikzillustration{ID}` (Slidemaster_preamble_base.tex) wraps
+an ordinary in-flow tikzpicture with a permanent, SlideManager-assigned
+ID; it shows up in this tab's per-slide list as a synthetic "tikz:ID"
+reference, with the same role radios and description fields a real image
+already has -- nothing about the editor panel itself needed to change,
+since it was already built generically from (reference, ImageEntry).
+Marking one decorative wraps it in the same /Artifact type
+sideimageframe's own filler image already uses, looked up through the
+same media/alt-text.csv gothamalt.mark() already reads, keyed "tikz:ID"
+instead of a real path -- no second place to author role, and no changes
+needed to the Lua side at all. New tikz_render.py compiles an
+illustration's current tikz body to a small standalone PDF (reusing
+slide_preview.py's own wrapper-compile machinery), rasterizes it, and
+auto-crops it to its own drawing, cached by a hash of the tikz source
+itself -- what the vision-model drafting pipeline (Draft.../Tune
+prompt...) and this tab's own preview panel both now feed on for a tikz
+reference, through one new _resolve_for_drafting() dispatch point in
+alt_draft.py. Verified directly: a throwaway slide with one informative
+and one decorative tikzillustration compiled cleanly, and pikepdf
+confirmed the decorative one's content sat inside a balanced
+/Type /Background span while the informative one stayed unmarked;
+tikz_render.ensure_rendered() was run end-to-end against a real slide file
+(rendered, cached, cache-hit under 0.1s on a second call, and a
+not-found id raised the expected error); sync_store() was confirmed to
+discover a new tikz illustration the same add-only way it discovers a new
+image; and one real end-to-end draft ran a rendered illustration through
+qwen3-vl:32b.
+
+v3.12.1 (2026-09-09, direct instruction): The version-history window's own entries now collapse to a one-line summary by default, with a show more/show less toggle. The Info menu's version-history
+window now collapses each entry to a one-line summary by default (its own
+first sentence, falling back to a plain word-boundary truncation for the
+common case where that first sentence alone still runs long), with a
+"[show more]"/"[show less]" link that expands or re-collapses just that
+one entry in place (qt_version_history_dialog.py). Some of these
+descriptions run to a dozen sentences; a window full of them at full
+length meant scrolling past nine paragraphs to find the one entry actually
+wanted. Implemented via a custom "toggle:N" link scheme intercepted
+through QTextBrowser's anchorClicked() signal -- setOpenLinks(False) is
+what actually stops the browser trying to navigate to it as a real
+document (and blanking itself), a distinct property from
+setOpenExternalLinks(False), which only ever governed http(s) links and
+was already set. The scrollbar position is preserved across a toggle
+(setHtml() resets it to the top on its own), so expanding one entry
+doesn't jump the whole window back to the newest one.
+
+v3.13.0 (2026-09-14, direct instruction/report): Wrapped 15 real tikz diagrams project-wide, fixed three real illustration-rendering bugs found doing it, and relabeled the review button with a matching re-check migration. The tikz-illustration
+alt-text workflow (v3.12.0) went from built to actually used, and three
+real bugs surfaced doing that. A structural (nesting/overlay/vbox-aware,
+not a blind regex) migration wrapped the 15 tikz diagrams across this
+project's own slides that turned out to be genuine standalone content --
+excluding 163 absolute-position overlays, 43 nested inside another
+tikzpicture's own node content, and (found by checking for actual drawing
+primitives, not just structure) 16 that were only ever a bordered single
+real image, which would have just duplicated that image's own already-
+tracked description. Rendering all 15 (not just compiling them embedded
+in their real slide) surfaced tikz_render.py silently dropping the
+illustration's own tikz `[options]` (degraded silently for a *built-in*
+style hook, hard-failed with "unknown key" for a *custom* one the options
+themselves defined), a `\\newcommand`/`\\definecolor` declared above the
+slide's own frame going undefined in a standalone recompile even though a
+real deck compile already sees it, and one slide's own external
+`\\resizebox{}{}{...}` wrapper (never part of the extracted illustration
+body) leaving it clipped by a real slide's small canvas at native size --
+all three fixed (`alt_blocks.py`, `tikz_render.py`; full story in
+ALT_TEXT_NOTES.md's "Phase 9 follow-up"), all 15 re-verified after each.
+
+Separately, direct report: a slide with more than one image is easy to
+under-review, since "Save and mark reviewed" marks every image on the
+slide reviewed in one click even if only one was actually looked at
+closely. Relabeled "Save and mark <u>all images</u> reviewed" (a
+combining low-line under each character of "all images", not HTML --
+QPushButton does not parse rich text at all, confirmed directly), and
+every slide that already showed fully "Reviewed" with more than one image
+(9 slides, 20 image-uses) had its own per-slide review stamps reset to
+"Needs re-check" as a one-off data migration alongside the rename, so the
+new label reaches existing content, not just new reviews going forward.
+
+v3.13.1 (2026-09-15, direct instruction): The review button's "all images" emphasis now only appears on a slide that actually has more than one image. The review button's own label
+from v3.13.0 above now only says "Save and mark <u>all images</u>
+reviewed" on a slide that actually *has* more than one -- plain "Save and
+mark reviewed" otherwise, set fresh by _show_slide() on every slide
+switch (_review_button_label(), qt_transcript_tab.py). The unconditional
+wording was a permanent reminder that would have stopped standing out the
+moment every slide's button said the same thing; this way the button
+itself is the multi-image signal, present only when it means something.
+
+v3.13.2 (2026-09-15, direct instruction): Every one of the 57 history
+entries above now leads with a genuine, hand-written one-line summary,
+and a real text-corruption bug from writing them was found and fixed.
+Each entry's own collapsed view -- the version-history window's default
+display since v3.12.1 -- is a real summary now, not a mechanical
+first-sentence/character-count truncation that often landed mid-thought
+or on an unhelpfully terse opening ("Two more editor improvements.").
+Writing 57 summaries by hand surfaced a real, silent text-corruption bug
+in the process: a LaTeX command reference inserted into this (non-raw)
+docstring with only a single backslash isn't just a style inconsistency --
+Python's own string parser reads `\\t`/`\\b`/`\\n` as their real escape
+meaning (a tab, a
+backspace, a newline) and quietly swallows the rest, which is exactly
+what had already happened to `\\begin{}` in v3.9.0's own entry (a literal
+backspace character sitting where the text should read "\\begin{}") and to
+`\\newcommand` in v3.13.0's (silently split by a real newline, invisible
+until this file's own runtime value -- not just its source text -- was
+checked directly). Fixed globally across the whole docstring, all 57
+entries verified to import with zero SyntaxWarnings and re-checked for
+every affected command name still being intact in the actual parsed text,
+not just judged by eye against the source.
+
+v3.14.0 (2026-09-16, direct instruction): a new "Presenter" checkbox
+(qt_deck_table.py) compiles a separate `<deck>-instructor-presenter.pdf`
+using beamer's own built-in dual-screen mechanism (\\setbeameroption{show
+notes on second screen=right}, gated behind a new \\ifdefined
+\\gothamPresenterModeOverride hook in Slidemaster_preamble_base.tex,
+compiler.py's own wrapper file \\def's it exactly like
+\\deckversionoverride already is) -- every real slide becomes one wide
+page, the plain slide on the left and a panel with that slide's own
+\\note{} text on the right, for presenter software (pympress recommended;
+see README.md's new "Presenting live" section) to split across the
+projector and the presenter's own screen. Independent of every other
+checkbox in the row, always instructor-version content regardless of
+what else is ticked in the same batch (CompileJob.presenter, a new field
+alongside version/chapter, not a value of version itself), with its own
+status dot and its own jobname suffix. compiler.py's own compile-time
+slide-preview-snapshot refresh is explicitly skipped for a presenter job
+-- its doubled, side-by-side page layout has nothing in common with a
+normal one-page-per-slide compile, so reading it the usual way would
+misread pages and corrupt the real preview cache with it. Verified
+directly, not just from beamer's own documentation: a real presenter
+compile produces the expected wide combined pages, and \\note{} text
+placed on a real test slide is confirmed present (both by direct text
+extraction and visually) in the correct panel.
+
+v3.14.1 (2026-09-10, direct report/instruction): a real \\note{} bug found
+compiling a full presenter deck for the first time, plus a note-page
+layout redesign. Compiling t-Uni-IA2-2026w's own presenter PDF end-to-end
+(the first real multi-hundred-slide deck run through v3.14.0's own new
+feature, not just the single-slide test it was verified against) failed
+outright: slides/m47-EN-Portfolio-Risk-Variance-current.tex's own
+\\note{...} call had two consecutive \\\\ line breaks with nothing but
+whitespace between them ("Develop first, show after!\\\\\\\\ Cov
+signifies..."), a genuine "There's no line here to end" LaTeX error --
+invisible until now since beamer silently discards \\note{} content
+whenever nothing actually renders it, which was every compile before
+presenter mode existed. Fixed by replacing the doubled \\\\\\\\ with
+\\par (valid in any context \\note{} can appear in, same visual
+paragraph break intended); grepped every other slide's own \\note{} call
+for the same doubled-\\\\ pattern and found none.
+
+Also (direct instruction, same session): beamer's own default "note
+page" template (beamerouterthemedefault.sty's
+\\defbeamertemplate*{note page}{default}) reserves its top quarter for a
+thumbnail of the current slide (\\insertslideintonotes) plus a rotated
+compile-date beside it, then gives the title band (short title plus a
+section/subsection/frametitle breadcrumb) that same 0.25\\paperheight,
+leaving only the bottom 0.75 for \\insertnote -- redundant here, since
+pympress (this project's own recommended presenter software) already
+shows the current and next slide on its own screen, and \\title{} is
+never called anywhere in this project (confirmed by grep), so the short-
+title line was always blank. Two real problems found getting a
+replacement working, neither caught until compiled against a real slide:
+first, \\defbeamertemplate*{note page}{default}{...} here errors ("Command
+\\beamer@@tmpop@note page@default already defined") -- both the starred
+and unstarred \\defbeamertemplate forms register a variant name via a
+plain \\newcommand internally, which always errors on a name beamer's own
+outer theme already registered; fixed by registering a new named variant
+("gothampresenter") instead and selecting it via \\setbeamertemplate{note
+page}[gothampresenter], the same define-then-select pattern this file's
+own footnote template already used. Second, a first attempt shrinking the
+title band to a fixed 0.08\\paperheight overlapped real note text on a
+real slide the moment its own section/subsection/frametitle breadcrumb
+needed more than one line (this project's own decks do call \\section{})
+-- fixed by dropping the fixed height/\\vfil entirely in favor of a
+natural-height \\vbox (exactly as tall as whichever breadcrumb lines are
+actually non-empty for that slide, never more), which structurally
+can't overlap \\insertnote below it regardless of how many lines a given
+slide's own breadcrumb needs. No color-theme "note title"/"note page"
+background is set anywhere in this project, confirmed by grep, so
+beamer's own \\ifbeamercolorempty guards around both of those bands --
+already pure no-ops here -- were dropped too rather than carried over
+unused.
+
+v3.14.2 (2026-09-11, direct report): a second real tikz_render.py bug
+found the same way v3.14.1's \\note{} bug was -- reported directly
+against a real illustration, not caught by the single-slide test
+v3.9.0-era tikz-illustration work was originally verified against.
+previews/tikz_illustration_previews/ukm-tikz-*.png (the "Age of universe" label on
+slides/ukm-EN-Tail-Risk-18-Sigma-current.tex's own tikz illustration) was
+cut off on its own left edge: that label's `\\node[overlay, anchor=north,
+align=center] at (\\linexcm,-1.3) {Age of universe};` sits centered within
+a hair's width of x=0 (\\linexcm evaluates to ~0.004cm), so roughly half
+its own text width bleeds into negative-x -- deliberately excluded from
+the tikzpicture's own bounding box by `overlay`, the same mechanism
+already known from ys3's own \\resizebox overflow (see v3.14.0's tikz-
+illustration entry). Landed fine on a real slide, where that bleed lands
+inside the frame's own ordinary left margin, but got clipped hard here
+even after that same \\pagewidth=60cm/\\pageheight=60cm fix: enlarging the
+*page* only adds room to the *right*/*bottom* of the frame's own small
+(~128mm x 72mm) content block, which \\shipout still plants flush at the
+page's true top-left corner regardless of how big \\pagewidth/\\pageheight
+are -- zero margin on the *left*/*top* either way. Fixed generally, not
+by special-casing this one diagram, with two new plain-TeX primitives
+(\\hoffset=20cm, \\voffset=20cm, tikz_render.py's own _wrapper_text())
+shifting the whole shipped page's content well clear of every edge, not
+just the two \\pagewidth/\\pageheight already covered. Verified directly:
+deleted the stale cached PNG (bytes now provably wrong, but the content-
+hash cache key was unchanged since nothing about ukm-tikz's own tikz
+source had changed, so it would otherwise have kept serving that same
+clipped render forever) and re-rendered from the fixed wrapper, confirmed
+both previously-cut-off lines now render in full. Also scanned every one
+of this project's other 14 cached tikz-illustration previews for the same
+edge-touching symptom (a cheap pixel check, not a full re-render of each)
+-- one more flagged (ys3-tikz, content touching its own crop's top row)
+but inspected directly and judged a false positive: a background color
+panel's own legitimate top edge, not clipped text, and that illustration
+was already directly re-verified complete end-to-end when v3.14.0's own
+\\pagewidth/\\pageheight fix first landed.
+
+v3.15.0 (2026-09-16, direct instruction): non-linear navigation
+infrastructure plus a new "Generate appendix TOC" checkbox. Every real
+slide now carries a permanent \\hypertarget{<bare id>}{} (Slidemaster_
+preamble_base.tex's \\setSlideID@aux, the single choke point every
+\\slide{}-family macro already passes through regardless of frame type),
+giving any slide a free jump target for \\hyperlink{}/\\beamergotobutton{}/
+\\beamerreturnbutton{} without colliding with this project's own documented
+\\label{}/\\foreach collision. The new checkbox (qt_gui.py, between
+"Include footer timestamp" and "Auto-open generated PDFs") adds, on an
+Instructor/version-less or Presenter compile only, a generated appendix: an
+agenda slide (one entry per chapter plus a leading "Front matter" entry)
+followed by a 4x5 thumbnail grid per chapter (slidemanager/appendix_toc.py,
+new module), each thumbnail using the existing slide_snapshot.THUMB_SIZE
+cache and linking straight to its real slide; clicking a chapter on the
+agenda jumps to that chapter's own grid, and the institute logo on every
+slide of an appendix-enabled compile becomes an invisible link back to the
+agenda (\\gothamInstituteLogoGraphic). Grid geometry (left-aligned to the
+text margin, scaled up until either the row height or the logo's own right
+edge binds -- direct instruction, from real rendered candidates) is
+computed in LaTeX from this project's own per-institution length registers,
+not a hardcoded cm value, so it adapts automatically across Graz/Innsbruck/
+MCI. compiler.py's wrapper gains \\gothamAppendixTocOverride and, for an
+appendix-generating job, inlines the deck's full body (the same "copy
+preamble, splice body" trick already used for a per-chapter compile) so the
+generated appendix can land before the deck's own \\end{document} -- a
+plain \\input{deck.tex} would hit that \\end{document} first. Fixed along
+the way: the appendix's own generated frames were leaving \\slideID at its
+last real value, which would have corrupted slide_snapshot.capture_deck()'s
+cache refresh (it keys purely off footer "slide id:" text) -- reset to a
+literal "appendix" (never a real 3-character id) right after \\appendix;
+and a \\dimexpr geometry calculation that multiplied by 304 before dividing
+by 171 briefly exceeded TeX's ~16384pt dimension ceiling even though the
+final result was a few centimeters -- reordered to divide first. Verified
+via a real end-to-end compile (an in-memory scratch deck built from real
+chapters/slides, run through the actual CompileJob/run_job pipeline): every
+hypertarget lands on the right page, every agenda/grid/logo link resolves
+correctly, and a combined Presenter+appendix compile produces the expected
+notes-panel layout with no new errors.
+
+v3.16.0 (2026-09-16, direct instruction): the Active/Archived decks
+tables' long compile-options explainer (Instructor/During-course/After-
+course, "After-course, per chapter", Presenter) was a permanently-visible
+wrapped QLabel between the deck grid and the button row -- real vertical
+space spent on every visit, read once and rarely again. Moved behind a
+small "?" button next to Stop compilation (qt_deck_table.py): the same
+text now shows on hover (tooltip) or on click (QMessageBox), out of the
+way otherwise. No behavior change, no new dependency -- QMessageBox is
+already part of PySide6.QtWidgets.
+
+v3.16.1 (2026-09-16, direct instruction): the generated appendix's agenda
+slide (appendix_toc.py) is now two columns (README.md's own "Available
+layouts" pattern -- beamer's `columns` nested *inside* standardframe),
+split roughly in half with any odd entry going to the left column --
+needed for a deck with a full chapter list: IA2's own 13 entries (front
+matter + 12 real chapters) ran off the bottom of a single-column agenda.
+Verified against that real 13-entry list (a standalone test frame built
+from the deck's own real chapter titles, dummy hypertargets, agenda
+layout only): fits on one page with real headroom to spare, zero Overfull
+warnings.
+
+v3.16.2 (2026-09-16, direct instruction): the "Generate appendix TOC"
+checkbox (qt_gui.py) is now persisted across launches via app_settings.py
+-- the same local per-machine JSON store dark mode/tab-width/model-picker
+settings already use -- instead of always resetting to unchecked like
+footer_timestamp/auto_open still do. Read back with
+`app_settings.get("appendix_toc", False)` at toolbar build time, written
+on every toggle.
+
+v3.17.0 (2026-09-16, direct instruction): a new "Open output folder"
+checkbox (qt_gui.py), stacked directly below "Auto-open generated PDFs"
+in its own vertical group rather than another flat entry in the
+horizontal toolbar row -- opens pdf/ in File Explorer once a compile
+batch finishes, if at least one job passed. Deliberately hooked into the
+same PASS_LOG_RE match _open_pdf() already waits for, not run_jobs()'s
+own return: a job "passing" run_jobs() only means the LaTeX compile
+itself succeeded, while compiler.py's own _relocate_pdf_and_finish moves
+the PDF into pdf/ on a separate, sometimes-still-in-flight background
+thread -- opening the folder any earlier could show it before the file
+was actually there. Opens at most once per batch (a new
+_folder_opened_this_batch flag, reset in _start_jobs()) even when several
+jobs pass, and is explicitly excluded from an Update-previews run (its
+throwaway megadeck is never written to pdf/ at all) via the same
+is_preview_all check auto-open already uses.
+
+v3.17.1 (2026-09-16, direct instruction): top-aligned the compile-options
+toolbar row (qt_gui.py) -- QHBoxLayout vertically centers each item
+within the row's own height by default, and once the auto_open_checkbox/
+open_output_folder_checkbox pair (v3.17.0) made that row two checkboxes
+tall, every single-row checkbox beside it visibly drifted down instead of
+lining up with the top one; fixed via per-item `Qt.AlignmentFlag.AlignTop`
+on each addWidget()/setAlignment() on the nested auto_open_group layout
+(QBoxLayout.addLayout() has no alignment parameter of its own). Also
+added a PyInstaller splash screen (SlideManager.spec's new `Splash(...)`,
+slidemanager/assets/splash.png generated from this project's own icon.ico
+and palette.py's dark-mode colors) covering the one-file build's several-
+second self-extraction delay -- qt_gui.py's main() closes it
+(`pyi_splash.close()`, guarded for the unfrozen `python -m slidemanager`
+case where that module doesn't exist) right after the real window is
+constructed and shown. The one-file build itself stays as-is: already a
+deliberate, documented trade-off (SlideManager.spec's own header comment)
+against the several-hundred-loose-file churn a one-dir build would cause
+in this project's synced folder.
+
+v3.17.2 (2026-09-16, direct instruction): "Open output folder" (v3.17.0)
+is now persisted across launches too, same app_settings.py pattern as
+appendix_toc_checkbox -- read back with
+`app_settings.get("open_output_folder", False)` at toolbar build time,
+written on every toggle.
+
+v3.17.3 (2026-09-16, direct instruction): reverted "Open output folder"
+(v3.17.0/v3.17.2) entirely -- the checkbox itself, its app_settings.py
+persistence, the _open_output_folder()/_folder_opened_this_batch
+machinery, and the auto_open_group vertical grouping it needed (back to
+a single flat toolbar.addWidget(self.auto_open_checkbox), same as before
+v3.17.0 -- the per-item AlignTop tweaks from v3.17.1 came out with it
+too, since a flat single-row toolbar never needed them). The splash
+screen from v3.17.1 is unrelated and stays. Also: VERSION no longer
+appends a "+uncommitted" flag when the working tree has uncommitted
+changes -- this project is worked on directly in place rather than from
+a clean per-release checkout, so that flag was true on nearly every
+launch during active development and was noise, not signal.
+
+v3.18.0 (2026-09-16, direct instruction): a deck can now redirect its own
+compiled PDF to a custom folder -- see README.md's new "Custom output
+folder" section for the full directive syntax. `\deckoutputfolder
+[version]{path}` (a new, real but inert macro, `Slidemaster_preamble_
+base.tex` -- matching this project's own convention that every deck-
+authored, Python-parsed directive is a real command name, never a "%"
+magic comment: confirmed no such convention exists anywhere in this
+codebase before designing this one) is read directly out of a deck's own
+source text by a new `deck_scan.py` regex (`OUTPUT_FOLDER_RE`), keyed per
+version with a bare (no `[version]`) fallback line covering any version
+without a more specific declaration; `Deck` gains an `output_folders`
+field carrying that map. `compiler.py`'s new `resolve_output_dir(job)`
+looks it up (normalizing a version-less job's `None` to `"instructor"`
+so a bare `\deckoutputfolder[instructor]{...}` line works on any deck
+regardless of whether it formally supports the version system) and
+resolves a relative path against `PROJECT_ROOT`, falling back to the
+existing `PDF_DIR` when a deck declares nothing. `run_job()` now calls
+this instead of hardcoding `PDF_DIR` -- needing no change at all to
+`_relocate_pdf`/`_relocate_pdf_and_finish`'s own copy2-based relocation
+and retry/stall-avoidance logic (both already operate purely on whatever
+`dest_pdf` Path they're handed, regardless of which folder it's in, which
+is exactly why reusing that already-hardened code path here carries no
+new move/stall risk). Per direct instruction: a custom-folder deck's PDF
+goes there *only*, never also into `pdf/` -- `qt_gui.py`'s auto-open
+follows the real destination too (a new `_job_output_dirs` map, resolved
+once per job in `_compile_rows()` the same way `run_job()` does, so
+`_open_pdf()` doesn't re-derive a `PDF_DIR`-only path). The compile log's
+`MOVING`/`PASS` lines now show the real destination instead of a
+hardcoded `"pdf/{jobname}.pdf"` string (confirmed `qt_gui.py`'s own
+`MOVING_LOG_RE`/`PASS_LOG_RE` only anchor on the jobname right after
+`"==== MOVING: "`/`"==== PASS: "`, never on what follows, so this is
+safe). "Empty pdf/ folder" housekeeping and PPTX export's own output
+folder are deliberately untouched -- out of scope for this request.
+Verified via a real end-to-end compile (an in-memory `Deck` built from
+real preamble text, `\deckoutputfolder` pointed at a scratch folder
+outside the project, run through the actual `CompileJob`/`run_job()`
+pipeline): the PDF landed only in the custom folder, `pdf/` got no copy,
+the slide-preview snapshot cache still refreshed correctly against the
+redirected PDF, and the log's own MOVING/PASS lines showed the real path
+-- plus a separate regression check that a deck with no
+`\deckoutputfolder` at all still resolves to `PDF_DIR` exactly as before.
+
+v3.19.0 (2026-09-16, direct instruction): the Images tab gained a "Sort:"
+dropdown (`qt_transcript_tab.py`, next to the existing "Show:" filter,
+same `QLabel`+`QComboBox` toolbar idiom) listing every active deck --
+picking one reorders whatever slides the current filter shows by that
+deck's own `\slide{}`-family call order, with any slide not in that deck
+kept at the end in whatever relative order it already had. Reuses
+`deck_editor.parse_slide_calls(deck)` (already the project's own source
+of a deck's real slide order, e.g. `appendix_toc.py`'s chapter grids) to
+build a `{bare id: position}` map, cached in `self._sort_order` and
+recomputed only when the dropdown's own selection changes (not on every
+`_visible_rows()` call, which also runs on every single list click) --
+`_visible_rows()` itself just does one stable `sorted(rows, key=...)`
+over its already-filtered list, with a slide missing from the map falling
+back to one-past-the-last-real-position so it always lands after every
+slide the deck actually contains, and Python's sort stability keeps
+missing slides in their prior relative order without a second tiebreaker.
+Verified directly against this project's own largest deck (375 real
+`\slide{}`-family calls, one repeated id confirmed via a real recap
+slide): a scrambled id list sorted correctly into that deck's own order,
+with ids never in the deck landing at the end in their original relative
+order.
+
+v3.19.1 (2026-09-16, direct report): the Images tab's "Also used on: ..."
+note (an image editor panel's own warning that this description is
+shared across multiple slides, editing it here changes it everywhere)
+was plain `MUTED_LABEL` gray italics -- easy to miss, and it matters more
+than an ordinary muted hint since it changes what a save actually
+affects. Switched to `WARNING_LABEL` (the same theme-aware red/orange
+`qt_theme.py` already defines and several other tabs already use for an
+attention-worthy label -- `qt_deck_editor_tab.py`, `qt_gui.py`,
+`qt_slide_preview_popup.py`, `qt_slide_source_tab.py`,
+`qt_syntax_check_dialog.py`), not a one-off hardcoded color.
+
+v3.19.2 (2026-09-16, direct instruction): a new "Save, then translate"
+button sits next to "Translate now" (an image editor panel's own German
+section header, below the English fields). Calls the exact same
+TranscriptTab-owned callback (`self._on_save_and_translate`, ->
+`_request_save_and_translate()` -> a whole-slide Save draft, then an
+auto-translate pickup once the reload rebuilds this editor fresh --
+unchanged, already existed) that `_on_translate()`'s own unsaved-changes
+dialog's "Save, then translate" option already called -- this is a
+direct one-click shortcut to that exact path, not a new one, for the
+common case of "I just edited the English text and want both steps done
+without an extra dialog in between."
+
+v3.20.0 (2026-09-17, direct instruction): renamed the app from
+"SlideManager" to "SlideMage" -- the exe/spec/batch/build-script names,
+the `slidemanager/` package directory itself (now `slidemage/`, a pure
+`git mv` since its own modules only ever used relative imports), every
+window/menu/dialog string, the splash image's wordmark (regenerated), the
+two desktop `.lnk` shortcuts (recreated rather than just renamed, since a
+shortcut's target path is baked in as binary data), and the internal
+temp/wrapper-file naming this app's own compiler/preview code uses
+(`_slidemanager_*.tex` -> `_slidemage_*.tex`, kept in lockstep with
+`qt_gui.py`'s own matching "Remove temp files" glob so it doesn't stop
+finding its own temp files). Old Tkinter `gui.py` deliberately left alone
+(frozen fallback, untouched since the PySide6 migration itself -- see
+PYSIDE6_MIGRATION.md). Also dropped the "(git unavailable)" suffix
+`_compute_version_string()` used to append when `git` isn't resolvable --
+it now just falls back to bare VERSION_NUMBER with no parenthetical at all.
+
+v3.20.1 (2026-09-17, direct instruction): renamed the Active decks
+table's own "Edit" button (`qt_deck_table.py`) to "Source" -- it always
+opened the deck's raw .tex source directly (`_on_edit_deck` ->
+`open_deck_source_editor`), the same `SlideSourceTab` the deck slide-list
+editor's own "Source" button already opens, so "Edit" was a second,
+inconsistent name for the exact same destination.
+
+v3.21.0 (2026-09-17, direct instruction): relocated whole-deck transcript
+generation out of the Images tab -- a new "Transcript" button on the
+deck-editor tab (next to "Source") and a new "Create Transcript" button
+on the main deck table (next to "Stop compilation", which also asks
+which deck) both prompt for version and call the same
+`generate_deck_transcript()`. The Images tab's own deck/version picker is
+gone; its "Generate transcript" now previews just the currently-selected
+slide instead (`transcript.generate_single_slide()`, already used by the
+slide-source editor's own "Render transcript" button -- nothing is ever
+written to disk, it opens in a preview tab, same as that existing
+button). Also: `\deckoutputfolder` no longer honors a commented-out
+declaration (`OUTPUT_FOLDER_RE.finditer()` had no notion of "%" at all --
+direct report), gained a `[transcript]` scope (independent of the PDF-output
+scopes) for the transcript writer's own output location, and -- for both
+PDF and transcript output -- a declared path that names a full file
+rather than a folder now uses that exact filename instead of the usual
+`<deck>-<version>` naming. Also fixed a real, separate bug found while
+diagnosing a "367 of 375 slides" report (the gap itself was correct,
+ordinary `\conditionalslide` exclusion): `\titleframe`/`\fullbleedframe`
+are commands, not environments, so `alt_blocks.py`'s frame-detection
+regexes never matched them -- their transcript entries were dumping raw,
+unstripped macro-argument text (a bare version number, a raw image path)
+as the transcript body, and a fullbleedframe slide's image had zero
+description entry at all since `referenced_images()` never saw its path
+either. Affected 26 files project-wide.
+
+v3.21.1 (2026-09-17, direct question): `\deckoutputfolder[presenter]{...}`
+now actually works -- found immediately after v3.21.0 shipped, when a real
+deck used it and nothing distinguished its output from `[instructor]`'s.
+A presenter job's own `.version` is already "instructor"
+(`qt_deck_table.py`'s `DeckRow.build_jobs()` -- presenter mode always
+wants full, unrestricted content), so `compiler.resolve_output_location()`
+never had a way to look up a `[presenter]`-scoped folder distinctly; it
+now checks that key first for a presenter job, falling back to
+`[instructor]` then the bare form exactly as before if not declared.
+Without this, two decks pointing `[instructor]`/`[presenter]` at
+different full filenames (as v3.21.0's own new full-filename feature
+invites) would have silently collided on the instructor PDF's own name.
+
+v3.22.0 (2026-09-18, direct instruction): a "Clear selection" button sits
+to the left of "Refresh decks" in both the Active and Archived decks
+tables (`qt_deck_table.py`'s shared `DeckTableWidget`) -- unchecks every
+version/"After-course, per chapter"/Presenter checkbox across every row
+in that table in one click. `DeckRow` gains a small `clear_selection()`
+method (iterating `self.vars.values()` plus `chapter_var`/
+`presenter_var`, the same checkboxes `selected_versions()`/
+`build_jobs()` already read) that the table-level button just calls once
+per row.
+
+v3.22.1 (2026-09-18, direct instruction): renamed the package directory
+from `slidemage/` to `SlideMage/`, matching the app's own display-name
+casing (the app itself, the exe, and the wordmark were already
+"SlideMage" since v3.20.0 -- only the on-disk folder still lagged). Pure
+`git mv` (two-step, since it's a case-only rename on a case-insensitive
+filesystem), same as v3.20.0's own package-directory rename -- its
+modules only ever used relative imports, so no self-import broke. Every
+place that names the package explicitly was updated in lockstep to avoid
+the exact failure a same-day first attempt at this hit: Python's
+`FileFinder` matches an import name case-sensitively against its cached
+directory listing even on a case-insensitive filesystem, so a stray
+lowercase `slidemage` reference (an import, or a `-m slidemage` on the
+command line) would silently fail to find the now-uppercase folder.
+Updated: `slidemage_entry.py`'s `from slidemage.qt_gui import main`,
+`SlideMage.bat`'s `-m slidemage` launch line, `SlideMage.spec`'s
+`datas`/`splash`/`icon` paths, `.scripts/add_deck_headers.py`'s import,
+and this package's own `app_settings.py`/`translation_prompts.py`
+`STORE_PATH` constants (both point at a JSON file living inside the
+package folder itself, not the Windows registry -- see those modules'
+own docstrings). The internal `_slidemage_*.tex` wrapper-file prefix
+(`compiler.py`, `slide_preview.py`, `update_all_previews.py`,
+`qt_gui.py`'s own matching cleanup glob) is a separate, self-contained
+naming convention, not a Python identifier -- deliberately left alone.
+
+v3.23.0 (2026-09-18, direct instruction): `\\fullbleedframe{}` accepts a
+comma-separated list of images (layered on top of each other, one revealed
+per overlay step -- see its preamble comment), used to merge the
+Fink/Palan/Theissen excursus's build-step screenshots into one slide each.
+`alt_blocks.referenced_images()`/`replace_image_reference()` split that
+list, so every layer still gets its own alt-text/`used_on` entry and the
+Images tab's "Replace image..." still finds each one.
+
+v3.24.0 (2026-09-18, direct instruction): Images tab toolbars regrouped.
+Top row: translation (model, "Translate all..."), then drafting (model,
+Draft descriptions/all, Tune prompt, Clear draft), then the transcript
+preview (version, Generate transcript) -- all three fit on one row at
+1920 wide (~1100px of 1920). Second row: Show/Sort/Rescan as one block,
+then Find slide and Open slide source, with the slide-count summary at
+its right end. "Save draft"/"Save and mark reviewed" moved from a row
+below the images to the right of the slide title above them, freeing that
+height for the image/description area.
+
+v3.24.1 (2026-09-18, direct instruction): Images tab top row order changed
+to drafting, translation, transcript (drafting and translation swapped),
+and the images area's bottom edge now lines up with the slide list's (the
+right-hand pane no longer has a bottom margin).
+"""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from dataclasses import dataclass
+
+from .deck_scan import PROJECT_ROOT
+
+VERSION_NUMBER = "v3.24.1"
+
+# Matches every "vX.Y.Z (...): description..." paragraph in this module's
+# own docstring above -- anchored to a line start so it skips the
+# free-form "Estimated at v2.9.0 on ..." paragraph (doesn't start a line
+# with "v2.9.0 (") and the trailing "The displayed string also appends
+# ..." paragraph about VERSION itself, neither of which is a per-bump
+# history entry.
+_HISTORY_ENTRY_RE = re.compile(
+    r"^(v\d+\.\d+\.\d+) \(([^)]*)\):\s*(.*?)"
+    r"(?=\n\nv\d+\.\d+\.\d+ \(|\n\nThe displayed string|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+@dataclass
+class HistoryEntry:
+    version: str
+    meta: str          # whatever's in parens -- usually a date + reason
+    description: str
+
+
+def parse_history() -> list[HistoryEntry]:
+    """Every per-bump history entry in this module's own docstring above,
+    oldest first. The Info menu's version-history dialog
+    (qt_version_history_dialog.py) reads this directly rather than
+    maintaining a separate changelog -- a new history paragraph appended
+    here (the project's own standing per-bump convention, see
+    VERSION_NUMBER's comment) is automatically visible in the GUI with
+    nothing else to keep in sync."""
+    text = __doc__ or ""
+    entries = []
+    for match in _HISTORY_ENTRY_RE.finditer(text):
+        version, meta, body = match.group(1), match.group(2), match.group(3)
+        meta = re.sub(r"\s+", " ", meta).strip()
+        description = re.sub(r"\s+", " ", body).strip()
+        entries.append(HistoryEntry(version=version, meta=meta, description=description))
+    return entries
+
+
+def _run_git(*args: str) -> str | None:
+    popen_kwargs: dict = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        result = subprocess.run(
+            ["git", *args], cwd=PROJECT_ROOT, capture_output=True, text=True,
+            timeout=5, **popen_kwargs,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _compute_version_string() -> str:
+    commit_dt = _run_git(
+        "show", "-s", "--format=%cd", "--date=format:%Y-%m-%d %H:%M", "HEAD"
+    )
+    if commit_dt is None:
+        return VERSION_NUMBER
+    return f"{VERSION_NUMBER} ({commit_dt})"
+
+
+VERSION = _compute_version_string()
