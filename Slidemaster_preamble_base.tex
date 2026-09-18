@@ -1529,7 +1529,7 @@
 
 % \deckoutputfolder[version]{path} - declares where SlideMage should
 % place this deck's own compiled PDF, read directly out of this file's own
-% source text by slidemage/deck_scan.py (OUTPUT_FOLDER_RE) at deck-scan
+% source text by SlideMage/deck_scan.py (OUTPUT_FOLDER_RE) at deck-scan
 % time -- never expanded by LaTeX itself. A silent no-op here (2026-09-16,
 % direct instruction) purely so a deck carrying this directive still
 % compiles cleanly under a plain lualatex/TeXstudio run, the same reason
@@ -2157,7 +2157,7 @@
 % illustration's own row into media/alt-text.json (and its compile-time
 % media/alt-text.csv projection) keyed "tikz:ID", never a real media/ path;
 % gothamalt.mark() itself needed no changes, since it already keys purely
-% on whatever string it is given (slidemage/alt_images.py).
+% on whatever string it is given (SlideMage/alt_images.py).
 %
 % A decorative illustration is wrapped in the same \gothamArtifactBegin{/Type
 % /Background}/\End pair sideimageframe's/fullbleedframe's own decorative
@@ -2352,8 +2352,8 @@
 
 % \gothamPresenterModeOverride: SlideMage's own hook for a "Presenter"
 % compile -- a separate output alongside the plain instructor PDF, never a
-% toggle on it (see slidemage/compiler.py's own CompileJob.presenter
-% field and slidemage/qt_deck_table.py's own "Presenter" checkbox,
+% toggle on it (see SlideMage/compiler.py's own CompileJob.presenter
+% field and SlideMage/qt_deck_table.py's own "Presenter" checkbox,
 % independent of the three version checkboxes the same way "After-course,
 % per chapter" already is). Same \ifdefined-hook pattern as
 % \gothamFooterTimestampOverride just above: compiler.py's wrapper file
@@ -5093,13 +5093,57 @@
 	\end{tikzpicture}%
 	}%
 	\gothamArtifactEnd
+	\gothamFullBleedPick{#1}{\gothamFullBleedLayers{#1}}{\gothamFullBleedImage{#1}}%
+	\end{frame}%
+}
+\makeatletter
+\newcommand{\gothamFullBleedPick}[3]{\in@{,}{#1}\ifin@#2\else#3\fi}
+\makeatother
+
+% \fullbleedframe{a.png,b.png,c.png} (2026-09-18, direct instruction:
+% combine the Fink/Palan/Theissen excursus's build-step screenshots into
+% one slide): a comma-separated list layers the images on top of each
+% other, revealed one per overlay step (image k appears at step k and stays,
+% each covering the previous one -- the screenshots are same-size, opaque
+% and each already contains every earlier step's content, so stacking
+% reproduces the source's own build animation). Instructor deck only --
+% the during-course/after-course versions show just the last (final)
+% image, in a single step. A single path behaves
+% exactly as before. Once a layer is covered by the next one it is wrapped
+% in the same /Background artifact as the backdrop above, so on step k a
+% screen reader reads only image k's own alt text (each screenshot is
+% described as its own "build step k of n") instead of every buried layer's.
+\newcommand{\gothamFullBleedImage}[1]{%
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
 		\node[anchor=center] at (current page.center)
 			{\includegraphics[width=\paperwidth, height=\paperheight, keepaspectratio]{#1}};
 	\end{tikzpicture}%
 	}%
-	\end{frame}%
+}
+\newcount\gothamFBtotal
+\newcommand{\gothamFullBleedLayers}[1]{%
+	\global\gothamFBtotal=0
+	\foreach \gothamFBimg in {#1} {\global\advance\gothamFBtotal by 1 }%
+	\foreach \gothamFBimg [count=\gothamFBi] in {#1} {%
+		\ifgothamInstructorVersion
+			\ifnum\gothamFBi<\gothamFBtotal
+				\pgfmathtruncatemacro{\gothamFBnext}{\gothamFBi+1}%
+				\only<\gothamFBi>{\gothamFullBleedImage{\gothamFBimg}}%
+				\only<\gothamFBnext->{%
+					\gothamArtifactBegin{/Type /Background}%
+					\gothamFullBleedImage{\gothamFBimg}%
+					\gothamArtifactEnd
+				}%
+			\else
+				\only<\gothamFBi>{\gothamFullBleedImage{\gothamFBimg}}%
+			\fi
+		\else
+			\ifnum\gothamFBi=\gothamFBtotal
+				\gothamFullBleedImage{\gothamFBimg}%
+			\fi
+		\fi
+	}%
 }
 
 % sideimageframe: a standardframe that always carries one auto-placed

@@ -293,12 +293,12 @@ TSWLatexianTemp*
 ## Claude Code local (per-machine) settings:
 .claude/settings.local.json
 
-## Python bytecode cache (decks/*.py helper scripts, slidemage/):
+## Python bytecode cache (decks/*.py helper scripts, SlideMage/):
 __pycache__/
 *.pyc
 
-## Virtual environment (slidemage's PySide6 migration, see
-## slidemage/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
+## Virtual environment (SlideMage's PySide6 migration, see
+## SlideMage/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
 ## committed -- kept here as a legacy-path safety net only. As of
 ## 2026-08-11, the real venv no longer lives inside the project folder at
 ## all: this whole folder is Dropbox/SyncBackPro-synced, and a venv is
@@ -317,7 +317,7 @@ __pycache__/
 ## habit (e.g. `python -m venv .venv` run by hand).
 .venv/
 
-## PyInstaller build output (see slidemage/PYSIDE6_MIGRATION.md and
+## PyInstaller build output (see SlideMage/PYSIDE6_MIGRATION.md and
 ## build_slidemage_exe.bat) -- `build/` is disposable intermediate
 ## PyInstaller cache, not the shippable artifact, and is directed outside
 ## this synced folder entirely by the build script for the same file-count
@@ -356,26 +356,31 @@ alt-text-bakeoff.md
 
 # Compile-time slide preview PNGs (slide_snapshot.py) -- a best-effort
 # cache refreshed opportunistically on every compile that touches a slide,
-# not a build artifact worth keeping in history.
-slide_previews/
+# not a build artifact worth keeping in history. Moved under previews/
+# 2026-09-18 (was a project-root folder before that), then under .previews/
+# the same day (dot-prefixed: nothing the user needs to interact with).
+.previews/slide_previews/
 
 # Rendered PNGs of .pdf media (media_render.py, 2026-08-26) -- same
 # regeneratable-cache reasoning as slide_previews/ above, for the Images
 # tab's own preview and Ollama drafting, both of which need a raster image
-# a .pdf media file itself isn't.
-pdf_render_cache/
+# a .pdf media file itself isn't. Moved under previews/ 2026-09-18, then
+# .previews/ the same day (was a project-root folder before that).
+.previews/pdf_render_cache/
 
 # Rendered/cropped PNGs of \tikzillustration{} bodies (tikz_render.py) --
 # same regeneratable-cache reasoning again: entirely derived, on demand,
 # from a slide's own current tikz source, for the Images tab's preview and
 # Ollama drafting of a hand-drawn diagram that has no media/ file at all.
-tikz_illustration_previews/
+# Moved under previews/ 2026-09-18, then .previews/ the same day (was a
+# project-root folder before that).
+.previews/tikz_illustration_previews/
 
 # SlideMage's own local UI preferences (app_settings.py -- currently
 # just dark mode) -- a personal taste, not project content worth
 # version-controlling/diffing on every toggle, same category as
 # .claude/settings.local.json above. Still a plain file physically inside
-# slidemage/ (not the Windows registry), so the folder's own cloud-sync
+# SlideMage/ (not the Windows registry), so the folder's own cloud-sync
 # client -- not git -- carries it across machines; see dist/ above for the
 # identical git-ignored-but-not-sync-ignored precedent.
-slidemage/app_settings.json
+SlideMage/app_settings.json
