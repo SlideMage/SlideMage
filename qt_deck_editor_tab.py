@@ -143,6 +143,12 @@ class DeckEditorTab(QWidget):
         self.bulk_remove_button.clicked.connect(self._on_remove_selected)
         toolbar.addWidget(self.bulk_remove_button)
 
+        # Shown and hidden together with "Remove selected".
+        self.clear_selection_button = QPushButton("Clear selection")
+        self.clear_selection_button.setVisible(False)
+        self.clear_selection_button.clicked.connect(self._on_clear_selection)
+        toolbar.addWidget(self.clear_selection_button)
+
         toolbar.addWidget(QLabel("Quick navigation:"))
         self.chapter_combo = QComboBox()
         self.chapter_combo.setToolTip("Jump the view to a chapter.")
@@ -724,6 +730,11 @@ class DeckEditorTab(QWidget):
         count = len(self._selected_calls())
         self.bulk_remove_button.setVisible(count >= 2)
         self.bulk_remove_button.setText(f"Remove selected ({count})")
+        self.clear_selection_button.setVisible(count >= 2)
+
+    def _on_clear_selection(self) -> None:
+        for box, _call in self._row_checkboxes:
+            box.setChecked(False)
 
     def _on_remove_selected(self) -> None:
         # No confirmation, same as the per-row Remove: the whole batch is
