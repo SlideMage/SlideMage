@@ -95,6 +95,14 @@ class Deck:
     output_folders: dict[str | None, str]
 
     @property
+    def is_test_deck(self) -> bool:
+        """decks/test.tex and its siblings (test-student, test-ibk,
+        test-mci) -- layout regression fixtures whose slides come from a
+        shared fragment (test-slides.tex), not \\slide{} calls of their own,
+        so there is no slide list or source to open for them in the GUI."""
+        return self.name.startswith("test")
+
+    @property
     def has_chapters(self) -> bool:
         return len(self.chapters) > 0
 

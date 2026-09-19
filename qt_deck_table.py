@@ -113,10 +113,14 @@ class DeckRow:
         self._running_keys: set[str] = set()
 
         name_label = QLabel(deck.name)
-        name_label.setObjectName(LINK_LABEL)
-        name_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        if on_open is not None:
-            name_label.mousePressEvent = lambda event, d=deck: on_open(d)  # noqa: E731
+        # A test deck has no slide list or source to open (2026-09-19,
+        # direct instruction), so its name is plain text -- not the blue,
+        # clickable link every other deck's name is.
+        if not deck.is_test_deck:
+            name_label.setObjectName(LINK_LABEL)
+            name_label.setCursor(Qt.CursorShape.PointingHandCursor)
+            if on_open is not None:
+                name_label.mousePressEvent = lambda event, d=deck: on_open(d)  # noqa: E731
         grid.addWidget(name_label, row_index, 0)
 
         col = 1
