@@ -95,6 +95,20 @@ class Deck:
     output_folders: dict[str | None, str]
 
     @property
+    def is_workdeck(self) -> bool:
+        """decks/#workdeck.tex, the scratch deck slides are assembled in --
+        pinned to the top of the deck tables, above the course decks."""
+        return self.name == "#workdeck"
+
+    @property
+    def is_research_deck(self) -> bool:
+        """A research presentation rather than a course -- by naming
+        convention "r-..." (courses are "t-..."). No such deck exists yet;
+        the deck tables already reserve a "Research presentations" section
+        for them."""
+        return self.name.startswith("r-")
+
+    @property
     def is_test_deck(self) -> bool:
         """decks/test.tex and its siblings (test-student, test-ibk,
         test-mci) -- layout regression fixtures whose slides come from a

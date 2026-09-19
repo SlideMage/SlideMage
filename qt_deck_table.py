@@ -23,6 +23,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -481,6 +482,24 @@ class DeckTable(QWidget):
         prematurely."""
         self._style_stop_button(enabled=False)
 
+    @staticmethod
+    def _separator(heading: str) -> QWidget:
+        """A bold heading with a thin line under it. The line is its own
+        1px widget: a border-bottom set on the heading QLabel itself was
+        checked and does not render under this app's global stylesheet."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(2)
+        label = QLabel(heading)
+        label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(label)
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background-color: #888888;")
+        layout.addWidget(line)
+        return widget
+
     def rebuild(self, decks: list[Deck]) -> None:
         # Qt layouts have no single "clear everything" call -- pull every
         # item out (and delete the widget it owned) before rebuilding, or
@@ -505,15 +524,40 @@ class DeckTable(QWidget):
             label.setStyleSheet("font-weight: bold;")
             self.grid.addWidget(label, 0, col)
 
+        # Groups (2026-09-19, direct instruction): the workdeck pinned on
+        # top with no heading of its own, then "Course decks" (everything
+        # that is none of the other kinds), "Research presentations", and
+        # "Test decks", each under its own separator. Each group keeps the
+        # scan's own filename order. A group with no decks in this table
+        # shows no separator, except Research presentations on the active
+        # table: it is deliberately shown while still empty, as a reserved
+        # place for decks that don't exist yet.
+        def is_course(d: Deck) -> bool:
+            return not (d.is_workdeck or d.is_research_deck or d.is_test_deck)
+
+        groups = [
+            (None, [d for d in decks if d.is_workdeck], False),
+            ("Course decks", [d for d in decks if is_course(d)], False),
+            ("Research presentations", [d for d in decks if d.is_research_deck], self.archivable),
+            ("Test decks", [d for d in decks if d.is_test_deck], False),
+        ]
         self.rows = []
-        for i, deck in enumerate(decks, start=1):
-            self.rows.append(
-                DeckRow(
-                    self.grid, i, deck, self.theme,
-                    on_open=self.on_open,
-                    on_archive=self.on_archive if self.archivable else None,
-                    on_edit=self.on_edit if self.archivable else None,
-                    on_duplicate=self.on_duplicate if self.archivable else None,
-                    on_export_pptx=self.on_export_pptx if self.archivable else None,
+        grid_row = 1
+        for heading, group, show_when_empty in groups:
+            if not group and not show_when_empty:
+                continue
+            if heading is not None:
+                self.grid.addWidget(self._separator(heading), grid_row, 0, 1, len(header))
+                grid_row += 1
+            for deck in group:
+                self.rows.append(
+                    DeckRow(
+                        self.grid, grid_row, deck, self.theme,
+                        on_open=self.on_open,
+                        on_archive=self.on_archive if self.archivable else None,
+                        on_edit=self.on_edit if self.archivable else None,
+                        on_duplicate=self.on_duplicate if self.archivable else None,
+                        on_export_pptx=self.on_export_pptx if self.archivable else None,
+                    )
                 )
-            )
+                grid_row += 1
