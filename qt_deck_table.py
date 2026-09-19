@@ -35,9 +35,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import app_settings
 from .compiler import CompileJob
-from .deck_scan import Deck
+from .deck_scan import TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
 from .qt_theme import LINK_LABEL, ThemeManager
+
+# The deck table's groups, top to bottom: (tag, heading, shown even while
+# empty on the active table). The workdeck has no heading -- it is pinned
+# at the top on its own. Research presentations is the one group reserved
+# while still empty, for decks that don't exist yet.
+GROUPS = [
+    (TAG_WORK, None, False),
+    (TAG_COURSE, "Course decks", False),
+    (TAG_RESEARCH, "Research presentations", True),
+    (TAG_TEST, "Test decks", False),
+]
 
 VERSIONS = ["instructor", "during-course", "after-course"]
 VERSION_LABELS = {
@@ -106,6 +118,7 @@ class DeckRow:
         on_edit: Optional[Callable[[Deck], None]] = None,
         on_duplicate: Optional[Callable[[Deck], None]] = None,
         on_export_pptx: Optional[Callable[[Deck], None]] = None,
+        on_tags: Optional[Callable[[Deck], None]] = None,
     ):
         self.deck = deck
         self.theme = theme
@@ -216,6 +229,17 @@ class DeckRow:
             )
             export_pptx_button.clicked.connect(lambda: on_export_pptx(deck))
             grid.addWidget(export_pptx_button, row_index, col)
+            col += 1
+
+        if on_tags is not None:
+            tags_button = QPushButton("Tags")
+            tags_button.setToolTip(
+                "Choose which group of the deck table this deck appears in "
+                "(course, research, test, workdeck). Stored in the deck's "
+                "own file as \\decktags{...}."
+            )
+            tags_button.clicked.connect(lambda: on_tags(deck))
+            grid.addWidget(tags_button, row_index, col)
 
     def clear_selection(self) -> None:
         """Unchecks every compile-option checkbox this row owns -- the
@@ -311,10 +335,20 @@ class DeckTable(QWidget):
         on_stop_compilation: Callable[[], None],
         on_create_transcript: Callable[[list[DeckRow]], None],
         on_refresh: Callable[[], None],
+        on_tags: Optional[Callable[[Deck], None]] = None,
     ) -> None:
         super().__init__()
         self.theme = theme
         self.archivable = archivable
+        self.on_tags = on_tags
+        # Which groups the user has collapsed, by group tag -- persisted
+        # per table (app_settings.py) and kept across rebuild(), which
+        # re-applies it without touching any row's checkboxes.
+        self._collapsed_key = (
+            f"collapsed_deck_groups_{'active' if archivable else 'archived'}")
+        self._collapsed: set[str] = set(app_settings.get(self._collapsed_key, []))
+        self._group_widgets: dict[str, list[QWidget]] = {}
+        self._group_headers: dict[str, tuple[QPushButton, str, int]] = {}
         self.on_open = on_open
         self.on_archive = on_archive
         self.on_edit = on_edit
@@ -483,22 +517,55 @@ class DeckTable(QWidget):
         self._style_stop_button(enabled=False)
 
     @staticmethod
-    def _separator(heading: str) -> QWidget:
-        """A bold heading with a thin line under it. The line is its own
-        1px widget: a border-bottom set on the heading QLabel itself was
-        checked and does not render under this app's global stylesheet."""
+    def _header_text(heading: str, count: int, collapsed: bool) -> str:
+        return f"{'▸' if collapsed else '▾'}  {heading}  ({count})"
+
+    def _group_header(self, tag: str, heading: str, count: int) -> QWidget:
+        """A bold, clickable heading (click to collapse/expand the group)
+        with a thin line under it. The line is its own 1px widget: a
+        border-bottom set on a QLabel was checked and does not render under
+        this app's global stylesheet."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 10, 0, 0)
         layout.setSpacing(2)
-        label = QLabel(heading)
-        label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(label)
+        button = QPushButton(self._header_text(heading, count, tag in self._collapsed))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip("Click to collapse or expand this group.")
+        button.setStyleSheet(
+            "QPushButton {font-weight: bold; text-align: left; border: none; "
+            "background: transparent; padding: 0;}"
+        )
+        button.clicked.connect(lambda _checked=False, t=tag: self._toggle_group(t))
+        layout.addWidget(button)
         line = QFrame()
         line.setFixedHeight(1)
         line.setStyleSheet("background-color: #888888;")
         layout.addWidget(line)
+        self._group_headers[tag] = (button, heading, count)
         return widget
+
+    def _toggle_group(self, tag: str) -> None:
+        if tag in self._collapsed:
+            self._collapsed.discard(tag)
+        else:
+            self._collapsed.add(tag)
+        app_settings.set(self._collapsed_key, sorted(self._collapsed))
+        self._apply_collapsed(tag)
+
+    def _apply_collapsed(self, tag: str) -> None:
+        """Shows or hides one group's rows by hiding their top-level grid
+        widgets only -- never rebuilding, so no checkbox or status is lost.
+        Each cell's own children keep their individual visibility (e.g. a
+        version checkbox a deck can't use stays hidden) since only the cell
+        itself is toggled."""
+        collapsed = tag in self._collapsed
+        for widget in self._group_widgets.get(tag, []):
+            widget.setVisible(not collapsed)
+        header = self._group_headers.get(tag)
+        if header is not None:
+            button, heading, count = header
+            button.setText(self._header_text(heading, count, collapsed))
 
     def rebuild(self, decks: list[Deck]) -> None:
         # Qt layouts have no single "clear everything" call -- pull every
@@ -519,36 +586,31 @@ class DeckTable(QWidget):
             header.append("")  # Edit
             header.append("")  # Duplicate
             header.append("")  # Export PPTX
+            header.append("")  # Tags
         for col, text in enumerate(header):
             label = QLabel(text)
             label.setStyleSheet("font-weight: bold;")
             self.grid.addWidget(label, 0, col)
 
-        # Groups (2026-09-19, direct instruction): the workdeck pinned on
-        # top with no heading of its own, then "Course decks" (everything
-        # that is none of the other kinds), "Research presentations", and
-        # "Test decks", each under its own separator. Each group keeps the
-        # scan's own filename order. A group with no decks in this table
-        # shows no separator, except Research presentations on the active
-        # table: it is deliberately shown while still empty, as a reserved
-        # place for decks that don't exist yet.
-        def is_course(d: Deck) -> bool:
-            return not (d.is_workdeck or d.is_research_deck or d.is_test_deck)
-
-        groups = [
-            (None, [d for d in decks if d.is_workdeck], False),
-            ("Course decks", [d for d in decks if is_course(d)], False),
-            ("Research presentations", [d for d in decks if d.is_research_deck], self.archivable),
-            ("Test decks", [d for d in decks if d.is_test_deck], False),
-        ]
+        # Groups (2026-09-19, direct instruction), decided by each deck's
+        # own \decktags{...} (Deck.group), never by its filename. Each group
+        # keeps the scan's own filename order. A group with no decks in
+        # this table shows no separator, except Research presentations on
+        # the active table: it is deliberately shown while still empty, as
+        # a reserved place for decks that don't exist yet.
+        self._group_widgets = {}
+        self._group_headers = {}
         self.rows = []
         grid_row = 1
-        for heading, group, show_when_empty in groups:
-            if not group and not show_when_empty:
+        for tag, heading, show_when_empty in GROUPS:
+            group = [d for d in decks if d.group == tag]
+            if not group and not (show_when_empty and self.archivable):
                 continue
             if heading is not None:
-                self.grid.addWidget(self._separator(heading), grid_row, 0, 1, len(header))
+                self.grid.addWidget(
+                    self._group_header(tag, heading, len(group)), grid_row, 0, 1, len(header))
                 grid_row += 1
+            first_row = grid_row
             for deck in group:
                 self.rows.append(
                     DeckRow(
@@ -558,6 +620,16 @@ class DeckTable(QWidget):
                         on_edit=self.on_edit if self.archivable else None,
                         on_duplicate=self.on_duplicate if self.archivable else None,
                         on_export_pptx=self.on_export_pptx if self.archivable else None,
+                        on_tags=self.on_tags if self.archivable else None,
                     )
                 )
                 grid_row += 1
+            widgets: list[QWidget] = []
+            for r in range(first_row, grid_row):
+                for c in range(len(header)):
+                    item = self.grid.itemAtPosition(r, c)
+                    if item is not None and item.widget() is not None:
+                        widgets.append(item.widget())
+            self._group_widgets[tag] = widgets
+            if tag in self._collapsed:
+                self._apply_collapsed(tag)

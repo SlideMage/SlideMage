@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from .archive import _read, _write
-from .deck_scan import PROJECT_ROOT, Chapter, Deck
+from .deck_scan import PROJECT_ROOT, Chapter, Deck, find_decktags
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -246,6 +246,41 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
         for call in sorted(calls, key=lambda c: c.line_start, reverse=True):
             text = text[: call.line_start] + text[call.line_end :]
         return text
+
+    return _apply(deck_path, expected_text, mutate)
+
+
+def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
+    """Writes `tags` as this deck's \\decktags{...} line (2026-09-19):
+    replaces the deck's first live one in place, or inserts a new line just
+    before \\begin{document} -- after the preamble \\input{}, which is what
+    defines the inert \\decktags macro, so the deck keeps compiling. An
+    empty list removes the directive. Refuses (changing nothing) for a deck
+    that never loads the Slidemaster preamble, where the macro would be
+    undefined."""
+    clean = [t.strip().lower() for t in tags if t.strip()]
+
+    def mutate(text: str) -> str:
+        existing = find_decktags(text)
+        if existing is not None:
+            if not clean:
+                # Drop the whole line, like remove_slide_call() does.
+                line_start, line_end = _line_span(text, existing.start(), existing.end())
+                return text[:line_start] + text[line_end:]
+            return text[: existing.start()] + f"\\decktags{{{','.join(clean)}}}" + text[existing.end():]
+        if not clean:
+            return text
+        begin = re.search(r"^[ \t]*\\begin\{document\}", text, re.MULTILINE)
+        if begin is None:
+            raise ValueError(f"{deck_path.name} has no \\begin{{document}} to tag before.")
+        if "Slidemaster_preamble" not in text[: begin.start()]:
+            raise ValueError(
+                f"{deck_path.name} doesn't load the Slidemaster preamble, so "
+                "\\decktags would not compile there."
+            )
+        newline = "\r\n" if "\r\n" in text else "\n"
+        line = f"\\decktags{{{','.join(clean)}}}{newline}"
+        return text[: begin.start()] + line + text[begin.start():]
 
     return _apply(deck_path, expected_text, mutate)
 

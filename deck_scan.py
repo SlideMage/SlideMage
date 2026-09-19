@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -63,6 +63,17 @@ ADDBIBRESOURCE_RE = re.compile(r"\\addbibresource")
 # \deckversionoverride -- none of them are comments).
 OUTPUT_FOLDER_RE = re.compile(r"\\deckoutputfolder(?:\[([^\]]*)\])?\{([^}]*)\}")
 
+# \decktags{tag1,tag2} -- a deck's own tags (see Slidemaster_preamble_base.tex's
+# inert \decktags). The deck tables group decks by whichever of GROUP_TAGS a
+# deck carries; a deck carrying none is a course deck. When a deck carries
+# several, the first one in GROUP_TAGS' order wins.
+DECKTAGS_RE = re.compile(r"\\decktags\{([^}]*)\}")
+TAG_WORK = "work"
+TAG_COURSE = "course"
+TAG_RESEARCH = "research"
+TAG_TEST = "test"
+GROUP_TAGS = (TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST)
+
 
 @dataclass
 class Chapter:
@@ -94,27 +105,26 @@ class Deck:
     # for transcripts). Empty dict for a deck with no \deckoutputfolder at all.
     output_folders: dict[str | None, str]
 
-    @property
-    def is_workdeck(self) -> bool:
-        """decks/#workdeck.tex, the scratch deck slides are assembled in --
-        pinned to the top of the deck tables, above the course decks."""
-        return self.name == "#workdeck"
+    # The deck's own \decktags{...}, lowercased, in file order. Parsed from
+    # the deck's text (parse_tags()), never inferred from its filename.
+    tags: list[str] = field(default_factory=list)
 
     @property
-    def is_research_deck(self) -> bool:
-        """A research presentation rather than a course -- by naming
-        convention "r-..." (courses are "t-..."). No such deck exists yet;
-        the deck tables already reserve a "Research presentations" section
-        for them."""
-        return self.name.startswith("r-")
+    def group(self) -> str:
+        """Which deck-table group this deck belongs to: the first of
+        GROUP_TAGS it carries, else TAG_COURSE."""
+        for tag in GROUP_TAGS:
+            if tag in self.tags:
+                return tag
+        return TAG_COURSE
 
     @property
     def is_test_deck(self) -> bool:
-        """decks/test.tex and its siblings (test-student, test-ibk,
-        test-mci) -- layout regression fixtures whose slides come from a
-        shared fragment (test-slides.tex), not \\slide{} calls of their own,
-        so there is no slide list or source to open for them in the GUI."""
-        return self.name.startswith("test")
+        """Tagged `test`: layout regression fixtures (decks/test*.tex,
+        verify_accessibility.tex) whose slides come from a shared fragment
+        rather than \\slide{} calls of their own, so there is no slide list
+        or source to open for them in the GUI."""
+        return self.group == TAG_TEST
 
     @property
     def has_chapters(self) -> bool:
@@ -196,6 +206,27 @@ def _parse_output_folders(text: str) -> dict[str | None, str]:
     return folders
 
 
+def find_decktags(text: str) -> "re.Match[str] | None":
+    """The first live (not %-commented) \\decktags{...} in `text`, or None.
+    Same leading-comment check _parse_output_folders() uses: a match is
+    skipped only when everything before it on its own line, left-stripped,
+    starts with "%"."""
+    for m in DECKTAGS_RE.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if not text[line_start:m.start()].lstrip().startswith("%"):
+            return m
+    return None
+
+
+def parse_tags(text: str) -> list[str]:
+    """A deck's tags: the comma-separated list inside its first live
+    \\decktags{...}, stripped and lowercased, empties dropped."""
+    m = find_decktags(text)
+    if m is None:
+        return []
+    return [t for t in (part.strip().lower() for part in m.group(1).split(",")) if t]
+
+
 def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
     decks: list[Deck] = []
     if not directory.is_dir():
@@ -228,6 +259,7 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
                 preamble_end=doc_begin_match.end() if doc_begin_match else None,
                 chapters=_parse_chapters(text),
                 output_folders=_parse_output_folders(text),
+                tags=parse_tags(text),
             )
         )
     return decks

@@ -45,6 +45,7 @@ from . import app_settings
 from . import archive as archive_mod
 from . import bibliography
 from . import deck_duplicate
+from . import deck_editor
 from . import deck_headers
 from . import pptx_export
 from . import qt_slide_source_tab
@@ -63,10 +64,11 @@ from .compiler import (
     run_job,
     run_jobs,
 )
-from .deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
+from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, Deck, scan_decks
 from .qt_add_slide_dialog import AddSlideDialog
 from .qt_closable_tab_bar import ClosableTabBar
 from .qt_deck_editor_tab import DeckEditorTab
+from .qt_deck_group_dialog import ask_deck_details
 from .qt_settings_dialog import SettingsDialog
 from .qt_slide_search_dialog import SlideSearchDialog
 from .qt_slide_source_tab import SlideSourceTab
@@ -193,6 +195,7 @@ class SlideMageWindow(QMainWindow):
             on_stop_compilation=self._stop_compilation,
             on_create_transcript=self._on_create_transcript_toplevel,
             on_refresh=self._on_refresh_decks_clicked,
+            on_tags=self._on_edit_deck_tags,
         )
         self.archived_table = DeckTable(
             theme, archivable=False,
@@ -965,24 +968,65 @@ class SlideMageWindow(QMainWindow):
         """
         self.open_deck_source_editor(deck, return_to=self.active_table)
 
+    @staticmethod
+    def _tags_with_group(deck_tags: list[str], group: str) -> list[str]:
+        """`group` as the deck's group tag, keeping any other tags it has."""
+        return [group] + [t for t in deck_tags if t not in GROUP_TAGS]
+
+    def _on_edit_deck_tags(self, deck: Deck) -> None:
+        """A deck row's "Tags" button: choose the group the deck appears
+        in. Written into the deck's own file as \\decktags{...}."""
+        if deck.path in self._slide_source_tabs:
+            QMessageBox.information(
+                self, "Tags",
+                f"{deck.name}.tex is open in a source editor tab -- close it "
+                "first, so this change and that editor can't overwrite each "
+                "other.",
+            )
+            return
+        result = ask_deck_details(self, f"Tags — {deck.name}", deck.group)
+        if result is None:
+            return
+        _name, group = result
+        if group == deck.group and group in deck.tags:
+            return  # already exactly that
+        try:
+            deck_editor.set_deck_tags(
+                deck.path, deck.text, self._tags_with_group(deck.tags, group))
+        except (deck_editor.StaleFileError, ValueError, OSError) as exc:
+            QMessageBox.critical(self, "Tags failed", str(exc))
+            return
+        self._log(f"Tagged {deck.name} as {group}")
+        self.refresh_open_deck_editors()
+
     def _on_duplicate_deck(self, deck: Deck) -> None:
-        default_name = f"{deck.name}-copy"
-        new_name, ok = QInputDialog.getText(
-            self, "Duplicate deck", f"Name for the copy of {deck.name}.tex:",
-            text=default_name,
+        # Creation is where a deck's tag is first chosen (2026-09-19): the
+        # dialog takes the copy's name and its group together, defaulting
+        # to the original's group.
+        result = ask_deck_details(
+            self, "Duplicate deck", deck.group,
+            name_prompt=f"Name for the copy of {deck.name}.tex:",
+            default_name=f"{deck.name}-copy",
+            validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, deck.path.parent),
         )
-        if not ok:
+        if result is None:
             return
-        reason = deck_duplicate.is_valid_deck_name(new_name, deck.path.parent)
-        if reason is not None:
-            QMessageBox.critical(self, "Duplicate failed", reason)
-            return
+        new_name, group = result
         try:
             dest = deck_duplicate.duplicate_deck(deck, new_name)
         except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
             QMessageBox.critical(self, "Duplicate failed", str(exc))
             return
         self._log(f"Duplicated {deck.name}.tex -> {dest.name}")
+        if group != deck.group or group not in deck.tags:
+            try:
+                deck_editor.set_deck_tags(
+                    dest, deck_editor._read(dest), self._tags_with_group(deck.tags, group))
+                self._log(f"Tagged {dest.stem} as {group}")
+            except (deck_editor.StaleFileError, ValueError, OSError) as exc:
+                QMessageBox.warning(
+                    self, "Tags",
+                    f"{dest.name} was created, but tagging it as {group} failed: {exc}")
         self.reload_decks()
 
     def _on_export_pptx(self, deck: Deck) -> None:
