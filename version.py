@@ -1448,7 +1448,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.24.1"
+VERSION_NUMBER = "v3.24.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
