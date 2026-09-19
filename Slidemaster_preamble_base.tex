@@ -5650,3 +5650,28 @@
 	\endgroup
 }
 
+
+% \progressstrip{Step 1,Step 2,Step 3}{k} -- a full-width highlight-colored
+% strip listing a short chain of steps joined by arrows, with the k-th one
+% underlined to mark where the slide sits in that chain (added 2026-09-19
+% for the Publishing masterdeck's "Field -> Topic -> Question" strip, which
+% the source PowerPoint's "Progress" layout draws directly below the title
+% bar on the slides of that subsection). Written in the frame body, as the
+% very first thing, ahead of the itemize/text it introduces -- it's an
+% ordinary in-flow paragraph (unlike the source's own layout placeholder,
+% which sits outside the body area), so it pushes the body down by exactly
+% its own height instead of needing a hand-tuned gap. The strip uses the
+% institution's primary highlight color, so it follows the theme
+% (yellow for Graz, orange for MCI/Innsbruck) like the title bar does.
+\newcommand{\progressstrip}[2]{%
+	\par\noindent
+	\begingroup\setlength{\fboxsep}{2.5pt}%
+	\colorbox{c_primary_highlight}{%
+		\parbox{\dimexpr\linewidth-2\fboxsep\relax}{%
+			\small\strut
+			\foreach \gothamStepName [count=\gothamStepIndex] in {#1}{%
+				\ifnum\gothamStepIndex>1\ $\rightarrow$\ \fi
+				\ifnum\gothamStepIndex=#2\underline{\gothamStepName}\else\gothamStepName\fi}%
+			\strut}}\endgroup%
+	\par\vspace{2pt}%
+}
