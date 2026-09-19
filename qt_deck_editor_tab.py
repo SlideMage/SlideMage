@@ -378,7 +378,7 @@ class DeckEditorTab(QWidget):
                 header_text = title if title is not None else "(before first chapter)"
                 header_label = QLabel(header_text)
                 header_label.setStyleSheet("font-weight: bold;")
-                self.grid.addWidget(header_label, row_index, 0, 1, 9)
+                self.grid.addWidget(header_label, row_index, 0, 1, 10)
                 self._chapter_headers[chapter_occurrence] = header_label
                 chapter_occurrence += 1
                 row_index += 1
@@ -427,6 +427,15 @@ class DeckEditorTab(QWidget):
         preview_button = QPushButton("Preview")
         preview_button.clicked.connect(lambda: self._on_preview(call, position))
         self.grid.addWidget(preview_button, row_index, 8)
+
+        # Opens the Images tab on this slide (2026-09-19, direct
+        # instruction) -- before the read-only early return below, since
+        # jumping to a slide's images has nothing to do with whether its
+        # \slide{} call itself can be edited here.
+        images_button = QPushButton("Images")
+        images_button.clicked.connect(
+            lambda: self.app.open_images_for_slide(call.id_slug))
+        self.grid.addWidget(images_button, row_index, 9)
 
         if not call.editable:
             label = QLabel(f"read-only: {call.readonly_reason}")

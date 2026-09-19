@@ -392,6 +392,16 @@ class SlideMageWindow(QMainWindow):
             self._set_tab_color(self.transcript_tab, self.theme.tab_colors()["transcript"])
         self.tabs.setCurrentWidget(self.transcript_tab)
 
+    def open_images_for_slide(self, id_slug: str) -> None:
+        """A deck editor row's "Images" button (2026-09-19, direct
+        instruction): opens (or reveals) the Images tab and lands on that
+        slide's images. ensure_loaded() first because the tab's first scan
+        is deferred until it's shown -- _find_and_show_slide() only searches
+        rows a scan has already produced."""
+        self._on_open_images_tab()
+        self.transcript_tab.ensure_loaded()
+        self.transcript_tab._find_and_show_slide(id_slug)
+
     def _build_toolbar(self) -> QHBoxLayout:
         """Just the two footer-related checkboxes now (2026-08-25) -- the
         five maintenance buttons that used to fill this row moved into the

@@ -174,6 +174,18 @@ def _slide_state(row: alt_blocks.SlideRow, entries: dict[str, alt_images.ImageEn
     return worst
 
 
+# Shown under the Source field (2026-09-19, direct instruction). The
+# "AI-generated -- " prefix convention is documented in CONVERSION_NOTES.md
+# ("Image sources go into media/alt-text.json"); this is the same rule
+# surfaced at the moment someone is actually typing a source.
+_SOURCE_HELP = (
+    "Feeds the automatic \"Image source(s):\" footnote. For an AI-generated "
+    "image, write: AI-generated -- <engine> <version>, prompt: ``<prompt "
+    "exactly as entered>''. Example: AI-generated -- Midjourney 7, prompt: "
+    "``a garden with paths leading to statues, aerial view --ar 16:9''. "
+    "Any other image just gets its ordinary credit (e.g. Own illustration.)."
+)
+
 # Same convention README.md's own "Directory layout" section documents for
 # media/ -- kept as a short, human-facing summary here rather than a link,
 # since this dialog is exactly the moment someone's picking a name and
@@ -399,6 +411,10 @@ class _ImageEditor(QFrame):
         layout.addWidget(QLabel(
             "Source (citation/attribution -- shared across every slide "
             "using this image)"))
+        source_help = QLabel(_SOURCE_HELP)
+        source_help.setWordWrap(True)
+        source_help.setObjectName(MUTED_LABEL)
+        layout.addWidget(source_help)
         source_edit = QPlainTextEdit(entry.source)
         source_edit.setFixedHeight(50)
         source_edit.textChanged.connect(self._mark_dirty)
