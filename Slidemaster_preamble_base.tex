@@ -1541,6 +1541,16 @@
 % the actual directive syntax.
 \newcommand{\deckoutputfolder}[2][]{}
 
+% \decktags{tag1,tag2} - declares this deck's tags (2026-09-19), read
+% directly out of this file's own source text by SlideMage/deck_scan.py
+% (DECKTAGS_RE) and never expanded by LaTeX itself -- a silent no-op here
+% for exactly the same reason \deckoutputfolder above is. SlideMage's deck
+% tables group decks by their tag: work (the pinned workdeck), course,
+% research, test; a deck with none of those is a course deck. Written and
+% edited from SlideMage itself (the "Tags" button, and the Duplicate
+% dialog), placed just before \begin{document}.
+\newcommand{\decktags}[1]{}
+
 % Deck language system (added 2026-08-24) -- fixed per deck, like
 % \FooterText or the institution \input{} choice, not a per-compile-run
 % toggle like \deckversion above: a German course is its own deck file
