@@ -20,11 +20,12 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import (
     QFont,
     QFontMetricsF,
     QKeySequence,
+    QPainter,
     QShortcut,
     QSyntaxHighlighter,
     QTextCharFormat,
@@ -311,8 +312,28 @@ class LatexSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(m.start(), m.end() - m.start(), self._formats["todo"])
 
 
+class _LineNumberArea(QWidget):
+    """The gutter widget itself -- all sizing and painting lives on the
+    editor it belongs to (LatexPlainTextEdit), which knows the blocks."""
+
+    def __init__(self, editor: "LatexPlainTextEdit") -> None:
+        super().__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self) -> QSize:
+        return QSize(self._editor.line_number_area_width(), 0)
+
+    def paintEvent(self, event) -> None:
+        self._editor.paint_line_numbers(event)
+
+
 class LatexPlainTextEdit(QPlainTextEdit):
-    """Smart Enter key (2026-08-31, direct instruction): a new line always
+    """Line numbers (2026-09-19, direct instruction): a gutter down the
+    left edge, numbering real file lines -- a line hidden by the header
+    fold is skipped, not renumbered around, so numbers always match the
+    file (and e.g. TeX's own "l.123" error lines).
+
+    Smart Enter key (2026-08-31, direct instruction): a new line always
     continues its predecessor's own leading whitespace (tabs -- matching
     this project's own indentation convention throughout slides/, never
     spaces), and pressing Enter right at the end of a `\\begin{ENV}` line
@@ -345,6 +366,66 @@ class LatexPlainTextEdit(QPlainTextEdit):
     # "\item \begin{itemize}" (an item that itself opens a nested list)
     # still gets the more specific begin/end handling, not this one.
     _ITEM_LINE_RE = re.compile(r"^\\item\b")
+
+    def __init__(self, theme=None) -> None:
+        super().__init__()
+        # Colors are read from the theme at paint time, so a dark/light
+        # toggle is picked up on the next repaint with nothing to refresh.
+        self._theme = theme
+        self._line_area = _LineNumberArea(self)
+        self.blockCountChanged.connect(self._update_line_area_width)
+        self.updateRequest.connect(self._update_line_area)
+        self.cursorPositionChanged.connect(self._line_area.update)
+        self._update_line_area_width()
+
+    # -- line numbers -----------------------------------------------------------
+
+    def line_number_area_width(self) -> int:
+        digits = max(3, len(str(max(1, self.blockCount()))))
+        return 8 + self.fontMetrics().horizontalAdvance("9") * digits
+
+    def _update_line_area_width(self, _new_block_count: int = 0) -> None:
+        self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+
+    def _update_line_area(self, rect: QRect, dy: int) -> None:
+        if dy:
+            self._line_area.scroll(0, dy)
+        else:
+            self._line_area.update(0, rect.y(), self._line_area.width(), rect.height())
+        if rect.contains(self.viewport().rect()):
+            self._update_line_area_width()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        area = self.contentsRect()
+        self._line_area.setGeometry(
+            QRect(area.left(), area.top(), self.line_number_area_width(), area.height()))
+
+    def paint_line_numbers(self, event) -> None:
+        colors = self._theme.colors if self._theme is not None else {}
+        painter = QPainter(self._line_area)
+        painter.fillRect(event.rect(), QColor(colors.get("panel_bg", "#eeeeee")))
+        painter.setFont(self.font())
+        height = self.fontMetrics().height()
+        width = self._line_area.width() - 4
+        current = self.textCursor().blockNumber()
+        normal = QColor(colors.get("muted_fg", "#888888"))
+        strong = QColor(colors.get("fg", "#000000"))
+
+        block = self.firstVisibleBlock()
+        number = block.blockNumber()
+        top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
+        bottom = top + round(self.blockBoundingRect(block).height())
+        while block.isValid() and top <= event.rect().bottom():
+            # isVisible() is False for a line hidden by the header fold; it
+            # takes no height, and is skipped without shifting the numbers.
+            if block.isVisible() and bottom >= event.rect().top():
+                painter.setPen(strong if number == current else normal)
+                painter.drawText(0, top, width, height, Qt.AlignmentFlag.AlignRight, str(number + 1))
+            block = block.next()
+            top = bottom
+            bottom = top + round(self.blockBoundingRect(block).height())
+            number += 1
 
     def keyPressEvent(self, event) -> None:
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self._smart_return():
@@ -855,7 +936,7 @@ class SlideSourceTab(QWidget):
         comment_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         comment_shortcut.activated.connect(self._on_toggle_comment)
 
-        self.widget = LatexPlainTextEdit()
+        self.widget = LatexPlainTextEdit(self.app.theme)
         self.widget.setFont(SOURCE_FONT)
         self.widget.setTabStopDistance(_tab_stop_distance_px())
         self.widget.setPlainText(self.text)
