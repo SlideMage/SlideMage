@@ -228,6 +228,28 @@ def remove_slide_call(deck_path: Path, expected_text: str, call: SlideCall) -> s
     return _apply(deck_path, expected_text, mutate)
 
 
+def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCall]) -> str:
+    """Bulk version of remove_slide_call() for the deck editor's checkbox
+    selection (2026-09-19, direct instruction): every call's line is cut in
+    one stale-check-then-write, so it is a single file write and a single
+    undo step. Cut from the last line to the first so each earlier call's
+    offsets are still valid when its turn comes. Refuses the whole batch,
+    changing nothing, if any one call isn't editable."""
+    blocked = [c for c in calls if not c.editable]
+    if blocked:
+        raise ValueError(
+            "can't remove " + ", ".join(c.id_slug for c in blocked)
+            + f" -- {blocked[0].readonly_reason}"
+        )
+
+    def mutate(text: str) -> str:
+        for call in sorted(calls, key=lambda c: c.line_start, reverse=True):
+            text = text[: call.line_start] + text[call.line_end :]
+        return text
+
+    return _apply(deck_path, expected_text, mutate)
+
+
 def change_slide_call_variant(
     deck_path: Path,
     expected_text: str,

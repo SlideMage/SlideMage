@@ -94,6 +94,11 @@ class DeckEditorTab(QWidget):
         # now" can refresh that row's hover tooltip afterward without
         # re-scanning the grid.
         self._id_labels: dict[str, QLabel] = {}
+        # One (checkbox, call) per row of the List/Thumbnail view, rebuilt
+        # with the rows -- what the toolbar's bulk "Remove selected" button
+        # reads. Selection deliberately doesn't survive a rebuild: after any
+        # edit the calls' offsets and positions have all moved.
+        self._row_checkboxes: list[tuple[QCheckBox, SlideCall]] = []
         # Chapter-header widgets, keyed by that header's occurrence index
         # (0, 1, 2, ... in encounter order) rather than its title text --
         # two chapters that happen to share an exact title would otherwise
@@ -130,6 +135,13 @@ class DeckEditorTab(QWidget):
         self.undo_button.setEnabled(False)
         self.undo_button.clicked.connect(self._on_undo)
         toolbar.addWidget(self.undo_button)
+
+        # Only shown while two or more rows are ticked (see
+        # _update_bulk_remove_button).
+        self.bulk_remove_button = QPushButton("Remove selected")
+        self.bulk_remove_button.setVisible(False)
+        self.bulk_remove_button.clicked.connect(self._on_remove_selected)
+        toolbar.addWidget(self.bulk_remove_button)
 
         toolbar.addWidget(QLabel("Quick navigation:"))
         self.chapter_combo = QComboBox()
@@ -342,6 +354,8 @@ class DeckEditorTab(QWidget):
                 widget.deleteLater()
         self._id_labels = {}
         self._chapter_headers = {}
+        self._row_checkboxes = []
+        self._update_bulk_remove_button()
 
         # QGridLayout's row-stretch factors are layout state, not tied to
         # the widgets just cleared above -- a stale stretch=1 left on a
@@ -402,7 +416,23 @@ class DeckEditorTab(QWidget):
         self._trailing_stretch_row = row_index
 
     def _build_row(self, row_index: int, position: int, call: SlideCall) -> None:
-        self.grid.addWidget(QLabel(str(position)), row_index, 0)
+        # Checkbox + slide number share column 0's cell (rather than adding
+        # a column and shifting every other one) -- ticking two or more
+        # rows reveals the toolbar's bulk "Remove selected" button.
+        number_cell = QWidget()
+        number_layout = QHBoxLayout(number_cell)
+        number_layout.setContentsMargins(0, 0, 0, 0)
+        select_box = QCheckBox()
+        if call.editable:
+            select_box.setToolTip("Select for bulk removal")
+            select_box.toggled.connect(self._update_bulk_remove_button)
+            self._row_checkboxes.append((select_box, call))
+        else:
+            select_box.setEnabled(False)
+            select_box.setToolTip(f"Can't be removed here -- {call.readonly_reason}")
+        number_layout.addWidget(select_box)
+        number_layout.addWidget(QLabel(str(position)))
+        self.grid.addWidget(number_cell, row_index, 0)
 
         link = QLabel(call.id_slug + _language_badge_html(call.id_slug))
         link.setObjectName(LINK_LABEL)
@@ -684,6 +714,33 @@ class DeckEditorTab(QWidget):
         self.app.after_deck_edit(
             self.deck.path,
             f"Removed \\{call.macro}{{{call.id_slug}}} from {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _selected_calls(self) -> list[SlideCall]:
+        return [call for box, call in self._row_checkboxes if box.isChecked()]
+
+    def _update_bulk_remove_button(self, *_args) -> None:
+        count = len(self._selected_calls())
+        self.bulk_remove_button.setVisible(count >= 2)
+        self.bulk_remove_button.setText(f"Remove selected ({count})")
+
+    def _on_remove_selected(self) -> None:
+        # No confirmation, same as the per-row Remove: the whole batch is
+        # one write, so one click of Undo restores all of it.
+        calls = self._selected_calls()
+        if not calls:
+            return
+        previous_text = self.deck.text
+        try:
+            deck_editor.remove_slide_calls(self.deck.path, self.deck.text, calls)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Remove failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path,
+            f"Removed {len(calls)} slides from {self.deck.name}: "
+            + ", ".join(c.id_slug for c in calls),
             previous_text=previous_text,
         )
 
