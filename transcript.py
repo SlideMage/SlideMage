@@ -62,8 +62,14 @@ _ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 # Every one of them advances the frame counter even when skipped, so slide
 # numbering matches the PDF across versions -- which is the whole reason a
 # transcript can say "slide 34" and be believed.
+# \slidestep{ID}[vs]{steps} (2026-09-20) is a \conditionalslide{} that also restricts the
+# reveal steps. Its [vs] follows the id, so it has its own alternative. Unlike every
+# other command it does NOT advance the frame counter when the version is not in [vs]:
+# two \slidestep calls at one position are alternatives, exactly one of which exists
+# in any given deck version (see \slidestep in Slidemaster_preamble_base.tex).
 _SLIDE_CALL_RE = re.compile(
-    r"\\(?P<cmd>slidefinal|slideversion|slide|omitslideversion|omitslide"
+    r"\\slidestep\s*\{(?P<ss_id>[^}]*)\}(?:\s*\[(?P<ss_versions>[^\]]*)\])?\s*\{[^}]*\}"
+    r"|\\(?P<cmd>slidefinal|slideversion|slide|omitslideversion|omitslide"
     r"|conditionalslide)\s*(?:\[(?P<versions>[^\]]*)\])?\s*\{(?P<id>[^}]*)\}"
     r"(?:\s*\{(?P<second>[^}]*)\})?"
 )
@@ -255,6 +261,18 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     number = 0
 
     for match in _SLIDE_CALL_RE.finditer(text):
+        if match.group("ss_id") is not None:
+            step_id = match.group("ss_id").strip()
+            if not step_id or version not in _versions_from(match.group("ss_versions"), _ALL_VERSIONS):
+                continue
+            number += 1
+            slides.append(DeckSlide(
+                number=number,
+                slide_id=step_id.partition("-")[0],
+                path=SLIDES_DIR / f"{step_id}-current.tex",
+                included=True,
+            ))
+            continue
         command = match.group("cmd")
         slide_id = match.group("id").strip()
         if not slide_id:

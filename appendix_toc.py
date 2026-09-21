@@ -69,7 +69,7 @@ def _visible_for_instructor(call: SlideCall) -> bool:
     \\slideversion, \\omitslide, \\omitslideversion) always renders here --
     \\omitslide{}/\\omitslideversion{} only skip under \\ifgothamStudentVersion,
     which no real deck in this project currently ever sets true."""
-    if call.macro == "conditionalslide":
+    if call.macro in ("conditionalslide", "slidestep"):
         return "instructor" in (call.conditions or [])
     return True
 
@@ -79,7 +79,19 @@ def _sections(deck: Deck) -> list[tuple[int, str, list[SlideCall]]]:
     leading "Front matter" entry (order 0) for slides before the first
     \\section, then one entry per real chapter, each skipped entirely if it
     ends up with no visible slides."""
-    calls = [c for c in deck_editor.parse_slide_calls(deck) if _visible_for_instructor(c)]
+    # A slide shown at several places with \slidestep{} (each place possibly several
+    # calls, one per deck version) gets one thumbnail, at its first visible place --
+    # the place its \hypertarget{} also belongs to.
+    calls = []
+    step_ids: set[str] = set()
+    for c in deck_editor.parse_slide_calls(deck):
+        if not _visible_for_instructor(c):
+            continue
+        if c.macro == "slidestep":
+            if c.id in step_ids:
+                continue
+            step_ids.add(c.id)
+        calls.append(c)
     sections: list[tuple[int, str, list[SlideCall]]] = []
     front_matter = [c for c in calls if c.chapter is None]
     if front_matter:

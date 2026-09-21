@@ -363,6 +363,7 @@ def render_slide_to_pdf(
     preamble_text: Optional[str] = None,
     frame_number: Optional[int] = None,
     log: Optional[LogCallback] = None,
+    steps: Optional[str] = None,
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -405,7 +406,10 @@ def render_slide_to_pdf(
     """
     log = log or (lambda line: None)
     preamble = GENERIC_PREAMBLE if preamble_text is None else preamble_text
-    call = format_call(macro, id_slug, version, conditions)
+    # \slidestep keeps its own reveal-step restriction, but is shown for every deck
+    # version: a preview compiles as the instructor deck, which would otherwise
+    # render nothing for a call listed only for the student versions.
+    call = format_call(macro, id_slug, version, None if macro == "slidestep" else conditions, steps)
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"

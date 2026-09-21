@@ -1438,6 +1438,15 @@ v3.24.1 (2026-09-18, direct instruction): Images tab top row order changed
 to drafting, translation, transcript (drafting and translation swapped),
 and the images area's bottom edge now lines up with the slide list's (the
 right-hand pane no longer has a bottom margin).
+
+v3.25.0 (2026-09-20, direct instruction): support for the new deck macro
+\slidestep{id-slug}[versions]{steps} (a \conditionalslide that also restricts
+the typeset reveal steps; see README.md, "\slidestep"). Deck editor, "Included
+in decks" headers, transcripts, appendix TOC (one thumbnail per slide id) and
+slide rename all recognise it; a call that is omitted for a deck version does
+not advance the frame counter, unlike \conditionalslide. Previews of a
+\slidestep call show it for every deck version, with its steps.
+
 v3.26.0 (2026-09-21, direct instruction): the Active decks table has a new
 per-row "Open pdf" button that opens the deck's most recently created PDF
 (`compiler.latest_pdf_for_deck()`: newest by modification time among every

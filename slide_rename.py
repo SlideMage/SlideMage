@@ -55,7 +55,7 @@ _NO_CONSOLE_KWARGS: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.
 # separate "Included in decks" bookkeeping).
 _MACROS = (
     "slide", "slidefinal", "slideversion",
-    "omitslide", "omitslideversion", "conditionalslide",
+    "omitslide", "omitslideversion", "conditionalslide", "slidestep",
 )
 
 

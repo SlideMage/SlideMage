@@ -33,11 +33,15 @@ SLIDES_DIR = PROJECT_ROOT / "slides"
 # Macros that take a pinned version as a second brace argument.
 VERSIONED_MACROS = {"slideversion", "omitslideversion"}
 # The one macro that takes an optional leading [conditions] list.
-CONDITIONAL_MACROS = {"conditionalslide"}
+# \slidestep{id-slug}[conditions]{steps} is a \conditionalslide that also restricts the
+# typeset reveal steps (2026-09-20); it is parsed and displayed, but not offered in
+# BASE_MACROS -- its steps live in the deck file and are edited there.
+CONDITIONAL_MACROS = {"conditionalslide", "slidestep"}
 ALL_MACROS = {
     "slide", "slidefinal", "slideversion", "omitslide",
-    "omitslideversion", "conditionalslide",
+    "omitslideversion", "conditionalslide", "slidestep",
 }
+DEFAULT_STEPS = "1"
 DEFAULT_CONDITIONS = ["instructor", "during-course", "after-course"]
 
 # Display order for the GUI's variant pickers (deck_editor_tab.py,
@@ -51,6 +55,7 @@ SLIDE_CALL_RE = re.compile(
     r"|\\slide\{(?P<s_idslug>[^}]+)\}"
     r"|\\omitslide\{(?P<os_idslug>[^}]+)\}"
     r"|\\conditionalslide(?:\[(?P<cs_conditions>[^\]]*)\])?\{(?P<cs_idslug>[^}]+)\}"
+    r"|\\slidestep\{(?P<ss_idslug>[^}]+)\}(?:\[(?P<ss_conditions>[^\]]*)\])?\{(?P<ss_steps>[^}]*)\}"
 )
 
 VERSION_FILE_RE = re.compile(r"-v([0-9]+(?:-[0-9]+)*)\.tex$")
@@ -72,7 +77,8 @@ class SlideCall:
     id: str                       # e.g. "qxr"
     slug: str                     # e.g. "Introduction-to-R-Assignments"
     version: Optional[str]        # e.g. "1-0-0", only for VERSIONED_MACROS
-    conditions: Optional[list]    # e.g. ["instructor"], only for \conditionalslide
+    conditions: Optional[list]    # e.g. ["instructor"], only for \conditionalslide/\slidestep
+    steps: Optional[str]          # e.g. "1,2", only for \slidestep (beamer overlay spec)
     call_start: int               # char offset of the "\macro..." token itself
     call_end: int
     line_start: int               # char offset of the whole line, including
@@ -141,6 +147,14 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
             macro, idslug, version, conditions = "slide", m.group("s_idslug"), None, None
         elif m.group("os_idslug") is not None:
             macro, idslug, version, conditions = "omitslide", m.group("os_idslug"), None, None
+        elif m.group("ss_idslug") is not None:
+            macro, idslug, version = "slidestep", m.group("ss_idslug"), None
+            raw_conditions = m.group("ss_conditions")
+            conditions = (
+                [c.strip() for c in raw_conditions.split(",") if c.strip()]
+                if raw_conditions is not None
+                else list(DEFAULT_CONDITIONS)
+            )
         else:
             macro, idslug, version = "conditionalslide", m.group("cs_idslug"), None
             raw_conditions = m.group("cs_conditions")
@@ -150,6 +164,7 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
                 else list(DEFAULT_CONDITIONS)
             )
 
+        steps = m.group("ss_steps").strip() if macro == "slidestep" else None
         slide_id, _, slug = idslug.partition("-")
         line_start, line_end = _line_span(deck.text, m.start(), m.end())
         editable, readonly_reason = _editability(deck.text, line_start, m.start(), m.end(), line_end)
@@ -160,6 +175,7 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
             slug=slug,
             version=version,
             conditions=conditions,
+            steps=steps,
             call_start=m.start(),
             call_end=m.end(),
             line_start=line_start,
@@ -185,7 +201,8 @@ def available_versions(id_slug: str) -> list[str]:
     return sorted(versions, key=lambda v: tuple(int(part) for part in v.split("-")))
 
 
-def format_call(macro: str, id_slug: str, version: Optional[str] = None, conditions: Optional[list] = None) -> str:
+def format_call(macro: str, id_slug: str, version: Optional[str] = None, conditions: Optional[list] = None,
+                steps: Optional[str] = None) -> str:
     """Render one \\macro{...} token (no indent, no trailing newline) --
     the exact text spliced in for an insert, or over an existing call's own
     call_start:call_end span for a variant change."""
@@ -195,6 +212,9 @@ def format_call(macro: str, id_slug: str, version: Optional[str] = None, conditi
         if not version:
             raise ValueError(f"\\{macro} requires a version")
         return f"\\{macro}{{{id_slug}}}{{{version}}}"
+    if macro == "slidestep":
+        cond_list = conditions if conditions else DEFAULT_CONDITIONS
+        return f"\\slidestep{{{id_slug}}}[{','.join(cond_list)}]{{{steps or DEFAULT_STEPS}}}"
     if macro in CONDITIONAL_MACROS:
         cond_list = conditions if conditions else DEFAULT_CONDITIONS
         return f"\\{macro}[{','.join(cond_list)}]{{{id_slug}}}"

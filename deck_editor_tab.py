@@ -374,7 +374,7 @@ class DeckEditorTab:
         try:
             pdf_path = slide_preview.render_slide_to_pdf(
                 call.macro, call.id_slug, call.version, call.conditions,
-                preamble_text=self.deck.preamble_text, log=log,
+                preamble_text=self.deck.preamble_text, log=log, steps=call.steps,
             )
         except RuntimeError as exc:
             log(f"*** Render failed: {exc} ***")

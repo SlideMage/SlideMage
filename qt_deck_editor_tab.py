@@ -807,7 +807,7 @@ class DeckEditorTab(QWidget):
             call.macro, call.id_slug, call.version, call.conditions,
             footer_timestamp=self.app.footer_timestamp_checkbox.isChecked(),
             preamble_text=self.deck.preamble_text, frame_number=position,
-            log=self.app.signals.log.emit,
+            log=self.app.signals.log.emit, steps=call.steps,
         )
         slide_preview.open_pdf(pdf_path)
 

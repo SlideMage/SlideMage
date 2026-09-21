@@ -69,7 +69,7 @@ DECKS_GLOBS = [DECKS_DIR, ARCHIVE_DIR]
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
 SLIDE_CALL_RE = re.compile(
-    r"\\(?:slide|slidefinal|slideversion|omitslide|omitslideversion|conditionalslide)"
+    r"\\(?:slide|slidefinal|slideversion|omitslide|omitslideversion|conditionalslide|slidestep)"
     r"(?:\[[^\]]*\])?\{([^-}]+)-[^}]*\}")
 HEADER_RE = re.compile(
     r"%% Included in decks: [^\r\n]*\r?\n%%\r?\n(?:\r?\n)?")
