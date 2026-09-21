@@ -37,7 +37,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from . import deck_headers, slide_language
+from . import alt_images, deck_headers, slide_ids, slide_language
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -309,3 +309,93 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
             changed += 1
 
     return changed, missing
+
+
+def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
+    """Give a slide a new 3-character id (2026-09-21, direct instruction:
+    "838"/"538" are all-digit ids, which slide_ids.illegal_id_reason() now
+    rules out for good). Everything that carries the bare id follows:
+
+    - slides/<old>-*.tex (current and every frozen -vX-Y-Z sibling) are
+      moved to slides/<new>-*.tex (git mv when tracked);
+    - every \\slide-family reference to the old id-slug across every deck
+      (including #workdeck.tex, like set_slide_language());
+    - bare-id \\hyperlink{<old>}{...} jump targets in every slide file
+      (the id is the slide's \\hypertarget, see \\setSlideID);
+    - the image manifest's per-slide entries (used_on, notes) in
+      media/alt-text.json;
+    - slide_ids.csv gets the new id (the old one stays registered, so it is
+      never handed out again), then deck-inclusion headers and translation
+      cross-references are regenerated.
+
+    Returns {old id-slug: new id-slug} for every renamed slide.
+    """
+    reason = slide_ids.illegal_id_reason(new_id)
+    if reason:
+        raise ValueError(f"{new_id!r} is not a legal slide id: {reason}")
+    if len(new_id) != slide_ids.ID_LENGTH or not all(c in slide_ids.ID_ALPHABET for c in new_id):
+        raise ValueError(f"{new_id!r} must be {slide_ids.ID_LENGTH} characters from {slide_ids.ID_ALPHABET!r}")
+    taken = slide_ids._existing_ids_from_csv() | slide_ids._existing_ids_from_disk()
+    if new_id in taken:
+        raise FileExistsError(f"slide id {new_id!r} is already in use")
+    old_files = sorted(SLIDES_DIR.glob(f"{old_id}-*.tex"))
+    if not old_files:
+        raise FileNotFoundError(f"no slides/{old_id}-*.tex")
+
+    mapping: dict[str, str] = {}
+    for src in old_files:
+        dest = SLIDES_DIR / (new_id + src.name[len(old_id):])
+        if dest.exists():
+            raise FileExistsError(f"{dest} already exists")
+        _move(src, dest)
+        if src.name.endswith("-current.tex"):
+            old_slug = src.name[: -len("-current.tex")]
+            mapping[old_slug] = new_id + old_slug[len(old_id):]
+
+    if mapping:
+        pattern = re.compile(
+            r"(\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{)("
+            + "|".join(re.escape(s) for s in mapping) + r")(\})"
+        )
+        deck_paths = [
+            p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+            for p in directory.glob("*.tex")
+            if p.name != "#workdeck.tex"
+        ]
+        if WORKDECK_PATH.exists():
+            deck_paths.append(WORKDECK_PATH)
+        for deck_path in deck_paths:
+            text = deck_path.read_text(encoding="utf-8", newline="")
+            new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
+            if new_text != text:
+                deck_path.write_text(new_text, encoding="utf-8", newline="")
+
+    link = re.compile(r"(\\hyperlink\{)" + re.escape(old_id) + r"(\})")
+    for path in SLIDES_DIR.glob("*.tex"):
+        text = path.read_text(encoding="utf-8", newline="")
+        new_text = link.sub(r"\g<1>" + new_id + r"\g<2>", text)
+        if new_text != text:
+            path.write_text(new_text, encoding="utf-8", newline="")
+
+    def _move_uses(entries) -> bool:
+        changed = False
+        for entry in entries.values():
+            if old_id in entry.used_on:
+                entry.used_on[new_id] = entry.used_on.pop(old_id)
+                changed = True
+        return changed
+
+    alt_images.update_store(_move_uses)
+
+    def _move_notes(notes) -> bool:
+        if old_id in notes:
+            notes[new_id] = notes.pop(old_id)
+            return True
+        return False
+
+    alt_images.update_slide_notes(_move_notes)
+
+    slide_ids.append_slide_id(new_id)
+    deck_headers.regenerate_headers()
+    regenerate_translation_links()
+    return mapping

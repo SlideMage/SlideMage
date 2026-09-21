@@ -35,6 +35,27 @@ ID_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"
 ID_LENGTH = 3
 
 ALL_NUMERIC_RE = re.compile(r"^[0-9]+$")
+# An id must never be readable as a number or another special value by any tool that
+# touches the id lists (CSV/JSON readers, R, pandas, spreadsheets, PowerShell): all digits
+# ("838"), scientific notation ("8e6" = 8,000,000), the float spellings "inf"/"nan", and
+# the Windows device names (an id is the start of a file name). (2026-09-21, direct
+# instruction after "838" and "538" turned up; the check found "258", "858", "2e6" and "8e6" too.)
+SCIENTIFIC_NOTATION_RE = re.compile(r"^[0-9]+[eE][+-]?[0-9]+$")
+FLOAT_WORDS = {"inf", "nan"}
+WINDOWS_DEVICE_NAMES = {"aux", "con", "nul", "prn"}
+
+
+def illegal_id_reason(slide_id: str) -> Optional[str]:
+    """Why `slide_id` must not be used as a slide id, or None if it is fine."""
+    if ALL_NUMERIC_RE.match(slide_id):
+        return "all digits (reads as a number)"
+    if SCIENTIFIC_NOTATION_RE.match(slide_id):
+        return "reads as a number in scientific notation"
+    if slide_id.lower() in FLOAT_WORDS:
+        return "reads as a floating-point special value"
+    if slide_id.lower() in WINDOWS_DEVICE_NAMES:
+        return "is a reserved Windows device name"
+    return None
 # Matches SPslide(refresh=TRUE)'s own "^([^-]+)-.*\\.tex$": the ID is
 # everything before the first hyphen, for both ID-slug-current.tex and
 # ID-slug-vX-Y-Z.tex.
@@ -81,12 +102,13 @@ def mint_slide_id() -> str:
     slide_ids.csv *and* every ID actually present under slides/ (a
     superset check -- this can only avoid more collisions than the R
     side's CSV-only check, never fewer, so the two mints can never
-    collide with each other), and rejecting an all-numeric draw (so an ID
-    is never mistaken for a plain number elsewhere in the toolchain)."""
+    collide with each other), and rejecting any draw illegal_id_reason()
+    names (so an ID is never mistaken for a number or a special value
+    elsewhere in the toolchain)."""
     existing = _existing_ids_from_csv() | _existing_ids_from_disk()
     while True:
         candidate = "".join(random.choice(ID_ALPHABET) for _ in range(ID_LENGTH))
-        if candidate in existing or ALL_NUMERIC_RE.match(candidate):
+        if candidate in existing or illegal_id_reason(candidate):
             continue
         return candidate
 
