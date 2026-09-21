@@ -1848,11 +1848,51 @@
 % token after "\begin{frame}" (beamer looks for it with \@ifnextchar), so the
 % whole opening is built by \edef and only then executed. #1 is everything that
 % follows "\begin{frame}" in the caller ("[#1]{#2}", "[plain,t]", ...).
+% \gothamFinalStateForStudents -- put it in a slide file, before the frame environment: in the
+% student deck versions (everything but "instructor") that frame then typesets only its last
+% overlay page, i.e. the final state of all its reveal steps (2026-09-21, direct instruction:
+% "student decks should only show the final state"). Instructor and presenter compiles are
+% unaffected. Unlike \conditionalpause/\deckrevealfinal, which each turn one reveal
+% construct off, this needs no change to the slide body, so it also covers overlay specs
+% like \only<2>, \item<3->, \uncover, \textcolor<2>, \alt and reveal steps that hide things
+% again (the final state is what is left at the last step).
+% How: beamer's frame-level overlay restriction \begin{frame}<N> (see \slidestep) with N =
+% the frame's overlay count, which a frame only knows after it was typeset once. Every
+% student compile therefore records N per frame (keyed by beamer's frame number, which is
+% stable) in \jobname.ovl and reads it back at the start of the next run; the first run of
+% a fresh job still typesets all pages, latexmk's rerun then restricts them. Beamer reports
+% the same N for a restricted frame, so the value is stable.
+\newif\ifgothamFinalOnly
+\newcommand{\gothamFinalStateForStudents}{\global\gothamFinalOnlytrue}
+\makeatletter
+\newwrite\gothamOverlayFile
+\newcommand{\gothamSetOverlays}[2]{\global\@namedef{gothamOverlays@#1}{#2}}
+\newcommand{\gothamRecordOverlays}{%
+	\ifgothamInstructorVersion\else
+		\immediate\write\gothamOverlayFile{\string\gothamSetOverlays{\the\c@framenumber}{\the\beamer@slideinframe}}%
+	\fi
+}
+\apptocmd{\beamer@writeslidentry}{\gothamRecordOverlays}{}{}
+\AtBeginDocument{%
+	\InputIfFileExists{\jobname.ovl}{}{}%
+	\immediate\openout\gothamOverlayFile=\jobname.ovl\relax
+}
+% Expands to <N> when the frame that is about to open is flagged and N is known.
+\newcommand{\gothamFinalSpec}{%
+	\ifgothamFinalOnly
+		\ifgothamInstructorVersion\else
+			\ifcsname gothamOverlays@\the\numexpr\c@framenumber+1\relax\endcsname
+				<\csname gothamOverlays@\the\numexpr\c@framenumber+1\relax\endcsname>%
+			\fi
+		\fi
+	\fi
+}
 \newcommand{\gothamOpenFrame}[1]{%
 	\edef\gothamOpenFrame@cmd{%
 		\noexpand\begin{frame}%
-		\ifx\gothamSlideSteps\empty\else<\gothamSlideSteps>\fi
+		\ifx\gothamSlideSteps\empty\gothamFinalSpec\else<\gothamSlideSteps>\fi
 		\unexpanded{#1}}%
+	\global\gothamFinalOnlyfalse
 	\gothamOpenFrame@cmd
 }
 \NewDocumentCommand{\slidestep}{m O{instructor,during-course,after-course} m}{%
@@ -3261,6 +3301,37 @@
 % changing it here shifts the baseline project-wide, not just on 8s8.
 \setlength{\gothamContentTopShift}{11.5964pt}
 
+% A `columns` environment that is the first content of a frame starts its first line
+% ~10.17pt lower than a plain list does (measured on 5s6/vbb/yxv/c2t/n83/tj4/eey/yvw: first
+% line box at 51.7pt against the 41.58pt Top Margin). It used to be corrected slide by
+% slide with \gothamIncreaseContentTopShift{10.13..10.17pt}, each value re-measured (and
+% re-tuned when \gothamContentTopShift changed); now the environment corrects itself
+% (2026-09-21, direct instruction: "if this is a general problem for two-column slides, fix
+% it generally"). "First content" = the frame's vertical list holds no box taller than
+% 0.5pt yet -- the frame's own zero-size stamp boxes, glue and a zero-height overlay picture
+% (\vbox to 0pt{...}) in front of the columns do not count, so a slide that puts such a
+% picture first needs no special treatment either. (\prevdepth cannot tell: those zero-size
+% boxes already set it.) Checked in LuaTeX by walking the current list.
+\newlength{\gothamColumnsTopCorrection}
+\setlength{\gothamColumnsTopCorrection}{10.17pt}
+\directlua{
+	gotham_list_has_no_visible_box = function()
+		local head = tex.nest[tex.nest.ptr].head
+		for n in node.traverse(head) do
+			if (n.id == node.id("hlist") or n.id == node.id("vlist")) and n.height > 32768 then
+				return false
+			end
+		end
+		return true
+	end
+}
+\BeforeBeginEnvironment{columns}{%
+	\edef\gothamColumnsAtTop{\directlua{tex.sprint(gotham_list_has_no_visible_box() and "1" or "0")}}%
+	\ifnum\gothamColumnsAtTop=1
+		\vspace*{-\gothamColumnsTopCorrection}%
+	\fi
+}
+
 % "Top Margin" (above) is one of four deck-wide margin names introduced in
 % conversation from 2026-07-12 onward (direct instruction) for the plain
 % page-edge/title-bar/footer gaps every slide is expected to obey by
@@ -3997,12 +4068,12 @@
 	\usebeamertemplate{itemize/enumerate \beameritemnestingprefix body begin}%
 	% Level-1 enumerate text sits further right than bullet text, as in the source
 	% (numeral at the bullet dot's left edge, item text 27.9pt from the page's left edge
-	% against 21.6pt for a bullet's text; 2026-09-20). Nested lists must not follow it:
-	% the source keeps a nested bullet where it would be under a plain bullet, so the
-	% level-2 margin gives back what level 1 took (both changes are local to this list).
+	% against 21.6pt for a bullet's text; 2026-09-20). Nested lists follow it, as they do for
+	% plain bullets: a level-2 bullet starts under the level-1 text (2026-09-21, direct
+	% instruction -- an earlier version gave the extra back to the nested list, which left
+	% level-2 bullets 6.3pt left of the level-1 text above them). Local to this list.
 	\ifnum\@itemdepth=1
 		\addtolength{\leftmargini}{\gothamEnumerateTextExtra}%
-		\addtolength{\leftmarginii}{-\gothamEnumerateTextExtra}%
 	\fi
 	\expandafter
 		\list
@@ -4016,6 +4087,17 @@
 					% slot at that end puts every numeral's left edge exactly at the
 					% dot's, instead of up to 1pt right of it for narrow digits
 					% ("1." vs "4."). A wider numeral keeps the old right alignment.
+					% Hanging indent (2026-09-21, direct instruction: the second line of
+					% an item did not start under its first line's text). The 20.33pt label
+					% box is wider than beamer's \labelwidth, so it pushed the first
+					% line's text 4.3pt right of \leftmargin, where every later line
+					% starts. Sizing \labelwidth to the box and \leftmargin to
+					% "numeral slot + \labelsep" puts the numeral's left edge at the dot's
+					% and the text of every line at the same x (13.1pt from the parent's
+					% text, i.e. where the first line always was).
+					\setlength{\labelwidth}{20.33pt}%
+					\setlength{\labelsep}{5.25pt}%
+					\setlength{\leftmargin}{13.1pt}%
 					\def\makelabel##1{\makebox[20.33pt][r]{{%
 							\setbox\@tempboxa\hbox{##1}%
 							\ifdim\wd\@tempboxa>7.85pt
