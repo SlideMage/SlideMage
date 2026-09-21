@@ -1438,6 +1438,13 @@ v3.24.1 (2026-09-18, direct instruction): Images tab top row order changed
 to drafting, translation, transcript (drafting and translation swapped),
 and the images area's bottom edge now lines up with the slide list's (the
 right-hand pane no longer has a bottom margin).
+v3.26.0 (2026-09-21, direct instruction): the Active decks table has a new
+per-row "Open pdf" button that opens the deck's most recently created PDF
+(`compiler.latest_pdf_for_deck()`: newest by modification time among every
+version/presenter/appendix/per-chapter output, at both its
+\deckoutputfolder destination and the default pdf/ folder; a message says so
+if none exists yet). The row buttons are now ordered Open pdf, Source,
+Duplicate, Tags, Export PPTX, Archive.
 """
 from __future__ import annotations
 
@@ -1448,7 +1455,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.24.2"
+VERSION_NUMBER = "v3.26.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

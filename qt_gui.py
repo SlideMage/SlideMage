@@ -60,6 +60,7 @@ from .compiler import (
     PDF_DIR,
     CancelToken,
     CompileJob,
+    latest_pdf_for_deck,
     resolve_output_location,
     run_job,
     run_jobs,
@@ -196,6 +197,7 @@ class SlideMageWindow(QMainWindow):
             on_create_transcript=self._on_create_transcript_toplevel,
             on_refresh=self._on_refresh_decks_clicked,
             on_tags=self._on_edit_deck_tags,
+            on_open_pdf=self._on_open_latest_pdf,
         )
         self.archived_table = DeckTable(
             theme, archivable=False,
@@ -972,6 +974,20 @@ class SlideMageWindow(QMainWindow):
     def _tags_with_group(deck_tags: list[str], group: str) -> list[str]:
         """`group` as the deck's group tag, keeping any other tags it has."""
         return [group] + [t for t in deck_tags if t not in GROUP_TAGS]
+
+    def _on_open_latest_pdf(self, deck: Deck) -> None:
+        """Active decks table's own "Open pdf" button (2026-09-21) -- opens
+        the most recently created PDF of this deck, whichever version or
+        output folder it landed in (compiler.latest_pdf_for_deck())."""
+        pdf_path = latest_pdf_for_deck(deck)
+        if pdf_path is None:
+            QMessageBox.information(
+                self, "No PDF yet", f"No PDF has been created for {deck.name} yet.")
+            return
+        try:
+            os.startfile(pdf_path)  # Windows-only project, same as _open_pdf
+        except OSError as exc:
+            self._log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
     def _on_edit_deck_tags(self, deck: Deck) -> None:
         """A deck row's "Tags" button: choose the group the deck appears

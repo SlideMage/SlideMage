@@ -92,6 +92,34 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     return resolved, job.jobname
 
 
+def latest_pdf_for_deck(deck: Deck) -> Optional[Path]:
+    """The most recently written PDF SlideMage has produced for `deck`, or
+    None if there is none on disk. Checks every output this deck could have
+    (each version, presenter, appendix and per-chapter variant) at both the
+    destination its current \\deckoutputfolder declarations resolve to and the
+    default pdf/ folder -- so a PDF compiled before an output folder was
+    declared (or after it was changed) still counts. "Latest" is by file
+    modification time."""
+    versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
+    jobs: list[CompileJob] = []
+    for appendix in (False, True):
+        for version in versions:
+            jobs.append(CompileJob(deck, version, None, appendix_toc=appendix))
+        presenter_version = "instructor" if deck.supports_version else None
+        jobs.append(CompileJob(deck, presenter_version, None, presenter=True, appendix_toc=appendix))
+    chapter_version = "after-course" if deck.supports_version else None
+    for chapter in deck.chapters:
+        jobs.append(CompileJob(deck, chapter_version, chapter))
+
+    candidates: set[Path] = set()
+    for job in jobs:
+        output_dir, output_stem = resolve_output_location(job)
+        candidates.add(output_dir / f"{output_stem}.pdf")
+        candidates.add(PDF_DIR / f"{job.jobname}.pdf")
+    existing = [p for p in candidates if p.is_file()]
+    return max(existing, key=lambda p: p.stat().st_mtime) if existing else None
+
+
 def _display_path(path: Path) -> str:
     """A PDF's destination for the compile log -- relative to PROJECT_ROOT
     (e.g. "pdf/foo.pdf") when it's under there, same as the old hardcoded

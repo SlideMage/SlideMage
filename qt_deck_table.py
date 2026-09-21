@@ -119,6 +119,7 @@ class DeckRow:
         on_duplicate: Optional[Callable[[Deck], None]] = None,
         on_export_pptx: Optional[Callable[[Deck], None]] = None,
         on_tags: Optional[Callable[[Deck], None]] = None,
+        on_open_pdf: Optional[Callable[[Deck], None]] = None,
     ):
         self.deck = deck
         self.theme = theme
@@ -202,10 +203,16 @@ class DeckRow:
         grid.addWidget(presenter_cell, row_index, col)
         col += 1
 
-        if on_archive is not None:
-            archive_button = QPushButton("Archive")
-            archive_button.clicked.connect(lambda: on_archive(deck))
-            grid.addWidget(archive_button, row_index, col)
+        # Button order (2026-09-21, direct instruction): Open pdf, Source,
+        # Duplicate, Tags, Export PPTX, Archive -- DeckTable.rebuild()'s
+        # header list carries one blank cell per button in this same order.
+        if on_open_pdf is not None:
+            open_pdf_button = QPushButton("Open pdf")
+            open_pdf_button.setToolTip(
+                "Open the most recently created PDF of this deck (any version)."
+            )
+            open_pdf_button.clicked.connect(lambda: on_open_pdf(deck))
+            grid.addWidget(open_pdf_button, row_index, col)
             col += 1
 
         if on_edit is not None:
@@ -220,6 +227,17 @@ class DeckRow:
             grid.addWidget(duplicate_button, row_index, col)
             col += 1
 
+        if on_tags is not None:
+            tags_button = QPushButton("Tags")
+            tags_button.setToolTip(
+                "Choose which group of the deck table this deck appears in "
+                "(course, research, test, workdeck). Stored in the deck's "
+                "own file as \\decktags{...}."
+            )
+            tags_button.clicked.connect(lambda: on_tags(deck))
+            grid.addWidget(tags_button, row_index, col)
+            col += 1
+
         if on_export_pptx is not None:
             export_pptx_button = QPushButton("Export PPTX")
             export_pptx_button.setToolTip(
@@ -231,15 +249,11 @@ class DeckRow:
             grid.addWidget(export_pptx_button, row_index, col)
             col += 1
 
-        if on_tags is not None:
-            tags_button = QPushButton("Tags")
-            tags_button.setToolTip(
-                "Choose which group of the deck table this deck appears in "
-                "(course, research, test, workdeck). Stored in the deck's "
-                "own file as \\decktags{...}."
-            )
-            tags_button.clicked.connect(lambda: on_tags(deck))
-            grid.addWidget(tags_button, row_index, col)
+        if on_archive is not None:
+            archive_button = QPushButton("Archive")
+            archive_button.clicked.connect(lambda: on_archive(deck))
+            grid.addWidget(archive_button, row_index, col)
+            col += 1
 
     def clear_selection(self) -> None:
         """Unchecks every compile-option checkbox this row owns -- the
@@ -336,11 +350,13 @@ class DeckTable(QWidget):
         on_create_transcript: Callable[[list[DeckRow]], None],
         on_refresh: Callable[[], None],
         on_tags: Optional[Callable[[Deck], None]] = None,
+        on_open_pdf: Optional[Callable[[Deck], None]] = None,
     ) -> None:
         super().__init__()
         self.theme = theme
         self.archivable = archivable
         self.on_tags = on_tags
+        self.on_open_pdf = on_open_pdf
         # Which groups the user has collapsed, by group tag -- persisted
         # per table (app_settings.py) and kept across rebuild(), which
         # re-applies it without touching any row's checkboxes.
@@ -582,11 +598,12 @@ class DeckTable(QWidget):
             "After-course, per chapter", "Presenter",
         ]
         if self.archivable:
-            header.append("")  # Archive
-            header.append("")  # Edit
+            header.append("")  # Open pdf
+            header.append("")  # Source
             header.append("")  # Duplicate
-            header.append("")  # Export PPTX
             header.append("")  # Tags
+            header.append("")  # Export PPTX
+            header.append("")  # Archive
         for col, text in enumerate(header):
             label = QLabel(text)
             label.setStyleSheet("font-weight: bold;")
@@ -621,6 +638,7 @@ class DeckTable(QWidget):
                         on_duplicate=self.on_duplicate if self.archivable else None,
                         on_export_pptx=self.on_export_pptx if self.archivable else None,
                         on_tags=self.on_tags if self.archivable else None,
+                        on_open_pdf=self.on_open_pdf if self.archivable else None,
                     )
                 )
                 grid_row += 1
