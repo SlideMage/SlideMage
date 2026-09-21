@@ -1227,6 +1227,11 @@
 % Define slideID as a simple value holder (initially empty)
 \newcommand{\slideID}{}%
 
+% Set (locally, by \slidestep) when this inclusion of a slide id must not define
+% the id's \hypertarget again, because an earlier \slidestep of the same id
+% already owns it (see \slidestep's own comment).
+\newif\ifgothamSuppressSlideTarget
+
 % Define slideID as a simple value holder (not a command with arguments)
 \makeatletter
 \newcommand{\setSlideID}[1]{%
@@ -1263,7 +1268,7 @@
 	% link to that id lands on whichever instance is last in the document
 	% -- inherent to any permanent-id-keyed target scheme, not specific to
 	% this one.
-	\hypertarget{\slideID}{}%
+	\ifgothamSuppressSlideTarget\else\hypertarget{\slideID}{}\fi%
 }
 \makeatother
 
@@ -1778,6 +1783,21 @@
 	\fi
 }
 
+% \deckrevealfinal[step]{content} - reveal step for the instructor deck only,
+% everything shown at once in every other deck version (added 2026-09-19,
+% direct instruction: "make the student versions show the final slide
+% version immediately"). Unlike \deckreveal, the during-course deck gets the
+% content too (not omitted), and like it no overlay spec is emitted outside
+% the instructor version, so a non-instructor compile has no extra pages.
+% For plain \pause steps use \conditionalpause[instructor] instead.
+\newcommand{\deckrevealfinal}[2][2]{%
+	\ifgothamInstructorVersion
+		\only<#1->{#2}%
+	\else
+		#2%
+	\fi
+}
+
 % \conditionalslide[versions]{ID-slug} - \slide{}, but only included in the
 % listed deck versions; keeps the frame counter in step with the omitted
 % version otherwise (same \stepcounter{framenumber} technique \omitslide{}
@@ -1791,6 +1811,66 @@
 		 \setSlideLanguageFromSlug{#2}%
 		 \input{slides/#2-current.tex}}%
 		{\stepcounter{framenumber}}%
+}
+
+% \slidestep{ID-slug}[versions]{steps} - \conditionalslide{} that also restricts
+% which reveal (overlay) steps of the slide are typeset (2026-09-20, direct
+% instruction). One slide file with several reveal steps can then appear at
+% several places of a deck, each time showing only the steps that belong
+% there, and a different set of steps per deck version:
+%   \slidestep{egk-EN-Structure-of-a-Scientific-Paper-Overview}[instructor]{1,2}
+%   \slidestep{egk-EN-Structure-of-a-Scientific-Paper-Overview}[during-course,after-course]{1}
+% [versions] defaults to instructor,during-course,after-course (same as
+% \conditionalslide; a presenter compile runs as version "instructor", so it
+% always shows what the instructor deck shows); {steps} is a beamer overlay
+% specification without the angle brackets ("1,2", "3", "2-", "1-2,4").
+% The slide file itself is written once, with plain overlay specifications
+% (\textcolor<2>{...}{...}, \only<3>{...}) and no version conditionals: which
+% steps end up in the PDF is decided here, by handing the specification to
+% beamer's own frame-level overlay restriction, \begin{frame}<steps>. Every
+% frame environment opens its frame through \gothamOpenFrame below, which
+% inserts it.
+%
+% - Versions not in the list: the call does nothing at all -- not even a
+%   \stepcounter{framenumber}, unlike \conditionalslide{}. Two \slidestep calls
+%   at one position (say [instructor]{1,2} and [during-course,after-course]{1})
+%   are alternatives, so every deck version has exactly one frame there;
+%   stepping the counter for the omitted one would shift every later slide
+%   number by one.
+% - Jump target: the first \slidestep{} of a given id-slug in the document
+%   defines the id's \hypertarget (see \setSlideID); later ones do not, so
+%   there is no "multiply defined" warning and \hyperlink{id}{...} lands on the
+%   first place the slide is shown.
+% - \gothamSlideSteps is cleared again right after the slide file has been
+%   read, so it can never leak into a following plain \slide{}.
+\gdef\gothamSlideSteps{}
+% \begin{frame}<steps>[options]{title}: the <...> has to be the very next
+% token after "\begin{frame}" (beamer looks for it with \@ifnextchar), so the
+% whole opening is built by \edef and only then executed. #1 is everything that
+% follows "\begin{frame}" in the caller ("[#1]{#2}", "[plain,t]", ...).
+\newcommand{\gothamOpenFrame}[1]{%
+	\edef\gothamOpenFrame@cmd{%
+		\noexpand\begin{frame}%
+		\ifx\gothamSlideSteps\empty\else<\gothamSlideSteps>\fi
+		\unexpanded{#1}}%
+	\gothamOpenFrame@cmd
+}
+\NewDocumentCommand{\slidestep}{m O{instructor,during-course,after-course} m}{%
+	\ifdeckversioninlist{\gothamDeckVersion}{#2}%
+		{\ifcsname gothamSlideStepSeen@#1\endcsname
+			\global\gothamSuppressSlideTargettrue
+		 \else
+			\global\gothamSuppressSlideTargetfalse
+			\expandafter\gdef\csname gothamSlideStepSeen@#1\endcsname{}%
+		 \fi
+		 \gdef\gothamSlideSteps{#3}%
+		 \global\gothamSlideVersionSetfalse
+		 \setSlideID{#1}%
+		 \global\gothamSuppressSlideTargetfalse
+		 \setSlideLanguageFromSlug{#1}%
+		 \input{slides/#1-current.tex}%
+		 \gdef\gothamSlideSteps{}}%
+		{}%
 }
 
 \makeatother
@@ -2534,6 +2614,23 @@
 	\fi
 }
 
+% \gothamFooterIDStrut -- fixed-size strut for the footer's "(slide id: ...)"
+% block (2026-09-19, direct instruction: footer text moved by ~0.27pt between
+% slides). Cause: the footline's beamercolorbox only has a *minimum* height and
+% depth, and the id block is the only footer text that differs from slide to
+% slide -- an id containing a descender letter (g, j, p, q, y: "egk", "y89")
+% is deeper than the box's minimum depth and lifts the whole footer, an id
+% without one ("kaz", "c2t") leaves it at the minimum. The strut spans the
+% largest ascender and descender the block can ever contain (measured with the
+% block's own font size, at use time, so it follows a font change), which makes
+% the footline's height and depth identical for every slide id. Must be
+% called after the block's \fontsize.
+\newsavebox{\gothamFooterIDMeasureBox}
+\newcommand{\gothamFooterIDStrut}{%
+	\sbox{\gothamFooterIDMeasureBox}{gjpqy()[]|bdfhklt0123456789}%
+	\rule[-\dp\gothamFooterIDMeasureBox]{0pt}{\ht\gothamFooterIDMeasureBox}%
+}
+
 \setbeamertemplate{frame footer}{%
 	\vspace*{\gothamFooterTextDrop}%
 	\ifgothamHideFooterText
@@ -2542,7 +2639,7 @@
 		\FooterText%
 	\fi
 	\hfill%
-	{\fontsize{4}{4}\selectfont (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ifgothamSlideVersionSet\ | v\slideVersion\gothamSlideLanguageFooterTag\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
+	{\fontsize{4}{4}\selectfont \gothamFooterIDStrut (slide id: \slideID\ifgothamOmittedSlide\gothamOmittedSlideMarker\fi\ifgothamSlideVersionSet\ | v\slideVersion\gothamSlideLanguageFooterTag\fi\ | \gothamDeckVersionText\ifgothamShowCompileTimestamp\ | \gothamCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
 	\hspace*{-\gothamFooterRightShift}%
 	\vspace*{0.4ex}%
@@ -3398,7 +3495,7 @@
 	% after \begin{frame} would be reset too late, after that baseline was
 	% already captured.
 	\setcounter{footnote}{0}%
-	\begin{frame}[#1]{#2}%
+	\gothamOpenFrame{[#1]{#2}}%
 	% Forces this frame's own body to start with the correct default text
 	% color, regardless of what any *previous* frame left active
 	% (2026-07-16, direct instruction, root-caused via an isolated minimal
@@ -3676,6 +3773,17 @@
 \setlength{\leftmarginiv}{\gothamItemStep}
 \makeatother
 
+% \item[\gothamBulletEllipsis] -- an ellipsis used as the item label (the source's
+% "...how you contribute" continuation items). A plain \item[\ldots] right-aligns the
+% label to the bullet dot's right edge, so the wider ellipsis pokes out to the left
+% of where a bullet starts; this one starts at the dot's left edge instead
+% (2026-09-20, direct instruction: the ellipses were too far left).
+\newcommand{\gothamBulletEllipsis}{\hbox to \gothamBulletWidth{\rlap{\ldots}\hss}}
+
+% \setbeamertemplate{itemize subitem}{\gothamBulletEllipsisScript} -- the same for a list whose *bullet itself* is a small ellipsis (the source's
+% "..." sub-points; slides quy, 3a8, unt). The bare \scriptsize… bullet used to sit 1.6pt left of where a dot starts (2026-09-20).
+\newcommand{\gothamBulletEllipsisScript}{\hbox to \gothamBulletWidth{\rlap{\scriptsize…}\hss}}
+
 % A 4th itemize level -- beamer's own \itemize (beamerbaselocalstructure.sty)
 % hard-caps nesting at 3 levels (\ifnum \@itemdepth >2\relax\@toodeep),
 % independently of anything this deck sets: a 4th \begin{itemize} always
@@ -3879,22 +3987,60 @@
 % itself is kept defined, both for this override to reuse and as a manual
 % escape hatch (e.g. a differently-calibrated width some future slide might
 % need).
+\newlength{\gothamEnumerateTextExtra}
+\setlength{\gothamEnumerateTextExtra}{6.3pt}
 \makeatletter
 \renewcommand{\beamer@enum@}{%
 	\beamer@computepref\@itemdepth% sets \beameritemnestingprefix
 	\usebeamerfont{itemize/enumerate \beameritemnestingprefix body}%
 	\usebeamercolor[fg]{itemize/enumerate \beameritemnestingprefix body}%
 	\usebeamertemplate{itemize/enumerate \beameritemnestingprefix body begin}%
+	% Level-1 enumerate text sits further right than bullet text, as in the source
+	% (numeral at the bullet dot's left edge, item text 27.9pt from the page's left edge
+	% against 21.6pt for a bullet's text; 2026-09-20). Nested lists must not follow it:
+	% the source keeps a nested bullet where it would be under a plain bullet, so the
+	% level-2 margin gives back what level 1 took (both changes are local to this list).
+	\ifnum\@itemdepth=1
+		\addtolength{\leftmargini}{\gothamEnumerateTextExtra}%
+		\addtolength{\leftmarginii}{-\gothamEnumerateTextExtra}%
+	\fi
 	\expandafter
 		\list
 			{\usebeamertemplate{\beamer@enumtempl}}
 			{\usecounter\@enumctr%
 				\ifnum\@itemdepth>1
-					\def\makelabel##1{\makebox[20.33pt][r]{##1}}%
+					% Nested numerals: same rule as level 1 -- left edge at the left
+					% edge of this level's bullet dot (2026-09-20). The box below is
+					% the old 20.33pt right-aligned one, whose right end the numerals
+					% used to fill flush; giving the numeral a 7.85pt left-aligned
+					% slot at that end puts every numeral's left edge exactly at the
+					% dot's, instead of up to 1pt right of it for narrow digits
+					% ("1." vs "4."). A wider numeral keeps the old right alignment.
+					\def\makelabel##1{\makebox[20.33pt][r]{{%
+							\setbox\@tempboxa\hbox{##1}%
+							\ifdim\wd\@tempboxa>7.85pt
+								\box\@tempboxa
+							\else
+								\hbox to 7.85pt{\unhbox\@tempboxa\hss}%
+							\fi}}}%
 				\else
+					% Level-1 numerals start at the left edge of the level-1 bullet
+					% dot, like the source's numerals (2026-09-20, direct
+					% instruction: the numbers were too far left). They used to
+					% be right-aligned to the dot's right edge, which for a
+					% numeral wider than the dot (every "1.") puts its left edge
+					% left of where a bullet would start. A numeral too wide to
+					% keep 1pt clear of the item text ("10.") keeps the old
+					% right alignment instead of running into the text.
 					\def\makelabel##1{{\hss\llap{{%
 							\usebeamerfont*{enumerate \beameritemnestingprefix item}%
-							\usebeamercolor[fg]{enumerate \beameritemnestingprefix item}##1}}}}%
+							\usebeamercolor[fg]{enumerate \beameritemnestingprefix item}%
+							\setbox\@tempboxa\hbox{##1}%
+							\ifdim\dimexpr\wd\@tempboxa+1pt\relax>\dimexpr\gothamItemStep+\gothamEnumerateTextExtra\relax
+								\box\@tempboxa
+							\else
+								\hbox to \dimexpr\gothamBulletWidth+\gothamEnumerateTextExtra\relax{\rlap{\unhbox\@tempboxa}\hss}%
+							\fi}}}}%
 				\fi}%
 	\beamer@cramped%
 	\raggedright%
@@ -4946,7 +5092,7 @@
 	% previewed slide's page number from its plain list position, which
 	% only equals the real compiled frame number when every \slide{}-family
 	% call -- including this one -- consumes exactly one framenumber step).
-	\begin{frame}[plain,t]%
+	\gothamOpenFrame{[plain,t]}%
 	% This frame has no footer to carry the usual "(slide id: ...)" marker
 	% -- see \gothamInvisibleSlideIDStamp's own comment above for why that
 	% breaks SlideMage's compile-time preview snapshot, and what this
@@ -5076,7 +5222,7 @@
 	% No noframenumbering -- see \titleframe's own comment above for why
 	% (same reasoning, same 2026-08-11 change: this frame has no footer
 	% either, so nothing here changes visibly, only later slides' numbers).
-	\begin{frame}[plain,t]%
+	\gothamOpenFrame{[plain,t]}%
 	% This frame has no footer either -- same \gothamInvisibleSlideIDStamp
 	% need as \titleframe above, see its own comment for why.
 	\gothamInvisibleSlideIDStamp%
@@ -5503,7 +5649,7 @@
 \newcommand{\quotesource}[1]{\gdef\gothamQuoteSource{#1}}
 \makeatletter
 \newcommand{\quoteframe}[2]{%
-	\begin{frame}[t]%
+	\gothamOpenFrame{[t]}%
 	% Disable hyphenation for the quote text (2026-07-26, direct
 	% instruction: "do not allow words to be broken across lines" --
 	% confirmed directly first, e.g. on `n3q`'s own long quote,
@@ -5661,27 +5807,31 @@
 }
 
 
-% \progressstrip{Step 1,Step 2,Step 3}{k} -- a full-width highlight-colored
-% strip listing a short chain of steps joined by arrows, with the k-th one
-% underlined to mark where the slide sits in that chain (added 2026-09-19
-% for the Publishing masterdeck's "Field -> Topic -> Question" strip, which
-% the source PowerPoint's "Progress" layout draws directly below the title
-% bar on the slides of that subsection). Written in the frame body, as the
-% very first thing, ahead of the itemize/text it introduces -- it's an
-% ordinary in-flow paragraph (unlike the source's own layout placeholder,
-% which sits outside the body area), so it pushes the body down by exactly
-% its own height instead of needing a hand-tuned gap. The strip uses the
-% institution's primary highlight color, so it follows the theme
-% (yellow for Graz, orange for MCI/Innsbruck) like the title bar does.
+% \progressstrip{Step 1,Step 2,Step 3}{k} -- a full-width strip in the
+% institution's tertiary yellow, flush below the title bar, that lists a
+% short chain of steps joined by arrows and underlines the k-th one to mark
+% where the slide sits in that chain (added 2026-09-19 for the Publishing
+% masterdeck's "Field -> Topic -> Question" strip, which the source
+% PowerPoint's "Progress" layout draws directly below the title bar; revised
+% the same day, direct instruction: edge-to-edge, flush under the title bar,
+% smaller font, tight vertical padding, secondary yellow). Written in the
+% frame body, as the very first thing. The strip itself is a zero-space
+% absolute overlay (so it can span the whole page width, which in-flow text
+% cannot); the \vspace after it reserves its height so the body starts just
+% below it.
 \newcommand{\progressstrip}[2]{%
-	\par\noindent
-	\begingroup\setlength{\fboxsep}{2.5pt}%
-	\colorbox{c_primary_highlight}{%
-		\parbox{\dimexpr\linewidth-2\fboxsep\relax}{%
-			\small\strut
-			\foreach \gothamStepName [count=\gothamStepIndex] in {#1}{%
+	\vbox to 0pt{\vss
+	\begin{tikzpicture}[overlay, remember picture]
+		\node[fill=c_tertiary_yellow, anchor=north west, outer sep=0pt,
+		      inner xsep=\gothamFrametitleLeftpading, inner ysep=1.5pt, text height=6.2pt, text depth=2pt,
+		      minimum height=11.19pt,
+		      text width=\dimexpr\paperwidth-2\gothamFrametitleLeftpading\relax,
+		      align=left, text=c_primary_dark, font=\fontsize{6.3}{7.5}\selectfont]
+			at ($(current page.north west)+(0,-\gothamTitleBarBottomAlign)$)
+			{\foreach \gothamStepName [count=\gothamStepIndex] in {#1}{%
 				\ifnum\gothamStepIndex>1\ $\rightarrow$\ \fi
-				\ifnum\gothamStepIndex=#2\underline{\gothamStepName}\else\gothamStepName\fi}%
-			\strut}}\endgroup%
-	\par\vspace{2pt}%
+				\ifnum\gothamStepIndex=#2\underline{\gothamStepName}\else\gothamStepName\fi}};
+	\end{tikzpicture}%
+	}%
+	\vspace{-3pt}%
 }
