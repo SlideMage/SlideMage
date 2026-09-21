@@ -384,3 +384,7 @@ alt-text-bakeoff.md
 # client -- not git -- carries it across machines; see dist/ above for the
 # identical git-ignored-but-not-sync-ignored precedent.
 SlideMage/app_settings.json
+
+## Scratch folder for source PDFs/pptx used while converting slides (large,
+## machine-local, never meant to be committed).
+.temp/
