@@ -1059,16 +1059,40 @@ class SlideSourceTab(QWidget):
         line's own indentation -- without it, \\begin{...} inherits
         whatever indent the selection happened to start at (fine), but
         \\end{...} landed flush at column 0 regardless, breaking the
-        block's visual indentation (confirmed directly)."""
+        block's visual indentation (confirmed directly).
+
+        itemize/enumerate (LatexPlainTextEdit._LIST_ENVIRONMENTS, same set
+        the smart-Enter completion above already treats specially) get
+        extra care over a bare \\begin/\\end pair (2026-09-22, direct
+        instruction): with no selection, the body isn't left blank -- it's
+        pre-seeded with "\\item ", cursor right after it, exactly what
+        pressing Enter right after a freshly-typed \\begin{itemize} already
+        does (_smart_return above), since an empty list is never actually
+        useful to land in. With a selection spanning one or more lines,
+        each non-blank line becomes its own "\\item <that line's own
+        stripped text>" line inside the new block, instead of the
+        selection's raw text (with whatever newlines/indentation it
+        already had) landing verbatim between \\begin/\\end -- turning
+        already-typed lines into a list is the whole reason to select more
+        than one before clicking this. A selection that turns out to be
+        only blank lines still gets one empty "\\item " rather than a
+        body-less list, same fallback as the no-selection case."""
         cursor = self.widget.textCursor()
         indent = self._line_indent(cursor)
+        is_list_env = env in self.widget._LIST_ENVIRONMENTS
         cursor.beginEditBlock()
         if not cursor.hasSelection():
-            before = f"\\begin{{{env}}}\n{indent}\t"
+            inner = f"{indent}\t\\item " if is_list_env else f"{indent}\t"
+            before = f"\\begin{{{env}}}\n{inner}"
             after = f"\n{indent}\\end{{{env}}}"
             pos = cursor.position()
             cursor.insertText(before + after)
             cursor.setPosition(pos + len(before))
+        elif is_list_env:
+            lines = self._selected_text(cursor).split("\n")
+            items = [f"{indent}\t\\item {line.strip()}" for line in lines if line.strip()]
+            body = "\n".join(items) if items else f"{indent}\t\\item "
+            cursor.insertText(f"\\begin{{{env}}}\n{body}\n{indent}\\end{{{env}}}")
         else:
             selected = self._selected_text(cursor)
             cursor.insertText(f"\\begin{{{env}}}\n{selected}\n{indent}\\end{{{env}}}")
