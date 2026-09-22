@@ -1459,6 +1459,13 @@ v3.27.0 (2026-09-21, direct instruction): slide ids may no longer look like numb
 or Windows device names -- slide_ids.illegal_id_reason(), used by mint_slide_id() and mirrored in the R minting
 script; new slide_rename.rename_slide_id(old, new) renames a slide id everywhere (files, deck references including
 #workdeck.tex, \hyperlink targets, alt-text manifest, id registry). No GUI button yet.
+v3.27.1 (2026-09-22, direct report): the deck-editor tab's own Preview
+popup no longer also opens the compiled PDF in an external viewer after
+"Render now" -- the popup's own image already refreshes from the fresh
+snapshot that compile leaves behind, so the external open was a redundant
+second auto-open. qt_slide_source_tab.py's own separate "Preview" button
+is untouched -- a different render_fn, not shared with the deck-editor
+tab's.
 """
 from __future__ import annotations
 
@@ -1469,7 +1476,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.27.0"
+VERSION_NUMBER = "v3.27.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -791,25 +791,26 @@ class DeckEditorTab(QWidget):
 
     def _render_to_pdf(self, call: SlideCall, position: int) -> None:
         """The real compile a Preview popup's "Render now" falls back to --
-        identical to the old Render button's own action (same deck
-        preamble/frame-number context, so the PDF matches how the slide
-        actually looks and where it falls in this deck; opens the result
-        the same way too), just no longer the *only* way to see the slide.
-        Raises RuntimeError on failure, same contract SlidePreviewPopup
-        expects from render_fn.
+        same deck preamble/frame-number context the old Render button used,
+        so the PDF matches how the slide actually looks and where it falls
+        in this deck. Does *not* open the compiled PDF itself (2026-09-22,
+        direct report: the popup's own image already refreshes from the
+        fresh snapshot this compile leaves behind -- see SlidePreviewPopup's
+        own _on_render_done() -- so opening the standalone PDF too was a
+        redundant second auto-open). Raises RuntimeError on failure, same
+        contract SlidePreviewPopup expects from render_fn.
         """
         from . import slide_preview
 
         # Read live, same as qt_slide_source_tab.py's own preview/render
         # paths -- this popup's "Render now" ignored the checkbox entirely
         # otherwise (direct report, 2026-08-30).
-        pdf_path = slide_preview.render_slide_to_pdf(
+        slide_preview.render_slide_to_pdf(
             call.macro, call.id_slug, call.version, call.conditions,
             footer_timestamp=self.app.footer_timestamp_checkbox.isChecked(),
             preamble_text=self.deck.preamble_text, frame_number=position,
             log=self.app.signals.log.emit, steps=call.steps,
         )
-        slide_preview.open_pdf(pdf_path)
 
     def _on_preview(self, call: SlideCall, position: int) -> None:
         popup = SlidePreviewPopup(
