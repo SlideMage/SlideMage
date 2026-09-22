@@ -58,6 +58,36 @@ def sort_entries(path: Path | None = None) -> bool:
     return True
 
 
+# Per-entry-type field order for newly written entries (qt_citation_dialog.py's
+# "Add citation" form) -- author/title/year always first, matching every
+# existing entry of every type in this file; the rest follows each type's
+# own most common existing ordering (see the field-frequency survey this was
+# based on: 96 article/23 book/3 online/4 report entries, measured directly).
+# Not necessarily identical to every pre-existing entry's own field order
+# (a handful vary, e.g. some @book entries put `edition` before `year`,
+# some after `publisher`) -- this is the canonical order *new* entries get,
+# not a reformatting pass over old ones.
+TYPE_FIELDS: dict[str, list[tuple[str, bool]]] = {
+    "article": [
+        ("author", True), ("title", True), ("year", True),
+        ("journaltitle", True), ("volume", False), ("number", False),
+        ("pages", False), ("doi", False),
+    ],
+    "book": [
+        ("author", True), ("title", True), ("year", True),
+        ("publisher", True), ("edition", False), ("location", False),
+        ("isbn", False),
+    ],
+    "online": [
+        ("author", True), ("title", True), ("year", True),
+        ("url", True), ("organization", False), ("note", False),
+    ],
+    "report": [
+        ("author", True), ("title", True), ("year", True),
+        ("institution", True), ("type", False),
+    ],
+}
+
 _ENTRY_RE = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", re.IGNORECASE)
 _FIELD_RE = re.compile(r"(\w+)\s*=\s*", re.IGNORECASE)
 
@@ -184,6 +214,91 @@ def load(path: Path | None = None) -> dict[str, BibEntry]:
             cursor += 1
         entries[key] = BibEntry(key=key, kind=kind, fields=fields)
     return entries
+
+
+KEY_RE = re.compile(r"^[a-z]+[0-9]{4}[a-z]?$")
+
+
+def _first_surname(author_field: str) -> str:
+    """Same splitting rules as BibEntry.surnames, but only the first
+    author -- used to seed a new entry's own suggested key, same
+    "lowercase first author's surname + year" convention this file's own
+    header comment documents."""
+    first = re.split(r"\s+and\s+", author_field.strip())[0].strip().rstrip(",")
+    if not first:
+        return ""
+    if "," in first:
+        surname = first.split(",")[0].strip()
+    else:
+        surname = first.split()[-1].strip()
+    return re.sub(r"[^A-Za-z]", "", surname).lower()
+
+
+def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry] | None = None) -> str:
+    """<first author's surname><year>, lowercased, e.g. "Smith, John and
+    Doe, Jane" + "2024" -> "smith2024" -- this file's own established key
+    convention (see its own header comment). Appends "a", "b", "c", ... if
+    the plain form already exists (case-insensitively), so a second
+    citation by the same first author in the same year never silently
+    collides."""
+    surname = _first_surname(author_field)
+    year = year.strip()
+    base = f"{surname}{year}" if surname and year else ""
+    if not base:
+        return ""
+    taken = {k.lower() for k in (existing if existing is not None else load())}
+    if base.lower() not in taken:
+        return base
+    for letter in "abcdefghijklmnopqrstuvwxyz":
+        candidate = f"{base}{letter}"
+        if candidate.lower() not in taken:
+            return candidate
+    return base  # exhausted a-z -- extremely unlikely, caller's own duplicate check still applies
+
+
+def format_entry(kind: str, key: str, fields: dict[str, str]) -> str:
+    """Render one new entry back to .bib text -- field order/column
+    alignment matching this file's own existing style. `fields` should
+    already be in TYPE_FIELDS' own write order (an insertion-ordered
+    dict, as the GUI form builds it); blank-valued fields are skipped
+    entirely rather than written as `{}`. A bare "&" is auto-escaped to
+    "\\&" (every literal ampersand in the file today is already written
+    that way -- e.g. "Journal of Economic Behavior \\& Organization"),
+    so the person filling in the form doesn't need to know LaTeX escaping
+    to type a journal/publisher name that happens to contain one."""
+    pairs = [(name, re.sub(r"(?<!\\)&", r"\\&", value.strip()))
+             for name, value in fields.items() if value and value.strip()]
+    if not pairs:
+        raise ValueError("at least one field besides the key is required")
+    width = max(len(name) for name, _ in pairs)
+    lines = [f"@{kind}{{{key},"]
+    lines.extend(f"\t{name.ljust(width)} = {{{value}}}," for name, value in pairs)
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = None) -> str:
+    """Insert a new entry into `path` (default Slidemaster.bib) and leave
+    the file alphabetically sorted by key afterward -- appends the new
+    entry, then re-runs sort_entries() rather than computing its own
+    insertion point, so "kept sorted" (the file's own header-comment
+    invariant) is enforced by the exact same code path regardless of how
+    the file might already be out of order. Raises ValueError if `key`
+    already exists (case-insensitively -- BibTeX keys are technically
+    case-sensitive, but every key in this file is already lowercase by
+    convention, so a same-key-different-case entry would be confusing
+    dead weight rather than a legitimately distinct citation). Returns
+    the newly written entry's own text."""
+    target = path or DEFAULT_BIB
+    existing = load(target)
+    if key.lower() in {k.lower() for k in existing}:
+        raise ValueError(f"citation key {key!r} already exists in {target.name}")
+    entry_text = format_entry(kind, key, fields)
+    text = target.read_text(encoding="utf-8") if target.is_file() else ""
+    new_text = text.rstrip("\n") + "\n\n" + entry_text + "\n"
+    target.write_text(new_text, encoding="utf-8", newline="\n")
+    sort_entries(target)
+    return entry_text
 
 
 def _authors(entry: BibEntry) -> str:

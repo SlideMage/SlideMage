@@ -131,14 +131,18 @@ def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str)
     return n
 
 
-def set_slide_language(id_slug: str, language: str) -> str:
-    """Renames slides/<id_slug>-current.tex (and every frozen
-    -vX-Y-Z.tex sibling) to carry `language`'s segment, rewrites every
-    reference across every deck, and regenerates both derived-text kinds
-    (deck-inclusion headers, translation cross-references). Returns the
-    new id-slug (unchanged from id_slug if it already carried this exact
-    language segment)."""
-    new_id_slug = compute_new_id_slug(id_slug, language)
+def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
+    """Shared machinery behind both set_slide_language() and
+    rename_slide_slug() below: move slides/<id_slug>-current.tex (and every
+    frozen -vX-Y-Z.tex sibling) to <new_id_slug>'s own filenames, rewrite
+    every \\slide-family reference across every deck, and regenerate both
+    derived-text kinds (deck-inclusion headers, translation
+    cross-references). Only the part of the id-slug after the bare id
+    actually differs between the two callers (language segment vs.
+    descriptive slug) -- the bare id itself, and its slide_ids.csv
+    registration, are untouched either way (that's rename_slide_id()'s own,
+    separate job). Returns new_id_slug unchanged, for a symmetric call
+    signature with both callers."""
     if new_id_slug == id_slug:
         return id_slug
 
@@ -174,6 +178,58 @@ def set_slide_language(id_slug: str, language: str) -> str:
     deck_headers.regenerate_headers()
     regenerate_translation_links()
     return new_id_slug
+
+
+def set_slide_language(id_slug: str, language: str) -> str:
+    """Renames slides/<id_slug>-current.tex (and every frozen
+    -vX-Y-Z.tex sibling) to carry `language`'s segment, rewrites every
+    reference across every deck, and regenerates both derived-text kinds
+    (deck-inclusion headers, translation cross-references). Returns the
+    new id-slug (unchanged from id_slug if it already carried this exact
+    language segment)."""
+    return _apply_id_slug_rename(id_slug, compute_new_id_slug(id_slug, language))
+
+
+_SLUG_RE = re.compile(r"[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*")
+
+
+def parse_id_slug(id_slug: str) -> tuple[str, Optional[str], str]:
+    """<id>[-<LANG>]-<slug> -> (bare id, language or None, descriptive
+    slug) -- e.g. "hnr-EN-Deception-in-Experimental-Economics" ->
+    ("hnr", "EN", "Deception-in-Experimental-Economics"), or a
+    not-yet-migrated "abc-Some-Title" -> ("abc", None, "Some-Title")."""
+    parts = id_slug.split("-", 2)
+    if len(parts) < 2:
+        raise ValueError(f"not a valid id-slug (needs at least one hyphen): {id_slug!r}")
+    bare_id = parts[0]
+    if len(parts) >= 3 and parts[1] in slide_language.LANGUAGES:
+        return bare_id, parts[1], parts[2]
+    return bare_id, None, "-".join(parts[1:])
+
+
+def compute_new_slug(id_slug: str, new_slug: str) -> str:
+    """<id>[-<LANG>]-<slug> -> <id>[-<LANG>]-<new_slug> -- same bare id and
+    language segment (if any); only the descriptive slug changes."""
+    if not _SLUG_RE.fullmatch(new_slug):
+        raise ValueError(
+            f"{new_slug!r} is not a valid slug: use only letters, digits, "
+            "and single hyphens between words (no leading/trailing/doubled "
+            "hyphens)"
+        )
+    bare_id, language, _ = parse_id_slug(id_slug)
+    return f"{bare_id}-{language}-{new_slug}" if language else f"{bare_id}-{new_slug}"
+
+
+def rename_slide_slug(id_slug: str, new_slug: str) -> str:
+    """Give a slide a new descriptive slug, keeping its bare id (and
+    language segment, if any) unchanged -- for the "Rename slide" button
+    (2026-09-23, direct instruction), which only ever changes the
+    human-readable part of the id-slug, not the 3-character id itself
+    (rename_slide_id()'s job) or its language (set_slide_language()'s
+    job). Same move + reference-rewrite + header-regen machinery as both
+    of those. Returns the new id-slug (unchanged from id_slug if it
+    already had this exact slug)."""
+    return _apply_id_slug_rename(id_slug, compute_new_slug(id_slug, new_slug))
 
 
 def set_slide_languages_bulk(id_slugs: list[str], language: str) -> dict[str, str]:
@@ -399,3 +455,120 @@ def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
     deck_headers.regenerate_headers()
     regenerate_translation_links()
     return mapping
+
+
+def deck_names_referencing(id_slug: str) -> list[str]:
+    """Deck names (filename stem, including #workdeck.tex/archived decks)
+    that reference id_slug via any \\slide-family call -- for the "Delete
+    slide" button's confirmation dialog (2026-09-23, direct instruction:
+    "check whether the slide is used in any decks and ask whether the
+    user really wants to delete"), so the user sees exactly what's about
+    to lose a reference before confirming, not just a bare count."""
+    pattern = _reference_pattern(id_slug)
+    names: list[str] = []
+    deck_paths = [
+        p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+        for p in directory.glob("*.tex")
+    ]
+    for deck_path in deck_paths:
+        text = deck_path.read_text(encoding="utf-8", newline="")
+        if pattern.search(text):
+            names.append(deck_path.stem)
+    return names
+
+
+def _line_removal_pattern(id_slug: str) -> re.Pattern:
+    # Anchored to a whole line (optional leading/trailing whitespace, the
+    # call itself, its own newline) -- every \\slide-family call in this
+    # project already sits on its own line, so this removes the call
+    # cleanly without leaving a blank line's worth of dangling whitespace
+    # behind, unlike a bare substring removal would.
+    return re.compile(
+        r"(?m)^[ \t]*\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{"
+        + re.escape(id_slug) + r"\}[ \t]*\n?"
+    )
+
+
+def _remove_references_in_file(deck_path: Path, id_slug: str) -> int:
+    text = deck_path.read_text(encoding="utf-8", newline="")
+    new_text, n = _line_removal_pattern(id_slug).subn("", text)
+    if n:
+        deck_path.write_text(new_text, encoding="utf-8", newline="")
+    return n
+
+
+def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[str, int]:
+    """Permanently deletes slides/<id_slug>-current.tex and every frozen
+    -vX-Y-Z.tex sibling from disk (git rm when tracked, else a plain
+    unlink) -- for the "Delete slide" button (2026-09-23, direct
+    instruction). Unless remove_deck_references is False, also removes
+    every whole \\slide-family call line referencing it from every deck
+    (including #workdeck.tex), so no deck is left pointing at a file that
+    no longer exists on disk. Also drops this slide's own bare-id entries
+    from the image manifest (media/alt-text.json's used_on/notes, same
+    alt_images helpers rename_slide_id() above already uses), then
+    regenerates deck-inclusion headers and translation cross-references
+    (a slide that had a translation link to/from this one gets flagged
+    the same "no longer resolves" way a rename target that vanished
+    already is, via regenerate_translation_links()'s own missing-target
+    reporting).
+
+    The bare id itself is deliberately NOT removed from slide_ids.csv --
+    same "never handed out again" reasoning rename_slide_id() above
+    already documents, so a future slide can never collide with this
+    deleted one's own history.
+
+    The caller is responsible for confirming with the user first (e.g.
+    via count_references()/deck_names_referencing() shown in a dialog) --
+    this function itself deletes unconditionally, no confirmation of its
+    own. Returns {"files_removed": n, "deck_references_removed": n} for
+    the caller's own confirmation/log message."""
+    current = SLIDES_DIR / f"{id_slug}-current.tex"
+    if not current.exists():
+        raise FileNotFoundError(f"{current} does not exist")
+
+    files = sorted(SLIDES_DIR.glob(f"{id_slug}-*.tex"))
+    for path in files:
+        if _is_git_repo() and _is_git_tracked(path):
+            subprocess.run(
+                ["git", "rm", "-q", str(path.relative_to(PROJECT_ROOT))],
+                cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,
+            )
+        else:
+            path.unlink()
+
+    deck_refs_removed = 0
+    if remove_deck_references:
+        deck_paths = [
+            p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+            for p in directory.glob("*.tex")
+            if p.name != "#workdeck.tex"
+        ]
+        if WORKDECK_PATH.exists():
+            deck_paths.append(WORKDECK_PATH)
+        for deck_path in deck_paths:
+            deck_refs_removed += _remove_references_in_file(deck_path, id_slug)
+
+    bare_id = id_slug.split("-", 1)[0]
+
+    def _drop_uses(entries) -> bool:
+        changed = False
+        for entry in entries.values():
+            if bare_id in entry.used_on:
+                del entry.used_on[bare_id]
+                changed = True
+        return changed
+
+    alt_images.update_store(_drop_uses)
+
+    def _drop_notes(notes) -> bool:
+        if bare_id in notes:
+            del notes[bare_id]
+            return True
+        return False
+
+    alt_images.update_slide_notes(_drop_notes)
+
+    deck_headers.regenerate_headers()
+    regenerate_translation_links()
+    return {"files_removed": len(files), "deck_references_removed": deck_refs_removed}

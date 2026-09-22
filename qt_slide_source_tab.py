@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -52,6 +53,7 @@ from . import (
     slide_rename, slide_snapshot, slide_source, slide_versioning, transcript,
 )
 from .qt_ai_draft_dialog import AiDraftDialog
+from .qt_citation_dialog import CitationDialog
 from .qt_duplicate_slide_dialog import DuplicateSlideDialog
 from .qt_syntax_check_dialog import SyntaxCheckDialog
 from .qt_slide_preview_popup import SlidePreviewPopup
@@ -614,6 +616,25 @@ class SlideSourceTab(QWidget):
             self.duplicate_button.clicked.connect(self._on_duplicate_slide)
             toolbar.addWidget(self.duplicate_button)
 
+            self.rename_button = QPushButton("Rename slide")
+            self.rename_button.setToolTip(
+                "Change this slide's descriptive slug (the human-readable "
+                "part of its filename/id) -- its 3-character id and "
+                "language segment, if any, stay the same. Rewrites every "
+                "deck reference to match."
+            )
+            self.rename_button.clicked.connect(self._on_rename_slide)
+            toolbar.addWidget(self.rename_button)
+
+            self.delete_button = QPushButton("Delete slide")
+            self.delete_button.setToolTip(
+                "Permanently delete this slide's file (and any frozen "
+                "versions of it) from disk -- checks whether any deck "
+                "still references it and asks for confirmation first."
+            )
+            self.delete_button.clicked.connect(self._on_delete_slide)
+            toolbar.addWidget(self.delete_button)
+
         if self._is_slide:
             # Language badge + rename control (2026-08-24) -- only for
             # -current.tex (mirrors the version-bump dialog's own
@@ -864,6 +885,18 @@ class SlideSourceTab(QWidget):
         )
         self.command_combo.activated.connect(self._on_command_selected)
         format_toolbar.addWidget(self.command_combo)
+
+        self.add_citation_button = QPushButton("Add citation")
+        self.add_citation_button.setToolTip(
+            "Add a new entry to Slidemaster.bib -- pick a source type "
+            "(article, book, online source, or report), fill in its "
+            "fields, and it's inserted keeping the file alphabetically "
+            "sorted. Checked against every existing citation key first, "
+            "so it can never create a duplicate ID."
+        )
+        self.add_citation_button.clicked.connect(self._on_add_citation)
+        format_toolbar.addWidget(self.add_citation_button)
+
         format_toolbar.addStretch()
         outer.addWidget(format_toolbar_container)
 
@@ -1731,6 +1764,9 @@ class SlideSourceTab(QWidget):
         self.app.log(f"Duplicated {self._slide_id_slug} -> {dialog.new_id_slug}")
         self.app.open_slide_editor(dialog.new_path, return_to=self)
 
+    def _on_add_citation(self) -> None:
+        CitationDialog(self).exec()
+
     # -- language (2026-08-24) -------------------------------------------------------
 
     def _refresh_language_controls(self) -> None:
@@ -1784,6 +1820,102 @@ class SlideSourceTab(QWidget):
         show = own == "mult" or "\\multilingualtext" in self.widget.toPlainText()
         self.render_language_label.setVisible(show)
         self.render_language_combo.setVisible(show)
+
+    def _on_rename_slide(self) -> None:
+        if self._dirty:
+            QMessageBox.warning(
+                self, "Rename slide",
+                "Save or revert this slide's unsaved changes first -- "
+                "renaming moves the file on disk, and an unsaved buffer "
+                "would then be saved under (or lost relative to) the wrong "
+                "name.",
+            )
+            return
+
+        old_id_slug = self._slide_id_slug
+        _, _, current_slug = slide_rename.parse_id_slug(old_id_slug)
+        new_slug, ok = QInputDialog.getText(
+            self, "Rename slide",
+            "New slug (letters, digits, and single hyphens between words "
+            "only -- the slide's 3-character id and language segment, if "
+            "any, stay the same):",
+            QLineEdit.EchoMode.Normal, current_slug,
+        )
+        if not ok or not new_slug or new_slug == current_slug:
+            return
+
+        try:
+            new_id_slug = slide_rename.compute_new_slug(old_id_slug, new_slug)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Rename slide", str(exc))
+            return
+
+        n_refs = slide_rename.count_references(old_id_slug)
+        confirm = QMessageBox.question(
+            self, "Rename slide",
+            f"This will rename {old_id_slug}-current.tex (and any frozen "
+            f"versions of it) to {new_id_slug}-current.tex, and rewrite "
+            f"{n_refs} deck reference(s) to match. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            new_id_slug = slide_rename.rename_slide_slug(old_id_slug, new_slug)
+        except (FileNotFoundError, FileExistsError, ValueError) as exc:
+            QMessageBox.critical(self, "Rename slide failed", str(exc))
+            return
+
+        new_path = self.path.parent / f"{new_id_slug}-current.tex"
+        self.app.rename_slide_editor_tab(self, new_path)
+        self.path = new_path
+        self._slide_id_slug = new_id_slug
+        self.app.log(
+            f"Renamed slide {old_id_slug} -> {new_id_slug} "
+            f"({n_refs} deck reference(s) updated)"
+        )
+        self._refresh_language_controls()
+        self.app.refresh_open_deck_editors()
+
+    def _on_delete_slide(self) -> None:
+        id_slug = self._slide_id_slug
+        deck_names = slide_rename.deck_names_referencing(id_slug)
+        n_refs = slide_rename.count_references(id_slug)
+        if deck_names:
+            usage_text = (
+                f"This slide is referenced {n_refs} time(s) across "
+                f"{len(deck_names)} deck(s): {', '.join(deck_names)}. "
+                "Deleting it will also remove those references, so none "
+                "of those decks is left pointing at a file that no "
+                "longer exists."
+            )
+        else:
+            usage_text = "This slide is not currently referenced by any deck."
+
+        confirm = QMessageBox.question(
+            self, "Delete slide",
+            f"Permanently delete {id_slug}-current.tex (and any frozen "
+            f"versions of it)?\n\n{usage_text}\n\nThis cannot be undone "
+            "from within SlideMage.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = slide_rename.delete_slide_id(id_slug)
+        except (FileNotFoundError, OSError) as exc:
+            QMessageBox.critical(self, "Delete slide failed", str(exc))
+            return
+
+        self.app.log(
+            f"Deleted slide {id_slug} ({result['files_removed']} file(s), "
+            f"{result['deck_references_removed']} deck reference(s) removed)"
+        )
+        self.app.close_slide_editor_tab(self)
+        self.app.refresh_open_deck_editors()
 
     def _on_set_language(self) -> None:
         if self._dirty:

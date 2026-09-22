@@ -51,6 +51,22 @@ VERSION_LABELS = {
 }
 
 
+class NoScrollComboBox(QComboBox):
+    """A QComboBox that never reacts to the mouse wheel (2026-09-23, direct
+    instruction: "I want the scroll wheel to only scroll through the deck,
+    everything else is error prone") -- both dropdowns in this tab (the
+    toolbar's chapter-navigation combo and each row's own variant combo)
+    sit directly in the path of a scroll gesture aimed at the deck's own
+    QScrollArea, and Qt's default QComboBox wheel handling quietly changes
+    the current selection instead of scrolling past it. Ignoring the event
+    here (rather than accepting it as a no-op) lets it propagate to the
+    enclosing scroll area, so the wheel keeps scrolling the deck exactly as
+    if the cursor weren't over a combo box at all."""
+
+    def wheelEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        event.ignore()
+
+
 def _language_badge_html(id_slug: str) -> str:
     """Rich-text suffix for a slide row/card's own id label (2026-08-24) --
     appended directly onto the existing label rather than added as its own
@@ -150,7 +166,7 @@ class DeckEditorTab(QWidget):
         toolbar.addWidget(self.clear_selection_button)
 
         toolbar.addWidget(QLabel("Quick navigation:"))
-        self.chapter_combo = QComboBox()
+        self.chapter_combo = NoScrollComboBox()
         self.chapter_combo.setToolTip("Jump the view to a chapter.")
         self.chapter_combo.currentIndexChanged.connect(self._on_chapter_selected)
         toolbar.addWidget(self.chapter_combo)
@@ -482,7 +498,7 @@ class DeckEditorTab(QWidget):
         versions = deck_editor.available_versions(call.id_slug)
         options, current_index = self._variant_options(call, versions)
         initial_label = options[current_index]
-        combo = QComboBox()
+        combo = NoScrollComboBox()
         combo.addItems(options)
         combo.setCurrentIndex(current_index)
         self.grid.addWidget(combo, row_index, 2)

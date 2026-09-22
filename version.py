@@ -1503,6 +1503,76 @@ LICENSE_PATH resolves via deck_scan.PROJECT_ROOT, the same frozen-vs-dev
 -safe resolution app_settings.py/translation_prompts.py already use (see
 v3.3.13 above for why a plain __file__-relative path breaks inside the
 compiled .exe).
+
+v3.29.1 (2026-09-23, direct instruction): the deck-editor tab's dropdowns
+(the toolbar's "Quick navigation" chapter combo, and each row's own
+variant combo, e.g. slide/slidestep/conditionalslide) no longer react to
+the mouse wheel -- "I want the scroll wheel to only scroll through the
+deck, everything else is error prone." A new NoScrollComboBox(QComboBox)
+subclass ignores wheelEvent unconditionally, so the event propagates to
+the deck's own QScrollArea instead of silently changing whichever combo
+the cursor happened to be over mid-scroll. Verified with a real
+headless-Qt QWheelEvent dispatched via QApplication.sendEvent: the new
+combo's currentIndex is untouched and the event is left unaccepted
+(confirmed to propagate); a plain QComboBox given the identical event
+does change, confirming the test itself is real.
+
+v3.29.2 (2026-09-23, direct instruction): a "Rename slide" button, right
+next to "Duplicate slide" on the slide-source editor's own toolbar,
+changes a slide's descriptive slug (the human-readable part of its
+filename/id) while keeping its 3-character id and language segment
+fixed -- opens a dialog pre-filled with the current slug, confirms with
+a live count of deck references about to be rewritten (same UX pattern
+as the existing "Set language" control), then does the actual rename.
+New slide_rename.rename_slide_slug() (+ parse_id_slug()/
+compute_new_slug() helpers) is the third id-slug renamer alongside
+rename_slide_id() (bare id) and set_slide_language() (language segment)
+-- the move+reference-rewrite+header-regen machinery the latter two
+always shared is now factored into one _apply_id_slug_rename() all three
+build on. First real use: hnr-EN-Deception-in-Experimental-Economics ->
+hnr-EN-Deception-in-Experimental-Economics-Stage1 (the user's own "nhr"
+was a transposed-letter typo for "hnr", resolved by content search --
+only one slide in the whole project matches the topic, with an existing
+"-Stage2" sibling the "-Stage1" name is clearly meant to parallel).
+
+v3.29.3 (2026-09-23, direct instruction): an "Add citation" button, on
+the slide-source editor's own formatting toolbar (the row right above
+the text area, next to "Insert command"), opens a form for adding a new
+entry to Slidemaster.bib without hand-writing BibTeX. Pick a type
+(article/book/online source/report), fill in its fields -- every one
+carries a tooltip and a placeholder example -- and a suggested citation
+key appears live from the author/title/year (this file's own "surname +
+year" convention), lettered (smith2024, smith2024a, ...) on a collision;
+editing the key by hand opts out of further auto-suggestion. Checked
+against every existing key before it can be added, so a duplicate ID is
+never created; the file is re-sorted afterward, so it stays exactly as
+alphabetical as the header comment promises. New bibliography.py
+machinery backing it (TYPE_FIELDS, suggest_key(), format_entry(),
+add_entry()) is usable standalone of the dialog too. Verified with real
+headless-Qt tests (type switching, live key suggestion + its
+collision-lettering, manual-edit opt-out, duplicate-key and
+missing-required-field submits both correctly rejected, a real
+successful add) against a throwaway copy of the .bib file -- the actual
+project Slidemaster.bib was confirmed untouched by any of the testing.
+
+v3.29.4 (2026-09-23, direct instruction, added mid-batch): a "Delete
+slide" button, right after "Rename slide", permanently removes a
+slide's current.tex (and any frozen versions) from disk. Checks whether
+any deck still references it first and names them (not just a count) in
+the confirmation dialog -- "check whether the slide is used in any decks
+and ask whether the user really wants to delete" -- defaulting to No
+since this can't be undone from within the app. On confirmation, every
+whole \slide-family call line referencing it is also removed from every
+deck (including #workdeck.tex), so nothing is left compiling against a
+file that no longer exists; its image-manifest used_on/notes entries are
+dropped, and deck-inclusion headers + translation cross-references are
+regenerated. The bare id itself stays registered in slide_ids.csv (never
+reissued), same reasoning rename_slide_id() already documents. New
+slide_rename.deck_names_referencing()/delete_slide_id(). Verified
+end-to-end (file + frozen-sibling removal, the deck's own reference line
+cleanly gone with the rest of the file untouched, a repeat delete
+correctly raising) and via a headless-Qt smoke test of the button/dialog
+wiring itself, both against throwaway slide/deck files only.
 """
 from __future__ import annotations
 
@@ -1513,7 +1583,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.29.0"
+VERSION_NUMBER = "v3.29.4"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
