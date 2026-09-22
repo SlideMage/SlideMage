@@ -17,6 +17,18 @@
 \input{Slidemaster_preamble_uni-graz}
 \studentversion
 
+% Same biblatex/biber setup as test.tex (added 2026-09-22 alongside it) --
+% needed here too, since this file \input{}s the same test-slides.tex,
+% whose ZZZ-EN-Standard-content now has a \fullcite{} call. See test.tex's
+% own comment for the details.
+\usepackage[style=authoryear, backend=biber]{biblatex}
+\makeatletter
+\let\gothamSavedInputPath\input@path
+\def\input@path{}%
+\IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
+\let\input@path\gothamSavedInputPath
+\makeatother
+
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
 % Deliberately does NOT also call \deckversion (unlike test.tex, added

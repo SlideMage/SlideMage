@@ -15,9 +15,12 @@
 % 3bs (standardframe's "beside" placement -- kew with the specially-nudged
 % "beyond CAPM" asset, 3bs with an ordinary one) and 65b (sectionframe's
 % "below" placement, via \gothamFrametitleLogoFixed) -- none of ZZ*/dfc/nai
-% exercise \chapterlogo{} at all. All six are standalone, no biblatex
-% dependency, so this deck stays free of #workdeck.tex's/the real course
-% decks' own bibliography setup, which the accessibility check doesn't need.
+% exercise \chapterlogo{} at all. All six of *this file's own* slides are
+% standalone, no biblatex dependency of their own -- but this deck picked up
+% one anyway (2026-09-22) via test-slides.tex's own ZZZ-EN-Standard-content,
+% whose \fullcite{markowitz1952} footnote now needs Slidemaster.bib
+% resolvable the same way every other test-slides.tex consumer does (see
+% decks/test.tex's own comment for the biblatex/biber setup below).
 %
 % .scripts/verify_accessibility_pikepdf.py reads this deck's own
 % .build/verify_accessibility.pdf and checks artifact-marking coverage +
@@ -33,6 +36,16 @@
 
 \input{Slidemaster_preamble_uni-graz}
 
+% Same biblatex/biber setup as decks/test.tex (added 2026-09-22 alongside
+% it) -- see that file's own comment for the details.
+\usepackage[style=authoryear, backend=biber]{biblatex}
+\makeatletter
+\let\gothamSavedInputPath\input@path
+\def\input@path{}%
+\IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
+\let\input@path\gothamSavedInputPath
+\makeatother
+
 \newcommand{\FooterText}{Accessibility regression check | Stefan Palan}
 
 \decktags{test}
@@ -40,10 +53,10 @@
 
 	\input{test-slides}
 
-	\slide{dfc-Angel-Investors}
+	\slide{dfc-EN-Angel-Investors}
 	\slide{nai-EN-Post-Earnings-Announcement-Drift-Excursus-01}
-	\slide{kew-Zero-Beta-CAPM}
-	\slide{3bs-Outland-Steel-USD-Cost-of-Capital-and-NPV}
-	\slide{65b-Successors-of-the-CAPM-Section-Overview}
+	\slide{kew-EN-Zero-Beta-CAPM}
+	\slide{3bs-EN-Outland-Steel-USD-Cost-of-Capital-and-NPV}
+	\slide{65b-EN-Successors-of-the-CAPM-Section-Overview}
 
 \end{document}

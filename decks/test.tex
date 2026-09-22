@@ -16,6 +16,22 @@
 
 \input{Slidemaster_preamble_uni-graz}
 
+% Bibliography (biblatex + biber, opt-in per deck -- see README.md's
+% "Decks with a bibliography" section for the extra `biber` compile pass
+% this needs beyond the usual two lualatex passes). Added 2026-09-22 so
+% ZZZ-EN-Standard-content's own \fullcite{markowitz1952} footnote has a
+% Slidemaster.bib to resolve against -- plain biblatex defaults here
+% (no custom citation-format drivers), unlike the real course decks'
+% own house style (decks/t-Uni-FM2-2027s.tex), since this is just meant
+% to demonstrate the mechanism itself.
+\usepackage[style=authoryear, backend=biber]{biblatex}
+\makeatletter
+\let\gothamSavedInputPath\input@path
+\def\input@path{}%
+\IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
+\let\input@path\gothamSavedInputPath
+\makeatother
+
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
 % Added 2026-09-22 alongside the ZZH \slidestep demo slide (test-slides.tex)
