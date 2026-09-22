@@ -1,8 +1,18 @@
 # SlideMage
 
-A Tkinter GUI for compiling and archiving this project's `decks/`, built
-2026-07-19. This file is the "what and why" for future sessions working on
-this code -- the module docstrings cover the "how" at the code level.
+A PySide6 (Qt) GUI for compiling and archiving this project's `decks/`
+(originally a Tkinter GUI, built 2026-07-19, before the full migration --
+see `PYSIDE6_MIGRATION.md`). This file is the "what and why" for future
+sessions working on this code -- the module docstrings cover the "how" at
+the code level.
+
+> This is the app half of the Slidemaster/SlideMage project. The LaTeX/
+> beamer framework it drives lives in a separate repo,
+> [github.com/stpalan/slidemaster](https://github.com/stpalan/slidemaster)
+> -- clone this repo into a `SlideMage/` folder at that project's root
+> (see its own `PROJECT_OVERVIEW.md` for the exact layout). This repo is
+> kept in sync with a larger private project via `git subtree`, so its
+> commit history reflects real development, not a one-off export.
 
 ## What it does
 

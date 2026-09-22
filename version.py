@@ -1573,6 +1573,13 @@ end-to-end (file + frozen-sibling removal, the deck's own reference line
 cleanly gone with the rest of the file untouched, a repeat delete
 correctly raising) and via a headless-Qt smoke test of the button/dialog
 wiring itself, both against throwaway slide/deck files only.
+
+v3.29.5 (2026-09-22, direct instruction): README.md's stale "Tkinter GUI" opening line fixed, and a cross-link to the new public github.com/stpalan/slidemaster repo added. Fixed this file's own opening
+line, which still called this app "A Tkinter GUI" -- stale since the
+PySide6 migration (v2.10.0). Also added a short pointer to
+github.com/stpalan/slidemaster, the companion repo this one now gets
+published alongside via git subtree, so a reader landing here from that
+repo's own README knows where the other half lives.
 """
 from __future__ import annotations
 
@@ -1583,7 +1590,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.29.4"
+VERSION_NUMBER = "v3.29.5"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
