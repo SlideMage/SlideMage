@@ -1491,6 +1491,18 @@ one or more lines selected, each non-blank line becomes its own
 "\item <text>" line inside the new block instead of the selection's raw
 text landing verbatim between \begin/\end. Any other \begin/\end
 environment this dropdown might ever wrap is unaffected.
+
+v3.29.0 (2026-09-22, direct instruction): the project gained a CC BY-SA
+4.0 LICENSE file (project root), and the Info window (previously just
+the version-history browser) is now a two-tab QTabWidget -- "Version
+history" (unchanged) and a new "License" tab, a read-only view of that
+LICENSE file read fresh from disk on every open rather than a copy
+embedded in this app. Prompted by preparing a trimmed copy of this
+project to share with a colleague. qt_version_history_dialog.py's
+LICENSE_PATH resolves via deck_scan.PROJECT_ROOT, the same frozen-vs-dev
+-safe resolution app_settings.py/translation_prompts.py already use (see
+v3.3.13 above for why a plain __file__-relative path breaks inside the
+compiled .exe).
 """
 from __future__ import annotations
 
@@ -1501,7 +1513,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.28.3"
+VERSION_NUMBER = "v3.29.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -1,5 +1,6 @@
-"""Info menu's version-history window (2026-08-25, direct instruction) --
-reads version.parse_history() directly rather than maintaining a separate
+"""Info menu's version-history/license window (2026-08-25, direct
+instruction; License tab added 2026-09-22, direct instruction) -- reads
+version.parse_history() directly rather than maintaining a separate
 changelog, so a new history paragraph appended to version.py's own
 docstring (this project's standing per-bump convention -- see
 VERSION_NUMBER's own comment there) shows up here automatically, with
@@ -18,15 +19,34 @@ and blank itself, the same failure mode setOpenExternalLinks(False) alone
 doesn't cover (that property only governs http(s) links); setOpenLinks(False)
 is what actually stops the browser's own navigation while leaving
 anchorClicked() to fire regardless.
+
+The window is a QTabWidget with two tabs -- "Version history" (the
+original content, unchanged) and "License" (plain-text LICENSE file from
+the project root, read fresh on each open so it reflects whatever's
+actually on disk, never embedded/duplicated here) -- rather than a
+separate menu action, direct instruction: "as a separate tab in the
+window that opens when one clicks Info."
 """
 from __future__ import annotations
 
 import html as _html
 
 from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QTextBrowser, QVBoxLayout
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QPlainTextEdit,
+    QPushButton,
+    QTabWidget,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import version as version_mod
+from .deck_scan import PROJECT_ROOT
+
+LICENSE_PATH = PROJECT_ROOT / "LICENSE"
 
 # Below this many characters, an already-short description just gets
 # shown in full with no toggle at all -- there is nothing meaningful left
@@ -58,7 +78,7 @@ def _summary(text: str) -> str:
 class VersionHistoryDialog(QDialog):
     def __init__(self, parent) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Version history")
+        self.setWindowTitle("Info")
         self.setModal(True)
         self.resize(560, 640)
 
@@ -68,6 +88,8 @@ class VersionHistoryDialog(QDialog):
         self._expanded: set[int] = set()
 
         layout = QVBoxLayout(self)
+
+        tabs = QTabWidget()
         self.browser = QTextBrowser()
         self.browser.setOpenExternalLinks(False)
         # Stops QTextBrowser's own setSource()-based navigation on a
@@ -78,7 +100,9 @@ class VersionHistoryDialog(QDialog):
         self.browser.setOpenLinks(False)
         self.browser.anchorClicked.connect(self._on_anchor_clicked)
         self.browser.setHtml(self._build_html())
-        layout.addWidget(self.browser, stretch=1)
+        tabs.addTab(self.browser, "Version history")
+        tabs.addTab(self._build_license_tab(), "License")
+        layout.addWidget(tabs, stretch=1)
 
         button_row = QHBoxLayout()
         button_row.addStretch(1)
@@ -86,6 +110,19 @@ class VersionHistoryDialog(QDialog):
         close_button.clicked.connect(self.accept)
         button_row.addWidget(close_button)
         layout.addLayout(button_row)
+
+    def _build_license_tab(self) -> QWidget:
+        """Plain read-only view of the project root's own LICENSE file,
+        read fresh on each dialog open -- no embedded copy here to drift
+        out of sync with it. A monospaced QPlainTextEdit (not QTextBrowser)
+        since LICENSE is plain text, not HTML."""
+        text_edit = QPlainTextEdit()
+        text_edit.setReadOnly(True)
+        try:
+            text_edit.setPlainText(LICENSE_PATH.read_text(encoding="utf-8"))
+        except OSError as exc:
+            text_edit.setPlainText(f"Could not read {LICENSE_PATH}: {exc}")
+        return text_edit
 
     def _on_anchor_clicked(self, url: QUrl) -> None:
         href = url.toString()
