@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -232,7 +232,8 @@ class SlideMageWindow(QMainWindow):
         outer.addWidget(self.tabs)
         self._apply_tab_colors()
 
-        outer.addLayout(self._build_toolbar())
+        self._toolbar_layout = self._build_toolbar()
+        outer.addLayout(self._toolbar_layout)
 
         log_header = QHBoxLayout()
         log_header.addWidget(QLabel("Log:"))
@@ -250,10 +251,45 @@ class SlideMageWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self.reload_decks()
+        self._width_fitted = False
 
         self._spinner_timer = QTimer(self)
         self._spinner_timer.timeout.connect(self._tick_spinner)
         self._spinner_timer.start(SPINNER_INTERVAL_MS)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # Not in __init__: before the first show() the widgets are not
+        # polished yet (fonts/stylesheet), and the deck table's size hint
+        # then comes out at less than half of what it really needs.
+        if not self._width_fitted:
+            self._width_fitted = True
+            self._fit_initial_width()
+
+    def _fit_initial_width(self) -> None:
+        """Opening width: wide enough for the whole main screen (2026-09-21,
+        direct instruction: "the entire width of the main screen (all
+        buttons) [should be] visible") -- the widest deck table row (its
+        buttons, checkboxes and columns, which otherwise sit behind a
+        horizontal scroll bar) and the footer checkbox row, plus the
+        window's own margins, limited to the screen the window opens on.
+        Only ever grows the default width; a saved/dragged size afterwards
+        is the user's own."""
+        needed = max(
+            self.active_table.content.sizeHint().width(),
+            self.archived_table.content.sizeHint().width(),
+            self._toolbar_layout.sizeHint().width(),
+        )
+        margins = 48  # central widget + tab frame + scroll area frame
+        screen = QGuiApplication.primaryScreen()
+        limit = screen.availableGeometry().width() if screen is not None else needed + margins
+        self.resize(max(self.width(), min(needed + margins, limit)), self.height())
+        if screen is not None:
+            # a wider window must not hang over the screen's right edge
+            available = screen.availableGeometry()
+            frame = self.frameGeometry()
+            if frame.right() > available.right():
+                self.move(max(available.left(), available.right() - frame.width() + 1), frame.top())
 
     # -- toolbar / search (Phase 3's corner widget unchanged) -----------------
 
@@ -888,8 +924,10 @@ class SlideMageWindow(QMainWindow):
         deck = next(d for d in scan_decks() if d.name == deck_name)
         self.prompt_deck_transcript_version(deck)
 
-    def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str) -> None:
-        dialog = AddSlideDialog(self, deck, insert_at, indent)
+    def open_add_slide_dialog(
+        self, deck: Deck, insert_at: int, indent: str, return_to: Optional[QWidget] = None,
+    ) -> None:
+        dialog = AddSlideDialog(self, deck, insert_at, indent, return_to=return_to)
         dialog.exec()
 
     # -- table (re)construction ------------------------------------------------

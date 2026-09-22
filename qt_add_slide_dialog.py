@@ -37,12 +37,21 @@ SLUG_RE = re.compile(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$")
 
 
 class AddSlideDialog(QDialog):
-    def __init__(self, app, deck: Deck, insert_at: int, indent: str) -> None:
+    def __init__(
+        self, app, deck: Deck, insert_at: int, indent: str,
+        return_to: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(app)
         self.app = app
         self.deck = deck
         self.insert_at = insert_at
         self.indent = indent
+        # The deck-editor tab this dialog was opened from -- passed straight
+        # through to open_slide_editor() as its own return_to (2026-09-22,
+        # direct instruction: a "Create new slide" should open its source
+        # editor immediately), so closing that new editor tab lands back
+        # here, same as every other slide-editor-tab open in this app.
+        self.return_to = return_to
         self._selected_id_slug: Optional[str] = None
         self._duplicate_source_id_slug: Optional[str] = None
         self._listbox_items: list[str] = []
@@ -321,6 +330,7 @@ class AddSlideDialog(QDialog):
                 QMessageBox.critical(self, "Add slide", "Pick an existing slide from the list.")
                 return
             id_slug = self._selected_id_slug
+            is_new_slide = False
         elif self.duplicate_radio.isChecked():
             if self._duplicate_source_id_slug is None:
                 QMessageBox.critical(self, "Add slide", "Pick a slide to duplicate.")
@@ -345,6 +355,7 @@ class AddSlideDialog(QDialog):
             if dialog.exec() != QDialog.DialogCode.Accepted or dialog.new_id_slug is None:
                 return
             id_slug = dialog.new_id_slug
+            is_new_slide = False
         else:
             slug = self.slug_entry.text().strip()
             if not SLUG_RE.match(slug):
@@ -388,6 +399,7 @@ class AddSlideDialog(QDialog):
             if cross_ref_id_slug is not None:
                 slide_ids.add_translation_backreference(base_on_path, language, id_slug)
                 slide_rename.regenerate_translation_links()
+            is_new_slide = True
 
         previous_text = self.deck.text
         try:
@@ -404,3 +416,11 @@ class AddSlideDialog(QDialog):
             self.deck.path, f"Added \\{macro}{{{id_slug}}} to {self.deck.name}",
             previous_text=previous_text,
         )
+        # "Create new slide" only -- "Use existing slide"/"Duplicate
+        # existing slide" both reference/copy content that already has an
+        # author behind it, nothing new to jump into (2026-09-22, direct
+        # instruction: "let SlideMage open its source view immediately so
+        # I can start editing it" -- said about a genuinely new slide).
+        if is_new_slide:
+            self.app.open_slide_editor(
+                slide_ids.SLIDES_DIR / f"{id_slug}-current.tex", return_to=self.return_to)

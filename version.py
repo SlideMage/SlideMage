@@ -1459,13 +1459,38 @@ v3.27.0 (2026-09-21, direct instruction): slide ids may no longer look like numb
 or Windows device names -- slide_ids.illegal_id_reason(), used by mint_slide_id() and mirrored in the R minting
 script; new slide_rename.rename_slide_id(old, new) renames a slide id everywhere (files, deck references including
 #workdeck.tex, \hyperlink targets, alt-text manifest, id registry). No GUI button yet.
-v3.27.1 (2026-09-22, direct report): the deck-editor tab's own Preview
+
+v3.28.0 (2026-09-21, direct instruction): SlideMage now opens wide enough for the whole main screen: the window width is
+set on first show to what the widest deck-table row (all its buttons and checkboxes) and the footer row need, limited
+to the screen; before, the Active decks table sat behind a horizontal scroll bar at the default 1008px.
+
+v3.28.1 (2026-09-22, direct report): the deck-editor tab's own Preview
 popup no longer also opens the compiled PDF in an external viewer after
 "Render now" -- the popup's own image already refreshes from the fresh
 snapshot that compile leaves behind, so the external open was a redundant
 second auto-open. qt_slide_source_tab.py's own separate "Preview" button
 is untouched -- a different render_fn, not shared with the deck-editor
 tab's.
+
+v3.28.2 (2026-09-22, direct instruction): "Create new slide" (the deck
+tab's own "+before"/"+after" -> Add slide dialog) now opens the new
+slide's own source editor immediately after adding it, so there is
+something to start typing into right away. "Use existing slide" and
+"Duplicate existing slide" are unaffected -- both reference/copy content
+that already has an author behind it. AddSlideDialog gained a return_to
+param (passed through from the deck-editor tab that opened it), same
+convention open_slide_editor() already uses everywhere else.
+
+v3.28.3 (2026-09-22, direct instruction): the slide-source editor's
+"Insert command" -> itemize/enumerate wrap (LatexPlainTextEdit's own
+_LIST_ENVIRONMENTS) no longer leaves an empty body. With nothing
+selected, it now pre-seeds "\item ", cursor right after it -- same as
+the smart-Enter completion right after a freshly-typed \begin{itemize}
+already does -- instead of a blank line with nothing to type into. With
+one or more lines selected, each non-blank line becomes its own
+"\item <text>" line inside the new block instead of the selection's raw
+text landing verbatim between \begin/\end. Any other \begin/\end
+environment this dropdown might ever wrap is unaffected.
 """
 from __future__ import annotations
 
@@ -1476,7 +1501,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.27.1"
+VERSION_NUMBER = "v3.28.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

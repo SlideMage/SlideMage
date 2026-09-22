@@ -757,7 +757,7 @@ class DeckEditorTab(QWidget):
 
     def _on_insert(self, call: SlideCall, before: bool) -> None:
         insert_at = call.line_start if before else call.line_end
-        self.app.open_add_slide_dialog(self.deck, insert_at, call.indent)
+        self.app.open_add_slide_dialog(self.deck, insert_at, call.indent, return_to=self)
 
     def _set_preview_tooltip(self, label: QLabel, id_slug: str) -> None:
         """Hover preview: Qt's tooltips render a real (if limited) HTML
