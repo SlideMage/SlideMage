@@ -19,6 +19,19 @@
 
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
+% Deliberately does NOT also call \deckversion (unlike test.tex, added
+% 2026-09-22 alongside the ZZH \slidestep demo slide): tried directly, and
+% \studentversion's own beamer handout-mode forcing above (\beamer@currentmode
+% collapses every frame to its *final* overlay state) overrides \slidestep{}'s
+% own {1}-only step restriction rather than composing with it -- a
+% \slidestep{}[during-course,after-course]{1} restricted frame rendered showing
+% every step's content anyway, not just step 1, once \studentversion was also
+% active on the same compile. No real course deck combines the two mechanisms
+% either (\studentversion's older two-file pattern vs. \deckversion/\slidestep's
+% newer single-file one -- see README.md's "Student-version decks" and "Deck
+% version system" sections) -- ZZH's own reveal-step demo is exercised through
+% test.tex's three \deckversionoverride compiles instead (SlideMage's own
+% version checkboxes), the same way every real \slidestep-using course deck is.
 \decktags{test}
 \begin{document}
 

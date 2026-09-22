@@ -1,0 +1,24 @@
+% Demo slide showcasing \slidestep -- one slide, several reveal steps, a
+% different subset shown per deck version. Copy from here when starting a
+% new slide; see README.md's "Deck version system" section for the full
+% mechanism. Unlike every other ZZ* demo slide, this one is never loaded
+% via a plain \slide{}: the deck file calls \slidestep{} on it twice (once
+% per version group), which is what actually demonstrates the mechanism --
+% see decks/test-slides.tex.
+%% Included in decks: test-slides
+%%
+
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Demo: \texttt{\textbackslash slidestep} reveal steps}
+	\begin{itemize}
+		\item Shown in \textbf{every} deck version (instructor, during-course, after-course).
+		\item<2-> Instructor-only step 2 -- e.g.\ a worked answer, only meant for you while presenting.
+		\item<3-> Instructor-only step 3 -- e.g.\ a follow-up point raised after discussion.
+	\end{itemize}
+	\bigskip
+	\small The deck file controls this, not this slide's own content -- two
+	\texttt{\textbackslash slidestep\{\}} calls in place of one plain
+	\texttt{\textbackslash slide\{\}}:\\[0.3em]
+	\texttt{\textbackslash slidestep\{ZZH-EN-Deck-Version-Reveal-Steps\}[instructor]\{1,2,3\}}\\
+	\texttt{\textbackslash slidestep\{ZZH-EN-Deck-Version-Reveal-Steps\}[during-course,after-course]\{1\}}
+\end{standardframe}
