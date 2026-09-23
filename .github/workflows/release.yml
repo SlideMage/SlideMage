@@ -38,11 +38,22 @@ jobs:
       # so every platform's asset has the same shape. `zip` isn't
       # reliably on PATH on windows-latest, so this branches by OS rather
       # than assuming a shared shell tool.
+      #
+      # Linux only, also bundles icon.svg and the .desktop template: unlike
+      # Windows/macOS, PyInstaller doesn't embed an icon into a Linux ELF
+      # binary at all (a GNOME/KDE launcher icon instead comes from a
+      # .desktop file's own Icon= line) -- without these two alongside the
+      # binary, setting up a desktop entry from just the downloaded zip has
+      # no icon file to point at, only the source repo's own copy (which a
+      # user who only ever downloads releases may not have on disk at all).
       - name: Package (Linux)
         if: runner.os != 'Windows'
         run: |
           mkdir -p out
-          zip -j "out/${{ matrix.asset_name }}.zip" "${{ matrix.binary_path }}"
+          zip -j "out/${{ matrix.asset_name }}.zip" \
+            "${{ matrix.binary_path }}" \
+            src/slidemage/assets/icon.svg \
+            packaging/slidemage.desktop.template
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

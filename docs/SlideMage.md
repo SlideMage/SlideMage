@@ -20,8 +20,18 @@ Launch with `slidemage` (after `pip install -e .` from the repo root), or
 build a stand-alone executable with `pip install -e ".[build]"` then
 `pyinstaller packaging/slidemage.spec` from the repo root -- lands at
 `dist/SlideMage` (`dist/SlideMage.exe` on Windows). PyInstaller never
-cross-compiles: run it on the OS you want the executable for. It opens
-the project given by `--project`,
+cross-compiles: run it on the OS you want the executable for. Pushing a
+`v*` tag builds both platforms via `.github/workflows/release.yml` and
+attaches them to a GitHub Release instead, no local build needed.
+
+On Linux, `SlideMage-linux.zip` also bundles `icon.svg` and
+`slidemage.desktop.template` next to the binary -- unzip the release to
+one folder and see that template's own header for the one-line `sed`
+command that turns it into a real GNOME/KDE app-grid entry (PyInstaller
+doesn't embed an icon into a Linux binary the way it does on
+Windows/macOS, so a desktop entry needs its own icon file alongside it).
+
+It opens the project given by `--project`,
 `$SLIDEMASTER_PROJECT`, the nearest folder above the current directory
 that holds `slide_ids.csv`, or the last project opened, else it asks.
 Three permanent tabs:
