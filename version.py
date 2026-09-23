@@ -1580,6 +1580,25 @@ PySide6 migration (v2.10.0). Also added a short pointer to
 github.com/stpalan/slidemaster, the companion repo this one now gets
 published alongside via git subtree, so a reader landing here from that
 repo's own README knows where the other half lives.
+
+v3.30.0 (2026-09-23, direct instruction): a "Find slide in deck" search box in the deck editor toolbar, left of the Close button. Jumps to a
+slide already loaded in the currently open deck -- scoped to that
+deck's own slides via a live-updated QCompleter, unlike the main
+window's project-wide "Find slide:" box, which opens a fresh editor
+tab in a different slide instead of jumping within the current one.
+Scrolls the matched row/card to the middle of whichever view (List/
+Thumbnail and Grid both, so switching view afterward is already lined
+up) rather than flush to the top the way the existing chapter quick-
+nav jump does, since a single row's own neighbours are useful context
+a chapter heading doesn't need. Same-day follow-up (direct instruction,
+reported the scroll alone was hard to spot in a long deck, especially
+near the very start/end where there's no surrounding "middle of the
+visible rows" cue): the matched widget itself now flashes a yellow
+highlight for a couple seconds after the jump. This bump should have
+landed in the same commit as each of those two changes per this file's
+own standing instruction above -- missed both times, caught only when
+asked directly; backfilled here as one entry since neither commit was
+released/seen as its own version in between.
 """
 from __future__ import annotations
 
@@ -1590,7 +1609,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.29.5"
+VERSION_NUMBER = "v3.30.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
