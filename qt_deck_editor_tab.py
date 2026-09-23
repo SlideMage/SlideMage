@@ -16,16 +16,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QStringListModel, Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QCompleter,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QRadioButton,
@@ -108,8 +110,20 @@ class DeckEditorTab(QWidget):
         self._trailing_stretch_row: Optional[int] = None
         # id_slug -> its row's link label, so a Preview popup's "Render
         # now" can refresh that row's hover tooltip afterward without
-        # re-scanning the grid.
+        # re-scanning the grid. Also doubles as one of the two lookups the
+        # "Find slide in deck" box (below) scrolls to.
         self._id_labels: dict[str, QLabel] = {}
+        # id_slug -> its Grid-view card -- the Grid-view counterpart of
+        # _id_labels above, same purpose (only "Find slide in deck" reads
+        # this one; nothing else needed a card lookup before).
+        self._id_cards: dict[str, QWidget] = {}
+        # This deck's own id_slugs in on-page order, refreshed on every
+        # _build_rows -- backs the "Find slide in deck" box's completer and
+        # its Enter-key substring fallback. Deliberately scoped to *this*
+        # deck's slides only, unlike qt_gui.py's own toolbar "Find slide:"
+        # box, which autocompletes across every slide in the project and
+        # opens a fresh editor tab rather than jumping within this one.
+        self._deck_id_slugs: list[str] = []
         # One (checkbox, call) per row of the List/Thumbnail view, rebuilt
         # with the rows -- what the toolbar's bulk "Remove selected" button
         # reads. Selection deliberately doesn't survive a rebuild: after any
@@ -170,6 +184,29 @@ class DeckEditorTab(QWidget):
         self.chapter_combo.setToolTip("Jump the view to a chapter.")
         self.chapter_combo.currentIndexChanged.connect(self._on_chapter_selected)
         toolbar.addWidget(self.chapter_combo)
+
+        toolbar.addWidget(QLabel("Find slide in deck:"))
+        self.find_slide_entry = QLineEdit()
+        self.find_slide_entry.setFixedWidth(160)
+        self.find_slide_entry.setPlaceholderText("id or slug…")
+        self.find_slide_entry.setToolTip(
+            "Jump to a slide already in this deck, by id or slug."
+        )
+        # Model kept around and refreshed in place (setStringList) on every
+        # _build_rows, rather than a fresh QCompleter each time -- so the
+        # completer's own popup/highlighted-match state doesn't reset out
+        # from under someone mid-search on every edit elsewhere in the tab.
+        self._find_slide_model = QStringListModel(self)
+        find_slide_completer = QCompleter(self)
+        find_slide_completer.setModel(self._find_slide_model)
+        find_slide_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        find_slide_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        find_slide_completer.activated.connect(self._on_find_slide_in_deck)
+        self.find_slide_entry.setCompleter(find_slide_completer)
+        self.find_slide_entry.returnPressed.connect(
+            lambda: self._on_find_slide_in_deck(self.find_slide_entry.text())
+        )
+        toolbar.addWidget(self.find_slide_entry)
 
         close_button = QPushButton("Close")
         close_button.setObjectName(CLOSE_BUTTON)
@@ -339,6 +376,66 @@ class DeckEditorTab(QWidget):
             if header is not None:
                 scroll.verticalScrollBar().setValue(header.mapTo(inner, QPoint(0, 0)).y())
 
+    def _on_find_slide_in_deck(self, query: str) -> None:
+        # Reached two ways: the completer's own activated signal (already
+        # an exact id_slug from the dropdown) and returnPressed (whatever
+        # was typed, possibly only a fragment never resolved against a
+        # suggestion) -- both funnel through the same substring resolution
+        # below, so pressing Enter without picking a suggestion still works
+        # as long as the text narrows down to exactly one candidate the
+        # same way the dropdown itself would have.
+        query = query.strip()
+        if not query:
+            return
+        match = self._resolve_find_slide_query(query)
+        if match is None:
+            self._flash_find_slide_not_found()
+            return
+        self.find_slide_entry.setText(match)
+        self._jump_to_slide_row(match)
+
+    def _resolve_find_slide_query(self, query: str) -> Optional[str]:
+        """Case-insensitive match against this deck's own slide ids: an
+        exact id_slug match first, then the first (deck-order) id_slug
+        containing the query as a substring -- the same loose matching the
+        completer's own MatchContains filter already offers, so typing
+        enough of an id/slug and pressing Enter still lands on the right
+        slide without needing to click a suggestion."""
+        query_lower = query.lower()
+        for id_slug in self._deck_id_slugs:
+            if id_slug.lower() == query_lower:
+                return id_slug
+        for id_slug in self._deck_id_slugs:
+            if query_lower in id_slug.lower():
+                return id_slug
+        return None
+
+    def _jump_to_slide_row(self, id_slug: str) -> None:
+        """Scrolls both views' own widget for this slide to the middle of
+        the viewport -- not flush against the top edge the way the chapter
+        quick-nav jump above lands a heading, since a single row's own
+        neighbours above and below are useful context a chapter heading
+        doesn't need. Scrolls both List/Thumbnail and Grid (same reasoning
+        as the chapter jump above) so whichever view is switched to
+        afterward is already lined up."""
+        for widgets, scroll, inner in (
+            (self._id_labels, self.list_scroll, self.inner),
+            (self._id_cards, self.card_scroll, self.card_inner),
+        ):
+            widget = widgets.get(id_slug)
+            if widget is None:
+                continue
+            target_y = widget.mapTo(inner, QPoint(0, 0)).y()
+            target_y -= (scroll.viewport().height() - widget.height()) // 2
+            scroll.verticalScrollBar().setValue(target_y)
+
+    def _flash_find_slide_not_found(self) -> None:
+        """No match anywhere in this deck -- a brief red border on the
+        entry itself, reverted after a short delay, so a typo/no-match
+        query gets visible feedback instead of silently doing nothing."""
+        self.find_slide_entry.setStyleSheet("border: 1px solid red;")
+        QTimer.singleShot(800, lambda: self.find_slide_entry.setStyleSheet(""))
+
     # -- row construction -----------------------------------------------------
 
     @staticmethod
@@ -393,6 +490,8 @@ class DeckEditorTab(QWidget):
             self._trailing_stretch_row = None
 
         calls = deck_editor.parse_slide_calls(self.deck)
+        self._deck_id_slugs = [call.id_slug for call in calls]
+        self._find_slide_model.setStringList(self._deck_id_slugs)
         self._build_card_grid(calls)
         self._populate_chapter_combo(calls)
         if not calls:
@@ -593,6 +692,7 @@ class DeckEditorTab(QWidget):
             if widget is not None:
                 widget.deleteLater()
         self._grid_chapter_headers = {}
+        self._id_cards = {}
 
         if not calls:
             label = QLabel(
@@ -620,8 +720,9 @@ class DeckEditorTab(QWidget):
                 self._grid_chapter_headers[chapter_occurrence] = header_label
                 chapter_occurrence += 1
                 row_index += 1
-            self.card_grid.addWidget(
-                self._build_card(position, call), row_index, col_index)
+            card = self._build_card(position, call)
+            self._id_cards[call.id_slug] = card
+            self.card_grid.addWidget(card, row_index, col_index)
             col_index += 1
             if col_index >= self._GRID_COLUMNS:
                 col_index = 0
