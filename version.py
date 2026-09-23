@@ -1647,6 +1647,28 @@ no bearing on a text-only transcript. Verified end-to-end by calling
 render_slide_text_to_pdf(presenter=True) directly against a real
 slide: a 2x-wide 2-page PDF came back with the slide on the left half
 of each page and the presenter-notes panel on the right, as expected.
+
+v3.34.0 (2026-09-25, direct instruction): two Images-tab/slide-editor changes. (1) The Images tab's own "Find slide:" search box didn't
+actually clear itself after jumping to a slide via a completer
+suggestion -- root cause: QLineEdit.setCompleter() wires its own
+internal "fill the line edit with the picked completion" slot to the
+completer's `activated` signal, and since that wiring happens *after*
+this tab's own connect() call, Qt ran it *after* this handler on every
+emission, silently overwriting the `.clear()` that already ran.
+Deferred the clear to the next event-loop iteration
+(QTimer.singleShot(0, ...)) so it runs strictly after that internal
+slot has already fired. (2) The slide-source editor's "Add citation"
+button renamed to "Add reference" (it only ever creates a *new*
+Slidemaster.bib entry), and a new "Insert citation" button added next
+to it (qt_insert_citation_dialog.py) -- search the whole bib live by
+author/title/year/key, pick an entry, then pick one of three citation-
+style buttons (\fullcite/\textcite/\parencite -- the only three this
+project's slides actually use, 285/40/6 uses respectively, zero bare
+\cite) to insert that call at the cursor. Verified with a headless
+(QT_QPA_PLATFORM=offscreen) smoke test: filtering, selection-enables-
+buttons, style-button insertion, double-click-inserts-\fullcite-and-
+closes, and both the empty-query (shows everything) and no-match
+(buttons stay disabled) edge cases.
 """
 from __future__ import annotations
 
@@ -1657,7 +1679,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.33.0"
+VERSION_NUMBER = "v3.34.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

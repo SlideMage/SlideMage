@@ -1,5 +1,9 @@
-"""qt_slide_source_tab.py's own "Add citation" button (2026-09-23, direct
-instruction) -- a small form for adding a new entry to Slidemaster.bib
+"""qt_slide_source_tab.py's own "Add reference" button (2026-09-23, direct
+instruction; renamed from "Add citation" 2026-09-25, direct instruction,
+once qt_insert_citation_dialog.py's own "Insert citation" gave the word
+"citation" a second, different meaning in the same toolbar -- this one
+only ever *creates* a new .bib entry, never inserts a citation call for
+one) -- a small form for adding a new entry to Slidemaster.bib
 without leaving the app or hand-writing BibTeX. Picking a source type
 (Article/Book/Online/Report) swaps in that type's own fields below the
 three shared ones (author/title/year, present for every type this file
@@ -109,7 +113,7 @@ class CitationDialog(QDialog):
         self._key_manually_edited = False
         self.new_key: Optional[str] = None
 
-        self.setWindowTitle("Add citation")
+        self.setWindowTitle("Add reference")
         self.setModal(True)
         self._build()
         self._on_type_change()
@@ -177,7 +181,7 @@ class CitationDialog(QDialog):
         button_row.addStretch(1)
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
-        self.add_button = QPushButton("Add citation")
+        self.add_button = QPushButton("Add reference")
         self.add_button.clicked.connect(self._on_submit)
         button_row.addWidget(cancel_button)
         button_row.addWidget(self.add_button)
@@ -232,13 +236,13 @@ class CitationDialog(QDialog):
         kind = self._current_kind()
         key = self.key_entry.text().strip()
         if not key:
-            QMessageBox.critical(self, "Add citation", "Enter a citation key.")
+            QMessageBox.critical(self, "Add reference", "Enter a citation key.")
             return
 
         existing = bibliography.load()
         if key.lower() in {k.lower() for k in existing}:
             QMessageBox.critical(
-                self, "Add citation",
+                self, "Add reference",
                 f"Citation key \"{key}\" already exists in Slidemaster.bib -- "
                 "pick a different key.",
             )
@@ -261,7 +265,7 @@ class CitationDialog(QDialog):
 
         if missing:
             QMessageBox.critical(
-                self, "Add citation",
+                self, "Add reference",
                 "Please fill in: " + ", ".join(missing),
             )
             return
@@ -269,9 +273,9 @@ class CitationDialog(QDialog):
         try:
             bibliography.add_entry(kind, key, fields)
         except (ValueError, OSError) as exc:
-            QMessageBox.critical(self, "Add citation failed", str(exc))
+            QMessageBox.critical(self, "Add reference failed", str(exc))
             return
 
         self.new_key = key
-        self.app.log(f"Added citation \"{key}\" ({kind}) to Slidemaster.bib")
+        self.app.log(f"Added reference \"{key}\" ({kind}) to Slidemaster.bib")
         self.accept()

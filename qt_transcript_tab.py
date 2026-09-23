@@ -1866,10 +1866,25 @@ class TranscriptTab(QWidget):
         popup click or by Enter on a highlighted one -- landing on that
         slide with no further click needed (2026-09-18, direct
         instruction: the previous "Find slide…" button's own OK step was
-        one click too many)."""
-        self.find_slide_entry.clear()
+        one click too many).
+
+        The immediate `.clear()` this used to call here didn't actually
+        stick (2026-09-25, direct report) -- QLineEdit.setCompleter()
+        wires its own internal "fill the line edit with the picked
+        completion" slot to this same `activated` signal, and since that
+        wiring is set up *after* this method's own connect() call above,
+        Qt runs it *after* this handler on every emission, silently
+        overwriting whatever `.clear()` just did with the completion
+        text. Deferring the actual clear to the next event-loop
+        iteration (QTimer.singleShot(0, ...)) runs it strictly after
+        that internal slot has already fired, so it's the one that
+        sticks. _on_find_slide_return_pressed below has no such
+        interference -- it only fires when Enter is pressed with no
+        completer suggestion active in the first place -- so its own
+        direct `.clear()` is left as is."""
         if text.strip():
             self._find_and_show_slide(text)
+        QTimer.singleShot(0, self.find_slide_entry.clear)
 
     def _on_find_slide_return_pressed(self) -> None:
         """Enter pressed with nothing highlighted in the completer popup

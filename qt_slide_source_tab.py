@@ -55,6 +55,7 @@ from . import (
 from .qt_ai_draft_dialog import AiDraftDialog
 from .qt_citation_dialog import CitationDialog
 from .qt_duplicate_slide_dialog import DuplicateSlideDialog
+from .qt_insert_citation_dialog import InsertCitationDialog
 from .qt_syntax_check_dialog import SyntaxCheckDialog
 from .qt_slide_preview_popup import SlidePreviewPopup
 from .qt_theme import CLOSE_BUTTON, FORMAT_TOOLBAR, MUTED_LABEL, WARNING_LABEL
@@ -943,16 +944,31 @@ class SlideSourceTab(QWidget):
         self.command_combo.activated.connect(self._on_command_selected)
         format_toolbar.addWidget(self.command_combo)
 
-        self.add_citation_button = QPushButton("Add citation")
+        self.add_citation_button = QPushButton("Add reference")
         self.add_citation_button.setToolTip(
             "Add a new entry to Slidemaster.bib -- pick a source type "
             "(article, book, online source, or report), fill in its "
             "fields, and it's inserted keeping the file alphabetically "
             "sorted. Checked against every existing citation key first, "
-            "so it can never create a duplicate ID."
+            "so it can never create a duplicate ID. For inserting a "
+            "citation *call* for a reference that's already in the "
+            "file, use \"Insert citation\" instead."
         )
         self.add_citation_button.clicked.connect(self._on_add_citation)
         format_toolbar.addWidget(self.add_citation_button)
+
+        # 2026-09-25, direct instruction: a second, separate button --
+        # "Add reference" above only ever *creates* a new Slidemaster.bib
+        # entry; this one only ever *inserts* a citation call for one
+        # that's already there, searched by author/title/year/key.
+        self.insert_citation_button = QPushButton("Insert citation")
+        self.insert_citation_button.setToolTip(
+            "Search Slidemaster.bib for an existing entry and insert a "
+            "\\fullcite{}/\\textcite{}/\\parencite{} call for it at the "
+            "cursor."
+        )
+        self.insert_citation_button.clicked.connect(self._on_insert_citation)
+        format_toolbar.addWidget(self.insert_citation_button)
 
         format_toolbar.addStretch()
         outer.addWidget(format_toolbar_container)
@@ -1874,6 +1890,9 @@ class SlideSourceTab(QWidget):
 
     def _on_add_citation(self) -> None:
         CitationDialog(self).exec()
+
+    def _on_insert_citation(self) -> None:
+        InsertCitationDialog(self).exec()
 
     # -- language (2026-08-24) -------------------------------------------------------
 
