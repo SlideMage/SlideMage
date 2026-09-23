@@ -1629,6 +1629,24 @@ the existing `\b` right after "item" so "\itemsep{...}" etc. still
 correctly don't match), and _smart_return reuses that captured label
 verbatim when inserting the next line. Patch bump: an editor-behavior
 fix, not a new UI element.
+
+v3.33.0 (2026-09-25, direct instruction): "Presenter" added as a choice in the slide-source editor's own "Render version" combo, alongside
+Instructor/During-course/After-course. Not a fourth deck_version value
+-- content-wise a presenter render is always instructor (matches how
+SlideMage/compiler.py's own real-deck "Presenter" job already builds
+one), so the combo's handlers translate "Presenter" to deck_version=
+"instructor" plus a new `presenter` flag threaded through to
+slide_preview.render_slide_text_to_pdf(), which emits
+\def\gothamPresenterModeOverride{1} (same hook compiler.py's own
+wrapper defines) to turn on beamer's dual-screen presenter mechanism.
+Excluded from the compile-time PNG snapshot cache, same reasoning as
+the existing during-course/after-course exclusion (a presenter PDF's
+page count/layout is nothing like a normal compile's). "Render
+transcript" treats "Presenter" as plain instructor too -- the flag has
+no bearing on a text-only transcript. Verified end-to-end by calling
+render_slide_text_to_pdf(presenter=True) directly against a real
+slide: a 2x-wide 2-page PDF came back with the slide on the left half
+of each page and the presenter-notes panel on the right, as expected.
 """
 from __future__ import annotations
 
@@ -1639,7 +1657,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.32.1"
+VERSION_NUMBER = "v3.33.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

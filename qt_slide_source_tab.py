@@ -147,6 +147,18 @@ VERSION_LABELS = {
     "during-course": "During-course",
     "after-course": "After-course",
 }
+# "Presenter" (2026-09-25, direct instruction) is deliberately not a
+# fourth VERSIONS/VERSION_LABELS entry -- content-wise it's always
+# instructor-version (SlideMage/compiler.py's own real-deck job
+# building does exactly this: presenter_version = "instructor"), just
+# with beamer's dual-screen presenter mechanism turned on via a
+# separate \gothamPresenterModeOverride hook (Slidemaster_preamble_base.tex),
+# the same \ifdefined pattern _footer_timestamp_line below already
+# uses for its own override. Still one more choice in the *same*
+# "Render version" combo, not a second control -- matches how the deck
+# table's own "Presenter" checkbox reads as a plain extra option there,
+# not a toggle layered on the version checkboxes.
+PRESENTER_LABEL = "Presenter"
 
 # "Multilingual" (not "Bilingual") in the combo, "mult" in the actual
 # id-slug -- see Slidemaster_preamble_base.tex's \setSlideLanguageFromSlug
@@ -757,7 +769,7 @@ class SlideSourceTab(QWidget):
 
             render_bar.addWidget(QLabel("Render version:"))
             self.version_combo = QComboBox()
-            self.version_combo.addItems([VERSION_LABELS[v] for v in VERSIONS])
+            self.version_combo.addItems([VERSION_LABELS[v] for v in VERSIONS] + [PRESENTER_LABEL])
             render_bar.addWidget(self.version_combo)
 
             # One-off render language (2026-08-24) -- same scope/lifetime
@@ -1761,7 +1773,14 @@ class SlideSourceTab(QWidget):
 
         slide_body = self.widget.toPlainText()
         version_label = self.version_combo.currentText()
-        deck_version = next(v for v, label in VERSION_LABELS.items() if label == version_label)
+        # "Presenter" isn't a real deck_version (see PRESENTER_LABEL's own
+        # comment above) -- content-wise it's always instructor, with a
+        # separate `presenter` flag layered on top.
+        presenter = version_label == PRESENTER_LABEL
+        deck_version = (
+            "instructor" if presenter
+            else next(v for v, label in VERSION_LABELS.items() if label == version_label)
+        )
         deck_language = self.render_language_combo.currentText().lower()
         # Read live, same as every other user of this checkbox (2026-08-26,
         # direct report -- this render path used to ignore it entirely,
@@ -1771,20 +1790,20 @@ class SlideSourceTab(QWidget):
         self.render_button.setEnabled(False)
         threading.Thread(
             target=self._render_bg,
-            args=(id_slug, slide_body, deck_version, deck_language, footer_timestamp),
+            args=(id_slug, slide_body, deck_version, deck_language, footer_timestamp, presenter),
             daemon=True,
         ).start()
 
     def _render_bg(
         self, id_slug: str, slide_body: str, deck_version: str, deck_language: str,
-        footer_timestamp: bool,
+        footer_timestamp: bool, presenter: bool = False,
     ) -> None:
         log = self.app.signals.log.emit
         try:
             pdf_path = slide_preview.render_slide_text_to_pdf(
                 id_slug, slide_body,
                 deck_version=deck_version, deck_language=deck_language,
-                footer_timestamp=footer_timestamp, log=log,
+                footer_timestamp=footer_timestamp, presenter=presenter, log=log,
             )
         except RuntimeError as exc:
             log(f"*** Render failed: {exc} ***")
@@ -1802,7 +1821,15 @@ class SlideSourceTab(QWidget):
         precedent as _ImageEditor._on_translate()'s single-image
         translation call in qt_transcript_tab.py."""
         version_label = self.version_combo.currentText()
-        deck_version = next(v for v, label in VERSION_LABELS.items() if label == version_label)
+        # "Presenter" has no bearing on the transcript at all (it's a
+        # text-only accessibility artifact, unrelated to the compiled
+        # PDF's own dual-screen page layout) -- treated as plain
+        # instructor content here, same reasoning as _on_render's own
+        # `presenter` flag not needing to reach transcript.generate_single_slide.
+        deck_version = (
+            "instructor" if version_label == PRESENTER_LABEL
+            else next(v for v, label in VERSION_LABELS.items() if label == version_label)
+        )
         deck_language = self.render_language_combo.currentText().lower()
         slide_body = self.widget.toPlainText()
 

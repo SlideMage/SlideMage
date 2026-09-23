@@ -204,6 +204,21 @@ def _footer_timestamp_line(footer_timestamp: bool) -> str:
     return "\\def\\gothamFooterTimestampOverride{0}\n"
 
 
+def _presenter_mode_line(presenter: bool) -> str:
+    """`\\def\\gothamPresenterModeOverride{1}`, the same hook compiler.py's
+    own wrapper defines for a real "Presenter" job (CompileJob.presenter)
+    -- turns on beamer's dual-screen presenter mechanism
+    (Slidemaster_preamble_base.tex's own \\ifdefined\\gothamPresenterModeOverride
+    block: pgfpages "show notes on second screen"). Same placement
+    constraint as _footer_timestamp_line above (has to come before
+    `preamble`, since that's what \\input{}s Slidemaster_preamble_base.tex),
+    and same "only emitted when true" shape as compiler.py's own
+    `if job.presenter`."""
+    if not presenter:
+        return ""
+    return "\\def\\gothamPresenterModeOverride{1}\n"
+
+
 def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
@@ -431,6 +446,7 @@ def render_slide_text_to_pdf(
     deck_version: Optional[str] = None,
     deck_language: Optional[str] = None,
     footer_timestamp: bool = True,
+    presenter: bool = False,
     preamble_text: Optional[str] = None,
     log: Optional[LogCallback] = None,
 ) -> Path:
@@ -461,6 +477,17 @@ def render_slide_text_to_pdf(
     path previously ignored entirely -- see _footer_timestamp_line for why
     it has to come before `preamble`, unlike the other two overrides.
 
+    `presenter` (2026-09-25, direct instruction: "include 'Presenter' as
+    a version for the render version") turns on beamer's dual-screen
+    presenter mechanism the same way compiler.py's own real-deck
+    "Presenter" job does (see _presenter_mode_line) -- the slide-source
+    editor's "Render version" combo offers it as one more choice
+    alongside Instructor/During-course/After-course, but it isn't a
+    `deck_version` value itself: content-wise a presenter render is
+    always instructor (the combo's own caller passes deck_version=
+    "instructor" whenever "Presenter" is picked), this flag is what
+    actually switches on the dual-screen layout.
+
     Also refreshes this slide's compile-time PNG snapshot (2026-08-31,
     direct report: "Render to PDF" succeeded but "Preview" then said no
     preview had been generated yet) -- this function used to call
@@ -472,18 +499,22 @@ def render_slide_text_to_pdf(
     instructor-version-only guard as render_slide_to_pdf(), for the same
     reason: an explicit during-course/after-course request is a
     deliberate look at a *partial* version, and must never overwrite the
-    canonical (fullest-content) snapshot with it."""
+    canonical (fullest-content) snapshot with it -- a presenter render
+    is excluded from caching too, same reasoning as compiler.py's own
+    skip-normal-PDF-handling branch for it (its page count/per-page
+    layout is nothing like a normal compile's, so reading it the normal
+    way would corrupt the snapshot cache)."""
     log = log or (lambda line: None)
     preamble = GENERIC_PREAMBLE if preamble_text is None else preamble_text
     wrapper_text = (
-        f"{_footer_timestamp_line(footer_timestamp)}{preamble}"
+        f"{_footer_timestamp_line(footer_timestamp)}{_presenter_mode_line(presenter)}{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
         f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n"
         f"{slide_body}\n\\end{{document}}\n"
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
-        if deck_version in (None, "instructor") else None
+        if deck_version in (None, "instructor") and not presenter else None
     )
     return _compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
