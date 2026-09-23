@@ -1135,7 +1135,9 @@
 % the reset. \global\renewcommand alone wasn't enough to fix it (still leaked
 % into the next frame) -- only dropping to the lower-level \global\def did.
 \newlength{\gothamChapterLogoWidth}
-\newcommand{\gothamChapterLogoPath}{}
+% Plain \def, not \newcommand: \newcommand makes a \long macro, which never
+% \ifx-matches the non-long \empty the hooks test against.
+\def\gothamChapterLogoPath{}
 \newcommand{\chapterlogo}[1]{\global\def\gothamChapterLogoPath{#1}}
 
 % \gothamFrametitleFullHeightYellow: opt-out for the frametitle hook's
@@ -1149,7 +1151,7 @@
 % intended yellow with white. sectionframe sets this (globally, same
 % set/reset reasoning as \gothamChapterLogoPath above); standardframe resets
 % it back to empty on \end{frame}, so it's opt-in per frame like the others.
-\newcommand{\gothamFrametitleFullHeightYellow}{}
+\def\gothamFrametitleFullHeightYellow{}% \def, not \newcommand: see \gothamChapterLogoPath
 
 % \gothamFrametitleLogoFixed: opt-in for the frametitle hook's logo redraw
 % (see the hook above) to use a fixed page-corner position instead of
@@ -1161,7 +1163,7 @@
 % somewhere no other slide in the deck ever has it. Same set/reset reasoning
 % and mechanism as \gothamChapterLogoPath/\gothamFrametitleFullHeightYellow
 % above.
-\newcommand{\gothamFrametitleLogoFixed}{}
+\def\gothamFrametitleLogoFixed{}% \def, not \newcommand: see \gothamChapterLogoPath
 
 % \gothamFooterBoxColor: the footer box's own fill color (see the footline
 % hook further down), overridable per frame the same set-before/reset-after
@@ -4209,6 +4211,32 @@
 % margin every other level's own pair already has.
 \newcommand{\gothamItemizeLevelDropSpaceRatioIV}{0.5}
 \AtEndEnvironment{itemize}{%
+	% Force vertical mode before \addvspace below (2026-09-22, found while
+	% isolating a "Something's wrong--perhaps a missing \item" error that
+	% fired at the *frame's* own \end{...}, not the itemize's, on every
+	% slide using a plain, single-level \begin{itemize}...\end{itemize}
+	% with nothing else in the frame -- confirmed via a from-scratch minimal
+	% reproduction outside this project's own slides entirely, then
+	% bisected to this exact hook by diffing against the same reproduction
+	% with this \AtEndEnvironment call disabled). \AtEndEnvironment inserts
+	% this code at the very *start* of \enditemize, before beamer's own
+	% `\ifhmode\unskip\fi\endlist` -- so without this guard, \addvspace
+	% below runs while TeX is often still in horizontal mode (right after
+	% the last \item's own text, mid-paragraph). \addvspace's own hmode
+	% branch defers via `\vadjust{\addvspace{...}}` instead of inserting
+	% the glue directly, and that deferred insertion colliding with
+	% beamer's own frame-body/overlay-replay collection is what actually
+	% produced the corruption -- not reproducible as a plain "wrong
+	% \item" typo anywhere in the affected slides' own source, only via
+	% this exact hmode-vs-vmode timing. \ifhmode\unskip\par\fi here forces
+	% vertical mode *before* \addvspace ever runs, matching the standard,
+	% documented way to call \addvspace (kernel doc: "should only be used
+	% between paragraphs") -- same idiom beamer's own \enditemize already
+	% uses \unskip for, just moved earlier so it also covers this hook.
+	% Doesn't disturb the \@itemdepth-based \ifcase dispatch just below:
+	% \par doesn't touch \@itemdepth, so the closing list's own depth is
+	% still read correctly afterward, same as before this guard existed.
+	\ifhmode\unskip\par\fi
 	\ifcase\@itemdepth
 		% 0: dead code -- @itemdepth is never actually 0 when this hook
 		% fires (see \gothamItemizeLevelDropSpaceRatioIV's own comment
@@ -4357,6 +4385,22 @@
 \newcommand{\gothamItemizeLevelOpenSpaceRatioII}{0.15}
 \newcommand{\gothamItemizeLevelOpenSpaceRatioIII}{0.02}
 \AtBeginEnvironment{itemize}{%
+	% Same \ifhmode\unskip\par\fi guard as \AtEndEnvironment{itemize} above,
+	% and for the identical reason -- see that hook's own comment for the
+	% full story. This hook fires when a *nested* itemize opens (\@itemdepth
+	% here is the *parent* item's depth, per the comment below), i.e. right
+	% after "\item ...text..." mid-paragraph, immediately before the
+	% \addvspace calls further down -- the same hmode-vs-vmode timing that
+	% broke the closing hook, just on the opening side. Case 0 (opening the
+	% outermost level-1 list itself) never reaches an \addvspace call below
+	% regardless, so a plain single-level itemize was never affected by
+	% this half of the bug -- only a *nested* \begin{itemize} (depth >=1 at
+	% open time) actually needed this guard, which is why the "missing
+	% \item" error survived this fix's own first pass specifically on the
+	% two demo slides with a nested itemize (sectionframe's own ZZR,
+	% standardframe's own ZZZ) while every plain single-level-itemize slide
+	% was already fixed by the closing-hook guard alone.
+	\ifhmode\unskip\par\fi
 	\ifcase\@itemdepth
 		% 0: opening the outermost (level-1) list itself -- no parent item
 		% precedes it, nothing to add.
