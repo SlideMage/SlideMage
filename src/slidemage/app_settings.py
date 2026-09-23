@@ -24,11 +24,19 @@ project's .slidemage/ folder, next to translation_prompts.json.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from .deck_scan import PROJECT_ROOT
 
 STORE_PATH = PROJECT_ROOT / ".slidemage" / "app_settings.json"
+
+OLLAMA_HOST_SETTING_KEY = "ollama_host"
+# Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
+# rather than imported from either -- this module sits below both of them
+# in the import graph (they import get_ollama_host() from here), so it
+# has no business depending back on either just for one shared constant.
+_FALLBACK_OLLAMA_HOST = "http://localhost:11434"
 
 
 def load() -> dict[str, Any]:
@@ -55,4 +63,35 @@ def get(key: str, default: Any = None) -> Any:
 def set(key: str, value: Any) -> None:
     settings = load()
     settings[key] = value
+    save(settings)
+
+
+def get_ollama_host() -> str:
+    """The Ollama server every drafting/translation/AI-rewrite call should
+    use (2026-09-23, review finding: this used to be a hardcoded
+    "http://localhost:11434" in two separate modules, with no way to
+    point this app at Ollama running elsewhere -- a different machine, a
+    non-default port, WSL, ...).
+
+    Resolution order: the Preferences dialog's own saved value if the
+    user has set one, else $OLLAMA_HOST (Ollama's own conventional
+    environment variable, so a script/CI run can point this app at a
+    different server without touching its settings file), else the plain
+    localhost default."""
+    saved = get(OLLAMA_HOST_SETTING_KEY)
+    if saved:
+        return saved
+    return os.environ.get("OLLAMA_HOST") or _FALLBACK_OLLAMA_HOST
+
+
+def set_ollama_host(host: str) -> None:
+    """Empty/whitespace-only clears the saved override, falling back to
+    $OLLAMA_HOST/the plain default again -- same "empty means unset"
+    convention draft_prompts.set_custom_prompt() uses."""
+    settings = load()
+    host = host.strip()
+    if host:
+        settings[OLLAMA_HOST_SETTING_KEY] = host
+    else:
+        settings.pop(OLLAMA_HOST_SETTING_KEY, None)
     save(settings)

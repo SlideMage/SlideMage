@@ -41,6 +41,12 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
+from . import app_settings, draft_prompts
+
+# Kept as the last-resort fallback effective_system_prompt() below returns
+# once draft_prompts has no user override -- see alt_draft.py's own
+# DEFAULT_OLLAMA_HOST comment for why the *host* to send to is now
+# app_settings.get_ollama_host() instead, not this constant.
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 _PLACEHOLDER_TOKEN_RE = re.compile(r"%%%PROTECTED_(\d+)%%%")
@@ -200,6 +206,15 @@ custom macro names.
 Return ONLY the revised LaTeX source as your answer: no markdown code \
 fences, no commentary before or after it."""
 
+
+def effective_system_prompt() -> str:
+    """What OllamaSlideDrafter should actually send as its system prompt:
+    the user's own saved override (Preferences dialog, draft_prompts.py)
+    if they've set one, else this module's own hardcoded SYSTEM_PROMPT
+    above."""
+    return draft_prompts.get_custom_prompt(draft_prompts.KIND_SLIDE_REWRITE) or SYSTEM_PROMPT
+
+
 USER_TEMPLATE = """\
 Current slide source:
 
@@ -232,12 +247,23 @@ def _strip_wrapping(raw: str) -> str:
 @dataclass
 class OllamaSlideDrafter:
     model: str
-    host: str = DEFAULT_OLLAMA_HOST
+    # None resolves through app_settings.get_ollama_host()/
+    # effective_system_prompt() in __post_init__ below, not at
+    # class-definition time -- see alt_draft.OllamaBackend's own host
+    # field for why not a plain "= DEFAULT_OLLAMA_HOST" default.
+    host: Optional[str] = None
     num_ctx: int = 16384
     think: bool = False
     temperature: float = 0.3
     num_predict: int = 4096
     timeout: float = 300.0
+    system_prompt: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.host is None:
+            self.host = app_settings.get_ollama_host()
+        if self.system_prompt is None:
+            self.system_prompt = effective_system_prompt()
 
     @property
     def label(self) -> str:
@@ -253,7 +279,7 @@ class OllamaSlideDrafter:
                 "num_predict": self.num_predict,
             },
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt},
                 {
                     "role": "user",
                     "content": USER_TEMPLATE.format(

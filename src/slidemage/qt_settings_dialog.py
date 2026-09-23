@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -35,8 +36,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import ai_draft
 from . import alt_draft
 from . import app_settings
+from . import draft_prompts
 from . import translation_prompts as tp
 from .qt_slide_source_tab import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 
@@ -74,6 +77,11 @@ class SettingsDialog(QDialog):
         # raising AttributeError.
         self._default_prompt_snapshot: tuple[str, int] | None = None
         self._prompt_form_snapshot: tuple[str, str, str, str, int] | None = None
+        # Same snapshot-then-compare dirty tracking as the translation
+        # tab's own default-prompt field above, for the two draft_prompts.py
+        # fields on the "AI prompts" tab below.
+        self._draft_prompt_snapshot: str | None = None
+        self._rewrite_prompt_snapshot: str | None = None
 
         self._ollama_update_done.connect(self._on_ollama_update_finished)
 
@@ -82,6 +90,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(tabs, stretch=1)
         tabs.addTab(self._build_general_tab(), "General")
         tabs.addTab(self._build_translation_tab(), "Translation prompts")
+        tabs.addTab(self._build_ai_prompts_tab(), "AI prompts")
         tabs.addTab(self._build_ollama_models_tab(), "Ollama models")
 
         # Close only -- every change here (dark mode, a saved/deleted
@@ -106,6 +115,10 @@ class SettingsDialog(QDialog):
             descriptions.append("the default prompt")
         if self._prompt_form_dirty():
             descriptions.append("the per-model prompt shown on the right")
+        if self._draft_prompt_dirty():
+            descriptions.append("the image description prompt")
+        if self._rewrite_prompt_dirty():
+            descriptions.append("the slide rewrite prompt")
         return descriptions
 
     def reject(self) -> None:
@@ -134,6 +147,10 @@ class SettingsDialog(QDialog):
                     ok = self._on_default_prompt_save() and ok
                 if self._prompt_form_dirty():
                     ok = self._on_prompt_save() and ok
+                if self._draft_prompt_dirty():
+                    ok = self._on_draft_prompt_save() and ok
+                if self._rewrite_prompt_dirty():
+                    ok = self._on_rewrite_prompt_save() and ok
                 if not ok:
                     # A save failed validation (e.g. an empty prompt) --
                     # its own critical QMessageBox already explained why;
@@ -395,11 +412,147 @@ class SettingsDialog(QDialog):
         self.app.log(f"Deleted translation prompt for {model} ({source} → {target})")
         self._reload_prompt_list()
 
+    # -- AI prompts (image description drafting, whole-slide AI rewrite) ------
+    #
+    # Both used to be hardcoded SYSTEM_PROMPT constants (alt_draft.py/
+    # ai_draft.py) with no way to tune them short of editing source
+    # (2026-09-23 review finding) -- draft_prompts.py now persists a
+    # user override for each, one prompt per feature (no per-model grid
+    # like translation's own tab above: neither feature has a language
+    # pair, and there was no request for per-model tuning here). Same
+    # single-field, explicit-"Save"-button, snapshot-dirty-checked pattern
+    # as the translation tab's own "Default prompt" field.
+
+    def _build_ai_prompts_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        draft_group = QGroupBox("Image description prompt")
+        draft_layout = QVBoxLayout(draft_group)
+        draft_layout.addWidget(QLabel(
+            "Sent as the system prompt for every \"Draft\"/\"Draft all…\" "
+            "call (alt_draft.OllamaBackend). Changing it can make a model "
+            "abandon the required JSON output format -- see the per-image "
+            "\"Tune prompt…\" dialog for a way to experiment on one image "
+            "before changing this default for every batch."
+        ))
+        self.draft_prompt_edit = QPlainTextEdit()
+        self.draft_prompt_edit.setMinimumHeight(120)
+        draft_layout.addWidget(self.draft_prompt_edit)
+        draft_button_row = QHBoxLayout()
+        draft_button_row.addStretch(1)
+        draft_reset_button = QPushButton("Reset to default")
+        draft_reset_button.clicked.connect(self._on_draft_prompt_reset)
+        draft_button_row.addWidget(draft_reset_button)
+        draft_save_button = QPushButton("Save")
+        draft_save_button.clicked.connect(self._on_draft_prompt_save)
+        draft_button_row.addWidget(draft_save_button)
+        draft_layout.addLayout(draft_button_row)
+        layout.addWidget(draft_group)
+        self._load_draft_prompt()
+
+        rewrite_group = QGroupBox("Slide rewrite prompt")
+        rewrite_layout = QVBoxLayout(rewrite_group)
+        rewrite_layout.addWidget(QLabel(
+            "Sent as the system prompt for the slide-source editor's own "
+            "\"AI draft\" rewrite (ai_draft.OllamaSlideDrafter). Must keep "
+            "the instruction to reproduce every \"%%%PROTECTED_N%%%\" "
+            "placeholder line verbatim -- removing it lets the model edit "
+            "content this feature is specifically meant to protect (the "
+            "slide's own header comment, \\setSlideVersion{} line, and "
+            "\\vbox to 0pt{...} overlays)."
+        ))
+        self.rewrite_prompt_edit = QPlainTextEdit()
+        self.rewrite_prompt_edit.setMinimumHeight(120)
+        rewrite_layout.addWidget(self.rewrite_prompt_edit)
+        rewrite_button_row = QHBoxLayout()
+        rewrite_button_row.addStretch(1)
+        rewrite_reset_button = QPushButton("Reset to default")
+        rewrite_reset_button.clicked.connect(self._on_rewrite_prompt_reset)
+        rewrite_button_row.addWidget(rewrite_reset_button)
+        rewrite_save_button = QPushButton("Save")
+        rewrite_save_button.clicked.connect(self._on_rewrite_prompt_save)
+        rewrite_button_row.addWidget(rewrite_save_button)
+        rewrite_layout.addLayout(rewrite_button_row)
+        layout.addWidget(rewrite_group)
+        self._load_rewrite_prompt()
+
+        layout.addStretch(1)
+        return page
+
+    def _load_draft_prompt(self) -> None:
+        text = draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) or alt_draft.SYSTEM_PROMPT
+        self.draft_prompt_edit.setPlainText(text)
+        self._draft_prompt_snapshot = text.strip()
+
+    def _draft_prompt_dirty(self) -> bool:
+        return self.draft_prompt_edit.toPlainText().strip() != self._draft_prompt_snapshot
+
+    def _on_draft_prompt_save(self) -> bool:
+        prompt = self.draft_prompt_edit.toPlainText().strip()
+        if not prompt:
+            QMessageBox.critical(self, "Save prompt", "The prompt text is required.")
+            return False
+        # Saving the stock text verbatim is the same as never having
+        # customized it (draft_prompts.set_custom_prompt() treats an
+        # unchanged-from-default save the same as a reset) -- avoids a
+        # redundant on-disk override that would just silently diverge if
+        # alt_draft.SYSTEM_PROMPT itself is later revised in a code update.
+        draft_prompts.set_custom_prompt(
+            draft_prompts.KIND_IMAGE_DRAFT,
+            "" if prompt == alt_draft.SYSTEM_PROMPT.strip() else prompt,
+        )
+        self.app.log("Saved image description prompt")
+        self._draft_prompt_snapshot = prompt
+        return True
+
+    def _on_draft_prompt_reset(self) -> None:
+        self.draft_prompt_edit.setPlainText(alt_draft.SYSTEM_PROMPT)
+
+    def _load_rewrite_prompt(self) -> None:
+        text = draft_prompts.get_custom_prompt(draft_prompts.KIND_SLIDE_REWRITE) or ai_draft.SYSTEM_PROMPT
+        self.rewrite_prompt_edit.setPlainText(text)
+        self._rewrite_prompt_snapshot = text.strip()
+
+    def _rewrite_prompt_dirty(self) -> bool:
+        return self.rewrite_prompt_edit.toPlainText().strip() != self._rewrite_prompt_snapshot
+
+    def _on_rewrite_prompt_save(self) -> bool:
+        prompt = self.rewrite_prompt_edit.toPlainText().strip()
+        if not prompt:
+            QMessageBox.critical(self, "Save prompt", "The prompt text is required.")
+            return False
+        draft_prompts.set_custom_prompt(
+            draft_prompts.KIND_SLIDE_REWRITE,
+            "" if prompt == ai_draft.SYSTEM_PROMPT.strip() else prompt,
+        )
+        self.app.log("Saved slide rewrite prompt")
+        self._rewrite_prompt_snapshot = prompt
+        return True
+
+    def _on_rewrite_prompt_reset(self) -> None:
+        self.rewrite_prompt_edit.setPlainText(ai_draft.SYSTEM_PROMPT)
+
     # -- Ollama models --------------------------------------------------------
 
     def _build_ollama_models_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+
+        host_group = QGroupBox("Ollama host")
+        host_layout = QHBoxLayout(host_group)
+        host_layout.addWidget(QLabel("URL:"))
+        self.ollama_host_edit = QLineEdit(app_settings.get_ollama_host())
+        self.ollama_host_edit.setPlaceholderText("http://localhost:11434")
+        # Applied immediately on losing focus/Enter, no separate Save
+        # button -- same "nothing to lose on close" pattern as dark mode/
+        # tab width on the General tab, not the translation tab's own
+        # explicit-save fields (there is only ever one current value here,
+        # nothing to accidentally discard).
+        self.ollama_host_edit.editingFinished.connect(self._on_ollama_host_changed)
+        host_layout.addWidget(self.ollama_host_edit, stretch=1)
+        layout.addWidget(host_group)
+
         layout.addWidget(QLabel(
             "Every model currently installed in Ollama, drafting and "
             "translation alike. Deleting one here removes it from Ollama's "
@@ -444,6 +597,17 @@ class SettingsDialog(QDialog):
 
         self._reload_ollama_models()
         return page
+
+    def _on_ollama_host_changed(self) -> None:
+        app_settings.set_ollama_host(self.ollama_host_edit.text())
+        # Re-read it rather than trust the raw text field -- an
+        # empty/whitespace-only entry clears the override (see
+        # app_settings.set_ollama_host()'s own docstring), so this shows
+        # the actual effective host (falling back to $OLLAMA_HOST/the
+        # plain default) rather than leaving a blank field.
+        self.ollama_host_edit.setText(app_settings.get_ollama_host())
+        self.app.log(f"Ollama host set to {app_settings.get_ollama_host()}")
+        self._reload_ollama_models()
 
     def _reload_ollama_models(self) -> None:
         self.ollama_models_list.clear()

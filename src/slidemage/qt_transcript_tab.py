@@ -946,7 +946,11 @@ class PromptTuningDialog(QDialog):
             "<span style='color:#c0392b'>Editing this often makes the model "
             "abandon the required output format and answer in prose; the hint "
             "above is the reliable lever.</span>"))
-        self.prompt_edit = QPlainTextEdit(alt_draft.SYSTEM_PROMPT)
+        # effective_system_prompt(), not the bare SYSTEM_PROMPT constant --
+        # if the user has saved a custom default in Preferences (2026-09-23,
+        # draft_prompts.py), tuning should start from what batches actually
+        # send, not the original hardcoded text underneath it.
+        self.prompt_edit = QPlainTextEdit(alt_draft.effective_system_prompt())
         self.prompt_edit.setFixedHeight(220)
         right.addWidget(self.prompt_edit)
 
@@ -956,7 +960,7 @@ class PromptTuningDialog(QDialog):
         buttons_row.addWidget(self.draft_button)
         reset = QPushButton("Reset prompt")
         reset.clicked.connect(
-            lambda: self.prompt_edit.setPlainText(alt_draft.SYSTEM_PROMPT))
+            lambda: self.prompt_edit.setPlainText(alt_draft.effective_system_prompt()))
         buttons_row.addWidget(reset)
         buttons_row.addStretch(1)
         right.addLayout(buttons_row)

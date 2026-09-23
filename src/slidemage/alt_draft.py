@@ -33,9 +33,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Protocol
 
-from . import alt_blocks, alt_images, media_render, tikz_render, translation_prompts
+from . import alt_blocks, alt_images, app_settings, draft_prompts, media_render, tikz_render, translation_prompts
 from .deck_scan import PROJECT_ROOT
 
+# Kept as the hardcoded fallback effective_system_prompt() below returns
+# once draft_prompts has no user override -- the *default* host to send
+# to is now app_settings.get_ollama_host() (Preferences-configurable),
+# not this constant; DEFAULT_OLLAMA_HOST stays only as the very last
+# fallback inside that resolution chain (see app_settings.py's own
+# _FALLBACK_OLLAMA_HOST, which duplicates this value rather than
+# importing it, since app_settings.py sits below this module).
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 # Formats Ollama's vision path can read directly.
@@ -153,6 +160,15 @@ sign you are guessing rather than reading. If your table looks like that, \
 replace it with a description of the range and shape.
 - Write plainly, for a reader who cannot check the picture against you.
 """
+
+
+def effective_system_prompt() -> str:
+    """What OllamaBackend should actually send as its system prompt: the
+    user's own saved override (Preferences dialog, draft_prompts.py) if
+    they've set one, else this module's own hardcoded SYSTEM_PROMPT
+    above."""
+    return draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) or SYSTEM_PROMPT
+
 
 USER_TEMPLATE = """\
 This image appears on a lecture slide.
@@ -372,7 +388,12 @@ class OllamaBackend:
     """Local Ollama. No API key, no per-image cost, nothing leaves the machine."""
 
     model: str
-    host: str = DEFAULT_OLLAMA_HOST
+    # None resolves to app_settings.get_ollama_host() in __post_init__ below,
+    # not at class-definition time -- a plain "host: str = DEFAULT_OLLAMA_HOST"
+    # default would freeze whatever that constant was when this module was
+    # first imported, never picking up a host the user later sets in
+    # Preferences without restarting the app.
+    host: Optional[str] = None
     # 16k rather than the model's native 256k: one image plus a few hundred
     # words of slide context never approaches that, and the KV cache for a
     # 256k window is what pushes a 21 GB model past a 24 GB card into system
@@ -404,8 +425,17 @@ class OllamaBackend:
     retry_timeout: float = 1200.0
     # Overridable so the review tab can offer a "tune the prompt and try
     # again" loop on a single image without touching the default everyone
-    # else's batch uses.
-    system_prompt: str = SYSTEM_PROMPT
+    # else's batch uses. None (the default) resolves to
+    # effective_system_prompt() in __post_init__ below, for the same
+    # reason `host` above does -- picks up a Preferences-saved custom
+    # prompt without needing a restart.
+    system_prompt: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.host is None:
+            self.host = app_settings.get_ollama_host()
+        if self.system_prompt is None:
+            self.system_prompt = effective_system_prompt()
 
     @property
     def label(self) -> str:
@@ -500,7 +530,16 @@ class OllamaBackend:
             shown = attempt.content or attempt.thinking
             if not shown:
                 message = "Model returned an empty response"
-            elif self.system_prompt is not SYSTEM_PROMPT:
+            elif self.system_prompt != effective_system_prompt():
+                # Value comparison, not identity: since __post_init__ above
+                # resolves a None default through effective_system_prompt()
+                # itself, comparing "is not SYSTEM_PROMPT" would misfire the
+                # instant a user saves *any* custom default prompt in
+                # Preferences -- every ordinary backend's system_prompt
+                # would then differ (by identity) from the hardcoded
+                # SYSTEM_PROMPT constant even though it was never
+                # "tuned" for this one call specifically.
+                #
                 # Measured on both qwen3-vl:32b and gemma4:12b: appending even
                 # one sentence to the system prompt makes the model abandon
                 # the JSON schema and answer in prose. The per-image hint goes
@@ -617,8 +656,9 @@ def _parse_response_json(text: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def list_vision_models(host: str = DEFAULT_OLLAMA_HOST) -> list[str]:
+def list_vision_models(host: Optional[str] = None) -> list[str]:
     """Vision-capable models Ollama currently has, newest-installed first."""
+    host = host or app_settings.get_ollama_host()
     try:
         with urllib.request.urlopen(f"{host.rstrip('/')}/api/tags", timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -632,7 +672,7 @@ def list_vision_models(host: str = DEFAULT_OLLAMA_HOST) -> list[str]:
     return [entry["name"] for entry in models]
 
 
-def list_all_models(host: str = DEFAULT_OLLAMA_HOST) -> list[str]:
+def list_all_models(host: Optional[str] = None) -> list[str]:
     """Every model Ollama currently has, newest-installed first -- for
     translation's own model picker (2026-08-25): unlike drafting, which
     needs a vision-capable model, translation is text-only and works with
@@ -643,6 +683,7 @@ def list_all_models(host: str = DEFAULT_OLLAMA_HOST) -> list[str]:
     short_de/long_de/takeaway_de JSON format OllamaTranslationBackend
     actually sends, despite being untagged for "tools"/structured output
     in Ollama's own capability list)."""
+    host = host or app_settings.get_ollama_host()
     try:
         with urllib.request.urlopen(f"{host.rstrip('/')}/api/tags", timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -659,11 +700,12 @@ class InstalledModel:
     modified_at: str
 
 
-def list_installed_models_detailed(host: str = DEFAULT_OLLAMA_HOST) -> list[InstalledModel]:
+def list_installed_models_detailed(host: Optional[str] = None) -> list[InstalledModel]:
     """Every model Ollama currently has, with its on-disk size -- for the
     Settings dialog's own "Ollama models" tab (2026-08-25), where knowing
     how much space each one takes matters more than for the plain
     name-only pickers (list_vision_models()/list_all_models() above)."""
+    host = host or app_settings.get_ollama_host()
     try:
         with urllib.request.urlopen(f"{host.rstrip('/')}/api/tags", timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -680,7 +722,7 @@ def list_installed_models_detailed(host: str = DEFAULT_OLLAMA_HOST) -> list[Inst
     ]
 
 
-def delete_model(model: str, host: str = DEFAULT_OLLAMA_HOST) -> tuple[bool, str]:
+def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
     """Deletes `model` from the local Ollama server via its own
     DELETE /api/delete -- this removes the model's actual files from
     disk (Ollama's own model store, typically several GB each), not just
@@ -700,6 +742,7 @@ def delete_model(model: str, host: str = DEFAULT_OLLAMA_HOST) -> tuple[bool, str
     function to bypass that. The real, well-documented danger case is
     someone manually deleting files under Ollama's own blobs/ directory,
     which is not what this does."""
+    host = host or app_settings.get_ollama_host()
     try:
         request = urllib.request.Request(
             f"{host.rstrip('/')}/api/delete",
@@ -745,7 +788,7 @@ DERIVED_MODEL_BASES: dict[str, str] = {
 }
 
 
-def pull_model(model: str, host: str = DEFAULT_OLLAMA_HOST,
+def pull_model(model: str, host: Optional[str] = None,
                 on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
     """Re-downloads `model` from the Ollama registry via POST /api/pull
     (stream=True) -- an already-up-to-date model just returns "success"
@@ -755,6 +798,7 @@ def pull_model(model: str, host: str = DEFAULT_OLLAMA_HOST,
     show live progress instead of a frozen UI for what can be a many-GB,
     many-minute download. Returns (True, "") on success, (False, error)
     otherwise -- never raises, same contract as delete_model() above."""
+    host = host or app_settings.get_ollama_host()
     try:
         request = urllib.request.Request(
             f"{host.rstrip('/')}/api/pull",
@@ -793,13 +837,14 @@ def pull_model(model: str, host: str = DEFAULT_OLLAMA_HOST,
         return False, str(exc)
 
 
-def get_modelfile(model: str, host: str = DEFAULT_OLLAMA_HOST) -> str | None:
+def get_modelfile(model: str, host: Optional[str] = None) -> str | None:
     """Returns `model`'s current Modelfile text via POST /api/show, or None
     if the model doesn't exist or the server isn't reachable. Used by
     relink_derived_model() below to preserve a custom model's own
     PARAMETER/SYSTEM lines exactly as they currently are -- only its FROM
     line needs to change, to point at a freshly-pulled base instead of a
     now-stale local blob."""
+    host = host or app_settings.get_ollama_host()
     try:
         request = urllib.request.Request(
             f"{host.rstrip('/')}/api/show",
@@ -835,7 +880,7 @@ def _strip_modelfile_comments(modelfile: str) -> list[str]:
     return kept
 
 
-def relink_derived_model(model: str, base: str, host: str = DEFAULT_OLLAMA_HOST) -> tuple[bool, str]:
+def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> tuple[bool, str]:
     """Re-creates `model` (one of DERIVED_MODEL_BASES) against `base`'s
     current weights: reads model's own live Modelfile, drops Ollama's
     auto-generated "#" comment lines and its literal (now-stale) "FROM
@@ -844,6 +889,7 @@ def relink_derived_model(model: str, base: str, host: str = DEFAULT_OLLAMA_HOST)
     exactly as the model currently has it -- this only changes which
     weights the tag points at, never its configuration. Returns (True, "")
     on success, (False, error) otherwise, same contract as delete_model()."""
+    host = host or app_settings.get_ollama_host()
     modelfile = get_modelfile(model, host=host)
     if modelfile is None:
         return False, f"Could not read {model}'s current Modelfile"
@@ -883,14 +929,16 @@ def relink_derived_model(model: str, base: str, host: str = DEFAULT_OLLAMA_HOST)
         return False, str(exc)
 
 
-def update_model(model: str, host: str = DEFAULT_OLLAMA_HOST,
+def update_model(model: str, host: Optional[str] = None,
                   on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
     """"Update" for the Settings dialog's "Update selected…" button: pulls
     `model` itself if it's a plain/base model, or -- if it's one of this
     project's own custom models (DERIVED_MODEL_BASES) -- pulls its base
     instead and relinks `model` to those refreshed weights
     (relink_derived_model() above), since a custom model has no registry
-    entry of its own to pull directly."""
+    entry of its own to pull directly. `host=None` is passed straight
+    through to pull_model()/relink_derived_model() below, which each
+    resolve it themselves -- no need to resolve it twice here."""
     base = DERIVED_MODEL_BASES.get(model)
     if base is None:
         return pull_model(model, host=host, on_progress=on_progress)
@@ -1231,7 +1279,10 @@ class OllamaTranslationBackend:
     block than to a system/user split."""
 
     model: str
-    host: str = DEFAULT_OLLAMA_HOST
+    # None resolves to app_settings.get_ollama_host() in __post_init__
+    # below -- see OllamaBackend's own host field for why not a plain
+    # "= DEFAULT_OLLAMA_HOST" default.
+    host: Optional[str] = None
     num_ctx: int = 8192
     think: bool = False
     temperature: float = 0.2
@@ -1239,6 +1290,10 @@ class OllamaTranslationBackend:
     timeout: float = 300.0
     source_lang: str = "en"
     target_lang: str = "de"
+
+    def __post_init__(self) -> None:
+        if self.host is None:
+            self.host = app_settings.get_ollama_host()
 
     @property
     def label(self) -> str:
