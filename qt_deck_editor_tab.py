@@ -95,6 +95,13 @@ class DeckEditorTab(QWidget):
     # verbatim, only the widget layer differs).
     _UNDO_LIMIT = 20
 
+    # How long "Find slide in deck"'s own highlight stays on the matched
+    # row/card before fading back to normal (2026-09-23, direct instruction:
+    # scrolling alone doesn't make the match obvious in a long deck,
+    # especially near the very start/end where there's no "middle" row
+    # above/below it to contrast against).
+    _FOUND_HIGHLIGHT_MS = 2500
+
     def __init__(self, app, deck: Deck) -> None:
         super().__init__()
         self.app = app
@@ -417,7 +424,11 @@ class DeckEditorTab(QWidget):
         neighbours above and below are useful context a chapter heading
         doesn't need. Scrolls both List/Thumbnail and Grid (same reasoning
         as the chapter jump above) so whichever view is switched to
-        afterward is already lined up."""
+        afterward is already lined up. Also highlights the matched widget
+        itself (see _flash_found_widget) -- landing it in the viewport
+        doesn't by itself make it obvious *which* row is the match, and
+        near the very start/end of a long deck there's no surrounding
+        "middle of the visible rows" cue to fall back on."""
         for widgets, scroll, inner in (
             (self._id_labels, self.list_scroll, self.inner),
             (self._id_cards, self.card_scroll, self.card_inner),
@@ -428,6 +439,21 @@ class DeckEditorTab(QWidget):
             target_y = widget.mapTo(inner, QPoint(0, 0)).y()
             target_y -= (scroll.viewport().height() - widget.height()) // 2
             scroll.verticalScrollBar().setValue(target_y)
+            self._flash_found_widget(widget)
+
+    def _flash_found_widget(self, widget: QWidget) -> None:
+        """Sustained highlight (not a blink) on the matched slide's own id
+        label (List/Thumbnail) or card (Grid), reverted to plain styling
+        (not whatever was there before -- neither of these widgets carries
+        its own inline stylesheet elsewhere, so "" is always the correct
+        original state, and is simpler/safer than snapshotting a style that
+        a second search landing on the same still-highlighted widget could
+        otherwise capture mid-flash) after _FOUND_HIGHLIGHT_MS."""
+        widget.setStyleSheet(
+            "background-color: #ffe066; color: #000000; "
+            "border: 1px solid #cc9900; border-radius: 2px;"
+        )
+        QTimer.singleShot(self._FOUND_HIGHLIGHT_MS, lambda: widget.setStyleSheet(""))
 
     def _flash_find_slide_not_found(self) -> None:
         """No match anywhere in this deck -- a brief red border on the
