@@ -17,15 +17,14 @@ and the image-accessibility pipeline end to end. Everything below was
 verified against an actual working copy while preparing it, not just
 described.
 
-**SlideMage — the app itself — lives in its own repo**,
-[github.com/stpalan/slidemage](https://github.com/stpalan/slidemage), kept
-in sync with the private original via `git subtree` so its full commit
-history travels with it. Clone it into a `SlideMage/` folder right here at
-this project's root (see "Getting started" below) — every path in this
-repo's own docs (`python -m SlideMage`, `SlideMage/README.md`, the
-`.scripts/R_Slidemaster/inst/templates/` slide template SlideMage's own
-code reads) assumes it's sitting right there, same as if this had never
-been split into two repos.
+**One repo, three parts.** `latex/` is the institution-independent
+framework (Gotham theme, `Slidemaster_preamble_base.tex`,
+`Slidemaster_alt.lua`); `example/` is a complete Slidemaster *project* —
+slides, decks, media, the Uni Graz institution layer and `slide_ids.csv`,
+which marks a project's root; `src/slidemage/` is SlideMage, the app
+(formerly its own repo, merged in with its full history). Paths like
+`decks/…`, `slides/…` or `media/…` in these docs are relative to the
+project folder, i.e. `example/` here.
 
 Start here, then go to `README.md` for the full reference (it documents
 several things — layouts, footnotes, multi-language slides, bibliography
@@ -125,7 +124,7 @@ button, for the during-course/after-course versions only.
 ### The Ollama connection
 
 Drafting image descriptions runs against a **local** Ollama server
-(`http://localhost:11434` by default — see `SlideMage/alt_draft.py`), not
+(`http://localhost:11434` by default — see `src/slidemage/alt_draft.py`), not
 a cloud API: no API key, no per-image cost, nothing leaves the machine.
 "Draft all…" in the Images tab queues every image still needing a
 description, runs a vision-capable model over each one, and is resumable —
@@ -148,8 +147,7 @@ VRAM simultaneously.
 
 ### SlideMage itself
 
-Launch with `python -m SlideMage` from the project root (see below for
-environment setup). Three tabs: **Active decks** (one row per deck,
+Launch with `slidemage` (see below for environment setup). Three tabs: **Active decks** (one row per deck,
 checkboxes for Instructor/During-course/After-course plus
 After-course-per-chapter, each an independent compile via `latexmk`),
 **Archived decks**, and the green **Images** tab covering everything above.
@@ -160,12 +158,10 @@ be compiled into a stand-alone executable.
 
 ## Getting started / system requirements
 
-1. **Clone both repos** — this one, plus `SlideMage` nested inside it at
-   the project root (everything else in this doc assumes that layout):
+1. **Clone the repo:**
    ```bash
-   git clone https://github.com/stpalan/slidemaster.git
+   git clone <repo-url> slidemaster
    cd slidemaster
-   git clone https://github.com/stpalan/slidemage.git SlideMage
    ```
 2. **A LaTeX distribution with LuaLaTeX.** TeX Live is the natural choice
    on Linux/macOS; MiKTeX on Windows. `lualatex` is the *only* supported
@@ -179,18 +175,18 @@ be compiled into a stand-alone executable.
    itself now exercises the bibliography mechanism (see "Bibliography"
    above); plain `lualatex test.tex` alone leaves its one citation showing
    as the raw key `markowitz1952` instead of a formatted reference.
-3. **Python 3.11+** with a virtual environment:
+3. **Python 3.11+** with a virtual environment, installing SlideMage from
+   this repo:
    ```bash
    python3 -m venv .venv
-   .venv/bin/activate  # or: source .venv/bin/activate
-   pip install -r requirements.txt
+   source .venv/bin/activate   # Windows: .venv\Scripts\activate
+   pip install -e .            # add ".[dev]" for pytest/ruff, ".[build]" for PyInstaller
    ```
    This installs PySide6 (the GUI), PyMuPDF (PDF-to-PNG rendering for slide
    previews and tikz-illustration drafting), python-pptx (the Export-PPTX
-   feature), and Pillow. The original Windows project keeps this venv
-   machine-local outside any synced folder for reasons specific to that
-   setup (see `SlideMage/PYSIDE6_MIGRATION.md`) — an ordinary local `.venv`
-   is simplest here.
+   feature), and Pillow, plus the `slidemage` command. On Windows,
+   `packaging/SlideMage.bat` starts it from this `.venv` without a console
+   window; `packaging/slidemage.spec` builds a stand-alone executable.
 4. **[Ollama](https://ollama.com/)**, running locally, with at least one
    vision-capable model pulled (`ollama pull qwen3-vl:32b`, or a smaller
    vision model — see above) — only needed for drafting image descriptions
@@ -202,7 +198,7 @@ be compiled into a stand-alone executable.
 line endings and exclude generated output (`.build/`, `transcripts/`,
 `.previews/`, compiled PDFs, `__pycache__/`) — nothing to configure.
 
-Then, from the project root:
+Then:
 
 ```bash
 # Compile the demo deck directly (instructor version, the default).
@@ -210,7 +206,7 @@ Then, from the project root:
 # in between (see "Bibliography" above); latexmk (or SlideMage) detects
 # and runs this whole sequence automatically, so this is only spelling
 # it out by hand:
-cd decks
+cd example/decks
 lualatex test.tex
 biber test
 lualatex test.tex
@@ -220,8 +216,18 @@ lualatex test.tex
 # Or launch SlideMage and use its checkboxes instead (also gives you
 # During-course/After-course compiles, the Images tab, etc.) -- these
 # four passes run automatically either way:
-python -m SlideMage
+cd ../..
+slidemage --project example
 ```
+
+SlideMage picks its project from `--project`, else `$SLIDEMASTER_PROJECT`,
+else by searching upward from the current directory for `slide_ids.csv`,
+else the last project it opened — and otherwise asks for a folder. Its
+per-project settings live in `<project>/.slidemage/`.
+
+**Your own project:** copy `example/` anywhere. Its `.latexmkrc` files
+look for the framework in `../latex`; for a project kept elsewhere, set
+`SLIDEMASTER_LATEX` to this repo's `latex/` folder.
 
 The very first `lualatex` run of `decks/test.tex` (or `test-student.tex`)
 will be slow while your TeX distribution fetches whatever packages it's
@@ -234,11 +240,9 @@ these four passes run automatically when using SlideMage.
 - `README.md` — the full reference: directory layout, layouts/frame types,
   the naming/versioning convention, multi-language slides, accessibility
   in full detail, and more.
-- `SlidemasterManual.md` — a quick-lookup table for the deck-version
+- `docs/SlidemasterManual.md` — a quick-lookup table for the deck-version
   commands (`\slide`, `\omitslide`, `\conditionalslide`, `\slidestep`,
   `\deckonly`, `\conditionalpause`, `\deckversion`).
-- [`slidemage`](https://github.com/stpalan/slidemage) — the app's own
-  repo (clone into `SlideMage/` here, see "Getting started" above). Its
-  `README.md` covers how the app itself is built, module by module,
+- `docs/SlideMage.md` — how the app itself is built, module by module,
   including gotchas hit while building it.
 - `LICENSE` — this project is CC BY-SA 4.0.

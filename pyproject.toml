@@ -7,7 +7,7 @@ name = "slidemage"
 dynamic = ["version"]
 description = "Desktop app for building, compiling and managing Slidemaster (LaTeX beamer) slide decks"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
     "PySide6>=6.5",
@@ -38,7 +38,7 @@ include = ["src/slidemage", "tests", "README.md", "LICENSE"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 src = ["src"]
 
 [tool.ruff.lint]

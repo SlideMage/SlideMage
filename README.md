@@ -9,7 +9,7 @@ managing slide IDs, image descriptions, and accessible transcripts.
 > the framework itself: the Gotham theme, the Uni Graz institution layer,
 > SlideMage, and one small demo deck (`decks/test.tex`/`test-student.tex`,
 > `slides/ZZ*`) in place of hundreds of real course slides. Read
-> [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) first -- it covers the core
+> [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) first -- it covers the core
 > concepts (slide IDs, deck versions, accessibility, Ollama) at a higher
 > level than this file, plus what to install before compiling anything.
 > This file (README.md) is the same detailed reference the original
@@ -17,6 +17,35 @@ managing slide IDs, image descriptions, and accessible transcripts.
 > that isn't part of this copy (another institution's preamble, a real
 > course deck, a working-log file like `CONVERSION_NOTES.md`) -- the
 > mechanism being explained still applies regardless.
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `latex/` | The framework: Gotham beamer theme (`beamer*themegotham.sty`, `gotham.dtx`), `Slidemaster_preamble_base.tex`, `Slidemaster_alt.lua`. Institution-independent. |
+| `example/` | A complete Slidemaster project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`Slidemaster_preamble_uni-graz.tex`, `schemes/`), `Slidemaster.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. |
+| `src/slidemage/` | SlideMage, the PySide6 app (formerly its own repo, merged with its history). |
+| `docs/` | Project overview, deck-version manual, SlideMage internals. |
+| `packaging/` | Windows launcher (`SlideMage.bat`) and PyInstaller spec. |
+| `tests/` | Smoke tests, run in CI together with a compile of the demo decks. |
+
+**Paths in the rest of this file (`decks/…`, `slides/…`, `media/…`,
+`.latexmkrc`) are relative to the project folder** — `example/` in this
+repo.
+
+## Quick start
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+slidemage --project example          # the GUI
+cd example/decks && latexmk test.tex # or compile directly
+```
+
+For your own project, copy `example/` anywhere; if it doesn't sit next to
+`latex/`, point `SLIDEMASTER_LATEX` at this repo's `latex/` folder. See
+[docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) for prerequisites
+(LuaLaTeX, biber, optional Ollama).
 
 ## Directory layout
 
@@ -88,30 +117,21 @@ managing slide IDs, image descriptions, and accessible transcripts.
   (e.g. `t-Uni-FM2-2027s.tex`), plus `decks/#workdeck.tex`, a single,
   reusable, throwaway scratch deck for quick iteration on whichever slides
   are currently being worked on, without recompiling a whole real deck.
-- [SlidemasterManual.md](SlidemasterManual.md) — concise reference for core
+- [SlidemasterManual.md](docs/SlidemasterManual.md) — concise reference for core
   functionality, including the deck version system for instructor/during-course/
   after-course decks.
-- `SlideMage/` — a PySide6 (Qt) GUI for compiling decks (any combination of
-  instructor/during-course/after-course, whole deck or one PDF per chapter),
-  for archiving a finished deck's `.tex` file into `decks/archive/` while
-  keeping it compilable, and for describing images and generating
-  accessible transcripts. **Lives in its own repo**,
-  [github.com/stpalan/slidemage](https://github.com/stpalan/slidemage) —
-  clone it into a `SlideMage/` folder right here at this project's root
-  (see [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for the exact command and
-  the venv/install steps), so every relative path below
-  (`SlideMage/README.md`, `python -m SlideMage` run from this project
-  root, `.scripts/R_Slidemaster/inst/templates/slide-template.tex`) resolves
-  exactly as written, same as if it had never been split into a second
-  repo. The original project also ships a prebuilt Windows
-  `dist/SlideMage.exe` (via `build_slidemage_exe.bat`) and a `SlideMage.bat`
-  launcher — both Windows-only conveniences, not included in either repo.
-  See that repo's own `README.md` for how it works, and its
-  `PYSIDE6_MIGRATION.md` for why it is no longer Tkinter.
+- `src/slidemage/` — SlideMage, a PySide6 (Qt) GUI for compiling decks (any
+  combination of instructor/during-course/after-course, whole deck or one
+  PDF per chapter), for archiving a finished deck's `.tex` file into
+  `decks/archive/` while keeping it compilable, and for describing images
+  and generating accessible transcripts. Install with `pip install -e .`,
+  start with `slidemage`; see [docs/SlideMage.md](docs/SlideMage.md) for
+  how it works and [docs/PYSIDE6_MIGRATION.md](docs/PYSIDE6_MIGRATION.md)
+  for why it is no longer Tkinter.
 - `decks/test.tex`/`decks/test-student.tex` — a minimal example deck; also
   a working demo of every layout/frame type, not a real course. This copy's
   one demo deck — see "Getting started" in
-  [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
+  [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md).
 
 A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 
@@ -172,10 +192,10 @@ compatibility for its own sake.
 
 ### Compiling without TeXstudio (SlideMage)
 
-[`SlideMage.bat`](SlideMage.bat) (or `python -m SlideMage` from the
-project root) compiles any deck via `latexmk` directly, through a GUI table
+`slidemage` (or [`packaging/SlideMage.bat`](packaging/SlideMage.bat) on
+Windows) compiles any deck via `latexmk` directly, through a GUI table
 of checkboxes rather than a hand-edited `DECKS=` line -- see
-[SlideMage/README.md](SlideMage/README.md) for the full picture. It
+[docs/SlideMage.md](docs/SlideMage.md) for the full picture. It
 exists specifically so compiling doesn't depend on TeXstudio's own local
 settings at all (see "TeXstudio setup" below for how much those drift
 between machines); its own correctness only depends on files committed to
@@ -188,7 +208,7 @@ purpose (plus a `compile-all-versions.bat` for compiling all three deck
 versions in one go) -- both retired once SlideMage covered the same
 ground with a GUI on top, and neither is needed alongside it.
 
-Two non-obvious things `SlideMage/compiler.py` does, both confirmed
+Two non-obvious things `src/slidemage/compiler.py` does, both confirmed
 necessary by hitting the failure directly rather than assumed (carried over
 from those retired scripts, which hit the same two problems first):
 
@@ -288,7 +308,7 @@ PowerPoint's ink annotations paint in a layer above everything on a slide,
 an annotation drawn during a live recording stays visible across that
 slide's own later reveal steps instead of disappearing when the deck
 advances past it. Built via the `python-pptx` package
-(`SlideMage/pptx_export.py`) -- the one other deliberate exception to
+(`src/slidemage/pptx_export.py`) -- the one other deliberate exception to
 this project's stdlib-first dependency policy, alongside PyMuPDF.
 python-pptx itself has no animation API, so the click-triggered timing is
 hand-assembled OOXML, verified directly against a real PowerPoint
@@ -370,7 +390,7 @@ root or from inside `decks/`.
 > Windows/cross-platform desktop app, not something this section assumes
 > you're using.
 
-[`.latexmkrc`](.latexmkrc) (also duplicated in `decks/`, for the same
+[`.latexmkrc`](example/.latexmkrc) (also duplicated in `decks/`, for the same
 compile-from-either-location reason as the `\input@path`/`\graphicspath`
 fallback above) configures `latexmk` to use `lualatex`, and to handle the
 whole lualatex/biber rerun loop above automatically and correctly per deck
@@ -1096,8 +1116,8 @@ gap below it.
 visible height depends on whether the title text has any descenders (`g j p
 q y`), not just on `\gothamSectionframeBoxHeight` (2026-07-25, direct
 instruction: "the image extends into the title box" on
-[neb](slides/neb-Market-Environment-Section-Overview-current.tex)/
-[u97](slides/u97-Household-Finance-Section-Overview-current.tex) — root-caused
+[neb](example/slides/neb-Market-Environment-Section-Overview-current.tex)/
+[u97](example/slides/u97-Household-Finance-Section-Overview-current.tex) — root-caused
 after their own images, placed flush against `\gothamSectionframeBoxHeight`
 directly, turned out to sit ~4.2pt too high; see those two files' own header
 comments for the fix actually applied).** `\gothamSectionframeBoxHeight`
@@ -1135,9 +1155,9 @@ its full, undiminished height (confirmed directly, PyMuPDF vector-fill
 measurement: 89.19pt); a title with **any** descender renders it ~4.15pt
 *shorter*, landing almost exactly on the 85.04pt target instead (confirmed
 the same way, both
-[tyn](slides/tyn-Capital-Asset-Pricing-Model-Section-Overview-current.tex)
+[tyn](example/slides/tyn-Capital-Asset-Pricing-Model-Section-Overview-current.tex)
 ("Capital asset pricing model") and
-[vtm](slides/vtm-Measuring-and-Managing-Risk-Section-Overview-current.tex)
+[vtm](example/slides/vtm-Measuring-and-Managing-Risk-Section-Overview-current.tex)
 ("Measuring and managing risk") land at 85.04pt too, both titles with a
 descender). This is presumably a coincidence of whichever title was on
 screen when `\gothamSectionframeHeightCorrection` was originally calibrated
@@ -1404,7 +1424,7 @@ Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
 (`\textcolor{c_secondary_blue}{...}`, `fill=c_secondary_blue`
 in tikz, etc. — see the demo slide
-[slides/ZZZ-Standard-content-current.tex](slides/ZZZ-Standard-content-current.tex)
+[slides/ZZZ-EN-Standard-content-current.tex](example/slides/ZZZ-EN-Standard-content-current.tex)
 for `\textcolor{}` in body text). These names are shared machinery, defined
 once per institution in that institution's own `Slidemaster_preamble_*.tex`
 (see the directory layout above for the base/institution-layer split) with
@@ -1413,7 +1433,7 @@ that uses `c_secondary_blue` renders in Graz's blue, MCI's blue, or
 Innsbruck's blue depending only on which preamble the deck `\input{}`s, with
 no change to the slide itself. For a visual reference of all of them under
 whichever preamble is currently loaded — see
-[slides/ZZM-Slidemaster-colors-current.tex](slides/ZZM-Slidemaster-colors-current.tex),
+[slides/ZZM-EN-Slidemaster-colors-current.tex](example/slides/ZZM-EN-Slidemaster-colors-current.tex),
 a `standardframe` with a tikz `\foreach` grid of colored boxes (one loop over
 all the color names, rather than one `\node` per color, so adding a new
 color later just means adding one name to the list). Watch for one gotcha if
@@ -1464,7 +1484,7 @@ Call it once per deck (e.g. right after `\input{Slidemaster_preamble_uni-graz}`)
 project-wide style, or partway through to change the marker set from that
 point on. If a slide has more footnotes than the list has entries, indexing
 wraps back around to the start rather than erroring.
-[slides/ZZU-Footnote-symbol-options-current.tex](slides/ZZU-Footnote-symbol-options-current.tex)
+[slides/ZZU-EN-Footnote-symbol-options-current.tex](example/slides/ZZU-EN-Footnote-symbol-options-current.tex)
 is a reference sheet of candidate symbols — every character on it was checked
 to actually exist in Fira Sans (many "obvious" choices, like card suits or
 star dingbats, silently render as a blank box in this font and were left
@@ -1540,7 +1560,7 @@ checking the switch resets.
 > **three-way deck version system** — `\deckversion[...]` plus
 > `\conditionalslide{}`/`\conditionalpause`/`\deckreveal{}` — described
 > under "Deck version system" at the end of this file and in
-> [SlidemasterManual.md](SlidemasterManual.md). Reach for that one when
+> [SlidemasterManual.md](docs/SlidemasterManual.md). Reach for that one when
 > setting up a new course deck. What's below is still live, but only
 > `decks/test.tex`/`test-student.tex` use it, as the worked demo of the
 > shared-slide-list pattern. The two do not interoperate:

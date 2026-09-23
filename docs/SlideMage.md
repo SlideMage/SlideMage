@@ -16,8 +16,12 @@ the code level.
 
 ## What it does
 
-Launch via `SlideMage.bat` (project root), `dist\SlideMage.exe`,
-or `python -m SlideMage` from the project root. Three permanent tabs:
+Launch with `slidemage` (after `pip install -e .` from the repo root),
+`packaging/SlideMage.bat` on Windows, or a PyInstaller build of
+`packaging/slidemage.spec`. It opens the project given by `--project`,
+`$SLIDEMASTER_PROJECT`, the nearest folder above the current directory
+that holds `slide_ids.csv`, or the last project opened, else it asks.
+Three permanent tabs:
 **Active decks**, **Archived decks** and **Images** (the
 green one -- see "Images tab" below). The two deck tabs are
 each a table: one row per deck, checkboxes for `Instructor` /
@@ -80,7 +84,7 @@ until 2026-08-15, renamed once slide-level summaries -- unrelated to any
 one image -- also landed on it). It is where every image in the
 project gets described for screen-reader users, and where per-deck accessible
 transcripts are generated. The design, the decisions and the measured
-findings are in [`../ALT_TEXT_NOTES.md`](../ALT_TEXT_NOTES.md); the
+findings are in `ALT_TEXT_NOTES.md` (not part of this copy); the
 user-facing workflow is in the main README's "Describing images" section.
 What matters when touching *this code*:
 
@@ -128,7 +132,7 @@ What matters when touching *this code*:
 
 ## Module map
 
-- [`alt_images.py`](alt_images.py) -- reads/writes `media/alt-text.json`,
+- [`alt_images.py`](../src/slidemage/alt_images.py) -- reads/writes `media/alt-text.json`,
   the single store for everything about an image: role, confirmation
   status, short/long description, a source citation, a default takeaway,
   and per-slide state (`used_on`: which slides reference it, each with
@@ -172,7 +176,7 @@ What matters when touching *this code*:
   versa (both go through the same `_store_lock`). Edited from the
   slide-source editor tab, not the Images tab -- a summary makes sense for
   a slide with no images at all, which the Images tab's list never shows.
-- [`alt_blocks.py`](alt_blocks.py) -- slide-scanning utilities shared by the
+- [`alt_blocks.py`](../src/slidemage/alt_blocks.py) -- slide-scanning utilities shared by the
   rest of the accessibility system: which images a slide references
   (`referenced_images()`), its id/title (`_slide_title()`), and the
   `braced_argument()`/`extract_macro_calls()` brace matcher -- a non-greedy
@@ -205,7 +209,7 @@ What matters when touching *this code*:
   *custom* style the options themselves defined. `referenced_tikz_illustrations()`
   now returns `(id, options, body)` triples and `find_tikz_illustration()`
   `(path, options, body)` accordingly.
-- [`alt_draft.py`](alt_draft.py) -- vision-model drafting, plus (2026-08-25)
+- [`alt_draft.py`](../src/slidemage/alt_draft.py) -- vision-model drafting, plus (2026-08-25)
   English-to-German translation of drafted text. Slide-context extraction
   (tikz layout stripped, `\note{}` excluded so instructor notes can never
   reach a student), the prompt, a pluggable `DraftBackend`, an Ollama
@@ -224,7 +228,7 @@ What matters when touching *this code*:
   directly against real content (including Markdown-table preservation),
   not assumed from the model card. Each call's exact prompt text and
   blank-line spacing before the source text comes from
-  [`translation_prompts.get_effective_prompt()`](translation_prompts.py),
+  [`translation_prompts.get_effective_prompt()`](../src/slidemage/translation_prompts.py),
   not a hardcoded string -- see that module. `list_all_models()` (every
   installed Ollama model, not just vision-capable ones -- translation is
   text-only) backs the Images tab's own "Translation model:" picker.
@@ -239,7 +243,7 @@ What matters when touching *this code*:
   `tikz_render.ensure_rendered()`, below) -- a tikz reference has no file at
   all for `alt_blocks.resolve_image()` to find, so it has to be
   special-cased before that call rather than after it.
-- [`tikz_render.py`](tikz_render.py) -- renders a `\tikzillustration{ID}`
+- [`tikz_render.py`](../src/slidemage/tikz_render.py) -- renders a `\tikzillustration{ID}`
   (Slidemaster_preamble_base.tex) to a cached PNG for the drafting pipeline
   above, since there is no `media/` file behind one of these at all
   (ALT_TEXT_NOTES.md's "Phase 9"). Compiles the illustration's own
@@ -273,7 +277,7 @@ What matters when touching *this code*:
   otherwise renders at native size and gets silently clipped by a real
   slide's own small `aspectratio=169` page before the auto-crop step ever
   sees the missing part.
-- [`slide_language.py`](slide_language.py) -- multi-language parsing
+- [`slide_language.py`](../src/slidemage/slide_language.py) -- multi-language parsing
   primitives (2026-08-24), the Python-side twin of
   `Slidemaster_preamble_base.tex`'s `\setSlideLanguageFromSlug`: a slide's
   language lives in its own id-slug's *second* hyphen segment
@@ -289,7 +293,7 @@ What matters when touching *this code*:
   *different* language) is the case meant to be visually highlighted. A
   slide with no language segment at all (any of the ~665 not yet migrated)
   parses to `None` and shows no badge -- no forced migration.
-- [`slide_rename.py`](slide_rename.py) -- changes a slide's language
+- [`slide_rename.py`](../src/slidemage/slide_rename.py) -- changes a slide's language
   segment: `set_slide_language()` renames `current.tex` plus every frozen
   `-vX-Y-Z.tex` sibling (`git mv` when tracked, else a plain move, same
   fallback `archive.py` already established), rewrites every
@@ -316,7 +320,7 @@ What matters when touching *this code*:
   slide" flow, and as **Housekeeping → Reestablish broken translation
   links** (a plain toolbar button until 2026-08-25) for running by hand
   any time.
-- [`translation_prompts.py`](translation_prompts.py) -- per-(model, source
+- [`translation_prompts.py`](../src/slidemage/translation_prompts.py) -- per-(model, source
   language, target language) prompt configuration for
   `alt_draft.OllamaTranslationBackend`, editable from **Settings →
   Preferences… → Translation prompts** (`qt_settings_dialog.py`). Different
@@ -340,7 +344,7 @@ What matters when touching *this code*:
   already-configured per-model prompts, found by re-verifying
   `get_effective_prompt()`'s resolution afterward rather than assuming the
   format change was safe (see `version.py`'s v3.2.0 history note).
-- [`app_settings.py`](app_settings.py) -- local SlideMage UI preferences
+- [`app_settings.py`](../src/slidemage/app_settings.py) -- local SlideMage UI preferences
   (currently just dark mode), a plain gitignored JSON file living inside
   `SlideMage/` itself rather than the Windows registry (2026-08-25,
   replacing a one-day-old `QSettings` design, direct instruction: "I want
@@ -350,7 +354,7 @@ What matters when touching *this code*:
   machine the way a file inside it does). Gitignored but *not*
   sync-ignored -- same category as `dist/SlideMage.exe`, carried across
   machines by the project folder's own cloud-sync client, not git.
-- [`qt_settings_dialog.py`](qt_settings_dialog.py) -- the **Settings →
+- [`qt_settings_dialog.py`](../src/slidemage/qt_settings_dialog.py) -- the **Settings →
   Preferences…** dialog (this app's first menu bar, added 2026-08-25). A
   General tab (dark mode, moved off the main toolbar) and a Translation
   prompts tab: a "Default prompt" group plus a per-(model, source, target)
@@ -359,7 +363,7 @@ What matters when touching *this code*:
   not-yet-installed model name can still be pre-configured). Close-only
   dialog -- every field saves immediately via its own Save button, there's
   no separate "Cancel without saving" state to reconcile.
-- [`transcript.py`](transcript.py) -- per-deck accessible transcripts,
+- [`transcript.py`](../src/slidemage/transcript.py) -- per-deck accessible transcripts,
   Markdown source and HTML delivery. Resolves deck versions exactly as the
   PDF compile does and keeps PDF slide numbering. Student versions only.
   A slide's `SlideNotes.summary` (alt_images.py), when set, renders as
@@ -376,7 +380,7 @@ What matters when touching *this code*:
   English even on a real German deck -- caught by generating a transcript
   against a deck temporarily set to `\decklanguage[de]` and confirming
   German output, not assumed from the regex alone.
-- [`slide_snapshot.py`](slide_snapshot.py) -- compile-time PNG previews.
+- [`slide_snapshot.py`](../src/slidemage/slide_snapshot.py) -- compile-time PNG previews.
   Every compile that touches a slide (a single-slide preview render, or a
   full-deck instructor compile) refreshes a pair of files named
   `<bare id>-<TemplateName>-<width>-<height>.png` (e.g.
@@ -384,7 +388,7 @@ What matters when touching *this code*:
   first since 2026-08-17, direct instruction, so the directory sorts and
   glob-matches by slide before institution), or, for a slide that's been
   migrated to the language-tagged id-slug convention (2026-08-24, see
-  [readme.md](../readme.md)'s "Multi-language (EN/DE) slides"), `<bare
+  [README.md](../README.md)'s "Multi-language (EN/DE) slides"), `<bare
   id>-<Lang>-<TemplateName>-<width>-<height>.png` -- `<Lang>` (`EN`/`DE`/
   `mult`) is resolved via `_own_language_for_bare_id()`, which reads it
   straight off that slide's own id-slug, not off whichever deck happens to
@@ -428,7 +432,7 @@ What matters when touching *this code*:
   a hover-tooltip/Preview-popup that could never find a real snapshot --
   caught by a test that exercised the actual conversion path instead of a
   hand-picked bare id, see ALT_TEXT_NOTES.md.
-- [`update_all_previews.py`](update_all_previews.py) -- the "Update
+- [`update_all_previews.py`](../src/slidemage/update_all_previews.py) -- the "Update
   previews" button's logic. Rewritten 2026-08-16 (direct instruction:
   "I forgot that each deck has a specific template linked to it... scan
   all decks that I have, make a list of slide-template combinations, and
@@ -471,7 +475,7 @@ What matters when touching *this code*:
   `_job_progress_texts` lookup finds nothing, since that dict is normally
   only populated by `_start_jobs()` for the real compile queue, which
   this ad-hoc job never goes through.
-- [`qt_slide_preview_popup.py`](qt_slide_preview_popup.py) -- the small
+- [`qt_slide_preview_popup.py`](../src/slidemage/qt_slide_preview_popup.py) -- the small
   in-app dialog that shows a slide_snapshot.py PNG, shared by
   `qt_deck_editor_tab.py`'s per-row "Preview" button and
   `qt_slide_source_tab.py`'s own "Preview" button. Deliberately dumb about
@@ -530,7 +534,7 @@ What matters when touching *this code*:
   linked to it... Remove the template dropdown again." Every deck already
   carries exactly one real template; there was nothing meaningful to
   switch between.)
-- [`deck_duplicate.py`](deck_duplicate.py) -- the Active decks table's own
+- [`deck_duplicate.py`](../src/slidemage/deck_duplicate.py) -- the Active decks table's own
   "Duplicate" button. A plain `shutil.copy2` under a new filename stem, no
   content rewriting needed (unlike `archive.py`'s `archive_deck()`): a
   deck's name is derived purely from its filename, never embedded in the
@@ -539,7 +543,7 @@ What matters when touching *this code*:
   in the UI before attempting anything, rather than parsing an exception
   message; `duplicate_deck()` re-checks it anyway rather than trusting the
   caller blindly.
-- [`slide_versioning.py`](slide_versioning.py) -- the automatic freeze-then-
+- [`slide_versioning.py`](../src/slidemage/slide_versioning.py) -- the automatic freeze-then-
   bump workflow behind `qt_slide_source_tab.py`'s own Save button for a
   slide's `current.tex` (2026-08-20, direct instruction), replacing manual
   `slide.archive()` as the everyday path. Pure logic, no Qt/file-path
@@ -562,12 +566,12 @@ What matters when touching *this code*:
   argument, never from a frozen file's content -- so frozen files
   themselves never need a `\setSlideVersion{}` of their own, and this
   module never writes one.
-- [`bibliography.py`](bibliography.py) -- a small BibTeX reader so citations
+- [`bibliography.py`](../src/slidemage/bibliography.py) -- a small BibTeX reader so citations
   in transcripts read as references rather than keys. Hand-written rather
   than a dependency because this project declares exactly one and the data
   is well behaved (89 entries, no `crossref`, no `@string`).
-- [`qt_transcript_tab.py`](qt_transcript_tab.py) -- the tab itself.
-- [`deck_scan.py`](deck_scan.py) -- finds every deck (`decks/*.tex` and
+- [`qt_transcript_tab.py`](../src/slidemage/qt_transcript_tab.py) -- the tab itself.
+- [`deck_scan.py`](../src/slidemage/deck_scan.py) -- finds every deck (`decks/*.tex` and
   `decks/archive/*.tex`) and parses it. A "deck" is any `.tex` file
   containing `\documentclass` -- the same heuristic README.md already uses
   for "top-level compilable file," which naturally excludes fragments like
@@ -576,7 +580,7 @@ What matters when touching *this code*:
   (`\addbibresource` present), and its ordered list of chapters (each
   `\section{Title}` match, sliced through to the next `\section{}`/
   `\end{document}`, with a slugified title).
-- [`compiler.py`](compiler.py) -- builds a wrapper `.tex` and runs it
+- [`compiler.py`](../src/slidemage/compiler.py) -- builds a wrapper `.tex` and runs it
   through `latexmk`, reusing `compile-all-versions.bat`'s own proven trick
   (a wrapper file that `\def`s `\deckversionoverride` then `\input{}`s the
   real deck -- latexmk's `-usepretex` strips braces/backslashes from its
@@ -592,14 +596,14 @@ What matters when touching *this code*:
   success, moves the PDF (+ `.synctex.gz`) into a new top-level `pdf/`
   folder and cleans `.build/<jobname>.*`; on failure, leaves the log for
   debugging and leaves no PDF in `pdf/`.
-- [`archive.py`](archive.py) -- moves `decks/<name>.tex` to
+- [`archive.py`](../src/slidemage/archive.py) -- moves `decks/<name>.tex` to
   `decks/archive/<name>.tex` (`git mv` when tracked, else a plain move) and
   patches its own path fallbacks for the extra directory depth. See
   "Archiving gotchas" below -- this module's docstring has the full story,
   but the short version is that the naive fix (extend the two-branch
   `\IfFileExists` bib check to three branches) silently breaks citations,
   and the actual fix is simpler than that.
-- [`unused_content.py`](unused_content.py) -- two independent scans: every
+- [`unused_content.py`](../src/slidemage/unused_content.py) -- two independent scans: every
   `media/` file actually `\includegraphics{}`-ed (or similar -- just looks
   for the literal `media/<name>` substring rather than enumerating every
   macro that can carry one) from any `slides/*.tex` file is "in use," and
@@ -610,9 +614,10 @@ What matters when touching *this code*:
   already inside its own `archive/` subfolder) gets moved into one. See
   "Archiving unused content" below for the two deliberate wrinkles (the
   extensionless-reference case and the source/derived-file convention).
-- [`gui.py`](gui.py) -- the Tkinter app. `DeckRow` owns one row's
-  checkboxes and turns them into a list of `CompileJob`s; `SlideMageApp`
-  owns the two tabs, the log queue, and the worker thread.
+- [`qt_gui.py`](../src/slidemage/qt_gui.py) -- the main window (the Tk
+  `gui.py` it replaced has been removed). `DeckRow`
+  ([`qt_deck_table.py`](../src/slidemage/qt_deck_table.py)) owns one row's
+  checkboxes and turns them into a list of `CompileJob`s.
 
 ## GUI framework: PySide6 (Qt), migrated from Tkinter/ttk
 
@@ -621,22 +626,11 @@ The app now runs on PySide6 (`qt_gui.py` and the other `qt_*.py` modules) --
 for the full history: why (permanent ttk limitations -- no per-tab colors,
 no native tab scrolling, dark mode only working via a hand-rolled
 widget-registration workaround), the file-by-file/widget-by-widget mapping,
-and the phased implementation log. The original Tk implementation (`gui.py`
-and the rest of the module map above) is left in place, untouched and still
-independently runnable, as a fallback/reference -- not wired into
-`__main__.py` anymore. Needs the machine-local venv at
-`%USERPROFILE%\SlideMaster\venv` (PySide6 isn't installed system-wide, and
-this venv is no longer project-root-relative -- see the header comment in
-[`../requirements.txt`](../requirements.txt) for why); `SlideMage.bat`
-auto-creates/auto-migrates it on first run and launches via its own
-`pythonw.exe`.
-
-As of 2026-08-11 the day-to-day way to run SlideMage is the compiled
-`dist/SlideMage.exe` (built via `build_slidemage_exe.bat`, see that
-script and [`PYSIDE6_MIGRATION.md`](PYSIDE6_MIGRATION.md) for why), not
-`SlideMage.bat` directly -- rebuild after any code change; the venv
-above is now purely a development-time thing (running `python -m
-SlideMage` or `python -m SlideMage.qt_gui` directly while iterating).
+and the phased implementation log. The original Tk implementation has
+since been removed. Install for development with `pip install -e ".[dev]"`
+from the repo root and run `slidemage` (or `python -m slidemage`); build
+the stand-alone executable with `pyinstaller packaging/slidemage.spec`
+(after `pip install -e ".[build]"`).
 
 ## Non-obvious things worth knowing before touching this code
 
