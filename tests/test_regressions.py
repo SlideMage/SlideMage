@@ -366,3 +366,50 @@ def test_draft_and_rewrite_prompts_are_customizable_and_persist(monkeypatch, tmp
     draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "")
     assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
     assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+
+
+def test_init_project_seeds_from_example_and_compiles(tmp_path):
+    """2026-09-23, direct report: picked an intentionally empty folder on
+    first startup, meant to become a brand-new project, and got only
+    "has no slide_ids.csv" with no way to actually create one there.
+    init_project() (wired into both cli.py's first-run picker and
+    qt_gui.py's "Open Project...") fixes that -- verifies the seeded copy
+    is not just a valid project by marker, but an actually compilable one."""
+    from slidemage import project
+
+    assert project.has_example_template()
+    target = tmp_path / "new_project"
+    project.init_project(target, copy_example=True)
+    assert project.is_project(target)
+    assert (target.parent / "latex").is_dir()
+    assert (target / "decks" / "test.tex").is_file()
+    # No build output copied in -- a new project compiles its own.
+    assert not (target / "decks" / "test.pdf").exists()
+    assert not (target / ".build").exists()
+    # The real logo asset (not build output) must still be there, or the
+    # copy can't actually compile.
+    assert (target / "schemes" / "scheme_uni_graz" /
+            "Logo_Uni-Graz_4c-cropped.pdf").is_file()
+
+
+def test_init_project_empty_fallback(tmp_path):
+    from slidemage import project
+
+    target = tmp_path / "blank_project"
+    project.init_project(target, copy_example=False)
+    assert project.is_project(target)
+    assert (target / "slide_ids.csv").read_bytes() == b'"id"\r\n'
+    for sub in ("slides", "decks", "media"):
+        assert (target / sub).is_dir()
+
+
+def test_init_project_never_overwrites_existing_latex_sibling(tmp_path):
+    """A sibling latex/ several projects might already share must never
+    be silently stomped by scaffolding a new project next to it."""
+    from slidemage import project
+
+    (tmp_path / "latex").mkdir()
+    (tmp_path / "latex" / "sentinel.txt").write_text("do not touch")
+    target = tmp_path / "new_project"
+    project.init_project(target, copy_example=True)
+    assert (tmp_path / "latex" / "sentinel.txt").read_text() == "do not touch"

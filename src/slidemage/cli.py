@@ -10,23 +10,7 @@ from . import project
 
 
 def _ask_for_project(parent_hint: Path | None):
-    from PySide6.QtWidgets import QFileDialog, QMessageBox
-
-    start = str(parent_hint or Path.home())
-    while True:
-        chosen = QFileDialog.getExistingDirectory(
-            None, f"Open a Slidemaster project (folder containing {project.MARKER})", start
-        )
-        if not chosen:
-            return None
-        path = Path(chosen)
-        if project.is_project(path):
-            return path.resolve()
-        QMessageBox.warning(
-            None, "Not a Slidemaster project",
-            f"{path} has no {project.MARKER}. Pick the project's root folder.",
-        )
-        start = chosen
+    return project.pick_or_create_project(None, parent_hint or Path.home())
 
 
 def main(argv: list[str] | None = None) -> None:

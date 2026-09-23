@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QCompleter,
-    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -438,26 +437,13 @@ class SlideMageWindow(QMainWindow):
                 "wait for it to finish first.",
             )
             return
-        start = str(PROJECT_ROOT.parent)
-        chosen_path: Optional[Path] = None
-        while True:
-            chosen = QFileDialog.getExistingDirectory(
-                self,
-                f"Open a Slidemaster project (folder containing {project.MARKER})",
-                start,
-            )
-            if not chosen:
-                return
-            candidate = Path(chosen)
-            if project.is_project(candidate):
-                chosen_path = candidate
-                break
-            QMessageBox.warning(
-                self, "Not a Slidemaster project",
-                f"{candidate} has no {project.MARKER}. Pick the project's "
-                "own root folder (the one slide_ids.csv lives in).",
-            )
-            start = chosen
+        # Shared with cli.py's own first-run picker (project.py's own
+        # pick_or_create_project()) -- also offers to create a new project
+        # (seeded with the demo content, if bundled) when the chosen
+        # folder isn't one yet, rather than only ever rejecting it.
+        chosen_path = project.pick_or_create_project(self, PROJECT_ROOT.parent)
+        if chosen_path is None:
+            return
         if chosen_path == PROJECT_ROOT:
             return  # already open -- nothing to restart for
         reply = QMessageBox.question(
