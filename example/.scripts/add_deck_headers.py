@@ -12,18 +12,19 @@ actual logic lives there, 2026-07-23, so SlideMage's GUI can share it
 too) -- see that module's own docstring for the full attribution/exclusion
 rules this script follows.
 """
+import os
 import sys
 from pathlib import Path
 
-# This script moved into .scripts/ (2026-09-18) but the SlideMage/ package
-# it imports from still lives at the project root -- when Python runs a
-# script directly, it adds only that script's own directory to sys.path,
-# not the invoking cwd, so the plain "from SlideMage..." import below would
-# otherwise fail to find the package once this file no longer sits next to
-# it.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from SlideMage.deck_headers import regenerate_headers
+PROJECT = Path(__file__).resolve().parent.parent
+# Operate on the project this script belongs to, whatever the cwd.
+os.environ.setdefault("SLIDEMASTER_PROJECT", str(PROJECT))
+try:
+    from slidemage.deck_headers import regenerate_headers
+except ImportError:
+    # Not pip-installed: fall back to the package in this repo's src/.
+    sys.path.insert(0, str(PROJECT.parent / "src"))
+    from slidemage.deck_headers import regenerate_headers
 
 
 def main() -> None:

@@ -2131,17 +2131,13 @@
 	% \directlua argument first, so every "%" in a Lua string pattern
 	% silently comments out the rest of its line, and the first version of
 	% this failed exactly that way). This loader snippet is deliberately
-	% free of "%" and "#" so it is safe to keep inline. Same two candidate
-	% paths as everything else here, for compiling from the project root or
-	% from inside decks/.
+	% free of "%" and "#" so it is safe to keep inline. Found via kpathsea
+	% (TEXINPUTS), since it lives in latex/, outside the project.
 	\directlua{
-		for _, path in ipairs({"Slidemaster_alt.lua", "../Slidemaster_alt.lua"}) do
-			local handle = io.open(path, "r")
-			if handle then
-				handle:close()
-				dofile(path)
-				break
-			end
+		local path = kpse.find_file("Slidemaster_alt.lua", "lua")
+			or kpse.find_file("Slidemaster_alt.lua", "tex")
+		if path then
+			dofile(path)
 		end
 	}
 

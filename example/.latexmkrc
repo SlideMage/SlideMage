@@ -62,31 +62,24 @@ use File::Basename 'dirname';
 $do_cd = 1;
 $aux_dir = dirname($abs_rc) . '/.build';
 
-# beamerthemegotham.sty and friends live at the project root, right next to
-# this file. On MiKTeX that's enough by itself -- its package search also
-# covers the current working directory's own tree without help. TeX Live's
-# kpathsea doesn't do that: once $do_cd above moves into decks/ for a
-# decks/*.tex compile, `\usetheme{gotham}` fails with "File
-# `beamerthemegotham.sty' not found" because the theme's one directory up
-# is simply not on TeX Live's search path (confirmed directly). Prepending
-# it to TEXINPUTS fixes that on TeX Live. Gated to non-Windows ($^O ne
-# 'MSWin32', i.e. not MiKTeX): MiKTeX doesn't need it (see above), and
-# kpathsea's TEXINPUTS separator is ':' on Unix but ';' on Windows, so an
-# unconditional unix-style assignment would silently break MiKTeX's own
-# search path rather than just being a no-op there.
-$ENV{'TEXINPUTS'} = dirname($abs_rc) . ':' . ($ENV{'TEXINPUTS'} // '')
-	unless $^O eq 'MSWin32';
+# Search paths. The Slidemaster framework (beamerthemegotham.sty, the base
+# preamble, Slidemaster_alt.lua) lives outside the project, in the repo's
+# latex/ folder -- or wherever $SLIDEMASTER_LATEX points, for a project kept
+# outside this repo. The project root itself also goes on the path so that
+# `\usetheme`/`\input{Slidemaster_preamble_uni-graz}` resolve after $do_cd
+# moves into decks/ (TeX Live's kpathsea doesn't search parent folders).
+# kpathsea's separator is ';' on Windows; the trailing separator keeps the
+# distribution's default search path appended.
+my $slidemaster_sep = $^O eq 'MSWin32' ? ';' : ':';
+my $slidemaster_latex = $ENV{'SLIDEMASTER_LATEX'} // (dirname($abs_rc) . '/../latex');
+$ENV{'TEXINPUTS'} = join($slidemaster_sep, dirname($abs_rc), $slidemaster_latex,
+	$ENV{'TEXINPUTS'} // '');
 
-# Same reasoning as TEXINPUTS above, but for Slidemaster.bib: biber resolves
-# .bib files via BIBINPUTS, not TEXINPUTS, so a deck's
-# \IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{...}
-# fallback (see decks/test.tex) can find the file via the TEXINPUTS fix
-# above (kpathsea's generic file search checks it too) and take the
-# bare-filename branch, while biber -- using BIBINPUTS alone -- then fails
-# to find that same file, vetoing the biber run entirely and leaving
-# \fullcite{} calls unresolved. Confirmed directly: without this, a
-# decks/*.tex compile logs "Bib file(s) not found in search path:
-# Slidemaster.bib" and the resulting broken \fullcite{} expansion cascades
-# into spurious "missing \item" errors on unrelated later slides.
+# biber finds .bib files via BIBINPUTS, not TEXINPUTS: without this, a
+# decks/*.tex compile that took the bare-filename branch of the deck's
+# \IfFileExists{Slidemaster.bib} fallback logs "Bib file(s) not found in
+# search path", leaving \fullcite{} unresolved (which then cascades into
+# spurious "missing \item" errors). Left off on Windows, where MiKTeX
+# compiles never needed it.
 $ENV{'BIBINPUTS'} = dirname($abs_rc) . ':' . ($ENV{'BIBINPUTS'} // '')
 	unless $^O eq 'MSWin32';

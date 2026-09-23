@@ -27,18 +27,18 @@
 # deck PDFs are a different case -- those regenerate on every compile and
 # would bloat history for no benefit, so they're excluded specifically
 # below instead of via a rule that also caught real assets.
-decks/*.pdf
-pdf/*.pdf
+**/decks/*.pdf
+**/pdf/*.pdf
 # Same reasoning, one export step further downstream (pptx_export.py,
 # 2026-08-27): a deck's own "Export PPTX" button regenerates this from a
 # fresh compile too, every time it's clicked.
-pdf/*.pptx
+**/pdf/*.pptx
 # decks/render/: baseline PDFs for a deck's front-to-back final-check
 # render/diff pass (see decks/render/compare_render.py's own docstring) --
 # same regenerate-on-every-compile reasoning as decks/*.pdf above, just one
 # directory deeper than that glob reaches. The .py tooling alongside them
 # stays tracked as normal (not covered by this pattern).
-decks/render/*.pdf
+**/decks/render/*.pdf
 
 ## Source PowerPoint decks (large binaries, not meant to be tracked):
 *.pptx
@@ -331,7 +331,7 @@ dist/
 ## SlideMage's slide-source editor: a local undo net (full timestamped
 ## history, kept per slide file) for its own saves -- not meant to be
 ## committed (2026-07-23):
-slides/.backups/
+**/slides/.backups/
 
 ## RStudio per-user session state (R_Slidemaster/), untracked 2026-07-27,
 ## direct instruction. `.Rproj.user/` is RStudio's own scratch state --
@@ -359,14 +359,14 @@ alt-text-bakeoff.md
 # not a build artifact worth keeping in history. Moved under previews/
 # 2026-09-18 (was a project-root folder before that), then under .previews/
 # the same day (dot-prefixed: nothing the user needs to interact with).
-.previews/slide_previews/
+**/.previews/slide_previews/
 
 # Rendered PNGs of .pdf media (media_render.py, 2026-08-26) -- same
 # regeneratable-cache reasoning as slide_previews/ above, for the Images
 # tab's own preview and Ollama drafting, both of which need a raster image
 # a .pdf media file itself isn't. Moved under previews/ 2026-09-18, then
 # .previews/ the same day (was a project-root folder before that).
-.previews/pdf_render_cache/
+**/.previews/pdf_render_cache/
 
 # Rendered/cropped PNGs of \tikzillustration{} bodies (tikz_render.py) --
 # same regeneratable-cache reasoning again: entirely derived, on demand,
@@ -374,16 +374,16 @@ alt-text-bakeoff.md
 # Ollama drafting of a hand-drawn diagram that has no media/ file at all.
 # Moved under previews/ 2026-09-18, then .previews/ the same day (was a
 # project-root folder before that).
-.previews/tikz_illustration_previews/
+**/.previews/tikz_illustration_previews/
 
 # SlideMage's own local UI preferences (app_settings.py -- currently
 # just dark mode) -- a personal taste, not project content worth
 # version-controlling/diffing on every toggle, same category as
 # .claude/settings.local.json above. Still a plain file physically inside
-# SlideMage/ (not the Windows registry), so the folder's own cloud-sync
+# the project's .slidemage/ (not the Windows registry), so the folder's own cloud-sync
 # client -- not git -- carries it across machines; see dist/ above for the
 # identical git-ignored-but-not-sync-ignored precedent.
-SlideMage/app_settings.json
+**/.slidemage/app_settings.json
 
 ## Scratch folder for source PDFs/pptx used while converting slides (large,
 ## machine-local, never meant to be committed).

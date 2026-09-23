@@ -13,16 +13,13 @@ use File::Basename 'dirname';
 $do_cd = 1;
 $aux_dir = dirname($abs_rc) . '/../.build';
 
-# Same TEXINPUTS fix as the project root's .latexmkrc -- see that file's own
-# comment for why TeX Live needs this, MiKTeX doesn't, and it's gated to
-# non-Windows. '/../' (not '/'): from decks/, the project root -- and
-# beamerthemegotham.sty -- is one directory up, same as $aux_dir above.
-$ENV{'TEXINPUTS'} = dirname($abs_rc) . '/../:' . ($ENV{'TEXINPUTS'} // '')
-	unless $^O eq 'MSWin32';
+# Same search paths as the project root's .latexmkrc -- see that file's own
+# comment. '/../' (not '/'): from decks/, the project root is one directory
+# up, and the repo's latex/ framework folder two.
+my $slidemaster_sep = $^O eq 'MSWin32' ? ';' : ':';
+my $slidemaster_latex = $ENV{'SLIDEMASTER_LATEX'} // (dirname($abs_rc) . '/../../latex');
+$ENV{'TEXINPUTS'} = join($slidemaster_sep, dirname($abs_rc) . '/..', $slidemaster_latex,
+	$ENV{'TEXINPUTS'} // '');
 
-# Same BIBINPUTS fix as the project root's .latexmkrc -- see that file's own
-# comment for why biber needs this separately from TEXINPUTS above. '/../'
-# (not '/'): from decks/, the project root -- and Slidemaster.bib -- is one
-# directory up, same as TEXINPUTS above.
 $ENV{'BIBINPUTS'} = dirname($abs_rc) . '/../:' . ($ENV{'BIBINPUTS'} // '')
 	unless $^O eq 'MSWin32';
