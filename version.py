@@ -1620,6 +1620,15 @@ plain enumerate numerals correctly on its own). Both combo handlers
 now share one _apply_insert_action(label, commands) dispatch method
 instead of _on_command_selected duplicating the kind/payload branching
 a second time for the new combo.
+
+v3.32.1 (2026-09-24, direct instruction): the smart-Enter \item-continuation in the slide/deck source editor now repeats the current
+line's own bracketed label (e.g. "\item[\gothamBulletEllipsis]"),
+instead of always falling back to a bare "\item" -- LatexPlainTextEdit
+._ITEM_LINE_RE gained an optional `(\[[^\]]*\])?` capture group (kept
+the existing `\b` right after "item" so "\itemsep{...}" etc. still
+correctly don't match), and _smart_return reuses that captured label
+verbatim when inserting the next line. Patch bump: an editor-behavior
+fix, not a new UI element.
 """
 from __future__ import annotations
 
@@ -1630,7 +1639,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.32.0"
+VERSION_NUMBER = "v3.32.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

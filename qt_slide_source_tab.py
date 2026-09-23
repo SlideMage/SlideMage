@@ -394,7 +394,11 @@ class LatexPlainTextEdit(QPlainTextEdit):
     # after the \begin{ENV} trigger above finds nothing, so a line like
     # "\item \begin{itemize}" (an item that itself opens a nested list)
     # still gets the more specific begin/end handling, not this one.
-    _ITEM_LINE_RE = re.compile(r"^\\item\b")
+    # Captures an optional bracketed label (2026-09-24, direct
+    # instruction: continuing a "\item[\gothamBulletEllipsis]" line
+    # produced a bare "\item " instead of repeating that same label) --
+    # see _smart_return below for how the captured label is reused.
+    _ITEM_LINE_RE = re.compile(r"^\\item\b(\[[^\]]*\])?")
 
     def __init__(self, theme=None) -> None:
         super().__init__()
@@ -491,10 +495,17 @@ class LatexPlainTextEdit(QPlainTextEdit):
                 self.setTextCursor(cursor)
                 return True
 
-            if self._ITEM_LINE_RE.match(content):
+            item_match = self._ITEM_LINE_RE.match(content)
+            if item_match:
                 # Same indentation as the \item line itself, not one level
                 # deeper -- sibling items in one list, not nested content.
-                cursor.insertText(f"\n{indent}\\item ")
+                # Repeats the current item's own bracketed label, if any
+                # (e.g. "\item[\gothamBulletEllipsis]") rather than always
+                # falling back to a bare "\item" -- a label the editor
+                # started typing with is presumably the label every
+                # sibling item in that same list wants too.
+                label = item_match.group(1) or ""
+                cursor.insertText(f"\n{indent}\\item{label} ")
                 self.setTextCursor(cursor)
                 return True
 
