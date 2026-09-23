@@ -40,7 +40,7 @@ from typing import Any
 
 from .deck_scan import PROJECT_ROOT
 
-STORE_PATH = PROJECT_ROOT / "SlideMage" / "app_settings.json"
+STORE_PATH = PROJECT_ROOT / ".slidemage" / "app_settings.json"
 
 
 def load() -> dict[str, Any]:
@@ -53,6 +53,7 @@ def load() -> dict[str, Any]:
 
 
 def save(settings: dict[str, Any]) -> None:
+    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STORE_PATH.write_text(
         json.dumps(settings, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",

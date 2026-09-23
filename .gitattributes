@@ -60,3 +60,6 @@ NAMESPACE    text eol=crlf
 *.docx       binary
 *.lnk        binary
 *.synctex.gz binary
+*.toml       text eol=lf
+*.yml        text eol=lf
+*.spec       text eol=lf

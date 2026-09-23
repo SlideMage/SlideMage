@@ -60,7 +60,7 @@ from .deck_scan import PROJECT_ROOT
 # problem (walks up from sys.executable's own location instead of
 # __file__ when frozen), so this now reuses that already-correct answer
 # instead of repeating the same mistake a second time.
-STORE_PATH = PROJECT_ROOT / "SlideMage" / "translation_prompts.json"
+STORE_PATH = PROJECT_ROOT / ".slidemage" / "translation_prompts.json"
 
 # Nested-dict shape for the "models" section: {model: {source_lang:
 # {target_lang: PromptConfig}}}.
@@ -146,6 +146,7 @@ def _save(default: Optional[PromptConfig], prompts: ModelPromptStore) -> None:
         for model, by_source in prompts.items()
         if by_source
     }
+    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STORE_PATH.write_text(
         json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",

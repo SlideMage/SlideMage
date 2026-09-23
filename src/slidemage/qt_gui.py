@@ -1,7 +1,7 @@
 """PySide6 rewrite of SlideMage's GUI -- see PYSIDE6_MIGRATION.md for the
 full migration plan. Not wired into __main__.py yet -- run directly:
 
-    .venv\\Scripts\\python.exe -m SlideMage.qt_gui
+    .venv\\Scripts\\python.exe -m slidemage
 
 Phase 4: the deck table (qt_deck_table.py) wired into the shell built in
 Phase 3, plus compile-job threading/signal wiring and the remaining main-
@@ -1457,7 +1457,7 @@ def _close_splash() -> None:
     .spec's own Splash(), covering the one-file build's self-extraction
     delay) -- `pyi_splash` only exists inside a frozen exe actually built
     with a Splash resource, so this is a no-op (not an error) running
-    unfrozen via `python -m SlideMage`."""
+    unfrozen via `python -m slidemage`."""
     try:
         import pyi_splash
     except ImportError:
@@ -1466,7 +1466,7 @@ def _close_splash() -> None:
 
 
 def main() -> None:
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(ICON_PATH)))
     theme = ThemeManager()
     theme.apply()

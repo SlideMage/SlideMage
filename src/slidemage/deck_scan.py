@@ -8,33 +8,15 @@ decks/test-slides.tex (no \\documentclass of its own).
 from __future__ import annotations
 
 import re
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
-def _find_project_root() -> Path:
-    # Not frozen: SlideMage/ sits directly inside the real project root,
-    # same as always. Frozen (PyInstaller): __file__ points into a bundle/
-    # temp-extraction dir, not the real, live project tree the compiled exe
-    # is meant to operate on (decks/slides/media/etc, edited independently
-    # of whatever build the exe happens to be) -- start from the exe's own
-    # location instead and walk upward looking for slide_ids.csv, a marker
-    # unique to this project's real root, so the exe keeps working
-    # regardless of exactly where it's placed (dist/, project root, ...) as
-    # long as it stays somewhere inside/near the actual project tree.
-    start = (
-        Path(sys.executable).resolve().parent
-        if getattr(sys, "frozen", False)
-        else Path(__file__).resolve().parent.parent
-    )
-    for candidate in (start, *start.parents):
-        if (candidate / "slide_ids.csv").exists():
-            return candidate
-    return start
+from . import project
 
 
-PROJECT_ROOT = _find_project_root()
+# cli.py settles the project and exports it via $SLIDEMASTER_PROJECT before
+# this module is imported; the cwd fallback only covers direct imports.
+PROJECT_ROOT = project.discover() or Path.cwd()
 DECKS_DIR = PROJECT_ROOT / "decks"
 ARCHIVE_DIR = DECKS_DIR / "archive"
 
