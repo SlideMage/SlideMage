@@ -255,11 +255,25 @@ INSERT_COMMANDS = [
     ("\\only<2->{...}", "wrap_macro", "only<2->"),
     ("\\tallitem", "literal", None),
     ("\\tallitemnobullet", "literal", None),
-    ("Bulleted list", "wrap_env", "itemize"),
-    ("Bulleted list (ellipses)", "wrap_env_ellipsis", "itemize"),
     ("\\multilingualtext{EN}{DE}", "wrap_multilingual", "multilingualtext"),
 ]
 COMMAND_COMBO_PLACEHOLDER = "Insert command..."
+
+# The three list flavors get their own dropdown (2026-09-24, direct
+# instruction), left of the general "Insert command..." one above --
+# they used to live in INSERT_COMMANDS itself ("Bulleted list"/"Bulleted
+# list (ellipses)"), but a third ("Numbered") made a dedicated combo
+# clearer than three more entries buried in the general list. Same
+# (label, kind, payload) shape and the same "wrap_env"/"wrap_env_ellipsis"
+# kinds as above (see that dict's own comment for what each kind does) --
+# dispatched through the same _apply_insert_action, just from a second
+# combo/handler pair.
+INSERT_LIST_COMMANDS = [
+    ("Regular bullet", "wrap_env", "itemize"),
+    ("Ellipsis", "wrap_env_ellipsis", "itemize"),
+    ("Numbered", "wrap_env", "enumerate"),
+]
+LIST_COMBO_PLACEHOLDER = "Insert list..."
 
 
 class LatexSyntaxHighlighter(QSyntaxHighlighter):
@@ -892,6 +906,13 @@ class SlideSourceTab(QWidget):
         self.color_combo.activated.connect(self._on_color_selected)
         format_toolbar.addWidget(self.color_combo)
 
+        self.list_combo = QComboBox()
+        self.list_combo.addItems(
+            [LIST_COMBO_PLACEHOLDER] + [label for label, _, _ in INSERT_LIST_COMMANDS]
+        )
+        self.list_combo.activated.connect(self._on_list_selected)
+        format_toolbar.addWidget(self.list_combo)
+
         self.command_combo = QComboBox()
         self.command_combo.addItems(
             [COMMAND_COMBO_PLACEHOLDER] + [label for label, _, _ in INSERT_COMMANDS]
@@ -1203,7 +1224,22 @@ class SlideSourceTab(QWidget):
             return
         label = self.command_combo.itemText(index)
         self.command_combo.setCurrentIndex(0)
-        lookup = {lbl: (kind, payload) for lbl, kind, payload in INSERT_COMMANDS}
+        self._apply_insert_action(label, INSERT_COMMANDS)
+
+    def _on_list_selected(self, index: int) -> None:
+        if index <= 0:
+            return
+        label = self.list_combo.itemText(index)
+        self.list_combo.setCurrentIndex(0)
+        self._apply_insert_action(label, INSERT_LIST_COMMANDS)
+
+    def _apply_insert_action(self, label: str, commands: list[tuple[str, str, Optional[str]]]) -> None:
+        """Shared (kind, payload) dispatch behind both combo handlers
+        above -- the "Insert list..." combo (INSERT_LIST_COMMANDS) and the
+        general "Insert command..." one (INSERT_COMMANDS) draw from the
+        same small set of `kind`s (see INSERT_COMMANDS' own comment), so
+        there is nothing handler-specific left to duplicate between them."""
+        lookup = {lbl: (kind, payload) for lbl, kind, payload in commands}
         if label not in lookup:
             return
         kind, payload = lookup[label]

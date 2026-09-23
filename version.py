@@ -1609,6 +1609,17 @@ in-text ellipses" reminder comment (the hand-written pattern already
 used on several slides, e.g. iqe/quy/emv). _wrap_environment() gained
 optional item_prefix/leading_comment arguments to share the mechanic
 rather than duplicating it.
+
+v3.32.0 (2026-09-24, direct instruction): the two list-flavor entries just added to "Insert command..." in v3.31.0 (Bulleted list/Bulleted
+list (ellipses)) moved out into their own dedicated "Insert list..."
+combo, left of "Insert command...", alongside a new third option,
+"Numbered" (plain \begin{enumerate}, same wrap_env mechanic as
+"Regular bullet" -- enumerate needs no special item_prefix/leading_
+comment, unlike the ellipsis flavor, since this theme already aligns
+plain enumerate numerals correctly on its own). Both combo handlers
+now share one _apply_insert_action(label, commands) dispatch method
+instead of _on_command_selected duplicating the kind/payload branching
+a second time for the new combo.
 """
 from __future__ import annotations
 
@@ -1619,7 +1630,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.31.0"
+VERSION_NUMBER = "v3.32.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
