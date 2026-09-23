@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: SlideMage-linux
+            binary_path: dist/SlideMage
+          - os: windows-latest
+            asset_name: SlideMage-windows
+            binary_path: dist/SlideMage.exe
+          - os: macos-latest
+            asset_name: SlideMage-macos
+            binary_path: dist/SlideMage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - run: pip install -e ".[build]"
+      - run: pyinstaller packaging/slidemage.spec
+
+      # PyInstaller produces one file (dist/SlideMage[.exe]) -- zipped so
+      # the executable bit (Linux/macOS) survives the upload/download
+      # round trip, and so every platform's asset has the same shape.
+      # `zip` isn't reliably on PATH on windows-latest, so this branches
+      # by OS rather than assuming a shared shell tool.
+      - name: Package (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p out
+          zip -j "out/${{ matrix.asset_name }}.zip" "${{ matrix.binary_path }}"
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path "${{ matrix.binary_path }}" -DestinationPath "out/${{ matrix.asset_name }}.zip"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/${{ matrix.asset_name }}.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
