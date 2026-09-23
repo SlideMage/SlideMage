@@ -230,6 +230,18 @@ def _contrasting_text_color(hex_color: str) -> QColor:
 #                 between \begin{payload}/\end{payload} lines, or inserts
 #                 an empty one with the cursor on its own line in between,
 #                 via _wrap_environment.
+#   "wrap_env_ellipsis" -- same mechanic as "wrap_env" (payload is again
+#                           the environment name), except each item's
+#                           label is \item[\gothamBulletEllipsis] instead
+#                           of a bare \item, and the \begin{} line is
+#                           preceded by a "%Use \ldots for in-text
+#                           ellipses" comment reminding the editor of the
+#                           companion in-text convention -- see
+#                           slides/iqe-EN-Literature-Concise-current.tex
+#                           for a hand-written example of the same
+#                           pattern this generates. Also via
+#                           _wrap_environment, just with its
+#                           item_prefix/leading_comment arguments set.
 #   "wrap_multilingual" -- payload is a two-argument macro name; with a
 #                           selection, wraps it into the *first* braces
 #                           (assumed English, matching \multilingualtext's
@@ -243,7 +255,8 @@ INSERT_COMMANDS = [
     ("\\only<2->{...}", "wrap_macro", "only<2->"),
     ("\\tallitem", "literal", None),
     ("\\tallitemnobullet", "literal", None),
-    ("\\begin{itemize}...\\end{itemize}", "wrap_env", "itemize"),
+    ("Bulleted list", "wrap_env", "itemize"),
+    ("Bulleted list (ellipses)", "wrap_env_ellipsis", "itemize"),
     ("\\multilingualtext{EN}{DE}", "wrap_multilingual", "multilingualtext"),
 ]
 COMMAND_COMBO_PLACEHOLDER = "Insert command..."
@@ -1082,7 +1095,9 @@ class SlideSourceTab(QWidget):
         start_cursor.setPosition(cursor.selectionStart())
         return re.match(r"[ \t]*", start_cursor.block().text()).group(0)
 
-    def _wrap_environment(self, env: str) -> None:
+    def _wrap_environment(
+        self, env: str, *, item_prefix: str = "\\item ", leading_comment: Optional[str] = None
+    ) -> None:
         """Same idea as _wrap_or_insert, for a \\begin{env}/\\end{env} pair
         instead of a single \\macro{...} -- selection goes on its own line
         between them; with no selection, an empty line is left in between
@@ -1098,37 +1113,50 @@ class SlideSourceTab(QWidget):
         the smart-Enter completion above already treats specially) get
         extra care over a bare \\begin/\\end pair (2026-09-22, direct
         instruction): with no selection, the body isn't left blank -- it's
-        pre-seeded with "\\item ", cursor right after it, exactly what
-        pressing Enter right after a freshly-typed \\begin{itemize} already
-        does (_smart_return above), since an empty list is never actually
-        useful to land in. With a selection spanning one or more lines,
-        each non-blank line becomes its own "\\item <that line's own
-        stripped text>" line inside the new block, instead of the
-        selection's raw text (with whatever newlines/indentation it
-        already had) landing verbatim between \\begin/\\end -- turning
-        already-typed lines into a list is the whole reason to select more
-        than one before clicking this. A selection that turns out to be
-        only blank lines still gets one empty "\\item " rather than a
-        body-less list, same fallback as the no-selection case."""
+        pre-seeded with `item_prefix` (default "\\item "), cursor right
+        after it, exactly what pressing Enter right after a freshly-typed
+        \\begin{itemize} already does (_smart_return above), since an
+        empty list is never actually useful to land in. With a selection
+        spanning one or more lines, each non-blank line becomes its own
+        "<item_prefix><that line's own stripped text>" line inside the new
+        block, instead of the selection's raw text (with whatever
+        newlines/indentation it already had) landing verbatim between
+        \\begin/\\end -- turning already-typed lines into a list is the
+        whole reason to select more than one before clicking this. A
+        selection that turns out to be only blank lines still gets one
+        empty item rather than a body-less list, same fallback as the
+        no-selection case.
+
+        `item_prefix`/`leading_comment` (2026-09-24, direct instruction):
+        the "Bulleted list (ellipses)" insert-command reuses this same
+        mechanic with item_prefix="\\item[\\gothamBulletEllipsis] " and a
+        leading_comment reminding the editor of the companion in-text
+        \\ldots convention -- see INSERT_COMMANDS' own "wrap_env_ellipsis"
+        comment for the full rationale. `leading_comment`, when given, is
+        its own line (at the same indentation \\begin{env} itself gets)
+        placed immediately before \\begin{env} -- inserted unconditionally
+        on every use of this option, selection or not, same as
+        \\begin{env} itself."""
         cursor = self.widget.textCursor()
         indent = self._line_indent(cursor)
         is_list_env = env in self.widget._LIST_ENVIRONMENTS
+        comment_line = f"{leading_comment}\n{indent}" if leading_comment else ""
         cursor.beginEditBlock()
         if not cursor.hasSelection():
-            inner = f"{indent}\t\\item " if is_list_env else f"{indent}\t"
-            before = f"\\begin{{{env}}}\n{inner}"
+            inner = f"{indent}\t{item_prefix}" if is_list_env else f"{indent}\t"
+            before = f"{comment_line}\\begin{{{env}}}\n{inner}"
             after = f"\n{indent}\\end{{{env}}}"
             pos = cursor.position()
             cursor.insertText(before + after)
             cursor.setPosition(pos + len(before))
         elif is_list_env:
             lines = self._selected_text(cursor).split("\n")
-            items = [f"{indent}\t\\item {line.strip()}" for line in lines if line.strip()]
-            body = "\n".join(items) if items else f"{indent}\t\\item "
-            cursor.insertText(f"\\begin{{{env}}}\n{body}\n{indent}\\end{{{env}}}")
+            items = [f"{indent}\t{item_prefix}{line.strip()}" for line in lines if line.strip()]
+            body = "\n".join(items) if items else f"{indent}\t{item_prefix}"
+            cursor.insertText(f"{comment_line}\\begin{{{env}}}\n{body}\n{indent}\\end{{{env}}}")
         else:
             selected = self._selected_text(cursor)
-            cursor.insertText(f"\\begin{{{env}}}\n{selected}\n{indent}\\end{{{env}}}")
+            cursor.insertText(f"{comment_line}\\begin{{{env}}}\n{selected}\n{indent}\\end{{{env}}}")
         cursor.endEditBlock()
         self.widget.setTextCursor(cursor)
         self.widget.setFocus()
@@ -1185,6 +1213,12 @@ class SlideSourceTab(QWidget):
             self._wrap_or_insert(payload)
         elif kind == "wrap_env":
             self._wrap_environment(payload)
+        elif kind == "wrap_env_ellipsis":
+            self._wrap_environment(
+                payload,
+                item_prefix="\\item[\\gothamBulletEllipsis] ",
+                leading_comment="%Use \\ldots for in-text ellipses",
+            )
         elif kind == "wrap_multilingual":
             self._insert_multilingual(payload)
 
