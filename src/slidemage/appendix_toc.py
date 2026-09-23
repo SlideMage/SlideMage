@@ -87,6 +87,12 @@ def _sections(deck: Deck) -> list[tuple[int, str, list[SlideCall]]]:
     for c in deck_editor.parse_slide_calls(deck):
         if not _visible_for_instructor(c):
             continue
+        if deck_editor.is_commented_out(deck.text, c):
+            # A disabled "% \slide{abc-EN-Old}" is not a real slide in
+            # this compile -- included anyway, it would produce a
+            # thumbnail cell whose \hyperlink{} target doesn't exist in
+            # the PDF (2026-09-23 review finding).
+            continue
         if c.macro == "slidestep":
             if c.id in step_ids:
                 continue

@@ -21,6 +21,11 @@ DECKS_DIR = PROJECT_ROOT / "decks"
 ARCHIVE_DIR = DECKS_DIR / "archive"
 
 SECTION_RE = re.compile(r"\\section\{([^}]*)\}")
+# An unescaped "%" starts a comment running to end of line; "\\%" (a literal
+# percent sign) does not -- same convention as qt_slide_source_tab.py's own
+# syntax highlighter and unused_content.py's own scan, both already keyed on
+# this exact pattern.
+COMMENT_RE = re.compile(r"(?<!\\)%.*")
 DOCUMENT_BEGIN_RE = re.compile(r"\\begin\{document\}")
 DOCUMENT_END_RE = re.compile(r"\\end\{document\}")
 DOCUMENTCLASS_RE = re.compile(r"\\documentclass")
@@ -138,7 +143,22 @@ def _parse_chapters(text: str) -> list[Chapter]:
     doc_end_match = DOCUMENT_END_RE.search(text)
     doc_end = doc_end_match.start() if doc_end_match else len(text)
 
-    matches = list(SECTION_RE.finditer(text))
+    # A commented-out "% \section{...}" is still a SECTION_RE match on the
+    # raw text -- excluded here, or a disabled chapter divider would still
+    # produce a live chapter (a per-chapter compile of it, a wrong slide-
+    # to-chapter assignment in the deck editor, a phantom entry in the
+    # appendix agenda; 2026-09-23 review finding). Checked per-match
+    # against just that match's own line (LaTeX "%" comments never span
+    # lines), not a single whole-text mask, so chapter.start/.end below
+    # stay real offsets into the original `text` -- Deck.chapter_text()
+    # slices `self.text[chapter.start:chapter.end]` directly, so a chapter
+    # found by scanning some *stripped* copy of the text would report the
+    # wrong span here.
+    def _is_commented(pos: int) -> bool:
+        line_start = text.rfind("\n", 0, pos) + 1
+        return bool(COMMENT_RE.search(text, line_start, pos))
+
+    matches = [m for m in SECTION_RE.finditer(text) if not _is_commented(m.start())]
     chapters: list[Chapter] = []
     for i, m in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else doc_end

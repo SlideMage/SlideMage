@@ -1189,6 +1189,15 @@ class TranslationResult:
     model: str = ""
     elapsed_s: float = 0.0
     error: str | None = None
+    # alt_images.en_text_hash() of the *specific* ImageEntry this result was
+    # actually translated from -- not necessarily the one live in the store
+    # by the time apply_one_translation() gets around to writing this
+    # result, since a long "Translate all" batch snapshots its whole queue
+    # once up front (run_translation_batch()) and can reach any one image
+    # long after the user has since edited its English text. Empty for a
+    # TranslationResult built directly (TranslationResult(error=...) on a
+    # request exception, never actually translated from anything).
+    source_hash: str = ""
 
     @property
     def ok(self) -> bool:
@@ -1292,6 +1301,11 @@ class OllamaTranslationBackend:
 
     def translate(self, entry: "alt_images.ImageEntry") -> TranslationResult:
         started = time.monotonic()
+        # Captured before translating, from the exact `entry` this call was
+        # given -- apply_one_translation() compares it against the store's
+        # *current* hash at write time, so a result produced from an entry
+        # that's since been edited is never mistaken for one still in sync.
+        source_hash = alt_images.en_text_hash(entry)
         short_de, short_err = self._translate_one(entry.short)
         long_de, long_err = self._translate_one(entry.long)
         takeaway_de, takeaway_err = self._translate_one(entry.takeaway_default)
@@ -1308,6 +1322,7 @@ class OllamaTranslationBackend:
             short_de=short_de, long_de=long_de, takeaway_de=takeaway_de,
             model=self.label, elapsed_s=elapsed,
             error="; ".join(errors) if errors else None,
+            source_hash=source_hash,
         )
 
 
@@ -1330,7 +1345,18 @@ def apply_one_translation(image: str, result: TranslationResult, model_label: st
         # The queue this came from was built against some earlier snapshot
         # of the store; re-check freshness now, the same "never trust the
         # queue's own age" caution apply_one_draft() already applies to its
-        # reviewed-status check.
+        # reviewed-status check. Compared against result.source_hash (the
+        # hash of the *specific* English text this translation was
+        # actually produced from), not blindly re-stamped from current_hash
+        # -- a long "Translate all" batch snapshots its whole queue once up
+        # front (run_translation_batch()), so this image's English text can
+        # have been edited in the meantime; writing current_hash there
+        # unconditionally used to make translation_state() report the
+        # resulting (now-mismatched) German as "in sync" simply because it
+        # was made to match itself, not because it actually still matched
+        # the English it claims to translate (2026-09-23 review finding).
+        if result.source_hash and result.source_hash != current_hash:
+            return False
         entry.short_de = result.short_de
         entry.long_de = result.long_de
         if result.takeaway_de:

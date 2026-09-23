@@ -1491,7 +1491,24 @@ class SlideSourceTab(QWidget):
                 else slide_versioning.strip_marker(new_text)
             )
 
-        backup_path = slide_source.save_slide_source(self.path, new_text, self.eol)
+        try:
+            # expected_text=previous_text: the deck editor's own
+            # StaleFileError check (deck_editor.py's _apply()), applied
+            # here to a *slide's* own file -- without it, saving this tab
+            # silently overwrites (backup aside) whatever anything else in
+            # the app wrote to the same file since this tab loaded it: an
+            # "Add citation" dialog's own bibliography.add_entry() write,
+            # deck_headers.regenerate_headers() running in the background
+            # after any deck edit, a rename/translation-link/replace-image
+            # rewrite -- all of which touch slides/*.tex directly, none of
+            # which this open tab would otherwise know about (2026-09-23
+            # review finding).
+            backup_path = slide_source.save_slide_source(
+                self.path, new_text, self.eol, expected_text=previous_text
+            )
+        except slide_source.StaleFileError as exc:
+            QMessageBox.critical(self, "Save failed", str(exc))
+            return False
         self.text = new_text
         if new_text != raw_text:
             # The version-bump above rewrote the \setSlideVersion{} line in

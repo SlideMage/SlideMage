@@ -75,7 +75,13 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     "D:/Teaching/IA2/Handout.pdf", not just "D:/Teaching/IA2") rather than
     a bare folder, that exact filename is used instead of job.jobname --
     2026-09-17, direct instruction: "if I specify a full file name (not
-    just a folder) ... use that filename for the generated file"."""
+    just a folder) ... use that filename for the generated file". That
+    literal filename can be the fallback for more than one distinct job in
+    the same batch (every chapter of a per-chapter compile; a presenter
+    job with no [presenter]-specific line of its own; every version
+    sharing one bare, unqualified \\deckoutputfolder{...}) -- see
+    run_jobs()'s own collision check for what happens then; this function
+    always returns the literal name as declared, uninvolved in that."""
     version_key = job.version or "instructor"
     if job.presenter:
         raw = (job.deck.output_folders.get("presenter")
@@ -351,6 +357,7 @@ def _relocate_pdf(pdf_source: Path, dest_pdf: Path) -> None:
 def _relocate_pdf_and_finish(
     pdf_source: Path, dest_pdf: Path, jobname: str, deck_dir: Path, job: CompileJob,
     log: LogCallback, cancel: Optional["CancelToken"] = None,
+    on_relocated: Optional[Callable[[bool, Path], None]] = None,
 ) -> None:
     """Move the compiled PDF into place, retrying every
     PDF_MOVE_RETRY_INTERVAL_SECONDS for up to PDF_MOVE_RETRY_TOTAL_SECONDS,
@@ -424,6 +431,8 @@ def _relocate_pdf_and_finish(
         if cancel is not None and cancel.is_set():
             log(f"*** FAIL: {jobname} -- stopped by user while relocating the "
                f"PDF; left at .build/{jobname}.pdf for manual recovery ***")
+            if on_relocated is not None:
+                on_relocated(False, dest_pdf)
             return
         attempt_count += 1
         threading.Thread(target=_attempt, args=(attempt_count,), daemon=True).start()
@@ -440,6 +449,8 @@ def _relocate_pdf_and_finish(
         log(f"*** FAIL: {jobname} -- couldn't move PDF into pdf/ after "
            f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min; left at "
            f".build/{jobname}.pdf for manual recovery ***")
+        if on_relocated is not None:
+            on_relocated(False, dest_pdf)
         return
 
     # pdf/ holds only the PDF -- .synctex.gz (wherever it landed) is just
@@ -474,15 +485,30 @@ def _relocate_pdf_and_finish(
     elapsed = time.monotonic() - started
     suffix = f" (after {elapsed:.0f}s)" if elapsed >= 5 else ""
     log(f"==== PASS: {jobname} -> {_display_path(dest_pdf)}{suffix} ====")
+    if on_relocated is not None:
+        on_relocated(True, dest_pdf)
 
 
-def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None) -> bool:
+def run_job(
+    job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None,
+    dest_override: Optional[tuple[Path, str]] = None,
+    on_relocated: Optional[Callable[[bool, Path], None]] = None,
+) -> bool:
     """Compile one job. Returns True once the LaTeX compile itself
     succeeded -- *not* once the PDF has actually landed in pdf/. `log`
     receives one string per line of progress/output, for a GUI (or the
     console) to display. `cancel`, if given, registers the live subprocess
     so a "Stop creation" request can kill it immediately (see
-    CancelToken).
+    CancelToken). `dest_override`, if given, replaces the usual
+    resolve_output_location(job) call -- run_jobs() uses this to
+    disambiguate two jobs in the same batch that would otherwise land on
+    the exact same \\deckoutputfolder-declared file (see its own
+    _disambiguated_destinations()). `on_relocated`, if given, is called
+    once _relocate_pdf_and_finish settles (success, dest_pdf) -- everyone
+    else just watches the log for the PASS/FAIL line the way this always
+    worked; a caller that needs the actual finished PDF path itself (the
+    PowerPoint export) has no other way to learn when it's actually safe
+    to read it.
 
     The move into pdf/ is dispatched to its own detached background thread
     (_relocate_pdf_and_finish) and this function does not wait for it.
@@ -502,7 +528,13 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
     wrapper_path = deck_dir / f"_slidemage_{jobname}.tex"
 
     log(f"==== Compiling {job.deck.name} -> {jobname} ====")
-    wrapper_path.write_text(_wrapper_text(job), encoding="utf-8")
+    # newline="": a per-chapter/appendix job's wrapper splices in
+    # job.deck.preamble_text/chapter_text verbatim, which (deck_scan.py's
+    # own newline="" reader) already carries this deck's real on-disk CRLF
+    # -- writing with the default newline translation would then double
+    # every "\r" into "\r\r\n" on Windows (same bug, same fix, as
+    # slide_preview.py's own wrapper write).
+    wrapper_path.write_text(_wrapper_text(job), encoding="utf-8", newline="")
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     # Stale timestamp/aux from a previous attempt at this exact jobname
@@ -606,7 +638,8 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
         ok = False
 
     if ok:
-        output_dir, output_stem = resolve_output_location(job)
+        output_dir, output_stem = dest_override if dest_override is not None \
+            else resolve_output_location(job)
         output_dir.mkdir(parents=True, exist_ok=True)
         dest_pdf = output_dir / f"{output_stem}.pdf"
         # "==== MOVING: {jobname} -> <dest> ====" is a fixed prefix
@@ -622,14 +655,50 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
            f"no longer blocking the rest of the queue)")
         threading.Thread(
             target=_relocate_pdf_and_finish,
-            args=(pdf_source, dest_pdf, jobname, deck_dir, job, log, cancel),
+            args=(pdf_source, dest_pdf, jobname, deck_dir, job, log, cancel, on_relocated),
             daemon=True,
         ).start()
     else:
         log(f"*** FAIL: {jobname} -- see {log_path} ***")
+        if on_relocated is not None:
+            on_relocated(False, BUILD_DIR / f"{jobname}.pdf")
 
     wrapper_path.unlink(missing_ok=True)
     return ok
+
+
+def _disambiguated_destinations(
+    jobs: list[CompileJob], log: LogCallback
+) -> dict[int, tuple[Path, str]]:
+    """resolve_output_location(job) for every job in this batch, except
+    that when two or more jobs resolve to the exact same destination file
+    (a literal \\deckoutputfolder filename shared by every chapter of a
+    per-chapter compile, by a presenter job with no [presenter]-specific
+    line of its own, or by every version sharing one bare, unqualified
+    \\deckoutputfolder{...}), each of those jobs falls back to its own
+    default PDF_DIR-style job.jobname stem instead -- silently overwriting
+    one job's PDF with another's is worse than not honoring the declared
+    literal filename for jobs that turn out not to be unique. Keyed by
+    id(job): CompileJob has no __eq__/__hash__ of its own, and two
+    distinct jobs in the same batch can otherwise compare unequal only by
+    identity anyway (e.g. two different chapters share every other field)."""
+    dests = {id(job): resolve_output_location(job) for job in jobs}
+    by_dest_pdf: dict[Path, list[CompileJob]] = {}
+    for job in jobs:
+        output_dir, output_stem = dests[id(job)]
+        by_dest_pdf.setdefault(output_dir / f"{output_stem}.pdf", []).append(job)
+    for dest_pdf, colliding in by_dest_pdf.items():
+        if len(colliding) < 2:
+            continue
+        output_dir, _ = dests[id(colliding[0])]
+        log(f"*** {dest_pdf.name}'s \\deckoutputfolder is shared by "
+           f"{len(colliding)} jobs in this batch "
+           f"({', '.join(j.jobname for j in colliding)}) -- "
+           f"using each job's own default filename there instead of "
+           f"letting them overwrite each other ***")
+        for job in colliding:
+            dests[id(job)] = (output_dir, job.jobname)
+    return dests
 
 
 def run_jobs(
@@ -640,11 +709,14 @@ def run_jobs(
     (the GUI's "Stop creation" button), the job in progress is killed
     (see run_job) and whatever's still queued is skipped rather than
     started."""
+    destinations = _disambiguated_destinations(jobs, log)
     results: dict[str, bool] = {}
     for job in jobs:
         if cancel is not None and cancel.is_set():
             skipped = len(jobs) - len(results)
             log(f"==== Stopped: {skipped} job(s) skipped ====")
             break
-        results[job.jobname] = run_job(job, log, cancel=cancel)
+        results[job.jobname] = run_job(
+            job, log, cancel=cancel, dest_override=destinations[id(job)]
+        )
     return results

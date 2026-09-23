@@ -627,7 +627,12 @@ class _ImageEditor(QFrame):
             # indistinguishable from the translation never having started
             # at all.
             try:
-                self.app.log(
+                # self.app.signals.log.emit(...), not self.app.log(...): this
+                # runs on _translate_bg's own background thread, and log()
+                # is documented main-thread-only (qt_gui.py) -- emitting the
+                # signal instead queues the call onto the GUI thread the
+                # same way every compile-log line already does.
+                self.app.signals.log.emit(
                     f"*** Translation of {self.reference} finished, but its "
                     f"editor panel was already gone -- discarded. ***"
                 )
@@ -2464,7 +2469,12 @@ class TranscriptTab(QWidget):
 
     def _draft_batch_bg(self, queue, backend) -> None:
         def progress(index, total, job):
-            self.app.log(f"  [{index}/{total}] {job.image} (via {job.slide_id})")
+            # signals.log.emit, not self.app.log() directly: this callback
+            # runs on this method's own background thread (alt_draft.run_batch
+            # calls it synchronously, in-line with each image), and log() is
+            # documented main-thread-only -- see _translate_bg's own fix for
+            # the same bug.
+            self.app.signals.log.emit(f"  [{index}/{total}] {job.image} (via {job.slide_id})")
 
         try:
             summary = alt_draft.run_batch(
@@ -2529,7 +2539,8 @@ class TranscriptTab(QWidget):
 
     def _translate_batch_bg(self, queue: list[str], backend) -> None:
         def progress(index: int, total: int, image: str) -> None:
-            self.app.log(f"  [{index}/{total}] {image}")
+            # Same background-thread fix as _draft_batch_bg's own progress().
+            self.app.signals.log.emit(f"  [{index}/{total}] {image}")
 
         try:
             summary = alt_draft.run_translation_batch(

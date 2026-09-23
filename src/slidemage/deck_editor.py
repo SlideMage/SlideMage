@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from .archive import _read, _write
-from .deck_scan import PROJECT_ROOT, Chapter, Deck, find_decktags
+from .deck_scan import COMMENT_RE, PROJECT_ROOT, Chapter, Deck, find_decktags
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -131,6 +131,22 @@ def _editability(text: str, line_start: int, call_start: int, call_end: int, lin
     if not _TRAILING_OK_RE.match(trailing):
         return False, "shares its line with other content after the call"
     return True, None
+
+
+def is_commented_out(deck_text: str, call: SlideCall) -> bool:
+    """Whether `call`'s own "\\macro{...}" token sits after an unescaped "%"
+    on its line. parse_slide_calls() below reports a call like this (and
+    every other call sharing its line with anything else) as merely
+    non-editable via SlideCall.editable/readonly_reason, still including
+    it in its returned list -- the deck editor UI needs to show it either
+    way, greyed out rather than hidden. A consumer that treats every
+    returned call as something the compiled deck actually renders (the
+    appendix's thumbnail grid, update_all_previews.py's preview-cache
+    scan) needs this narrower, comment-specific check instead: a call
+    sharing its line with other *live* code is still a real call and
+    should still count, only a commented-out one shouldn't."""
+    line_start = deck_text.rfind("\n", 0, call.call_start) + 1
+    return bool(COMMENT_RE.search(deck_text, line_start, call.call_start))
 
 
 def parse_slide_calls(deck: Deck) -> list[SlideCall]:

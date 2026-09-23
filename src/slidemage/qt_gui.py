@@ -56,6 +56,7 @@ from . import version as version_mod
 from .compiler import (
     BUILD_DIR,
     PDF_DIR,
+    PDF_MOVE_RETRY_TOTAL_SECONDS,
     CancelToken,
     CompileJob,
     latest_pdf_for_deck,
@@ -938,6 +939,38 @@ class SlideMageWindow(QMainWindow):
         self.archived_table.rebuild(archived_decks)
         self.active_rows = self.active_table.rows
         self.archived_rows = self.archived_table.rows
+        self._remap_job_status_rows()
+
+    def _remap_job_status_rows(self) -> None:
+        """Re-point _job_status_map at the fresh DeckRow objects reload_decks()
+        just built, by the one thing that survives a rebuild -- the deck's
+        own name. reload_decks() runs any time a deck is edited/archived/
+        duplicated/tagged, none of which check self.compiling first (editing
+        one deck while a *different* one compiles in the background is
+        completely normal), and DeckTable.rebuild() deletes every DeckRow's
+        widgets and builds new ones -- so without this, the next RUNNING/
+        MOVING/PASS/FAIL log line for a job started before the rebuild calls
+        set_status() on a QLabel Qt has already destroyed, raising
+        RuntimeError inside _log() and silently killing the rest of that
+        batch's log/status/auto-open handling (2026-09-23 review finding).
+        A job whose deck no longer exists in the fresh scan (renamed/
+        archived/deleted mid-compile) is dropped instead -- its row's
+        _job_status_map lookup already tolerates a missing entry (a plain
+        `.get()`), so this only ever narrows what future log lines can
+        find, never breaks the lookup itself. A rebuilt row's own status
+        labels start blank regardless -- the job's own compile keeps
+        running either way, this only restores where its *next* status
+        update lands."""
+        if not self._job_status_map:
+            return
+        rows_by_deck_name = {
+            row.deck.name: row for row in (*self.active_rows, *self.archived_rows)
+        }
+        self._job_status_map = {
+            jobname: (rows_by_deck_name[row.deck.name], key)
+            for jobname, (row, key) in self._job_status_map.items()
+            if row.deck.name in rows_by_deck_name
+        }
 
     def _on_refresh_decks_clicked(self) -> None:
         """DeckTable's own "Refresh decks" button (direct instruction) --
@@ -1117,11 +1150,36 @@ class SlideMageWindow(QMainWindow):
             # through, auto-opening the compiled PDF too if that
             # checkbox is on) -- nothing extra needed here for the
             # compile step itself, only for what happens after it.
-            if not run_job(job, log):
+            #
+            # run_job() doesn't wait for the PDF's move into pdf/ (it
+            # backgrounds that so one job's stuck sync client can't block
+            # the rest of a batch's queue -- see its own docstring), so
+            # reading .build/<jobname>.pdf right after it returns races
+            # that same background thread, which copies the PDF out and
+            # then deletes every .build/<jobname>.* file, this PDF
+            # included -- there's nothing else queued behind a one-off
+            # export, so waiting here for on_relocated costs nothing and
+            # avoids reading a file that thread may have already removed.
+            relocated = threading.Event()
+            outcome: dict[str, object] = {"ok": False, "dest_pdf": None}
+
+            def _on_relocated(ok: bool, dest_pdf: Path) -> None:
+                outcome["ok"] = ok
+                outcome["dest_pdf"] = dest_pdf
+                relocated.set()
+
+            if not run_job(job, log, on_relocated=_on_relocated):
                 log(f"*** FAIL: PowerPoint export of {deck.name} -- "
                    f"compile failed, see above ***")
                 return
-            pdf_path = BUILD_DIR / f"{job.jobname}.pdf"
+            # Generous margin over the retry loop's own total budget --
+            # this thread has nothing else to do but wait for it anyway.
+            relocated.wait(PDF_MOVE_RETRY_TOTAL_SECONDS + 30)
+            if not outcome["ok"]:
+                log(f"*** FAIL: PowerPoint export of {deck.name} -- "
+                   f"couldn't move the compiled PDF into place, see above ***")
+                return
+            pdf_path = outcome["dest_pdf"]
             out_path = PDF_DIR / f"{job.jobname}.pptx"
             try:
                 pptx_export.export_deck_to_pptx(pdf_path, out_path, log=log)
