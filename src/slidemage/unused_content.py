@@ -69,6 +69,7 @@ SLIDE_CURRENT_RE = re.compile(
     r"|\\slidefinal\{([^}]+)\}"
     r"|\\omitslide\{([^}]+)\}"
     r"|\\conditionalslide(?:\[[^\]]*\])?\{([^}]+)\}"
+    r"|\\slidestep\{([^}]+)\}"
 )
 SLIDE_VERSION_RE = re.compile(
     r"\\slideversion\{([^}]+)\}\{([^}]+)\}"

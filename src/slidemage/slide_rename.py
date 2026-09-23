@@ -117,13 +117,13 @@ def count_references(id_slug: str) -> int:
         for p in directory.glob("*.tex")
     ]
     for deck_path in deck_paths:
-        text = deck_path.read_text(encoding="utf-8", newline="")
+        text = deck_path.read_bytes().decode("utf-8")
         total += len(pattern.findall(text))
     return total
 
 
 def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str) -> int:
-    text = deck_path.read_text(encoding="utf-8", newline="")
+    text = deck_path.read_bytes().decode("utf-8")
     pattern = _reference_pattern(id_slug)
     new_text, n = pattern.subn(r"\g<1>" + new_id_slug + r"\g<2>", text)
     if n:
@@ -306,7 +306,7 @@ def set_slide_languages_bulk(id_slugs: list[str], language: str) -> dict[str, st
     if WORKDECK_PATH.exists():
         deck_paths.append(WORKDECK_PATH)
     for deck_path in deck_paths:
-        text = deck_path.read_text(encoding="utf-8", newline="")
+        text = deck_path.read_bytes().decode("utf-8")
         new_text = pattern.sub(_repl, text)
         if new_text != text:
             deck_path.write_text(new_text, encoding="utf-8", newline="")
@@ -332,7 +332,7 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
 
     for path in sorted(SLIDES_DIR.glob("*-current.tex")):
         own_name = path.name[: -len(slide_language.CURRENT_SUFFIX)]
-        text = path.read_text(encoding="utf-8", newline="")
+        text = path.read_bytes().decode("utf-8")
         new_text = text
 
         m = slide_language.TRANSLATION_OF_RE.search(new_text)
@@ -421,14 +421,14 @@ def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
         if WORKDECK_PATH.exists():
             deck_paths.append(WORKDECK_PATH)
         for deck_path in deck_paths:
-            text = deck_path.read_text(encoding="utf-8", newline="")
+            text = deck_path.read_bytes().decode("utf-8")
             new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
             if new_text != text:
                 deck_path.write_text(new_text, encoding="utf-8", newline="")
 
     link = re.compile(r"(\\hyperlink\{)" + re.escape(old_id) + r"(\})")
     for path in SLIDES_DIR.glob("*.tex"):
-        text = path.read_text(encoding="utf-8", newline="")
+        text = path.read_bytes().decode("utf-8")
         new_text = link.sub(r"\g<1>" + new_id + r"\g<2>", text)
         if new_text != text:
             path.write_text(new_text, encoding="utf-8", newline="")
@@ -471,26 +471,28 @@ def deck_names_referencing(id_slug: str) -> list[str]:
         for p in directory.glob("*.tex")
     ]
     for deck_path in deck_paths:
-        text = deck_path.read_text(encoding="utf-8", newline="")
+        text = deck_path.read_bytes().decode("utf-8")
         if pattern.search(text):
             names.append(deck_path.stem)
     return names
 
 
 def _line_removal_pattern(id_slug: str) -> re.Pattern:
-    # Anchored to a whole line (optional leading/trailing whitespace, the
-    # call itself, its own newline) -- every \\slide-family call in this
-    # project already sits on its own line, so this removes the call
-    # cleanly without leaving a blank line's worth of dangling whitespace
-    # behind, unlike a bare substring removal would.
-    return re.compile(
-        r"(?m)^[ \t]*\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{"
-        + re.escape(id_slug) + r"\}[ \t]*\n?"
+    # The whole call with every argument its macro takes (\slideversion's
+    # {version}, \slidestep's [conditions]{steps}), then the rest of the line
+    # up to and including its newline -- \r?\n so CRLF decks don't keep a
+    # stray \r. Every \slide-family call already sits on its own line.
+    slug = re.escape(id_slug)
+    call = (
+        r"\\(?:slideversion|omitslideversion)\{" + slug + r"\}\{[^}]*\}"
+        r"|\\slidestep\{" + slug + r"\}(?:\[[^\]]*\])?\{[^}]*\}"
+        r"|\\(?:slide|slidefinal|omitslide|conditionalslide)(?:\[[^\]]*\])?\{" + slug + r"\}"
     )
+    return re.compile(r"(?m)^[ \t]*(?:" + call + r")[ \t]*(?:\r?\n)?")
 
 
 def _remove_references_in_file(deck_path: Path, id_slug: str) -> int:
-    text = deck_path.read_text(encoding="utf-8", newline="")
+    text = deck_path.read_bytes().decode("utf-8")
     new_text, n = _line_removal_pattern(id_slug).subn("", text)
     if n:
         deck_path.write_text(new_text, encoding="utf-8", newline="")

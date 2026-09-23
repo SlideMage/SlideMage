@@ -30,6 +30,8 @@ window that opens when one clicks Info."
 from __future__ import annotations
 
 import html as _html
+import importlib.metadata
+from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
@@ -44,9 +46,22 @@ from PySide6.QtWidgets import (
 )
 
 from . import version as version_mod
-from .deck_scan import PROJECT_ROOT
+# Running from a source checkout without `pip install`: the repo root's copy.
+_CHECKOUT_LICENSE = Path(__file__).resolve().parents[2] / "LICENSE"
 
-LICENSE_PATH = PROJECT_ROOT / "LICENSE"
+
+def _license_text() -> str:
+    """SlideMage's own LICENSE, as shipped in the installed package's metadata."""
+    try:
+        text = importlib.metadata.distribution("slidemage").read_text("licenses/LICENSE")
+    except importlib.metadata.PackageNotFoundError:
+        text = None
+    if text is not None:
+        return text
+    try:
+        return _CHECKOUT_LICENSE.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"License text not found (not installed, and {_CHECKOUT_LICENSE}: {exc})"
 
 # Below this many characters, an already-short description just gets
 # shown in full with no toggle at all -- there is nothing meaningful left
@@ -118,10 +133,7 @@ class VersionHistoryDialog(QDialog):
         since LICENSE is plain text, not HTML."""
         text_edit = QPlainTextEdit()
         text_edit.setReadOnly(True)
-        try:
-            text_edit.setPlainText(LICENSE_PATH.read_text(encoding="utf-8"))
-        except OSError as exc:
-            text_edit.setPlainText(f"Could not read {LICENSE_PATH}: {exc}")
+        text_edit.setPlainText(_license_text())
         return text_edit
 
     def _on_anchor_clicked(self, url: QUrl) -> None:

@@ -86,7 +86,7 @@ def cross_referenced_language(id_slug: str, path: Optional[Path] = None) -> Opti
     if path is None:
         path = SLIDES_DIR / f"{id_slug}{CURRENT_SUFFIX}"
     try:
-        text = path.read_text(encoding="utf-8", newline="")
+        text = path.read_bytes().decode("utf-8")
     except OSError:
         return None
 

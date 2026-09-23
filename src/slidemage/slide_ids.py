@@ -205,7 +205,7 @@ def add_translation_backreference(source_path: Path, language: str, new_id_slug:
     than one "%% <LANG> translation: ..." line per file."""
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
-    text = source_path.read_text(encoding="utf-8", newline="")
+    text = source_path.read_bytes().decode("utf-8")
     eol = "\r\n" if "\r\n" in text else "\n"
     new_line = f"%% {language} translation: {new_id_slug}{eol}%%{eol}"
 

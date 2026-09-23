@@ -283,7 +283,7 @@ class DuplicateSlideDialog(QDialog):
         self.status_label.setText("Translating...")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            full_text = dest.read_text(encoding="utf-8", newline="")
+            full_text = dest.read_bytes().decode("utf-8")
             header = slide_ids.build_new_slide_header(cross_ref_id_slug)
             body = full_text[len(header):]
             # A higher num_predict than the image-alt-text default (2048)
