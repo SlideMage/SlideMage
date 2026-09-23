@@ -41,25 +41,8 @@ from typing import Optional
 
 from .deck_scan import PROJECT_ROOT
 
-# Lives inside SlideMage/ itself (2026-08-25, direct instruction: "I
-# want everything pertaining to SlideMage to be saved in its proper
-# folder, and for the app to work as long as that folder is synched").
-# Was `<PROJECT_ROOT>/translation_prompts.json` for one day; moved here,
-# content preserved.
-#
-# Resolved from deck_scan.PROJECT_ROOT, *not*
-# Path(__file__).resolve().parent (2026-08-26, direct report -- this store
-# and app_settings.py's own were found reset/empty on every launch of the
-# compiled exe, despite Save appearing to work). The original reasoning
-# above ("relative to this module's own file... stays co-located
-# regardless of where the project root ends up") is exactly backwards for
-# a frozen PyInstaller one-file build: `__file__` there points into a
-# fresh temp-extraction directory PyInstaller deletes on exit, not the
-# real, persistent SlideMage/ folder next to the actual .exe --
-# deck_scan.py's own _find_project_root() already had to solve this same
-# problem (walks up from sys.executable's own location instead of
-# __file__ when frozen), so this now reuses that already-correct answer
-# instead of repeating the same mistake a second time.
+# Lives in the project's .slidemage/ folder, so shared prompts travel with
+# the project (this file is meant to be committed).
 STORE_PATH = PROJECT_ROOT / ".slidemage" / "translation_prompts.json"
 
 # Nested-dict shape for the "models" section: {model: {source_lang:

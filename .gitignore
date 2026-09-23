@@ -317,14 +317,7 @@ __pycache__/
 ## habit (e.g. `python -m venv .venv` run by hand).
 .venv/
 
-## PyInstaller build output (see SlideMage/PYSIDE6_MIGRATION.md and
-## build_slidemage_exe.bat) -- `build/` is disposable intermediate
-## PyInstaller cache, not the shippable artifact, and is directed outside
-## this synced folder entirely by the build script for the same file-count
-## reason as the venv above. `dist/` is the actual compiled app -- NOT
-## git-ignored from Dropbox's own sync (only from git: a large frequently-
-## rebuilt binary doesn't belong in git history), so building once on
-## either machine syncs the up-to-date .exe to the other automatically.
+## Python build output (`pip wheel`/`python -m build`).
 build/
 dist/
 

@@ -153,8 +153,7 @@ After-course-per-chapter, each an independent compile via `latexmk`),
 **Archived decks**, and the green **Images** tab covering everything above.
 The **Info** menu action opens a window with two tabs: **Version history**
 (this app's own dated changelog) and **License** (this project's CC BY-SA
-license, read live from the `LICENSE` file). The python app can of course
-be compiled into a stand-alone executable.
+license, read live from the `LICENSE` file).
 
 ## Getting started / system requirements
 
@@ -180,13 +179,12 @@ be compiled into a stand-alone executable.
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate   # Windows: .venv\Scripts\activate
-   pip install -e .            # add ".[dev]" for pytest/ruff, ".[build]" for PyInstaller
+   pip install -e .            # add ".[dev]" for pytest/ruff
    ```
    This installs PySide6 (the GUI), PyMuPDF (PDF-to-PNG rendering for slide
    previews and tikz-illustration drafting), python-pptx (the Export-PPTX
-   feature), and Pillow, plus the `slidemage` command. On Windows,
-   `packaging/SlideMage.bat` starts it from this `.venv` without a console
-   window; `packaging/slidemage.spec` builds a stand-alone executable.
+   feature), and Pillow, plus the `slidemage` command (on Windows it opens without a console
+   window).
 4. **[Ollama](https://ollama.com/)**, running locally, with at least one
    vision-capable model pulled (`ollama pull qwen3-vl:32b`, or a smaller
    vision model — see above) — only needed for drafting image descriptions

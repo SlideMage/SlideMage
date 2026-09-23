@@ -43,7 +43,7 @@ from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
 SLIDES_DIR = PROJECT_ROOT / "slides"
 WORKDECK_PATH = DECKS_DIR / "#workdeck.tex"
 
-# SlideMage.bat launches the GUI with no console of its own -- same
+# the slidemage GUI script runs with no console of its own -- same
 # fix, same reason, as compiler.py's/archive.py's own subprocess calls.
 _NO_CONSOLE_KWARGS: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
 

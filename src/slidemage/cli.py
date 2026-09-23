@@ -9,18 +9,9 @@ from pathlib import Path
 from . import project
 
 
-def _close_splash() -> None:
-    try:
-        import pyi_splash
-    except ImportError:
-        return
-    pyi_splash.close()
-
-
 def _ask_for_project(parent_hint: Path | None):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    _close_splash()
     start = str(parent_hint or Path.home())
     while True:
         chosen = QFileDialog.getExistingDirectory(
@@ -58,7 +49,6 @@ def main(argv: list[str] | None = None) -> None:
     if args.project is not None:
         root = args.project.resolve()
         if not project.is_project(root):
-            _close_splash()
             QMessageBox.critical(
                 None, "Not a Slidemaster project", f"{root} has no {project.MARKER}."
             )

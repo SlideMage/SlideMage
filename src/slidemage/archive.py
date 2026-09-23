@@ -35,7 +35,7 @@ from .deck_scan import ARCHIVE_DIR, PROJECT_ROOT, Deck
 
 INPUT_PATH_RE = re.compile(r"\\def\\input@path\{\{\.\./\}\}")
 
-# SlideMage.bat launches the GUI with no console of its own, so without
+# the slidemage GUI script runs with no console of its own, so without
 # this, Windows pops up a new console window for each `git` call below --
 # same fix, same reason, as compiler.py's own subprocess.Popen call.
 _NO_CONSOLE_KWARGS: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}

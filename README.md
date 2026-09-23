@@ -26,7 +26,6 @@ managing slide IDs, image descriptions, and accessible transcripts.
 | `example/` | A complete Slidemaster project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`Slidemaster_preamble_uni-graz.tex`, `schemes/`), `Slidemaster.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. |
 | `src/slidemage/` | SlideMage, the PySide6 app (formerly its own repo, merged with its history). |
 | `docs/` | Project overview, deck-version manual, SlideMage internals. |
-| `packaging/` | Windows launcher (`SlideMage.bat`) and PyInstaller spec. |
 | `tests/` | Smoke tests, run in CI together with a compile of the demo decks. |
 
 **Paths in the rest of this file (`decks/…`, `slides/…`, `media/…`,
@@ -192,8 +191,7 @@ compatibility for its own sake.
 
 ### Compiling without TeXstudio (SlideMage)
 
-`slidemage` (or [`packaging/SlideMage.bat`](packaging/SlideMage.bat) on
-Windows) compiles any deck via `latexmk` directly, through a GUI table
+`slidemage` compiles any deck via `latexmk` directly, through a GUI table
 of checkboxes rather than a hand-edited `DECKS=` line -- see
 [docs/SlideMage.md](docs/SlideMage.md) for the full picture. It
 exists specifically so compiling doesn't depend on TeXstudio's own local

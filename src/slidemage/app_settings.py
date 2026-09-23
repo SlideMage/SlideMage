@@ -16,22 +16,10 @@ Gitignored (see .gitignore) -- unlike translation_prompts.py's own store,
 this is a personal UI preference, not project content worth version-
 controlling or diffing on every toggle, but it still needs to physically
 sit inside the synced folder tree for the cloud-sync client itself (not
-git) to carry it across machines -- same category as dist/SlideMage.exe
-(git-ignored, not sync-ignored; see .gitignore's own comment on that).
+git) to carry it across machines.
 
-STORE_PATH is resolved from deck_scan.PROJECT_ROOT, not
-Path(__file__).resolve().parent (2026-08-26, direct report -- both this
-and translation_prompts.py's own store were found empty on every launch
-of the compiled exe). deck_scan.py's own _find_project_root() already
-documents why: PyInstaller's one-file build extracts to a fresh temp
-directory on every launch and deletes it on exit, so `__file__` inside a
-frozen exe points into that throwaway location, not the real,
-persistent SlideMage/ folder next to the actual .exe on disk -- a
-save "worked" (no error) but landed somewhere that no longer existed by
-the next launch, and a load right after just found nothing there yet.
-Never hit this running un-frozen (`python -m SlideMage`), which is
-almost certainly why it passed every headless test this session -- none
-of them ran from the actual compiled exe.
+STORE_PATH is resolved from deck_scan.PROJECT_ROOT, i.e. it lives in the
+project's .slidemage/ folder, next to translation_prompts.json.
 """
 from __future__ import annotations
 

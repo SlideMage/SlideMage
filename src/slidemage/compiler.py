@@ -533,7 +533,7 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
     ]
     env = _build_env()
 
-    # SlideMage.bat launches the GUI with no console of its own (that's
+    # the slidemage GUI script runs with no console of its own (that's
     # the whole point -- a normal-looking app window, not a terminal), so
     # without this, Windows pops up a brand-new console window for latexmk
     # (and everything it shells out to in turn -- perl, lualatex, biber)

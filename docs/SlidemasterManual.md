@@ -119,7 +119,7 @@ lualatex test.tex
 
 ### Multi-Deck Compilation
 
-Use SlideMage (`slidemage`, or `packaging/SlideMage.bat` on Windows) instead of
+Use SlideMage (`slidemage`) instead of
 editing a deck's `\deckversion[]` by hand: its checkbox table lets you compile
 any combination of Instructor/During-course/After-course, whole-deck or
 split into one PDF per chapter, in a single run -- see

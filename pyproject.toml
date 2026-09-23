@@ -18,7 +18,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-build = ["pyinstaller"]
 dev = ["pytest", "ruff"]
 
 [project.gui-scripts]

@@ -1,7 +1,5 @@
 """PySide6 rewrite of SlideMage's GUI -- see PYSIDE6_MIGRATION.md for the
-full migration plan. Not wired into __main__.py yet -- run directly:
-
-    .venv\\Scripts\\python.exe -m slidemage
+full migration plan. Started via cli.main() (`slidemage`).
 
 Phase 4: the deck table (qt_deck_table.py) wired into the shell built in
 Phase 3, plus compile-job threading/signal wiring and the remaining main-
@@ -1452,19 +1450,6 @@ class SlideMageWindow(QMainWindow):
                 self.status_label.setText(f"{self._current_progress_base}: Compile {run_number}...")
 
 
-def _close_splash() -> None:
-    """Dismisses the PyInstaller bootloader's splash screen (SlideMage
-    .spec's own Splash(), covering the one-file build's self-extraction
-    delay) -- `pyi_splash` only exists inside a frozen exe actually built
-    with a Splash resource, so this is a no-op (not an error) running
-    unfrozen via `python -m slidemage`."""
-    try:
-        import pyi_splash
-    except ImportError:
-        return
-    pyi_splash.close()
-
-
 def main() -> None:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(ICON_PATH)))
@@ -1472,7 +1457,6 @@ def main() -> None:
     theme.apply()
     window = SlideMageWindow(theme)
     window.show()
-    _close_splash()
     sys.exit(app.exec())
 
 

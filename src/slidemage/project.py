@@ -57,13 +57,8 @@ def save_last_project(path: Path) -> None:
 
 
 def discover() -> Path | None:
-    """$SLIDEMASTER_PROJECT, else upward from the cwd, else upward from a frozen
-    exe's own folder (PyInstaller's __file__ is a throwaway temp dir), else the
-    last project opened."""
+    """$SLIDEMASTER_PROJECT, else upward from the cwd, else the last project opened."""
     env = os.environ.get(ENV_VAR)
     if env and is_project(Path(env)):
         return Path(env).resolve()
-    found = find_upward(Path.cwd())
-    if found is None and getattr(sys, "frozen", False):
-        found = find_upward(Path(sys.executable).parent)
-    return found or load_last_project()
+    return find_upward(Path.cwd()) or load_last_project()

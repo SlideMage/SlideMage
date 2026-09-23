@@ -16,9 +16,8 @@ the code level.
 
 ## What it does
 
-Launch with `slidemage` (after `pip install -e .` from the repo root),
-`packaging/SlideMage.bat` on Windows, or a PyInstaller build of
-`packaging/slidemage.spec`. It opens the project given by `--project`,
+Launch with `slidemage` (after `pip install -e .` from the repo root).
+It opens the project given by `--project`,
 `$SLIDEMASTER_PROJECT`, the nearest folder above the current directory
 that holds `slide_ids.csv`, or the last project opened, else it asks.
 Three permanent tabs:
@@ -352,7 +351,7 @@ What matters when touching *this code*:
   and for the app to work as long as that folder is synched" -- a registry
   key is tied to one PC and wouldn't travel with the folder to another
   machine the way a file inside it does). Gitignored but *not*
-  sync-ignored -- same category as `dist/SlideMage.exe`, carried across
+  sync-ignored -- carried across
   machines by the project folder's own cloud-sync client, not git.
 - [`qt_settings_dialog.py`](../src/slidemage/qt_settings_dialog.py) -- the **Settings →
   Preferences…** dialog (this app's first menu bar, added 2026-08-25). A
@@ -628,9 +627,7 @@ no native tab scrolling, dark mode only working via a hand-rolled
 widget-registration workaround), the file-by-file/widget-by-widget mapping,
 and the phased implementation log. The original Tk implementation has
 since been removed. Install for development with `pip install -e ".[dev]"`
-from the repo root and run `slidemage` (or `python -m slidemage`); build
-the stand-alone executable with `pyinstaller packaging/slidemage.spec`
-(after `pip install -e ".[build]"`).
+from the repo root and run `slidemage` (or `python -m slidemage`).
 
 ## Non-obvious things worth knowing before touching this code
 
@@ -837,7 +834,7 @@ many distinct decks total) -- omitted entirely for a single-deck batch,
 where it would just be a constant, uninformative "Deck 1/1".
 
 **Every subprocess call passes `creationflags=subprocess.CREATE_NO_WINDOW`
-on Windows.** `SlideMage.bat` launches the GUI with no console of its
+on Windows.** `slidemage` is installed as a GUI script, so it has no console of its
 own (the whole point -- a normal-looking app window, not a terminal), so
 without this, Windows pops up a brand-new console window -- floating on
 top of the GUI -- for every child process: `compiler.py`'s own `latexmk`
