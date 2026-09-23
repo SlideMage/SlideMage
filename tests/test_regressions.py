@@ -262,3 +262,46 @@ def test_fresh_translation_is_written_normally(monkeypatch, tmp_path):
     current = alt_images.load_store()["media/x.png"]
     assert current.long_de == "translated text"
     assert current.translated_from_hash == current_hash
+
+
+def test_relaunch_with_project_saves_and_spawns(monkeypatch, tmp_path):
+    """2026-09-23: on a fresh machine's first real run, cli.py's discovery
+    chain (env var / upward search / last project) can silently reuse a
+    stale last-project pointer left over from unrelated testing, so the
+    user never sees the folder picker they expected. The fix adds an
+    explicit "Open Project..." action (qt_gui.py); this covers its
+    underlying relaunch mechanism, since a live in-process project switch
+    isn't possible (PROJECT_ROOT and everything derived from it are fixed
+    at import time across the whole package)."""
+    from slidemage import project
+
+    new_root = tmp_path / "other-project"
+    new_root.mkdir()
+    (new_root / project.MARKER).write_text("id,slug\n", encoding="utf-8")
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+
+    calls = []
+    monkeypatch.setattr(
+        project.subprocess, "Popen",
+        lambda argv, env: calls.append((argv, env)),
+    )
+
+    project.relaunch_with_project(new_root)
+
+    assert project.load_last_project() == new_root
+    assert len(calls) == 1
+    argv, env = calls[0]
+    assert str(new_root) in argv
+    assert env[project.ENV_VAR] == str(new_root)
+
+
+def test_discover_ignores_unrelated_cwd_with_no_last_project(monkeypatch, tmp_path):
+    from slidemage import project
+
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+    monkeypatch.delenv(project.ENV_VAR, raising=False)
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    assert project.discover() is None

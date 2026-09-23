@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QCompleter,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -46,6 +47,7 @@ from . import deck_editor
 from . import deck_headers
 from . import open_path
 from . import pptx_export
+from . import project
 from . import qt_slide_source_tab
 from . import slide_ids
 from . import slide_rename
@@ -362,6 +364,8 @@ class SlideMageWindow(QMainWindow):
           second, right after System).
         """
         system_menu = self.menuBar().addMenu("System")
+        open_project_action = system_menu.addAction("Open Project…")
+        open_project_action.triggered.connect(self._on_open_project)
         preferences_action = system_menu.addAction("Preferences…")
         preferences_action.triggered.connect(self._on_open_settings)
         system_menu.addSeparator()
@@ -411,6 +415,61 @@ class SlideMageWindow(QMainWindow):
 
         info_action = self.menuBar().addAction("Info")
         info_action.triggered.connect(self._on_open_version_history)
+
+    def _on_open_project(self) -> None:
+        """System -> "Open Project..." -- lets the user point SlideMage at
+        any folder on disk via a native file picker (QFileDialog, so this
+        is the same dialog whether it's Windows' or Linux's own), instead
+        of only ever discovering a project automatically (cli.py's
+        --project/$SLIDEMASTER_PROJECT/upward-search/last-opened chain) --
+        added 2026-09-23 after that chain silently reused a stale
+        "last project" on a fresh machine's first real run, with no
+        visible way to override it once the app was already open.
+
+        Restarts the whole application rather than switching in place:
+        PROJECT_ROOT and every directory constant derived from it at
+        import time across this package (see project.relaunch_with_project's
+        own docstring) are fixed for a process's entire lifetime -- there
+        is no single place left to mutate them all after the fact."""
+        if self.compiling:
+            QMessageBox.information(
+                self, "Busy",
+                "Can't switch projects while a compile run is in progress -- "
+                "wait for it to finish first.",
+            )
+            return
+        start = str(PROJECT_ROOT.parent)
+        chosen_path: Optional[Path] = None
+        while True:
+            chosen = QFileDialog.getExistingDirectory(
+                self,
+                f"Open a Slidemaster project (folder containing {project.MARKER})",
+                start,
+            )
+            if not chosen:
+                return
+            candidate = Path(chosen)
+            if project.is_project(candidate):
+                chosen_path = candidate
+                break
+            QMessageBox.warning(
+                self, "Not a Slidemaster project",
+                f"{candidate} has no {project.MARKER}. Pick the project's "
+                "own root folder (the one slide_ids.csv lives in).",
+            )
+            start = chosen
+        if chosen_path == PROJECT_ROOT:
+            return  # already open -- nothing to restart for
+        reply = QMessageBox.question(
+            self, "Open project",
+            f"Switch to {chosen_path}?\n\nSlideMage restarts to open a "
+            "different project -- any unsaved changes in open tabs will "
+            "be lost.",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        project.relaunch_with_project(chosen_path)
+        self.close()
 
     def _on_open_settings(self) -> None:
         dialog = SettingsDialog(self)

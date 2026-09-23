@@ -6,6 +6,7 @@ cli.py must settle the project before deck_scan computes PROJECT_ROOT at import.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -62,3 +63,36 @@ def discover() -> Path | None:
     if env and is_project(Path(env)):
         return Path(env).resolve()
     return find_upward(Path.cwd()) or load_last_project()
+
+
+def relaunch_with_project(root: Path) -> None:
+    """Start a fresh SlideMage process pointed at `root` and return --
+    never quits the current one itself, since a GUI action needs to
+    finish its own event handling first (Qt closes windows/quits the
+    QApplication in its caller, after this returns).
+
+    Switching projects can't just mutate the running process's own state:
+    deck_scan.PROJECT_ROOT and every directory constant derived from it at
+    import time across this whole package (compiler.BUILD_DIR/PDF_DIR,
+    slide_source.SLIDES_DIR, alt_images.STORE_PATH, app_settings.STORE_PATH,
+    ...) are fixed once, at the first `from . import deck_scan` anywhere
+    in the process -- there is no single place left to change them all
+    after the fact. A new process re-derives every one of them fresh from
+    this one new root, the same as if the user had launched SlideMage
+    pointed at `root` from the start.
+
+    Frozen (PyInstaller): sys.executable *is* the SlideMage binary itself,
+    so it's relaunched directly. Unfrozen: sys.executable is the Python
+    interpreter that's currently running this file as an installed
+    package, not as a standalone script, so it needs `-m slidemage` to
+    find its way back to the same entry point cli.py's own console-script
+    hook (`slidemage = slidemage.cli:main`) uses."""
+    save_last_project(root)
+    env = os.environ.copy()
+    env[ENV_VAR] = str(root)
+    argv = (
+        [sys.executable, "--project", str(root)]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "slidemage", "--project", str(root)]
+    )
+    subprocess.Popen(argv, env=env)
