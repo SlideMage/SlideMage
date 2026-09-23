@@ -1599,6 +1599,16 @@ landed in the same commit as each of those two changes per this file's
 own standing instruction above -- missed both times, caught only when
 asked directly; backfilled here as one entry since neither commit was
 released/seen as its own version in between.
+
+v3.31.0 (2026-09-24, direct instruction): the slide-source editor's insert-command dropdown's itemize entry renamed from the literal
+"\begin{itemize}...\end{itemize}" to "Bulleted list", and a new
+"Bulleted list (ellipses)" entry added right after it -- same
+wrap_env mechanic, but each item gets \item[\gothamBulletEllipsis] as
+its label instead of a bare \item, preceded by a "%Use \ldots for
+in-text ellipses" reminder comment (the hand-written pattern already
+used on several slides, e.g. iqe/quy/emv). _wrap_environment() gained
+optional item_prefix/leading_comment arguments to share the mechanic
+rather than duplicating it.
 """
 from __future__ import annotations
 
@@ -1609,7 +1619,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.30.0"
+VERSION_NUMBER = "v3.31.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
