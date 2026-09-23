@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
+build = ["pyinstaller"]
 
 [project.gui-scripts]
 slidemage = "slidemage.cli:main"

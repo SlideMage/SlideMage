@@ -16,8 +16,12 @@ the code level.
 
 ## What it does
 
-Launch with `slidemage` (after `pip install -e .` from the repo root).
-It opens the project given by `--project`,
+Launch with `slidemage` (after `pip install -e .` from the repo root), or
+build a stand-alone executable with `pip install -e ".[build]"` then
+`pyinstaller packaging/slidemage.spec` from the repo root -- lands at
+`dist/SlideMage` (`dist/SlideMage.exe` on Windows). PyInstaller never
+cross-compiles: run it on the OS you want the executable for. It opens
+the project given by `--project`,
 `$SLIDEMASTER_PROJECT`, the nearest folder above the current directory
 that holds `slide_ids.csv`, or the last project opened, else it asks.
 Three permanent tabs:

@@ -46,6 +46,15 @@ For your own project, copy `example/` anywhere; if it doesn't sit next to
 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) for prerequisites
 (LuaLaTeX, biber, optional Ollama).
 
+No Python install needed: build a stand-alone executable once
+(`pip install -e ".[build]"; pyinstaller packaging/slidemage.spec` — see
+[docs/SlideMage.md](docs/SlideMage.md)) and start it directly:
+
+```bash
+./dist/SlideMage --project example       # Linux/macOS
+dist\SlideMage.exe --project example     # Windows
+```
+
 ## Directory layout
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham
