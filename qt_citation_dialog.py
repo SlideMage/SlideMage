@@ -113,7 +113,7 @@ class CitationDialog(QDialog):
         self._key_manually_edited = False
         self.new_key: Optional[str] = None
 
-        self.setWindowTitle("Add reference")
+        self.setWindowTitle("Add reference to .bib")
         self.setModal(True)
         self._build()
         self._on_type_change()
@@ -181,7 +181,7 @@ class CitationDialog(QDialog):
         button_row.addStretch(1)
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
-        self.add_button = QPushButton("Add reference")
+        self.add_button = QPushButton("Add reference to .bib")
         self.add_button.clicked.connect(self._on_submit)
         button_row.addWidget(cancel_button)
         button_row.addWidget(self.add_button)

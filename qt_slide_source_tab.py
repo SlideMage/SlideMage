@@ -944,7 +944,7 @@ class SlideSourceTab(QWidget):
         self.command_combo.activated.connect(self._on_command_selected)
         format_toolbar.addWidget(self.command_combo)
 
-        self.add_citation_button = QPushButton("Add reference")
+        self.add_citation_button = QPushButton("Add reference to .bib")
         self.add_citation_button.setToolTip(
             "Add a new entry to Slidemaster.bib -- pick a source type "
             "(article, book, online source, or report), fill in its "

@@ -1669,6 +1669,8 @@ project's slides actually use, 285/40/6 uses respectively, zero bare
 buttons, style-button insertion, double-click-inserts-\fullcite-and-
 closes, and both the empty-query (shows everything) and no-match
 (buttons stay disabled) edge cases.
+
+v3.34.1 (2026-09-25, direct instruction): "Add reference" button (and its dialog's own window title/submit button) renamed to "Add reference to .bib", to say where the reference goes.
 """
 from __future__ import annotations
 
@@ -1679,7 +1681,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.34.0"
+VERSION_NUMBER = "v3.34.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
