@@ -22,9 +22,6 @@ jobs:
           - os: windows-latest
             asset_name: SlideMage-windows
             binary_path: dist/SlideMage.exe
-          - os: macos-latest
-            asset_name: SlideMage-macos
-            binary_path: dist/SlideMage
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,11 +34,11 @@ jobs:
       - run: pyinstaller packaging/slidemage.spec
 
       # PyInstaller produces one file (dist/SlideMage[.exe]) -- zipped so
-      # the executable bit (Linux/macOS) survives the upload/download
-      # round trip, and so every platform's asset has the same shape.
-      # `zip` isn't reliably on PATH on windows-latest, so this branches
-      # by OS rather than assuming a shared shell tool.
-      - name: Package (Linux/macOS)
+      # the executable bit survives the upload/download round trip, and
+      # so every platform's asset has the same shape. `zip` isn't
+      # reliably on PATH on windows-latest, so this branches by OS rather
+      # than assuming a shared shell tool.
+      - name: Package (Linux)
         if: runner.os != 'Windows'
         run: |
           mkdir -p out
