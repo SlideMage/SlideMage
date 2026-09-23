@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Optional, Protocol
 
 from . import alt_blocks, alt_images, media_render, tikz_render, translation_prompts
 from .deck_scan import PROJECT_ROOT
