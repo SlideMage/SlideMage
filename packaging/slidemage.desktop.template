@@ -1,0 +1,19 @@
+# Linux desktop entry for SlideMage, to show it in the GNOME/KDE app grid
+# and dock. Exec/Icon must be absolute paths (no ~ expansion in .desktop
+# files), so this is a template, not something installed directly.
+#
+# Install for your user (after building dist/SlideMage -- see
+# docs/SlideMage.md):
+#   REPO=/absolute/path/to/slidemaster
+#   sed "s|__REPO__|$REPO|g" packaging/slidemage.desktop.template \
+#       > ~/.local/share/applications/slidemage.desktop
+#   update-desktop-database ~/.local/share/applications
+[Desktop Entry]
+Type=Application
+Name=SlideMage
+Comment=Compile and manage Slidemaster slide decks
+Exec=__REPO__/dist/SlideMage
+Icon=__REPO__/src/slidemage/assets/icon.svg
+Terminal=false
+Categories=Office;
+StartupWMClass=SlideMage

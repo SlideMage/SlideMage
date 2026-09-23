@@ -1,12 +1,26 @@
-# Build a one-file SlideMage executable. From the repo root, with the build
-# extra installed (pip install pyinstaller):
+# Build a one-file SlideMage executable, for whichever OS this actually
+# runs on -- PyInstaller never cross-compiles. From the repo root, with
+# pyinstaller installed (pip install pyinstaller):
 #     pyinstaller packaging/slidemage.spec
-# The exe finds its project via --project, $SLIDEMASTER_PROJECT, an upward
-# search from the cwd, the last project opened, or a folder picker.
+# Output lands in dist/SlideMage(.exe). The exe finds its project via
+# --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
+# last project opened, or a folder picker.
+import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
+
+# PyInstaller only actually embeds this on Windows (.ico) and macOS
+# (.icns) -- ignored on Linux, where a windowmanager/taskbar icon instead
+# comes from a .desktop file's own Icon= line, conventionally an SVG/PNG,
+# not the Windows .ico this project ships for that platform's build.
+if sys.platform == "win32":
+    icon = str(ASSETS / "icon.ico")
+elif sys.platform == "darwin":
+    icon = None  # no .icns shipped
+else:
+    icon = str(ASSETS / "icon.svg")
 
 a = Analysis(
     [str(ROOT / "packaging" / "launch_slidemage.py")],
@@ -23,5 +37,5 @@ exe = EXE(
     [],
     name="SlideMage",
     console=False,
-    icon=str(ASSETS / "icon.ico"),
+    icon=icon,
 )
