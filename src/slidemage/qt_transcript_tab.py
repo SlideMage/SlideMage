@@ -23,7 +23,6 @@ only thing that writes to that store.
 from __future__ import annotations
 
 import datetime as _dt
-import os
 import shutil
 import threading
 from dataclasses import dataclass, replace
@@ -57,6 +56,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import open_path
 from . import (
     alt_blocks, alt_draft, alt_images, app_settings, media_render,
     slide_ids, slide_language, tikz_render, transcript,
@@ -788,7 +788,7 @@ class _ImageEditor(QFrame):
 
     def _build_unpreviewable_notice(self, resolved: Path) -> QWidget:
         """A vector/PDF/EPS image Qt can't render inline -- text plus a
-        button that opens it in its associated application (os.startfile,
+        button that opens it in its associated application (open_path,
         same pattern as opening a compiled PDF elsewhere in this project),
         so reviewing it doesn't mean leaving SlideMage to hunt for it in
         Explorer."""
@@ -805,7 +805,7 @@ class _ImageEditor(QFrame):
 
     def _open_externally(self, path: Path) -> None:
         try:
-            os.startfile(path)  # Windows-only project, same as elsewhere
+            open_path.open_in_default_app(path)
         except OSError as exc:
             QMessageBox.warning(self, "Could not open file", str(exc))
 

@@ -13,7 +13,6 @@ deck_editor_tab.py's own Qt ports (Phases 5-6).
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import sys
@@ -47,6 +46,7 @@ from . import bibliography
 from . import deck_duplicate
 from . import deck_editor
 from . import deck_headers
+from . import open_path
 from . import pptx_export
 from . import qt_slide_source_tab
 from . import slide_ids
@@ -1023,7 +1023,7 @@ class SlideMageWindow(QMainWindow):
                 self, "No PDF yet", f"No PDF has been created for {deck.name} yet.")
             return
         try:
-            os.startfile(pdf_path)  # Windows-only project, same as _open_pdf
+            open_path.open_in_default_app(pdf_path)
         except OSError as exc:
             self._log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
@@ -1137,7 +1137,7 @@ class SlideMageWindow(QMainWindow):
             # unattended, so there's no "maybe don't" case worth a
             # preference for.
             try:
-                os.startfile(out_path)  # Windows-only project, same as _open_pdf
+                open_path.open_in_default_app(out_path)
             except OSError as exc:
                 log(f"*** couldn't auto-open {out_path.name}: {exc} ***")
         finally:
@@ -1381,7 +1381,7 @@ class SlideMageWindow(QMainWindow):
         if not pdf_path.exists():
             return
         try:
-            os.startfile(pdf_path)  # Windows-only project, same as gui.py
+            open_path.open_in_default_app(pdf_path)
         except OSError as exc:
             self._log(f"*** couldn't auto-open {pdf_path.name}: {exc} ***")
 

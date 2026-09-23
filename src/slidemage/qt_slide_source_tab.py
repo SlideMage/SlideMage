@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import string
+import sys
 import threading
 from pathlib import Path
 from typing import Callable, Optional
@@ -119,7 +120,7 @@ def reindent_latex(text: str) -> str:
     return "\n".join(out_lines)
 
 
-SOURCE_FONT = QFont("Consolas", 10)
+SOURCE_FONT = QFont("Consolas" if sys.platform == "win32" else "DejaVu Sans Mono", 10)
 
 # Qt's own QPlainTextEdit default (80px, unrelated to any particular
 # font's own character width) rendered a Tab about 6 characters wide with

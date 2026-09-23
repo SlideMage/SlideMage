@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import open_path
 from . import slide_snapshot
 from .compiler import BUILD_DIR, FATAL_ERROR_RE, _build_env
 from .deck_editor import VERSION_FILE_RE, format_call
@@ -491,4 +492,4 @@ def render_slide_text_to_pdf(
 
 
 def open_pdf(pdf_path: Path) -> None:
-    os.startfile(pdf_path)  # Windows-only project, same as gui.py's own _open_pdf
+    open_path.open_in_default_app(pdf_path)

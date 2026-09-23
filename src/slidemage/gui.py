@@ -2,7 +2,6 @@
 archive a deck out of decks/ into decks/archive/."""
 from __future__ import annotations
 
-import os
 import queue
 import re
 import threading
@@ -13,6 +12,7 @@ from typing import Callable, Optional
 
 from . import archive as archive_mod
 from . import deck_headers
+from . import open_path
 from . import theme as theme_mod
 from . import version as version_mod
 from .add_slide_dialog import AddSlideDialog
@@ -1007,7 +1007,7 @@ class SlideManagerApp:
         if not pdf_path.exists():
             return
         try:
-            os.startfile(pdf_path)  # Windows-only project, same as elsewhere in this file
+            open_path.open_in_default_app(pdf_path)
         except OSError as exc:
             self._log(f"*** couldn't auto-open {pdf_path.name}: {exc} ***")
 
