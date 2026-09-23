@@ -1,0 +1,152 @@
+"""Automatic per-slide version tracking on save (SlideMage's own
+freeze-then-bump workflow, 2026-08-20 direct instruction).
+
+Before this, freezing a slide's outgoing content as a numbered version was
+a manual step (R_Slidemaster's slide.archive() / slide.new()'s "before
+making a significant revision" convention -- see README.md's "Naming and
+versioning convention"). This module automates it: SlideMage's own
+Save button, for a slide's own current.tex, asks how significant the
+change is (major/minor/patch/overwrite) and does the freeze + version-bump
+bookkeeping itself. The frozen "-vX-Y-Z.tex" file is always a byte-exact
+copy of whatever was on disk immediately before the save (shutil.copy2,
+same as deck_duplicate.py) -- never rewritten, never re-encoded.
+
+The tracked version itself lives inside current.tex as a
+\\setSlideVersion{X-Y-Z} line (Slidemaster_preamble_base.tex), the same
+"tool-managed header line" pattern as the "%% Included in decks: ..."
+line add_deck_headers.py maintains -- never hand-edited, always the
+first thing this module's own set_marker()/strip_marker() touch on save.
+A slide with no such line has simply never been through this workflow
+yet; its footer omits the version segment entirely rather than showing
+something wrong (\\ifgothamSlideVersionSet, reset per-frame -- see that
+file's own comments).
+"""
+from __future__ import annotations
+
+import re
+import shutil
+from pathlib import Path
+from typing import Literal, Optional
+
+Version = tuple[int, int, int]
+BumpLevel = Literal["major", "minor", "patch"]
+
+# The one baseline this module ever assumes on a slide's *first* tracked
+# save: untracked content is treated as "already 1.0.0" -- the freeze
+# captures it as exactly that, and the bump moves on from there (e.g. a
+# first-ever "Minor" save freezes v1-0-0 and leaves current.tex at
+# 1.1.0), matching how a slide.new()-minted slide's initial content has
+# always informally been "version 1" even when nothing wrote that down.
+DEFAULT_BASELINE: Version = (1, 0, 0)
+
+_EMBEDDED_VERSION_RE = re.compile(r"\\setSlideVersion\{(\d+)-(\d+)-(\d+)\}")
+# Matches the whole tool-managed line, trailing newline included, so
+# strip_marker() removes it cleanly rather than leaving a blank line
+# behind. `%?` tolerates a trailing comment-continuation `%` some other
+# tool-managed lines in this project use, even though set_marker() itself
+# never writes one.
+_MARKER_LINE_RE = re.compile(r"^\\setSlideVersion\{\d+-\d+-\d+\}%?[ \t]*\r?\n?", re.MULTILINE)
+
+
+def parse_version(text: str) -> Optional[Version]:
+    """The version embedded in a slide's own current text, or None if it
+    was never tracked (no \\setSlideVersion{} line yet)."""
+    match = _EMBEDDED_VERSION_RE.search(text)
+    if match is None:
+        return None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def format_hyphen(version: Version) -> str:
+    """Filename-safe form, matching a version file's own "-vX-Y-Z.tex"
+    suffix and \\slideversion{}'s own second argument."""
+    return "-".join(str(part) for part in version)
+
+
+def format_dot(version: Version) -> str:
+    """Display form ("1.0.0") -- conventional semver, and what the
+    compiled footer shows (Slidemaster_preamble_base.tex's own
+    \\setSlideVersion does this same hyphen-to-dot conversion at compile
+    time; this is the Python-side equivalent for the save dialog)."""
+    return ".".join(str(part) for part in version)
+
+
+def bump(version: Version, level: BumpLevel) -> Version:
+    major, minor, patch = version
+    if level == "major":
+        return (major + 1, 0, 0)
+    if level == "minor":
+        return (major, minor + 1, 0)
+    if level == "patch":
+        return (major, minor, patch + 1)
+    raise ValueError(f"unknown bump level: {level!r}")
+
+
+def strip_marker(text: str) -> str:
+    """Remove any existing \\setSlideVersion{} line -- called before
+    re-inserting one (set_marker()) or when a save leaves the slide
+    untracked, so a stray/stale marker from a previous save or a
+    copy-pasted block never survives into the new content."""
+    return _MARKER_LINE_RE.sub("", text, count=1)
+
+
+def set_marker(text: str, version: Version) -> str:
+    """Insert \\setSlideVersion{X-Y-Z} as its own line, right after
+    whatever leading header-comment block the slide has (if any) and
+    right before its first real content line -- the same "top of file"
+    placement the "%% Included in decks: ..." header already uses.
+    Always strips any existing marker first, so a re-save never
+    accumulates duplicates regardless of where a previous one landed.
+    """
+    text = strip_marker(text)
+    lines = text.splitlines(keepends=True)
+    insert_at = 0
+    for line in lines:
+        if line.strip() == "" or line.lstrip().startswith("%"):
+            insert_at += 1
+        else:
+            break
+    lines.insert(insert_at, f"\\setSlideVersion{{{format_hyphen(version)}}}\n")
+    return "".join(lines)
+
+
+def plan_save(
+    old_version: Optional[Version], choice: Literal["major", "minor", "patch", "overwrite"]
+) -> tuple[Optional[Version], Optional[Version]]:
+    """Decide what this save should do, given the version current.tex was
+    already tracking (None if it never was) and the user's own dialog
+    choice. Returns (final_version, freeze_as):
+
+    - final_version: the version the *new* content should be marked with
+      (None means "leave it untracked" -- either it always was, or...
+      this module never un-tracks an already-tracked slide, so that only
+      happens when old_version was already None and the choice was
+      "overwrite").
+    - freeze_as: the version the *old* on-disk content should be frozen
+      as before it's overwritten (None means "don't freeze anything" --
+      "overwrite" never freezes, by definition).
+    """
+    if choice == "overwrite":
+        return old_version, None
+    baseline = old_version if old_version is not None else DEFAULT_BASELINE
+    return bump(baseline, choice), baseline
+
+
+def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional[Path]:
+    """Copy current_path's own on-disk bytes, verbatim, to
+    slides/<id_slug>-v<version>.tex, right before it gets overwritten by
+    a new save. Returns the frozen file's path, or None if either nothing
+    was on disk yet to freeze (a brand new slide's very first save) or a
+    file already exists there -- shouldn't happen in normal use (a given
+    (slide, version) pair is only ever frozen once, exactly when
+    current.tex is about to move past it), but silently clobbering real
+    history would be a far worse failure mode than just leaving it alone
+    and letting the caller decide how to report it.
+    """
+    if not current_path.exists():
+        return None
+    dest = current_path.parent / f"{id_slug}-v{format_hyphen(version)}.tex"
+    if dest.exists():
+        return None
+    shutil.copy2(str(current_path), str(dest))
+    return dest

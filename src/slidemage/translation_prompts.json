@@ -1,0 +1,16 @@
+{
+  "default": {
+    "blank_lines": 2,
+    "prompt": "You are a professional English (en) to German (de) translator. Your goal is to accurately convey the meaning and nuances of the original English text while adhering to German grammar, vocabulary, and cultural sensitivities.\n\nProduce only the German translation, without any additional explanations or commentary. Please translate the following English text into German:"
+  },
+  "models": {
+    "translategemma:27b": {
+      "en": {
+        "de": {
+          "blank_lines": 2,
+          "prompt": "You are a professional English (en) to German (de) translator. Your goal is to accurately convey the meaning and nuances of the original English university course text while adhering to German grammar, vocabulary, and cultural sensitivities.\n\nProduce only the German translation, without any additional explanations or commentary. If the text contains a Markdown table, keep the table structure and numbers exactly as they are and translate only the surrounding prose and column headers. Avoid adding abbreviations that are not present in the original, like \"d. h.\" (\"das heißt\" in German). Please translate the following English text into German:"
+        }
+      }
+    }
+  }
+}
