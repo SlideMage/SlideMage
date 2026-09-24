@@ -69,6 +69,7 @@ class AiDraftDialog(QDialog):
         self.source_tab = source_tab
         self.filename = filename
         self._proposed_text: str | None = None
+        self._proposal_baseline: str | None = None
         self.setWindowTitle(f"AI draft — {filename}")
         self.setModal(False)
         self.resize(760, 560)
@@ -155,6 +156,7 @@ class AiDraftDialog(QDialog):
             return
 
         self._proposed_text = None
+        self._proposal_baseline = None
         self.accept_button.setEnabled(False)
         self.diff_view.clear()
         self.generate_button.setEnabled(False)
@@ -185,6 +187,7 @@ class AiDraftDialog(QDialog):
             return
 
         self._proposed_text = result.proposed_text
+        self._proposal_baseline = current_text
         diff_lines = [
             line for line in difflib.ndiff(
                 current_text.splitlines(), result.proposed_text.splitlines())
@@ -200,7 +203,19 @@ class AiDraftDialog(QDialog):
     # -- accept ------------------------------------------------------------
 
     def _on_accept(self) -> None:
-        if self._proposed_text is None:
+        if self._proposed_text is None or self._proposal_baseline is None:
+            return
+        if self.source_tab.widget.toPlainText() != self._proposal_baseline:
+            # The dialog is nonmodal, so the source editor can change after
+            # this diff was generated. Refuse to apply a whole-buffer
+            # proposal whose displayed baseline no longer matches the live
+            # document; the user can Generate again against the new text.
+            self.accept_button.setEnabled(False)
+            self.status_label.setText(
+                "The source changed after this proposal was generated. "
+                "Nothing was applied; generate a fresh proposal to review "
+                "changes against the current source."
+            )
             return
         cursor = self.source_tab.widget.textCursor()
         cursor.beginEditBlock()

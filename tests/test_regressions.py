@@ -469,12 +469,17 @@ def _make_test_odp(path):
     content_frame = Frame(width="20cm", height="10cm", x="1cm", y="4cm")
     content_frame.setAttrNS(PRESENTATIONNS, "class", "outline")
     tb2 = TextBox()
-    tb2.addElement(P(text="Top level point #1"))
+    top_level = List()
+    top_item = ListItem(); top_item.addElement(P(text="Top level point #1"))
     nested = List()
     li1 = ListItem(); li1.addElement(P(text="Nested detail A")); nested.addElement(li1)
     li2 = ListItem(); li2.addElement(P(text="Nested detail B")); nested.addElement(li2)
-    tb2.addElement(nested)
-    tb2.addElement(P(text="Second top-level point with $5 cost"))
+    top_item.addElement(nested)
+    top_level.addElement(top_item)
+    second_item = ListItem()
+    second_item.addElement(P(text="Second top-level point with $5 cost"))
+    top_level.addElement(second_item)
+    tb2.addElement(top_level)
     content_frame.addElement(tb2); page1.addElement(content_frame)
 
     img_path = path.parent / "red.png"
@@ -528,16 +533,36 @@ def test_bullets_to_itemize_nesting_and_jumps():
 
     tex = _bullets_to_itemize([
         Bullet("top", level=0),
-        Bullet("deep", level=2),  # jumps 0 -> 2, no level-1 item between
+        Bullet("deep", level=2),  # missing level 1 collapses to a valid child list
         Bullet("back to top", level=0),
     ])
     assert tex == (
         "\t\\begin{itemize}\n"
         "\t\t\\item top\n"
         "\t\t\\begin{itemize}\n"
-        "\t\t\t\\begin{itemize}\n"
-        "\t\t\t\t\\item deep\n"
-        "\t\t\t\\end{itemize}\n"
+        "\t\t\t\\item deep\n"
+        "\t\t\\end{itemize}\n"
+        "\t\t\\item back to top\n"
+        "\t\\end{itemize}"
+    )
+
+
+def test_bullets_to_itemize_keeps_repeated_depth_jumps_as_siblings():
+    from slidemage.slide_import import Bullet, _bullets_to_itemize
+
+    tex = _bullets_to_itemize([
+        Bullet("top", level=0),
+        Bullet("deep A", level=3),
+        Bullet("deep B", level=3),
+        Bullet("back to top", level=0),
+    ])
+
+    assert tex == (
+        "\t\\begin{itemize}\n"
+        "\t\t\\item top\n"
+        "\t\t\\begin{itemize}\n"
+        "\t\t\t\\item deep A\n"
+        "\t\t\t\\item deep B\n"
         "\t\t\\end{itemize}\n"
         "\t\t\\item back to top\n"
         "\t\\end{itemize}"

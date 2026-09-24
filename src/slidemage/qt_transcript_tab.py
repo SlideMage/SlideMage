@@ -398,6 +398,22 @@ class _ImageEditor(QFrame):
         layout.addLayout(takeaway_row)
 
         self._entry = entry
+        # Immutable values as the form was first shown. _entry itself is
+        # refreshed by "Set as default" below, so it cannot safely serve as
+        # a conflict baseline for other fields during a later save.
+        self._form_baseline = {
+            "role": entry.role,
+            "short": entry.short,
+            "long": entry.long,
+            "source": entry.source,
+            "takeaway": entry.takeaway_for(slide_id),
+            "short_de": entry.short_de,
+            "long_de": entry.long_de,
+            "source_de": entry.source_de,
+            "takeaway_de": entry.takeaway_for_de(slide_id),
+        }
+        self._form_baseline_en_hash = alt_images.en_text_hash(entry)
+        self._translation_provenance: dict[str, object] | None = None
         takeaway_edit = QPlainTextEdit(entry.takeaway_for(slide_id))
         takeaway_edit.setFixedHeight(70)
         takeaway_edit.textChanged.connect(self._mark_dirty)
@@ -573,6 +589,12 @@ class _ImageEditor(QFrame):
 
         if not self.app.try_start_ollama_task("translating this image"):
             return
+        self._translation_provenance = None
+        self._translation_field_baseline = {
+            key: self.fields[key].toPlainText()
+            for key in ("short_de", "long_de", "takeaway_de")
+        }
+        self._translation_source_baseline = (use_short, use_long, use_takeaway)
         self.translating = True
         self.translate_button.setEnabled(False)
         self.translate_button.setText("Translating...")
@@ -645,20 +667,60 @@ class _ImageEditor(QFrame):
         self.translate_button.setText("Translate now")
 
         if not result.ok:
+            self._translation_provenance = None
+            self._translation_field_baseline = None
+            self._translation_source_baseline = None
             self.app.log(f"*** Translation of {self.reference} failed: {result.error} ***")
             QMessageBox.warning(self, "Translation failed", result.error or "Unknown error")
             return
 
         self.app.log(f"Translated {self.reference} into German.")
-        self.fields["short_de"].setPlainText(result.short_de)
-        self.fields["long_de"].setPlainText(result.long_de)
-        self.fields["takeaway_de"].setPlainText(result.takeaway_de)
+        fields_before_translation = self._translation_field_baseline or {}
+        source_before_translation = self._translation_source_baseline
+        all_fields_applied = source_before_translation is not None
+        for key, value in (
+            ("short_de", result.short_de),
+            ("long_de", result.long_de),
+            ("takeaway_de", result.takeaway_de),
+        ):
+            edit = self.fields[key]
+            # These widgets remain editable while translation runs. Apply a
+            # result only to fields the user has not changed since the
+            # request began; a completion must not overwrite newer typing.
+            if edit.toPlainText() == fields_before_translation.get(key, edit.toPlainText()):
+                edit.setPlainText(value)
+            else:
+                all_fields_applied = False
+        source_is_current = (
+            source_before_translation is None
+            or (self.short, self.long, self.takeaway_text) == source_before_translation
+        )
+        self._translation_provenance = None
+        if source_before_translation is not None:
+            short, long, takeaway = source_before_translation
+            requested_hash = alt_images.en_text_hash(alt_images.ImageEntry(
+                image=self.reference, short=short, long=long,
+                takeaway_default=takeaway,
+            ))
+            if all_fields_applied and result.source_hash == requested_hash:
+                # Save may happen after English was edited in this form. Keep
+                # the worker's exact source hash and applied German values so
+                # Save can prove the merged record still matches this result.
+                self._translation_provenance = {
+                    "source_hash": result.source_hash,
+                    "fields": {
+                        "short_de": self.short_de,
+                        "long_de": self.long_de,
+                        "takeaway_de": self.takeaway_de_text,
+                    },
+                }
+        self._translation_field_baseline = None
+        self._translation_source_baseline = None
         self.dirty = True
-        # The fields now genuinely match the English text this translation
-        # was given -- not reflected in translated_from_hash until saved,
-        # so set directly rather than via _refresh_translation_state()
-        # (which would read the stale on-disk entry and get this wrong).
-        self.translation_state_label.setText(_TRANSLATION_STATE_LABELS[alt_images.STATE_REVIEWED])
+        # The translation is current only if the English fields still match
+        # the exact snapshot sent to the worker.
+        state = alt_images.STATE_REVIEWED if source_is_current else alt_images.STATE_STALE
+        self.translation_state_label.setText(_TRANSLATION_STATE_LABELS[state])
 
     def _refresh_status_label(self, entry: alt_images.ImageEntry, slide_hash: str) -> None:
         state = alt_images.slide_use_state(entry, self.slide_id, slide_hash)
@@ -698,6 +760,10 @@ class _ImageEditor(QFrame):
             if use is not None:
                 use.takeaway = ""
             self._entry = entry
+            # This immediate action changed only the takeaway baseline. Keep
+            # the form's original snapshots for every other field so a
+            # background update is not mistaken for a human edit at Save.
+            self._form_baseline["takeaway"] = entry.takeaway_for(self.slide_id)
             return True
 
         alt_images.update_store(mutate)
@@ -1115,6 +1181,12 @@ class TranscriptTab(QWidget):
         # comment for why that path must never trigger the in-flight-
         # translation warning meant for an interactive row click.
         self._suppress_switch_warning = False
+        # A list rebuild can be cancelled if its selection would replace an
+        # unsaved image form. Remember the last accepted controls so a
+        # rejected filter/sort change can restore their visible state.
+        self._allow_dirty_selection = False
+        self._last_filter_index = 0
+        self._last_sort_index = 0
 
         outer = QVBoxLayout(self)
 
@@ -1348,7 +1420,23 @@ class TranscriptTab(QWidget):
         self._loaded = True
         self.reload()
 
-    def reload(self, preserve: Path | None = None) -> None:
+    def reload(self, preserve: Path | None = None, *, keep_dirty: bool = False) -> bool:
+        allow_dirty = False
+        if self._any_editor_dirty():
+            if keep_dirty:
+                self.app.log(
+                    "Refresh deferred because the current image form has unsaved edits; "
+                    "save or discard those edits before rescanning."
+                )
+                return False
+            choice = QMessageBox.question(
+                self, "Unsaved image edits",
+                "Rescanning will discard unsaved image edits. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if choice != QMessageBox.StandardButton.Yes:
+                return False
+            allow_dirty = True
         report = alt_images.sync_store()
         if report.added:
             self.app.log(
@@ -1367,7 +1455,8 @@ class TranscriptTab(QWidget):
             state = _slide_state(row, self._entries, slide_hash)
             views.append(_SlideView(row=row, state=state, slide_hash=slide_hash))
         self._rows = views
-        self._populate_list(preserve)
+        self._populate_list(preserve, allow_dirty=allow_dirty)
+        return True
 
     def _visible_rows(self) -> list[_SlideView]:
         _, states = _FILTERS[self.filter_combo.currentIndex()]
@@ -1409,7 +1498,9 @@ class TranscriptTab(QWidget):
             }
         self._populate_list()
 
-    def _populate_list(self, preserve: Path | None = None) -> None:
+    def _populate_list(
+        self, preserve: Path | None = None, *, allow_dirty: bool = False
+    ) -> None:
         """Rebuild the list, re-selecting `preserve` **by path**, not by index.
 
         Selecting by index was a real bug: repopulating fires
@@ -1419,6 +1510,25 @@ class TranscriptTab(QWidget):
         slide the list happened to land on -- observed writing slide 22s's
         file while slide 3px was on screen.
         """
+        if self._any_editor_dirty() and not allow_dirty:
+            choice = QMessageBox.question(
+                self, "Unsaved image edits",
+                "Refreshing or changing the slide list will discard unsaved "
+                "image edits. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if choice != QMessageBox.StandardButton.Yes:
+                self.filter_combo.blockSignals(True)
+                self.filter_combo.setCurrentIndex(self._last_filter_index)
+                self.filter_combo.blockSignals(False)
+                self.sort_combo.blockSignals(True)
+                self.sort_combo.setCurrentIndex(self._last_sort_index)
+                self.sort_combo.blockSignals(False)
+                return
+            allow_dirty = True
+
+        previous_allow_dirty = self._allow_dirty_selection
+        self._allow_dirty_selection = allow_dirty or previous_allow_dirty
         self._suppress_switch_warning = True
         try:
             # Signals blocked through the whole clear()+rebuild below
@@ -1485,12 +1595,34 @@ class TranscriptTab(QWidget):
                 self._on_slide_selected(target_row)
         finally:
             self._suppress_switch_warning = False
+            self._allow_dirty_selection = previous_allow_dirty
+        self._last_filter_index = self.filter_combo.currentIndex()
+        self._last_sort_index = self.sort_combo.currentIndex()
 
     # -- selection ----------------------------------------------------------
 
     def _on_slide_selected(self, index: int) -> None:
         rows = self._visible_rows()
         target_view = rows[index] if 0 <= index < len(rows) else None
+
+        current_path = self._current.row.path if self._current is not None else None
+        target_path = target_view.row.path if target_view is not None else None
+        if (
+            not self._suppress_switch_warning
+            and not self._allow_dirty_selection
+            and target_path != current_path
+            and self._any_editor_dirty()
+        ):
+            confirm = QMessageBox.question(
+                self, "Unsaved image edits",
+                "Switching slides will discard unsaved image edits. Switch anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                self.slide_list.blockSignals(True)
+                self.slide_list.setCurrentRow(self._current_row_index)
+                self.slide_list.blockSignals(False)
+                return
 
         # Warn before discarding an in-flight translation (2026-08-25,
         # direct instruction) -- only for an actual, interactive switch to
@@ -1774,72 +1906,80 @@ class TranscriptTab(QWidget):
                 if entry is None:
                     entry = alt_images.ImageEntry(image=editor.reference)
                     entries[editor.reference] = entry
-                entry.role = editor.role
-                entry.short = editor.short
-                entry.long = editor.long
-                entry.source = editor.source
+                baseline = editor._form_baseline
+                # The store can change while this form is open (draft and
+                # translation workers write each image as they finish). Only
+                # copy fields the person changed in this form; every untouched
+                # value stays at its newest persisted value.
+                if editor.role != baseline["role"]:
+                    entry.role = editor.role
+                if editor.short != baseline["short"]:
+                    entry.short = editor.short
+                if editor.long != baseline["long"]:
+                    entry.long = editor.long
+                if editor.source != baseline["source"]:
+                    entry.source = editor.source
 
-                typed = editor.takeaway_text
                 use = entry.used_on.setdefault(slide_id, alt_images.SlideUse())
-                if typed == entry.takeaway_default:
-                    use.takeaway = ""            # follows the default
-                elif not entry.takeaway_default and typed:
-                    # First takeaway ever entered for this image -- becomes
-                    # the default automatically, per the review workflow's
-                    # own design (see alt_images.py).
-                    entry.takeaway_default = typed
-                    use.takeaway = ""
-                else:
-                    use.takeaway = typed         # a real, independent override
+                typed = editor.takeaway_text
+                if typed != baseline["takeaway"]:
+                    if typed == entry.takeaway_default:
+                        use.takeaway = ""            # follows the latest default
+                    elif not entry.takeaway_default and typed:
+                        entry.takeaway_default = typed
+                        use.takeaway = ""
+                    else:
+                        use.takeaway = typed         # a real slide-specific override
 
-                # German (2026-08-24) -- same default/override shape as
-                # takeaway just above, for takeaway_de; short_de/long_de/
-                # source_de are always written straight from the editor,
-                # same as their English counterparts. translated_from_hash
-                # is stamped here (not only from a "Translate now" click):
-                # a save is the point this text becomes the record of what
-                # was translated, whether it came from the button or was
-                # hand-edited/hand-typed directly.
-                #
-                # But only when the German text itself actually changed in
-                # this save, not merely because it's present (2026-08-27,
-                # direct report -- confirmed directly: re-stamping
-                # unconditionally whenever short_de/long_de merely have
-                # *some* content meant "Save, then translate" -- whose own
-                # save runs before any real re-translation -- immediately
-                # claimed the still-old, not-yet-updated German text was
-                # "in sync" the instant the *English* edit was saved,
-                # regardless of whether German had actually changed to
-                # match it). Compared against editor._entry (the on-disk
-                # snapshot this editor was built from, never updated after
-                # construction -- same reference point english_modified
-                # elsewhere in this file already uses), not entry (already
-                # mutated above with this same save's own English edits,
-                # so it's never a useful "before" to compare against
-                # here). A completed translation writes straight into the
-                # form fields (_on_translation_done()) without ever
-                # touching editor._entry, so this still correctly reads as
-                # "German changed" for that case too -- editor.short_de
-                # (live) now differs from editor._entry.short_de (frozen
-                # at construction), same as a hand-edit would.
                 german_changed = (
-                    editor.short_de != editor._entry.short_de
-                    or editor.long_de != editor._entry.long_de
+                    editor.short_de != baseline["short_de"]
+                    or editor.long_de != baseline["long_de"]
+                    or editor.takeaway_de_text != baseline["takeaway_de"]
                 )
-                entry.short_de = editor.short_de
-                entry.long_de = editor.long_de
-                entry.source_de = editor.source_de
-                if german_changed and (entry.short_de or entry.long_de):
-                    entry.translated_from_hash = alt_images.en_text_hash(entry)
-                typed_de = editor.takeaway_de_text
-                if typed_de == entry.takeaway_default_de:
-                    use.takeaway_de = ""
-                elif not entry.takeaway_default_de and typed_de:
-                    entry.takeaway_default_de = typed_de
-                    use.takeaway_de = ""
-                else:
-                    use.takeaway_de = typed_de
+                if editor.short_de != baseline["short_de"]:
+                    entry.short_de = editor.short_de
+                if editor.long_de != baseline["long_de"]:
+                    entry.long_de = editor.long_de
+                if editor.source_de != baseline["source_de"]:
+                    entry.source_de = editor.source_de
 
+                typed_de = editor.takeaway_de_text
+                if typed_de != baseline["takeaway_de"]:
+                    if typed_de == entry.takeaway_default_de:
+                        use.takeaway_de = ""
+                    elif not entry.takeaway_default_de and typed_de:
+                        entry.takeaway_default_de = typed_de
+                        use.takeaway_de = ""
+                    else:
+                        use.takeaway_de = typed_de
+
+                provenance = editor._translation_provenance
+                provenance_fields = provenance.get("fields", {}) if provenance else {}
+                provenance_matches = (
+                    bool(provenance)
+                    and provenance_fields.get("short_de") == entry.short_de
+                    and provenance_fields.get("long_de") == entry.long_de
+                    and provenance_fields.get("takeaway_de") == entry.takeaway_for_de(slide_id)
+                    and provenance.get("source_hash") == alt_images.en_text_hash(entry)
+                )
+                if provenance_matches:
+                    entry.translated_from_hash = str(provenance["source_hash"])
+                elif german_changed:
+                    if not entry.short_de and not entry.long_de:
+                        entry.translated_from_hash = ""
+                    elif alt_images.en_text_hash(entry) == editor._form_baseline_en_hash:
+                        # A manual German edit can be considered in sync
+                        # only while the latest English source still matches
+                        # the form's original source.
+                        entry.translated_from_hash = alt_images.en_text_hash(entry)
+                    else:
+                        # The user edited German against an older form, but
+                        # the live English text has since changed (possibly
+                        # alongside a worker translation). Do not retain that
+                        # worker's current hash: it would falsely bless the
+                        # human-edited German as matching the newer English.
+                        # An empty source hash keeps the pair visibly stale.
+                        entry.translated_from_hash = ""
                 if mark_reviewed:
                     entry.status = alt_images.STATUS_REVIEWED
                     use.reviewed = today
@@ -1861,6 +2001,8 @@ class TranscriptTab(QWidget):
             return True
 
         alt_images.update_store(mutate)
+        for editor in self._editors:
+            editor.dirty = False
         self.app.log(
             f"{'Reviewed' if mark_reviewed else 'Saved draft for'} {target_path.name}"
         )
@@ -2574,7 +2716,7 @@ class TranscriptTab(QWidget):
         )
 
         preserve = self._current.row.path if self._current is not None else None
-        self.reload(preserve=preserve)
+        self.reload(preserve=preserve, keep_dirty=True)
 
     # -- shared drafting state ----------------------------------------------
 
@@ -2620,7 +2762,7 @@ class TranscriptTab(QWidget):
         )
 
         preserve = self._current.row.path if self._current is not None else None
-        self.reload(preserve=preserve)
+        self.reload(preserve=preserve, keep_dirty=True)
 
     # -- clearing -----------------------------------------------------------
 

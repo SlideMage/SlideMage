@@ -23,8 +23,10 @@ Qwen3-VL handles at native resolution.
 """
 from __future__ import annotations
 
+import ast
 import base64
 import json
+import math
 import re
 import time
 import urllib.error
@@ -837,13 +839,11 @@ def pull_model(model: str, host: Optional[str] = None,
         return False, str(exc)
 
 
-def get_modelfile(model: str, host: Optional[str] = None) -> str | None:
-    """Returns `model`'s current Modelfile text via POST /api/show, or None
-    if the model doesn't exist or the server isn't reachable. Used by
-    relink_derived_model() below to preserve a custom model's own
-    PARAMETER/SYSTEM lines exactly as they currently are -- only its FROM
-    line needs to change, to point at a freshly-pulled base instead of a
-    now-stale local blob."""
+def _get_model_show(model: str, host: Optional[str] = None) -> dict | None:
+    """Returns Ollama's structured `/api/show` response, or None if the
+    model doesn't exist, the server isn't reachable, or it returns invalid
+    JSON. Keeping this response lets callers preserve model configuration
+    through APIs that no longer accept a Modelfile string."""
     host = host or app_settings.get_ollama_host()
     try:
         request = urllib.request.Request(
@@ -854,9 +854,89 @@ def get_modelfile(model: str, host: Optional[str] = None) -> str | None:
         )
         with urllib.request.urlopen(request, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
-        return data.get("modelfile")
+        return data if isinstance(data, dict) else None
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
         return None
+
+
+def get_modelfile(model: str, host: Optional[str] = None) -> str | None:
+    """Returns `model`'s current Modelfile text via POST /api/show, or None
+    if the model doesn't exist or the server isn't reachable. Kept for
+    callers that still need the display/export form; model relinking uses
+    `/api/show`'s structured fields instead of sending this text back to
+    `/api/create`."""
+    data = _get_model_show(model, host=host)
+    modelfile = data.get("modelfile") if data is not None else None
+    return modelfile if isinstance(modelfile, str) else None
+
+
+_FLOAT_PARAMETER_RE = re.compile(
+    r"[+-]?(?:\d+\.\d*|\.\d+|\d+[eE][+-]?\d+|"
+    r"\d+\.\d*[eE][+-]?\d+|\.\d+[eE][+-]?\d+)\Z"
+)
+
+
+def _parse_parameter_value(value: str) -> bool | int | float | str:
+    """Convert one formatted `/api/show` parameter value into JSON's
+    corresponding scalar type without treating zero or false as absent."""
+    lowered = value.casefold()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if re.fullmatch(r"[+-]?\d+", value):
+        return int(value)
+    if _FLOAT_PARAMETER_RE.fullmatch(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError(f"non-finite numeric value {value!r}")
+        return number
+    if lowered in {"nan", "+nan", "-nan", "inf", "+inf", "-inf",
+                   "infinity", "+infinity", "-infinity"}:
+        raise ValueError(f"non-finite numeric value {value!r}")
+    return value
+
+
+def _parse_show_parameters(parameters: object) -> dict[str, bool | int | float | str | list[str]]:
+    """Parse Ollama's formatted `parameters` text into the `/api/create`
+    JSON map. `stop` is the one repeatable parameter and becomes a list;
+    malformed or ambiguous lines fail instead of silently dropping a
+    setting while relinking a model."""
+    if parameters is None or parameters == "":
+        return {}
+    if not isinstance(parameters, str):
+        raise ValueError("Ollama returned model parameters in an unsupported format")
+
+    parsed: dict[str, bool | int | float | str | list[str]] = {}
+    for line_number, line in enumerate(parameters.splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", parts[0]):
+            raise ValueError(f"unsupported parameter syntax on line {line_number}")
+        name, serialized_value = parts
+        is_quoted = serialized_value.startswith('"')
+        if is_quoted:
+            try:
+                raw_value = ast.literal_eval(serialized_value)
+            except (SyntaxError, ValueError) as exc:
+                raise ValueError(f"invalid parameter line {line_number}: {exc}") from exc
+            if not isinstance(raw_value, str):
+                raise ValueError(f"unsupported parameter value on line {line_number}")
+        else:
+            if any(character.isspace() for character in serialized_value):
+                raise ValueError(f"unsupported parameter syntax on line {line_number}")
+            raw_value = serialized_value
+        if name == "stop":
+            parsed.setdefault(name, []).append(raw_value)
+        elif name in parsed:
+            raise ValueError(f"repeated non-stop parameter {name!r} on line {line_number}")
+        else:
+            try:
+                parsed[name] = raw_value if is_quoted else _parse_parameter_value(raw_value)
+            except ValueError as exc:
+                raise ValueError(f"invalid parameter {name!r} on line {line_number}: {exc}") from exc
+    return parsed
 
 
 def _strip_modelfile_comments(modelfile: str) -> list[str]:
@@ -882,36 +962,49 @@ def _strip_modelfile_comments(modelfile: str) -> list[str]:
 
 def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> tuple[bool, str]:
     """Re-creates `model` (one of DERIVED_MODEL_BASES) against `base`'s
-    current weights: reads model's own live Modelfile, drops Ollama's
-    auto-generated "#" comment lines and its literal (now-stale) "FROM
-    <local-blob-path>" line, replaces that with "FROM <base>", and POSTs
-    the result to /api/create. Every PARAMETER/SYSTEM/etc. line is kept
-    exactly as the model currently has it -- this only changes which
-    weights the tag points at, never its configuration. Returns (True, "")
-    on success, (False, error) otherwise, same contract as delete_model()."""
+    current weights. Reads Ollama's structured `/api/show` response and
+    sends the supported `/api/create` fields, replacing only `from` while
+    preserving the model's template, prompts, license, parameters, and
+    messages. Returns (True, "") on success, (False, error) otherwise,
+    same contract as delete_model()."""
     host = host or app_settings.get_ollama_host()
-    modelfile = get_modelfile(model, host=host)
-    if modelfile is None:
-        return False, f"Could not read {model}'s current Modelfile"
-    kept_lines = _strip_modelfile_comments(modelfile)
-    new_lines: list[str] = []
-    replaced = False
-    for line in kept_lines:
-        if not replaced and line.startswith("FROM "):
-            new_lines.append(f"FROM {base}")
-            replaced = True
-        else:
-            new_lines.append(line)
-    if not replaced:
-        return False, f"{model}'s Modelfile has no FROM line"
+    show = _get_model_show(model, host=host)
+    if show is None:
+        return False, f"Could not read {model}'s current model configuration"
+
+    try:
+        payload: dict[str, object] = {
+            "model": model,
+            "from": base,
+            "parameters": _parse_show_parameters(show.get("parameters")),
+            "stream": False,
+        }
+        for field_name in (
+            "template", "system", "license", "renderer", "parser",
+            "messages", "requires",
+        ):
+            if field_name not in show or show[field_name] is None:
+                continue
+            value = show[field_name]
+            if field_name in {"template", "system", "renderer", "parser", "requires"}:
+                if not isinstance(value, str):
+                    raise ValueError(f"Ollama returned {field_name} in an unsupported format")
+            elif field_name == "license":
+                if not isinstance(value, (str, list)) or (
+                    isinstance(value, list) and not all(isinstance(item, str) for item in value)
+                ):
+                    raise ValueError("Ollama returned license in an unsupported format")
+            elif field_name == "messages":
+                if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+                    raise ValueError("Ollama returned messages in an unsupported format")
+            payload[field_name] = value
+    except ValueError as exc:
+        return False, f"Could not preserve {model}'s current configuration: {exc}"
+
     try:
         request = urllib.request.Request(
             f"{host.rstrip('/')}/api/create",
-            data=json.dumps({
-                "model": model,
-                "modelfile": "\n".join(new_lines),
-                "stream": False,
-            }).encode("utf-8"),
+            data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -1414,8 +1507,7 @@ def apply_one_translation(image: str, result: TranslationResult, model_label: st
             return False
         entry.short_de = result.short_de
         entry.long_de = result.long_de
-        if result.takeaway_de:
-            entry.takeaway_default_de = result.takeaway_de
+        entry.takeaway_default_de = result.takeaway_de
         entry.translated_from_hash = current_hash
         return True
 

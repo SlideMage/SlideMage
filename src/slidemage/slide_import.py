@@ -131,15 +131,12 @@ def extract_pptx(path: Path) -> list[SlideContent]:
 
 # -- OpenDocument Presentation (.odp) ---------------------------------------
 
-def _odp_walk_text_box(node, level: int, bullets: list[Bullet]) -> None:
-    """Appends one Bullet per direct text:p (at `level`) and recurses into
-    every direct text:list one level deeper -- text:list nesting is
-    exactly how ODF represents indented bullet levels, the same concept
-    as pptx's own paragraph.level, just as nested elements instead of a
-    flat integer attribute. A text:list-item holds the next level's own
-    text:p (and/or a further-nested text:list for another level still),
-    so every text:list found is a genuine +1, regardless of how deep the
-    recursion already is."""
+def _odp_walk_text_box(node, level: int, bullets: list[Bullet], *, root: bool = False) -> None:
+    """Appends one Bullet per direct text:p at the current level. A text:list
+    directly inside the text box is the top-level list (level 0); lists
+    nested inside a text:list-item add one level each time. This follows
+    ODF's nested-element structure while matching pptx's flat paragraph
+    level attribute."""
     from odf.namespaces import TEXTNS
     from odf.teletype import extractText
 
@@ -158,7 +155,9 @@ def _odp_walk_text_box(node, level: int, bullets: list[Bullet]) -> None:
         elif child.qname == list_qname:
             for item in child.childNodes:
                 if item.qname == item_qname:
-                    _odp_walk_text_box(item, level + 1, bullets)
+                    # The first list inside the text box is level 0.
+                    # Further lists nested inside list items add one level.
+                    _odp_walk_text_box(item, level if root else level + 1, bullets)
         elif child.qname == item_qname:
             _odp_walk_text_box(child, level, bullets)
 
@@ -181,7 +180,7 @@ def extract_odp(path: Path) -> list[SlideContent]:
             frame_class = frame.getAttrNS(PRESENTATIONNS, "class")
             for text_box in frame.getElementsByType(TextBox):
                 bullets: list[Bullet] = []
-                _odp_walk_text_box(text_box, 0, bullets)
+                _odp_walk_text_box(text_box, 0, bullets, root=True)
                 if frame_class == "title" and bullets:
                     content.title = " ".join(b.text for b in bullets)
                 else:
@@ -204,20 +203,31 @@ def extract_odp(path: Path) -> list[SlideContent]:
 # -- LaTeX generation ---------------------------------------------------
 
 _TAB = "\t"
+_MAX_ITEMIZE_LEVEL = 3  # Slidemaster_preamble_base.tex supports four itemize levels.
 
 
 def _bullets_to_itemize(bullets: list[Bullet]) -> str:
-    """Nested \\begin{itemize}...\\end{itemize} matching this project's own
-    tab-indented convention (see the starter slide template) -- opens or
-    closes exactly enough levels to move from the previous bullet's level
-    to this one's, so an arbitrary jump the source file itself never
-    actually produces (level 0 straight to 2, no level-1 item between)
-    still nests correctly rather than emitting an invalid extra
-    \\begin{itemize} with nothing but another \\begin{itemize} inside it."""
+    """Render bullets as nested itemize environments.
+
+    Missing source levels collapse to the next available depth. A stack of
+    source-level ancestors keeps repeated bullets at a jumped level together
+    as siblings. Nesting is capped at the four levels supported by the
+    project's Beamer preamble.
+    """
     lines: list[str] = []
+    source_levels: list[tuple[int, int]] = []
     current_level = -1  # nothing open yet
     for bullet in bullets:
-        level = max(0, bullet.level)
+        source_level = max(0, bullet.level)
+        while source_levels and source_levels[-1][0] > source_level:
+            source_levels.pop()
+        if source_levels and source_levels[-1][0] == source_level:
+            level = source_levels[-1][1]
+        else:
+            parent_level = source_levels[-1][1] if source_levels else -1
+            level = min(parent_level + 1, _MAX_ITEMIZE_LEVEL)
+            source_levels.append((source_level, level))
+
         while current_level < level:
             current_level += 1
             lines.append(_TAB * (current_level + 1) + r"\begin{itemize}")

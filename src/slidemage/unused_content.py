@@ -51,6 +51,17 @@ SLIDES_DIR = PROJECT_ROOT / "slides"
 SLIDES_ARCHIVE_DIR = SLIDES_DIR / "archive"
 
 MEDIA_REF_RE = re.compile(r"media/([\w][\w.-]*)")
+# These files belong to SlideMage's accessibility editor, not to a deck's
+# media collection. In particular alt-text.json contains authored
+# descriptions and must remain at its canonical path for the editor to use.
+MEDIA_METADATA_FILENAMES = {"alt-text.json", "alt-text.csv"}
+
+
+def _is_media_metadata_filename(name: str) -> bool:
+    return (
+        name in MEDIA_METADATA_FILENAMES
+        or (name.startswith(".alt-text.json.") and name.endswith(".tmp"))
+    )
 # Same convention already used for syntax highlighting/other text scans in
 # this project (qt_slide_source_tab.py's own COMMENT_RE, alt_blocks.py's) --
 # an unescaped "%" starts a comment running to end of line; "\%" (a literal
@@ -155,7 +166,10 @@ def find_unused_media() -> list[Path]:
         return []
     used = find_used_media_filenames()
     return sorted(
-        p for p in MEDIA_DIR.iterdir() if p.is_file() and p.name not in used
+        p for p in MEDIA_DIR.iterdir()
+        if p.is_file()
+        and p.name not in used
+        and not _is_media_metadata_filename(p.name)
     )
 
 

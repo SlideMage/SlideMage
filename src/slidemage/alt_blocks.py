@@ -121,6 +121,141 @@ def braced_argument(text: str, open_index: int) -> tuple[str, int]:
     return "", open_index
 
 
+def _control_sequence_at(text: str, index: int) -> tuple[str, int] | None:
+    """Return a TeX control sequence and its end offset at index.
+
+    Control words contain letters (and @); a backslash followed by any
+    other character is a one-character control symbol. Treating symbols as
+    tokens is important here: in \\\\note the first two backslashes are
+    one control symbol, so the remaining letters are not a \\note call.
+    """
+    if index >= len(text) or text[index] != "\\" or index + 1 >= len(text):
+        return None
+    cursor = index + 1
+    if text[cursor].isalpha() or text[cursor] == "@":
+        cursor += 1
+        while cursor < len(text) and (text[cursor].isalpha() or text[cursor] == "@"):
+            cursor += 1
+        return text[index + 1:cursor], cursor
+    return "", cursor + 1
+
+
+def _iter_tex_commands(text: str):
+    """Yield active TeX control words as (name, start, end) triples.
+
+    Comments, \\verb literals, and the token consumed by \\string are skipped
+    so source examples are not mistaken for executable macros. This is
+    intentionally a small lexer, not a TeX expansion engine.
+    """
+    cursor = 0
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "%":
+            newline = text.find("\n", cursor)
+            cursor = len(text) if newline == -1 else newline + 1
+            continue
+        if char != "\\":
+            cursor += 1
+            continue
+
+        token = _control_sequence_at(text, cursor)
+        if token is None:
+            cursor += 1
+            continue
+        name, end = token
+        if name == "verb":
+            delimiter_at = end + (1 if end < len(text) and text[end] == "*" else 0)
+            if delimiter_at < len(text) and text[delimiter_at] not in "\r\n":
+                delimiter = text[delimiter_at]
+                literal_end = text.find(delimiter, delimiter_at + 1)
+                cursor = len(text) if literal_end == -1 else literal_end + 1
+                continue
+        if name == "string":
+            literal_at = end
+            while literal_at < len(text) and text[literal_at].isspace():
+                literal_at += 1
+            literal = _control_sequence_at(text, literal_at)
+            cursor = literal[1] if literal else min(literal_at + 1, len(text))
+            continue
+        if name:
+            yield name, cursor, end
+        cursor = end
+
+
+def _delimited_group_end(text: str, open_index: int, opening: str, closing: str) -> int | None:
+    """Find the end of a balanced optional angle or square group."""
+    if open_index >= len(text) or text[open_index] != opening:
+        return None
+    depth = 1
+    brace_depth = 0
+    cursor = open_index + 1
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "\\":
+            cursor += 2
+            continue
+        if char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth:
+            brace_depth -= 1
+        elif not brace_depth and char == opening:
+            depth += 1
+        elif not brace_depth and char == closing:
+            depth -= 1
+            if depth == 0:
+                return cursor + 1
+        cursor += 1
+    return None
+
+
+def extract_note_calls(text: str) -> tuple[str, list[str]]:
+    r"""Remove Beamer \note commands with optional overlay/options.
+
+    Supported forms include \note {...}, \note<2>{...}, and
+    \note<2>[item]{...}. The argument uses the same nested-brace parser
+    as other slide macros. Control-sequence tokenization avoids matching
+    longer names such as \noteworthy or escaped/stringified examples.
+    """
+    remainder: list[str] = []
+    arguments: list[str] = []
+    index = 0
+    copied_through = 0
+
+    for name, found, command_end in _iter_tex_commands(text):
+        if name != "note" or found < index:
+            continue
+
+        cursor = command_end
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        seen: set[str] = set()
+        while cursor < len(text) and text[cursor] in "<[":
+            marker = text[cursor]
+            if marker in seen:
+                break
+            seen.add(marker)
+            after_group = _delimited_group_end(
+                text, cursor, marker, ">" if marker == "<" else "]"
+            )
+            if after_group is None:
+                break
+            cursor = after_group
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
+
+        content, after = braced_argument(text, cursor)
+        if after == cursor:
+            continue
+
+        remainder.append(text[copied_through:found])
+        arguments.append(content)
+        copied_through = after
+        index = after
+
+    remainder.append(text[copied_through:])
+    return "".join(remainder), arguments
+
+
 def extract_macro_calls(text: str, macro: str) -> tuple[str, list[str]]:
     """Remove every `\\macro{...}` from `text`; return (remainder, arguments).
 
@@ -128,6 +263,9 @@ def extract_macro_calls(text: str, macro: str) -> tuple[str, list[str]]:
     non-greedy `\\macro\\{(.*?)\\}` stops at the first closing brace, which is
     the wrong one whenever the argument itself contains a braced macro.
     """
+    if macro == "note":
+        return extract_note_calls(text)
+
     needle = f"\\{macro}{{"
     remainder: list[str] = []
     arguments: list[str] = []
@@ -167,7 +305,7 @@ def _slide_title(source: str, slide_path: Path) -> tuple[str, str]:
         stem = stem[: -len("-current")]
     slide_id, _, slug = stem.partition("-")
 
-    stripped = COMMENT_RE.sub("", source)
+    stripped = extract_note_calls(COMMENT_RE.sub("", source))[0]
     # FRAME_OPEN_RE's own "title" alternative matches \begin{titleframe}{,
     # which never actually occurs -- \titleframe is a *command*
     # (\titleframe{title}{subtitle}), not an environment (see
@@ -290,7 +428,7 @@ def referenced_images(source: str) -> list[str]:
     expanding TeX, so it is skipped rather than guessed at. In practice those
     live in the preamble, not in slides/ -- slide files spell their paths out.
     """
-    stripped = COMMENT_RE.sub("", source)
+    stripped = extract_note_calls(COMMENT_RE.sub("", source))[0]
     references = []
 
     for match in INCLUDEGRAPHICS_RE.finditer(stripped):
@@ -345,7 +483,7 @@ def referenced_images(source: str) -> list[str]:
     # flat list of opaque reference strings already; this is what makes a
     # hand-drawn diagram show up in that same list with no changes needed
     # anywhere that only ever consumes SlideRow.images generically.
-    for illustration_id, _options, _body in referenced_tikz_illustrations(source):
+    for illustration_id, _options, _body in referenced_tikz_illustrations(stripped):
         references.append(f"{TIKZ_PREFIX}{illustration_id}")
 
     return sorted(set(references))

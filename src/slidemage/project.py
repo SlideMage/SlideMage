@@ -30,6 +30,55 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     return {n for n in names if n in skip}
 
 
+class ProjectCreationError(ValueError):
+    """A project template would collide with content already in the folder."""
+
+    def __init__(self, path: Path, conflicts: list[Path]):
+        self.path = path
+        self.conflicts = tuple(conflicts)
+        shown = ", ".join(str(item) for item in self.conflicts[:5])
+        if len(self.conflicts) > 5:
+            shown += f", and {len(self.conflicts) - 5} more"
+        super().__init__(
+            f"Cannot create a project in {path}: existing content would be "
+            f"overwritten or replaced ({shown}). Choose an empty folder or "
+            "move the listed content first."
+        )
+
+
+def _template_copy_conflicts(source: Path, destination: Path) -> list[Path]:
+    """Existing paths that copytree() would replace or follow through."""
+    conflicts: list[Path] = []
+    for root, dirs, files in os.walk(source):
+        ignored = _ignore_template_build_output(root, [*dirs, *files])
+        dirs[:] = [name for name in dirs if name not in ignored]
+        relative = Path(root).relative_to(source)
+        for name in dirs:
+            target = destination / relative / name
+            if os.path.lexists(target) and (target.is_symlink() or not target.is_dir()):
+                conflicts.append(target)
+        for name in files:
+            if name in ignored:
+                continue
+            target = destination / relative / name
+            if os.path.lexists(target):
+                conflicts.append(target)
+    return sorted(set(conflicts))
+
+
+def _scaffold_conflicts(path: Path) -> list[Path]:
+    """Existing paths that the empty-project scaffold needs to create."""
+    conflicts: list[Path] = []
+    marker = path / MARKER
+    if os.path.lexists(marker):
+        conflicts.append(marker)
+    for name in ("slides", "decks", "media"):
+        target = path / name
+        if os.path.lexists(target) and (target.is_symlink() or not target.is_dir()):
+            conflicts.append(target)
+    return sorted(set(conflicts))
+
+
 def is_project(path: Path) -> bool:
     return (path / MARKER).is_file()
 
@@ -105,40 +154,38 @@ def has_example_template() -> bool:
 
 
 def init_project(path: Path, copy_example: bool = True) -> None:
-    """Turns an ordinary folder (empty, or just not a Slidemaster project
-    yet) into a minimal, valid one -- for the "not a Slidemaster project"
-    picker dialogs (cli.py's first-run fallback, qt_gui.py's "Open
-    Project…") to offer creating one instead of only ever rejecting
-    whatever wasn't already a project (2026-09-23, direct report: picked
-    an intentionally empty folder meant to become a brand-new project, on
-    first startup, and had no way to actually create one there).
+    """Turn an ordinary folder into a minimal, valid project.
 
-    copy_example=True (the default, and the only mode actually offered
-    when has_example_template() is True) seeds `path` with a full working
-    copy of the bundled example project -- real demo slides showing every
-    layout, the deck-version system, a bibliography, plus slide_ids.csv
-    already primed with those IDs -- so there's something to look at,
-    compile, and learn the conventions from immediately, not a blank
-    file. Also ensures a `latex/` sibling next to `path` (the framework
-    every project's own .latexmkrc looks for one directory up) if one
-    isn't already there -- never overwritten if it is, since that would
-    silently stomp a real, possibly-customized shared framework several
-    projects already point at.
+    copy_example=True seeds it with the bundled demo project, then copies
+    the sibling LaTeX framework only when one is not already there. An
+    empty scaffold is created when copy_example is False or the template is
+    unavailable. Existing unrelated files are preserved; any path the
+    operation would overwrite or replace raises ProjectCreationError before
+    any project files are written.
+    """
+    path = Path(path)
+    if os.path.lexists(path) and (path.is_symlink() or not path.is_dir()):
+        raise ProjectCreationError(path, [path])
 
-    Falls back to a truly empty scaffold (just slide_ids.csv, plus empty
-    slides/decks/media/ folders) when copy_example is False or no bundled
-    template was found to copy."""
-    path.mkdir(parents=True, exist_ok=True)
     example_dir = _template_dir("example") if copy_example else None
     if example_dir is not None:
+        conflicts = _template_copy_conflicts(example_dir, path)
+        if conflicts:
+            raise ProjectCreationError(path, conflicts)
+        path.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
             example_dir, path, dirs_exist_ok=True, ignore=_ignore_template_build_output
         )
         latex_dir = _template_dir("latex")
         sibling_latex = path.parent / "latex"
-        if latex_dir is not None and not sibling_latex.exists():
+        if latex_dir is not None and not os.path.lexists(sibling_latex):
             shutil.copytree(latex_dir, sibling_latex)
         return
+
+    conflicts = _scaffold_conflicts(path)
+    if conflicts:
+        raise ProjectCreationError(path, conflicts)
+    path.mkdir(parents=True, exist_ok=True)
     csv_path = path / MARKER
     if not csv_path.exists():
         # Byte-for-byte the same header-only shape
@@ -228,7 +275,12 @@ def pick_or_create_project(parent, start_dir: Path) -> Path | None:
         box.exec()
         clicked = box.clickedButton()
         if clicked is create_button:
-            init_project(path, copy_example=with_example)
+            try:
+                init_project(path, copy_example=with_example)
+            except ProjectCreationError as exc:
+                QMessageBox.warning(parent, "Cannot create project", str(exc))
+                start = chosen
+                continue
             return path.resolve()
         if clicked is not pick_again_button:
             return None  # Cancel
