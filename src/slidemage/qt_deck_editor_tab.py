@@ -456,7 +456,8 @@ class DeckEditorTab(QWidget):
                 if current_span is not None and item.start >= current_span.end:
                     row_index = self._build_block_footer(row_index, current_span)
                     current_span = None
-                row_index = self._build_section_row(row_index, item, chapter_occurrence)
+                row_index = self._build_section_row(
+                    row_index, item, chapter_occurrence, item_index)
                 chapter_occurrence += 1
                 continue
 
@@ -499,23 +500,26 @@ class DeckEditorTab(QWidget):
         self._trailing_stretch_row = row_index
 
     def _build_section_row(
-        self, row_index: int, chapter: Chapter, occurrence: int,
+        self, row_index: int, chapter: Chapter, occurrence: int, item_index: int,
     ) -> int:
         r"""A source \section line is a peer of slide rows in List/Thumbnail."""
-        position = self.deck.chapters.index(chapter)
         editable = self._section_editable(chapter)
         number_cell = QWidget()
         number_layout = QHBoxLayout(number_cell)
         number_layout.setContentsMargins(0, 0, 0, 0)
         number_layout.addWidget(QLabel("§"))
         for arrow, offset, direction in (("↑", -1, "up"), ("↓", 1, "down")):
-            index = position + offset
-            neighbor = self.deck.chapters[index] if 0 <= index < len(self.deck.chapters) else None
+            index = item_index + offset
+            neighbor = self._items[index] if 0 <= index < len(self._items) else None
             button = QPushButton(arrow)
             button.setFixedWidth(26)
-            button.setToolTip(f"Move entire section {direction}, including its slides")
+            button.setToolTip(
+                f"Move section {direction} past the adjacent slide or section")
             button.setEnabled(
-                neighbor is not None and editable and self._section_editable(neighbor))
+                neighbor is not None and editable
+                and (self._section_editable(neighbor)
+                     if isinstance(neighbor, Chapter) else neighbor.editable)
+            )
             button.clicked.connect(
                 lambda _checked=False, n=neighbor, d=direction: self._on_move_section(
                     chapter, n, d))
@@ -1011,12 +1015,16 @@ class DeckEditorTab(QWidget):
         )
 
     def _on_move_section(
-        self, chapter: Chapter, neighbor: Chapter, direction: str,
+        self, chapter: Chapter, neighbor: Chapter | SlideCall, direction: str,
     ) -> None:
         previous_text = self.deck.text
         try:
-            deck_editor.move_section(
-                self.deck.path, previous_text, chapter, neighbor)
+            if isinstance(neighbor, SlideCall):
+                deck_editor.move_slide_past_section(
+                    self.deck.path, previous_text, neighbor, chapter)
+            else:
+                deck_editor.move_section(
+                    self.deck.path, previous_text, chapter, neighbor)
         except (deck_editor.StaleFileError, ValueError) as exc:
             QMessageBox.critical(self, "Move section failed", str(exc))
             return

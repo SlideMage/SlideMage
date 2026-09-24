@@ -61,20 +61,42 @@ def test_sections_are_rows_and_can_be_added_and_reordered(tmp_path, monkeypatch,
     ]
     assert tab.chapter_combo.itemText(4) == "New"
 
-    two_heading = tab._chapter_headers[3]
+    new_heading = next(
+        label for label in tab._chapter_headers.values()
+        if label.text() == "Section: New"
+    )
     row = next(
         tab.grid.getItemPosition(i)[0] for i in range(tab.grid.count())
-        if tab.grid.itemAt(i).widget() is two_heading
+        if tab.grid.itemAt(i).widget() is new_heading
     )
     number_cell = tab.grid.itemAtPosition(row, 0).widget()
-    down = next(
+    up = next(
         button for button in number_cell.findChildren(QPushButton)
-        if button.text() == "↓"
+        if button.text() == "↑"
     )
-    down.click()
+    assert up.isEnabled()
+    up.click()
     updated = _read(path)
-    assert updated.index("\\section{New}") < updated.index("\\section{Two}")
-    assert updated.index("\\section{Two}") < updated.index("\\slide{ccc-Two}")
+    assert updated.index("\\section{Two}") < updated.index("\\section{New}")
+    assert updated.index("\\section{New}") < updated.index("\\slide{ccc-Two}")
+
+    new_heading = next(
+        label for label in tab._chapter_headers.values()
+        if label.text() == "Section: New"
+    )
+    row = next(
+        tab.grid.getItemPosition(i)[0] for i in range(tab.grid.count())
+        if tab.grid.itemAt(i).widget() is new_heading
+    )
+    number_cell = tab.grid.itemAtPosition(row, 0).widget()
+    up = next(
+        button for button in number_cell.findChildren(QPushButton)
+        if button.text() == "↑"
+    )
+    up.click()
+    updated = _read(path)
+    assert updated.index("\\section{New}") < updated.index("\\slide{ccc-Two}")
+    assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{Two}")
 
     slide_label = next(
         label for label in tab._id_labels.values() if label.text() == "ccc-Two"
@@ -90,5 +112,5 @@ def test_sections_are_rows_and_can_be_added_and_reordered(tmp_path, monkeypatch,
     )
     up.click()
     updated = _read(path)
-    assert updated.index("\\section{New}") < updated.index("\\slide{ccc-Two}")
-    assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{Two}")
+    assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{New}")
+    assert updated.index("\\section{New}") < updated.index("\\section{Two}")

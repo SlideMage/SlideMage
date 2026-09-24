@@ -211,9 +211,11 @@ use the cache, all instant — no LaTeX compile needed:
 - In List or Thumbnail view, each `\section{...}` appears as an editable
   section row, even when it has no slides yet. Use **Add section** to append
   one, or **+ section** beside a slide to insert one before that slide. A
-  section row can be renamed, moved up or down with all its slides, or
-  removed while keeping its slides. Use **+ slide here** to add the first
-  slide to an empty section. These changes update the deck's `.tex` source
+  section row can be renamed or removed while keeping its slides. Its
+  arrow buttons move the heading past the adjacent slide, changing which
+  section contains that slide; moving past another section carries the
+  section's slides with it. Use **+ slide here** to add the first slide to
+  an empty section. These changes update the deck's `.tex` source
   and can be undone with **Undo**.
 
 This is a cache, not a live view — it only updates when something actually
