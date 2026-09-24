@@ -2336,35 +2336,34 @@ class TranscriptTab(QWidget):
 
     # -- drafting -----------------------------------------------------------
 
-    def _populate_models(self) -> None:
-        models = alt_draft.list_vision_models()
+    def _populate_models(self, models: list[str] | None = None) -> None:
+        if models is None:
+            models = alt_draft.list_vision_models()
         self.model_combo.clear()
         if models:
             self.model_combo.addItems(models)
+            self.model_combo.setEnabled(True)
             self.model_combo.setToolTip("Vision-capable models Ollama currently has")
-            # Remembered across sessions (2026-08-25, direct instruction) --
-            # app_settings.py, same local per-machine store dark mode
-            # already uses. Only applied if that model is actually in
-            # today's list; otherwise Qt's own default (the first item)
-            # stands, same as before this existed.
-            remembered = app_settings.get("drafting_model")
-            if remembered:
-                index = self.model_combo.findText(remembered)
-                if index != -1:
-                    self.model_combo.setCurrentIndex(index)
+            # Other AI uses the saved model when it can process images;
+            # otherwise the first available vision model stays selected.
+            remembered = app_settings.get_other_model()
+            if remembered in models:
+                self.model_combo.setCurrentText(remembered)
         else:
             self.model_combo.addItem("(no Ollama vision models)")
             self.model_combo.setEnabled(False)
             self.model_combo.setToolTip(
-                "Ollama is not reachable at localhost:11434, or has no "
+                "Ollama is unreachable, or has no "
                 "vision-capable model installed."
             )
 
-    def _populate_translation_models(self) -> None:
-        models = alt_draft.list_all_models()
+    def _populate_translation_models(self, models: list[str] | None = None) -> None:
+        if models is None:
+            models = alt_draft.list_all_models()
         self.translation_model_combo.clear()
         if models:
             self.translation_model_combo.addItems(models)
+            self.translation_model_combo.setEnabled(True)
             self.translation_model_combo.setToolTip(
                 "Every model Ollama currently has -- translation is "
                 "text-only, so any of them works, not just a vision-"
@@ -2377,23 +2376,33 @@ class TranscriptTab(QWidget):
             # been remembered yet (a fresh install) or the remembered model
             # isn't installed here.
             remembered = app_settings.get("translation_model")
-            preferred = self.translation_model_combo.findText(
-                remembered or alt_draft.DEFAULT_TRANSLATION_MODEL)
-            if preferred != -1:
-                self.translation_model_combo.setCurrentIndex(preferred)
+            preferred = (
+                remembered if remembered in models
+                else alt_draft.DEFAULT_TRANSLATION_MODEL
+            )
+            if preferred in models:
+                self.translation_model_combo.setCurrentText(preferred)
         else:
             self.translation_model_combo.addItem("(no Ollama models found)")
             self.translation_model_combo.setEnabled(False)
             self.translation_model_combo.setToolTip(
-                "Ollama is not reachable at localhost:11434, or has no "
+                "Ollama is unreachable, or has no "
                 "models installed."
             )
 
     def _on_model_selected(self, index: int) -> None:
-        app_settings.set("drafting_model", self.model_combo.itemText(index))
+        app_settings.set("other_model", self.model_combo.itemText(index))
 
     def _on_translation_model_selected(self, index: int) -> None:
         app_settings.set("translation_model", self.translation_model_combo.itemText(index))
+
+    def refresh_model_preferences(
+        self, models: list[str], vision_models: list[str]
+    ) -> None:
+        """Show Preferences choices in this already-open tab."""
+        self._populate_models(vision_models)
+        self._populate_translation_models(models)
+        self._update_draft_button()
 
     def _current_draftable(self) -> list[tuple[str, Path]]:
         if self._current is None:

@@ -553,6 +553,43 @@ class SettingsDialog(QDialog):
         host_layout.addWidget(self.ollama_host_edit, stretch=1)
         layout.addWidget(host_group)
 
+        default_models_group = QGroupBox("Default models")
+        default_models_layout = QVBoxLayout(default_models_group)
+        translation_model_row = QHBoxLayout()
+        translation_model_row.addWidget(QLabel("Translation:"))
+        self.default_translation_model_combo = QComboBox()
+        self.default_translation_model_combo.setPlaceholderText(
+            "No Ollama models available"
+        )
+        self.default_translation_model_combo.activated.connect(
+            self._on_default_translation_model_selected
+        )
+        translation_model_row.addWidget(
+            self.default_translation_model_combo, stretch=1
+        )
+        default_models_layout.addLayout(translation_model_row)
+
+        other_model_row = QHBoxLayout()
+        other_model_row.addWidget(QLabel("Other AI tasks:"))
+        self.default_other_model_combo = QComboBox()
+        self.default_other_model_combo.setPlaceholderText(
+            "No Ollama models available"
+        )
+        self.default_other_model_combo.activated.connect(
+            self._on_default_other_model_selected
+        )
+        other_model_row.addWidget(self.default_other_model_combo, stretch=1)
+        default_models_layout.addLayout(other_model_row)
+        vision_note = QLabel(
+            "Other AI tasks include Check syntax, AI draft, image descriptions, "
+            "and image prompt tuning. Image descriptions need a vision-capable "
+            "model; when this choice cannot process images, an available "
+            "vision model is selected."
+        )
+        vision_note.setWordWrap(True)
+        default_models_layout.addWidget(vision_note)
+        layout.addWidget(default_models_group)
+
         layout.addWidget(QLabel(
             "Every model currently installed in Ollama, drafting and "
             "translation alike. Deleting one here removes it from Ollama's "
@@ -612,6 +649,11 @@ class SettingsDialog(QDialog):
     def _reload_ollama_models(self) -> None:
         self.ollama_models_list.clear()
         models = alt_draft.list_installed_models_detailed()
+        self.available_models = [model.name for model in models]
+        self.vision_models = [
+            model.name for model in models if "vision" in model.capabilities
+        ]
+        self._populate_default_model_combos(self.available_models)
         if not models:
             self.ollama_models_list.addItem("(Ollama not reachable, or no models installed)")
             self.ollama_models_list.setEnabled(False)
@@ -625,6 +667,40 @@ class SettingsDialog(QDialog):
             self.ollama_models_list.addItem(item)
         self.ollama_delete_button.setEnabled(False)
         self.ollama_update_button.setEnabled(False)
+
+    def _populate_default_model_combos(self, models: list[str]) -> None:
+        combos = (
+            self.default_translation_model_combo,
+            self.default_other_model_combo,
+        )
+        for combo in combos:
+            combo.clear()
+            combo.setEnabled(bool(models))
+            if models:
+                combo.addItems(models)
+
+        if not models:
+            return
+
+        translation_model = app_settings.get("translation_model")
+        if translation_model not in models:
+            translation_model = alt_draft.DEFAULT_TRANSLATION_MODEL
+        if translation_model not in models:
+            translation_model = models[0]
+        self.default_translation_model_combo.setCurrentText(translation_model)
+
+        other_model = app_settings.get_other_model()
+        if other_model not in models:
+            other_model = models[0]
+        self.default_other_model_combo.setCurrentText(other_model)
+
+    def _on_default_translation_model_selected(self, index: int) -> None:
+        app_settings.set(
+            "translation_model", self.default_translation_model_combo.itemText(index)
+        )
+
+    def _on_default_other_model_selected(self, index: int) -> None:
+        app_settings.set("other_model", self.default_other_model_combo.itemText(index))
 
     def _on_ollama_model_delete(self) -> None:
         models = [

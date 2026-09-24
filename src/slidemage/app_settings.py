@@ -1,9 +1,7 @@
 """Local SlideMage UI preferences -- dark mode, plus (2026-08-25,
-direct instruction) the last-picked drafting/translation models
-(qt_transcript_tab.py's "drafting_model"/"translation_model" keys, read
-back by _populate_models()/_populate_translation_models() to preselect
-whichever was last used, if it's still installed). A plain JSON file
-living inside SlideMage/ itself, not the Windows registry (2026-08-25,
+direct instruction) the preferred translation and other AI models.
+Older per-feature model choices remain readable as a migration fallback.
+A plain JSON file lives inside SlideMage/ itself, not the Windows registry (2026-08-25,
 direct instruction, replacing an earlier QSettings-based design used for
 one day: "I want everything pertaining to SlideMage to be saved in its
 proper folder, and for the app to work as long as that folder is
@@ -32,6 +30,7 @@ from .deck_scan import PROJECT_ROOT
 STORE_PATH = PROJECT_ROOT / ".slidemage" / "app_settings.json"
 
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
+OTHER_MODEL_SETTING_KEY = "other_model"
 # Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
 # rather than imported from either -- this module sits below both of them
 # in the import graph (they import get_ollama_host() from here), so it
@@ -64,6 +63,16 @@ def set(key: str, value: Any) -> None:
     settings = load()
     settings[key] = value
     save(settings)
+
+
+def get_other_model() -> str | None:
+    """The shared non-translation model, with a legacy preference fallback."""
+    settings = load()
+    for key in (OTHER_MODEL_SETTING_KEY, "drafting_model", "ai_draft_model",
+                "syntax_check_model"):
+        if settings.get(key):
+            return settings[key]
+    return None
 
 
 def get_ollama_host() -> str:

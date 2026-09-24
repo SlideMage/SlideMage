@@ -548,6 +548,13 @@ class SlideMageWindow(QMainWindow):
     def _on_open_settings(self) -> None:
         dialog = SettingsDialog(self)
         dialog.exec()
+        models = dialog.available_models
+        self.transcript_tab.refresh_model_preferences(models, dialog.vision_models)
+        for source_tab in self._slide_source_tabs.values():
+            for name in ("_syntax_check_dialog", "_ai_draft_dialog"):
+                open_dialog = getattr(source_tab, name, None)
+                if open_dialog is not None:
+                    open_dialog.refresh_model_preference(models)
 
     def _on_open_version_history(self) -> None:
         dialog = VersionHistoryDialog(self)

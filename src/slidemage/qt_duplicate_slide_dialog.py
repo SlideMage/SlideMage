@@ -145,10 +145,12 @@ class DuplicateSlideDialog(QDialog):
         # picking a model in either place updates the one preference both
         # read (see _on_model_selected below).
         remembered = app_settings.get("translation_model")
-        default_index = self.model_combo.findText(
-            remembered or alt_draft.DEFAULT_TRANSLATION_MODEL)
-        if default_index != -1:
-            self.model_combo.setCurrentIndex(default_index)
+        preferred = (
+            remembered if remembered in models
+            else alt_draft.DEFAULT_TRANSLATION_MODEL
+        )
+        if preferred in models:
+            self.model_combo.setCurrentText(preferred)
         self.model_combo.activated.connect(self._on_model_selected)
         model_row.addWidget(self.model_combo)
         model_row.addStretch(1)

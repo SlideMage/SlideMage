@@ -700,6 +700,7 @@ class InstalledModel:
     name: str
     size_bytes: int
     modified_at: str
+    capabilities: tuple[str, ...] = ()
 
 
 def list_installed_models_detailed(host: Optional[str] = None) -> list[InstalledModel]:
@@ -719,6 +720,7 @@ def list_installed_models_detailed(host: Optional[str] = None) -> list[Installed
             name=entry["name"],
             size_bytes=entry.get("size", 0),
             modified_at=entry.get("modified_at", ""),
+            capabilities=tuple(entry.get("capabilities") or ()),
         )
         for entry in models
     ]

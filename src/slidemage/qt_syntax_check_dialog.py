@@ -61,13 +61,7 @@ class SyntaxCheckDialog(QDialog):
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
-        models = alt_draft.list_all_models()
-        self.model_combo.addItems(models or ["(no Ollama models installed)"])
-        remembered = app_settings.get("syntax_check_model")
-        if remembered:
-            index = self.model_combo.findText(remembered)
-            if index != -1:
-                self.model_combo.setCurrentIndex(index)
+        self.refresh_model_preference()
         self.model_combo.activated.connect(self._on_model_selected)
         model_row.addWidget(self.model_combo)
         self.recheck_button = QPushButton("Check again")
@@ -100,8 +94,19 @@ class SyntaxCheckDialog(QDialog):
         close_row.addWidget(close_button)
         layout.addLayout(close_row)
 
+    def refresh_model_preference(self, models: list[str] | None = None) -> None:
+        """Select the Other AI default from the available models."""
+        if models is None:
+            models = alt_draft.list_all_models()
+        self.model_combo.clear()
+        self.model_combo.addItems(models or ["(no Ollama models installed)"])
+        self.model_combo.setEnabled(bool(models))
+        remembered = app_settings.get_other_model()
+        if remembered in models:
+            self.model_combo.setCurrentText(remembered)
+
     def _on_model_selected(self, index: int) -> None:
-        app_settings.set("syntax_check_model", self.model_combo.itemText(index))
+        app_settings.set("other_model", self.model_combo.itemText(index))
 
     def _clear_results(self) -> None:
         while self.results_layout.count() > 1:  # keep the trailing stretch
@@ -126,7 +131,8 @@ class SyntaxCheckDialog(QDialog):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             text = self.source_tab.widget.toPlainText()
-            checker = syntax_check.OllamaSyntaxChecker(model=model)
+            checker = syntax_check.OllamaSyntaxChecker(
+                model=model, host=app_settings.get_ollama_host())
             result = checker.check(text)
         finally:
             QApplication.restoreOverrideCursor()
