@@ -70,6 +70,7 @@ from .qt_add_slide_dialog import AddSlideDialog
 from .qt_closable_tab_bar import ClosableTabBar
 from .qt_deck_editor_tab import DeckEditorTab
 from .qt_deck_group_dialog import ask_deck_details
+from .qt_import_dialog import ImportPresentationDialog
 from .qt_settings_dialog import SettingsDialog
 from .qt_slide_search_dialog import SlideSearchDialog
 from .qt_slide_source_tab import SlideSourceTab
@@ -365,6 +366,8 @@ class SlideMageWindow(QMainWindow):
         system_menu = self.menuBar().addMenu("System")
         open_project_action = system_menu.addAction("Open Project…")
         open_project_action.triggered.connect(self._on_open_project)
+        import_action = system_menu.addAction("Import PPTX/ODP…")
+        import_action.triggered.connect(self._on_import_presentation)
         preferences_action = system_menu.addAction("Preferences…")
         preferences_action.triggered.connect(self._on_open_settings)
         system_menu.addSeparator()
@@ -456,6 +459,10 @@ class SlideMageWindow(QMainWindow):
             return
         project.relaunch_with_project(chosen_path)
         self.close()
+
+    def _on_import_presentation(self) -> None:
+        dialog = ImportPresentationDialog(self)
+        dialog.exec()
 
     def _on_open_settings(self) -> None:
         dialog = SettingsDialog(self)

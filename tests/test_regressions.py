@@ -1,3 +1,5 @@
+import pytest
+
 from slidemage import slide_language, slide_rename, unused_content
 from slidemage.qt_version_history_dialog import _license_text
 
@@ -413,3 +415,211 @@ def test_init_project_never_overwrites_existing_latex_sibling(tmp_path):
     target = tmp_path / "new_project"
     project.init_project(target, copy_example=True)
     assert (tmp_path / "latex" / "sentinel.txt").read_text() == "do not touch"
+
+
+def _make_test_pptx(path):
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Growth of R&D spend (50% YoY)"
+    tf = slide.placeholders[1].text_frame
+    tf.text = "Top level point #1"
+    p2 = tf.add_paragraph(); p2.text = "Nested detail A"; p2.level = 1
+    p3 = tf.add_paragraph(); p3.text = "Nested detail B"; p3.level = 1
+    p4 = tf.add_paragraph(); p4.text = "Second top-level point with $5 cost"; p4.level = 0
+
+    img_path = path.parent / "red.png"
+    from PIL import Image
+    Image.new("RGB", (200, 100), color=(255, 0, 0)).save(img_path)
+    slide.shapes.add_picture(str(img_path), Inches(1), Inches(4))
+
+    image_only = prs.slides.add_slide(prs.slide_layouts[6])
+    image_only.shapes.add_picture(str(img_path), Inches(1), Inches(1))
+
+    prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    prs.save(str(path))
+
+
+def _make_test_odp(path):
+    from odf.draw import Frame, Image, Page, TextBox
+    from odf.namespaces import PRESENTATIONNS
+    from odf.opendocument import OpenDocumentPresentation
+    from odf.style import MasterPage, PageLayout
+    from odf.text import P, List, ListItem
+
+    doc = OpenDocumentPresentation()
+    layout = PageLayout(name="PM1")
+    doc.automaticstyles.addElement(layout)
+    master = MasterPage(name="Default", pagelayoutname=layout)
+    doc.masterstyles.addElement(master)
+
+    def make_page(name):
+        p = Page(name=name, masterpagename=master)
+        doc.presentation.addElement(p)
+        return p
+
+    page1 = make_page("Slide1")
+    title_frame = Frame(width="25cm", height="3cm", x="1cm", y="1cm")
+    title_frame.setAttrNS(PRESENTATIONNS, "class", "title")
+    tb = TextBox(); tb.addElement(P(text="Growth of R&D spend (50% YoY)"))
+    title_frame.addElement(tb); page1.addElement(title_frame)
+
+    content_frame = Frame(width="20cm", height="10cm", x="1cm", y="4cm")
+    content_frame.setAttrNS(PRESENTATIONNS, "class", "outline")
+    tb2 = TextBox()
+    tb2.addElement(P(text="Top level point #1"))
+    nested = List()
+    li1 = ListItem(); li1.addElement(P(text="Nested detail A")); nested.addElement(li1)
+    li2 = ListItem(); li2.addElement(P(text="Nested detail B")); nested.addElement(li2)
+    tb2.addElement(nested)
+    tb2.addElement(P(text="Second top-level point with $5 cost"))
+    content_frame.addElement(tb2); page1.addElement(content_frame)
+
+    img_path = path.parent / "red.png"
+    from PIL import Image as PILImage
+    PILImage.new("RGB", (200, 100), color=(255, 0, 0)).save(img_path)
+    img_href = doc.addPicture(str(img_path))
+    img_frame = Frame(width="5cm", height="3cm", x="2cm", y="15cm")
+    img_frame.addElement(Image(href=img_href)); page1.addElement(img_frame)
+
+    page2 = make_page("Slide2")
+    img_frame2 = Frame(width="10cm", height="6cm", x="2cm", y="2cm")
+    img_frame2.addElement(Image(href=img_href)); page2.addElement(img_frame2)
+
+    make_page("Slide3")  # blank
+    doc.save(str(path))
+
+
+@pytest.fixture(params=["pptx", "odp"])
+def sample_presentation(request, tmp_path):
+    from slidemage import slide_import
+
+    if request.param == "pptx":
+        path = tmp_path / "sample.pptx"
+        _make_test_pptx(path)
+        return path, slide_import.extract_pptx
+    path = tmp_path / "sample.odp"
+    _make_test_odp(path)
+    return path, slide_import.extract_odp
+
+
+def test_escape_latex_special_characters():
+    from slidemage.slide_import import escape_latex
+
+    assert escape_latex("50% off & $5 #1 a_b {x} ~y ^z \\end") == (
+        r"50\% off \& \$5 \#1 a\_b \{x\} \textasciitilde{}y "
+        r"\textasciicircum{}z \textbackslash{}end"
+    )
+
+
+def test_slug_from_title():
+    from slidemage.slide_import import slug_from_title
+
+    assert slug_from_title("Growth of R&D spend (50% YoY)", "fallback") == \
+        "Growth-of-R-D-spend-50-YoY"
+    assert slug_from_title("", "Imported-Slide-1") == "Imported-Slide-1"
+    assert slug_from_title("!!!", "Imported-Slide-2") == "Imported-Slide-2"
+
+
+def test_bullets_to_itemize_nesting_and_jumps():
+    from slidemage.slide_import import Bullet, _bullets_to_itemize
+
+    tex = _bullets_to_itemize([
+        Bullet("top", level=0),
+        Bullet("deep", level=2),  # jumps 0 -> 2, no level-1 item between
+        Bullet("back to top", level=0),
+    ])
+    assert tex == (
+        "\t\\begin{itemize}\n"
+        "\t\t\\item top\n"
+        "\t\t\\begin{itemize}\n"
+        "\t\t\t\\begin{itemize}\n"
+        "\t\t\t\t\\item deep\n"
+        "\t\t\t\\end{itemize}\n"
+        "\t\t\\end{itemize}\n"
+        "\t\t\\item back to top\n"
+        "\t\\end{itemize}"
+    )
+
+
+def test_extract_matches_across_pptx_and_odp(sample_presentation):
+    path, extractor = sample_presentation
+    slides = extractor(path)
+
+    assert len(slides) == 3
+    text_slide, image_only_slide, blank_slide = slides
+
+    assert text_slide.title == "Growth of R&D spend (50% YoY)"
+    assert [(b.text, b.level) for b in text_slide.bullets] == [
+        ("Top level point #1", 0),
+        ("Nested detail A", 1),
+        ("Nested detail B", 1),
+        ("Second top-level point with $5 cost", 0),
+    ]
+    assert len(text_slide.images) == 1
+    assert text_slide.images[0][0][:4] == b"\x89PNG"
+    assert text_slide.has_text and not text_slide.is_blank
+
+    assert not image_only_slide.has_text
+    assert len(image_only_slide.images) == 1
+    assert not image_only_slide.is_blank
+
+    assert blank_slide.is_blank
+
+
+def test_slide_content_to_tex_standardframe_vs_figureframe():
+    from slidemage.slide_import import Bullet, SlideContent, slide_content_to_tex
+
+    text_content = SlideContent(title="A title", bullets=[Bullet("point", level=0)])
+    layout, tex = slide_content_to_tex(text_content, [])
+    assert layout == "standardframe"
+    assert tex.startswith(r"\begin{standardframe}{A title}")
+    assert r"\item point" in tex
+
+    image_content = SlideContent(images=[(b"x", ".png")])
+    layout, tex = slide_content_to_tex(image_content, ["media/x.png"])
+    assert layout == "figureframe"
+    assert tex.startswith(r"\begin{figureframe}{Untitled}")
+    assert r"\includegraphics[height=0.72\textheight]{media/x.png}" in tex
+
+
+def test_import_presentation_writes_files_and_appends_deck_calls(sample_presentation, tmp_path, monkeypatch):
+    from slidemage import deck_scan, slide_ids, slide_import
+
+    path, _extractor = sample_presentation
+    project_root = tmp_path / "project"
+    (project_root / "slides").mkdir(parents=True)
+    (project_root / "decks").mkdir()
+    monkeypatch.setattr(slide_import, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(slide_ids, "SLIDES_DIR", project_root / "slides")
+    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", project_root / "slide_ids.csv")
+
+    deck_text = "\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n"
+    deck_path = project_root / "decks" / "test.tex"
+    deck_path.write_text(deck_text, encoding="utf-8", newline="")
+    deck = deck_scan.Deck(
+        name="test", path=deck_path, archived=False, text=deck_text, supports_version=False,
+        uses_biblatex=False, preamble_end=None, chapters=[], output_folders={}, tags=[],
+    )
+
+    summary = slide_import.import_presentation(path, deck, "EN")
+
+    assert len(summary.imported) == 2
+    assert summary.skipped_blank == 1
+    assert [s.layout for s in summary.imported] == ["standardframe", "figureframe"]
+
+    new_deck_text = deck_path.read_bytes().decode("utf-8")
+    for slide in summary.imported:
+        assert f"\\slide{{{slide.id_slug}}}" in new_deck_text
+        slide_file = project_root / "slides" / f"{slide.id_slug}-current.tex"
+        assert slide_file.is_file()
+
+    csv_text = (project_root / "slide_ids.csv").read_bytes().decode("utf-8")
+    for slide in summary.imported:
+        expected_id = slide.id_slug.split("-", 1)[0]
+        assert f'"{expected_id}"' in csv_text
+
+    media_files = list((project_root / "media").glob("*.png"))
+    assert len(media_files) == 2
