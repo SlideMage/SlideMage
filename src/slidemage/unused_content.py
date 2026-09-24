@@ -43,6 +43,7 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
+from .blocks import BLOCKS_DIR
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
 
 MEDIA_DIR = PROJECT_ROOT / "media"
@@ -91,11 +92,13 @@ LogCallback = Callable[[str], None]
 
 
 def _deck_texts() -> list[str]:
-    """Raw text of every *.tex file directly inside decks/ and
-    decks/archive/, skipping SlideMage's own generated wrapper files
-    (leading "_", same convention as deck_scan.py)."""
+    """Raw text of every *.tex file directly inside decks/, decks/archive/
+    and blocks/ (a slide referenced only by a block is still in use --
+    archiving it would break the next stamp of that block), skipping
+    SlideMage's own generated wrapper files (leading "_", same
+    convention as deck_scan.py)."""
     texts: list[str] = []
-    for directory in (DECKS_DIR, ARCHIVE_DIR):
+    for directory in (DECKS_DIR, ARCHIVE_DIR, BLOCKS_DIR):
         if not directory.is_dir():
             continue
         for path in directory.glob("*.tex"):

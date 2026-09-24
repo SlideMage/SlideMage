@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from .archive import _read, _write
-from .deck_scan import COMMENT_RE, PROJECT_ROOT, Chapter, Deck, find_decktags
+from .deck_scan import COMMENT_RE, DOCUMENT_END_RE, PROJECT_ROOT, Chapter, Deck, find_decktags
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -366,12 +366,63 @@ def insert_slide_call(
     token = format_call(macro, id_slug, version, conditions)
 
     def mutate(text: str) -> str:
-        if insert_at < 0 or insert_at > len(text):
-            raise ValueError(f"insert_at {insert_at} out of range for a {len(text)}-char file")
-        if insert_at not in (0, len(text)) and text[insert_at - 1] != "\n":
-            raise ValueError("insert_at must fall at the start of a line")
-        eol = "\r\n" if "\r\n" in text else "\n"
-        new_line = f"{indent}{token}{eol}"
-        return text[:insert_at] + new_line + text[insert_at:]
+        return _splice(text, insert_at, f"{indent}{token}{_eol(text)}")
 
     return _apply(deck_path, expected_text, mutate)
+
+
+def insert_text(deck_path: Path, expected_text: str, insert_at: int, new_text: str) -> str:
+    """Splice one or more complete, already-terminated lines in at
+    `insert_at` as a single edit (one undo step, one stale-file check) --
+    e.g. a whole stamped block (blocks.stamp_text())."""
+    return _apply(deck_path, expected_text, lambda text: _splice(text, insert_at, new_text))
+
+
+def _eol(text: str) -> str:
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _splice(text: str, insert_at: int, new_text: str) -> str:
+    """`new_text` (complete lines) inserted at `insert_at`, which must be a
+    line start or the end of the file. At the end of a file whose last
+    line has no terminator, one is added first -- otherwise the new line
+    would be glued onto that last line."""
+    if insert_at < 0 or insert_at > len(text):
+        raise ValueError(f"insert_at {insert_at} out of range for a {len(text)}-char file")
+    if insert_at not in (0, len(text)) and text[insert_at - 1] != "\n":
+        raise ValueError("insert_at must fall at the start of a line")
+    prefix = _eol(text) if insert_at == len(text) and text and not text.endswith("\n") else ""
+    return text[:insert_at] + prefix + new_text + text[insert_at:]
+
+
+def end_insert_point(text: str) -> int:
+    """Where a call goes in a file with no calls yet: the start of the
+    \\end{document} line (it never shares its line with anything else), or
+    the end of the file for one without it -- a blocks/*.tex file, which
+    is only ever a list of calls."""
+    match = DOCUMENT_END_RE.search(text)
+    if match is None:
+        return len(text)
+    return text.rfind("\n", 0, match.start()) + 1
+
+
+def append_position(deck: Deck) -> tuple[int, str]:
+    """(insert_at, indent) for new calls appended after every call `deck`
+    already has: the last call's own line_end and indent, so appended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no indent when there are no calls yet. If that last call sits
+    inside a stamped block copy (blocks.py), after the copy's end marker
+    instead: appending is never meant to extend someone's block copy (a
+    second stamped block would otherwise end up nested inside the first,
+    and imported slides inside a copy)."""
+    from . import blocks
+
+    calls = parse_slide_calls(deck)
+    if not calls:
+        return end_insert_point(deck.text), ""
+    last = calls[-1]
+    for span in blocks.find_spans(deck.text):
+        if span.start <= last.call_start < span.end:
+            indent = re.match(r"[ \t]*", deck.text[span.start:]).group()
+            return span.end, indent
+    return last.line_end, last.indent

@@ -38,10 +38,15 @@ from pathlib import Path
 from typing import Optional
 
 from . import alt_images, deck_headers, slide_ids, slide_language
+from .blocks import BLOCKS_DIR
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 WORKDECK_PATH = DECKS_DIR / "#workdeck.tex"
+# Every folder whose .tex files can hold \slide{}-family calls: decks, archived
+# decks, and blocks (blocks.py) -- a rename or delete that skipped blocks/ would
+# leave a block pointing at a slide id that no longer exists.
+_REFERENCE_DIRS = (DECKS_DIR, ARCHIVE_DIR, BLOCKS_DIR)
 
 # the slidemage GUI script runs with no console of its own -- same
 # fix, same reason, as compiler.py's/archive.py's own subprocess calls.
@@ -113,7 +118,7 @@ def count_references(id_slug: str) -> int:
     pattern = _reference_pattern(id_slug)
     total = 0
     deck_paths = [
-        p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+        p for directory in _REFERENCE_DIRS if directory.is_dir()
         for p in directory.glob("*.tex")
     ]
     for deck_path in deck_paths:
@@ -166,7 +171,7 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
         _move(src, dest)
 
     deck_paths = [
-        p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+        p for directory in _REFERENCE_DIRS if directory.is_dir()
         for p in directory.glob("*.tex")
         if p.name != "#workdeck.tex"
     ]
@@ -299,7 +304,7 @@ def set_slide_languages_bulk(id_slugs: list[str], language: str) -> dict[str, st
         return m.group(1) + mapping[m.group(2)] + m.group(3)
 
     deck_paths = [
-        p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+        p for directory in _REFERENCE_DIRS if directory.is_dir()
         for p in directory.glob("*.tex")
         if p.name != "#workdeck.tex"
     ]
@@ -414,7 +419,7 @@ def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
             + "|".join(re.escape(s) for s in mapping) + r")(\})"
         )
         deck_paths = [
-            p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+            p for directory in _REFERENCE_DIRS if directory.is_dir()
             for p in directory.glob("*.tex")
             if p.name != "#workdeck.tex"
         ]
@@ -467,13 +472,16 @@ def deck_names_referencing(id_slug: str) -> list[str]:
     pattern = _reference_pattern(id_slug)
     names: list[str] = []
     deck_paths = [
-        p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+        p for directory in _REFERENCE_DIRS if directory.is_dir()
         for p in directory.glob("*.tex")
     ]
     for deck_path in deck_paths:
         text = deck_path.read_bytes().decode("utf-8")
         if pattern.search(text):
-            names.append(deck_path.stem)
+            # A block is listed too (its copy of the reference goes away
+            # just the same), but labelled so it isn't mistaken for a deck.
+            is_block = deck_path.parent == BLOCKS_DIR
+            names.append(f"{deck_path.stem} (block)" if is_block else deck_path.stem)
     return names
 
 
@@ -542,7 +550,7 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
     deck_refs_removed = 0
     if remove_deck_references:
         deck_paths = [
-            p for directory in (DECKS_DIR, ARCHIVE_DIR) if directory.is_dir()
+            p for directory in _REFERENCE_DIRS if directory.is_dir()
             for p in directory.glob("*.tex")
             if p.name != "#workdeck.tex"
         ]
