@@ -90,6 +90,35 @@ all: archiving a finished course's deck out of `decks/` while keeping it
 compilable, and archiving unreferenced `media/`/`slides/` files out of the
 way without deleting them.
 
+## Blocks tab
+
+A **block** is a curated, ordered set of slides you reuse across decks
+("About me", "Sampling methods"), stored as `blocks/<name>.tex` -- just a
+list of `\slide{}`-family calls, never compiled on its own. **Tabs →
+Blocks** lists them (New/Open/Rename/Delete); opening one uses the normal
+slide-list editor, where "Add first slide…" starts an empty block.
+
+A deck editor's **Insert block…** copies a block's calls into the deck at
+a chosen position, wrapped in a marker pair:
+
+```
+%% Block: about-me
+%%
+\slide{...}
+%% End block: about-me
+%%
+```
+
+The copy belongs to that deck: edit, remove, or add rows in it like any
+others (dropping one slide for a shorter course is fine). The master never
+changes on its own; **Update block from here** on a copy's header pushes
+that copy back to `blocks/<name>.tex`. Decks that already hold their own
+copy are not touched -- copies are independent by design. Renaming a
+block rewrites the markers of every existing copy; deleting one leaves the
+copies in place. Slide rename/delete and "Archive unused slides" treat a
+block's references like a deck's, so a slide used only by a block is never
+archived as unused.
+
 ## Images tab
 
 The third permanent tab, added 2026-08-14 (labelled "Image descriptions"

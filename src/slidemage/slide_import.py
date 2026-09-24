@@ -335,38 +335,6 @@ class ImportSummary:
     skipped_blank: int = 0
 
 
-def _end_of_document_insert_point(deck) -> tuple[int, str]:
-    """Where to append a new \\slide{} call when the deck has none at all
-    yet: right at \\end{document}'s own line start (it never shares its
-    line with anything else, so that start is always a safe insertion
-    boundary), indent="" -- every deck's own \\slide{}-family calls sit
-    flush left, matching insert_slide_call()'s own "must fall at the
-    start of a line" contract."""
-    from .deck_scan import DOCUMENT_END_RE
-
-    match = DOCUMENT_END_RE.search(deck.text)
-    if match is None:
-        raise ValueError(f"{deck.path} has no \\end{{document}}")
-    line_start = deck.text.rfind("\n", 0, match.start()) + 1
-    return line_start, ""
-
-
-def _append_position(deck) -> tuple[int, str]:
-    """Insertion point for a *new* \\slide{} call appended after every
-    call the deck already has -- reuses the last existing call's own
-    line_end (already a valid line-start boundary by construction) and
-    indent, so imported slides land visually consistent with whatever
-    indentation convention this deck's own calls already use, or right
-    before \\end{document} for a deck with no calls at all yet."""
-    from . import deck_editor
-
-    calls = deck_editor.parse_slide_calls(deck)
-    if calls:
-        last = calls[-1]
-        return last.line_end, last.indent
-    return _end_of_document_insert_point(deck)
-
-
 def media_filename(id_slug: str, index: int, ext: str) -> str:
     suffix = f"-{index + 1}" if index else ""
     return f"imported-{id_slug}{suffix}{ext}"
@@ -401,7 +369,7 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
 
     summary = ImportSummary()
     expected_text = deck.text
-    insert_at, indent = _append_position(deck)
+    insert_at, indent = deck_editor.append_position(deck)
     media_dir = PROJECT_ROOT / "media"
 
     for content in contents:

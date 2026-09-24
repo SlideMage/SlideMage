@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import deck_editor, slide_language, slide_snapshot
+from . import blocks, deck_editor, slide_language, slide_snapshot
 from .deck_editor import SlideCall
 from .deck_scan import Deck
 from .qt_slide_preview_popup import SlidePreviewPopup
@@ -97,6 +97,12 @@ class DeckEditorTab(QWidget):
         super().__init__()
         self.app = app
         self.deck = deck
+        # A block (blocks/<name>.tex) opens in this same editor through a
+        # synthetic Deck (blocks.Block.as_deck()), so every row action works
+        # unchanged. Only what needs a real, compilable deck is hidden:
+        # Transcript, per-row Preview (renders inside the deck's preamble),
+        # and Insert block (no blocks inside blocks).
+        self.is_block = blocks.is_block_path(deck.path)
         # Which institution this deck's own preamble selects (Graz,
         # Innsbruck, MCI) -- computed once, not per row, since it can't
         # change without the whole deck's own preamble changing. Every
@@ -143,9 +149,17 @@ class DeckEditorTab(QWidget):
         source_button.clicked.connect(self._on_source)
         toolbar.addWidget(source_button)
 
-        transcript_button = QPushButton("Transcript")
-        transcript_button.clicked.connect(self._on_transcript)
-        toolbar.addWidget(transcript_button)
+        if not self.is_block:
+            transcript_button = QPushButton("Transcript")
+            transcript_button.clicked.connect(self._on_transcript)
+            toolbar.addWidget(transcript_button)
+
+            insert_block_button = QPushButton("Insert block…")
+            insert_block_button.setToolTip(
+                "Copy a curated block of slides (Tabs → Blocks) into this deck."
+            )
+            insert_block_button.clicked.connect(self._on_insert_block)
+            toolbar.addWidget(insert_block_button)
 
         self.undo_button = QPushButton("Undo")
         self.undo_button.setEnabled(False)
@@ -393,21 +407,43 @@ class DeckEditorTab(QWidget):
             self._trailing_stretch_row = None
 
         calls = deck_editor.parse_slide_calls(self.deck)
+        self._calls = calls  # each row's ↑/↓ looks up its neighbours here
         self._build_card_grid(calls)
         self._populate_chapter_combo(calls)
         if not calls:
+            # Every "+ before/+ after" hangs off an existing row, so an empty
+            # list (a new block, or a deck that only \input{}s a shared
+            # slide list) needs its own way to add the first call.
             label = QLabel(
+                "This block is empty." if self.is_block else
                 "This deck has no \\slide{}-family calls of its own "
                 "(e.g. a wrapper deck that \\input{}s a shared slide list)."
             )
             label.setObjectName("mutedLabel")
-            self.grid.addWidget(label, 0, 0)
+            self.grid.addWidget(label, 0, 0, 1, 10)
+            add_first_button = QPushButton("Add first slide…")
+            add_first_button.clicked.connect(self._on_add_first)
+            self.grid.addWidget(add_first_button, 1, 0)
+            self.grid.setRowStretch(2, 1)
+            self._trailing_stretch_row = 2
             return
+
+        # Stamped block copies (blocks.py) get a header row with their name
+        # and "Update block from here". Never inside a block's own editor.
+        spans = [] if self.is_block else blocks.find_spans(self.deck.text)
+        current_span: Optional[blocks.BlockSpan] = None
 
         row_index = 0
         last_chapter_title = object()  # sentinel, never equal to a real title or None
         chapter_occurrence = 0
         for position, call in enumerate(calls, start=1):
+            span = next((s for s in spans if s.start <= call.call_start < s.end), None)
+            if span is not current_span:
+                if current_span is not None:
+                    row_index = self._build_block_footer(row_index, current_span)
+                if span is not None:
+                    row_index = self._build_block_header(row_index, span)
+                current_span = span
             title = call.chapter.title if call.chapter is not None else None
             if title != last_chapter_title:
                 last_chapter_title = title
@@ -423,6 +459,8 @@ class DeckEditorTab(QWidget):
             if self._show_thumbnails:
                 self._build_thumbnail_row(row_index, call)
                 row_index += 1
+        if current_span is not None:
+            row_index = self._build_block_footer(row_index, current_span)
 
         # Without this, QGridLayout hands leftover vertical space (the
         # scroll area's viewport is usually taller than the row content)
@@ -454,6 +492,20 @@ class DeckEditorTab(QWidget):
             select_box.setToolTip(f"Can't be removed here -- {call.readonly_reason}")
         number_layout.addWidget(select_box)
         number_layout.addWidget(QLabel(str(position)))
+        # ↑/↓ swap this slide with the one above/below (deck_editor.
+        # move_slide_call); disabled at the ends or when either line isn't
+        # the call's own (shared line, commented out).
+        for arrow, offset, tip in (("↑", -1, "Move up"), ("↓", 1, "Move down")):
+            index = position - 1 + offset
+            neighbor = self._calls[index] if 0 <= index < len(self._calls) else None
+            button = QPushButton(arrow)
+            button.setFixedWidth(26)
+            button.setToolTip(tip)
+            button.setEnabled(neighbor is not None and call.editable and neighbor.editable)
+            button.clicked.connect(
+                lambda _checked=False, n=neighbor, t=tip: self._on_move(call, n, t.split()[1])
+            )
+            number_layout.addWidget(button)
         self.grid.addWidget(number_cell, row_index, 0)
 
         link = QLabel(call.id_slug + _language_badge_html(call.id_slug))
@@ -476,9 +528,10 @@ class DeckEditorTab(QWidget):
         after_button.clicked.connect(lambda: self._on_insert(call, before=False))
         self.grid.addWidget(after_button, row_index, 6)
 
-        preview_button = QPushButton("Preview")
-        preview_button.clicked.connect(lambda: self._on_preview(call, position))
-        self.grid.addWidget(preview_button, row_index, 8)
+        if not self.is_block:
+            preview_button = QPushButton("Preview")
+            preview_button.clicked.connect(lambda: self._on_preview(call, position))
+            self.grid.addWidget(preview_button, row_index, 8)
 
         # Opens the Images tab on this slide (2026-09-19, direct
         # instruction) -- before the read-only early return below, since
@@ -774,6 +827,96 @@ class DeckEditorTab(QWidget):
     def _on_insert(self, call: SlideCall, before: bool) -> None:
         insert_at = call.line_start if before else call.line_end
         self.app.open_add_slide_dialog(self.deck, insert_at, call.indent, return_to=self)
+
+    def _on_move(self, call: SlideCall, neighbor: SlideCall, direction: str) -> None:
+        previous_text = self.deck.text
+        try:
+            deck_editor.move_slide_call(self.deck.path, previous_text, call, neighbor)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Move failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Moved {call.id_slug} {direction} in {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _on_add_first(self) -> None:
+        insert_at, indent = deck_editor.append_position(self.deck)
+        self.app.open_add_slide_dialog(self.deck, insert_at, indent, return_to=self)
+
+    # -- blocks (blocks.py) -----------------------------------------------------
+
+    def _build_block_header(self, row_index: int, span: blocks.BlockSpan) -> int:
+        header = QWidget()
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(0, 6, 0, 0)
+        label = QLabel(f"▼ Block: {span.name}")
+        label.setStyleSheet("font-weight: bold;")
+        label.setToolTip(
+            "A copy of the block blocks/{0}.tex. Edit these rows like any "
+            "other; the master only changes if you push them back.".format(span.name)
+        )
+        layout.addWidget(label)
+        update_button = QPushButton("Update block from here")
+        update_button.setToolTip(
+            f"Overwrite the master block '{span.name}' with the slides in this copy."
+        )
+        update_button.clicked.connect(lambda: self._on_update_block(span))
+        layout.addWidget(update_button)
+        layout.addStretch(1)
+        self.grid.addWidget(header, row_index, 0, 1, 10)
+        return row_index + 1
+
+    def _build_block_footer(self, row_index: int, span: blocks.BlockSpan) -> int:
+        label = QLabel(f"▲ end of block {span.name}")
+        label.setObjectName("mutedLabel")
+        self.grid.addWidget(label, row_index, 0, 1, 10)
+        return row_index + 1
+
+    def _on_insert_block(self) -> None:
+        from .qt_blocks_tab import InsertBlockDialog
+
+        dialog = InsertBlockDialog(self, self.deck)
+        if dialog.exec() != InsertBlockDialog.DialogCode.Accepted:
+            return
+        block, position = dialog.selected()
+        previous_text = self.deck.text
+        eol = "\r\n" if "\r\n" in previous_text else "\n"
+        try:
+            deck_editor.insert_text(
+                self.deck.path, previous_text, position.insert_at,
+                blocks.stamp_text(block, position.indent, eol),
+            )
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Insert block failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path,
+            f"Inserted block {block.name} ({block.call_count} slide(s)) into {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _on_update_block(self, span: blocks.BlockSpan) -> None:
+        """Push this copy back to the master. Only the master changes --
+        other decks' copies of the same block are deliberately untouched
+        (copies are independent; this is the one explicit way back)."""
+        lines = blocks.span_lines(self.deck.text, span)
+        path = blocks.block_path(span.name)
+        verb = "Overwrite" if path.exists() else "Recreate"
+        reply = QMessageBox.question(
+            self, "Update block",
+            f"{verb} the master block '{span.name}' with the {len(lines)} "
+            f"line(s) in this copy?\n\nOther decks that already contain a "
+            f"copy of '{span.name}' are not changed.",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        blocks.write_block(span.name, lines)
+        # after_deck_edit understands block paths too (resync_deck), so an
+        # open editor tab on this block reloads and the Blocks list updates.
+        self.app.after_deck_edit(
+            path, f"Updated block {span.name} from {self.deck.name} ({len(lines)} line(s))"
+        )
 
     def _set_preview_tooltip(self, label: QLabel, id_slug: str) -> None:
         """Hover preview: Qt's tooltips render a real (if limited) HTML
