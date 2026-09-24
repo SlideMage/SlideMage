@@ -120,6 +120,7 @@ class DeckRow:
         on_export_pptx: Optional[Callable[[Deck], None]] = None,
         on_tags: Optional[Callable[[Deck], None]] = None,
         on_open_pdf: Optional[Callable[[Deck], None]] = None,
+        on_course_link: Optional[Callable[[Deck], None]] = None,
     ):
         self.deck = deck
         self.theme = theme
@@ -203,7 +204,7 @@ class DeckRow:
         grid.addWidget(presenter_cell, row_index, col)
         col += 1
 
-        # Button order (2026-09-21, direct instruction): Open pdf, Source,
+        # Button order: Open pdf, Course link, Source,
         # Duplicate, Tags, Export PPTX, Archive -- DeckTable.rebuild()'s
         # header list carries one blank cell per button in this same order.
         if on_open_pdf is not None:
@@ -213,6 +214,13 @@ class DeckRow:
             )
             open_pdf_button.clicked.connect(lambda: on_open_pdf(deck))
             grid.addWidget(open_pdf_button, row_index, col)
+            col += 1
+
+        if on_course_link is not None:
+            course_button = QPushButton("Course link...")
+            course_button.setToolTip("Set or open this deck's course page.")
+            course_button.clicked.connect(lambda: on_course_link(deck))
+            grid.addWidget(course_button, row_index, col)
             col += 1
 
         if on_edit is not None:
@@ -351,12 +359,14 @@ class DeckTable(QWidget):
         on_refresh: Callable[[], None],
         on_tags: Optional[Callable[[Deck], None]] = None,
         on_open_pdf: Optional[Callable[[Deck], None]] = None,
+        on_course_link: Optional[Callable[[Deck], None]] = None,
     ) -> None:
         super().__init__()
         self.theme = theme
         self.archivable = archivable
         self.on_tags = on_tags
         self.on_open_pdf = on_open_pdf
+        self.on_course_link = on_course_link
         # Which groups the user has collapsed, by group tag -- persisted
         # per table (app_settings.py) and kept across rebuild(), which
         # re-applies it without touching any row's checkboxes.
@@ -599,6 +609,9 @@ class DeckTable(QWidget):
         ]
         if self.archivable:
             header.append("")  # Open pdf
+        if self.on_course_link is not None:
+            header.append("")  # Course link
+        if self.archivable:
             header.append("")  # Source
             header.append("")  # Duplicate
             header.append("")  # Tags
@@ -639,6 +652,7 @@ class DeckTable(QWidget):
                         on_export_pptx=self.on_export_pptx if self.archivable else None,
                         on_tags=self.on_tags if self.archivable else None,
                         on_open_pdf=self.on_open_pdf if self.archivable else None,
+                        on_course_link=self.on_course_link,
                     )
                 )
                 grid_row += 1

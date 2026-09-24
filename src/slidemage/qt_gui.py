@@ -70,6 +70,7 @@ from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, Deck, scan_decks
 from .qt_add_slide_dialog import AddSlideDialog
 from .qt_blocks_tab import BlocksTab
 from .qt_closable_tab_bar import ClosableTabBar
+from .qt_course_link_dialog import CourseLinkDialog
 from .qt_deck_editor_tab import DeckEditorTab
 from .qt_deck_group_dialog import ask_deck_details
 from .qt_import_dialog import ImportPresentationDialog
@@ -206,6 +207,7 @@ class SlideMageWindow(QMainWindow):
             on_refresh=self._on_refresh_decks_clicked,
             on_tags=self._on_edit_deck_tags,
             on_open_pdf=self._on_open_latest_pdf,
+            on_course_link=self._on_course_link,
         )
         self.archived_table = DeckTable(
             theme, archivable=False,
@@ -218,6 +220,7 @@ class SlideMageWindow(QMainWindow):
             on_stop_compilation=self._stop_compilation,
             on_create_transcript=self._on_create_transcript_toplevel,
             on_refresh=self._on_refresh_decks_clicked,
+            on_course_link=self._on_course_link,
         )
         self.tabs.addTab(self.active_table, "Active decks")
         # Archived decks / Images start CLOSED (2026-08-25, direct
@@ -1221,6 +1224,33 @@ class SlideMageWindow(QMainWindow):
             open_path.open_in_default_app(pdf_path)
         except OSError as exc:
             self._log(f"*** couldn't open {pdf_path.name}: {exc} ***")
+
+    def _on_course_link(self, deck: Deck) -> None:
+        dialog = CourseLinkDialog(self, deck.name, deck.course_url)
+        if not dialog.exec() or dialog.action is None:
+            return
+        url = dialog.url
+        if url != (deck.course_url or ""):
+            if deck.path in self._slide_source_tabs:
+                QMessageBox.information(
+                    self, "Course link",
+                    f"{deck.name}.tex is open in a source editor tab -- close it "
+                    "first, so this change and that editor can't overwrite each other.",
+                )
+                return
+            try:
+                deck_editor.set_course_url(deck.path, deck.text, url)
+            except (deck_editor.StaleFileError, ValueError, OSError) as exc:
+                QMessageBox.critical(self, "Course link failed", str(exc))
+                return
+            self._log(f"Updated course link for {deck.name}")
+            self.refresh_open_deck_editors()
+        if dialog.action == "open":
+            try:
+                open_path.open_in_default_app(url)
+            except OSError as exc:
+                QMessageBox.warning(self, "Course link", f"Could not open {url}: {exc}")
+                self._log(f"*** couldn't open course link for {deck.name}: {exc} ***")
 
     def _on_edit_deck_tags(self, deck: Deck) -> None:
         """A deck row's "Tags" button: choose the group the deck appears
