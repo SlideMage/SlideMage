@@ -340,6 +340,27 @@ tags are allowed and ignored for now. Set it from SlideMage rather than by
 hand: the **Tags** button on a deck row, or the group choice in the
 **Duplicate** dialog when creating a copy.
 
+### Course links
+
+Each deck can keep a link to its course page. Click **Course link...** in
+the Active or Archived decks table, paste a full HTTP or HTTPS URL,
+then choose **Save** or **Open**. Open saves any changed URL before opening
+the page in your default browser. Clear the field and Save to remove it.
+
+SlideMage stores the URL in the deck's own .tex file, just before
+\begin{document}, as a LaTeX comment:
+
+    %% SlideMage course URL: https://online.uni-graz.at/kfu_online/...
+
+The comment does not change the compiled slides. The link stays with the
+deck when it is moved or archived.
+
+For a linked Uni Graz course, open the deck editor and click **Import
+sessions…** beside **Insert block…**. SlideMage reads the course's
+Abhaltungstermine page, asks which group to use when several are listed,
+and previews the LaTeX table. Choose a deck position and click **Insert
+slide** to create an editable schedule slide.
+
 ### Decks with a bibliography (`\fullcite{}`/`Slidemaster.bib`)
 
 biblatex+biber is opt-in per deck (not loaded globally), for any deck that

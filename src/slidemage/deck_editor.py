@@ -24,9 +24,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit
 
 from .archive import _read, _write
-from .deck_scan import COMMENT_RE, DOCUMENT_END_RE, PROJECT_ROOT, Chapter, Deck, find_decktags
+from .deck_scan import COMMENT_RE, COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, PROJECT_ROOT, Chapter, Deck, find_decktags
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -286,6 +287,46 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
     return _apply(deck_path, expected_text, mutate)
 
 
+def normalize_course_url(url: str) -> str:
+    """Accept a browser-safe HTTP(S) URL for a deck's course page."""
+    clean = url.strip()
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in clean):
+        raise ValueError("Course link must not contain spaces or control characters.")
+    try:
+        parts = urlsplit(clean)
+        if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
+            raise ValueError("Enter a full http:// or https:// course URL.")
+        _ = parts.port  # Reject malformed ports before storing the URL.
+    except ValueError as exc:
+        raise ValueError(f"Invalid course URL: {exc}") from exc
+    return clean
+
+
+def set_course_url(deck_path: Path, expected_text: str, url: str) -> str:
+    """Store or remove a course URL as a comment in the deck preamble."""
+    clean = normalize_course_url(url) if url.strip() else ""
+
+    def mutate(text: str) -> str:
+        begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+        if begin is None and clean:
+            raise ValueError(f"{deck_path.name} has no \\begin{{document}} to place the course link before.")
+        preamble_end = begin.start() if begin else len(text)
+        for match in reversed(list(COURSE_URL_RE.finditer(text, 0, preamble_end))):
+            line_start, line_end = _line_span(text, match.start(), match.end())
+            text = text[:line_start] + text[line_end:]
+        if not clean:
+            return text
+        begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+        newline = "\r\n" if "\r\n" in text else "\n"
+        return (
+            text[:begin.start()]
+            + f"%% SlideMage course URL: {clean}{newline}"
+            + text[begin.start():]
+        )
+
+    return _apply(deck_path, expected_text, mutate)
+
+
 def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
     """Writes `tags` as this deck's \\decktags{...} line (2026-09-19):
     replaces the deck's first live one in place, or inserts a new line just
@@ -306,7 +347,7 @@ def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
             return text[: existing.start()] + f"\\decktags{{{','.join(clean)}}}" + text[existing.end():]
         if not clean:
             return text
-        begin = re.search(r"^[ \t]*\\begin\{document\}", text, re.MULTILINE)
+        begin = DOCUMENT_BEGIN_LINE_RE.search(text)
         if begin is None:
             raise ValueError(f"{deck_path.name} has no \\begin{{document}} to tag before.")
         if "Slidemaster_preamble" not in text[: begin.start()]:

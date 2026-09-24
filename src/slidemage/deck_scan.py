@@ -27,6 +27,7 @@ SECTION_RE = re.compile(r"\\section\{([^}]*)\}")
 # this exact pattern.
 COMMENT_RE = re.compile(r"(?<!\\)%.*")
 DOCUMENT_BEGIN_RE = re.compile(r"\\begin\{document\}")
+DOCUMENT_BEGIN_LINE_RE = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
 DOCUMENT_END_RE = re.compile(r"\\end\{document\}")
 DOCUMENTCLASS_RE = re.compile(r"\\documentclass")
 DECKVERSIONOVERRIDE_RE = re.compile(r"\\deckversionoverride")
@@ -55,6 +56,7 @@ OUTPUT_FOLDER_RE = re.compile(r"\\deckoutputfolder(?:\[([^\]]*)\])?\{([^}]*)\}")
 # deck carries; a deck carrying none is a course deck. When a deck carries
 # several, the first one in GROUP_TAGS' order wins.
 DECKTAGS_RE = re.compile(r"\\decktags\{([^}]*)\}")
+COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*([^\r\n]*)\r?$", re.MULTILINE)
 TAG_WORK = "work"
 TAG_COURSE = "course"
 TAG_RESEARCH = "research"
@@ -95,6 +97,7 @@ class Deck:
     # The deck's own \decktags{...}, lowercased, in file order. Parsed from
     # the deck's text (parse_tags()), never inferred from its filename.
     tags: list[str] = field(default_factory=list)
+    course_url: str | None = None
 
     @property
     def group(self) -> str:
@@ -229,6 +232,14 @@ def parse_tags(text: str) -> list[str]:
     return [t for t in (part.strip().lower() for part in m.group(1).split(",")) if t]
 
 
+def parse_course_url(text: str) -> str | None:
+    """Read the first course URL marker in the deck preamble."""
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    match = COURSE_URL_RE.search(preamble)
+    return match.group(1).strip() or None if match else None
+
+
 def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
     decks: list[Deck] = []
     if not directory.is_dir():
@@ -262,6 +273,7 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
                 chapters=_parse_chapters(text),
                 output_folders=_parse_output_folders(text),
                 tags=parse_tags(text),
+                course_url=parse_course_url(text),
             )
         )
     return decks

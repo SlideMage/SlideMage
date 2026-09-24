@@ -161,6 +161,14 @@ class DeckEditorTab(QWidget):
             insert_block_button.clicked.connect(self._on_insert_block)
             toolbar.addWidget(insert_block_button)
 
+            self.import_sessions_button = QPushButton("Import sessions…")
+            self.import_sessions_button.setToolTip(
+                "Create a slide with the sessions from this deck's linked Uni Graz course."
+            )
+            self.import_sessions_button.setEnabled(bool(deck.course_url))
+            self.import_sessions_button.clicked.connect(self._on_import_course_sessions)
+            toolbar.addWidget(self.import_sessions_button)
+
         self.undo_button = QPushButton("Undo")
         self.undo_button.setEnabled(False)
         self.undo_button.clicked.connect(self._on_undo)
@@ -272,6 +280,8 @@ class DeckEditorTab(QWidget):
 
     def reload(self, deck: Deck) -> None:
         self.deck = deck
+        if not self.is_block:
+            self.import_sessions_button.setEnabled(bool(deck.course_url))
         self._template = slide_snapshot.detect_template(deck.preamble_text)
         self._build_rows()
 
@@ -895,6 +905,26 @@ class DeckEditorTab(QWidget):
             f"Inserted block {block.name} ({block.call_count} slide(s)) into {self.deck.name}",
             previous_text=previous_text,
         )
+
+    def _on_import_course_sessions(self) -> None:
+        from .qt_course_schedule_dialog import CourseScheduleDialog, insert_schedule_slide
+
+        dialog = CourseScheduleDialog(self, self.deck)
+        if dialog.exec() != CourseScheduleDialog.DialogCode.Accepted:
+            return
+        if dialog.slide_source is None:
+            return
+        previous_text = self.deck.text
+        try:
+            slide_path = insert_schedule_slide(self.deck, dialog.position, dialog.slide_source)
+        except (OSError, ValueError, deck_editor.StaleFileError) as exc:
+            QMessageBox.critical(self, "Import course sessions failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Imported course sessions into {self.deck.name}",
+            previous_text=previous_text,
+        )
+        self.app.open_slide_editor(slide_path, return_to=self)
 
     def _on_update_block(self, span: blocks.BlockSpan) -> None:
         """Push this copy back to the master. Only the master changes --

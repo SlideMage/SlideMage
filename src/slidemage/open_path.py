@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 
-def open_in_default_app(path: Path) -> None:
+def open_in_default_app(path: Path | str) -> None:
     if os.name == "nt":
         os.startfile(path)  # type: ignore[attr-defined]
     else:
@@ -27,7 +27,7 @@ def open_in_default_app(path: Path) -> None:
             else:
                 env["LD_LIBRARY_PATH"] = original
         subprocess.Popen(
-            ["xdg-open", str(path)],
+            ["open" if sys.platform == "darwin" else "xdg-open", str(path)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             env=env,
         )
