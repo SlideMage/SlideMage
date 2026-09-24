@@ -27,7 +27,18 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from .archive import _read, _write
-from .deck_scan import COMMENT_RE, COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, PROJECT_ROOT, Chapter, Deck, find_decktags
+from .deck_scan import (
+    COMMENT_RE,
+    COURSE_URL_RE,
+    DOCUMENT_BEGIN_LINE_RE,
+    DOCUMENT_END_RE,
+    PROJECT_ROOT,
+    Chapter,
+    Deck,
+    _parse_chapters,
+    SECTION_RE,
+    find_decktags,
+)
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -376,6 +387,162 @@ def change_slide_call_variant(
 
     def mutate(text: str) -> str:
         return text[: call.call_start] + new_token + text[call.call_end :]
+
+    return _apply(deck_path, expected_text, mutate)
+
+
+def _section_title(title: str) -> str:
+    """Validate a title placed directly inside ``\\section{}``."""
+    clean = title.strip()
+    if not clean:
+        raise ValueError("Section title must not be empty.")
+    if any(char in clean for char in "{}%\r\n"):
+        raise ValueError("Section title must not contain braces, percent signs, or line breaks.")
+    return clean
+
+
+def _chapter_marker(text: str, chapter: Chapter) -> tuple[int, int, int, int]:
+    """Return a live chapter marker's token and line bounds."""
+    chapters = _parse_chapters(text)
+    if chapter not in chapters:
+        raise ValueError("This section is no longer at its scanned location; reload the deck and retry.")
+    match = SECTION_RE.match(text, chapter.start)
+    if match is None or match.group(1).strip() != chapter.title:
+        raise ValueError("This section marker no longer matches its scanned location; reload the deck and retry.")
+    token_end = match.end()
+    line_start, line_end = _line_span(text, chapter.start, token_end)
+    editable, reason = _editability(text, line_start, chapter.start, token_end, line_end)
+    if not editable:
+        raise ValueError(f"can't edit this section marker -- {reason}")
+    return chapter.start, token_end, line_start, line_end
+
+
+def _slide_marker(text: str, call: SlideCall) -> tuple[int, int]:
+    """Return a live slide call's line bounds for a marker-line swap."""
+    if call.call_start < 0 or call.call_end > len(text) or call.call_start >= call.call_end:
+        raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
+    token = text[call.call_start:call.call_end]
+    if SLIDE_CALL_RE.fullmatch(token) is None or not re.match(rf"\\{re.escape(call.macro)}(?:\{{|\[)", token):
+        raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
+    line_start, line_end = _line_span(text, call.call_start, call.call_end)
+    if (line_start, line_end) != (call.line_start, call.line_end):
+        raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
+    editable, reason = _editability(text, line_start, call.call_start, call.call_end, line_end)
+    if not editable:
+        raise ValueError(f"can't move {call.id_slug} -- {reason}")
+    return line_start, line_end
+
+
+def add_section(deck_path: Path, expected_text: str, title: str, insert_at: int) -> str:
+    """Insert a standalone ``\\section{title}`` line at ``insert_at``."""
+    clean_title = _section_title(title)
+    def mutate(text: str) -> str:
+        if any(span.start < insert_at < span.end for span in _block_spans(text)):
+            raise ValueError("A section cannot be inserted inside a stamped block copy.")
+        return _splice(text, insert_at, f"\\section{{{clean_title}}}{_eol(text)}")
+
+    return _apply(deck_path, expected_text, mutate)
+
+
+def rename_section(deck_path: Path, expected_text: str, chapter: Chapter, title: str) -> str:
+    """Rename one live, standalone section marker."""
+    clean_title = _section_title(title)
+
+    def mutate(text: str) -> str:
+        token_start, token_end, _line_start, _line_end = _chapter_marker(text, chapter)
+        return text[:token_start] + f"\\section{{{clean_title}}}" + text[token_end:]
+
+    return _apply(deck_path, expected_text, mutate)
+
+
+def _live_document_end(text: str) -> int:
+    """The line start of the first live ``\\end{document}``, or EOF."""
+    for match in DOCUMENT_END_RE.finditer(text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        if not COMMENT_RE.search(text, line_start, match.start()):
+            return line_start
+    return len(text)
+
+
+def _enclosing_block_span(spans, offset: int):
+    return next((span for span in spans if span.start <= offset < span.end), None)
+
+
+def _block_spans(text: str):
+    from . import blocks
+
+    return blocks.find_spans(text)
+
+
+def remove_section(deck_path: Path, expected_text: str, chapter: Chapter) -> str:
+    """Remove one section marker while retaining the slides it headed."""
+    def mutate(text: str) -> str:
+        _token_start, _token_end, line_start, line_end = _chapter_marker(text, chapter)
+        return text[:line_start] + text[line_end:]
+
+    return _apply(deck_path, expected_text, mutate)
+
+
+def move_section(deck_path: Path, expected_text: str, chapter: Chapter, neighbor: Chapter) -> str:
+    """Swap two adjacent section blocks, each marker and all following content."""
+    def mutate(text: str) -> str:
+        _chapter_marker(text, chapter)
+        _chapter_marker(text, neighbor)
+        chapters = _parse_chapters(text)
+        chapter_index, neighbor_index = chapters.index(chapter), chapters.index(neighbor)
+        if abs(chapter_index - neighbor_index) != 1:
+            raise ValueError("Sections can only move past an adjacent section.")
+        first, second = sorted((chapter, neighbor), key=lambda item: item.start)
+        first_start = _line_span(text, first.start, first.start)[0]
+        second_start = _line_span(text, second.start, second.start)[0]
+        second_index = chapters.index(second)
+        if second_index + 1 < len(chapters):
+            next_chapter = chapters[second_index + 1]
+            next_start = _line_span(text, next_chapter.start, next_chapter.start)[0]
+        else:
+            next_start = _live_document_end(text)
+        if not first_start < second_start < next_start:
+            raise ValueError("Section block boundaries are invalid; reload the deck and retry.")
+        for span in _block_spans(text):
+            intersects_move = span.start < next_start and first_start < span.end
+            contained_in_first = first_start <= span.start and span.end <= second_start
+            contained_in_second = second_start <= span.start and span.end <= next_start
+            if intersects_move and not (contained_in_first or contained_in_second):
+                raise ValueError("Can't move sections across a stamped block that crosses a section boundary.")
+        return text[:first_start] + text[second_start:next_start] + text[first_start:second_start] + text[next_start:]
+
+    return _apply(deck_path, expected_text, mutate)
+
+
+def move_slide_past_section(deck_path: Path, expected_text: str, call: SlideCall, chapter: Chapter) -> str:
+    """Swap a slide marker and an immediately adjacent section marker line."""
+    def mutate(text: str) -> str:
+        slide_start, slide_end = _slide_marker(text, call)
+        _token_start, _token_end, section_start, section_end = _chapter_marker(text, chapter)
+        if slide_end == section_start:
+            first_start, first_end, second_start, second_end = slide_start, slide_end, section_start, section_end
+        elif section_end == slide_start:
+            first_start, first_end, second_start, second_end = section_start, section_end, slide_start, slide_end
+        else:
+            first_start, first_end, second_start, second_end = (
+                (slide_start, slide_end, section_start, section_end)
+                if slide_start < section_start
+                else (section_start, section_end, slide_start, slide_end)
+            )
+        for marker in _parse_chapters(text):
+            if first_end <= marker.start < second_start:
+                raise ValueError("A slide can cross only the neighboring section marker.")
+        for match in SLIDE_CALL_RE.finditer(text, first_end, second_start):
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            if not COMMENT_RE.search(text, line_start, match.start()):
+                raise ValueError("A slide can cross only the neighboring section marker.")
+        spans = _block_spans(text)
+        if _enclosing_block_span(spans, slide_start) != _enclosing_block_span(spans, section_start):
+            raise ValueError("A slide cannot cross a section marker into or out of a stamped block copy.")
+        first_body = text[first_start:first_end].rstrip("\r\n")
+        second_body = text[second_start:second_end].rstrip("\r\n")
+        return (text[:first_start] + second_body + text[first_start + len(first_body):second_start]
+                + first_body + text[second_start + len(second_body):])
 
     return _apply(deck_path, expected_text, mutate)
 

@@ -208,6 +208,13 @@ use the cache, all instant — no LaTeX compile needed:
 - Use the **chapter dropdown** (top toolbar, between Undo and Close) to
   jump straight to a chapter instead of scrolling for it; its heading
   lands right at the top of the view, in whichever View mode you're in.
+- In List or Thumbnail view, each `\section{...}` appears as an editable
+  section row, even when it has no slides yet. Use **Add section** to append
+  one, or **+ section** beside a slide to insert one before that slide. A
+  section row can be renamed, moved up or down with all its slides, or
+  removed while keeping its slides. Use **+ slide here** to add the first
+  slide to an empty section. These changes update the deck's `.tex` source
+  and can be undone with **Undo**.
 
 This is a cache, not a live view — it only updates when something actually
 compiles, so it can lag behind an edit you haven't recompiled yet. "Render

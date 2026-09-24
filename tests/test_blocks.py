@@ -208,6 +208,12 @@ def test_editor_block_mode_and_deck_span_header(blocks_dir, tmp_path):
     labels = {b.text() for b in deck_tab.findChildren(QPushButton)}
     assert not deck_tab.is_block
     assert {"Update block from here", "Insert block…", "Transcript"} <= labels
+    section_buttons = [
+        button for button in deck_tab.inner.findChildren(QPushButton)
+        if button.text() == "+ section"
+    ]
+    assert any(button.isEnabled() for button in section_buttons)
+    assert any(not button.isEnabled() for button in section_buttons)
     window.close()
 
 

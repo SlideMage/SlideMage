@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -38,7 +39,7 @@ from PySide6.QtWidgets import (
 
 from . import blocks, deck_editor, slide_language, slide_snapshot
 from .deck_editor import SlideCall
-from .deck_scan import TAG_COURSE, Deck
+from .deck_scan import SECTION_RE, TAG_COURSE, Chapter, Deck
 from .qt_slide_preview_popup import SlidePreviewPopup
 from .qt_theme import CLOSE_BUTTON, LINK_LABEL, WARNING_LABEL
 from .slide_ids import SLIDES_DIR
@@ -169,6 +170,11 @@ class DeckEditorTab(QWidget):
             self.import_sessions_button.setVisible(deck.group == TAG_COURSE)
             self.import_sessions_button.clicked.connect(self._on_import_course_sessions)
             toolbar.addWidget(self.import_sessions_button)
+
+            add_section_button = QPushButton("Add section…")
+            add_section_button.clicked.connect(
+                lambda: self._on_add_section(deck_editor.end_insert_point(self.deck.text)))
+            toolbar.addWidget(add_section_button)
 
         self.undo_button = QPushButton("Undo")
         self.undo_button.setEnabled(False)
@@ -368,30 +374,31 @@ class DeckEditorTab(QWidget):
     # -- row construction -----------------------------------------------------
 
     @staticmethod
-    def _chapter_occurrence_labels(calls: list[SlideCall]) -> list[str]:
-        """One label per chapter-header row _build_rows/_build_card_grid
-        would insert, in encounter order -- the same de-duplication
-        (consecutive identical titles collapse into one header) both of
-        those loops use, kept in sync with them since all three walk the
-        identical `calls` sequence the same way."""
+    def _ordered_items(deck: Deck, calls: list[SlideCall]) -> list[SlideCall | Chapter]:
+        items: list[SlideCall | Chapter] = [*calls, *deck.chapters]
+        return sorted(
+            items,
+            key=lambda item: item.start if isinstance(item, Chapter) else item.call_start,
+        )
+
+    @staticmethod
+    def _chapter_occurrence_labels(items: list[SlideCall | Chapter]) -> list[str]:
+        """The real section headings, plus front matter when it has slides."""
         labels: list[str] = []
-        last_chapter_title = object()
-        for call in calls:
-            title = call.chapter.title if call.chapter is not None else None
-            if title != last_chapter_title:
-                last_chapter_title = title
-                labels.append(title if title is not None else "(before first chapter)")
+        before_first = False
+        for item in items:
+            if isinstance(item, Chapter):
+                labels.append(item.title)
+            elif not labels and not before_first:
+                labels.append("(before first chapter)")
+                before_first = True
         return labels
 
-    def _populate_chapter_combo(self, calls: list[SlideCall]) -> None:
-        # Blocked rather than left to fire: repopulating always resets to
-        # index 0, and letting that trigger _on_chapter_selected would
-        # force-scroll back to the top on every single edit (every row
-        # action rebuilds via after_deck_edit -> reload -> _build_rows),
-        # discarding wherever the user was actually looking.
+    def _populate_chapter_combo(self, items: list[SlideCall | Chapter]) -> None:
+        # Rebuilding after an edit must not force-scroll back to the top.
         self.chapter_combo.blockSignals(True)
         self.chapter_combo.clear()
-        self.chapter_combo.addItems(self._chapter_occurrence_labels(calls))
+        self.chapter_combo.addItems(self._chapter_occurrence_labels(items))
         self.chapter_combo.blockSignals(False)
 
     def _build_rows(self) -> None:
@@ -419,17 +426,14 @@ class DeckEditorTab(QWidget):
             self._trailing_stretch_row = None
 
         calls = deck_editor.parse_slide_calls(self.deck)
-        self._calls = calls  # each row's ↑/↓ looks up its neighbours here
-        self._build_card_grid(calls)
-        self._populate_chapter_combo(calls)
-        if not calls:
-            # Every "+ before/+ after" hangs off an existing row, so an empty
-            # list (a new block, or a deck that only \input{}s a shared
-            # slide list) needs its own way to add the first call.
+        items = self._ordered_items(self.deck, calls)
+        self._items = items
+        self._build_card_grid(items)
+        self._populate_chapter_combo(items)
+        if not items:
             label = QLabel(
                 "This block is empty." if self.is_block else
-                "This deck has no \\slide{}-family calls of its own "
-                "(e.g. a wrapper deck that \\input{}s a shared slide list)."
+                "This deck has no slides or sections of its own."
             )
             label.setObjectName("mutedLabel")
             self.grid.addWidget(label, 0, 0, 1, 10)
@@ -440,15 +444,23 @@ class DeckEditorTab(QWidget):
             self._trailing_stretch_row = 2
             return
 
-        # Stamped block copies (blocks.py) get a header row with their name
-        # and "Update block from here". Never inside a block's own editor.
         spans = [] if self.is_block else blocks.find_spans(self.deck.text)
+        self._block_spans = spans
         current_span: Optional[blocks.BlockSpan] = None
-
         row_index = 0
-        last_chapter_title = object()  # sentinel, never equal to a real title or None
+        slide_position = 0
         chapter_occurrence = 0
-        for position, call in enumerate(calls, start=1):
+        before_first_header = False
+        for item_index, item in enumerate(items):
+            if isinstance(item, Chapter):
+                if current_span is not None and item.start >= current_span.end:
+                    row_index = self._build_block_footer(row_index, current_span)
+                    current_span = None
+                row_index = self._build_section_row(row_index, item, chapter_occurrence)
+                chapter_occurrence += 1
+                continue
+
+            call = item
             span = next((s for s in spans if s.start <= call.call_start < s.end), None)
             if span is not current_span:
                 if current_span is not None:
@@ -456,17 +468,16 @@ class DeckEditorTab(QWidget):
                 if span is not None:
                     row_index = self._build_block_header(row_index, span)
                 current_span = span
-            title = call.chapter.title if call.chapter is not None else None
-            if title != last_chapter_title:
-                last_chapter_title = title
-                header_text = title if title is not None else "(before first chapter)"
-                header_label = QLabel(header_text)
+            if chapter_occurrence == 0 and not before_first_header:
+                header_label = QLabel("(before first chapter)")
                 header_label.setStyleSheet("font-weight: bold;")
                 self.grid.addWidget(header_label, row_index, 0, 1, 10)
                 self._chapter_headers[chapter_occurrence] = header_label
                 chapter_occurrence += 1
+                before_first_header = True
                 row_index += 1
-            self._build_row(row_index, position, call)
+            slide_position += 1
+            self._build_row(row_index, slide_position, call, item_index)
             row_index += 1
             if self._show_thumbnails:
                 self._build_thumbnail_row(row_index, call)
@@ -487,7 +498,83 @@ class DeckEditorTab(QWidget):
         self.grid.setRowStretch(row_index, 1)
         self._trailing_stretch_row = row_index
 
-    def _build_row(self, row_index: int, position: int, call: SlideCall) -> None:
+    def _build_section_row(
+        self, row_index: int, chapter: Chapter, occurrence: int,
+    ) -> int:
+        r"""A source \section line is a peer of slide rows in List/Thumbnail."""
+        position = self.deck.chapters.index(chapter)
+        editable = self._section_editable(chapter)
+        number_cell = QWidget()
+        number_layout = QHBoxLayout(number_cell)
+        number_layout.setContentsMargins(0, 0, 0, 0)
+        number_layout.addWidget(QLabel("§"))
+        for arrow, offset, direction in (("↑", -1, "up"), ("↓", 1, "down")):
+            index = position + offset
+            neighbor = self.deck.chapters[index] if 0 <= index < len(self.deck.chapters) else None
+            button = QPushButton(arrow)
+            button.setFixedWidth(26)
+            button.setToolTip(f"Move entire section {direction}, including its slides")
+            button.setEnabled(
+                neighbor is not None and editable and self._section_editable(neighbor))
+            button.clicked.connect(
+                lambda _checked=False, n=neighbor, d=direction: self._on_move_section(
+                    chapter, n, d))
+            number_layout.addWidget(button)
+        self.grid.addWidget(number_cell, row_index, 0)
+
+        heading = QLabel(f"Section: {chapter.title}")
+        heading.setStyleSheet("font-weight: bold;")
+        self.grid.addWidget(heading, row_index, 1, 1, 3)
+        self._chapter_headers[occurrence] = heading
+
+        rename_button = QPushButton("Rename")
+        rename_button.setEnabled(editable)
+        rename_button.clicked.connect(lambda: self._on_rename_section(chapter))
+        self.grid.addWidget(rename_button, row_index, 4)
+        add_button = QPushButton("+ section before")
+        add_button.setEnabled(not self._inside_stamped_block(
+            self._section_line_start(chapter)))
+        add_button.clicked.connect(
+            lambda: self._on_add_section(self._section_line_start(chapter)))
+        self.grid.addWidget(add_button, row_index, 5)
+        slide_button = QPushButton("+ slide here")
+        slide_button.clicked.connect(
+            lambda: self.app.open_add_slide_dialog(
+                self.deck, self._section_line_end(chapter), "", return_to=self))
+        self.grid.addWidget(slide_button, row_index, 6)
+        remove_button = QPushButton("Remove")
+        remove_button.setToolTip("Remove this section heading; keep its slides.")
+        remove_button.setEnabled(editable)
+        remove_button.clicked.connect(lambda: self._on_remove_section(chapter))
+        self.grid.addWidget(remove_button, row_index, 7)
+        return row_index + 1
+
+    def _inside_stamped_block(self, offset: int) -> bool:
+        return any(
+            span.start < offset < span.end
+            for span in self._block_spans
+        )
+
+    def _section_editable(self, chapter: Chapter) -> bool:
+        text = self.deck.text
+        match = SECTION_RE.match(text, chapter.start)
+        if match is None:
+            return False
+        before = text[self._section_line_start(chapter):chapter.start]
+        after = text[match.end():self._section_line_end(chapter)].rstrip("\r\n")
+        return not before.strip() and (
+            not after.strip() or after.lstrip().startswith("%"))
+
+    def _section_line_start(self, chapter: Chapter) -> int:
+        return self.deck.text.rfind("\n", 0, chapter.start) + 1
+
+    def _section_line_end(self, chapter: Chapter) -> int:
+        end = self.deck.text.find("\n", chapter.start)
+        return len(self.deck.text) if end < 0 else end + 1
+
+    def _build_row(
+        self, row_index: int, position: int, call: SlideCall, item_index: int,
+    ) -> None:
         # Checkbox + slide number share column 0's cell (rather than adding
         # a column and shifting every other one) -- ticking two or more
         # rows reveals the toolbar's bulk "Remove selected" button.
@@ -504,16 +591,19 @@ class DeckEditorTab(QWidget):
             select_box.setToolTip(f"Can't be removed here -- {call.readonly_reason}")
         number_layout.addWidget(select_box)
         number_layout.addWidget(QLabel(str(position)))
-        # ↑/↓ swap this slide with the one above/below (deck_editor.
-        # move_slide_call); disabled at the ends or when either line isn't
-        # the call's own (shared line, commented out).
+        # Slides move past the adjacent visible item, including a section
+        # boundary. Crossing a section changes which section owns the slide.
         for arrow, offset, tip in (("↑", -1, "Move up"), ("↓", 1, "Move down")):
-            index = position - 1 + offset
-            neighbor = self._calls[index] if 0 <= index < len(self._calls) else None
+            index = item_index + offset
+            neighbor = self._items[index] if 0 <= index < len(self._items) else None
             button = QPushButton(arrow)
             button.setFixedWidth(26)
             button.setToolTip(tip)
-            button.setEnabled(neighbor is not None and call.editable and neighbor.editable)
+            button.setEnabled(
+                neighbor is not None and call.editable
+                and (self._section_editable(neighbor)
+                     if isinstance(neighbor, Chapter) else neighbor.editable)
+            )
             button.clicked.connect(
                 lambda _checked=False, n=neighbor, t=tip: self._on_move(call, n, t.split()[1])
             )
@@ -532,9 +622,20 @@ class DeckEditorTab(QWidget):
         self._id_labels[call.id_slug] = link
         self.grid.addWidget(link, row_index, 1)
 
+        before_cell = QWidget()
+        before_layout = QHBoxLayout(before_cell)
+        before_layout.setContentsMargins(0, 0, 0, 0)
         before_button = QPushButton("+ before")
         before_button.clicked.connect(lambda: self._on_insert(call, before=True))
-        self.grid.addWidget(before_button, row_index, 5)
+        before_layout.addWidget(before_button)
+        if not self.is_block:
+            section_button = QPushButton("+ section")
+            section_button.setToolTip("Insert a section before this slide.")
+            section_button.setEnabled(not self._inside_stamped_block(call.line_start))
+            section_button.clicked.connect(
+                lambda: self._on_add_section(call.line_start))
+            before_layout.addWidget(section_button)
+        self.grid.addWidget(before_cell, row_index, 5)
 
         after_button = QPushButton("+ after")
         after_button.clicked.connect(lambda: self._on_insert(call, before=False))
@@ -651,7 +752,7 @@ class DeckEditorTab(QWidget):
     # more are added, just not as the window itself is resized.
     _GRID_COLUMNS = 4
 
-    def _build_card_grid(self, calls: list[SlideCall]) -> None:
+    def _build_card_grid(self, items: list[SlideCall | Chapter]) -> None:
         while self.card_grid.count():
             item = self.card_grid.takeAt(0)
             widget = item.widget()
@@ -659,34 +760,42 @@ class DeckEditorTab(QWidget):
                 widget.deleteLater()
         self._grid_chapter_headers = {}
 
-        if not calls:
-            label = QLabel(
-                "This deck has no \\slide{}-family calls of its own.")
+        if not items:
+            label = QLabel("This deck has no slides or sections of its own.")
             label.setObjectName("mutedLabel")
             self.card_grid.addWidget(label, 0, 0)
             return
 
         row_index = 0
         col_index = 0
-        last_chapter_title = object()
+        slide_position = 0
         chapter_occurrence = 0
-        for position, call in enumerate(calls, start=1):
-            title = call.chapter.title if call.chapter is not None else None
-            if title != last_chapter_title:
-                last_chapter_title = title
+        before_first_header = False
+        for item in items:
+            if isinstance(item, Chapter):
                 if col_index != 0:
                     row_index += 1
                     col_index = 0
-                header_text = title if title is not None else "(before first chapter)"
-                header_label = QLabel(header_text)
-                header_label.setStyleSheet("font-weight: bold;")
+                heading = QLabel(item.title)
+                heading.setStyleSheet("font-weight: bold;")
                 self.card_grid.addWidget(
-                    header_label, row_index, 0, 1, self._GRID_COLUMNS)
-                self._grid_chapter_headers[chapter_occurrence] = header_label
+                    heading, row_index, 0, 1, self._GRID_COLUMNS)
+                self._grid_chapter_headers[chapter_occurrence] = heading
                 chapter_occurrence += 1
                 row_index += 1
+                continue
+            if chapter_occurrence == 0 and not before_first_header:
+                heading = QLabel("(before first chapter)")
+                heading.setStyleSheet("font-weight: bold;")
+                self.card_grid.addWidget(
+                    heading, row_index, 0, 1, self._GRID_COLUMNS)
+                self._grid_chapter_headers[chapter_occurrence] = heading
+                chapter_occurrence += 1
+                before_first_header = True
+                row_index += 1
+            slide_position += 1
             self.card_grid.addWidget(
-                self._build_card(position, call), row_index, col_index)
+                self._build_card(slide_position, item), row_index, col_index)
             col_index += 1
             if col_index >= self._GRID_COLUMNS:
                 col_index = 0
@@ -840,15 +949,79 @@ class DeckEditorTab(QWidget):
         insert_at = call.line_start if before else call.line_end
         self.app.open_add_slide_dialog(self.deck, insert_at, call.indent, return_to=self)
 
-    def _on_move(self, call: SlideCall, neighbor: SlideCall, direction: str) -> None:
+    def _on_move(
+        self, call: SlideCall, neighbor: SlideCall | Chapter, direction: str,
+    ) -> None:
         previous_text = self.deck.text
         try:
-            deck_editor.move_slide_call(self.deck.path, previous_text, call, neighbor)
+            if isinstance(neighbor, Chapter):
+                deck_editor.move_slide_past_section(
+                    self.deck.path, previous_text, call, neighbor)
+            else:
+                deck_editor.move_slide_call(self.deck.path, previous_text, call, neighbor)
         except (deck_editor.StaleFileError, ValueError) as exc:
             QMessageBox.critical(self, "Move failed", str(exc))
             return
         self.app.after_deck_edit(
             self.deck.path, f"Moved {call.id_slug} {direction} in {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _on_add_section(self, insert_at: int) -> None:
+        title, accepted = QInputDialog.getText(self, "Add section", "Section title:")
+        if not accepted:
+            return
+        previous_text = self.deck.text
+        try:
+            deck_editor.add_section(self.deck.path, previous_text, title, insert_at)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Add section failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Added section {title.strip()} in {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _on_rename_section(self, chapter: Chapter) -> None:
+        title, accepted = QInputDialog.getText(
+            self, "Rename section", "Section title:", text=chapter.title)
+        if not accepted or title.strip() == chapter.title:
+            return
+        previous_text = self.deck.text
+        try:
+            deck_editor.rename_section(self.deck.path, previous_text, chapter, title)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Rename section failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Renamed section {chapter.title} in {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _on_remove_section(self, chapter: Chapter) -> None:
+        previous_text = self.deck.text
+        try:
+            deck_editor.remove_section(self.deck.path, previous_text, chapter)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Remove section failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Removed section {chapter.title} from {self.deck.name}",
+            previous_text=previous_text,
+        )
+
+    def _on_move_section(
+        self, chapter: Chapter, neighbor: Chapter, direction: str,
+    ) -> None:
+        previous_text = self.deck.text
+        try:
+            deck_editor.move_section(
+                self.deck.path, previous_text, chapter, neighbor)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Move section failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Moved section {chapter.title} {direction} in {self.deck.name}",
             previous_text=previous_text,
         )
 
