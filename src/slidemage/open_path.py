@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -16,7 +17,17 @@ def open_in_default_app(path: Path) -> None:
     if os.name == "nt":
         os.startfile(path)  # type: ignore[attr-defined]
     else:
+        env = os.environ.copy()
+        if sys.platform == "linux" and getattr(sys, "frozen", False):
+            # PyInstaller's private libraries can delay or prevent an
+            # external viewer from starting when inherited by xdg-open.
+            original = env.get("LD_LIBRARY_PATH_ORIG")
+            if original is None:
+                env.pop("LD_LIBRARY_PATH", None)
+            else:
+                env["LD_LIBRARY_PATH"] = original
         subprocess.Popen(
             ["xdg-open", str(path)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env,
         )
