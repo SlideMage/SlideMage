@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -255,6 +256,13 @@ class SlideMageWindow(QMainWindow):
         self.status_label.setObjectName(WARNING_LABEL)
         log_header.addWidget(self.status_label)
         log_header.addStretch()
+        self.copy_log_button = QToolButton()
+        self.copy_log_button.setText("Copy log")
+        self.copy_log_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.copy_log_button.setAutoRaise(True)
+        self.copy_log_button.setToolTip("Copy the entire log to the clipboard.")
+        self.copy_log_button.clicked.connect(self._copy_log)
+        log_header.addWidget(self.copy_log_button)
         outer.addLayout(log_header)
 
         self.log_text = QPlainTextEdit()
@@ -1654,6 +1662,9 @@ class SlideMageWindow(QMainWindow):
             row.tick_spinner(self._spinner_frame)
 
     # -- log pane (main-thread only, via the signals.log connection) --------
+
+    def _copy_log(self) -> None:
+        QGuiApplication.clipboard().setText(self.log_text.toPlainText())
 
     def _log(self, line: str) -> None:
         self.log_text.appendPlainText(line)
