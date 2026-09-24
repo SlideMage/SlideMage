@@ -378,6 +378,32 @@ def insert_text(deck_path: Path, expected_text: str, insert_at: int, new_text: s
     return _apply(deck_path, expected_text, lambda text: _splice(text, insert_at, new_text))
 
 
+def move_slide_call(deck_path: Path, expected_text: str, call: SlideCall, neighbor: SlideCall) -> str:
+    """Swap `call`'s line with `neighbor`'s (the adjacent call above or
+    below it) as one edit. Only the two call lines trade places -- anything
+    between them (a \\section, a block marker, a comment) stays put, so
+    moving a slide past it moves the slide into that chapter or block copy.
+    Each line keeps its own terminator, so a last line without one stays
+    that way."""
+    for c in (call, neighbor):
+        if not c.editable:
+            raise ValueError(f"can't move {c.id_slug} -- {c.readonly_reason}")
+    first, second = sorted((call, neighbor), key=lambda c: c.line_start)
+
+    def body(text: str, c: SlideCall) -> str:
+        return text[c.line_start:c.line_end].rstrip("\r\n")
+
+    def mutate(text: str) -> str:
+        a, b = body(text, first), body(text, second)
+        return (
+            text[:first.line_start] + b
+            + text[first.line_start + len(a):second.line_start] + a
+            + text[second.line_start + len(b):]
+        )
+
+    return _apply(deck_path, expected_text, mutate)
+
+
 def _eol(text: str) -> str:
     return "\r\n" if "\r\n" in text else "\n"
 

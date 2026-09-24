@@ -209,3 +209,48 @@ def test_editor_block_mode_and_deck_span_header(blocks_dir, tmp_path):
     assert not deck_tab.is_block
     assert {"Update block from here", "Insert block…", "Transcript"} <= labels
     window.close()
+
+
+def test_move_slide_call_swaps_lines_only(tmp_path):
+    text = (
+        "\\begin{document}\r\n\t\\slide{aaa-EN-A}\r\n\t%% Block: b\r\n\t%%\r\n"
+        "\t\\slide{bbb-EN-B}  % note\r\n\t%% End block: b\r\n\t%%\r\n\\slide{ccc-EN-C}"
+    )
+    deck = _deck(tmp_path / "deck.tex", text)
+    a, b, c = deck_editor.parse_slide_calls(deck)
+
+    # Moving B up swaps it with A; the block markers stay where they are.
+    moved = deck_editor.move_slide_call(deck.path, text, b, a)
+    assert moved == text.replace("\\slide{aaa-EN-A}", "@").replace(
+        "\\slide{bbb-EN-B}  % note", "\\slide{aaa-EN-A}").replace("@", "\\slide{bbb-EN-B}  % note")
+    assert [s.name for s in blocks.find_spans(moved)] == ["b"]
+
+    # The last line has no terminator; swapping keeps each line's own.
+    deck = _deck(deck.path, moved)
+    calls = deck_editor.parse_slide_calls(deck)
+    moved_again = deck_editor.move_slide_call(deck.path, moved, calls[2], calls[1])
+    assert moved_again.endswith("%%\r\n\t\\slide{aaa-EN-A}")
+    assert "\\slide{ccc-EN-C}\r\n\t%% End block: b" in moved_again
+
+
+def test_move_refuses_lines_that_are_not_the_calls_own(tmp_path):
+    text = "\\slide{aaa-EN-A}\n% \\slide{bbb-EN-B}\n"
+    deck = _deck(tmp_path / "deck.tex", text)
+    a, commented = deck_editor.parse_slide_calls(deck)
+    with pytest.raises(ValueError):
+        deck_editor.move_slide_call(deck.path, text, a, commented)
+
+
+def test_move_arrows_enabled_except_at_the_ends(blocks_dir, tmp_path):
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from slidemage import qt_gui
+    from slidemage.qt_deck_editor_tab import DeckEditorTab
+
+    app = QApplication.instance() or QApplication([])
+    window = qt_gui.SlideMageWindow(qt_gui.ThemeManager())
+    tab = DeckEditorTab(window, _deck(tmp_path / "decks" / "course.tex", DECK_TEXT))
+    ups = [b.isEnabled() for b in tab.inner.findChildren(QPushButton) if b.text() == "↑"]
+    downs = [b.isEnabled() for b in tab.inner.findChildren(QPushButton) if b.text() == "↓"]
+    assert ups == [False, True] and downs == [True, False]
+    window.close()

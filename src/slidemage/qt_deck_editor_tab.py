@@ -407,6 +407,7 @@ class DeckEditorTab(QWidget):
             self._trailing_stretch_row = None
 
         calls = deck_editor.parse_slide_calls(self.deck)
+        self._calls = calls  # each row's ↑/↓ looks up its neighbours here
         self._build_card_grid(calls)
         self._populate_chapter_combo(calls)
         if not calls:
@@ -491,6 +492,20 @@ class DeckEditorTab(QWidget):
             select_box.setToolTip(f"Can't be removed here -- {call.readonly_reason}")
         number_layout.addWidget(select_box)
         number_layout.addWidget(QLabel(str(position)))
+        # ↑/↓ swap this slide with the one above/below (deck_editor.
+        # move_slide_call); disabled at the ends or when either line isn't
+        # the call's own (shared line, commented out).
+        for arrow, offset, tip in (("↑", -1, "Move up"), ("↓", 1, "Move down")):
+            index = position - 1 + offset
+            neighbor = self._calls[index] if 0 <= index < len(self._calls) else None
+            button = QPushButton(arrow)
+            button.setFixedWidth(26)
+            button.setToolTip(tip)
+            button.setEnabled(neighbor is not None and call.editable and neighbor.editable)
+            button.clicked.connect(
+                lambda _checked=False, n=neighbor, t=tip: self._on_move(call, n, t.split()[1])
+            )
+            number_layout.addWidget(button)
         self.grid.addWidget(number_cell, row_index, 0)
 
         link = QLabel(call.id_slug + _language_badge_html(call.id_slug))
@@ -812,6 +827,18 @@ class DeckEditorTab(QWidget):
     def _on_insert(self, call: SlideCall, before: bool) -> None:
         insert_at = call.line_start if before else call.line_end
         self.app.open_add_slide_dialog(self.deck, insert_at, call.indent, return_to=self)
+
+    def _on_move(self, call: SlideCall, neighbor: SlideCall, direction: str) -> None:
+        previous_text = self.deck.text
+        try:
+            deck_editor.move_slide_call(self.deck.path, previous_text, call, neighbor)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Move failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path, f"Moved {call.id_slug} {direction} in {self.deck.name}",
+            previous_text=previous_text,
+        )
 
     def _on_add_first(self) -> None:
         insert_at, indent = deck_editor.append_position(self.deck)
