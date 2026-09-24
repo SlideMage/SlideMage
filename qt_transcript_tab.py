@@ -30,7 +30,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import QStringListModel, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -1259,7 +1259,14 @@ class TranscriptTab(QWidget):
             "the current Show:/Sort: filters -- only works for a slide "
             "that has at least one image, same as this tab's own list."
         )
-        find_slide_completer = QCompleter(slide_ids.list_id_slugs(), self)
+        # Backed by a model rather than a fixed list, so reload() can
+        # replace its contents: a completer built from a plain list stays
+        # frozen at whatever slides existed when this tab was created, and
+        # never suggested a slide added since, even after "Rescan". Starts
+        # with every slide; reload() narrows it to the slides this tab
+        # actually lists (those with images), which is all it can jump to.
+        self._find_slide_model = QStringListModel(slide_ids.list_id_slugs(), self)
+        find_slide_completer = QCompleter(self._find_slide_model, self)
         find_slide_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         find_slide_completer.setFilterMode(Qt.MatchFlag.MatchContains)
         find_slide_completer.activated.connect(self._on_find_slide_activated)
@@ -1358,6 +1365,8 @@ class TranscriptTab(QWidget):
             state = _slide_state(row, self._entries, slide_hash)
             views.append(_SlideView(row=row, state=state, slide_hash=slide_hash))
         self._rows = views
+        self._find_slide_model.setStringList(sorted(
+            view.row.path.name[: -len("-current.tex")] for view in views))
         self._populate_list(preserve)
 
     def _visible_rows(self) -> list[_SlideView]:

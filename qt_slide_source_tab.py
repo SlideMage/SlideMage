@@ -1705,6 +1705,16 @@ class SlideSourceTab(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        self.reload_from_disk()
+        self.app.log(f"Reverted {self.path.name} to the saved version")
+
+    def reload_from_disk(self) -> None:
+        """Replaces the buffer with whatever is on disk now, discarding any
+        unsaved edits -- callers check _dirty first. Used by Revert, and
+        by "Add reference to .bib" (2026-09-24, direct instruction) so an
+        open Slidemaster.bib tab shows the entry that was just written to
+        the file rather than a stale buffer that would also silently drop
+        it on the next save."""
         self.text, self.eol = slide_source.read_slide_source(self.path)
         self.widget.setPlainText(self.text)
         self.widget.document().setModified(False)
@@ -1713,7 +1723,16 @@ class SlideSourceTab(QWidget):
         if hasattr(self, "fold_button"):
             self._header_fold_line_count = self._count_header_comment_lines()
             self._set_header_folded(self._header_folded)
-        self.app.log(f"Reverted {self.path.name} to the saved version")
+
+    def show_bib_key(self, key: str) -> None:
+        """Puts the cursor on the entry `key` (`@type{key,`) and scrolls it
+        into view -- after an entry is added, so it is actually shown."""
+        cursor = self.widget.document().find(f"{{{key},")
+        if cursor.isNull():
+            return
+        cursor.clearSelection()
+        self.widget.setTextCursor(cursor)
+        self.widget.centerCursor()
 
     def _on_summary_changed(self) -> None:
         self.save_summary_button.setEnabled(True)
@@ -1889,7 +1908,29 @@ class SlideSourceTab(QWidget):
         self.app.open_slide_editor(dialog.new_path, return_to=self)
 
     def _on_add_citation(self) -> None:
-        CitationDialog(self).exec()
+        # The new entry is written straight to Slidemaster.bib on disk,
+        # from whichever tab this button was clicked in. If that file is
+        # also open in its own tab, that tab must not be left showing the
+        # old text: first save its unsaved edits (the write below works on
+        # the file, not the buffer, so the two would otherwise overwrite
+        # each other), then refresh it afterwards.
+        bib_tab = self.app._slide_source_tabs.get(bibliography.DEFAULT_BIB)
+        if bib_tab is not None and bib_tab._dirty:
+            reply = QMessageBox.question(
+                self, "Add reference",
+                "Slidemaster.bib has unsaved changes in its tab. Save them "
+                "first, so the new reference and your edits can't overwrite "
+                "each other?",
+            )
+            if reply != QMessageBox.StandardButton.Yes or not bib_tab._on_save():
+                return
+        dialog = CitationDialog(self)
+        if dialog.exec() != CitationDialog.DialogCode.Accepted:
+            return
+        if bib_tab is not None:
+            bib_tab.reload_from_disk()
+            if dialog.new_key:
+                bib_tab.show_bib_key(dialog.new_key)
 
     def _on_insert_citation(self) -> None:
         InsertCitationDialog(self).exec()
