@@ -49,6 +49,13 @@ def test_editor_button_is_beside_insert_block_and_requires_link(tmp_path, qapp):
     tab.reload(replace(tab.deck, course_url=None))
     assert not tab.import_sessions_button.isEnabled()
 
+    tab.reload(replace(tab.deck, tags=["research"], course_url=COURSE_URL))
+    assert tab.import_sessions_button.isHidden()
+
+    tab.reload(replace(tab.deck, tags=[]))
+    assert not tab.import_sessions_button.isHidden()
+    assert tab.import_sessions_button.isEnabled()
+
 
 def test_multiple_groups_trigger_choice_and_preview(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(CourseScheduleDialog, "_start_fetch", lambda self: None)

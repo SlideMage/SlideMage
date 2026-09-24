@@ -217,10 +217,11 @@ class DeckRow:
             col += 1
 
         if on_course_link is not None:
-            course_button = QPushButton("Course link...")
-            course_button.setToolTip("Set or open this deck's course page.")
-            course_button.clicked.connect(lambda: on_course_link(deck))
-            grid.addWidget(course_button, row_index, col)
+            if deck.group == TAG_COURSE:
+                course_button = QPushButton("Course link...")
+                course_button.setToolTip("Set or open this deck's course page.")
+                course_button.clicked.connect(lambda: on_course_link(deck))
+                grid.addWidget(course_button, row_index, col)
             col += 1
 
         if on_edit is not None:

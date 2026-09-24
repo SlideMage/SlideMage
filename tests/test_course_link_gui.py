@@ -81,11 +81,17 @@ def test_course_link_action_saves_then_opens(tmp_path, monkeypatch, qapp):
 
 
 @pytest.mark.parametrize("archivable", [True, False])
-def test_course_link_button_is_available_in_deck_tables(tmp_path, qapp, archivable):
+@pytest.mark.parametrize("tags, shown", [
+    ([], True), (["course"], True), (["work"], False),
+    (["research"], False), (["test"], False),
+])
+def test_course_link_button_is_available_in_deck_tables(
+    tmp_path, qapp, archivable, tags, shown,
+):
     deck = Deck(
         name="course", path=tmp_path / "course.tex", archived=not archivable,
         text="", supports_version=False, uses_biblatex=False, preamble_end=0,
-        chapters=[], output_folders={}, tags=[],
+        chapters=[], output_folders={}, tags=tags,
     )
     clicked = []
     table = DeckTable(
@@ -102,6 +108,7 @@ def test_course_link_button_is_available_in_deck_tables(tmp_path, qapp, archivab
 
     buttons = [button for button in table.findChildren(QPushButton)
                if button.text() == "Course link..."]
-    assert len(buttons) == 1
-    buttons[0].click()
-    assert clicked == [deck]
+    assert len(buttons) == int(shown)
+    if shown:
+        buttons[0].click()
+        assert clicked == [deck]

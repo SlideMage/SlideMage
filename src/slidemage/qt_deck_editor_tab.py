@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 
 from . import blocks, deck_editor, slide_language, slide_snapshot
 from .deck_editor import SlideCall
-from .deck_scan import Deck
+from .deck_scan import TAG_COURSE, Deck
 from .qt_slide_preview_popup import SlidePreviewPopup
 from .qt_theme import CLOSE_BUTTON, LINK_LABEL, WARNING_LABEL
 from .slide_ids import SLIDES_DIR
@@ -166,6 +166,7 @@ class DeckEditorTab(QWidget):
                 "Create a slide with the sessions from this deck's linked Uni Graz course."
             )
             self.import_sessions_button.setEnabled(bool(deck.course_url))
+            self.import_sessions_button.setVisible(deck.group == TAG_COURSE)
             self.import_sessions_button.clicked.connect(self._on_import_course_sessions)
             toolbar.addWidget(self.import_sessions_button)
 
@@ -282,6 +283,7 @@ class DeckEditorTab(QWidget):
         self.deck = deck
         if not self.is_block:
             self.import_sessions_button.setEnabled(bool(deck.course_url))
+            self.import_sessions_button.setVisible(deck.group == TAG_COURSE)
         self._template = slide_snapshot.detect_template(deck.preamble_text)
         self._build_rows()
 
