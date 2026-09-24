@@ -1159,7 +1159,9 @@ def _inline_html(text: str) -> str:
     out = _html.escape(text, quote=False)
     out = _CODE_RE.sub(lambda m: f"<code>{m.group(1)}</code>", out)
     out = _LINK_RE.sub(
-        lambda m: f'<a href="{_html.escape(m.group(2), quote=True)}">{m.group(1)}</a>',
+        # The full line was escaped above; decode the URL once before
+        # escaping it for an HTML attribute, or "&" becomes "&amp;amp;".
+        lambda m: f'<a href="{_html.escape(_html.unescape(m.group(2)), quote=True)}">{m.group(1)}</a>',
         out)
     out = _BOLD_RE.sub(lambda m: f"<strong>{m.group(1)}</strong>", out)
     out = _ITALIC_RE.sub(lambda m: f"<em>{m.group(1)}</em>", out)

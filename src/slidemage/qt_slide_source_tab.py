@@ -19,6 +19,7 @@ import string
 import sys
 import threading
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 from typing import Callable, Optional
 
 from PySide6.QtCore import QRect, QSize, Qt
@@ -50,8 +51,9 @@ from PySide6.QtWidgets import (
 )
 
 from . import (
-    alt_images, app_settings, bibliography, slide_language, slide_preview,
-    slide_rename, slide_snapshot, slide_source, slide_versioning, transcript,
+    alt_images, app_settings, bibliography, slide_import, slide_language,
+    slide_preview, slide_rename, slide_snapshot, slide_source, slide_versioning,
+    transcript,
 )
 from .qt_ai_draft_dialog import AiDraftDialog
 from .qt_citation_dialog import CitationDialog
@@ -239,6 +241,8 @@ def _contrasting_text_color(hex_color: str) -> QColor:
 #                           translation; with no selection, both brace
 #                           pairs are empty and the cursor lands in the
 #                           first one -- via _insert_multilingual.
+#   "hyperlink" -- asks for visible text and a web URL, then inserts
+#                  \href{URL}{WORD} with a clickable word or phrase.
 INSERT_COMMANDS = [
     ("\\conditionalpause[instructor]", "literal", None),
     ("\\only<2->{...}", "wrap_macro", "only<2->"),
@@ -246,8 +250,34 @@ INSERT_COMMANDS = [
     ("\\tallitemnobullet", "literal", None),
     ("\\begin{itemize}...\\end{itemize}", "wrap_env", "itemize"),
     ("\\multilingualtext{EN}{DE}", "wrap_multilingual", "multilingualtext"),
+    ("\\href{LINK}{WORD} (hyperlink…)", "hyperlink", None),
 ]
 COMMAND_COMBO_PLACEHOLDER = "Insert command..."
+
+
+def format_hyperlink(word: str, url: str) -> str:
+    """Build a clickable LaTeX hyperlink from plain visible text and a URL."""
+    visible = word.strip()
+    clean_url = url.strip()
+    if not visible:
+        raise ValueError("Enter the word or phrase to display.")
+    if any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in clean_url):
+        raise ValueError("The link URL must not contain spaces or control characters.")
+    try:
+        parts = urlsplit(clean_url)
+        if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
+            raise ValueError("Enter a full http:// or https:// link URL.")
+        _ = parts.port
+    except ValueError as exc:
+        raise ValueError(f"Invalid link URL: {exc}") from exc
+
+    # This project wraps hyperref's \href in a LaTeX macro, so URL characters
+    # need protection before that macro reads its arguments. Percent-encode
+    # braces, backslashes, and non-ASCII characters; preserve URL delimiters.
+    encoded = quote(clean_url, safe=":/?#[]@!$&'()*+,;=%-._~")
+    for char in "%#&_$":
+        encoded = encoded.replace(char, "\\" + char)
+    return f"\\href{{{encoded}}}{{{slide_import.escape_latex(visible)}}}"
 
 
 class LatexSyntaxHighlighter(QSyntaxHighlighter):
@@ -563,8 +593,8 @@ class SlideSourceTab(QWidget):
 
         find_button = QPushButton("Find")
         find_button.setToolTip(
-            "Search this editor's text (Ctrl+F). Next/Previous wrap around "
-            "at the end/start of the buffer; Escape closes the bar."
+            "Find or replace text (Ctrl+F / Ctrl+H). Next/Previous wrap "
+            "around at the end/start of the buffer; Escape closes the bar."
         )
         find_button.clicked.connect(self._show_find_bar)
         toolbar.addWidget(find_button)
@@ -910,8 +940,9 @@ class SlideSourceTab(QWidget):
         # kind of file is loaded (a slide, a deck source, or
         # Slidemaster.bib via the "Tabs -> Edit .bib" menu action).
         self.find_bar = QWidget()
-        find_layout = QHBoxLayout(self.find_bar)
-        find_layout.setContentsMargins(4, 4, 4, 4)
+        find_bar_layout = QVBoxLayout(self.find_bar)
+        find_bar_layout.setContentsMargins(4, 4, 4, 4)
+        find_layout = QHBoxLayout()
         find_layout.addWidget(QLabel("Find:"))
         self.find_entry = QLineEdit()
         self.find_entry.returnPressed.connect(self._on_find_next)
@@ -928,6 +959,21 @@ class SlideSourceTab(QWidget):
         find_close_button = QPushButton("Close")
         find_close_button.clicked.connect(self._hide_find_bar)
         find_layout.addWidget(find_close_button)
+        find_bar_layout.addLayout(find_layout)
+
+        replace_layout = QHBoxLayout()
+        replace_layout.addWidget(QLabel("Replace with:"))
+        self.replace_entry = QLineEdit()
+        self.replace_entry.returnPressed.connect(self._on_replace)
+        replace_layout.addWidget(self.replace_entry, stretch=1)
+        replace_button = QPushButton("Replace")
+        replace_button.clicked.connect(self._on_replace)
+        replace_layout.addWidget(replace_button)
+        replace_all_button = QPushButton("Replace All")
+        replace_all_button.clicked.connect(self._on_replace_all)
+        replace_layout.addWidget(replace_all_button)
+        find_bar_layout.addLayout(replace_layout)
+
         self.find_bar.setVisible(False)
         outer.addWidget(self.find_bar)
 
@@ -954,13 +1000,19 @@ class SlideSourceTab(QWidget):
         find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         find_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         find_shortcut.activated.connect(self._show_find_bar)
-        # Escape only closes the bar while the find entry itself has focus
+        replace_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
+        replace_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        replace_shortcut.activated.connect(self._show_replace_bar)
+        # Escape closes the bar while either search field has focus
         # (WidgetShortcut, the narrowest context) -- this tab has no other
         # use for a bare Escape, but scoping it this tightly means it can
         # never fire while the user is just typing/editing normally.
         find_escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.find_entry)
         find_escape_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
         find_escape_shortcut.activated.connect(self._hide_find_bar)
+        replace_escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.replace_entry)
+        replace_escape_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        replace_escape_shortcut.activated.connect(self._hide_find_bar)
 
         # Comment/Uncomment shortcut (direct instruction) -- Ctrl+/ is the
         # de facto standard binding for this action across editors (VS
@@ -1171,6 +1223,26 @@ class SlideSourceTab(QWidget):
         self.color_combo.setCurrentIndex(0)
         self._wrap_or_insert(f"textcolor{{{color}}}")
 
+    def _on_insert_hyperlink(self) -> None:
+        cursor = self.widget.textCursor()
+        selected = self._selected_text(cursor) if cursor.hasSelection() else ""
+        word, ok = QInputDialog.getText(
+            self, "Insert hyperlink", "Visible word or phrase:", text=selected,
+        )
+        if not ok:
+            return
+        url, ok = QInputDialog.getText(
+            self, "Insert hyperlink", "Link URL (http:// or https://):",
+        )
+        if not ok:
+            return
+        try:
+            token = format_hyperlink(word, url)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Insert hyperlink", str(exc))
+            return
+        self._replace_selection_or_insert(token)
+
     def _on_command_selected(self, index: int) -> None:
         if index <= 0:
             return
@@ -1188,8 +1260,10 @@ class SlideSourceTab(QWidget):
             self._wrap_environment(payload)
         elif kind == "wrap_multilingual":
             self._insert_multilingual(payload)
+        elif kind == "hyperlink":
+            self._on_insert_hyperlink()
 
-    # -- find -------------------------------------------------------------------
+    # -- find and replace -------------------------------------------------------
 
     def _show_find_bar(self) -> None:
         self.find_bar.setVisible(True)
@@ -1198,6 +1272,11 @@ class SlideSourceTab(QWidget):
             self.find_entry.setText(self._selected_text(cursor))
         self.find_entry.setFocus()
         self.find_entry.selectAll()
+
+    def _show_replace_bar(self) -> None:
+        self._show_find_bar()
+        if self.find_entry.text():
+            self.replace_entry.setFocus()
 
     def _hide_find_bar(self) -> None:
         self.find_bar.setVisible(False)
@@ -1230,6 +1309,53 @@ class SlideSourceTab(QWidget):
 
     def _on_find_previous(self) -> None:
         self._find(backward=True)
+
+    def _on_replace(self) -> None:
+        query = self.find_entry.text()
+        if not query:
+            self.find_status_label.setText("Enter text to find")
+            return
+        cursor = self.widget.textCursor()
+        if not cursor.hasSelection() or cursor.selectedText().casefold() != query.casefold():
+            self._find(backward=False)
+            cursor = self.widget.textCursor()
+            if not cursor.hasSelection() or cursor.selectedText().casefold() != query.casefold():
+                return
+        cursor.insertText(self.replace_entry.text())
+        self.widget.setTextCursor(cursor)
+        self._find(backward=False)
+
+    def _on_replace_all(self) -> None:
+        query = self.find_entry.text()
+        if not query:
+            self.find_status_label.setText("Enter text to find")
+            return
+        document = self.widget.document()
+        matches: list[tuple[int, int]] = []
+        search_cursor = QTextCursor(document)
+        while True:
+            match = document.find(query, search_cursor)
+            if match.isNull():
+                break
+            matches.append((match.selectionStart(), match.selectionEnd()))
+            search_cursor = match
+        if not matches:
+            self.find_status_label.setText("Not found")
+            return
+
+        # Collect original offsets first and edit backwards: replacement text
+        # may itself contain the search term, and all edits should undo at once.
+        edit_cursor = QTextCursor(document)
+        edit_cursor.beginEditBlock()
+        for start, end in reversed(matches):
+            edit_cursor.setPosition(start)
+            edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            edit_cursor.insertText(self.replace_entry.text())
+        edit_cursor.endEditBlock()
+        edit_cursor.setPosition(matches[0][0])
+        self.widget.setTextCursor(edit_cursor)
+        count = len(matches)
+        self.find_status_label.setText(f"Replaced {count} match{'es' if count != 1 else ''}")
 
     # -- bib citation-key jump bar ------------------------------------------------
 
