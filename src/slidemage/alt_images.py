@@ -54,6 +54,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -356,9 +358,8 @@ _store_lock = threading.Lock()
 
 def update_store(mutate) -> bool:
     """Atomically load, let `mutate(entries) -> bool` change it in place,
-    and save only if it returned True. Always go through this for a write
-    that isn't a bulk rewrite (sync_store()/migration are fine writing
-    directly -- they're not competing with a concurrent batch)."""
+    and save only if it returned True. Single-entry edits use this path;
+    sync_store() takes the same lock around its full scan and bulk update."""
     with _store_lock:
         entries = load_store()
         changed = mutate(entries)
@@ -393,6 +394,23 @@ def update_slide_notes(mutate) -> bool:
         return changed
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write complete UTF-8 content beside its target, then replace it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
 def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
     STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
     raw = _read_raw()
@@ -408,9 +426,9 @@ def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
     # compile-time CSV mirror only ever holds image role/short_alt columns
     # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
-    STORE_PATH.write_text(
+    _atomic_write_text(
+        STORE_PATH,
         json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
-        encoding="utf-8",
     )
 
 
@@ -429,9 +447,9 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
         },
         "slides": existing_slides,
     }
-    STORE_PATH.write_text(
+    _atomic_write_text(
+        STORE_PATH,
         json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
-        encoding="utf-8",
     )
     _write_compile_csv(entries)
 
@@ -523,11 +541,16 @@ class SyncReport:
 
 
 def sync_store() -> SyncReport:
-    """Add-only sync: new images get a row, new slide references get a
-    `used_on` entry. Never rewrites or deletes existing authored data --
-    same policy the old sync_manifest() used, for the same reason (a
-    disappeared reference is reported, not silently dropped, since it might
-    be a rename rather than a real removal)."""
+    """Add-only sync, serialized with every other store writer.
+
+    Holding the shared lock across scanning prevents an older snapshot from
+    replacing image drafts or slide notes saved while the scan runs.
+    """
+    with _store_lock:
+        return _sync_store_locked()
+
+
+def _sync_store_locked() -> SyncReport:
     entries = load_store()
     report = SyncReport()
 

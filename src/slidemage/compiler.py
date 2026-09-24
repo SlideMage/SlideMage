@@ -12,8 +12,8 @@ latexmk is always invoked from the project root (cwd), with a path to the
 wrapper relative to that root, so the one shared root .latexmkrc governs
 $aux_dir/$do_cd consistently -- matching compile-all.bat/
 compile-all-versions.bat's own invocation style. Pass/fail is decided by
-scanning .build/<jobname>.log for a line starting with "!" (a fatal LaTeX
-error) plus checking the PDF now exists, never by latexmk's exit code:
+scanning the current invocation's .build/<jobname>-<id>/<jobname>.log for
+LaTeX errors plus checking that invocation's PDF, never by latexmk's exit code:
 lualatex returns nonzero even on a fully clean compile, from harmless Fira
 Sans font-substitution warnings (see README.md's "Compiling without
 TeXstudio" section).
@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -44,6 +45,69 @@ from .deck_scan import DOCUMENT_END_RE, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
 PDF_DIR = PROJECT_ROOT / "pdf"
+
+_BUILD_STATE_LOCK = threading.Lock()
+_ACTIVE_BUILD_DIRS: set[Path] = set()
+_DESTINATION_STATE_LOCK = threading.Lock()
+_DESTINATION_NEXT_GENERATION: dict[str, int] = {}
+_DESTINATION_LATEST_SUCCESS: dict[str, int] = {}
+_DESTINATION_PUBLISH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _destination_key(path: Path) -> str:
+    return os.path.normcase(str(path.resolve(strict=False)))
+
+
+def _register_output(path: Path) -> tuple[str, int]:
+    key = _destination_key(path)
+    with _DESTINATION_STATE_LOCK:
+        generation = _DESTINATION_NEXT_GENERATION.get(key, 0) + 1
+        _DESTINATION_NEXT_GENERATION[key] = generation
+    return key, generation
+
+
+def _mark_output_success(key: str, generation: int) -> bool:
+    """Record a compiled invocation unless a later invocation already won."""
+    with _DESTINATION_STATE_LOCK:
+        latest = _DESTINATION_LATEST_SUCCESS.get(key, 0)
+        if generation < latest:
+            return False
+        _DESTINATION_LATEST_SUCCESS[key] = generation
+        return True
+
+
+def _is_latest_output_success(key: str, generation: int) -> bool:
+    with _DESTINATION_STATE_LOCK:
+        return _DESTINATION_LATEST_SUCCESS.get(key, 0) == generation
+
+
+def _destination_publish_lock(key: str) -> threading.Lock:
+    with _DESTINATION_STATE_LOCK:
+        return _DESTINATION_PUBLISH_LOCKS.setdefault(key, threading.Lock())
+
+
+def _set_build_dir_active(path: Path, active: bool) -> None:
+    with _BUILD_STATE_LOCK:
+        if active:
+            _ACTIVE_BUILD_DIRS.add(path)
+        else:
+            _ACTIVE_BUILD_DIRS.discard(path)
+
+
+def removable_build_entries() -> list[Path]:
+    """Immediate .build children safe for the GUI's temporary-file cleanup.
+
+    Per-invocation directories remain excluded while latexmk or any PDF copy
+    attempt can still read them. Root-level legacy build files are included
+    for compatibility with older runs and slide previews.
+    """
+    with _BUILD_STATE_LOCK:
+        if not BUILD_DIR.is_dir():
+            return []
+        return sorted(
+            (entry for entry in BUILD_DIR.iterdir() if entry not in _ACTIVE_BUILD_DIRS),
+            key=lambda entry: entry.name,
+        )
 
 
 def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
@@ -317,168 +381,150 @@ def _wrapper_text(job: CompileJob) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _relocate_pdf(pdf_source: Path, dest_pdf: Path) -> None:
-    """Copy the freshly compiled PDF into pdf/, replacing whatever's there.
-    The .build/ copy is left in place -- run_job's own aux-file cleanup
-    deletes it afterward as part of jobname.* housekeeping, not this
-    function; that delete targets a fresh local file, not a cloud
-    placeholder, so it isn't the same risk this function itself guards
-    against.
+def _relocate_pdf(
+    pdf_source: Path, dest_pdf: Path, destination_key: str, generation: int,
+) -> bool:
+    """Stage a copy beside the output and publish only the latest compile."""
+    staged_pdf = dest_pdf.with_name(
+        f".{dest_pdf.name}.slidemage-{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        shutil.copy2(str(pdf_source), str(staged_pdf))
+        source_size = pdf_source.stat().st_size
+        if staged_pdf.stat().st_size != source_size:
+            raise OSError(
+                f"copied {staged_pdf.stat().st_size} of {source_size} bytes"
+            )
+        publish_lock = _destination_publish_lock(destination_key)
+        with publish_lock:
+            if not _is_latest_output_success(destination_key, generation):
+                return False
+            os.replace(staged_pdf, dest_pdf)
+            if dest_pdf.stat().st_size != source_size:
+                raise OSError(
+                    f"published {dest_pdf.stat().st_size} of {source_size} bytes"
+                )
+        return True
+    finally:
+        staged_pdf.unlink(missing_ok=True)
 
-    A single os.replace() -- confirmed directly (2026-07-28) to avoid the
-    standalone-delete stall described below -- was tried first and is
-    documented in git history, but a *second* stall recurred later (same
-    symptom: three real compile jobs, no exception, "*** FAIL ... couldn't
-    move") even with os.replace() in place and confirmed to be the
-    running code (process start time vs. fix commit time both checked). A
-    direct reproduction of os.replace() against the exact stuck files
-    succeeded in milliseconds each time, meaning os.replace() itself isn't
-    unreliable in general -- something about the moment run_job calls it
-    (mid-batch, PDF just written, whatever else the cloud client/AV/other
-    process was doing right then) is what actually triggers the stall, and
-    that couldn't be pinned down further. Switching the operation itself
-    from a move to a copy (shutil.copy2) is a strictly gentler ask of
-    whatever's intercepting these calls -- it doesn't require the
-    destination's identity to change hands the way a move/replace does --
-    and was explicitly requested as the next thing to try over chasing the
-    exact trigger further given the cost of that investigation and the
-    small cost of just leaving a redundant copy in .build/.
 
-    dest_pdf's existing content (if any) is a genuine cloud-provider
-    reparse point (confirmed via `Get-Item -Force`/`fsutil reparsepoint
-    query`, tagged Microsoft Cloud Files API) -- shutil.copy2 opens it for
-    writing rather than deleting-then-recreating it, which is the same
-    property that made os.replace() an improvement over the original
-    unlink()-then-move() two-step in the first place.
-    """
-    shutil.copy2(str(pdf_source), str(dest_pdf))
+def _release_build_dir_after_attempts(
+    build_dir: Path, attempts_drained: threading.Event, remove: bool,
+) -> None:
+    """Keep a compile source immutable until every retry worker has stopped."""
+    def release() -> None:
+        attempts_drained.wait()
+        if remove:
+            shutil.rmtree(build_dir, ignore_errors=True)
+        _set_build_dir_active(build_dir, False)
+
+    if attempts_drained.is_set():
+        release()
+    else:
+        threading.Thread(target=release, daemon=True).start()
 
 
 def _relocate_pdf_and_finish(
-    pdf_source: Path, dest_pdf: Path, jobname: str, deck_dir: Path, job: CompileJob,
+    pdf_source: Path, dest_pdf: Path, jobname: str, job: CompileJob,
     log: LogCallback, cancel: Optional["CancelToken"] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
+    *, build_dir: Path, destination_key: str, generation: int,
 ) -> None:
-    """Move the compiled PDF into place, retrying every
-    PDF_MOVE_RETRY_INTERVAL_SECONDS for up to PDF_MOVE_RETRY_TOTAL_SECONDS,
-    entirely on its own detached daemon thread -- run_job() fires this and
-    returns immediately without waiting for it, so a stuck sync client on
-    one job's PDF no longer blocks the next job, the rest of the app, or
-    `self.compiling` (see run_job's own comment on why that matters).
-
-    Runs everything that used to happen synchronously right after a
-    successful move -- synctex/aux cleanup, the slide preview snapshot
-    refresh, and the final PASS/FAIL log line -- since all of it is
-    contingent on the move actually succeeding, whenever that turns out to
-    be.
-
-    **Why retrying is safe even though a single attempt can hang
-    indefinitely** (confirmed directly, see git history: a real run
-    stalled forever right after logging that it was about to move the PDF,
-    *no exception ever raised* -- likely a cloud-sync client's
-    placeholder-file mechanism doing a synchronous network round-trip
-    *inside* the OS call itself, not a plain sharing-violation that would
-    fail fast). Python cannot forcibly kill a thread stuck inside a
-    blocking OS call, so a hung attempt is simply abandoned, not stopped --
-    which means a "retry every 10 seconds" loop must fire a *new* attempt
-    on its own fresh thread each time regardless of whether earlier
-    attempts ever returned, rather than waiting for one to finish first.
-    That is safe specifically *because* every attempt copies the exact
-    same already-compiled `pdf_source` to the same `dest_pdf`: even if two
-    or more attempts end up writing around the same time, they are writing
-    identical bytes from an identical, unchanging source -- not two
-    different pieces of content racing. The first attempt to actually
-    complete wins; any others still in flight are simply abandoned same as
-    a single hung attempt always was.
-    """
+    """Retry publication of one immutable invocation PDF in the background."""
     started = time.monotonic()
     done = threading.Event()
     succeeded = threading.Event()
+    superseded = threading.Event()
+    attempts_drained = threading.Event()
+    attempts_drained.set()
+    attempts_lock = threading.Lock()
+    pending_attempts = 0
     attempt_count = 0
-    lock = threading.Lock()
 
-    def _attempt(n: int) -> None:
+    def _attempt() -> None:
+        nonlocal pending_attempts
         try:
-            _relocate_pdf(pdf_source, dest_pdf)
-            # shutil.copy2() raising nothing is not proof the copy actually
-            # landed -- a cloud-sync client intercepting the write (see
-            # _relocate_pdf's own docstring) can return normally after
-            # writing a truncated or empty file, and this process being
-            # killed mid-attempt (GUI closed while a retry was in flight,
-            # confirmed to happen: 2026-08-20, a #workdeck compile left
-            # exactly a 0-byte pdf/#workdeck-instructor.pdf with no FAIL
-            # ever logged and no .build/ leftovers to recover from, right
-            # around an app relaunch) leaves whatever partial bytes had
-            # been written at that instant, not zero -- so this checks the
-            # one thing that's actually verifiable without re-reading the
-            # whole file: the byte count matches the known-good source.
-            if dest_pdf.stat().st_size != pdf_source.stat().st_size:
-                raise OSError(
-                    f"copied {dest_pdf.stat().st_size} of "
-                    f"{pdf_source.stat().st_size} bytes"
-                )
-        except Exception:
-            return  # a later attempt (or this one, eventually) may still land
-        with lock:
-            if not done.is_set():
-                succeeded.set()
+            if not _relocate_pdf(pdf_source, dest_pdf, destination_key, generation):
+                superseded.set()
                 done.set()
+                return
+            succeeded.set()
+            done.set()
+        except Exception:
+            # Another retry may still land; keep the source immutable while
+            # this attempt remains alive, even if it stalls inside the OS.
+            return
+        finally:
+            with attempts_lock:
+                pending_attempts -= 1
+                if pending_attempts == 0:
+                    attempts_drained.set()
 
     while not done.is_set():
         elapsed = time.monotonic() - started
         if elapsed >= PDF_MOVE_RETRY_TOTAL_SECONDS:
             break
         if cancel is not None and cancel.is_set():
+            source_display = _display_path(pdf_source)
             log(f"*** FAIL: {jobname} -- stopped by user while relocating the "
-               f"PDF; left at .build/{jobname}.pdf for manual recovery ***")
+               f"PDF; left at {source_display} for manual recovery ***")
             if on_relocated is not None:
                 on_relocated(False, dest_pdf)
+            _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
             return
+
         attempt_count += 1
-        threading.Thread(target=_attempt, args=(attempt_count,), daemon=True).start()
+        with attempts_lock:
+            pending_attempts += 1
+            attempts_drained.clear()
+        worker = threading.Thread(target=_attempt, daemon=True)
+        try:
+            worker.start()
+        except Exception:
+            with attempts_lock:
+                pending_attempts -= 1
+                if pending_attempts == 0:
+                    attempts_drained.set()
+            raise
         if attempt_count == 1:
-            log(f"    (moving {jobname}.pdf into pdf/ -- this can take a "
-               f"moment if a sync client is still indexing it)")
-        elif attempt_count % 6 == 0:  # roughly once a minute at the default interval
-            log(f"    (still trying to move {jobname}.pdf into pdf/, "
-               f"{elapsed / 60:.0f} min so far -- retrying up to "
-               f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min total)")
+            log(f"    (moving {jobname}.pdf into {_display_path(dest_pdf)} -- "
+               "this can take a moment if a sync client is still indexing it)")
+        elif attempt_count % 6 == 0:
+            log(f"    (still trying to publish {jobname}.pdf, "
+                f"{elapsed / 60:.0f} min so far -- retrying up to "
+                f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min total)")
         done.wait(PDF_MOVE_RETRY_INTERVAL_SECONDS)
 
-    if not succeeded.is_set():
-        log(f"*** FAIL: {jobname} -- couldn't move PDF into pdf/ after "
-           f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min; left at "
-           f".build/{jobname}.pdf for manual recovery ***")
+    if superseded.is_set() and not succeeded.is_set():
+        log(f"*** FAIL: {jobname} -- output superseded by a newer successful "
+            "compile; this PDF was not published ***")
         if on_relocated is not None:
             on_relocated(False, dest_pdf)
+        _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
         return
 
-    # pdf/ holds only the PDF -- .synctex.gz (wherever it landed) is just
-    # discarded, not copied there.
-    (deck_dir / f"{jobname}.synctex.gz").unlink(missing_ok=True)
+    if not succeeded.is_set():
+        source_display = _display_path(pdf_source)
+        log(f"*** FAIL: {jobname} -- couldn't publish PDF into "
+            f"{_display_path(dest_pdf)} after "
+            f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min; left at "
+            f"{source_display} for manual recovery ***")
+        if on_relocated is not None:
+            on_relocated(False, dest_pdf)
+        _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
+        return
 
-    for aux in BUILD_DIR.glob(f"{jobname}.*"):
-        aux.unlink(missing_ok=True)
-
-    # Refresh every slide's compile-time PNG snapshot (slide_snapshot.py)
-    # from this deck's pages in one pass, but only for an instructor (or
-    # version-less) compile -- a during-course/after-course PDF has
-    # partial content and would overwrite the canonical snapshot with it.
-    # A presenter compile is instructor-version content too, but its own
-    # page structure (every real slide paired with a facing notes page,
-    # via beamer's own show-notes-on-second-screen layout) has nothing to
-    # do with a normal one-page-per-slide compile, so reading it the usual
-    # way would misread or skip pages and corrupt the real preview cache
-    # with it -- excluded outright, not just "happens not to match" by
-    # accident. Never lets a snapshot failure fail an otherwise-successful
-    # compile.
-    if job.version in (None, "instructor") and not job.presenter:
+    # Refresh slide snapshots only from this invocation's immutable source,
+    # and only if no newer successful compile has replaced it as current.
+    if (job.version in (None, "instructor") and not job.presenter
+            and _is_latest_output_success(destination_key, generation)):
         try:
             template = slide_snapshot.detect_template(job.deck.preamble_text)
-            n = slide_snapshot.capture_deck(dest_pdf, template)
+            n = slide_snapshot.capture_deck(pdf_source, template)
             if n:
                 log(f"    (refreshed {n} slide preview snapshot(s), "
-                   f"{slide_snapshot.TEMPLATES[template]})")
+                    f"{slide_snapshot.TEMPLATES[template]})")
         except Exception as exc:
             log(f"    (preview snapshots not updated: {exc})")
 
@@ -487,6 +533,7 @@ def _relocate_pdf_and_finish(
     log(f"==== PASS: {jobname} -> {_display_path(dest_pdf)}{suffix} ====")
     if on_relocated is not None:
         on_relocated(True, dest_pdf)
+    _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
 
 
 def run_job(
@@ -494,177 +541,122 @@ def run_job(
     dest_override: Optional[tuple[Path, str]] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
 ) -> bool:
-    """Compile one job. Returns True once the LaTeX compile itself
-    succeeded -- *not* once the PDF has actually landed in pdf/. `log`
-    receives one string per line of progress/output, for a GUI (or the
-    console) to display. `cancel`, if given, registers the live subprocess
-    so a "Stop creation" request can kill it immediately (see
-    CancelToken). `dest_override`, if given, replaces the usual
-    resolve_output_location(job) call -- run_jobs() uses this to
-    disambiguate two jobs in the same batch that would otherwise land on
-    the exact same \\deckoutputfolder-declared file (see its own
-    _disambiguated_destinations()). `on_relocated`, if given, is called
-    once _relocate_pdf_and_finish settles (success, dest_pdf) -- everyone
-    else just watches the log for the PASS/FAIL line the way this always
-    worked; a caller that needs the actual finished PDF path itself (the
-    PowerPoint export) has no other way to learn when it's actually safe
-    to read it.
+    """Compile one job and background publication of its invocation PDF.
 
-    The move into pdf/ is dispatched to its own detached background thread
-    (_relocate_pdf_and_finish) and this function does not wait for it.
-    That used to be a synchronous, bounded wait right here -- fine when a
-    sync client released its lock within a minute, but when it didn't
-    (confirmed to happen on real compiles), that wait held up not just this
-    job but every job queued after it, and kept `self.compiling` true (so
-    the GUI refused a new compile request) for however long the wait
-    lasted. A compile succeeding is the expensive, meaningful outcome;
-    whether the PDF has been copied into place yet is a separate, cheap-to-
-    retry concern that has no business blocking anything else in the app.
-    Its own PASS/FAIL lands in the log whenever it resolves, independently
-    of this function's return.
+    Job names and callbacks stay stable for the GUI. Each invocation gets a
+    private wrapper and latexmk output directory so a retry worker from an
+    older run can never read or clean files created by a newer one.
     """
     deck_dir = job.deck.path.parent
     jobname = job.jobname
-    wrapper_path = deck_dir / f"_slidemage_{jobname}.tex"
+    invocation_id = uuid.uuid4().hex
+    wrapper_path = deck_dir / f"_slidemage_{jobname}_{invocation_id}.tex"
+    build_dir = BUILD_DIR / f"{jobname}-{invocation_id}"
+    output_dir, output_stem = (
+        dest_override if dest_override is not None else resolve_output_location(job)
+    )
+    dest_pdf = output_dir / f"{output_stem}.pdf"
+    destination_key, generation = _register_output(dest_pdf)
+    _set_build_dir_active(build_dir, True)
+    relocation_started = False
 
     log(f"==== Compiling {job.deck.name} -> {jobname} ====")
-    # newline="": a per-chapter/appendix job's wrapper splices in
-    # job.deck.preamble_text/chapter_text verbatim, which (deck_scan.py's
-    # own newline="" reader) already carries this deck's real on-disk CRLF
-    # -- writing with the default newline translation would then double
-    # every "\r" into "\r\r\n" on Windows (same bug, same fix, as
-    # slide_preview.py's own wrapper write).
-    wrapper_path.write_text(_wrapper_text(job), encoding="utf-8", newline="")
-
-    BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    # Stale timestamp/aux from a previous attempt at this exact jobname
-    # would otherwise make a fresh run's success check read old state.
-    for stale in BUILD_DIR.glob(f"{jobname}.*"):
-        stale.unlink(missing_ok=True)
-
-    rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
-    # .latexmkrc (shared with compile-all.bat/compile-all-versions.bat,
-    # not touched here) leaves $out_dir at its post-$do_cd default -- the
-    # deck's own directory -- so its own final step copies/renames the
-    # finished PDF there from $aux_dir (.build/). That rename is exactly
-    # where a real run stalled forever: this project lives under
-    # D:\uniCLOUD\..., almost certainly a cloud-sync client's watched tree,
-    # and a sync client can hold a lock on a freshly-written ~90MB PDF (for
-    # hashing/upload) far longer than a PDF viewer would -- long enough that
-    # latexmk's own internal retry around the rename never returns control
-    # to this process at all (confirmed directly: no further log output,
-    # ever, right after latexmk logged the rename's "Device or resource
-    # busy"). Passing -outdir here (CLI beats the rc file) makes $out_dir
-    # equal to $aux_dir for *this* invocation only -- latexmk then has
-    # nothing to copy back, so that whole rename (and its failure mode)
-    # never happens. Only compiler.py's own invocations get this; the .bat
-    # scripts' reliance on the PDF landing next to the source is untouched.
-    cmd = [
-        "latexmk", "-f", f"-jobname={jobname}", f"-outdir={BUILD_DIR.as_posix()}",
-        str(rel_wrapper),
-    ]
-    env = _build_env()
-
-    # the slidemage GUI script runs with no console of its own (that's
-    # the whole point -- a normal-looking app window, not a terminal), so
-    # without this, Windows pops up a brand-new console window for latexmk
-    # (and everything it shells out to in turn -- perl, lualatex, biber)
-    # each time, floating on top of the GUI -- confirmed directly as the
-    # "inelegant" behavior this suppresses. CREATE_NO_WINDOW only exists on
-    # Windows; this project is Windows-only already (MiKTeX, drive-letter
-    # paths throughout), but guarded anyway rather than assumed.
-    popen_kwargs: dict = {}
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
     try:
-        proc = subprocess.Popen(
-            cmd,
-            cwd=PROJECT_ROOT,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            **popen_kwargs,
-        )
-        if cancel is not None:
-            cancel._set_process(proc)
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            log(line.rstrip("\n"))
-        proc.wait()
-    except FileNotFoundError:
-        log("*** latexmk not found on PATH -- is a TeX distribution installed? ***")
-        wrapper_path.unlink(missing_ok=True)
-        return False
-    finally:
-        if cancel is not None:
-            cancel._set_process(None)
+        # Preserve the deck's literal line endings when its preamble or body
+        # is spliced into a chapter/appendix wrapper.
+        wrapper_path.write_text(_wrapper_text(job), encoding="utf-8", newline="")
+        BUILD_DIR.mkdir(parents=True, exist_ok=True)
+        build_dir.mkdir(parents=True, exist_ok=False)
 
-    if cancel is not None and cancel.is_set():
-        # Killed mid-compile -- the log/PDF on disk reflect a truncated run,
-        # not a real pass or fail, so report this as its own outcome rather
-        # than letting the usual FATAL_ERROR_RE/PDF-existence check below
-        # potentially call it a pass off of stale leftovers.
-        log(f"*** FAIL: {jobname} -- stopped by user ***")
-        wrapper_path.unlink(missing_ok=True)
-        return False
+        rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
+        isolated_output = build_dir.resolve().as_posix()
+        cmd = [
+            "latexmk", "-f", f"-jobname={jobname}",
+            f"-auxdir={isolated_output}", f"-outdir={isolated_output}",
+            str(rel_wrapper),
+        ]
+        env = _build_env()
+        popen_kwargs: dict = {}
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-    log_path = BUILD_DIR / f"{jobname}.log"
-    # With -outdir=BUILD_DIR above, latexmk writes the PDF straight into
-    # .build/ and never touches deck_dir at all -- deck_dir is checked
-    # first purely as a defensive fallback (e.g. a stray file left over
-    # from before this fix, or a future .latexmkrc change), not because
-    # latexmk is expected to put anything there going forward.
-    pdf_path = deck_dir / f"{jobname}.pdf"
-    fallback_pdf_path = BUILD_DIR / f"{jobname}.pdf"
-    pdf_source = pdf_path if pdf_path.exists() else (
-        fallback_pdf_path if fallback_pdf_path.exists() else None
-    )
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=PROJECT_ROOT,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                **popen_kwargs,
+            )
+            if cancel is not None:
+                cancel._set_process(proc)
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                log(line.rstrip("\n"))
+            proc.wait()
+        except FileNotFoundError:
+            log("*** latexmk not found on PATH -- is a TeX distribution installed? ***")
+            return False
+        finally:
+            if cancel is not None:
+                cancel._set_process(None)
 
-    # A 0-byte (or otherwise truncated) PDF counts as no PDF at all --
-    # existence alone isn't proof latexmk actually finished writing it
-    # (e.g. the whole app getting closed/killed mid-compile leaves exactly
-    # this: a stub file some writer already created, no fatal "!" line in
-    # an otherwise-truncated log). Without this, that reads as a pass and
-    # gets handed to _relocate_pdf_and_finish, which copies the truncated
-    # file over into pdf/ same as a real one.
-    ok = pdf_source is not None and pdf_source.stat().st_size > 0
-    if ok and log_path.exists():
-        if FATAL_ERROR_RE.search(log_path.read_text(encoding="utf-8", errors="replace")):
+        if cancel is not None and cancel.is_set():
+            log(f"*** FAIL: {jobname} -- stopped by user ***")
+            return False
+
+        log_path = build_dir / f"{jobname}.log"
+        # The configured output path is private to this invocation; there is
+        # no deck-directory or prior-build fallback that can pass as fresh.
+        pdf_source = build_dir / f"{jobname}.pdf"
+        ok = pdf_source.is_file() and pdf_source.stat().st_size > 0
+        if ok and log_path.exists():
+            if FATAL_ERROR_RE.search(
+                log_path.read_text(encoding="utf-8", errors="replace")
+            ):
+                ok = False
+        elif not log_path.exists():
             ok = False
-    elif not log_path.exists():
-        ok = False
 
-    if ok:
-        output_dir, output_stem = dest_override if dest_override is not None \
-            else resolve_output_location(job)
+        if not ok:
+            log(f"*** FAIL: {jobname} -- see {log_path} ***")
+            if on_relocated is not None:
+                on_relocated(False, pdf_source)
+            return False
+
         output_dir.mkdir(parents=True, exist_ok=True)
-        dest_pdf = output_dir / f"{output_stem}.pdf"
-        # "==== MOVING: {jobname} -> <dest> ====" is a fixed prefix
-        # qt_gui.py's MOVING_LOG_RE parses to drive this job's per-row
-        # status badge -- that regex only anchors on "^==== MOVING: (\S+)
-        # ->", never on what follows, so the destination text itself can
-        # safely show wherever this job's own \deckoutputfolder (or the
-        # PDF_DIR default) actually points.
+        if not _mark_output_success(destination_key, generation):
+            log(f"*** FAIL: {jobname} -- output superseded by a newer successful "
+                "compile; this PDF was not published ***")
+            if on_relocated is not None:
+                on_relocated(False, dest_pdf)
+            return True
+
         dest_display = _display_path(dest_pdf)
         log(f"==== MOVING: {jobname} -> {dest_display} ==== "
-           f"(now backgrounded -- retrying for up to "
-           f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min if needed, "
-           f"no longer blocking the rest of the queue)")
-        threading.Thread(
+            f"(now backgrounded -- retrying for up to "
+            f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min if needed, "
+            "no longer blocking the rest of the queue)")
+        relocation = threading.Thread(
             target=_relocate_pdf_and_finish,
-            args=(pdf_source, dest_pdf, jobname, deck_dir, job, log, cancel, on_relocated),
+            args=(pdf_source, dest_pdf, jobname, job, log, cancel, on_relocated),
+            kwargs={
+                "build_dir": build_dir,
+                "destination_key": destination_key,
+                "generation": generation,
+            },
             daemon=True,
-        ).start()
-    else:
-        log(f"*** FAIL: {jobname} -- see {log_path} ***")
-        if on_relocated is not None:
-            on_relocated(False, BUILD_DIR / f"{jobname}.pdf")
-
-    wrapper_path.unlink(missing_ok=True)
-    return ok
+        )
+        relocation.start()
+        relocation_started = True
+        return True
+    finally:
+        wrapper_path.unlink(missing_ok=True)
+        if not relocation_started:
+            _set_build_dir_active(build_dir, False)
 
 
 def _disambiguated_destinations(

@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 from . import app_settings
 from . import archive as archive_mod
 from . import bibliography
+from . import compiler
 from . import deck_duplicate
 from . import deck_editor
 from . import deck_headers
@@ -55,7 +56,6 @@ from . import transcript
 from . import update_all_previews
 from . import version as version_mod
 from .compiler import (
-    BUILD_DIR,
     PDF_DIR,
     PDF_MOVE_RETRY_TOTAL_SECONDS,
     CancelToken,
@@ -144,6 +144,11 @@ class SlideMageWindow(QMainWindow):
         self._job_progress_texts: dict[str, str] = {}
         self._current_progress_base = ""
         self._spinner_frame = 0
+        # Open Project... relaunches the process only after the same dirty
+        # editor resolution used by closeEvent. That path has already
+        # recorded the user's Save/Discard choice, so the subsequent close
+        # must not ask a second time.
+        self._dirty_edits_resolved_for_close = False
         self.active_rows: list[DeckRow] = []
         self.archived_rows: list[DeckRow] = []
         # Keyed by path, deduping already-open tabs -- reselecting an
@@ -266,6 +271,70 @@ class SlideMageWindow(QMainWindow):
         if not self._width_fitted:
             self._width_fitted = True
             self._fit_initial_width()
+
+    def closeEvent(self, event) -> None:
+        """Resolve unsaved source and image edits before application exit."""
+        if not self._dirty_edits_resolved_for_close and not self._resolve_dirty_edits():
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def _resolve_dirty_edits(self) -> bool:
+        """Return False when the user cancels or any requested save fails."""
+        dirty_source_tabs = sorted(
+            (tab for tab in self._slide_source_tabs.values() if tab._dirty),
+            key=lambda tab: str(tab.path),
+        )
+        if dirty_source_tabs:
+            choice = QMessageBox.question(
+                self,
+                "Unsaved source edits",
+                f"Save changes in {len(dirty_source_tabs)} open source "
+                f"editor{'s' if len(dirty_source_tabs) != 1 else ''} before closing?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if choice == QMessageBox.StandardButton.Cancel:
+                return False
+            if choice == QMessageBox.StandardButton.Yes:
+                for tab in dirty_source_tabs:
+                    try:
+                        saved = tab._on_save()
+                    except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
+                        QMessageBox.critical(
+                            self, "Save failed",
+                            f"Could not save {tab.path.name}: {exc}",
+                        )
+                        return False
+                    # _on_save() returns False on a cancelled version dialog,
+                    # stale disk content, or any other handled save failure.
+                    if not saved or tab._dirty:
+                        return False
+
+        # Image descriptions have their own Save draft action and shared
+        # alt-text store. Resolve those edits before the window disappears.
+        image_tab = self.transcript_tab
+        if image_tab._any_editor_dirty():
+            choice = QMessageBox.question(
+                self,
+                "Unsaved image edits",
+                "Save the current image description edits as a draft before closing?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if choice == QMessageBox.StandardButton.Cancel:
+                return False
+            if choice == QMessageBox.StandardButton.Yes:
+                try:
+                    image_tab._save(mark_reviewed=False)
+                except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
+                    QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
+                    return False
+                if image_tab._any_editor_dirty():
+                    return False
+        return True
 
     def _fit_initial_width(self) -> None:
         """Opening width: wide enough for the whole main screen (2026-09-21,
@@ -452,12 +521,14 @@ class SlideMageWindow(QMainWindow):
         reply = QMessageBox.question(
             self, "Open project",
             f"Switch to {chosen_path}?\n\nSlideMage restarts to open a "
-            "different project -- any unsaved changes in open tabs will "
-            "be lost.",
+            "different project.",
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        if not self._resolve_dirty_edits():
+            return
         project.relaunch_with_project(chosen_path)
+        self._dirty_edits_resolved_for_close = True
         self.close()
 
     def _on_import_presentation(self) -> None:
@@ -1305,17 +1376,17 @@ class SlideMageWindow(QMainWindow):
                 self, "Busy", "Can't remove temp files while a compile run is in progress."
             )
             return
-        build_files = [p for p in BUILD_DIR.iterdir() if p.is_file()] if BUILD_DIR.exists() else []
+        build_entries = compiler.removable_build_entries()
         wrapper_files = list(DECKS_DIR.rglob("_slidemage_*.tex"))
         temp_entries = list(TEMP_DIR.iterdir()) if TEMP_DIR.exists() else []
-        all_files = build_files + wrapper_files
+        all_files = build_entries + wrapper_files
         if not all_files and not temp_entries:
             QMessageBox.information(self, "Nothing to do", "No temp files to remove.")
             return
         reply = QMessageBox.question(
             self,
             "Remove temp files",
-            f"Delete {len(build_files)} file(s) in .build/, "
+            f"Delete {len(build_entries)} build item(s) in .build/, "
             f"{len(wrapper_files)} leftover wrapper file(s) in decks/, and "
             f"{len(temp_entries)} item(s) in .temp/ (the workflow scratch "
             "folder -- e.g. a PPTX mid-conversion or an image waiting to "
@@ -1323,7 +1394,12 @@ class SlideMageWindow(QMainWindow):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        for p in all_files:
+        for p in build_entries:
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink(missing_ok=True)
+        for p in wrapper_files:
             p.unlink(missing_ok=True)
         for p in temp_entries:
             if p.is_dir():
@@ -1331,8 +1407,9 @@ class SlideMageWindow(QMainWindow):
             else:
                 p.unlink(missing_ok=True)
         self._log(
-            f"Removed {len(all_files)} temp file(s) "
-            f"({len(build_files)} in .build/, {len(wrapper_files)} wrapper file(s) in decks/) "
+            f"Removed {len(all_files)} temp item(s) "
+            f"({len(build_entries)} build item(s) in .build/, "
+            f"{len(wrapper_files)} wrapper file(s) in decks/) "
             f"and {len(temp_entries)} item(s) in .temp/"
         )
 

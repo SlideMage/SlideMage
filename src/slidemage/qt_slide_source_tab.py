@@ -1436,21 +1436,31 @@ class SlideSourceTab(QWidget):
         start, end, replacement = self._diff_replace_range(old, new)
         if start == end and not replacement:
             return
+        # Python indexes Unicode code points, while QTextCursor positions
+        # count UTF-16 code units (Qt's QString representation). Translate
+        # the diff's boundaries before passing them to Qt so a supplementary
+        # character such as an emoji earlier in the document cannot shift
+        # the replacement into neighboring text.
+        start_qt = len(old[:start].encode("utf-16-le")) // 2
+        end_qt = len(old[:end].encode("utf-16-le")) // 2
+        replacement_qt_length = len(replacement.encode("utf-16-le")) // 2
         scrollbar = self.widget.verticalScrollBar()
         scroll_value = scrollbar.value()
         visible_cursor = self.widget.textCursor()
         old_pos = visible_cursor.position()
-        if old_pos <= start:
+        if old_pos <= start_qt:
             new_pos = old_pos
-        elif old_pos >= end:
-            new_pos = old_pos - end + start + len(replacement)
+        elif old_pos >= end_qt:
+            new_pos = old_pos - end_qt + start_qt + replacement_qt_length
         else:
-            new_pos = start + len(replacement)  # was inside the replaced region
+            # The cursor was inside the changed region; land after the new
+            # content, still expressed in Qt's UTF-16 position units.
+            new_pos = start_qt + replacement_qt_length
 
         edit_cursor = QTextCursor(self.widget.document())
         edit_cursor.beginEditBlock()
-        edit_cursor.setPosition(start)
-        edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit_cursor.setPosition(start_qt)
+        edit_cursor.setPosition(end_qt, QTextCursor.MoveMode.KeepAnchor)
         edit_cursor.insertText(replacement)
         edit_cursor.endEditBlock()
 

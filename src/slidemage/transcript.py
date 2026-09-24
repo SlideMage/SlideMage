@@ -248,6 +248,108 @@ def deck_language_of(deck_text: str) -> str:
     return "en"
 
 
+def _document_body(text: str) -> str:
+    """Return a document's body, or all of a body-only fragment.
+
+    Deck preambles often define helper macros whose replacement text contains
+    slide commands. Restricting resolution to the document body prevents those
+    definitions from being mistaken for actual slides.
+    """
+    document_start = None
+    document_end = None
+    for name, start, command_end in alt_blocks._iter_tex_commands(text):
+        if name not in {"begin", "end"}:
+            continue
+        cursor = command_end
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        environment, after = alt_blocks.braced_argument(text, cursor)
+        if after == cursor or environment.strip() != "document":
+            continue
+        if name == "begin" and document_start is None:
+            document_start = after
+        elif name == "end" and document_start is not None:
+            document_end = start
+            break
+    if document_start is None:
+        return text
+    return text[document_start:document_end]
+
+
+def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
+    """Find a literal TeX include from the compiler working directory, then project."""
+    requested = Path(token)
+    names = [requested]
+    if not requested.suffix:
+        names = [requested.with_suffix(".tex"), requested]
+
+    if requested.is_absolute():
+        bases = [Path()]
+    else:
+        bases = [deck_dir, PROJECT_ROOT]
+
+    seen: set[Path] = set()
+    for base in bases:
+        for name in names:
+            candidate = name if name.is_absolute() else base / name
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if candidate.is_file():
+                return candidate.resolve()
+    return None
+
+
+def _expand_literal_includes(
+    source: str,
+    source_path: Path,
+    deck_dir: Path,
+    active_paths: tuple[Path, ...],
+) -> str:
+    """Inline literal body includes in order, with stack-based cycle checks."""
+    clean = alt_blocks.COMMENT_RE.sub("", source)
+    body = _document_body(clean)
+    # Instructor notes may contain arbitrary TeX. They are not deck-level
+    # includes and must not affect slide numbering or trigger file lookups.
+    body = alt_blocks.extract_note_calls(body)[0]
+
+    parts: list[str] = []
+    copied_through = 0
+    for name, start, command_end in alt_blocks._iter_tex_commands(body):
+        if name not in {"input", "include"} or start < copied_through:
+            continue
+        cursor = command_end
+        while cursor < len(body) and body[cursor].isspace():
+            cursor += 1
+        token_text, after = alt_blocks.braced_argument(body, cursor)
+        if after == cursor:
+            continue
+        token = token_text.strip()
+        # Macro-valued paths require TeX expansion; only resolve literal paths.
+        if not token or "\\" in token or "#" in token:
+            continue
+
+        include_path = _resolve_literal_include(token, deck_dir)
+        if include_path is None:
+            raise FileNotFoundError(
+                f"Literal deck include {token!r} from {source_path} was not found."
+            )
+        if include_path in active_paths:
+            chain = " -> ".join(str(path) for path in (*active_paths, include_path))
+            raise ValueError(f"Deck include cycle detected: {chain}")
+
+        included_text = include_path.read_text(encoding="utf-8")
+        expanded = _expand_literal_includes(
+            included_text, include_path, deck_dir, (*active_paths, include_path)
+        )
+        parts.append(body[copied_through:start])
+        parts.append(expanded)
+        copied_through = after
+
+    parts.append(body[copied_through:])
+    return "".join(parts)
+
+
 def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     """Every slide the deck contains, in order, flagged for this version.
 
@@ -256,7 +358,9 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     -- so the numbers a transcript prints keep matching the numbers a student
     sees.
     """
-    text = alt_blocks.COMMENT_RE.sub("", deck_path.read_text(encoding="utf-8"))
+    source = deck_path.read_text(encoding="utf-8")
+    deck_dir = deck_path.parent.resolve()
+    text = _expand_literal_includes(source, deck_path, deck_dir, (deck_path.resolve(),))
     slides: list[DeckSlide] = []
     number = 0
 
@@ -798,14 +902,11 @@ def render_slide(deck_slide: DeckSlide, version: str,
 
     stripped = alt_blocks.COMMENT_RE.sub("", source_text)
     stripped = resolve_deck_conditionals(stripped, version)
-
-    # \note{} is removed before anything else looks at the text. Instructor
-    # notes must never reach a student transcript, and dropping them at the
-    # front is a stronger guarantee than filtering later.
-    body, _notes = alt_blocks.extract_macro_calls(stripped, "note")
+    stripped, _notes = alt_blocks.extract_note_calls(stripped)
+    body = stripped
     body, sources = alt_blocks.extract_macro_calls(body, "source")
 
-    slide_id, title = alt_blocks._slide_title(source_text, deck_slide.path)
+    slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
 
     begin = alt_blocks.FRAME_OPEN_RE.search(body)
     end = _FRAME_END_RE.search(body)
