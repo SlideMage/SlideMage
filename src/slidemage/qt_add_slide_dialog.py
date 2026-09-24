@@ -197,6 +197,8 @@ class AddSlideDialog(QDialog):
         for version in VERSIONS:
             cb = QCheckBox(VERSION_LABELS[version])
             cb.setChecked(True)
+            cb.setToolTip("Uncheck a version to use \\conditionalslide.")
+            cb.toggled.connect(self._on_condition_toggled)
             self.condition_row.addWidget(cb)
             self.condition_checks[version] = cb
         self.condition_row.addStretch(1)
@@ -306,10 +308,19 @@ class AddSlideDialog(QDialog):
             return macro, label.split("(v", 1)[1].rstrip(")")
         return macro, None
 
+    def _on_condition_toggled(self, checked: bool) -> None:
+        if checked or self._current_macro_version()[0] != "slide":
+            return
+        index = self.variant_combo.findText("\\conditionalslide (current)")
+        if index >= 0:
+            self.variant_combo.setCurrentIndex(index)
+
     def _sync_condition_state(self) -> None:
         macro, _ = self._current_macro_version()
-        enabled = macro == "conditionalslide"
+        enabled = macro in {"slide", "conditionalslide"}
         for cb in self.condition_checks.values():
+            if macro == "slide":
+                cb.setChecked(True)
             cb.setEnabled(enabled)
 
     # -- submit -------------------------------------------------------------------
