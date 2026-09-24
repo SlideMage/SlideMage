@@ -1,6 +1,6 @@
 import pytest
 
-from slidemage import blocks, deck_editor, deck_scan
+from slidemage import deck_editor, deck_scan
 from slidemage.deck_scan import Deck
 
 
@@ -59,7 +59,7 @@ def test_remove_section_keeps_its_slides_and_stale_text_is_refused(tmp_path):
         deck_editor.remove_section(deck.path, removed, deck.chapters[0])
 
 
-def test_move_section_swaps_whole_adjacent_blocks_including_empty_section(tmp_path):
+def test_move_section_swaps_whole_adjacent_sections_including_empty_section(tmp_path):
     text = (
         "PREAMBLE\n\\begin{document}\nfront matter\n"
         "\\section{One}\n\\slide{aaa-EN-First}\n"
@@ -115,50 +115,19 @@ def test_slide_boundary_move_refuses_nonadjacent_lines(tmp_path):
         deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
 
 
-def test_add_section_refuses_an_offset_inside_a_stamped_block(tmp_path):
-    text = (
-        "\\begin{document}\n%% Block: demo\n%%\n\\slide{aaa-EN-First}\n"
-        "%% End block: demo\n%%\n\\end{document}\n"
-    )
-    deck = _deck(tmp_path / "deck.tex", text)
-    with pytest.raises(ValueError):
-        deck_editor.add_section(deck.path, text, "Inside", text.find("\\slide"))
-
-
-def test_move_section_refuses_a_block_span_crossing_the_swap_boundary(tmp_path):
-    text = (
-        "\\begin{document}\n\\section{A}\n%% Block: demo\n%%\n\\slide{aaa-EN-First}\n"
-        "\\section{B}\n\\slide{bbb-EN-Second}\n%% End block: demo\n%%\n"
-        "\\section{C}\n\\end{document}\n"
-    )
-    deck = _deck(tmp_path / "deck.tex", text)
-    with pytest.raises(ValueError):
-        deck_editor.move_section(deck.path, text, deck.chapters[0], deck.chapters[1])
-    assert deck.path.read_text(encoding="utf-8") == text
-
-
-def test_slide_section_move_refuses_to_cross_a_stamped_block_boundary(tmp_path):
-    text = (
-        "\\section{A}\n%% Block: demo\n%%\n\\slide{aaa-EN-First}\n%% End block: demo\n%%\n"
-        "\\section{B}\n"
-    )
-    deck = _deck(tmp_path / "deck.tex", text)
-    call = deck_editor.parse_slide_calls(deck)[0]
-    with pytest.raises(ValueError):
-        deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
-
-
-def test_slide_section_move_refuses_to_cross_a_stamped_block_boundary(tmp_path):
-    text = (
-        "\\section{A}\n%% Block: demo\n%%\n\\slide{aaa-EN-First}\n%% End block: demo\n%%\n"
-        "\\section{B}\n"
-    )
-    deck = _deck(tmp_path / "deck.tex", text)
-    call = deck_editor.parse_slide_calls(deck)[0]
-    with pytest.raises(ValueError):
-        deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
-
-
 def test_move_section_ignores_commented_document_end_marker(tmp_path):
     text = "\\begin{document}\n% \\end{document}\n\\section{A}\nA\n\\section{B}\nB\n\\end{document}\n"
     deck = _deck(tmp_path / "deck.tex", text)
+
+
+def test_legacy_block_comments_do_not_prevent_section_move(tmp_path):
+    text = (
+        "\\begin{document}\n\\section{Before}\n"
+        "%% Block: old-copy\n%%\n\\slide{aaa-EN-First}\n"
+        "%% End block: old-copy\n%%\n\\section{After}\n"
+        "\\end{document}\n"
+    )
+    deck = _deck(tmp_path / "deck.tex", text)
+    call = deck_editor.parse_slide_calls(deck)[0]
+    moved = deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
+    assert moved.index("\\section{After}") < moved.index("\\slide{aaa-EN-First}")

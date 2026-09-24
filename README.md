@@ -356,7 +356,7 @@ The comment does not change the compiled slides. The link stays with the
 deck when it is moved or archived.
 
 For a linked Uni Graz course, open the deck editor and click **Import
-sessions…** beside **Insert block…**. SlideMage reads the course's
+sessions…**. SlideMage reads the course's
 Abhaltungstermine page, asks which group to use when several are listed,
 and previews the LaTeX table. Choose a deck position and click **Insert
 slide** to create an editable schedule slide.

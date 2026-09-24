@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QPushButton
 
-from slidemage import blocks, deck_editor, qt_course_schedule_dialog, slide_ids
+from slidemage import deck_editor, qt_course_schedule_dialog, slide_ids
 from slidemage.course_schedule import CourseGroup, CourseSchedule, CourseSession
 from slidemage.deck_scan import Deck
 from slidemage.qt_course_schedule_dialog import (
@@ -37,13 +37,14 @@ def make_deck(tmp_path, course_url=COURSE_URL):
     )
 
 
-def test_editor_button_is_beside_insert_block_and_requires_link(tmp_path, qapp):
+def test_editor_import_button_requires_link_and_course_deck(tmp_path, qapp):
     tab = DeckEditorTab(SimpleNamespace(), make_deck(tmp_path))
     toolbar = tab.layout().itemAt(0).layout()
     labels = [toolbar.itemAt(i).widget().text()
               for i in range(toolbar.count())
               if isinstance(toolbar.itemAt(i).widget(), QPushButton)]
-    assert labels.index("Import sessions…") == labels.index("Insert block…") + 1
+    assert "Import sessions…" in labels
+    assert "Insert block…" not in labels
     assert tab.import_sessions_button.isEnabled()
 
     tab.reload(replace(tab.deck, course_url=None))
@@ -55,6 +56,22 @@ def test_editor_button_is_beside_insert_block_and_requires_link(tmp_path, qapp):
     tab.reload(replace(tab.deck, tags=[]))
     assert not tab.import_sessions_button.isHidden()
     assert tab.import_sessions_button.isEnabled()
+
+
+def test_schedule_positions_follow_regular_slide_calls(tmp_path):
+    deck = make_deck(tmp_path)
+    text = (
+        "\\begin{document}\n\\section{Intro}\n"
+        "\\slide{aaa-EN-First}\n\\slide{bbb-EN-Second}\n"
+        "\\end{document}\n"
+    )
+    deck.path.write_text(text, encoding="utf-8", newline="")
+    deck = replace(deck, text=text)
+    positions = deck_editor.slide_insert_positions(deck)
+    assert [position.label for position in positions] == [
+        "At the beginning", "After 1. aaa-EN-First", "After 2. bbb-EN-Second",
+    ]
+    assert positions[-1].insert_at == text.index("\\end{document}")
 
 
 def test_multiple_groups_trigger_choice_and_preview(tmp_path, monkeypatch, qapp):
@@ -100,7 +117,7 @@ def test_insertion_creates_editable_slide_and_deck_call(tmp_path, monkeypatch):
     monkeypatch.setattr(slide_ids, "SLIDES_DIR", tmp_path / "slides")
     monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", tmp_path / "slide_ids.csv")
     monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: "abc")
-    position = blocks.insert_positions(deck)[0]
+    position = deck_editor.slide_insert_positions(deck)[0]
     source = build_schedule_slide_source(r"\begin{tabular}{ll}Datum & Zeit \\ \end{tabular}")
 
     slide_path = insert_schedule_slide(deck, position, source)
@@ -116,7 +133,7 @@ def test_stale_deck_keeps_external_change_and_removes_new_slide(tmp_path, monkey
     monkeypatch.setattr(slide_ids, "SLIDES_DIR", tmp_path / "slides")
     monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", tmp_path / "slide_ids.csv")
     monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: "abc")
-    position = blocks.insert_positions(deck)[0]
+    position = deck_editor.slide_insert_positions(deck)[0]
     deck.path.write_text(deck.text + "% external edit\n", encoding="utf-8", newline="")
 
     with pytest.raises(deck_editor.StaleFileError):

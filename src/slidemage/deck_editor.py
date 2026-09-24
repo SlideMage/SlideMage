@@ -437,8 +437,6 @@ def add_section(deck_path: Path, expected_text: str, title: str, insert_at: int)
     """Insert a standalone ``\\section{title}`` line at ``insert_at``."""
     clean_title = _section_title(title)
     def mutate(text: str) -> str:
-        if any(span.start < insert_at < span.end for span in _block_spans(text)):
-            raise ValueError("A section cannot be inserted inside a stamped block copy.")
         return _splice(text, insert_at, f"\\section{{{clean_title}}}{_eol(text)}")
 
     return _apply(deck_path, expected_text, mutate)
@@ -462,16 +460,6 @@ def _live_document_end(text: str) -> int:
         if not COMMENT_RE.search(text, line_start, match.start()):
             return line_start
     return len(text)
-
-
-def _enclosing_block_span(spans, offset: int):
-    return next((span for span in spans if span.start <= offset < span.end), None)
-
-
-def _block_spans(text: str):
-    from . import blocks
-
-    return blocks.find_spans(text)
 
 
 def remove_section(deck_path: Path, expected_text: str, chapter: Chapter) -> str:
@@ -503,12 +491,6 @@ def move_section(deck_path: Path, expected_text: str, chapter: Chapter, neighbor
             next_start = _live_document_end(text)
         if not first_start < second_start < next_start:
             raise ValueError("Section block boundaries are invalid; reload the deck and retry.")
-        for span in _block_spans(text):
-            intersects_move = span.start < next_start and first_start < span.end
-            contained_in_first = first_start <= span.start and span.end <= second_start
-            contained_in_second = second_start <= span.start and span.end <= next_start
-            if intersects_move and not (contained_in_first or contained_in_second):
-                raise ValueError("Can't move sections across a stamped block that crosses a section boundary.")
         return text[:first_start] + text[second_start:next_start] + text[first_start:second_start] + text[next_start:]
 
     return _apply(deck_path, expected_text, mutate)
@@ -536,9 +518,6 @@ def move_slide_past_section(deck_path: Path, expected_text: str, call: SlideCall
             line_start = text.rfind("\n", 0, match.start()) + 1
             if not COMMENT_RE.search(text, line_start, match.start()):
                 raise ValueError("A slide can cross only the neighboring section marker.")
-        spans = _block_spans(text)
-        if _enclosing_block_span(spans, slide_start) != _enclosing_block_span(spans, section_start):
-            raise ValueError("A slide cannot cross a section marker into or out of a stamped block copy.")
         first_body = text[first_start:first_end].rstrip("\r\n")
         second_body = text[second_start:second_end].rstrip("\r\n")
         return (text[:first_start] + second_body + text[first_start + len(first_body):second_start]
@@ -579,18 +558,11 @@ def insert_slide_call(
     return _apply(deck_path, expected_text, mutate)
 
 
-def insert_text(deck_path: Path, expected_text: str, insert_at: int, new_text: str) -> str:
-    """Splice one or more complete, already-terminated lines in at
-    `insert_at` as a single edit (one undo step, one stale-file check) --
-    e.g. a whole stamped block (blocks.stamp_text())."""
-    return _apply(deck_path, expected_text, lambda text: _splice(text, insert_at, new_text))
-
-
 def move_slide_call(deck_path: Path, expected_text: str, call: SlideCall, neighbor: SlideCall) -> str:
     """Swap `call`'s line with `neighbor`'s (the adjacent call above or
     below it) as one edit. Only the two call lines trade places -- anything
-    between them (a \\section, a block marker, a comment) stays put, so
-    moving a slide past it moves the slide into that chapter or block copy.
+    between them (a \\section or a comment) stays put, so
+    moving a slide past it moves the slide into that chapter.
     Each line keeps its own terminator, so a last line without one stays
     that way."""
     for c in (call, neighbor):
@@ -632,31 +604,35 @@ def _splice(text: str, insert_at: int, new_text: str) -> str:
 def end_insert_point(text: str) -> int:
     """Where a call goes in a file with no calls yet: the start of the
     \\end{document} line (it never shares its line with anything else), or
-    the end of the file for one without it -- a blocks/*.tex file, which
-    is only ever a list of calls."""
+    the end of the file when there is no document-end marker."""
     match = DOCUMENT_END_RE.search(text)
     if match is None:
         return len(text)
     return text.rfind("\n", 0, match.start()) + 1
 
 
-def append_position(deck: Deck) -> tuple[int, str]:
-    """(insert_at, indent) for new calls appended after every call `deck`
-    already has: the last call's own line_end and indent, so appended
-    calls match the file's existing indentation -- or end_insert_point()
-    with no indent when there are no calls yet. If that last call sits
-    inside a stamped block copy (blocks.py), after the copy's end marker
-    instead: appending is never meant to extend someone's block copy (a
-    second stamped block would otherwise end up nested inside the first,
-    and imported slides inside a copy)."""
-    from . import blocks
+@dataclass
+class InsertPosition:
+    label: str
+    insert_at: int
+    indent: str
 
+
+def slide_insert_positions(deck: Deck) -> list[InsertPosition]:
+    """Places for inserting a slide before the first or after each existing call."""
+    calls = parse_slide_calls(deck)
+    if not calls:
+        return [InsertPosition("At the end of the deck", end_insert_point(deck.text), "")]
+    return [InsertPosition("At the beginning", calls[0].line_start, calls[0].indent)] + [
+        InsertPosition(f"After {number}. {call.id_slug}", call.line_end, call.indent)
+        for number, call in enumerate(calls, start=1)
+    ]
+
+
+def append_position(deck: Deck) -> tuple[int, str]:
+    """(insert_at, indent) for a call appended after the last slide."""
     calls = parse_slide_calls(deck)
     if not calls:
         return end_insert_point(deck.text), ""
     last = calls[-1]
-    for span in blocks.find_spans(deck.text):
-        if span.start <= last.call_start < span.end:
-            indent = re.match(r"[ \t]*", deck.text[span.start:]).group()
-            return span.end, indent
     return last.line_end, last.indent

@@ -38,15 +38,12 @@ from pathlib import Path
 from typing import Optional
 
 from . import alt_images, deck_headers, slide_ids, slide_language
-from .blocks import BLOCKS_DIR
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 WORKDECK_PATH = DECKS_DIR / "#workdeck.tex"
-# Every folder whose .tex files can hold \slide{}-family calls: decks, archived
-# decks, and blocks (blocks.py) -- a rename or delete that skipped blocks/ would
-# leave a block pointing at a slide id that no longer exists.
-_REFERENCE_DIRS = (DECKS_DIR, ARCHIVE_DIR, BLOCKS_DIR)
+# Decks and archived decks can hold \slide{}-family references.
+_REFERENCE_DIRS = (DECKS_DIR, ARCHIVE_DIR)
 
 # the slidemage GUI script runs with no console of its own -- same
 # fix, same reason, as compiler.py's/archive.py's own subprocess calls.
@@ -478,10 +475,7 @@ def deck_names_referencing(id_slug: str) -> list[str]:
     for deck_path in deck_paths:
         text = deck_path.read_bytes().decode("utf-8")
         if pattern.search(text):
-            # A block is listed too (its copy of the reference goes away
-            # just the same), but labelled so it isn't mistaken for a deck.
-            is_block = deck_path.parent == BLOCKS_DIR
-            names.append(f"{deck_path.stem} (block)" if is_block else deck_path.stem)
+            names.append(deck_path.stem)
     return names
 
 

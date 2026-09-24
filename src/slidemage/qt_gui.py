@@ -41,7 +41,6 @@ from PySide6.QtWidgets import (
 
 from . import app_settings
 from . import archive as archive_mod
-from . import blocks
 from . import bibliography
 from . import compiler
 from . import deck_duplicate
@@ -69,7 +68,6 @@ from .compiler import (
 )
 from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, Deck, scan_decks
 from .qt_add_slide_dialog import AddSlideDialog
-from .qt_blocks_tab import BlocksTab
 from .qt_closable_tab_bar import ClosableTabBar
 from .qt_course_link_dialog import CourseLinkDialog
 from .qt_deck_editor_tab import DeckEditorTab
@@ -239,9 +237,6 @@ class SlideMageWindow(QMainWindow):
         # tab is actually opened rather than paid on every launch, and
         # deliberately not a launch-time *write* to media/alt-text.json.
         self.transcript_tab = TranscriptTab(self)
-        # Tabs -> Blocks; like Archived decks, built up front but only put on
-        # the tab bar when opened.
-        self.blocks_tab = BlocksTab(self)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.tabs.setCornerWidget(self._build_search_box())
         outer.addWidget(self.tabs)
@@ -464,8 +459,6 @@ class SlideMageWindow(QMainWindow):
         archived_action.triggered.connect(self._on_open_archived_tab)
         images_action = tabs_menu.addAction("Images")
         images_action.triggered.connect(self._on_open_images_tab)
-        blocks_action = tabs_menu.addAction("Blocks")
-        blocks_action.triggered.connect(self._on_open_blocks_tab)
         bib_action = tabs_menu.addAction("Edit .bib")
         bib_action.triggered.connect(self._on_edit_bib)
 
@@ -579,13 +572,6 @@ class SlideMageWindow(QMainWindow):
             self.tabs.addTab(self.transcript_tab, "Images")
             self._set_tab_color(self.transcript_tab, self.theme.tab_colors()["transcript"])
         self.tabs.setCurrentWidget(self.transcript_tab)
-
-    def _on_open_blocks_tab(self) -> None:
-        if self.tabs.indexOf(self.blocks_tab) == -1:
-            self.blocks_tab.reload()
-            self.tabs.addTab(self.blocks_tab, "Blocks")
-            self._set_tab_color(self.blocks_tab, self.theme.tab_colors()["archived"])
-        self.tabs.setCurrentWidget(self.blocks_tab)
 
     def open_images_for_slide(self, id_slug: str) -> None:
         """A deck editor row's "Images" button (2026-09-19, direct
@@ -727,7 +713,7 @@ class SlideMageWindow(QMainWindow):
             widget._on_close()
         elif isinstance(widget, TranscriptPreviewTab):
             widget._on_close()
-        elif widget in (self.archived_table, self.transcript_tab, self.blocks_tab):
+        elif widget in (self.archived_table, self.transcript_tab):
             self.tabs.removeTab(index)
             self.tabs.setCurrentWidget(self.active_table)
 
@@ -741,26 +727,9 @@ class SlideMageWindow(QMainWindow):
             return
         tab = DeckEditorTab(self, deck)
         self._deck_editor_tabs[deck.path] = tab
-        kind = "block" if tab.is_block else "slides"
-        self.tabs.addTab(tab, f"{deck.name} ({kind})")
+        self.tabs.addTab(tab, f"{deck.name} (slides)")
         self.tabs.setCurrentWidget(tab)
         self._set_tab_color(tab, self.theme.tab_colors()["deck_editor"])
-
-    def open_block_editor(self, name: str) -> None:
-        """A block opens in the ordinary deck editor, via a synthetic Deck
-        (blocks.Block.as_deck())."""
-        self.open_deck_editor(blocks.read_block(blocks.block_path(name)).as_deck())
-
-    def close_block_editor(self, path: Path) -> None:
-        """Closes a block's editor tab if one is open -- before a rename or
-        delete takes its file away. Stays on the current tab (the Blocks
-        list), unlike close_deck_editor_tab()'s jump back to Active decks."""
-        tab = self._deck_editor_tabs.pop(path, None)
-        if tab is not None:
-            index = self.tabs.indexOf(tab)
-            if index != -1:
-                self.tabs.removeTab(index)
-            tab.deleteLater()
 
     def close_deck_editor_tab(self, tab: DeckEditorTab) -> None:
         index = self.tabs.indexOf(tab)
@@ -778,11 +747,7 @@ class SlideMageWindow(QMainWindow):
         """Re-scans every deck (like Refresh decks) and returns this one's
         fresh Deck snapshot -- called after any edit made through the deck
         slide-list editor, so the main table's own DeckRow never goes
-        stale. A block file (blocks.py) is re-read directly instead -- it's
-        never among the scanned decks -- and refreshes the Blocks list."""
-        if blocks.is_block_path(deck_path):
-            self.blocks_tab.reload()
-            return blocks.read_block(deck_path).as_deck() if deck_path.exists() else None
+        stale."""
         self.reload_decks()
         for row in self.active_rows + self.archived_rows:
             if row.deck.path == deck_path:
@@ -820,15 +785,9 @@ class SlideMageWindow(QMainWindow):
         that has already run it (set_slide_language() always does, as its
         own last step)."""
         self.reload_decks()
-        self.blocks_tab.reload()
         fresh_by_path = {row.deck.path: row.deck for row in self.active_rows + self.archived_rows}
         for deck_path, tab in self._deck_editor_tabs.items():
-            if blocks.is_block_path(deck_path):
-                # Block files hold slide references too (a slide rename
-                # rewrites them), but aren't among the scanned decks.
-                fresh_deck = blocks.read_block(deck_path).as_deck() if deck_path.exists() else None
-            else:
-                fresh_deck = fresh_by_path.get(deck_path)
+            fresh_deck = fresh_by_path.get(deck_path)
             if fresh_deck is not None:
                 tab.reload(fresh_deck)
 

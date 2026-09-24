@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import blocks, course_schedule, deck_editor, slide_ids
+from . import course_schedule, deck_editor, slide_ids
 from .deck_scan import Deck
 
 
@@ -64,7 +64,7 @@ def build_schedule_slide_source(table: str) -> str:
 
 
 def insert_schedule_slide(
-    deck: Deck, position: blocks.InsertPosition, slide_source: str,
+    deck: Deck, position: deck_editor.InsertPosition, slide_source: str,
 ) -> Path:
     """Create a new slide, then add its call to a still-current deck."""
     slide_id = slide_ids.mint_slide_id()
@@ -94,7 +94,7 @@ class CourseScheduleDialog(QDialog):
         self.deck = deck
         self._cancelled = False
         self.slide_source: str | None = None
-        self._positions = blocks.insert_positions(deck)
+        self._positions = deck_editor.slide_insert_positions(deck)
         self.setWindowTitle("Import course sessions")
         self.resize(790, 560)
 
@@ -130,7 +130,7 @@ class CourseScheduleDialog(QDialog):
         QTimer.singleShot(0, self._start_fetch)
 
     @property
-    def position(self) -> blocks.InsertPosition:
+    def position(self) -> deck_editor.InsertPosition:
         return self._positions[self.position_combo.currentIndex()]
 
     def _start_fetch(self) -> None:

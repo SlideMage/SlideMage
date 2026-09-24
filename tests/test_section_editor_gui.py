@@ -114,3 +114,41 @@ def test_sections_are_rows_and_can_be_added_and_reordered(tmp_path, monkeypatch,
     updated = _read(path)
     assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{New}")
     assert updated.index("\\section{New}") < updated.index("\\section{Two}")
+
+
+def test_section_up_crosses_legacy_block_comments(tmp_path, qapp):
+    text = (
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        "%% Block: legacy\n%%\n"
+        "\\slide{aaa-First}\n\\slide{bbb-Second}\n"
+        "%% End block: legacy\n%%\n"
+        "\\section{After}\n\\end{document}\n"
+    )
+    path = tmp_path / "course.tex"
+    path.write_text(text, encoding="utf-8", newline="")
+    deck = Deck(
+        name="course", path=path, archived=False, text=text,
+        supports_version=False, uses_biblatex=False,
+        preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
+        chapters=_parse_chapters(text), output_folders={},
+    )
+    tab = None
+
+    def after_deck_edit(_path, _summary, previous_text):
+        assert previous_text == tab.deck.text
+        updated = _read(path)
+        tab.reload(replace(tab.deck, text=updated, chapters=_parse_chapters(updated)))
+
+    tab = DeckEditorTab(SimpleNamespace(after_deck_edit=after_deck_edit), deck)
+    heading = next(label for label in tab._chapter_headers.values()
+                   if label.text() == "Section: After")
+    row = next(tab.grid.getItemPosition(i)[0] for i in range(tab.grid.count())
+               if tab.grid.itemAt(i).widget() is heading)
+    controls = tab.grid.itemAtPosition(row, 0).widget()
+    up = next(button for button in controls.findChildren(QPushButton)
+              if button.text() == "↑")
+    assert up.isEnabled()
+    up.click()
+    updated = _read(path)
+    assert updated.index("\\slide{aaa-First}") < updated.index("\\section{After}")
+    assert updated.index("\\section{After}") < updated.index("\\slide{bbb-Second}")
