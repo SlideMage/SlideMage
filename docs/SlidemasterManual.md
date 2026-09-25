@@ -217,6 +217,10 @@ use the cache, all instant — no LaTeX compile needed:
   section's slides with it. Use **+ slide here** to add the first slide to
   an empty section. These changes update the deck's `.tex` source
   and can be undone with **Undo**.
+- A slide's number in List or Thumbnail view is editable: type a new
+  position and press Enter to move the slide there. The slides between the
+  old and new position shift one place to make room, and the moved slide
+  joins the section of the slide whose number it takes.
 
 This is a cache, not a live view — it only updates when something actually
 compiles, so it can lag behind an edit you haven't recompiled yet. "Render
