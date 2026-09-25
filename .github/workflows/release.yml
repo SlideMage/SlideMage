@@ -24,6 +24,17 @@ jobs:
             binary_path: dist/SlideMage.exe
     steps:
       - uses: actions/checkout@v4
+      # Info -> "Check for updates…" compares the release tag with the
+      # running build's VERSION_NUMBER, so the two must be the same.
+      - name: Tag matches VERSION_NUMBER
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          expected=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match VERSION_NUMBER $expected"
+            exit 1
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

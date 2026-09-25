@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import uuid
 from pathlib import Path
@@ -32,6 +33,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressDialog,
     QPushButton,
     QTabWidget,
     QToolButton,
@@ -55,6 +57,7 @@ from . import slide_rename
 from . import slide_snapshot
 from . import transcript
 from . import update_all_previews
+from . import updater
 from . import version as version_mod
 from .compiler import (
     PDF_DIR,
@@ -133,6 +136,8 @@ class SlideMageWindow(QMainWindow):
         self.resize(1008, 975)
 
         self._build_menu_bar()
+        if updater.can_self_update():
+            updater.remove_leftover_binary(Path(sys.executable))
 
         self.compiling = False
         self.cancel_token: Optional[CancelToken] = None
@@ -437,11 +442,11 @@ class SlideMageWindow(QMainWindow):
           not just a plain separator): "Cleanup" (the three that remove/
           relocate files) and "Updating" (the two that refresh derived
           state from current disk content).
-        - **Info** -- a single top-level action (not a dropdown with
-          items inside -- there's only ever the one thing to show),
-          opening the version-history window (qt_version_history_dialog.py).
-          Last position (2026-08-25, direct instruction; originally sat
-          second, right after System).
+        - **Info** -- the version-history window
+          (qt_version_history_dialog.py) and "Check for updates…"
+          (updater.py). Last position (2026-08-25, direct instruction;
+          originally sat second, right after System). A single action
+          until the update check joined it.
         """
         system_menu = self.menuBar().addMenu("System")
         open_project_action = system_menu.addAction("Open Project…")
@@ -495,8 +500,11 @@ class SlideMageWindow(QMainWindow):
         )
         sync_translation_links_action.triggered.connect(self._on_sync_translation_links)
 
-        info_action = self.menuBar().addAction("Info")
-        info_action.triggered.connect(self._on_open_version_history)
+        info_menu = self.menuBar().addMenu("Info")
+        version_history_action = info_menu.addAction("Version history…")
+        version_history_action.triggered.connect(self._on_open_version_history)
+        check_updates_action = info_menu.addAction("Check for updates…")
+        check_updates_action.triggered.connect(self._on_check_for_updates)
 
     def _on_open_project(self) -> None:
         """System -> "Open Project..." -- lets the user point SlideMage at
@@ -560,6 +568,94 @@ class SlideMageWindow(QMainWindow):
     def _on_open_version_history(self) -> None:
         dialog = VersionHistoryDialog(self)
         dialog.exec()
+
+    def _on_check_for_updates(self) -> None:
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            release = updater.fetch_latest_release()
+        except updater.UpdateError as exc:
+            QMessageBox.warning(self, "Check for updates", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        current = version_mod.VERSION_NUMBER
+        if not updater.is_newer(release.tag, current):
+            QMessageBox.information(
+                self, "Check for updates",
+                f"SlideMage {current} is up to date (latest release: {release.tag}).",
+            )
+            return
+        if not updater.can_self_update():
+            QMessageBox.information(
+                self, "Update available",
+                f"SlideMage {release.tag} is available (you have {current}).\n\n"
+                "This copy runs from source, so it can't replace itself -- "
+                f"update it with git pull, or download the release from:\n{release.page_url}",
+            )
+            return
+        reply = QMessageBox.question(
+            self, "Update available",
+            f"SlideMage {release.tag} is available (you have {current}).\n\n"
+            "Download it and replace this copy now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._download_and_install_update(release)
+
+    def _download_and_install_update(self, release: updater.Release) -> None:
+        executable = Path(sys.executable)
+        binary_name = updater.ASSETS[sys.platform][1]
+        progress = QProgressDialog(
+            f"Downloading SlideMage {release.tag}…", "Cancel", 0, 0, self)
+        progress.setWindowTitle("Updating SlideMage")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+
+        def on_progress(done: int, total: int) -> bool:
+            if total:
+                progress.setMaximum(total)
+                progress.setValue(done)
+            QApplication.processEvents()
+            return not progress.wasCanceled()
+
+        with tempfile.TemporaryDirectory(prefix="slidemage-update-") as tmp:
+            zip_path = Path(tmp) / "update.zip"
+            try:
+                updater.download(release, zip_path, on_progress)
+                progress.setLabelText("Installing…")
+                progress.setCancelButton(None)
+                QApplication.processEvents()
+                updater.install_zip(zip_path, executable, binary_name)
+            except updater.UpdateError as exc:
+                progress.close()
+                QMessageBox.warning(self, "Update failed", str(exc))
+                return
+        progress.close()
+
+        reply = QMessageBox.question(
+            self, "Update installed",
+            f"SlideMage {release.tag} is installed in {executable.parent}.\n\n"
+            "Restart now to use it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self.compiling:
+            QMessageBox.information(
+                self, "Update installed",
+                "A compile run is in progress -- restart SlideMage once it finishes.",
+            )
+            return
+        if not self._resolve_dirty_edits():
+            return
+        project.relaunch_with_project(PROJECT_ROOT)
+        self._dirty_edits_resolved_for_close = True
+        self.close()
 
     def _on_open_archived_tab(self) -> None:
         if self.tabs.indexOf(self.archived_table) == -1:

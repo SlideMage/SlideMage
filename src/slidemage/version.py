@@ -1580,6 +1580,26 @@ PySide6 migration (v2.10.0). Also added a short pointer to
 github.com/stpalan/slidemaster, the companion repo this one now gets
 published alongside via git subtree, so a reader landing here from that
 repo's own README knows where the other half lives.
+
+v3.30.0 (2026-09-25, direct instruction): a slide's number in the deck
+editor's List/Thumbnail view is now an editable field. Typing another
+number and pressing Enter moves the slide to that position -- typing 2
+into slide 6 makes it the new slide 2 and shifts the old 2-5 down by one;
+moving down works the same way in reverse. The moved slide joins the
+section of the slide whose number it takes, and only its own line moves
+in the deck's .tex (new deck_editor.move_slide_to()). Undoable like the
+arrow buttons.
+
+v3.31.0 (2026-09-25, direct instruction): the Info menu is now a
+dropdown with "Version history…" and a new "Check for updates…", which
+compares VERSION_NUMBER with the latest GitHub release of
+stpalan/slidemaster. When a newer release exists, a packaged build
+offers to download that platform's release zip, unpacks it over the
+running binary (moved aside as "<name>.old", removed on the next start)
+and restarts; a source checkout is pointed at git pull instead. A
+private repo needs SLIDEMAGE_GITHUB_TOKEN set. New updater.py; release.yml
+now refuses a tag that doesn't match VERSION_NUMBER, so the check can
+trust the tag.
 """
 from __future__ import annotations
 
@@ -1590,7 +1610,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.29.5"
+VERSION_NUMBER = "v3.31.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
