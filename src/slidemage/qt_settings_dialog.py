@@ -11,6 +11,7 @@ its own DELETE /api/delete), not just some SlideMage-side list.
 """
 from __future__ import annotations
 
+import os
 import threading
 
 from PySide6.QtCore import Qt, Signal
@@ -41,6 +42,7 @@ from . import alt_draft
 from . import app_settings
 from . import draft_prompts
 from . import translation_prompts as tp
+from . import updater
 from .qt_slide_source_tab import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 
 
@@ -189,8 +191,50 @@ class SettingsDialog(QDialog):
         tab_width_row.addStretch(1)
         layout.addLayout(tab_width_row)
 
+        layout.addWidget(self._build_update_token_group())
         layout.addStretch(1)
         return page
+
+    def _build_update_token_group(self) -> QGroupBox:
+        """GitHub token for Info -> "Check for updates…" while the release
+        repository is private. Saved on Enter/leaving the field, like the
+        Ollama host; clearing the field removes it."""
+        group = QGroupBox("Updates")
+        group_layout = QVBoxLayout(group)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("GitHub token:"))
+        self.github_token_edit = QLineEdit(updater.saved_token())
+        self.github_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.github_token_edit.setPlaceholderText("ghp_… (only needed while the repository is private)")
+        self.github_token_edit.editingFinished.connect(self._on_github_token_changed)
+        row.addWidget(self.github_token_edit, stretch=1)
+        show_box = QCheckBox("Show")
+        show_box.toggled.connect(lambda shown: self.github_token_edit.setEchoMode(
+            QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password))
+        row.addWidget(show_box)
+        group_layout.addLayout(row)
+        note = (
+            f"Read access to {updater.REPO} is enough. Stored for your user "
+            "account only, not in the project folder."
+        )
+        if os.environ.get(updater.TOKEN_ENV_VAR):
+            note += f" {updater.TOKEN_ENV_VAR} is set and takes precedence."
+        note_label = QLabel(note)
+        note_label.setObjectName("mutedLabel")
+        note_label.setWordWrap(True)
+        group_layout.addWidget(note_label)
+        return group
+
+    def _on_github_token_changed(self) -> None:
+        token = self.github_token_edit.text().strip()
+        if token == updater.saved_token():
+            return
+        try:
+            updater.save_token(token)
+        except OSError as exc:
+            QMessageBox.warning(self, "GitHub token", f"Couldn't save the token: {exc}")
+            return
+        self.app.log("GitHub token saved" if token else "GitHub token removed")
 
     # -- Translation prompts ------------------------------------------------
 

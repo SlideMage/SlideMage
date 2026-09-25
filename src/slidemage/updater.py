@@ -24,10 +24,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from .project import config_dir
+
 REPO = "stpalan/slidemaster"
 LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 # A private repo's releases are only visible with a token that can read it.
+# The environment variable wins over the token saved in Preferences, which
+# lives in the per-user config folder -- never the project's .slidemage/,
+# which travels with the (often cloud-synced) project folder.
 TOKEN_ENV_VAR = "SLIDEMAGE_GITHUB_TOKEN"
+TOKEN_FILENAME = "github_token"
 # release.yml's asset names and the binary each one contains.
 ASSETS = {
     "win32": ("SlideMage-windows.zip", "SlideMage.exe"),
@@ -65,9 +71,39 @@ def can_self_update() -> bool:
     return getattr(sys, "frozen", False) and sys.platform in ASSETS
 
 
+def _token_file() -> Path:
+    return config_dir() / TOKEN_FILENAME
+
+
+def saved_token() -> str:
+    try:
+        return _token_file().read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def save_token(token: str) -> None:
+    """Save `token` readable only by this user; an empty one removes it."""
+    path = _token_file()
+    token = token.strip()
+    if not token:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as out:
+        out.write(token + "\n")
+    if os.name != "nt":
+        path.chmod(0o600)  # an older file may have been created looser
+
+
+def active_token() -> str:
+    return os.environ.get(TOKEN_ENV_VAR, "").strip() or saved_token()
+
+
 def _request(url: str, accept: str) -> urllib.request.Request:
     headers = {"Accept": accept, "User-Agent": "SlideMage-updater"}
-    token = os.environ.get(TOKEN_ENV_VAR)
+    token = active_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return urllib.request.Request(url, headers=headers)
@@ -83,7 +119,8 @@ def fetch_latest_release(timeout: float = 10) -> Release:
         if exc.code == 404:
             raise UpdateError(
                 f"No published release found for {REPO}. If the repository is "
-                f"private, set {TOKEN_ENV_VAR} to a GitHub token that can read it."
+                "private, add a GitHub token that can read it under "
+                f"Preferences → General (or set {TOKEN_ENV_VAR})."
             ) from exc
         raise UpdateError(f"GitHub answered {exc.code} {exc.reason}.") from exc
     except (urllib.error.URLError, OSError, ValueError) as exc:

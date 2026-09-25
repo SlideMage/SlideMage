@@ -85,3 +85,22 @@ def test_fetch_picks_platform_asset_and_explains_404(monkeypatch):
     monkeypatch.setattr(updater.urllib.request, "urlopen", not_found)
     with pytest.raises(updater.UpdateError, match=updater.TOKEN_ENV_VAR):
         updater.fetch_latest_release()
+
+
+def test_token_saved_privately_and_env_var_wins(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater, "config_dir", lambda: tmp_path / "cfg")
+    monkeypatch.delenv(updater.TOKEN_ENV_VAR, raising=False)
+    assert updater.active_token() == ""
+
+    updater.save_token("  ghp_saved \n")
+    token_file = tmp_path / "cfg" / updater.TOKEN_FILENAME
+    assert updater.saved_token() == updater.active_token() == "ghp_saved"
+    if os.name != "nt":
+        assert token_file.stat().st_mode & 0o777 == 0o600
+    assert updater._request("https://example.invalid", "a").get_header("Authorization") == "Bearer ghp_saved"
+
+    monkeypatch.setenv(updater.TOKEN_ENV_VAR, "ghp_env")
+    assert updater.active_token() == "ghp_env"
+
+    updater.save_token("")
+    assert not token_file.exists()

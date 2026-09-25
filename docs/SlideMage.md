@@ -105,9 +105,8 @@ the new version -- update it with `git pull`.
 ### Access token for a private repository
 
 While the repository is private, GitHub only shows its releases to a
-logged-in account, so the check needs a token in the environment variable
-`SLIDEMAGE_GITHUB_TOKEN`. Without it, the check reports that no release
-was found.
+logged-in account, so the check needs a GitHub token. Without one, the
+check reports that no release was found.
 
 1. **Create the token.** On GitHub: Settings → Developer settings →
    Personal access tokens → Tokens (classic) → Generate new token
@@ -116,7 +115,15 @@ was found.
    can't reach a repository owned by another account; once the repository
    belongs to an organization you're in, a fine-grained token with only
    "Contents: Read-only" on it is the safer choice.
-2. **Set the variable.**
+2. **Add it in SlideMage.** System → Preferences… → General → Updates:
+   paste the token into "GitHub token" and press Enter. It's saved for
+   your user account only -- in `~/.config/slidemage/github_token`
+   (readable only by you) or `%APPDATA%\SlideMage\github_token` -- never
+   in the project folder, which may be synced or shared. Clearing the
+   field removes it.
+
+   Alternatively, set the environment variable `SLIDEMAGE_GITHUB_TOKEN`,
+   which takes precedence over the saved token:
    - Linux -- a desktop launcher doesn't read `~/.bashrc`, so use the
      session environment, then log out and back in:
      ```bash
@@ -132,9 +139,7 @@ was found.
      ```
      or Settings → System → About → Advanced system settings →
      Environment Variables → User variables → New.
-3. **Check it.** `echo $SLIDEMAGE_GITHUB_TOKEN` (Linux) or
-   `echo $env:SLIDEMAGE_GITHUB_TOKEN` (a new PowerShell window), then
-   Info → Check for updates….
+3. **Check it.** Info → Check for updates….
 
 Every user needs their own token with read access to the repository, which
 doesn't scale beyond its collaborators. To hand SlideMage to anyone else,

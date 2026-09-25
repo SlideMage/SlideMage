@@ -1600,6 +1600,14 @@ and restarts; a source checkout is pointed at git pull instead. A
 private repo needs SLIDEMAGE_GITHUB_TOKEN set. New updater.py; release.yml
 now refuses a tag that doesn't match VERSION_NUMBER, so the check can
 trust the tag.
+
+v3.32.0 (2026-09-25, direct instruction): the GitHub token for "Check
+for updates…" can now be entered in Preferences -> General -> Updates
+instead of only via SLIDEMAGE_GITHUB_TOKEN (which still takes
+precedence). Saved in the per-user config folder (project.config_dir(),
+file readable only by the user) rather than app_settings.json, which
+lives in the project's synced .slidemage/ folder -- a token shouldn't
+travel with a shared project.
 """
 from __future__ import annotations
 
@@ -1610,7 +1618,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.31.0"
+VERSION_NUMBER = "v3.32.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
