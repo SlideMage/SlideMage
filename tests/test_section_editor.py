@@ -131,3 +131,31 @@ def test_legacy_block_comments_do_not_prevent_section_move(tmp_path):
     call = deck_editor.parse_slide_calls(deck)[0]
     moved = deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
     assert moved.index("\\section{After}") < moved.index("\\slide{aaa-EN-First}")
+
+
+def test_move_slide_to_shifts_slides_in_between_and_changes_section(tmp_path):
+    text = (
+        "\\begin{document}\n\\slide{aaa-A}\n\\section{S}\n\\slide{bbb-B}\n"
+        "  \\slide{ccc-C}\n\\slide{ddd-D}\n\\end{document}\n"
+    )
+    deck = _deck(tmp_path / "deck.tex", text)
+    calls = deck_editor.parse_slide_calls(deck)
+    up = deck_editor.move_slide_to(deck.path, text, calls[3], calls[0])
+    assert up == (
+        "\\begin{document}\n\\slide{ddd-D}\n\\slide{aaa-A}\n\\section{S}\n\\slide{bbb-B}\n"
+        "  \\slide{ccc-C}\n\\end{document}\n"
+    )
+    calls = deck_editor.parse_slide_calls(_deck(deck.path, up))
+    down = deck_editor.move_slide_to(deck.path, up, calls[1], calls[3])
+    assert down == deck.path.read_text() == (
+        "\\begin{document}\n\\slide{ddd-D}\n\\section{S}\n\\slide{bbb-B}\n"
+        "  \\slide{ccc-C}\n\\slide{aaa-A}\n\\end{document}\n"
+    )
+
+
+def test_move_slide_to_last_unterminated_line_keeps_crlf(tmp_path):
+    text = "\\begin{document}\r\n\\slide{aaa-A}\r\n\\slide{bbb-B}"
+    deck = _deck(tmp_path / "deck.tex", text)
+    calls = deck_editor.parse_slide_calls(deck)
+    moved = deck_editor.move_slide_to(deck.path, text, calls[0], calls[1])
+    assert moved == "\\begin{document}\r\n\\slide{bbb-B}\r\n\\slide{aaa-A}\r\n"

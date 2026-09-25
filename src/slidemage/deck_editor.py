@@ -584,6 +584,30 @@ def move_slide_call(deck_path: Path, expected_text: str, call: SlideCall, neighb
     return _apply(deck_path, expected_text, mutate)
 
 
+def move_slide_to(deck_path: Path, expected_text: str, call: SlideCall, target: SlideCall) -> str:
+    """Move `call`'s line so it takes `target`'s slide number: moving up
+    puts it directly before `target`'s line, moving down directly after
+    it, and every slide in between shifts by one. The moved slide lands
+    in `target`'s section, and nothing but its own line changes place."""
+    for c in (call, target):
+        if not c.editable:
+            raise ValueError(f"can't move {c.id_slug} -- {c.readonly_reason}")
+    if call.line_start == target.line_start:
+        return expected_text
+
+    def mutate(text: str) -> str:
+        eol = _eol(text)
+        body = text[call.line_start:call.line_end].rstrip("\r\n")
+        rest = text[:call.line_start] + text[call.line_end:]
+        if target.line_start < call.line_start:
+            insert_at = target.line_start
+        else:
+            insert_at = target.line_end - (call.line_end - call.line_start)
+        return _splice(rest, insert_at, body + eol)
+
+    return _apply(deck_path, expected_text, mutate)
+
+
 def _eol(text: str) -> str:
     return "\r\n" if "\r\n" in text else "\n"
 

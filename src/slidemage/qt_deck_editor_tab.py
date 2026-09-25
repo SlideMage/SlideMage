@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QIntValidator, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QRadioButton,
@@ -552,7 +553,7 @@ class DeckEditorTab(QWidget):
             select_box.setEnabled(False)
             select_box.setToolTip(f"Can't be removed here -- {call.readonly_reason}")
         number_layout.addWidget(select_box)
-        number_layout.addWidget(QLabel(str(position)))
+        number_layout.addWidget(self._build_position_edit(position, call))
         # Slides move past the adjacent visible item, including a section
         # boundary. Crossing a section changes which section owns the slide.
         for arrow, offset, tip in (("↑", -1, "Move up"), ("↓", 1, "Move down")):
@@ -671,6 +672,48 @@ class DeckEditorTab(QWidget):
         self.grid.addWidget(remove_button, row_index, 7)
 
     # -- thumbnail view ---------------------------------------------------------
+
+    def _build_position_edit(self, position: int, call: SlideCall) -> QLineEdit:
+        """The slide number, editable: typing another number and pressing
+        Enter (or leaving the field) moves the slide to that position."""
+        slide_count = sum(isinstance(item, SlideCall) for item in self._items)
+        edit = QLineEdit(str(position))
+        edit.setFixedWidth(36)
+        edit.setAlignment(Qt.AlignmentFlag.AlignRight)
+        edit.setValidator(QIntValidator(1, slide_count, edit))
+        if call.editable:
+            edit.setToolTip(f"Type a new position (1-{slide_count}) and press Enter to move this slide")
+        else:
+            edit.setReadOnly(True)
+            edit.setToolTip(f"Can't be moved here -- {call.readonly_reason}")
+        edit.editingFinished.connect(
+            lambda e=edit, p=position, c=call: self._on_position_edited(e, p, c))
+        return edit
+
+    def _on_position_edited(self, edit: QLineEdit, position: int, call: SlideCall) -> None:
+        text = edit.text().strip()
+        if not text.isdigit() or int(text) == position:
+            edit.setText(str(position))
+            return
+        # The rebuild after the move deletes this field; its focus loss
+        # must not fire a second move with the now-stale call offsets.
+        edit.blockSignals(True)
+        calls = [item for item in self._items if isinstance(item, SlideCall)]
+        new_position = min(max(int(text), 1), len(calls))
+        target = calls[new_position - 1]
+        previous_text = self.deck.text
+        try:
+            deck_editor.move_slide_to(self.deck.path, previous_text, call, target)
+        except (deck_editor.StaleFileError, ValueError) as exc:
+            edit.setText(str(position))
+            edit.blockSignals(False)
+            QMessageBox.critical(self, "Move failed", str(exc))
+            return
+        self.app.after_deck_edit(
+            self.deck.path,
+            f"Moved {call.id_slug} from {position} to {new_position} in {self.deck.name}",
+            previous_text=previous_text,
+        )
 
     def _build_thumbnail_row(self, row_index: int, call: SlideCall) -> None:
         """Thumbnail view isn't a separate layout -- it's the same row grid
