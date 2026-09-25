@@ -26,7 +26,7 @@ from typing import Callable, Optional
 
 from .project import config_dir
 
-REPO = "stpalan/slidemaster"
+REPO = "JuergenFleiss/slidemage"
 LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 # A private repo's releases are only visible with a token that can read it.
 # The environment variable wins over the token saved in Preferences, which

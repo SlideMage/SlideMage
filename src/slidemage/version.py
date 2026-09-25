@@ -1608,6 +1608,12 @@ precedence). Saved in the per-user config folder (project.config_dir(),
 file readable only by the user) rather than app_settings.json, which
 lives in the project's synced .slidemage/ folder -- a token shouldn't
 travel with a shared project.
+
+v3.32.1 (2026-09-25, direct instruction): "Check for updates…" now reads
+releases from JuergenFleiss/slidemage, where they are actually published
+-- stpalan/slidemaster has none, so the check could never find one.
+From this version on, release tags equal VERSION_NUMBER (release.yml
+enforces it); the earlier v0.0.x tags predate that.
 """
 from __future__ import annotations
 
@@ -1618,7 +1624,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.32.0"
+VERSION_NUMBER = "v3.32.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

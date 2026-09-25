@@ -95,7 +95,7 @@ way without deleting them.
 ## Updates
 
 **Info → Check for updates…** compares this copy's version with the
-latest release of `stpalan/slidemaster` on GitHub. When a newer one
+latest release of `JuergenFleiss/slidemage` on GitHub. When a newer one
 exists, the packaged app offers to download that platform's release zip,
 unpacks it into the folder the running app lives in, and restarts. The
 old binary is kept as `SlideMage.old` (`SlideMage.exe.old` on Windows)
