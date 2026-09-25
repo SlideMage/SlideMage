@@ -22,7 +22,9 @@ build a stand-alone executable with `pip install -e ".[build]"` then
 `dist/SlideMage` (`dist/SlideMage.exe` on Windows). PyInstaller never
 cross-compiles: run it on the OS you want the executable for. Pushing a
 `v*` tag builds both platforms via `.github/workflows/release.yml` and
-attaches them to a GitHub Release instead, no local build needed.
+attaches them to a GitHub Release instead, no local build needed. The tag
+must equal `VERSION_NUMBER` in `src/slidemage/version.py` (e.g. `v3.31.0`),
+or the workflow stops -- the update check below compares the two.
 
 On Linux, `SlideMage-linux.zip` also bundles `icon.svg` and
 `slidemage.desktop.template` next to the binary -- unzip the release to
@@ -89,6 +91,56 @@ references anymore. It also adds two things that didn't exist before at
 all: archiving a finished course's deck out of `decks/` while keeping it
 compilable, and archiving unreferenced `media/`/`slides/` files out of the
 way without deleting them.
+
+## Updates
+
+**Info → Check for updates…** compares this copy's version with the
+latest release of `stpalan/slidemaster` on GitHub. When a newer one
+exists, the packaged app offers to download that platform's release zip,
+unpacks it into the folder the running app lives in, and restarts. The
+old binary is kept as `SlideMage.old` (`SlideMage.exe.old` on Windows)
+until the next start deletes it. A copy running from source only reports
+the new version -- update it with `git pull`.
+
+### Access token for a private repository
+
+While the repository is private, GitHub only shows its releases to a
+logged-in account, so the check needs a token in the environment variable
+`SLIDEMAGE_GITHUB_TOKEN`. Without it, the check reports that no release
+was found.
+
+1. **Create the token.** On GitHub: Settings → Developer settings →
+   Personal access tokens → Tokens (classic) → Generate new token
+   (classic). Tick the `repo` scope, set an expiry date, and copy the
+   token (`ghp_…`) -- GitHub shows it only once. A fine-grained token
+   can't reach a repository owned by another account; once the repository
+   belongs to an organization you're in, a fine-grained token with only
+   "Contents: Read-only" on it is the safer choice.
+2. **Set the variable.**
+   - Linux -- a desktop launcher doesn't read `~/.bashrc`, so use the
+     session environment, then log out and back in:
+     ```bash
+     mkdir -p ~/.config/environment.d
+     echo 'SLIDEMAGE_GITHUB_TOKEN=ghp_yourtoken' > ~/.config/environment.d/slidemage.conf
+     chmod 600 ~/.config/environment.d/slidemage.conf
+     ```
+     When SlideMage is only ever started from a terminal,
+     `export SLIDEMAGE_GITHUB_TOKEN=ghp_yourtoken` in `~/.bashrc` is enough.
+   - Windows -- in PowerShell, then restart SlideMage:
+     ```powershell
+     setx SLIDEMAGE_GITHUB_TOKEN "ghp_yourtoken"
+     ```
+     or Settings → System → About → Advanced system settings →
+     Environment Variables → User variables → New.
+3. **Check it.** `echo $SLIDEMAGE_GITHUB_TOKEN` (Linux) or
+   `echo $env:SLIDEMAGE_GITHUB_TOKEN` (a new PowerShell window), then
+   Info → Check for updates….
+
+Every user needs their own token with read access to the repository, which
+doesn't scale beyond its collaborators. To hand SlideMage to anyone else,
+publish the releases from a public repository (it can hold nothing but the
+release zips) and point `REPO` in `src/slidemage/updater.py` at it, or make
+this repository public -- then no token is needed.
 
 ## Images tab
 
