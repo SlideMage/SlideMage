@@ -21,6 +21,8 @@ instead of two.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -38,10 +40,13 @@ from .qt_theme import MUTED_LABEL
 
 # (button label, literal LaTeX macro name) -- in the same left-to-right
 # order as this module's own docstring frequency survey, most-used first.
-_STYLE_BUTTONS: list[tuple[str, str]] = [
+_STYLE_BUTTONS: list[tuple[str, Optional[str]]] = [
     ("\\fullcite{}", "fullcite"),
     ("\\textcite{}", "textcite"),
     ("\\parencite{}", "parencite"),
+    # 2026-09-27, direct instruction: just the bare key, no citation macro
+    # around it (for a hand-typed \fullcite{a,b}, an alt-text source, ...).
+    ("bib id", None),
 ]
 
 
@@ -87,8 +92,10 @@ class InsertCitationDialog(QDialog):
         for label, macro in _STYLE_BUTTONS:
             button = QPushButton(label)
             button.setEnabled(False)
-            button.setToolTip(f"Insert \\{macro}{{key}} for the selected entry.")
-            button.clicked.connect(lambda checked=False, m=macro: self._on_insert(m))
+            button.setToolTip(
+                f"Insert \\{macro}{{key}} for the selected entry." if macro
+                else "Insert only the bib id (the key), without any citation macro.")
+            button.clicked.connect(lambda checked=False, m=macro: self._on_insert(m))  # m None = bare key
             style_row.addWidget(button)
             self.style_buttons.append(button)
         style_row.addStretch(1)
@@ -142,8 +149,9 @@ class InsertCitationDialog(QDialog):
         self._selected_key = item.data(Qt.ItemDataRole.UserRole)
         self._on_insert("fullcite")
 
-    def _on_insert(self, macro: str) -> None:
+    def _on_insert(self, macro: Optional[str]) -> None:
         if self._selected_key is None:
             return
-        self.editor._replace_selection_or_insert(f"\\{macro}{{{self._selected_key}}}")
+        text = f"\\{macro}{{{self._selected_key}}}" if macro else self._selected_key
+        self.editor._replace_selection_or_insert(text)
         self.accept()

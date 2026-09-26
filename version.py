@@ -1677,6 +1677,8 @@ v3.35.0 (2026-09-26, direct instruction): a batch of editor and settings changes
 v3.36.0 (2026-09-26, direct instruction): (1) Pre-render syntax check (latex_lint.py, qt_render_check.py): every PDF render -- the slide editor's Render to PDF (the buffer), both Preview popups' Render now (the saved slide), Create PDF for any decks/versions/chapters/presenter and Export PPTX (the deck file plus exactly the slide files that job includes in that version, per-chapter jobs only their chapter, plus \input-ed fragments like test-slides.tex) and Update slide previews (every slide any deck uses) -- first runs a static, lexical check and only interrupts on an error (dialog: Cancel [default] / Show in editor / Render anyway); warnings go to the log. 14 checks, listed in README.md ("Pre-render syntax check"): encoding, braces, environments, math-dollar, math-delims, ampersand, hash, citation (key not in Slidemaster.bib), image (file missing), slide-file (deck call to a missing slide file) as errors, and underscore, percent, overlay, optional-arg as warnings. Tuned over all 930 slide/deck files until quiet on everything that compiles (its one finding is a real leaked group: an unclosed `{` on line 39 of slides/zgz-EN-EBIT-Definition-current.tex); cost measured at about 0.1 ms per slide file -- a 395-slide deck ~300 ms cold, ~65 ms warm. (2) \slidestep in the variant dropdown of deck-editor rows and the Add slide dialog, with a "steps" field (validated: numbers, commas, ranges such as 2- or 1-2,4); switching a plain \slide to \slidestep/\conditionalslide now starts with all three versions ticked. Verified headlessly: 28 synthetic good/bad snippets for the lint checks, the row/dialog behaviour, and slide->slidestep edits on a temp deck.
 
 v3.36.1 (2026-09-26, direct question): the pre-render check gained a 15th check, "caret" (warning): a ^ in running text outside math ("10^6" typed without $...$ gives "Missing $ inserted"). Quiet on all 930 slide/deck files.
+
+v3.37.0 (2026-09-27, direct instruction): "Insert citation" dialog gets a fourth button, "bib id", that inserts only the bare citation key (no \fullcite{}/\textcite{}/\parencite{} around it).
 """
 from __future__ import annotations
 
@@ -1687,7 +1689,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.36.1"
+VERSION_NUMBER = "v3.37.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
