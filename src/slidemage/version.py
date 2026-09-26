@@ -1633,6 +1633,14 @@ longer eaten as a beamer overlay spec. The log gets a "Clear log" button
 beside "Copy log", and the deck editor a tri-state "Select all"
 checkbox that selects every slide or none, replacing the "Clear
 selection" button that only showed up with two or more slides ticked.
+
+v3.33.1 (2026-09-26, bug report: "slidemage does not restart after
+update"): restarting the one-file build -- after an update, or when
+opening another project -- now sets PYINSTALLER_RESET_ENVIRONMENT, so
+the new process no longer reuses this one's _MEI temp folder, which is
+deleted when it exits and made the new process die at startup. The
+restart runs the old version's code, so the update *to* this version
+still needs one manual start.
 """
 from __future__ import annotations
 
@@ -1643,7 +1651,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.33.0"
+VERSION_NUMBER = "v3.33.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

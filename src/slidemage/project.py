@@ -228,9 +228,15 @@ def relaunch_with_project(root: Path) -> None:
     save_last_project(root)
     env = os.environ.copy()
     env[ENV_VAR] = str(root)
+    frozen = getattr(sys, "frozen", False)
+    if frozen:
+        # Without this, the one-file bootloader treats the new process as
+        # part of this one and runs it from this process's _MEI temp dir,
+        # which is deleted when we exit -- the relaunch dies at startup.
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     argv = (
         [sys.executable, "--project", str(root)]
-        if getattr(sys, "frozen", False)
+        if frozen
         else [sys.executable, "-m", "slidemage", "--project", str(root)]
     )
     subprocess.Popen(argv, env=env)
