@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
 from . import app_settings
 from . import archive as archive_mod
 from . import bibliography
+from . import compile_progress
 from . import deck_duplicate
 from . import deck_editor
 from . import deck_headers
@@ -245,10 +247,29 @@ class SlideMageWindow(QMainWindow):
         log_header.addStretch()
         outer.addLayout(log_header)
 
+        # Compile progress (2026-09-27, direct instruction): a thin line
+        # right at the top edge of the log window, in the same blue as the
+        # "Create PDF" button. Its own zero-spacing box so it touches the
+        # log; it keeps its 3 px even when idle (transparent), so the log
+        # never jumps when a compile starts. Driven by compile_progress.py.
+        self._progress = compile_progress.BatchProgress()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(3)
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet(
+            "QProgressBar { border: 0; background: transparent; }"
+            " QProgressBar::chunk { background-color: #0066cc; }")
         self.log_text = QPlainTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFixedHeight(200)
-        outer.addWidget(self.log_text)
+        log_box = QVBoxLayout()
+        log_box.setSpacing(0)
+        log_box.setContentsMargins(0, 0, 0, 0)
+        log_box.addWidget(self.progress_bar)
+        log_box.addWidget(self.log_text)
+        outer.addLayout(log_box)
 
         self.setCentralWidget(central)
 
@@ -1134,6 +1155,8 @@ class SlideMageWindow(QMainWindow):
                 deck.name,
                 show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
             return
+        pptx_job = CompileJob(deck, version="instructor", chapter=None)
+        self._progress.reset({pptx_job.jobname: compile_progress.spec_for_job(pptx_job)})
         self.compiling = True
         threading.Thread(target=self._export_pptx_bg, args=(deck,), daemon=True).start()
 
@@ -1177,6 +1200,7 @@ class SlideMageWindow(QMainWindow):
     ) -> None:
         self._job_status_map = job_status_map
         self._job_progress_texts = build_progress_texts(jobs)
+        self._progress.reset({job.jobname: compile_progress.spec_for_job(job) for job in jobs})
         self.compiling = True
         self.cancel_token = CancelToken()
         self.active_table.set_compiling(True)
@@ -1374,6 +1398,13 @@ class SlideMageWindow(QMainWindow):
                 f"Update previews ({slide_snapshot.TEMPLATES.get(template, template)})"
             for template, base_jobname in base_jobnames.items()
         }
+        # One throw-away megadeck per template (with a bibliography, so 4
+        # passes), each typesetting that template's own slides.
+        self._progress.reset({
+            f"{base_jobname}-instructor": compile_progress.JobSpec(
+                compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]))
+            for template, base_jobname in base_jobnames.items()
+        })
         threading.Thread(
             target=self._run_update_previews_thread, args=(needed, base_jobnames), daemon=True
         ).start()
@@ -1432,9 +1463,44 @@ class SlideMageWindow(QMainWindow):
 
     # -- log pane (main-thread only, via the signals.log connection) --------
 
+    def _apply_progress(self, update: tuple) -> None:
+        """Show a compile_progress.BatchProgress.feed() result: the thin bar
+        and, while a job is running, the position in the status label."""
+        fraction, text, finished = update
+        bar = self.progress_bar
+        if finished:
+            bar.setRange(0, 1000)
+            bar.setValue(1000)
+            # Leave the full bar visible for a moment, then clear it -- unless
+            # another batch has started meanwhile.
+            QTimer.singleShot(1200, self._clear_progress_if_idle)
+            return
+        if fraction is None:
+            if self._progress.active:
+                bar.setRange(0, 0)           # size unknown: busy animation
+            else:
+                bar.setRange(0, 1000)
+                bar.setValue(0)
+            return
+        bar.setRange(0, 1000)
+        bar.setValue(round(fraction * 1000))
+        if text and self._current_progress_base and self._progress.active:
+            self.status_label.setText(f"{self._current_progress_base}: {text}")
+
+    def _clear_progress_if_idle(self) -> None:
+        if not self._progress.active and not self.compiling:
+            self.progress_bar.setRange(0, 1000)
+            self.progress_bar.setValue(0)
+
     def _log(self, line: str) -> None:
         self.log_text.appendPlainText(line)
 
+        progress_update = self._progress.feed(line)
+        self._update_status_from_log(line)
+        if progress_update is not None:
+            self._apply_progress(progress_update)
+
+    def _update_status_from_log(self, line: str) -> None:
         render_start = RENDER_START_RE.match(line)
         if render_start:
             self._current_progress_base = f"Rendering {render_start.group(1)}"
@@ -1487,7 +1553,9 @@ class SlideMageWindow(QMainWindow):
                 self.status_label.setText(f"Done: {done_match.group(1)}")
                 return
             run_match = RUN_NUMBER_RE.match(line)
-            if run_match and self._current_progress_base:
+            if run_match and self._current_progress_base and not self._progress.active:
+                # (with compile_progress tracking the job, _apply_progress()
+                # writes the richer "pass 2/4, slide 137/395" text instead)
                 run_number = run_match.group(1)
                 self.status_label.setText(f"{self._current_progress_base}: Compile {run_number}...")
 

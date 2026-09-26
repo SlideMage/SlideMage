@@ -1679,6 +1679,8 @@ v3.36.0 (2026-09-26, direct instruction): (1) Pre-render syntax check (latex_lin
 v3.36.1 (2026-09-26, direct question): the pre-render check gained a 15th check, "caret" (warning): a ^ in running text outside math ("10^6" typed without $...$ gives "Missing $ inserted"). Quiet on all 930 slide/deck files.
 
 v3.37.0 (2026-09-27, direct instruction): "Insert citation" dialog gets a fourth button, "bib id", that inserts only the bare citation key (no \fullcite{}/\textcite{}/\parencite{} around it).
+
+v3.38.0 (2026-09-27, direct instruction): compile progress bar (compile_progress.py) -- a 3 px line in the "Create PDF" blue (#0066cc) right at the top edge of the log window, for Create PDF (queues of decks/versions/chapters/presenter), Export PPTX, Update previews and single-slide renders. Pass K comes from latexmk's "Run number K of rule 'lualatex'", the position inside a pass from the "(.../slides/<id>-" lines LaTeX prints when it starts a slide file: fraction = ((pass-1) + slides_seen/slides_total)/passes, 4 passes for a deck that uses biblatex, 3 without (single renders 3; Update previews' megadeck 4), held at 99% until the job really finishes, so an extra pass never overshoots. Slide totals reuse the syntax check's scoping (version/chapter filters, \input fragments); a queue is weighted by passes x slides; unknown-size jobs show the busy animation; Stop clears it. The status label now reads "pass 2/4, slide 137/395". Verified by replaying a real latexmk run (4 passes: 12.5% steps per slide, 99% at the last slide, 100% on MOVING), the two IA2 job specs (396/389 slides, 4 passes), single/second/unknown-size renders and Stop in a headless window; the slide-open pattern checked against a real IA2 TeX log (no wrapped paths).
 """
 from __future__ import annotations
 
@@ -1689,7 +1691,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.37.0"
+VERSION_NUMBER = "v3.38.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

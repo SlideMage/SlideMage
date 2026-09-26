@@ -350,6 +350,20 @@ What matters when touching *this code*:
   machine the way a file inside it does). Gitignored but *not*
   sync-ignored -- same category as `dist/SlideMage.exe`, carried across
   machines by the project folder's own cloud-sync client, not git.
+- [`compile_progress.py`](compile_progress.py) -- the thin blue progress bar at
+  the top edge of the log (2026-09-27), the same blue as the Create PDF button.
+  `BatchProgress.feed(line)` is called by `qt_gui.py`'s `_log()` for every log
+  line: pass K comes from `Run number K of rule 'lualatex'`, the position inside
+  the pass from the `(…/slides/<id>-…` lines LaTeX prints when it starts reading
+  a slide file. `fraction = ((pass-1) + slides_seen/slides_total) / passes`, with
+  4 passes for a deck that uses biblatex and 3 without; held at 99% until the job
+  really finishes (an extra pass just keeps it there). Slide totals use the same
+  scoping as the syntax check (version/chapter filters, `\input` fragments). A
+  queue is one bar, each job weighted by passes × slides. It also covers
+  single-slide renders (3 passes, 1 slide; a buffer render has no slide file to
+  read, so it moves per pass), Update previews (one 4-pass megadeck per template)
+  and Export PPTX; a job of unknown size shows the busy animation. The status
+  label shows e.g. "pass 2/4, slide 137/395".
 - [`qt_settings_dialog.py`](qt_settings_dialog.py) -- the **Settings →
   Preferences…** dialog (this app's first menu bar, added 2026-08-25). A
   General tab (dark mode, moved off the main toolbar), an **AI models** tab
