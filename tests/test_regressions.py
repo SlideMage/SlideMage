@@ -528,6 +528,39 @@ def test_slug_from_title():
     assert slug_from_title("!!!", "Imported-Slide-2") == "Imported-Slide-2"
 
 
+def test_extract_odp_skips_starview_metafile_masquerading_as_png(tmp_path):
+    # Reproduces a real corrupt-build: an ODP embeds a picture as
+    # LibreOffice's internal VCLMTF (StarView Metafile) format -- typically
+    # an OLE object's vector "replacement image" -- while the manifest
+    # still claims mediatype image/png. Before this fix, extract_odp()
+    # wrote the raw VCLMTF bytes straight to an "imported-...png" file,
+    # which lualatex/libpng then rejected ("Not a PNG file") deep into a
+    # PDF build, not at import time.
+    from odf.opendocument import OpenDocumentPresentation
+    from odf.draw import Frame, Image, Page
+    from odf.style import MasterPage, PageLayout
+    from slidemage import slide_import
+
+    doc = OpenDocumentPresentation()
+    layout = PageLayout(name="PM1")
+    doc.automaticstyles.addElement(layout)
+    master = MasterPage(name="Default", pagelayoutname=layout)
+    doc.masterstyles.addElement(master)
+
+    href = doc.addPicture("fake.png", mediatype="image/png", content=b"VCLMTF\x01\x001\x00\x00\x00")
+    page = Page(name="Slide1", masterpagename=master)
+    doc.presentation.addElement(page)
+    frame = Frame(width="5cm", height="3cm", x="1cm", y="1cm")
+    frame.addElement(Image(href=href))
+    page.addElement(frame)
+
+    path = tmp_path / "sample.odp"
+    doc.save(str(path))
+
+    slides = slide_import.extract_odp(path)
+    assert all(not slide.images for slide in slides)
+
+
 def test_bullets_to_itemize_nesting_and_jumps():
     from slidemage.slide_import import Bullet, _bullets_to_itemize
 

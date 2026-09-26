@@ -191,6 +191,16 @@ def extract_odp(path: Path) -> list[SlideContent]:
                 if picture is None:
                     continue
                 _flag, blob, mimetype = picture
+                if blob.startswith(b"VCLMTF"):
+                    # LibreOffice's own StarView Metafile format -- some
+                    # ODP decks embed a picture this way (typically an
+                    # OLE object's vector "replacement image") even
+                    # though the manifest still claims a raster mimetype
+                    # like image/png. odfpy hands back the raw VCLMTF
+                    # bytes verbatim; no PNG/PDF reader or \includegraphics
+                    # can decode them, so skip now rather than write a
+                    # file that only fails much later, at PDF build time.
+                    continue
                 ext = "." + (mimetype.rsplit("/", 1)[-1] if mimetype else "png")
                 position = (frame.getAttribute("y") or "", frame.getAttribute("x") or "")
                 positioned_images.append((position, (blob, ext)))
