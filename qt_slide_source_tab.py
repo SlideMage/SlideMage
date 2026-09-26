@@ -49,8 +49,8 @@ from PySide6.QtWidgets import (
 )
 
 from . import (
-    alt_images, app_settings, bibliography, slide_language, slide_preview,
-    slide_rename, slide_snapshot, slide_source, slide_versioning, transcript,
+    alt_images, app_settings, bibliography, latex_lint, qt_render_check, slide_language,
+    slide_preview, slide_rename, slide_snapshot, slide_source, slide_versioning, transcript,
 )
 from .qt_ai_draft_dialog import AiDraftDialog
 from .qt_citation_dialog import CitationDialog
@@ -1898,8 +1898,25 @@ class SlideSourceTab(QWidget):
         # actually produce.
         popup = SlidePreviewPopup(
             self, slide_snapshot.bare_id(id_slug), self.path, render_fn=render,
-            template=slide_snapshot.DEFAULT_TEMPLATE)
+            template=slide_snapshot.DEFAULT_TEMPLATE, precheck_fn=self._preview_precheck)
         popup.exec()
+
+    def jump_to_line(self, line: int) -> None:
+        """Put the cursor on 1-based `line` and scroll it into view."""
+        block = self.widget.document().findBlockByNumber(max(0, line - 1))
+        if not block.isValid():
+            return
+        self.widget.setTextCursor(QTextCursor(block))
+        self.widget.centerCursor()
+        self.widget.setFocus()
+
+    def _preview_precheck(self) -> bool:
+        """Pre-render syntax check for the Preview popup's "Render now",
+        which compiles the *saved* file, not the buffer."""
+        return qt_render_check.confirm_render(
+            self, self.app, latex_lint.check_slide_files([self.path]),
+            f"{self.path.name} (saved file)",
+            show_in_editor=lambda issue: self.jump_to_line(issue.line))
 
     def _on_render(self) -> None:
         # Always renders the current in-editor buffer directly (never
@@ -1911,6 +1928,13 @@ class SlideSourceTab(QWidget):
             return
 
         slide_body = self.widget.toPlainText()
+        # Pre-render syntax check of exactly this buffer (2026-09-26).
+        if not qt_render_check.confirm_render(
+                self, self.app,
+                latex_lint.check_buffer(slide_body, self.path.name, self.path),
+                f"{self.path.name} (editor buffer)",
+                show_in_editor=lambda issue: self.jump_to_line(issue.line)):
+            return
         version_label = self.version_combo.currentText()
         # "Presenter" isn't a real deck_version (see PRESENTER_LABEL's own
         # comment above) -- content-wise it's always instructor, with a

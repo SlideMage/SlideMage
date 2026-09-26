@@ -43,7 +43,8 @@ class _PopupSignals(QObject):
 class SlidePreviewPopup(QDialog):
     def __init__(self, parent, slide_id: str, slide_path: Path,
                  render_fn: Optional[Callable[[], None]] = None,
-                 template: str = slide_snapshot.DEFAULT_TEMPLATE) -> None:
+                 template: str = slide_snapshot.DEFAULT_TEMPLATE,
+                 precheck_fn: Optional[Callable[[], bool]] = None) -> None:
         super().__init__(parent)
         template_name = slide_snapshot.TEMPLATES.get(
             template, slide_snapshot.TEMPLATES[slide_snapshot.DEFAULT_TEMPLATE])
@@ -51,6 +52,9 @@ class SlidePreviewPopup(QDialog):
         self._slide_id = slide_id
         self._slide_path = slide_path
         self._render_fn = render_fn
+        # Pre-render syntax check (2026-09-26): runs on the GUI thread before
+        # "Render now" starts its worker; False = the user cancelled.
+        self._precheck_fn = precheck_fn
         self._template = template
         self._template_name = template_name
         self._rendering = False
@@ -151,6 +155,8 @@ class SlidePreviewPopup(QDialog):
 
     def _on_render_clicked(self) -> None:
         if self._rendering or self._render_fn is None:
+            return
+        if self._precheck_fn is not None and not self._precheck_fn():
             return
         self._rendering = True
         self.render_button.setEnabled(False)

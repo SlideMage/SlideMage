@@ -199,6 +199,12 @@ class AddSlideDialog(QDialog):
             cb.setChecked(True)
             self.condition_row.addWidget(cb)
             self.condition_checks[version] = cb
+        self.condition_row.addWidget(QLabel("steps:"))
+        self.steps_entry = QLineEdit(deck_editor.DEFAULT_STEPS)
+        self.steps_entry.setFixedWidth(70)
+        self.steps_entry.setToolTip(
+            "\\slidestep only: reveal steps typeset (beamer overlay list, e.g. 1,2 or 2- or 1-2,4).")
+        self.condition_row.addWidget(self.steps_entry)
         self.condition_row.addStretch(1)
         layout.addLayout(self.condition_row)
 
@@ -308,21 +314,29 @@ class AddSlideDialog(QDialog):
 
     def _sync_condition_state(self) -> None:
         macro, _ = self._current_macro_version()
-        enabled = macro == "conditionalslide"
+        enabled = macro in deck_editor.CONDITIONAL_MACROS
         for cb in self.condition_checks.values():
             cb.setEnabled(enabled)
+        self.steps_entry.setEnabled(macro == "slidestep")
 
     # -- submit -------------------------------------------------------------------
 
     def _on_add(self) -> None:
         macro, version = self._current_macro_version()
         conditions = None
-        if macro == "conditionalslide":
+        steps = None
+        if macro in deck_editor.CONDITIONAL_MACROS:
             conditions = [v for v in VERSIONS if self.condition_checks[v].isChecked()]
             if not conditions:
                 QMessageBox.critical(
-                    self, "Add slide", "Pick at least one deck version for \\conditionalslide."
+                    self, "Add slide", f"Pick at least one deck version for \\{macro}."
                 )
+                return
+        if macro == "slidestep":
+            try:
+                steps = deck_editor.normalize_steps(self.steps_entry.text())
+            except ValueError as exc:
+                QMessageBox.critical(self, "Add slide", str(exc))
                 return
 
         if self.existing_radio.isChecked():
@@ -408,7 +422,7 @@ class AddSlideDialog(QDialog):
         try:
             deck_editor.insert_slide_call(
                 self.deck.path, self.deck.text, self.insert_at, self.indent,
-                macro, id_slug, version, conditions,
+                macro, id_slug, version, conditions, steps,
             )
         except (deck_editor.StaleFileError, ValueError) as exc:
             QMessageBox.critical(self, "Add slide failed", str(exc))

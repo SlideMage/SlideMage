@@ -47,7 +47,9 @@ from . import bibliography
 from . import deck_duplicate
 from . import deck_editor
 from . import deck_headers
+from . import latex_lint
 from . import pptx_export
+from . import qt_render_check
 from . import qt_slide_source_tab
 from . import slide_ids
 from . import slide_rename
@@ -1009,6 +1011,14 @@ class SlideMageWindow(QMainWindow):
                 self, "Nothing selected", "Check at least one version per deck to compile."
             )
             return
+        # Pre-render syntax check (2026-09-26), scoped to exactly what these
+        # jobs read: the deck files plus the slides their versions/chapters
+        # actually include.
+        if not qt_render_check.confirm_render(
+                self, self, latex_lint.check_jobs(jobs),
+                ", ".join(sorted({job.deck.name for job in jobs})),
+                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
+            return
         self._start_jobs(jobs, job_status_map)
 
     def _on_edit_deck(self, deck: Deck) -> None:
@@ -1118,6 +1128,11 @@ class SlideMageWindow(QMainWindow):
                 "Can't export to PowerPoint while a compile run is in "
                 "progress -- wait for it to finish first.",
             )
+            return
+        if not qt_render_check.confirm_render(
+                self, self, latex_lint.check_jobs([CompileJob(deck, version="instructor", chapter=None)]),
+                deck.name,
+                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
             return
         self.compiling = True
         threading.Thread(target=self._export_pptx_bg, args=(deck,), daemon=True).start()
@@ -1319,6 +1334,17 @@ class SlideMageWindow(QMainWindow):
             f"until it's done.",
         )
         if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Pre-render syntax check (2026-09-26) of every slide about to be
+        # compiled -- "everything" scope, still only a few tens of ms.
+        all_slides = sorted({slug for slugs in needed.values() for slug in slugs})
+        if not qt_render_check.confirm_render(
+                self, self,
+                latex_lint.check_slide_files(
+                    slide_ids.SLIDES_DIR / f"{slug}-current.tex" for slug in all_slides),
+                f"{len(all_slides)} slides",
+                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
             return
 
         self.compiling = True

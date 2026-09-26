@@ -634,16 +634,28 @@ class DeckEditorTab(QWidget):
         cond_vars: dict[str, QCheckBox] = {}
         initial_cond_values: dict[str, bool] = {}
         for v in VERSIONS:
-            checked = call.conditions is not None and v in call.conditions
+            # A plain \slide has no version list: start all-checked, so
+            # switching it to \conditionalslide/\slidestep begins with "every
+            # version" like the macros' own default.
+            checked = call.conditions is None or v in call.conditions
             cb = QCheckBox(VERSION_LABELS[v][:1])
             cb.setChecked(checked)
             cond_layout.addWidget(cb)
             cond_vars[v] = cb
             initial_cond_values[v] = checked
+        # \slidestep only (2026-09-26): which reveal steps are typeset.
+        steps_entry = QLineEdit(call.steps or deck_editor.DEFAULT_STEPS)
+        steps_entry.setFixedWidth(70)
+        steps_entry.setPlaceholderText("1,2")
+        steps_entry.setToolTip(
+            "Reveal steps typeset for this call (beamer overlay list, e.g. 1,2 or 2- or 1-2,4).")
+        initial_steps = steps_entry.text()
+        cond_layout.addWidget(QLabel("steps:"))
+        cond_layout.addWidget(steps_entry)
         self.grid.addWidget(cond_frame, row_index, 3)
 
         apply_button = QPushButton("Apply")
-        apply_button.clicked.connect(lambda: self._on_apply(call, combo, cond_vars))
+        apply_button.clicked.connect(lambda: self._on_apply(call, combo, cond_vars, steps_entry))
         self.grid.addWidget(apply_button, row_index, 4)
 
         def sync_row_state() -> None:
@@ -651,17 +663,24 @@ class DeckEditorTab(QWidget):
             # \conditionalslide -- shown only once the dropdown actually
             # selects it. Apply only matters once something's pending.
             macro, _ = self._parse_option(combo.currentText())
-            conditional = macro == "conditionalslide"
+            conditional = macro in deck_editor.CONDITIONAL_MACROS
+            is_step = macro == "slidestep"
             cond_frame.setVisible(conditional)
+            for widget in cond_frame.findChildren(QWidget):
+                if widget is steps_entry or (isinstance(widget, QLabel) and widget.text() == "steps:"):
+                    widget.setVisible(is_step)
 
             dirty = combo.currentText() != initial_label
             if conditional:
                 dirty = dirty or any(
                     cond_vars[v].isChecked() != initial_cond_values[v] for v in VERSIONS
                 )
+            if is_step:
+                dirty = dirty or steps_entry.text().strip() != initial_steps
             apply_button.setVisible(dirty)
 
         combo.currentTextChanged.connect(lambda _: sync_row_state())
+        steps_entry.textChanged.connect(lambda _: sync_row_state())
         for cb in cond_vars.values():
             cb.toggled.connect(sync_row_state)
         sync_row_state()
@@ -827,20 +846,23 @@ class DeckEditorTab(QWidget):
 
     # -- actions --------------------------------------------------------------
 
-    def _on_apply(self, call: SlideCall, combo: QComboBox, cond_vars: dict) -> None:
+    def _on_apply(self, call: SlideCall, combo: QComboBox, cond_vars: dict, steps_entry: QLineEdit) -> None:
         macro, version = self._parse_option(combo.currentText())
         conditions = None
-        if macro == "conditionalslide":
+        steps = None
+        if macro in deck_editor.CONDITIONAL_MACROS:
             conditions = [v for v in VERSIONS if cond_vars[v].isChecked()]
             if not conditions:
                 QMessageBox.critical(
-                    self, "Change variant", "Pick at least one deck version for \\conditionalslide."
+                    self, "Change variant", f"Pick at least one deck version for \\{macro}."
                 )
                 return
+        if macro == "slidestep":
+            steps = steps_entry.text()
         previous_text = self.deck.text
         try:
             deck_editor.change_slide_call_variant(
-                self.deck.path, self.deck.text, call, macro, version, conditions
+                self.deck.path, self.deck.text, call, macro, version, conditions, steps
             )
         except (deck_editor.StaleFileError, ValueError) as exc:
             QMessageBox.critical(self, "Change variant failed", str(exc))
@@ -955,12 +977,25 @@ class DeckEditorTab(QWidget):
             log=self.app.signals.log.emit, steps=call.steps,
         )
 
+    def _precheck_slide(self, call: SlideCall) -> bool:
+        """Pre-render syntax check (2026-09-26) of the slide file a Preview
+        popup's "Render now" is about to compile."""
+        from . import latex_lint, qt_render_check
+
+        path = SLIDES_DIR / call.source_filename
+        return qt_render_check.confirm_render(
+            self, self.app, latex_lint.check_slide_files([path]), path.name,
+            show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(
+                self.app, issue, return_to=self),
+        )
+
     def _on_preview(self, call: SlideCall, position: int) -> None:
         popup = SlidePreviewPopup(
             self, slide_snapshot.bare_id(call.id_slug),
             SLIDES_DIR / call.source_filename,
             render_fn=lambda: self._render_to_pdf(call, position),
             template=self._template,
+            precheck_fn=lambda: self._precheck_slide(call),
         )
         popup.exec()
         # A "Render now" inside the popup may have just captured this

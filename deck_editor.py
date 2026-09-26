@@ -34,8 +34,8 @@ SLIDES_DIR = PROJECT_ROOT / "slides"
 VERSIONED_MACROS = {"slideversion", "omitslideversion"}
 # The one macro that takes an optional leading [conditions] list.
 # \slidestep{id-slug}[conditions]{steps} is a \conditionalslide that also restricts the
-# typeset reveal steps (2026-09-20); it is parsed and displayed, but not offered in
-# BASE_MACROS -- its steps live in the deck file and are edited there.
+# typeset reveal steps (2026-09-20); since 2026-09-26 it is offered in the variant
+# pickers too (BASE_MACROS), with a "Steps" field next to the version checkboxes.
 CONDITIONAL_MACROS = {"conditionalslide", "slidestep"}
 ALL_MACROS = {
     "slide", "slidefinal", "slideversion", "omitslide",
@@ -46,7 +46,7 @@ DEFAULT_CONDITIONS = ["instructor", "during-course", "after-course"]
 
 # Display order for the GUI's variant pickers (deck_editor_tab.py,
 # add_slide_dialog.py) -- the four macros with no separate version file.
-BASE_MACROS = ["slide", "slidefinal", "omitslide", "conditionalslide"]
+BASE_MACROS = ["slide", "slidefinal", "omitslide", "conditionalslide", "slidestep"]
 
 SLIDE_CALL_RE = re.compile(
     r"\\slideversion\{(?P<sv_idslug>[^}]+)\}\{(?P<sv_version>[^}]+)\}"
@@ -201,6 +201,23 @@ def available_versions(id_slug: str) -> list[str]:
     return sorted(versions, key=lambda v: tuple(int(part) for part in v.split("-")))
 
 
+# A beamer overlay specification without the angle brackets, as \slidestep takes it:
+# "1", "1,2", "2-", "1-2,4".
+_STEPS_RE = re.compile(r"^\d+(?:-\d*)?(?:,\d+(?:-\d*)?)*$")
+
+
+def normalize_steps(steps: str) -> str:
+    """Whitespace-stripped `steps`, or ValueError when it is not a plain overlay
+    specification (digits, commas and ranges such as "2-" or "1-2,4")."""
+    cleaned = re.sub(r"\s+", "", steps or "")
+    if not _STEPS_RE.match(cleaned):
+        raise ValueError(
+            f"{steps!r} is not a valid step list -- use numbers, commas and ranges, "
+            "e.g. 1,2 or 2- or 1-2,4"
+        )
+    return cleaned
+
+
 def format_call(macro: str, id_slug: str, version: Optional[str] = None, conditions: Optional[list] = None,
                 steps: Optional[str] = None) -> str:
     """Render one \\macro{...} token (no indent, no trailing newline) --
@@ -312,10 +329,13 @@ def change_slide_call_variant(
     new_macro: str,
     new_version: Optional[str] = None,
     new_conditions: Optional[list] = None,
+    new_steps: Optional[str] = None,
 ) -> str:
     if not call.editable:
         raise ValueError(f"can't change this call -- {call.readonly_reason}")
-    new_token = format_call(new_macro, call.id_slug, new_version, new_conditions)
+    if new_macro == "slidestep":
+        new_steps = normalize_steps(new_steps or DEFAULT_STEPS)
+    new_token = format_call(new_macro, call.id_slug, new_version, new_conditions, new_steps)
 
     def mutate(text: str) -> str:
         return text[: call.call_start] + new_token + text[call.call_end :]
@@ -342,12 +362,15 @@ def insert_slide_call(
     id_slug: str,
     version: Optional[str] = None,
     conditions: Optional[list] = None,
+    steps: Optional[str] = None,
 ) -> str:
     """Insert a new call as its own line at char offset `insert_at`, which
     must fall exactly at the start of an existing line (the GUI always
     derives it from an existing call's own line_start/line_end, both of
     which satisfy this by construction)."""
-    token = format_call(macro, id_slug, version, conditions)
+    if macro == "slidestep":
+        steps = normalize_steps(steps or DEFAULT_STEPS)
+    token = format_call(macro, id_slug, version, conditions, steps)
 
     def mutate(text: str) -> str:
         if insert_at < 0 or insert_at > len(text):
