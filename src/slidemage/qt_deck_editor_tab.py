@@ -255,6 +255,9 @@ class DeckEditorTab(QWidget):
         self.list_scroll.setWidget(self.inner)
         self.grid = QGridLayout(self.inner)
         self.grid.setVerticalSpacing(2)
+        # Spare width goes to the slide-id column; otherwise it is spread
+        # over every column and opens a gap between checkbox and number.
+        self.grid.setColumnStretch(1, 1)
 
         # Grid view: a fixed-column card grid, only vertical scrolling
         # (cards reflow within whatever width the tab has, rather than
@@ -494,7 +497,7 @@ class DeckEditorTab(QWidget):
                 lambda _checked=False, n=neighbor, d=direction: self._on_move_section(
                     chapter, n, d))
             number_layout.addWidget(button)
-        self.grid.addWidget(number_cell, row_index, 0)
+        self.grid.addWidget(number_cell, row_index, 0, alignment=Qt.AlignmentFlag.AlignLeft)
 
         heading = QLabel(f"Section: {chapter.title}")
         heading.setStyleSheet("font-weight: bold;")
@@ -574,7 +577,7 @@ class DeckEditorTab(QWidget):
                 lambda _checked=False, n=neighbor, t=tip: self._on_move(call, n, t.split()[1])
             )
             number_layout.addWidget(button)
-        self.grid.addWidget(number_cell, row_index, 0)
+        self.grid.addWidget(number_cell, row_index, 0, alignment=Qt.AlignmentFlag.AlignLeft)
 
         link = QLabel(call.id_slug + _language_badge_html(call.id_slug))
         link.setObjectName(LINK_LABEL)
@@ -747,7 +750,7 @@ class DeckEditorTab(QWidget):
                 SLIDES_DIR / c.source_filename, return_to=self
             )
         )
-        self.grid.addWidget(image_label, row_index, 1)
+        self.grid.addWidget(image_label, row_index, 1, alignment=Qt.AlignmentFlag.AlignLeft)
 
     # -- grid view ---------------------------------------------------------
 

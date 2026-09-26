@@ -51,3 +51,20 @@ def test_main_window_builds():
     window.clear_log_button.click()
     assert window.log_text.toPlainText() == ""
     window.close()
+
+
+def test_preferences_dialog_has_a_sensible_width():
+    # Unwrapped description labels once made this dialog ~2200px wide.
+    from PySide6.QtWidgets import QApplication
+
+    from slidemage import qt_gui
+    from slidemage.qt_settings_dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    window = qt_gui.SlideMageWindow(qt_gui.ThemeManager())
+    dialog = SettingsDialog(window)
+    dialog.show()
+    app.processEvents()
+    assert dialog.width() < 1000
+    dialog.close()
+    window.close()

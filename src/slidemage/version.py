@@ -1641,6 +1641,13 @@ the new process no longer reuses this one's _MEI temp folder, which is
 deleted when it exits and made the new process die at startup. The
 restart runs the old version's code, so the update *to* this version
 still needs one manual start.
+
+v3.33.2 (2026-09-26, bug report: "preferences window is extremely
+wide"): the long explanations on the Translation prompts, AI prompts and
+Ollama models tabs now wrap, so Preferences opens about 680px wide
+instead of about 2200px. In the deck editor's List and Thumbnail views,
+spare width now goes to the slide-id column instead of opening a wide
+gap between each row's checkbox and its editable slide number.
 """
 from __future__ import annotations
 
@@ -1651,7 +1658,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.33.1"
+VERSION_NUMBER = "v3.33.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

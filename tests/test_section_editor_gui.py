@@ -218,3 +218,26 @@ def test_select_all_toggles_every_slide_checkbox(tmp_path, qapp):
 
     tab.grid_view_radio.setChecked(True)
     assert tab.select_all_box.isHidden()
+
+
+def test_slide_number_sits_next_to_its_checkbox(tmp_path, qapp):
+    # Spare width used to go to column 0, stretching the checkbox.
+    from PySide6.QtWidgets import QLineEdit
+
+    text = "\\documentclass{beamer}\n\\begin{document}\n\\slide{aaa-One}\n\\end{document}\n"
+    path = tmp_path / "course.tex"
+    path.write_text(text, encoding="utf-8", newline="")
+    deck = Deck(
+        name="course", path=path, archived=False, text=text,
+        supports_version=False, uses_biblatex=False,
+        preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
+        chapters=_parse_chapters(text), output_folders={},
+    )
+    tab = DeckEditorTab(SimpleNamespace(), deck)
+    tab.resize(1500, 400)
+    tab.show()
+    qapp.processEvents()
+    box = tab._row_checkboxes[0][0]
+    number = box.parentWidget().findChild(QLineEdit)
+    assert number.x() - (box.x() + box.width()) < 20
+    tab.close()

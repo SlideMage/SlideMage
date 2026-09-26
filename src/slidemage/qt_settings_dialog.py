@@ -46,6 +46,12 @@ from . import updater
 from .qt_slide_source_tab import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 
 
+def _note_label(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setWordWrap(True)
+    return label
+
+
 def _human_size(num_bytes: int) -> str:
     size = float(num_bytes)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -248,7 +254,7 @@ class SettingsDialog(QDialog):
         # could apply.
         default_group = QGroupBox("Default prompt")
         default_layout = QVBoxLayout(default_group)
-        default_layout.addWidget(QLabel(
+        default_layout.addWidget(_note_label(
             "Used for any model/language pair with no override below. "
             "Same single-message format: this text, then the blank "
             "line(s), then the text to translate."
@@ -270,7 +276,7 @@ class SettingsDialog(QDialog):
         outer.addWidget(default_group)
         self._load_default_prompt()
 
-        outer.addWidget(QLabel(
+        outer.addWidget(_note_label(
             "Per-model, per-language-pair overrides. When the model + "
             "From + To below match exactly, this prompt is used instead "
             "of the default above -- for both the Images tab's per-image "
@@ -315,7 +321,7 @@ class SettingsDialog(QDialog):
         lang_row.addStretch(1)
         form.addLayout(lang_row)
 
-        form.addWidget(QLabel(
+        form.addWidget(_note_label(
             "Prompt -- sent as a single message: this text, then the "
             "blank line(s) below, then the text to translate verbatim "
             "(no separate system-role turn):"
@@ -473,7 +479,7 @@ class SettingsDialog(QDialog):
 
         draft_group = QGroupBox("Image description prompt")
         draft_layout = QVBoxLayout(draft_group)
-        draft_layout.addWidget(QLabel(
+        draft_layout.addWidget(_note_label(
             "Sent as the system prompt for every \"Draft\"/\"Draft all…\" "
             "call (alt_draft.OllamaBackend). Changing it can make a model "
             "abandon the required JSON output format -- see the per-image "
@@ -497,7 +503,7 @@ class SettingsDialog(QDialog):
 
         rewrite_group = QGroupBox("Slide rewrite prompt")
         rewrite_layout = QVBoxLayout(rewrite_group)
-        rewrite_layout.addWidget(QLabel(
+        rewrite_layout.addWidget(_note_label(
             "Sent as the system prompt for the slide-source editor's own "
             "\"AI draft\" rewrite (ai_draft.OllamaSlideDrafter). Must keep "
             "the instruction to reproduce every \"%%%PROTECTED_N%%%\" "
@@ -634,7 +640,7 @@ class SettingsDialog(QDialog):
         default_models_layout.addWidget(vision_note)
         layout.addWidget(default_models_group)
 
-        layout.addWidget(QLabel(
+        layout.addWidget(_note_label(
             "Every model currently installed in Ollama, drafting and "
             "translation alike. Deleting one here removes it from Ollama's "
             "own local model store -- its actual files on disk -- not just "
