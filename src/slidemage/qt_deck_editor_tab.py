@@ -168,18 +168,20 @@ class DeckEditorTab(QWidget):
         self.undo_button.clicked.connect(self._on_undo)
         toolbar.addWidget(self.undo_button)
 
+        # Tri-state mirror of the row checkboxes; a click selects all
+        # unless everything is already selected, then selects none.
+        self.select_all_box = QCheckBox("Select all")
+        self.select_all_box.setTristate(True)
+        self.select_all_box.setToolTip("Select or deselect every slide in this deck")
+        self.select_all_box.clicked.connect(self._on_select_all_clicked)
+        toolbar.addWidget(self.select_all_box)
+
         # Only shown while two or more rows are ticked (see
         # _update_bulk_remove_button).
         self.bulk_remove_button = QPushButton("Remove selected")
         self.bulk_remove_button.setVisible(False)
         self.bulk_remove_button.clicked.connect(self._on_remove_selected)
         toolbar.addWidget(self.bulk_remove_button)
-
-        # Shown and hidden together with "Remove selected".
-        self.clear_selection_button = QPushButton("Clear selection")
-        self.clear_selection_button.setVisible(False)
-        self.clear_selection_button.clicked.connect(self._on_clear_selection)
-        toolbar.addWidget(self.clear_selection_button)
 
         toolbar.addWidget(QLabel("Quick navigation:"))
         self.chapter_combo = NoScrollComboBox()
@@ -465,6 +467,7 @@ class DeckEditorTab(QWidget):
         # every real content row just keeps its natural size.
         self.grid.setRowStretch(row_index, 1)
         self._trailing_stretch_row = row_index
+        self._update_bulk_remove_button()
 
     def _build_section_row(
         self, row_index: int, chapter: Chapter, occurrence: int, item_index: int,
@@ -922,11 +925,23 @@ class DeckEditorTab(QWidget):
         count = len(self._selected_calls())
         self.bulk_remove_button.setVisible(count >= 2)
         self.bulk_remove_button.setText(f"Remove selected ({count})")
-        self.clear_selection_button.setVisible(count >= 2)
 
-    def _on_clear_selection(self) -> None:
+        total = len(self._row_checkboxes)
+        # Grid view has no row checkboxes of its own to act on.
+        self.select_all_box.setVisible(total > 0 and not self.grid_view_radio.isChecked())
+        if count == 0:
+            state = Qt.CheckState.Unchecked
+        elif count == total:
+            state = Qt.CheckState.Checked
+        else:
+            state = Qt.CheckState.PartiallyChecked
+        self.select_all_box.setCheckState(state)
+
+    def _on_select_all_clicked(self) -> None:
+        select = len(self._selected_calls()) < len(self._row_checkboxes)
         for box, _call in self._row_checkboxes:
-            box.setChecked(False)
+            box.setChecked(select)
+        self._update_bulk_remove_button()
 
     def _on_remove_selected(self) -> None:
         # No confirmation, same as the per-row Remove: the whole batch is

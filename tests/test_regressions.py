@@ -528,37 +528,106 @@ def test_slug_from_title():
     assert slug_from_title("!!!", "Imported-Slide-2") == "Imported-Slide-2"
 
 
-def test_extract_odp_skips_starview_metafile_masquerading_as_png(tmp_path):
-    # Reproduces a real corrupt-build: an ODP embeds a picture as
-    # LibreOffice's internal VCLMTF (StarView Metafile) format -- typically
-    # an OLE object's vector "replacement image" -- while the manifest
-    # still claims mediatype image/png. Before this fix, extract_odp()
-    # wrote the raw VCLMTF bytes straight to an "imported-...png" file,
-    # which lualatex/libpng then rejected ("Not a PNG file") deep into a
-    # PDF build, not at import time.
+_FAKE_SVM = b"VCLMTF\x01\x001\x00\x00\x00"
+
+
+def _odp_with_one_page(tmp_path, build_page):
+    from odf.draw import Page
     from odf.opendocument import OpenDocumentPresentation
-    from odf.draw import Frame, Image, Page
     from odf.style import MasterPage, PageLayout
-    from slidemage import slide_import
 
     doc = OpenDocumentPresentation()
     layout = PageLayout(name="PM1")
     doc.automaticstyles.addElement(layout)
     master = MasterPage(name="Default", pagelayoutname=layout)
     doc.masterstyles.addElement(master)
-
-    href = doc.addPicture("fake.png", mediatype="image/png", content=b"VCLMTF\x01\x001\x00\x00\x00")
     page = Page(name="Slide1", masterpagename=master)
     doc.presentation.addElement(page)
-    frame = Frame(width="5cm", height="3cm", x="1cm", y="1cm")
-    frame.addElement(Image(href=href))
-    page.addElement(frame)
-
+    build_page(doc, page)
     path = tmp_path / "sample.odp"
     doc.save(str(path))
+    return path
 
-    slides = slide_import.extract_odp(path)
+
+def test_extract_odp_skips_starview_metafile_masquerading_as_png(tmp_path):
+    # LibreOffice's VCLMTF format, labeled image/png in the manifest, used
+    # to be written as "imported-...png" and broke the PDF build (libpng:
+    # "Not a PNG file").
+    from odf.draw import Frame, Image
+    from slidemage import slide_import
+
+    def build(doc, page):
+        href = doc.addPicture("fake.png", mediatype="image/png", content=_FAKE_SVM)
+        frame = Frame(width="5cm", height="3cm", x="1cm", y="1cm")
+        frame.addElement(Image(href=href))
+        page.addElement(frame)
+
+    slides = slide_import.extract_odp(_odp_with_one_page(tmp_path, build))
     assert all(not slide.images for slide in slides)
+
+
+def test_extract_odp_imports_table_instead_of_its_preview(tmp_path):
+    # A table frame carries both the <table:table> and a TablePreview .svm
+    # picture of it; the table's own cells are the content.
+    from odf.draw import Frame, Image, TextBox
+    from odf.namespaces import PRESENTATIONNS
+    from odf.table import CoveredTableCell, Table, TableCell, TableColumn, TableRow
+    from odf.text import P
+    from slidemage import slide_import
+
+    def build(doc, page):
+        table = Table()
+        for _ in range(3):
+            table.addElement(TableColumn())
+        header = TableRow()
+        c1 = TableCell(); c1.addElement(P(text="Date")); header.addElement(c1)
+        c2 = TableCell(numbercolumnsspanned=2)
+        c2.addElement(P(text="Topic")); c2.addElement(P(text="Lecturer"))
+        header.addElement(c2); header.addElement(CoveredTableCell())
+        table.addElement(header)
+        body = TableRow()
+        for text in ["7.10.", "Intro & SQL", ""]:
+            cell = TableCell()
+            if text:
+                cell.addElement(P(text=text))
+            body.addElement(cell)
+        table.addElement(body)
+
+        table_frame = Frame(width="20cm", height="10cm", x="1cm", y="2cm")
+        table_frame.addElement(table)
+        href = doc.addPicture("Pictures/TablePreview1.svm", mediatype="image/png", content=_FAKE_SVM)
+        table_frame.addElement(Image(href=href))
+        page.addElement(table_frame)
+
+        number_frame = Frame(width="5cm", height="1cm", x="1cm", y="18cm")
+        number_frame.setAttrNS(PRESENTATIONNS, "class", "page-number")
+        tb = TextBox(); tb.addElement(P(text="<Foliennummer>"))
+        number_frame.addElement(tb); page.addElement(number_frame)
+
+    [slide] = slide_import.extract_odp(_odp_with_one_page(tmp_path, build))
+    assert slide.images == []
+    assert slide.bullets == []
+    assert [[(c.paragraphs, c.colspan) for c in row] for row in slide.tables[0]] == [
+        [(["Date"], 1), (["Topic", "Lecturer"], 2)],
+        [(["7.10."], 1), (["Intro & SQL"], 1), ([], 1)],
+    ]
+
+    layout, tex = slide_import.slide_content_to_tex(slide, [])
+    assert layout == "standardframe"
+    assert r"\begin{gothamtable}{@{}l<{\hspace{12pt}}l<{\hspace{12pt}}l@{}}" in tex
+    assert (
+        r"Date & \multicolumn{2}{l@{}}{\begin{tabular}[t]{@{}l@{}}Topic \\ Lecturer\end{tabular}} \\"
+        in tex
+    )
+    assert r"7.10. & Intro \& SQL &  \\" in tex
+
+
+def test_item_text_starting_with_overlay_bracket_is_protected():
+    from slidemage.slide_import import Bullet, _bullets_to_itemize
+
+    tex = _bullets_to_itemize([Bullet("<Foliennummer>"), Bullet("[optional] note")])
+    assert r"\item {}<Foliennummer>" in tex
+    assert r"\item {}[optional] note" in tex
 
 
 def test_bullets_to_itemize_nesting_and_jumps():

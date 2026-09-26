@@ -1621,6 +1621,18 @@ Read-only -- it then sees the repo but not its releases) now gets a
 message naming that permission instead of a bare "403 Forbidden". The
 docs recommend such a fine-grained, read-only token now that releases
 live in the user's own repository.
+
+v3.33.0 (2026-09-26, bug report and direct instruction): importing an
+.odp deck brings its tables in as editable gothamtables, instead of
+LibreOffice's TablePreview .svm picture, which was saved as a ".png"
+nobody could read and broke the PDF build ("libpng error: Not a PNG
+file"). Other StarView Metafile pictures are skipped for the same reason.
+Slide-number/footer/date placeholders and speaker-notes frames are no
+longer imported as bullets, and a bullet starting with "<" or "[" is no
+longer eaten as a beamer overlay spec. The log gets a "Clear log" button
+beside "Copy log", and the deck editor a tri-state "Select all"
+checkbox that selects every slide or none, replacing the "Clear
+selection" button that only showed up with two or more slides ticked.
 """
 from __future__ import annotations
 
@@ -1631,7 +1643,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.32.2"
+VERSION_NUMBER = "v3.33.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

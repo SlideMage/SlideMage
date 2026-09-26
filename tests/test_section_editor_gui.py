@@ -180,3 +180,41 @@ def test_typing_a_slide_number_moves_the_slide(tmp_path, qapp):
     assert [line[7:10] for line in _read(path).splitlines() if line.startswith("\\slide")] == [
         "aaa", "fff", "bbb", "ccc", "ddd", "eee",
     ]
+
+
+def test_select_all_toggles_every_slide_checkbox(tmp_path, qapp):
+    from PySide6.QtCore import Qt
+
+    text = (
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        "\\slide{aaa-One}\n\\slide{bbb-Two}\n\\slide{ccc-Three}\n"
+        "\\end{document}\n"
+    )
+    path = tmp_path / "course.tex"
+    path.write_text(text, encoding="utf-8", newline="")
+    deck = Deck(
+        name="course", path=path, archived=False, text=text,
+        supports_version=False, uses_biblatex=False,
+        preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
+        chapters=_parse_chapters(text), output_folders={},
+    )
+    tab = DeckEditorTab(SimpleNamespace(), deck)
+    boxes = [box for box, _call in tab._row_checkboxes]
+    assert len(boxes) == 3
+    assert not tab.select_all_box.isHidden()
+    assert tab.select_all_box.checkState() == Qt.CheckState.Unchecked
+
+    boxes[0].setChecked(True)
+    assert tab.select_all_box.checkState() == Qt.CheckState.PartiallyChecked
+
+    tab.select_all_box.click()
+    assert all(box.isChecked() for box in boxes)
+    assert tab.select_all_box.checkState() == Qt.CheckState.Checked
+    assert tab.bulk_remove_button.text() == "Remove selected (3)"
+
+    tab.select_all_box.click()
+    assert not any(box.isChecked() for box in boxes)
+    assert tab.select_all_box.checkState() == Qt.CheckState.Unchecked
+
+    tab.grid_view_radio.setChecked(True)
+    assert tab.select_all_box.isHidden()

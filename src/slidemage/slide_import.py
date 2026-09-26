@@ -68,9 +68,17 @@ class Bullet:
 
 
 @dataclass
+class TableCell:
+    paragraphs: list[str]
+    colspan: int = 1
+
+
+@dataclass
 class SlideContent:
     title: str = ""
     bullets: list[Bullet] = field(default_factory=list)
+    # Each table is a list of rows; each row a list of cells.
+    tables: list[list[list[TableCell]]] = field(default_factory=list)
     # Raw image bytes plus a suggested extension (".png"/".jpeg"/...), in
     # the slide's own document order -- media_filename() below turns one
     # into an actual on-disk name once we know this slide's own id_slug.
@@ -78,7 +86,7 @@ class SlideContent:
 
     @property
     def has_text(self) -> bool:
-        return bool(self.title.strip()) or bool(self.bullets)
+        return bool(self.title.strip()) or bool(self.bullets) or bool(self.tables)
 
     @property
     def is_blank(self) -> bool:
@@ -162,10 +170,47 @@ def _odp_walk_text_box(node, level: int, bullets: list[Bullet], *, root: bool = 
             _odp_walk_text_box(child, level, bullets)
 
 
+# Layout placeholders (slide number, footer, date) and the speaker-notes
+# page, whose frames sit inside <presentation:notes> under the same page.
+_ODP_SKIPPED_FRAME_CLASSES = {"page-number", "footer", "date-time", "header", "notes", "page"}
+
+
+def _odp_table(table) -> list[list[TableCell]]:
+    """Rows of cells for one <table:table>. A covered cell that belongs to
+    the previous cell's column span is dropped; any other covered cell
+    (the lower part of a row span) becomes an empty cell so the columns
+    stay aligned."""
+    from odf.namespaces import TABLENS
+    from odf.table import TableRow
+    from odf.teletype import extractText
+    from odf.text import P
+
+    cell_qname, covered_qname = (TABLENS, "table-cell"), (TABLENS, "covered-table-cell")
+    rows: list[list[TableCell]] = []
+    for row in table.getElementsByType(TableRow):
+        cells: list[TableCell] = []
+        pending_span = 0
+        for child in row.childNodes:
+            if child.qname == cell_qname:
+                paragraphs = [extractText(p).strip() for p in child.getElementsByType(P)]
+                colspan = int(child.getAttrNS(TABLENS, "number-columns-spanned") or 1)
+                cells.append(TableCell([p for p in paragraphs if p], colspan))
+                pending_span = colspan - 1
+            elif child.qname == covered_qname:
+                if pending_span:
+                    pending_span -= 1
+                else:
+                    cells.append(TableCell([]))
+        if cells:
+            rows.append(cells)
+    return rows
+
+
 def extract_odp(path: Path) -> list[SlideContent]:
     from odf.draw import Frame, Image, Page, TextBox
     from odf.namespaces import PRESENTATIONNS
     from odf.opendocument import load
+    from odf.table import Table
 
     doc = load(str(path))
     slides: list[SlideContent] = []
@@ -178,6 +223,8 @@ def extract_odp(path: Path) -> list[SlideContent]:
         # `page`, not on the whole document.
         for frame in page.getElementsByType(Frame):
             frame_class = frame.getAttrNS(PRESENTATIONNS, "class")
+            if frame_class in _ODP_SKIPPED_FRAME_CLASSES:
+                continue
             for text_box in frame.getElementsByType(TextBox):
                 bullets: list[Bullet] = []
                 _odp_walk_text_box(text_box, 0, bullets, root=True)
@@ -185,6 +232,13 @@ def extract_odp(path: Path) -> list[SlideContent]:
                     content.title = " ".join(b.text for b in bullets)
                 else:
                     content.bullets.extend(bullets)
+            tables = [t for t in (_odp_table(t) for t in frame.getElementsByType(Table)) if t]
+            if tables:
+                # A table frame also carries LibreOffice's rendered
+                # preview of the same table (Pictures/TablePreviewN.svm)
+                # -- the table itself is the content, not that picture.
+                content.tables.extend(tables)
+                continue
             for image in frame.getElementsByType(Image):
                 href = image.getAttribute("href")
                 picture = doc.Pictures.get(href)
@@ -192,14 +246,11 @@ def extract_odp(path: Path) -> list[SlideContent]:
                     continue
                 _flag, blob, mimetype = picture
                 if blob.startswith(b"VCLMTF"):
-                    # LibreOffice's own StarView Metafile format -- some
-                    # ODP decks embed a picture this way (typically an
-                    # OLE object's vector "replacement image") even
-                    # though the manifest still claims a raster mimetype
-                    # like image/png. odfpy hands back the raw VCLMTF
-                    # bytes verbatim; no PNG/PDF reader or \includegraphics
-                    # can decode them, so skip now rather than write a
-                    # file that only fails much later, at PDF build time.
+                    # LibreOffice's own StarView Metafile (e.g. an OLE
+                    # object's replacement image), often mislabeled
+                    # image/png in the manifest. Nothing but LibreOffice
+                    # itself can render it, and \includegraphics fails on
+                    # it at PDF build time, so it can't be imported.
                     continue
                 ext = "." + (mimetype.rsplit("/", 1)[-1] if mimetype else "png")
                 position = (frame.getAttribute("y") or "", frame.getAttribute("x") or "")
@@ -244,11 +295,64 @@ def _bullets_to_itemize(bullets: list[Bullet]) -> str:
         while current_level > level:
             lines.append(_TAB * (current_level + 1) + r"\end{itemize}")
             current_level -= 1
-        lines.append(_TAB * (current_level + 2) + r"\item " + escape_latex(bullet.text))
+        text = escape_latex(bullet.text)
+        if text.startswith(("<", "[")):
+            # Otherwise beamer reads it as \item's overlay spec / label.
+            text = "{}" + text
+        lines.append(_TAB * (current_level + 2) + r"\item " + text)
     while current_level >= 0:
         lines.append(_TAB * (current_level + 1) + r"\end{itemize}")
         current_level -= 1
     return "\n".join(lines)
+
+
+# Explicit inter-column gap with zeroed \tabcolsep and @{} outer edges --
+# the gothamtable rule-bleed convention in Slidemaster_preamble_base.tex.
+_TABLE_GAP = r"<{\hspace{12pt}}"
+
+
+def _cell_to_tex(cell: TableCell) -> str:
+    lines = [escape_latex(p) for p in cell.paragraphs]
+    if len(lines) > 1:
+        return r"\begin{tabular}[t]{@{}l@{}}" + r" \\ ".join(lines) + r"\end{tabular}"
+    return lines[0] if lines else ""
+
+
+def _table_block(rows: list[list[TableCell]]) -> str:
+    """A gothamtable for one extracted table, shrunk (never enlarged) to
+    fit the frame's width and 0.8\\textheight."""
+    ncols = max(sum(cell.colspan for cell in row) for row in rows)
+    spec = "@{}" + _TABLE_GAP.join(["l"] * ncols) + "@{}"
+    lines = [
+        r"\sbox0{\setlength{\tabcolsep}{0pt}%",
+        r"\begin{gothamtable}{" + spec + "}",
+        _TAB + r"\toprule",
+    ]
+    for index, row in enumerate(rows):
+        cells: list[str] = []
+        column = 0
+        for cell in row:
+            text = _cell_to_tex(cell)
+            if cell.colspan > 1:
+                left = "@{}" if column == 0 else ""
+                right = "@{}" if column + cell.colspan >= ncols else _TABLE_GAP
+                text = f"\\multicolumn{{{cell.colspan}}}{{{left}l{right}}}{{{text}}}"
+            cells.append(text)
+            column += cell.colspan
+        cells.extend([""] * (ncols - column))
+        lines.append(_TAB + " & ".join(cells) + r" \\")
+        if index == 0 and len(rows) > 1:
+            lines.append(_TAB + r"\midrule")
+    lines += [
+        _TAB + r"\bottomrule",
+        r"\end{gothamtable}}",
+        r"\ifdim\wd0>\linewidth\sbox0{\resizebox{\linewidth}{!}{\usebox0}}\fi",
+        r"\ifdim\dimexpr\ht0+\dp0\relax>0.8\textheight"
+        r"\sbox0{\resizebox*{!}{0.8\textheight}{\usebox0}}\fi",
+        r"\usebox0",
+    ]
+    block = [r"\begin{center}", *(_TAB + line for line in lines), r"\end{center}"]
+    return "\n".join(_TAB + line for line in block)
 
 
 def _images_block(image_paths: list[str], *, full_slide: bool) -> str:
@@ -297,13 +401,12 @@ def slide_content_to_tex(content: SlideContent, image_paths: list[str]) -> tuple
     the next housekeeping pass has to notice and clean up."""
     title = escape_latex(content.title) or "Untitled"
     if content.has_text:
-        body_parts = [_bullets_to_itemize(content.bullets)] if content.bullets else []
+        blocks = [_bullets_to_itemize(content.bullets)] if content.bullets else []
+        blocks += [_table_block(rows) for rows in content.tables]
         images = _images_block(image_paths, full_slide=False)
         if images:
-            if body_parts:
-                body_parts.append("")
-            body_parts.append(images)
-        body = "\n".join(body_parts)
+            blocks.append(images)
+        body = "\n\n".join(blocks)
         return "standardframe", f"\\begin{{standardframe}}{{{title}}}\n{body}\n\\end{{standardframe}}"
 
     images = _images_block(image_paths, full_slide=True)

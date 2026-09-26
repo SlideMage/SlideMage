@@ -47,4 +47,7 @@ def test_main_window_builds():
     window = qt_gui.SlideMageWindow(qt_gui.ThemeManager())
     window.show()
     app.processEvents()
+    window._log("line one")
+    window.clear_log_button.click()
+    assert window.log_text.toPlainText() == ""
     window.close()

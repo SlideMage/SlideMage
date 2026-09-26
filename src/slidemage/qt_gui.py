@@ -263,6 +263,13 @@ class SlideMageWindow(QMainWindow):
         self.copy_log_button.setToolTip("Copy the entire log to the clipboard.")
         self.copy_log_button.clicked.connect(self._copy_log)
         log_header.addWidget(self.copy_log_button)
+        self.clear_log_button = QToolButton()
+        self.clear_log_button.setText("Clear log")
+        self.clear_log_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.clear_log_button.setAutoRaise(True)
+        self.clear_log_button.setToolTip("Remove all lines from the log.")
+        self.clear_log_button.clicked.connect(self._clear_log)
+        log_header.addWidget(self.clear_log_button)
         outer.addLayout(log_header)
 
         self.log_text = QPlainTextEdit()
@@ -1720,6 +1727,9 @@ class SlideMageWindow(QMainWindow):
 
     def _copy_log(self) -> None:
         QGuiApplication.clipboard().setText(self.log_text.toPlainText())
+
+    def _clear_log(self) -> None:
+        self.log_text.clear()
 
     def _log(self, line: str) -> None:
         self.log_text.appendPlainText(line)
