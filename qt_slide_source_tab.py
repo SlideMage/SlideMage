@@ -288,6 +288,29 @@ INSERT_LIST_COMMANDS = [
 ]
 LIST_COMBO_PLACEHOLDER = "Insert list..."
 
+# "Insert block..." dropdown (2026-09-26, direct instruction): the beamer
+# blocks this project defines/themes (see Slidemaster_preamble_base.tex and
+# slides/ZZX-EN-Definition-formula-current.tex, which shows them side by
+# side), each inserted as \begin{env}{Title} ... \end{env}. Same
+# (label, kind, payload) shape as INSERT_COMMANDS. "wrap_block" -- payload
+# is the environment name; a selection becomes the block's body, otherwise
+# an empty body is left; either way the cursor lands inside the title's
+# braces. "wrap_block_floating" -- same, for the floating variants that
+# take a width first (\begin{env}{5cm}{Title}, the cursor still lands in
+# the title's braces).
+INSERT_BLOCK_COMMANDS = [
+    ("Block", "wrap_block", "block"),
+    ("Example block", "wrap_block", "exampleblock"),
+    ("Alert block", "wrap_block", "alertblock"),
+    ("Reference block", "wrap_block", "referenceblock"),
+    ("Definition block", "wrap_block", "definitionblock"),
+    ("Info block", "wrap_block", "infoblock"),
+    ("Floating block", "wrap_block_floating", "gothamfloatingblock"),
+    ("Floating example block", "wrap_block_floating", "gothamfloatingexampleblock"),
+    ("Floating info block", "wrap_block_floating", "gothamfloatinginfoblock"),
+]
+BLOCK_COMBO_PLACEHOLDER = "Insert block..."
+
 
 class LatexSyntaxHighlighter(QSyntaxHighlighter):
     def __init__(self, document, theme) -> None:
@@ -473,7 +496,15 @@ class LatexPlainTextEdit(QPlainTextEdit):
             bottom = top + round(self.blockBoundingRect(block).height())
             number += 1
 
+    # Set by SlideSourceTab: called on Escape, returns True if it used the
+    # key (currently: it aborted a running "Check syntax").
+    escape_callback = None
+
     def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.escape_callback is not None:
+            if self.escape_callback():
+                event.accept()
+                return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self._smart_return():
             return
         super().keyPressEvent(event)
@@ -937,6 +968,18 @@ class SlideSourceTab(QWidget):
         self.list_combo.activated.connect(self._on_list_selected)
         format_toolbar.addWidget(self.list_combo)
 
+        self.block_combo = QComboBox()
+        self.block_combo.addItems(
+            [BLOCK_COMBO_PLACEHOLDER] + [label for label, _, _ in INSERT_BLOCK_COMMANDS]
+        )
+        self.block_combo.setToolTip(
+            "Insert one of the pre-defined blocks (\\begin{definitionblock}{Title} "
+            "... \\end{definitionblock}, ...) -- a selection becomes the block's "
+            "body; the cursor lands in the title's braces."
+        )
+        self.block_combo.activated.connect(self._on_block_selected)
+        format_toolbar.addWidget(self.block_combo)
+
         self.command_combo = QComboBox()
         self.command_combo.addItems(
             [COMMAND_COMBO_PLACEHOLDER] + [label for label, _, _ in INSERT_COMMANDS]
@@ -1042,7 +1085,28 @@ class SlideSourceTab(QWidget):
         comment_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         comment_shortcut.activated.connect(self._on_toggle_comment)
 
+        # Editor-level shortcuts (2026-09-26, direct instruction), same
+        # WidgetWithChildrenShortcut scoping as Ctrl+F/Ctrl+/ above.
+        # Ctrl+I/B/U act exactly like the toolbar's I/B/U buttons, Ctrl+S
+        # like Save, Ctrl+R like "Render to PDF" (slides only -- a deck
+        # source or the .bib has no render button).
+        self._shortcuts = []
+        shortcut_actions = [
+            ("Ctrl+I", lambda: self._wrap_or_insert("textit")),
+            ("Ctrl+B", lambda: self._wrap_or_insert("textbf")),
+            ("Ctrl+U", lambda: self._wrap_or_insert("underline")),
+            ("Ctrl+S", self._on_save),
+        ]
+        if self._is_slide:
+            shortcut_actions.append(("Ctrl+R", self._on_render_shortcut))
+        for sequence, action in shortcut_actions:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(action)
+            self._shortcuts.append(shortcut)
+
         self.widget = LatexPlainTextEdit(self.app.theme)
+        self.widget.escape_callback = self._abort_syntax_check_if_running
         self.widget.setFont(SOURCE_FONT)
         self.widget.setTabStopDistance(_tab_stop_distance_px())
         self.widget.setPlainText(self.text)
@@ -1272,6 +1336,33 @@ class SlideSourceTab(QWidget):
         self.list_combo.setCurrentIndex(0)
         self._apply_insert_action(label, INSERT_LIST_COMMANDS)
 
+    def _on_block_selected(self, index: int) -> None:
+        if index <= 0:
+            return
+        label = self.block_combo.itemText(index)
+        self.block_combo.setCurrentIndex(0)
+        self._apply_insert_action(label, INSERT_BLOCK_COMMANDS)
+
+    def _wrap_block(self, env: str, *, floating: bool = False) -> None:
+        """\\begin{env}{Title} ... \\end{env} (or, floating,
+        \\begin{env}{5cm}{Title}): a selection goes in as the body, else a
+        blank indented line is left; the cursor ends up inside the title's
+        braces either way, ready to type the title."""
+        cursor = self.widget.textCursor()
+        indent = self._line_indent(cursor)
+        begin = f"\\begin{{{env}}}" + ("{5cm}{}" if floating else "{}")
+        cursor.beginEditBlock()
+        pos = cursor.selectionStart()
+        if cursor.hasSelection():
+            body = self._selected_text(cursor)
+        else:
+            body = f"{indent}\t"
+        cursor.insertText(f"{begin}\n{body}\n{indent}\\end{{{env}}}")
+        cursor.setPosition(pos + len(begin) - 1)
+        cursor.endEditBlock()
+        self.widget.setTextCursor(cursor)
+        self.widget.setFocus()
+
     def _apply_insert_action(self, label: str, commands: list[tuple[str, str, Optional[str]]]) -> None:
         """Shared (kind, payload) dispatch behind both combo handlers
         above -- the "Insert list..." combo (INSERT_LIST_COMMANDS) and the
@@ -1296,6 +1387,10 @@ class SlideSourceTab(QWidget):
             )
         elif kind == "wrap_multilingual":
             self._insert_multilingual(payload)
+        elif kind == "wrap_block":
+            self._wrap_block(payload)
+        elif kind == "wrap_block_floating":
+            self._wrap_block(payload, floating=True)
 
     # -- find -------------------------------------------------------------------
 
@@ -1684,6 +1779,15 @@ class SlideSourceTab(QWidget):
         self._syntax_check_dialog = dialog
         dialog.finished.connect(lambda _result: setattr(self, "_syntax_check_dialog", None))
         dialog.show()
+
+    def _abort_syntax_check_if_running(self) -> bool:
+        dialog = getattr(self, "_syntax_check_dialog", None)
+        return dialog is not None and dialog.abort_check()
+
+    def _on_render_shortcut(self) -> None:
+        # Same as clicking "Render to PDF" -- click() does nothing while the
+        # button is disabled, i.e. while a render is already running.
+        self.render_button.click()
 
     def _on_ai_draft(self) -> None:
         """"AI draft" button (direct instruction) -- same singleton-per-tab,

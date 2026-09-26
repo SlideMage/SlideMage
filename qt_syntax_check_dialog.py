@@ -21,10 +21,9 @@ reported line, fix something by hand, then click "Check again").
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QApplication,
     QComboBox,
     QDialog,
     QFrame,
@@ -41,12 +40,29 @@ from . import alt_draft, app_settings, syntax_check
 from .qt_theme import MUTED_LABEL, WARNING_LABEL
 
 
+class _CheckWorker(QThread):
+    """Runs one OllamaSyntaxChecker.check() off the GUI thread (2026-09-26,
+    direct instruction: Escape aborts a running check -- impossible while
+    the request blocked the GUI thread's own event loop)."""
+
+    finished_with_result = Signal(object)
+
+    def __init__(self, checker: syntax_check.OllamaSyntaxChecker, text: str) -> None:
+        super().__init__()
+        self.checker = checker
+        self.text = text
+
+    def run(self) -> None:
+        self.finished_with_result.emit(self.checker.check(self.text))
+
+
 class SyntaxCheckDialog(QDialog):
     def __init__(self, source_tab, filename: str) -> None:
         super().__init__(source_tab)
         self.app = source_tab.app
         self.source_tab = source_tab
         self.filename = filename
+        self._worker: _CheckWorker | None = None
         self.setWindowTitle(f"Check syntax — {filename}")
         self.setModal(False)
         self.resize(720, 520)
@@ -63,12 +79,13 @@ class SyntaxCheckDialog(QDialog):
         self.model_combo = QComboBox()
         models = alt_draft.list_all_models()
         self.model_combo.addItems(models or ["(no Ollama models installed)"])
-        remembered = app_settings.get("syntax_check_model")
-        if remembered:
-            index = self.model_combo.findText(remembered)
+        # Preselects the default from Settings -> "AI models"; a different
+        # pick here applies to this dialog only.
+        default = app_settings.default_model("syntax_check")
+        if default:
+            index = self.model_combo.findText(default)
             if index != -1:
                 self.model_combo.setCurrentIndex(index)
-        self.model_combo.activated.connect(self._on_model_selected)
         model_row.addWidget(self.model_combo)
         self.recheck_button = QPushButton("Check again")
         self.recheck_button.setToolTip(
@@ -100,9 +117,6 @@ class SyntaxCheckDialog(QDialog):
         close_row.addWidget(close_button)
         layout.addLayout(close_row)
 
-    def _on_model_selected(self, index: int) -> None:
-        app_settings.set("syntax_check_model", self.model_combo.itemText(index))
-
     def _clear_results(self) -> None:
         while self.results_layout.count() > 1:  # keep the trailing stretch
             item = self.results_layout.takeAt(0)
@@ -112,7 +126,36 @@ class SyntaxCheckDialog(QDialog):
 
     # -- run ------------------------------------------------------------------
 
+    def is_running(self) -> bool:
+        return self._worker is not None
+
+    def abort_check(self) -> bool:
+        """Escape (dialog focused, or the editor -- see the source tab's
+        own escape hook): stops a running check. Returns whether one was
+        actually running, so the caller knows if the key press was used."""
+        if self._worker is None:
+            return False
+        self.status_label.setText("Aborting…")
+        self._worker.checker.abort()
+        return True
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.abort_check():
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def done(self, result: int) -> None:
+        # Closing the dialog mid-check aborts it too -- the worker thread
+        # must not outlive the dialog it reports to.
+        if self._worker is not None:
+            self._worker.checker.abort()
+            self._worker.wait(5000)
+        super().done(result)
+
     def _run_check(self) -> None:
+        if self._worker is not None:
+            return
         model = self.model_combo.currentText()
         if not model or model.startswith("("):
             QMessageBox.critical(self, "Check syntax", "No Ollama models are installed.")
@@ -121,18 +164,25 @@ class SyntaxCheckDialog(QDialog):
             return
 
         self._clear_results()
-        self.status_label.setText(f"Checking with {model}…")
+        self.status_label.setText(f"Checking with {model}… (press Esc to abort)")
         self.recheck_button.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            text = self.source_tab.widget.toPlainText()
-            checker = syntax_check.OllamaSyntaxChecker(model=model)
-            result = checker.check(text)
-        finally:
-            QApplication.restoreOverrideCursor()
-            self.recheck_button.setEnabled(True)
-            self.app.end_ollama_task()
+        checker = syntax_check.OllamaSyntaxChecker(model=model)
+        worker = _CheckWorker(checker, self.source_tab.widget.toPlainText())
+        worker.finished_with_result.connect(self._on_check_finished)
+        self._worker = worker
+        worker.start()
 
+    def _on_check_finished(self, result: syntax_check.SyntaxCheckResult) -> None:
+        worker = self._worker
+        self._worker = None
+        if worker is not None:
+            worker.wait()
+        self.recheck_button.setEnabled(True)
+        self.app.end_ollama_task()
+
+        if result.cancelled:
+            self.status_label.setText("Check aborted.")
+            return
         if not result.ok:
             self.status_label.setText(f"Check failed: {result.error}")
             return

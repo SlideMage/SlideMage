@@ -1671,6 +1671,8 @@ closes, and both the empty-query (shows everything) and no-match
 (buttons stay disabled) edge cases.
 
 v3.34.1 (2026-09-25, direct instruction): "Add reference" button (and its dialog's own window title/submit button) renamed to "Add reference to .bib", to say where the reference goes.
+
+v3.35.0 (2026-09-26, direct instruction): a batch of editor and settings changes. (1) Duplicate-slide dialog: Enter now creates the slide (Create is the dialog's default button, Cancel no longer auto-default). (2) Adding a *duplicate* of an existing slide from a deck tab's "+ before"/"+ after" dialog now opens the new slide in its source editor, exactly like "Create new slide" already did. (3) Slide editor keyboard shortcuts, scoped to the tab like Ctrl+F: Ctrl+I/B/U = the I/B/U toolbar buttons, Ctrl+S = Save, Ctrl+R = Render to PDF (slides only). (4) New "Insert block..." dropdown next to "Insert list..." with the project's beamer blocks (block, example, alert, reference, definition, info, plus the three floating variants); a selection becomes the block body and the cursor lands in the title's braces. (5) Tabs menu: "Edit test-slides.tex" opens decks/test-slides.tex in source mode. (6) "Check syntax" can be aborted with Escape (dialog or editor focused): the Ollama request now runs on a worker thread instead of blocking the GUI thread, and abort() closes the socket so Ollama stops generating -- on Windows only Winsock's closesocket() on the detach()ed handle wakes a blocked recv(); socket.shutdown()/close() do not (measured). (7) Settings gets an "AI models" tab with one default model each for Syntax check, AI drafting, Image descriptions and Translation; every model picker now preselects that default, and picking another one there applies to that dialog/tab only (the old remember-the-last-pick behaviour is gone; the setting keys are unchanged, so existing values carry over). (8) "Add reference to .bib": for a working paper/report the institution is optional and a DOI field was added. Verified with a headless (QT_QPA_PLATFORM=offscreen) smoke test: the four shortcuts, both block-insertion paths, the new Settings tab, and Escape aborting a check against a deliberately slow fake Ollama server (0.05 s from key press to released Ollama slot, from the dialog and from the editor).
 """
 from __future__ import annotations
 
@@ -1681,7 +1683,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.34.1"
+VERSION_NUMBER = "v3.35.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

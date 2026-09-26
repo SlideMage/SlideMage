@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -81,6 +82,7 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
         layout.addWidget(tabs, stretch=1)
         tabs.addTab(self._build_general_tab(), "General")
+        tabs.addTab(self._build_ai_models_tab(), "AI models")
         tabs.addTab(self._build_translation_tab(), "Translation prompts")
         tabs.addTab(self._build_ollama_models_tab(), "Ollama models")
 
@@ -172,6 +174,50 @@ class SettingsDialog(QDialog):
         tab_width_row.addStretch(1)
         layout.addLayout(tab_width_row)
 
+        layout.addStretch(1)
+        return page
+
+    # -- AI models ------------------------------------------------------------
+
+    def _build_ai_models_tab(self) -> QWidget:
+        """Default Ollama model per AI task (2026-09-26, direct
+        instruction; replaces the old "whatever was used last" behaviour).
+        Applied immediately, like every other control in this dialog. The
+        dialogs that offer a model picker preselect the default chosen
+        here; picking a different model there only affects that dialog."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(QLabel(
+            "Default model for each AI task. Every dialog with a model picker "
+            "starts on the model chosen here; picking another one there "
+            "applies to that dialog only."
+        ))
+        all_models = alt_draft.list_all_models()
+        vision_models = alt_draft.list_vision_models()
+        form = QFormLayout()
+        rows = (
+            ("syntax_check", "Syntax check:", all_models),
+            ("ai_draft", "AI drafting:", all_models),
+            ("image_description", "Image descriptions (vision models):", vision_models),
+            ("translation", "Translation:", all_models),
+        )
+        for task, label, models in rows:
+            combo = QComboBox()
+            combo.addItem("(none chosen -- built-in fallback)", "")
+            for model in models:
+                combo.addItem(model, model)
+            saved = app_settings.default_model(task)
+            if saved and combo.findData(saved) == -1:
+                combo.addItem(f"{saved} (not installed)", saved)
+            combo.setCurrentIndex(max(0, combo.findData(saved)))
+            combo.activated.connect(
+                lambda index, t=task, c=combo: app_settings.set(
+                    app_settings.MODEL_SETTINGS[t], c.itemData(index) or ""))
+            form.addRow(label, combo)
+        layout.addLayout(form)
+        if not all_models:
+            layout.addWidget(QLabel(
+                "Ollama is not reachable at localhost:11434, or has no models installed."))
         layout.addStretch(1)
         return page
 

@@ -376,6 +376,11 @@ class SlideMageWindow(QMainWindow):
         images_action.triggered.connect(self._on_open_images_tab)
         bib_action = tabs_menu.addAction("Edit .bib")
         bib_action.triggered.connect(self._on_edit_bib)
+        # 2026-09-26, direct instruction: the shared demo-slide list that
+        # test.tex/test-student.tex/test-ibk.tex/test-mci.tex \input{}, in
+        # the same source editor as any other deck file.
+        test_slides_action = tabs_menu.addAction("Edit test-slides.tex")
+        test_slides_action.triggered.connect(self._on_edit_test_slides)
 
         housekeeping_menu = self.menuBar().addMenu("Housekeeping")
         housekeeping_menu.addSection("Cleanup")
@@ -728,6 +733,15 @@ class SlideMageWindow(QMainWindow):
         if bibliography.DEFAULT_BIB not in self._slide_source_tabs:
             bibliography.sort_entries()
         self.open_slide_editor(bibliography.DEFAULT_BIB, return_to=self.tabs.currentWidget())
+
+    def _on_edit_test_slides(self) -> None:
+        """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
+        source mode, like "Edit .bib" does for Slidemaster.bib."""
+        path = DECKS_DIR / "test-slides.tex"
+        if not path.is_file():
+            QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
+            return
+        self.open_slide_editor(path, return_to=self.tabs.currentWidget())
 
     def open_slide_editor(
         self,

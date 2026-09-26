@@ -139,17 +139,13 @@ class DuplicateSlideDialog(QDialog):
         self.model_combo = QComboBox()
         models = alt_draft.list_all_models()
         self.model_combo.addItems(models or [alt_draft.DEFAULT_TRANSLATION_MODEL])
-        # Same remembered-choice-first, hardcoded-fallback pattern as
-        # qt_transcript_tab.py's own translation_model_combo (2026-08-25)
-        # -- and the same shared "translation_model" app_settings key, so
-        # picking a model in either place updates the one preference both
-        # read (see _on_model_selected below).
-        remembered = app_settings.get("translation_model")
+        # Preselects the translation default from Settings -> "AI models"
+        # (hardcoded DEFAULT_TRANSLATION_MODEL when none is set); a
+        # different pick here applies to this dialog only.
         default_index = self.model_combo.findText(
-            remembered or alt_draft.DEFAULT_TRANSLATION_MODEL)
+            app_settings.default_model("translation") or alt_draft.DEFAULT_TRANSLATION_MODEL)
         if default_index != -1:
             self.model_combo.setCurrentIndex(default_index)
-        self.model_combo.activated.connect(self._on_model_selected)
         model_row.addWidget(self.model_combo)
         model_row.addStretch(1)
         layout.addLayout(model_row)
@@ -162,8 +158,14 @@ class DuplicateSlideDialog(QDialog):
         button_row.addStretch(1)
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
+        # Enter (in the slug field or anywhere else in the dialog) triggers
+        # Create, not Cancel (2026-09-26, direct instruction): Qt gives the
+        # dialog's default to the first auto-default button, which was
+        # Cancel.
+        cancel_button.setAutoDefault(False)
         self.create_button = QPushButton("Create")
         self.create_button.clicked.connect(self._on_create)
+        self.create_button.setDefault(True)
         button_row.addWidget(cancel_button)
         button_row.addWidget(self.create_button)
         layout.addLayout(button_row)
@@ -212,9 +214,6 @@ class DuplicateSlideDialog(QDialog):
         # _on_mode_change() above applies here too (2026-08-30).
         self.model_label.setVisible(translating)
         self.model_combo.setVisible(translating)
-
-    def _on_model_selected(self, index: int) -> None:
-        app_settings.set("translation_model", self.model_combo.itemText(index))
 
     # -- submit -----------------------------------------------------------------
 

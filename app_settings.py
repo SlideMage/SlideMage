@@ -67,3 +67,24 @@ def set(key: str, value: Any) -> None:
     settings = load()
     settings[key] = value
     save(settings)
+
+
+# Default Ollama model per AI task (2026-09-26, direct instruction), set in
+# Settings -> "AI models" and read by every place that offers a model
+# picker -- which now only *preselects* this default; picking another
+# model there applies to that dialog/tab only and is no longer remembered
+# as "whatever was used last". The setting keys are the same ones the old
+# remember-last-choice code used, so an existing app_settings.json keeps
+# working as the initial default.
+MODEL_SETTINGS: dict[str, str] = {
+    "syntax_check": "syntax_check_model",
+    "ai_draft": "ai_draft_model",
+    "image_description": "drafting_model",
+    "translation": "translation_model",
+}
+
+
+def default_model(task: str) -> str:
+    """The configured default model name for `task` (a MODEL_SETTINGS
+    key), or "" when none has been chosen yet."""
+    return str(get(MODEL_SETTINGS[task], "") or "")

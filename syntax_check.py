@@ -29,11 +29,13 @@ offer at all despite the checker itself being unreliable.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import socket
+import sys
 import time
-import urllib.error
-import urllib.request
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -129,6 +131,9 @@ class SyntaxCheckResult:
     model: str = ""
     elapsed_s: float = 0.0
     error: Optional[str] = None
+    # True when OllamaSyntaxChecker.abort() ended the request (the user
+    # pressed Escape) -- `error` then only says so, it is not a failure.
+    cancelled: bool = False
 
     @property
     def ok(self) -> bool:
@@ -168,10 +173,39 @@ class OllamaSyntaxChecker:
     temperature: float = 0.1
     num_predict: int = 4096
     timeout: float = 300.0
+    # Live request state for abort() (2026-09-26, direct instruction: Escape
+    # aborts a running check). check() runs on a worker thread; abort() is
+    # called from the GUI thread and closes the socket under it, which
+    # makes the blocked read raise -- and Ollama stops generating once the
+    # client has disconnected.
+    _conn: Optional[http.client.HTTPConnection] = field(default=None, init=False, repr=False)
+    _cancelled: bool = field(default=False, init=False, repr=False)
 
     @property
     def label(self) -> str:
         return f"{self.model}{' +think' if self.think else ''}"
+
+    def abort(self) -> None:
+        self._cancelled = True
+        conn = self._conn
+        sock = conn.sock if conn is not None else None
+        if sock is None:
+            return
+        try:
+            if sys.platform == "win32":
+                # Measured 2026-09-26: on Windows neither socket.shutdown()
+                # nor socket.close() wakes a recv() blocked in another
+                # thread (the read just carries on until Ollama answers);
+                # closing the handle itself with Winsock's closesocket()
+                # does, at once. detach() first so Python's own socket
+                # object no longer owns the handle and never closes it a
+                # second time (by then possibly reused by another socket).
+                import ctypes
+                ctypes.windll.ws2_32.closesocket(ctypes.c_size_t(sock.detach()))
+            else:
+                sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def check(self, text: str) -> SyntaxCheckResult:
         lines = text.split("\n")
@@ -195,22 +229,43 @@ class OllamaSyntaxChecker:
             payload["think"] = True
 
         started = time.monotonic()
+        parsed = urllib.parse.urlparse(self.host)
+        conn = http.client.HTTPConnection(
+            parsed.hostname or "localhost", parsed.port or 80, timeout=self.timeout)
+        self._conn = conn
         try:
-            request = urllib.request.Request(
-                f"{self.host.rstrip('/')}/api/chat",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
+            if self._cancelled:
+                return SyntaxCheckResult(
+                    model=self.label, error="Aborted.", cancelled=True,
+                    elapsed_s=time.monotonic() - started)
+            conn.request(
+                "POST", "/api/chat", body=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"})
+            response = conn.getresponse()
+            raw = response.read()
+            if response.status != 200:
+                detail = raw.decode("utf-8", errors="replace")[:200]
+                try:
+                    detail = str(json.loads(raw.decode("utf-8")).get("error") or detail)
+                except (ValueError, AttributeError):
+                    pass
+                return SyntaxCheckResult(
+                    model=self.label, error=f"Ollama returned HTTP {response.status}: {detail}",
+                    elapsed_s=time.monotonic() - started)
+            body = json.loads(raw.decode("utf-8"))
+        except (OSError, http.client.HTTPException, ValueError) as exc:
+            elapsed_error = time.monotonic() - started
+            if self._cancelled:
+                return SyntaxCheckResult(
+                    model=self.label, error="Aborted.", cancelled=True, elapsed_s=elapsed_error)
+            if isinstance(exc, ConnectionRefusedError):
+                return SyntaxCheckResult(
+                    model=self.label, error=f"Ollama unreachable: {exc}", elapsed_s=elapsed_error)
             return SyntaxCheckResult(
-                model=self.label, error=f"Ollama unreachable: {exc}",
-                elapsed_s=time.monotonic() - started)
-        except (TimeoutError, OSError) as exc:
-            return SyntaxCheckResult(
-                model=self.label, error=f"Ollama request failed: {exc}",
-                elapsed_s=time.monotonic() - started)
+                model=self.label, error=f"Ollama request failed: {exc}", elapsed_s=elapsed_error)
+        finally:
+            self._conn = None
+            conn.close()
 
         elapsed = time.monotonic() - started
         message = body.get("message") or {}

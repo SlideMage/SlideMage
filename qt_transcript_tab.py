@@ -1124,11 +1124,6 @@ class TranscriptTab(QWidget):
         toolbar.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
         self._populate_models()
-        # activated (not currentIndexChanged/currentTextChanged) only fires
-        # on an actual user pick, never on the programmatic addItems()/
-        # setCurrentIndex() calls _populate_models() itself makes -- same
-        # reasoning as qt_slide_source_tab.py's own color_combo.
-        self.model_combo.activated.connect(self._on_model_selected)
         toolbar.addWidget(self.model_combo)
 
         self.draft_button = QPushButton("Draft descriptions")
@@ -1169,7 +1164,6 @@ class TranscriptTab(QWidget):
         toolbar.addWidget(QLabel("Translation model:"))
         self.translation_model_combo = QComboBox()
         self._populate_translation_models()
-        self.translation_model_combo.activated.connect(self._on_translation_model_selected)
         toolbar.addWidget(self.translation_model_combo)
 
         self.translate_all_button = QPushButton("Translate all…")
@@ -2215,14 +2209,15 @@ class TranscriptTab(QWidget):
         if models:
             self.model_combo.addItems(models)
             self.model_combo.setToolTip("Vision-capable models Ollama currently has")
-            # Remembered across sessions (2026-08-25, direct instruction) --
-            # app_settings.py, same local per-machine store dark mode
-            # already uses. Only applied if that model is actually in
-            # today's list; otherwise Qt's own default (the first item)
-            # stands, same as before this existed.
-            remembered = app_settings.get("drafting_model")
-            if remembered:
-                index = self.model_combo.findText(remembered)
+            # Preselects the image-description default from Settings ->
+            # "AI models" (2026-09-26, direct instruction; replaces the
+            # earlier remember-the-last-pick behaviour -- picking another
+            # model here applies to this tab only). Only applied if that
+            # model is actually in today's list; otherwise Qt's own
+            # default (the first item) stands.
+            default = app_settings.default_model("image_description")
+            if default:
+                index = self.model_combo.findText(default)
                 if index != -1:
                     self.model_combo.setCurrentIndex(index)
         else:
@@ -2243,15 +2238,13 @@ class TranscriptTab(QWidget):
                 "text-only, so any of them works, not just a vision-"
                 "capable one."
             )
-            # Remembered choice (2026-08-25, direct instruction) takes
+            # The translation default from Settings -> "AI models" takes
             # priority over the hardcoded DEFAULT_TRANSLATION_MODEL, same
             # "only if still in today's list" guard as _populate_models()
-            # above -- falls back to the hardcoded default when nothing's
-            # been remembered yet (a fresh install) or the remembered model
-            # isn't installed here.
-            remembered = app_settings.get("translation_model")
+            # above -- falls back to the hardcoded default when none is set
+            # or that model isn't installed here.
             preferred = self.translation_model_combo.findText(
-                remembered or alt_draft.DEFAULT_TRANSLATION_MODEL)
+                app_settings.default_model("translation") or alt_draft.DEFAULT_TRANSLATION_MODEL)
             if preferred != -1:
                 self.translation_model_combo.setCurrentIndex(preferred)
         else:
@@ -2261,12 +2254,6 @@ class TranscriptTab(QWidget):
                 "Ollama is not reachable at localhost:11434, or has no "
                 "models installed."
             )
-
-    def _on_model_selected(self, index: int) -> None:
-        app_settings.set("drafting_model", self.model_combo.itemText(index))
-
-    def _on_translation_model_selected(self, index: int) -> None:
-        app_settings.set("translation_model", self.translation_model_combo.itemText(index))
 
     def _current_draftable(self) -> list[tuple[str, Path]]:
         if self._current is None:

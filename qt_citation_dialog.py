@@ -84,7 +84,11 @@ _FIELD_HELP: dict[str, tuple[str, str]] = {
         "Free-form note -- for a web source this is usually an access date.",
         "accessed: 23.09.2026",
     ),
-    "institution": ("The institution that issued this report.", "Federal Reserve Bank of Boston"),
+    "institution": (
+        "The institution that issued this report, if any (optional -- e.g. "
+        "an SSRN working paper has none).",
+        "Federal Reserve Bank of Boston",
+    ),
     "type": ("Report series/number, if any.", "Working Paper No. 07-3"),
 }
 
@@ -94,7 +98,7 @@ _FIELD_LABELS: dict[str, str] = {
     "pages": "Pages", "doi": "DOI",
     "publisher": "Publisher*", "edition": "Edition", "location": "Location", "isbn": "ISBN",
     "url": "URL*", "organization": "Organization", "note": "Note",
-    "institution": "Institution*", "type": "Report type/number",
+    "institution": "Institution", "type": "Report type/number",
 }
 
 

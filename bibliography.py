@@ -84,7 +84,7 @@ TYPE_FIELDS: dict[str, list[tuple[str, bool]]] = {
     ],
     "report": [
         ("author", True), ("title", True), ("year", True),
-        ("institution", True), ("type", False),
+        ("institution", False), ("type", False), ("doi", False),
     ],
 }
 

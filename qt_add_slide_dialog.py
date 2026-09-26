@@ -355,7 +355,10 @@ class AddSlideDialog(QDialog):
             if dialog.exec() != QDialog.DialogCode.Accepted or dialog.new_id_slug is None:
                 return
             id_slug = dialog.new_id_slug
-            is_new_slide = False
+            # A duplicate is a brand-new slide file too (2026-09-26, direct
+            # instruction) -- opened in its source editor just like "Create
+            # new slide" below.
+            is_new_slide = True
         else:
             slug = self.slug_entry.text().strip()
             if not SLUG_RE.match(slug):
@@ -416,11 +419,12 @@ class AddSlideDialog(QDialog):
             self.deck.path, f"Added \\{macro}{{{id_slug}}} to {self.deck.name}",
             previous_text=previous_text,
         )
-        # "Create new slide" only -- "Use existing slide"/"Duplicate
-        # existing slide" both reference/copy content that already has an
-        # author behind it, nothing new to jump into (2026-09-22, direct
-        # instruction: "let SlideMage open its source view immediately so
-        # I can start editing it" -- said about a genuinely new slide).
+        # "Create new slide" and "Duplicate existing slide" (2026-09-26,
+        # direct instruction, extending the 2026-09-22 one: "let SlideMage
+        # open its source view immediately so I can start editing it") --
+        # both produce a new file; "Use existing slide" only references
+        # content that already has an author behind it, nothing new to
+        # jump into.
         if is_new_slide:
             self.app.open_slide_editor(
                 slide_ids.SLIDES_DIR / f"{id_slug}-current.tex", return_to=self.return_to)

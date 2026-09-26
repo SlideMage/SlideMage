@@ -93,12 +93,13 @@ class AiDraftDialog(QDialog):
         self.model_combo = QComboBox()
         models = alt_draft.list_all_models()
         self.model_combo.addItems(models or ["(no Ollama models installed)"])
-        remembered = app_settings.get("ai_draft_model")
-        if remembered:
-            index = self.model_combo.findText(remembered)
+        # Preselects the default from Settings -> "AI models"; a different
+        # pick here applies to this dialog only.
+        default = app_settings.default_model("ai_draft")
+        if default:
+            index = self.model_combo.findText(default)
             if index != -1:
                 self.model_combo.setCurrentIndex(index)
-        self.model_combo.activated.connect(self._on_model_selected)
         model_row.addWidget(self.model_combo)
         self.generate_button = QPushButton("Generate")
         self.generate_button.clicked.connect(self._on_generate)
@@ -136,9 +137,6 @@ class AiDraftDialog(QDialog):
         close_button.clicked.connect(self.close)
         button_row.addWidget(close_button)
         layout.addLayout(button_row)
-
-    def _on_model_selected(self, index: int) -> None:
-        app_settings.set("ai_draft_model", self.model_combo.itemText(index))
 
     # -- generate ------------------------------------------------------------
 

@@ -352,7 +352,11 @@ What matters when touching *this code*:
   machines by the project folder's own cloud-sync client, not git.
 - [`qt_settings_dialog.py`](qt_settings_dialog.py) -- the **Settings →
   Preferences…** dialog (this app's first menu bar, added 2026-08-25). A
-  General tab (dark mode, moved off the main toolbar) and a Translation
+  General tab (dark mode, moved off the main toolbar), an **AI models** tab
+  (2026-09-26: the default Ollama model for Syntax check, AI drafting, Image
+  descriptions and Translation -- every model picker preselects it, and
+  picking another one there applies to that dialog only; nothing is
+  remembered as "last used" any more) and a Translation
   prompts tab: a "Default prompt" group plus a per-(model, source, target)
   list/editor backed by `translation_prompts.py`, with the model combo
   populated from `alt_draft.list_all_models()` (editable, so an
