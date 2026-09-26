@@ -68,6 +68,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("image", ERROR, "\\includegraphics, \\chapterlogo, \\fullbleedframe or sideimageframe pointing at a file that does not exist (the extension may be omitted)."),
     ("slide-file", ERROR, "A deck's \\slide/\\slidefinal/\\slidestep/\\conditionalslide/\\slideversion/... call whose slides/<id>-current.tex (or -vX-Y-Z.tex) file does not exist."),
     ("underscore", WARNING, "_ in running text outside math and outside macro arguments that take names/paths (\"Missing $ inserted\")."),
+    ("caret", WARNING, "^ in running text outside math (\"10^6\" typed without $...$) -- \"Missing $ inserted\"."),
     ("percent", WARNING, "A % directly after a digit and followed by more text (\"5% growth\"): the % starts a comment and silently drops the rest of the line."),
     ("overlay", WARNING, "Overlay specification whose closing > is missing, e.g. \\only<2-{...}."),
     ("optional-arg", WARNING, "\\item[ ... whose closing ] is missing on that line."),
@@ -389,6 +390,10 @@ def _lex(text: str) -> tuple[LintIssue, ...]:
                     o in _NON_TYPESET_OWNERS or o.lower().endswith("color")
                     for _, o in brace_stack if o):
                 add("underscore", line, "'_' in running text outside math -- write \\_ (LaTeX: \"Missing $ inserted\")")
+        if c == "^" and not in_math and not in_tikz and not in_def:
+            if not any(o in _NON_TYPESET_OWNERS or o.lower().endswith("color")
+                       for _, o in brace_stack if o):
+                add("caret", line, "'^' in running text outside math -- put the exponent in $...$ or write \\textasciicircum (LaTeX: \"Missing $ inserted\")")
         i += 1
 
     # -- end of file ------------------------------------------------------------
