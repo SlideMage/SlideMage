@@ -122,6 +122,12 @@ def fetch_latest_release(timeout: float = 10) -> Release:
                 "private, add a GitHub token that can read it under "
                 f"Preferences → General (or set {TOKEN_ENV_VAR})."
             ) from exc
+        if exc.code in (401, 403) and active_token():
+            raise UpdateError(
+                f"GitHub refused the saved token ({exc.code} {exc.reason}). It may have "
+                f"expired, or lack read access to {REPO}'s releases -- a fine-grained "
+                "token needs Repository permissions → Contents: Read-only."
+            ) from exc
         raise UpdateError(f"GitHub answered {exc.code} {exc.reason}.") from exc
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise UpdateError(f"Couldn't reach GitHub: {exc}") from exc

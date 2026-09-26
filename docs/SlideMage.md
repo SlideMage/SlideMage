@@ -109,12 +109,14 @@ logged-in account, so the check needs a GitHub token. Without one, the
 check reports that no release was found.
 
 1. **Create the token.** On GitHub: Settings → Developer settings →
-   Personal access tokens → Tokens (classic) → Generate new token
-   (classic). Tick the `repo` scope, set an expiry date, and copy the
-   token (`ghp_…`) -- GitHub shows it only once. A fine-grained token
-   can't reach a repository owned by another account; once the repository
-   belongs to an organization you're in, a fine-grained token with only
-   "Contents: Read-only" on it is the safer choice.
+   Personal access tokens → Fine-grained tokens → Generate new token
+   (https://github.com/settings/personal-access-tokens/new). Set an
+   expiry date, Repository access → Only select repositories →
+   `JuergenFleiss/slidemage`, and Repository permissions → Contents →
+   Read-only; leave everything else at No access. Copy the token
+   (`github_pat_…`) -- GitHub shows it only once. When it expires, the
+   update check reports that no release was found until a new one is
+   saved.
 2. **Add it in SlideMage.** System → Preferences… → General → Updates:
    paste the token into "GitHub token" and press Enter. It's saved for
    your user account only -- in `~/.config/slidemage/github_token`

@@ -1614,6 +1614,13 @@ releases from JuergenFleiss/slidemage, where they are actually published
 -- stpalan/slidemaster has none, so the check could never find one.
 From this version on, release tags equal VERSION_NUMBER (release.yml
 enforces it); the earlier v0.0.x tags predate that.
+
+v3.32.2 (2026-09-26, bug report: "github responded 403 forbidden"): a
+token GitHub refuses (expired, or a fine-grained one without Contents:
+Read-only -- it then sees the repo but not its releases) now gets a
+message naming that permission instead of a bare "403 Forbidden". The
+docs recommend such a fine-grained, read-only token now that releases
+live in the user's own repository.
 """
 from __future__ import annotations
 
@@ -1624,7 +1631,7 @@ from dataclasses import dataclass
 
 from .deck_scan import PROJECT_ROOT
 
-VERSION_NUMBER = "v3.32.1"
+VERSION_NUMBER = "v3.32.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

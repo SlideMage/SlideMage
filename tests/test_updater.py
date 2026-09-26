@@ -104,3 +104,15 @@ def test_token_saved_privately_and_env_var_wins(tmp_path, monkeypatch):
 
     updater.save_token("")
     assert not token_file.exists()
+
+
+def test_refused_token_names_the_missing_permission(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater, "config_dir", lambda: tmp_path)
+    monkeypatch.setenv(updater.TOKEN_ENV_VAR, "github_pat_x")
+
+    def forbidden(*_a, **_k):
+        raise urllib.error.HTTPError(updater.LATEST_RELEASE_URL, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(updater.urllib.request, "urlopen", forbidden)
+    with pytest.raises(updater.UpdateError, match="Contents: Read-only"):
+        updater.fetch_latest_release()
