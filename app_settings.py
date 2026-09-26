@@ -87,4 +87,4 @@ MODEL_SETTINGS: dict[str, str] = {
 def default_model(task: str) -> str:
     """The configured default model name for `task` (a MODEL_SETTINGS
     key), or "" when none has been chosen yet."""
-    return str(get(MODEL_SETTINGS[task], "") or "")
+    return str(get(MODEL_SETTINGS[task]) or "")
