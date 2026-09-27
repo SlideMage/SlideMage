@@ -218,6 +218,28 @@ def normalize_steps(steps: str) -> str:
     return cleaned
 
 
+# Matches a bare `\end{document}` at the start of its own line (any leading
+# whitespace) -- used only by empty_deck_insert_point() below.
+_END_DOCUMENT_RE = re.compile(r"^[ \t]*\\end\{document\}", re.MULTILINE)
+
+
+def empty_deck_insert_point(text: str) -> tuple[int, str]:
+    """Where to insert a deck's very first \\slide{}-family call: right
+    before \\end{document}, indented the same one tab every other deck's
+    own \\slide{} calls use. For qt_deck_editor_tab.py's toolbar "Add
+    slide" button, shown only while a deck has no calls of its own (see
+    that module's own _build_rows) -- the same insert_at/indent shape
+    _on_insert()'s "+ before"/"+ after" buttons already hand to
+    open_add_slide_dialog(), just with nothing to anchor "before"/"after"
+    against. Raises ValueError if the deck has no \\end{document} at all
+    (a malformed file, since deck_scan.py already requires one to even
+    recognize it as a deck)."""
+    match = _END_DOCUMENT_RE.search(text)
+    if match is None:
+        raise ValueError("no \\end{document} found in this deck")
+    return match.start(), "\t"
+
+
 def format_call(macro: str, id_slug: str, version: Optional[str] = None, conditions: Optional[list] = None,
                 steps: Optional[str] = None) -> str:
     """Render one \\macro{...} token (no indent, no trailing newline) --

@@ -168,6 +168,23 @@ class DeckEditorTab(QWidget):
         transcript_button.clicked.connect(self._on_transcript)
         toolbar.addWidget(transcript_button)
 
+        # Only shown while this deck has no \slide{}-family calls of its
+        # own (2026-09-27, direct instruction) -- an empty deck has no row
+        # to hang a "+ before"/"+ after" button off of, so there'd
+        # otherwise be no way to add its first slide from this tab at all.
+        # Same dialog/flow as those two buttons (_on_insert below), just
+        # with deck_editor.empty_deck_insert_point() standing in for a
+        # real call's own line_start/line_end/indent. Visibility is kept
+        # in sync with the empty-deck state in _build_rows.
+        self.add_slide_button = QPushButton("Add slide")
+        self.add_slide_button.setToolTip(
+            "This deck has no slides yet -- add its first one (same dialog "
+            "as any other slide's own \"+ before\"/\"+ after\")."
+        )
+        self.add_slide_button.setVisible(False)
+        self.add_slide_button.clicked.connect(self._on_add_slide_to_empty_deck)
+        toolbar.addWidget(self.add_slide_button)
+
         self.undo_button = QPushButton("Undo")
         self.undo_button.setEnabled(False)
         self.undo_button.clicked.connect(self._on_undo)
@@ -520,6 +537,7 @@ class DeckEditorTab(QWidget):
         self._find_slide_model.setStringList(self._deck_id_slugs)
         self._build_card_grid(calls)
         self._populate_chapter_combo(calls)
+        self.add_slide_button.setVisible(not calls)
         if not calls:
             label = QLabel(
                 "This deck has no \\slide{}-family calls of its own "
@@ -923,6 +941,19 @@ class DeckEditorTab(QWidget):
     def _on_insert(self, call: SlideCall, before: bool) -> None:
         insert_at = call.line_start if before else call.line_end
         self.app.open_add_slide_dialog(self.deck, insert_at, call.indent, return_to=self)
+
+    def _on_add_slide_to_empty_deck(self) -> None:
+        """Toolbar "Add slide" button, shown only while this deck has no
+        \\slide{}-family calls of its own -- same dialog/flow as a real
+        call's own "+ before"/"+ after" (_on_insert above), just with
+        nothing to anchor against, so the insert point is computed
+        straight from the deck's own \\end{document} instead."""
+        try:
+            insert_at, indent = deck_editor.empty_deck_insert_point(self.deck.text)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Add slide", str(exc))
+            return
+        self.app.open_add_slide_dialog(self.deck, insert_at, indent, return_to=self)
 
     def _set_preview_tooltip(self, label: QLabel, id_slug: str) -> None:
         """Hover preview: Qt's tooltips render a real (if limited) HTML
