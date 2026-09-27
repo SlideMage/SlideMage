@@ -21,13 +21,31 @@ Two independent scans, both run by archive_unused_content():
 
 - slides/: a slides/<id>-current.tex or slides/<id>-vX-Y-Z.tex file is "in
   use" if actually \\slide{}/\\conditionalslide{}/\\omitslide{}/
-  \\slideversion{}/\\omitslideversion{}-ed from any *.tex file directly
-  inside decks/ or decks/archive/ -- deliberately every *.tex file there,
+  \\slidestep{}/\\slideversion{}/\\omitslideversion{}-ed from any *.tex file
+  directly inside decks/ or decks/archive/ -- deliberately every *.tex file
+  there,
   not just ones with \\documentclass (i.e. not deck_scan.scan_decks()):
   decks/test-slides.tex is a shared \\input{}-ed fragment with real
   \\slide{}/\\omitslide{} calls of its own (test.tex/test-mci.tex/
   test-ibk.tex/test-student.tex all \\input{} it rather than listing slides
   directly), so it has to be scanned too or its slides would look unused.
+
+A 2026-09-27 direct report found two real false positives from this batch
+run, both fixed here:
+
+- \\slidestep{id-slug}[versions]{steps} (added to the project 2026-09-20)
+  was never added to the slides/ scan's own macro list, so a slide
+  referenced *only* via \\slidestep (e.g. IA2's 8gc, the Masterdeck's egk,
+  test-slides.tex's own ZZH demo) looked completely unreferenced and got
+  archived, even though a real deck compile still needs it.
+- media/alt-text.json/.csv (the accessibility image-description store --
+  see README.md's "Screen-reader accessibility"/"Describing images") sit
+  directly inside media/, but are never \\includegraphics{}d -- they're
+  read directly by SlideMage/Slidemaster_alt.lua, not referenced as a
+  literal "media/<name>" string in any slide, so the media/ scan always
+  treated them as unused. MEDIA_NEVER_UNUSED below is the fix: filenames
+  excluded from the media/ scan outright, regardless of whether anything
+  references them by name.
 
 Both scans strip LaTeX comments first (2026-08-25, direct instruction --
 previously a commented-out reference kept a file "in use" indefinitely,
@@ -50,6 +68,10 @@ MEDIA_ARCHIVE_DIR = MEDIA_DIR / "archive"
 SLIDES_DIR = PROJECT_ROOT / "slides"
 SLIDES_ARCHIVE_DIR = SLIDES_DIR / "archive"
 
+# Never candidates for archiving, regardless of whether any slide's own
+# text mentions them by name -- see the module docstring's 2026-09-27 entry.
+MEDIA_NEVER_UNUSED = {"alt-text.json", "alt-text.csv"}
+
 MEDIA_REF_RE = re.compile(r"media/([\w][\w.-]*)")
 # Same convention already used for syntax highlighting/other text scans in
 # this project (qt_slide_source_tab.py's own COMMENT_RE, alt_blocks.py's) --
@@ -69,6 +91,9 @@ SLIDE_CURRENT_RE = re.compile(
     r"|\\slidefinal\{([^}]+)\}"
     r"|\\omitslide\{([^}]+)\}"
     r"|\\conditionalslide(?:\[[^\]]*\])?\{([^}]+)\}"
+    # \slidestep{id-slug}[versions]{steps} -- id-slug comes first here,
+    # unlike \conditionalslide's own [versions]{id-slug} order.
+    r"|\\slidestep\{([^}]+)\}(?:\[[^\]]*\])?\{[^}]*\}"
 )
 SLIDE_VERSION_RE = re.compile(
     r"\\slideversion\{([^}]+)\}\{([^}]+)\}"
@@ -154,7 +179,8 @@ def find_unused_media() -> list[Path]:
         return []
     used = find_used_media_filenames()
     return sorted(
-        p for p in MEDIA_DIR.iterdir() if p.is_file() and p.name not in used
+        p for p in MEDIA_DIR.iterdir()
+        if p.is_file() and p.name not in used and p.name not in MEDIA_NEVER_UNUSED
     )
 
 

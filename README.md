@@ -319,7 +319,10 @@ What matters when touching *this code*:
 - [`translation_prompts.py`](translation_prompts.py) -- per-(model, source
   language, target language) prompt configuration for
   `alt_draft.OllamaTranslationBackend`, editable from **Settings →
-  Preferences… → Translation prompts** (`qt_settings_dialog.py`). Different
+  Preferences… → AI models → Translation prompts…** (opens
+  `qt_translation_prompts_dialog.py`'s own dialog -- a permanent tab of
+  the Settings dialog until 2026-09-27, when it moved next to the
+  Translation model picker it configures). Different
   Ollama models expect very different prompt shapes -- a dedicated MT model
   wants a short bare instruction with an exact blank-line count before the
   text, a general instruction-tuned model tolerates a longer one -- so each
@@ -370,13 +373,32 @@ What matters when touching *this code*:
   (2026-09-26: the default Ollama model for Syntax check, AI drafting, Image
   descriptions and Translation -- every model picker preselects it, and
   picking another one there applies to that dialog only; nothing is
-  remembered as "last used" any more) and a Translation
-  prompts tab: a "Default prompt" group plus a per-(model, source, target)
-  list/editor backed by `translation_prompts.py`, with the model combo
-  populated from `alt_draft.list_all_models()` (editable, so an
-  not-yet-installed model name can still be pre-configured). Close-only
+  remembered as "last used" any more) with a **"Translation prompts…"**
+  button next to the Translation row (2026-09-27; see
+  `qt_translation_prompts_dialog.py` below -- a separate dialog now, no
+  longer a permanent tab here), and an Ollama models tab. Close-only
   dialog -- every field saves immediately via its own Save button, there's
   no separate "Cancel without saving" state to reconcile.
+- [`qt_translation_prompts_dialog.py`](qt_translation_prompts_dialog.py) --
+  `TranslationPromptsDialog`, split out of `qt_settings_dialog.py` 2026-09-27
+  (direct instruction: reach it from a button next to the Translation model
+  picker instead of a permanent tab). Unchanged content/behavior from the
+  old tab: a "Default prompt" group plus a per-(model, source, target)
+  list/editor backed by `translation_prompts.py`, with the model combo
+  populated from `alt_draft.list_all_models()` (editable, so a not-yet-
+  installed model name can still be pre-configured) -- including its own
+  unsaved-changes-on-close check (`reject()`), since it now closes
+  independently of `SettingsDialog` rather than sharing that dialog's own.
+- [`qt_archive_unused_dialog.py`](qt_archive_unused_dialog.py) --
+  `ArchiveUnusedDialog` (2026-09-27, direct instruction, after a real batch
+  run archived far more than expected -- see `unused_content.py`'s own
+  entry above for the two bugs that caused it): lists every file
+  `find_unused_media()`/`find_unused_slides()` found, with Cancel (the
+  default button) or "Archive N file(s)"; `qt_gui.py`'s
+  `_on_archive_unused_content` runs both scans on the GUI thread (fast
+  enough not to need a background thread) and shows this dialog before
+  starting the actual move, which still runs on a background thread as
+  before.
 - [`transcript.py`](transcript.py) -- per-deck accessible transcripts,
   Markdown source and HTML delivery. Resolves deck versions exactly as the
   PDF compile does and keeps PDF slide numbering. Student versions only.
@@ -628,6 +650,17 @@ What matters when touching *this code*:
   already inside its own `archive/` subfolder) gets moved into one. See
   "Archiving unused content" below for the two deliberate wrinkles (the
   extensionless-reference case and the source/derived-file convention).
+  The slide-usage macro list also covers `\slidestep{}` since 2026-09-27
+  (added late -- see that section's own entry for the false-positive batch
+  this caused before it was), and `MEDIA_NEVER_UNUSED` excludes
+  `media/alt-text.json`/`.csv` outright: they're read directly by
+  `Slidemaster_alt.lua`, never `\includegraphics{}`-ed, so the media scan
+  could never see them as "used." **Housekeeping → Archive unused slides
+  and media files** (`qt_gui.py`'s `_on_archive_unused_content`,
+  `qt_archive_unused_dialog.py`) now runs both scans up front and shows
+  every file in `ArchiveUnusedDialog` before moving anything -- Cancel
+  (the default button) leaves the folders untouched, "Archive N file(s)"
+  is the only action that starts the actual move.
 - [`gui.py`](gui.py) -- the Tkinter app. `DeckRow` owns one row's
   checkboxes and turns them into a list of `CompileJob`s; `SlideMageApp`
   owns the two tabs, the log queue, and the worker thread.

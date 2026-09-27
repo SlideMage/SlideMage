@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QCompleter,
+    QDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -83,6 +84,8 @@ from .qt_version_history_dialog import VersionHistoryDialog
 from .slide_ids import SLIDES_DIR
 from .qt_deck_table import DeckRow, DeckTable, build_progress_texts, job_column_key
 from .qt_theme import WARNING_LABEL, ThemeManager
+from . import unused_content
+from .qt_archive_unused_dialog import ArchiveUnusedDialog
 from .unused_content import archive_unused_content
 
 RUNNING_LOG_RE = re.compile(r"^==== Compiling \S+ -> (\S+) ====")
@@ -1291,15 +1294,20 @@ class SlideMageWindow(QMainWindow):
                 "would move.",
             )
             return
-        reply = QMessageBox.question(
-            self,
-            "Archive unused content",
-            "Scan media/ and slides/ for files no longer referenced by any "
-            "slide or deck (including archived decks) and move them into "
-            "media/archive/ and slides/archive/? Files can be moved back by "
-            "hand afterwards if needed.",
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        # Scans first (a plain filesystem/text scan, fast enough to run on
+        # the GUI thread) and shows exactly what would move before moving
+        # anything (2026-09-27, direct instruction, after a batch run
+        # archived far more than expected -- see ArchiveUnusedDialog's own
+        # docstring). Only the actual move still runs in the background.
+        unused_media = unused_content.find_unused_media()
+        unused_slides = unused_content.find_unused_slides()
+        if not unused_media and not unused_slides:
+            QMessageBox.information(
+                self, "Archive unused content", "No unused media files or slides found."
+            )
+            return
+        dialog = ArchiveUnusedDialog(self, unused_media, unused_slides)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         threading.Thread(target=self._run_archive_unused_content, daemon=True).start()
 

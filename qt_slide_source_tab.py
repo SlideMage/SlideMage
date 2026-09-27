@@ -426,6 +426,14 @@ class LatexPlainTextEdit(QPlainTextEdit):
     # parse the rest of the line at all.
     _BEGIN_ENV_RE = re.compile(r"\\begin\{([A-Za-z*]+)\}")
     _LIST_ENVIRONMENTS = {"itemize", "enumerate"}
+    # Environments the \begin{ENV}-completion below leaves alone entirely
+    # (2026-09-27, direct instruction): standardframe's own body is a whole
+    # slide's worth of content, not a short list -- auto-inserting its
+    # \end{standardframe} right after \begin{standardframe}{Title} (whatever
+    # the title text) just gets in the way of typing the frame body that
+    # follows. Enter here falls through to the plain "newline, same indent"
+    # behavior at the bottom of _smart_return instead.
+    _NO_AUTO_END_ENVIRONMENTS = {"standardframe"}
     # \item-continuation (2026-08-31, direct instruction): checked only
     # after the \begin{ENV} trigger above finds nothing, so a line like
     # "\item \begin{itemize}" (an item that itself opens a nested list)
@@ -522,7 +530,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
             # \begin{} token, the one most recently typed (rightmost) is
             # the one Enter is actually completing.
             matches = list(self._BEGIN_ENV_RE.finditer(block_text))
-            if matches:
+            if matches and matches[-1].group(1) not in self._NO_AUTO_END_ENVIRONMENTS:
                 env = matches[-1].group(1)
                 inner_indent = indent + "\t"
                 item_line = (
