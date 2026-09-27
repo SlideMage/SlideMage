@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -72,7 +73,6 @@ class SettingsDialog(QDialog):
         layout.addWidget(tabs, stretch=1)
         tabs.addTab(self._build_general_tab(), "General")
         tabs.addTab(self._build_ai_models_tab(), "AI models")
-        tabs.addTab(self._build_ollama_models_tab(), "Ollama models")
 
         # Close only -- every change here (dark mode, a model default) is
         # applied and persisted immediately by its own control, same as
@@ -121,10 +121,13 @@ class SettingsDialog(QDialog):
 
     def _build_ai_models_tab(self) -> QWidget:
         """Default Ollama model per AI task (2026-09-26, direct
-        instruction; replaces the old "whatever was used last" behaviour).
-        Applied immediately, like every other control in this dialog. The
-        dialogs that offer a model picker preselect the default chosen
-        here; picking a different model there only affects that dialog."""
+        instruction; replaces the old "whatever was used last" behaviour),
+        plus (2026-09-27, direct instruction: same tab, visually separated
+        -- both sections are about the AI models SlideMage uses) the
+        former separate "Ollama models" tab underneath a divider. Applied
+        immediately, like every other control in this dialog. The dialogs
+        that offer a model picker preselect the default chosen here;
+        picking a different model there only affects that dialog."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.addWidget(QLabel(
@@ -170,7 +173,18 @@ class SettingsDialog(QDialog):
         if not all_models:
             layout.addWidget(QLabel(
                 "Ollama is not reachable at localhost:11434, or has no models installed."))
-        layout.addStretch(1)
+
+        # Visual separator (2026-09-27, direct instruction) -- a plain
+        # QFrame horizontal rule plus a bold heading, so the "Ollama
+        # models" section below reads as clearly distinct from the
+        # per-task defaults above even though both live on one page now.
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+        heading = QLabel("<b>Ollama models</b>")
+        layout.addWidget(heading)
+        self._build_ollama_models_section(layout)
         return page
 
     def _on_translation_prompts(self) -> None:
@@ -181,11 +195,9 @@ class SettingsDialog(QDialog):
         to keep working while it's open."""
         TranslationPromptsDialog(self, self.app).exec()
 
-    # -- Ollama models --------------------------------------------------------
+    # -- Ollama models (a section of the AI models tab, not its own tab) --------
 
-    def _build_ollama_models_tab(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
+    def _build_ollama_models_section(self, layout: QVBoxLayout) -> None:
         layout.addWidget(QLabel(
             "Every model currently installed in Ollama, drafting and "
             "translation alike. Deleting one here removes it from Ollama's "
@@ -229,7 +241,6 @@ class SettingsDialog(QDialog):
             ))
 
         self._reload_ollama_models()
-        return page
 
     def _reload_ollama_models(self) -> None:
         self.ollama_models_list.clear()

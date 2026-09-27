@@ -43,6 +43,12 @@ ALL_NUMERIC_RE = re.compile(r"^[0-9]+$")
 SCIENTIFIC_NOTATION_RE = re.compile(r"^[0-9]+[eE][+-]?[0-9]+$")
 FLOAT_WORDS = {"inf", "nan"}
 WINDOWS_DEVICE_NAMES = {"aux", "con", "nul", "prn"}
+# Real English words that happen to be legal 3-character ids but read badly
+# on a slide's own footer/in conversation (2026-09-27, direct instruction,
+# after "pee" turned up as slide id_slug). Add to this set by hand as more
+# turn up -- there's no automated word-list check, just this explicit
+# denylist. Mirrored in .scripts/R_Slidemaster/R/slide.new.id.R.
+BANNED_WORDS = {"pee"}
 
 
 def illegal_id_reason(slide_id: str) -> Optional[str]:
@@ -55,6 +61,8 @@ def illegal_id_reason(slide_id: str) -> Optional[str]:
         return "reads as a floating-point special value"
     if slide_id.lower() in WINDOWS_DEVICE_NAMES:
         return "is a reserved Windows device name"
+    if slide_id.lower() in BANNED_WORDS:
+        return "is a banned word"
     return None
 # Matches SPslide(refresh=TRUE)'s own "^([^-]+)-.*\\.tex$": the ID is
 # everything before the first hyphen, for both ID-slug-current.tex and

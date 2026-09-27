@@ -478,15 +478,32 @@ def deck_names_referencing(id_slug: str) -> list[str]:
 
 
 def _line_removal_pattern(id_slug: str) -> re.Pattern:
-    # Anchored to a whole line (optional leading/trailing whitespace, the
-    # call itself, its own newline) -- every \\slide-family call in this
-    # project already sits on its own line, so this removes the call
-    # cleanly without leaving a blank line's worth of dangling whitespace
-    # behind, unlike a bare substring removal would.
-    return re.compile(
-        r"(?m)^[ \t]*\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{"
-        + re.escape(id_slug) + r"\}[ \t]*\n?"
+    # The whole call with every argument its own macro takes -- not just
+    # \{id_slug\} -- then the rest of the line up to and including its
+    # newline, so the call is removed cleanly without leaving a blank
+    # line's worth of dangling whitespace behind (unlike a bare substring
+    # removal would), and without leaving a stray \r on a CRLF file (this
+    # project's own convention -- see .gitattributes) now that the newline
+    # itself is matched as \r?\n rather than a bare \n.
+    #
+    # 2026-09-27, direct instruction ("merge Jürgen's delete slide bug"):
+    # the previous version assumed every macro's argument list ends at
+    # \{id_slug\} itself -- true for \slide/\slidefinal/\omitslide/
+    # \conditionalslide[versions]{id_slug}, but not for \slideversion{}/
+    # \omitslideversion{}'s own trailing {version}, or \slidestep{id_slug}
+    # [versions]{steps}'s own [versions]{steps} tail (id_slug comes first
+    # there, unlike \conditionalslide's [versions]{id_slug} order) -- so
+    # deleting a slide referenced only that way silently left the deck's
+    # own \\slideversion{}/\\slidestep{} call (and, for \\slideversion{},
+    # the frozen version file it pins) pointing at a file that no longer
+    # exists on disk, with no error and nothing removed.
+    slug = re.escape(id_slug)
+    call = (
+        r"\\(?:slideversion|omitslideversion)\{" + slug + r"\}\{[^}]*\}"
+        r"|\\slidestep\{" + slug + r"\}(?:\[[^\]]*\])?\{[^}]*\}"
+        r"|\\(?:slide|slidefinal|omitslide|conditionalslide)(?:\[[^\]]*\])?\{" + slug + r"\}"
     )
+    return re.compile(r"(?m)^[ \t]*(?:" + call + r")[ \t]*(?:\r?\n)?")
 
 
 def _remove_references_in_file(deck_path: Path, id_slug: str) -> int:
