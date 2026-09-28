@@ -1,0 +1,96 @@
+% Clean reference/test slide for this deck's own itemize vertical spacing
+% (2026-07-21, direct instruction) -- not converted from any source
+% PowerPoint, a permanent demo slide in the same spirit as
+% slides/ZZM-Slidemaster-colors-current.tex. Exercises every transition
+% type in a 4-level nested itemize (same-level item-to-item at each
+% depth, a level opening a nested list, and a nested list closing back up
+% to its parent), each level's first item deliberately long enough to
+% wrap onto a second line, so within-item line-wrap spacing is visible
+% right next to between-item spacing at the same depth.
+%
+% Verifies one rule, stated once per level n (direct instruction,
+% 2026-07-21, superseding an earlier three-separate-rules version of this
+% same comment -- this is that same intent restated as a single
+% multi-part inequality instead), each of the four terms a distinct
+% transition a level-n item can be involved in:
+%   level-n item -> subsequent level-(n-1) item   (list closing back up)
+%     >  level-n item -> level-n item             (same-level gap)
+%     >  level-n item -> subsequent level-(n+1) item  (list opening down)
+%     >  level-n item's own multi-line wrap gap
+% The first term only exists for n=2..4 (no "level 0" above level 1); the
+% third term only exists for n=1..3 (no level 5 below level 4). So level
+% 1's own chain is 3 terms (same > open > wrap), levels 2-3 get the full
+% 4 terms, and level 4's chain is 3 terms (close > same > wrap, no
+% "opening" term since nothing nests below it).
+% All these spacings scale with whatever font size is active (2026-07-21,
+% direct instruction) -- see Slidemaster_preamble_base.tex's own
+% \gothamItemsepRatioI/II/III/IV, \gothamItemizeLevelDropSpaceRatioI/II/III/IV
+% and \gothamItemizeLevelOpenSpaceRatioI/II/III comments for the
+% implementation (ratios of the currently active font's own "em", not
+% fixed pt lengths, recomputed fresh every time a list opens/closes so
+% they track whichever font size is actually in effect there).
+%% Included in decks: (none)
+%%
+
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Itemize spacing reference}
+	% This test slide deliberately stacks every transition down to level 4,
+	% each with a wrapping first item, purely to exercise every rule at
+	% once -- taller than any real slide's own itemize would normally be,
+	% enough to overflow the frame at this theme's default per-level font
+	% sizes (confirmed directly: "Overfull \vbox" in the log, and the last
+	% item visibly clipped by the footer bar once rendered, ~26pt too
+	% tall). A plain ambient \small wrap does *not* fix this -- beamer's
+	% own per-item font selection re-applies each level's own hardcoded
+	% size regardless of the ambient TeX font (same issue documented on
+	% slides/33x-Excursus-Insurance-Effect-on-Repair-Costs-current.tex,
+	% confirmed here too: wrapping in \small measured no change in any
+	% level's own rendered font size, while the overfull amount got
+	% *worse*). \vspace alone isn't enough either -- the ~26pt needed
+	% exceeds the frame's own unused top margin (confirmed directly: at
+	% that large a shift, the first line overlapped the title bar instead).
+	% What actually works, matching slides/33x's own established pattern:
+	% explicit \setbeamerfont overrides, one step down per level (body:
+	% \small, subbody: \footnotesize, subsubbody: \scriptsize -- level 4's
+	% own "subsubsubbody" isn't set anywhere in this project, confirmed via
+	% grep, so it inherits subsubbody's own size automatically and shrinks
+	% along with it), reset back to gotham's own defaults afterward so
+	% nothing leaks into later slides. That alone got this from ~26pt
+	% overfull down to ~1.5pt; a small residual \vspace closes the rest.
+	% Shrinking the ratios under test isn't the point of this slide --
+	% only fitting the content is, and the ratios are ratios of whatever
+	% font is active regardless, so they still scale correctly here too.
+	\vspace*{-13pt}
+	\setbeamerfont{itemize/enumerate body}{size=\small}
+	\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}
+	\setbeamerfont{itemize/enumerate subsubbody}{size=\scriptsize}
+	\begin{itemize}
+		\item First level-1 item, written with enough extra words in it that it wraps onto a second line before the next item starts
+		\item Second level-1 item
+		\begin{itemize}
+			\item First level-2 item, written with enough extra words in it that it wraps onto a second line before the next item starts
+			\item Second level-2 item
+			\begin{itemize}
+				% This item's own text is deliberately longer than the
+				% other levels' -- at \scriptsize (this level's new,
+				% smaller font, see above), the original shorter phrasing
+				% no longer wrapped to a second line at all (confirmed
+				% directly: measured as a single line once the font
+				% shrunk), which would have silently dropped rule II's own
+				% within-item-wrap comparison at this level entirely.
+				\item First level-3 item, written with enough extra words in it that it definitely, reliably wraps onto a second line before the next item starts
+				\item Second level-3 item
+				\begin{itemize}
+					\item First level-4 item, written with enough extra words in it that it wraps onto a second line before the next item starts
+					\item Second level-4 item
+				\end{itemize}
+				\item Third level-3 item, following the level-4 list's own close
+			\end{itemize}
+			\item Third level-2 item, following the level-3 list's own close
+		\end{itemize}
+		\item Third level-1 item, following the level-2 list's own close
+	\end{itemize}
+	\setbeamerfont{itemize/enumerate body}{}
+	\setbeamerfont{itemize/enumerate subbody}{size=\small}
+	\setbeamerfont{itemize/enumerate subsubbody}{size=\footnotesize}
+\end{standardframe}

@@ -1,0 +1,67 @@
+% Demo/reference slide: every color defined by whichever per-university
+% preamble is currently \input{}ed (Slidemaster_preamble_uni-graz.tex,
+% Slidemaster_preamble_mci.tex, or Slidemaster_preamble_uni-ibk.tex) -- this
+% slide renders the same way under all three, showing each one's own actual
+% palette, since the color *names* (c_primary_dark, c_secondary_blue, ...)
+% are shared machinery, only the underlying hex values differ per
+% institution. Labels below are the full color name (e.g. the first swatch
+% is \texttt{c\_primary\_dark}), not a "suffix after a common prefix" the
+% way this slide worked when there was only ever one institution -- the new
+% names don't share one single prefix across all four tiers
+% (c_primary_*/c_secondary_*/c_tertiary_*/c_custom_*), so the swatch list
+% below spells out each full name directly instead of looping a suffix onto
+% one fixed prefix. Sorted by relevance: the four primary colors first
+% (dark, highlight, gray, white), then the secondary colors (six hues, each
+% paired with its tertiary/lighter variant), and finally the three custom
+% colors last -- not part of any institution's official palette, just
+% supporting colors this project defines itself (see each color's own
+% \definecolor comment in whichever Slidemaster_preamble_*.tex is current).
+%
+% Copy from here when starting a new slide; see README.md for the
+% naming/versioning convention.
+%% Included in decks: test-slides
+%%
+
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Slidemaster color palette}
+	\footnotesize
+	Every color defined by the current institution's preamble. Labels below
+	are the color's full macro name -- e.g. the first swatch is
+	\texttt{c\_primary\_dark}.
+
+	\vspace{0.8em}
+	\centering
+	% Each color name contains literal underscores (e.g. "c_primary_dark")
+	% -- outside math mode, a bare "_" is a special character that LaTeX
+	% reads as "Missing $ inserted", auto-recovering by subscripting just
+	% the next token, which prints as "c_p rimary_d ark" rather than the
+	% literal name. Fixed by driving the loop off a name/label *pair* per
+	% entry (pgf's \foreach \a/\b in {...} two-variable syntax) rather than
+	% trying to print the raw name directly: \name (unescaped) still goes
+	% into fill=\name for the color lookup, but \dispname carries a
+	% separately-written, already-\_-escaped copy of the same string for
+	% display -- sidesteps the underscore-catcode question entirely, no
+	% runtime \catcode trick needed. Named \dispname rather than the more
+	% obvious \label: a first attempt using \label rendered as empty text
+	% throughout, silently -- \label collides with plain LaTeX's own
+	% cross-referencing \label{} command, and \foreach's local redefinition
+	% of it didn't behave the way a fresh, previously-undefined loop
+	% variable name does.
+	\begin{tikzillustration}[
+			swatch/.style={rectangle, draw=c_primary_gray, minimum width=2.1cm, minimum height=1.15cm, inner sep=0pt},
+			swlabel/.style={font=\fontsize{4.3}{5}\selectfont\ttfamily, align=center, text width=2.3cm}
+		]{zzm-tikz}
+		\foreach \name/\dispname [count=\i] in {%
+			c_primary_dark/c\_primary\_dark, c_primary_highlight/c\_primary\_highlight, c_primary_gray/c\_primary\_gray, c_primary_white/c\_primary\_white,%
+			c_secondary_violet/c\_secondary\_violet, c_tertiary_violet/c\_tertiary\_violet, c_secondary_blue/c\_secondary\_blue, c_tertiary_blue/c\_tertiary\_blue, c_secondary_green/c\_secondary\_green, c_tertiary_green/c\_tertiary\_green,%
+			c_secondary_red/c\_secondary\_red, c_tertiary_red/c\_tertiary\_red, c_secondary_orange/c\_secondary\_orange, c_tertiary_orange/c\_tertiary\_orange, c_secondary_yellow/c\_secondary\_yellow, c_tertiary_yellow/c\_tertiary\_yellow,%
+			c_tertiary_gray/c\_tertiary\_gray, c_custom_gray/c\_custom\_gray, c_custom_red/c\_custom\_red, c_custom_green/c\_custom\_green%
+		} {
+			\pgfmathsetmacro{\col}{mod(\i-1,6)}
+			\pgfmathsetmacro{\row}{floor((\i-1)/6)}
+			\coordinate (sw) at (\col*2.35cm, -\row*1.8cm);
+			\node[swatch, fill=\name] at (sw) {};
+			\node[swlabel, anchor=north] at ($(sw)+(0,-0.62cm)$) {\dispname};
+		}
+	\end{tikzillustration}
+\end{standardframe}

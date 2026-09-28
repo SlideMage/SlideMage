@@ -1,0 +1,47 @@
+% Demo/reference slide: candidate Unicode symbols for \setfootnotesymbols{}
+% (see Slidemaster_preamble_uni-graz.tex). Every symbol below was checked to actually
+% exist in Fira Sans (the deck's body font) -- glyphs that LuaTeX reported as
+% "Missing character" for this font (card suits, star/dingbat glyphs,
+% geometric shapes, checkmarks, most arrows, roman numerals, circled
+% numbers/letters, ornamental dingbats, most of the rarer currency signs --
+% peso, tugrik, kip, guarani, cedi, tenge, manat, lari, bitcoin, ECU, and
+% several more historical ones) were left out on purpose, since they'd render
+% as blank/tofu boxes rather than the intended mark. The generic currency
+% sign (U+00A4, "¤") *does* render, but was left off the currency row anyway:
+% it's a deliberately currency-agnostic placeholder glyph (predates Unicode
+% having signs for most currencies), not a symbol for any actual currency, so
+% it doesn't read as "money" the way the others do. Re-check with a
+% throwaway deck (dump candidate characters into a frame, compile, and grep
+% the log for "Missing character") before adding anything not already here.
+%
+% Copy from here when starting a new slide; see README.md for the
+% naming/versioning convention.
+%% Included in decks: test-slides
+%%
+
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Footnote symbol options}
+\footnotesize
+Confirmed to render in this deck's font. Pass any subset, in any order, to
+\texttt{\textbackslash setfootnotesymbols\{...\}} (comma-separated) to
+override the default \emph{£, ¥, ₹, ₽, ₺, ₴, ₪, ₫, ₦, ₡, ₩, ƒ, ¢, €} sequence
+for the rest of the deck.
+
+\vspace{0.4em}
+{\renewcommand{\arraystretch}{1.7}\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l l@{}}
+\textbf{\footnotesize Currency (default)} & {\Large £ \ ¥ \ ₹ \ ₽ \ ₺ \ ₴ \ ₪ \ ₫ \ ₦ \ ₡ \ ₩ \ ƒ \ ¢ \ €} \\
+\textbf{\footnotesize Classic} & {\Large * \ † \ ‡ \ § \ ¶ \ ‖} \\
+\textbf{\footnotesize Punctuation} & {\Large ° \ · \ • \ ∙ \ ‰ \ № \ ± \ × \ ÷ \ ¬ \ ¦ \ ª \ º} \\
+\textbf{\footnotesize Superscript digits} & {\Large ⁰ \ ¹ \ ² \ ³ \ ⁴ \ ⁵ \ ⁶ \ ⁷ \ ⁸ \ ⁹} \\
+\textbf{\footnotesize Greek (lowercase)} & {\Large α \ β \ γ \ δ \ ε \ ζ \ η \ θ \ λ \ μ \ π \ φ \ ψ \ ω} \\
+\textbf{\footnotesize Greek (uppercase)} & {\Large Δ \ Σ \ Φ \ Ψ \ Ω} \\
+\end{tabular}}
+
+\vspace{0.6em}
+\textbf{\footnotesize At actual footnote size:}\\
+{\fontsize{3.2}{4.5}\selectfont
+£ ¥ ₹ ₽ ₺ ₴ ₪ ₫ ₦ ₡ ₩ ƒ ¢ € \quad * † ‡ § ¶ ‖ \quad ° · • ∙ ‰ № ± × ÷ ¬ ¦ ª º \quad ⁰ ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ \quad α β γ δ ε ζ η θ λ μ π φ ψ ω \quad Δ Σ Φ Ψ Ω
+\par}
+
+\end{standardframe}

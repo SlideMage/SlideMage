@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slidemage"
+dynamic = ["version"]
+description = "Desktop app for building, compiling and managing Slidemaster (LaTeX beamer) slide decks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "PySide6>=6.5",
+    "pymupdf",
+    "pillow",
+    "lxml",
+    "python-pptx",
+    "odfpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+build = ["pyinstaller"]
+
+[project.gui-scripts]
+slidemage = "slidemage.cli:main"
+
+[tool.hatch.version]
+path = "src/slidemage/version.py"
+pattern = 'VERSION_NUMBER = "v(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/slidemage"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/slidemage", "tests", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+# Only fatal classes for now (syntax errors, undefined names); widen once the
+# existing code has been cleaned up.
+select = ["E9", "F63", "F7", "F82"]

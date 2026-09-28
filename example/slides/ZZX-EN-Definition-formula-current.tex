@@ -1,0 +1,56 @@
+% Demo slide showcasing definition/example/caveat highlight blocks. Copy
+% from here when starting a new slide; see README.md for the
+% naming/versioning convention.
+%
+% `definitionblock` added (2026-07-06) alongside the original three, same
+% day it was introduced in Slidemaster_preamble_uni-graz.tex for real content on
+% slides/4uq-Definition-of-Capital-Market-Efficiency-current.tex and
+% slides/dny-Leasing-Definition-current.tex -- every reusable block/frame
+% type in this deck gets a demo here, so this one shouldn't be the
+% exception.
+%
+% v1-1-0 (2026-09-18, direct instruction): `infoblock` demo added -- same
+% "every reusable block type gets a demo here" reasoning as definitionblock
+% above; this one had been in real use (e.g.
+% slides/k4p-Introductory-Question-Answer-current.tex's own
+% `gothamfloatinginfoblock`, which just wraps `infoblock` in a minipage for
+% corner-overlay placement) without ever getting its own entry here. Shown
+% as a plain in-flow block, matching how the other four in this demo are
+% shown -- the floating/corner-overlay positioning is `gothamfloatinginfoblock`'s
+% own concern, not `infoblock`'s own visual style, which is all this slide
+% demos. Five stacked full-width blocks no longer fit one frame (confirmed
+% by a first compile: `Overfull \vbox 60.06pt too high`, the fifth block
+% silently pushed off the bottom of the visible page with no on-page trace
+% -- not merely cramped) -- split into two `columns` instead of stacking
+% all five full-width.
+%% Included in decks: test-slides
+%%
+
+\setSlideVersion{1-1-0}
+\begin{standardframe}{Highlighting a definition or formula}
+	\footnotesize
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\begin{definitionblock}{Definition, distinguished by $\triangleq$}
+				Use \texttt{definitionblock} for a definition that should stand
+				out from an ordinary \texttt{block} at a glance.
+			\end{definitionblock}
+			\begin{block}{Definition}
+				Use \texttt{block} for neutral definitions.
+			\end{block}
+			\begin{exampleblock}{Example}
+				Use \texttt{exampleblock} for worked examples.
+			\end{exampleblock}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\begin{alertblock}{Caveat}
+				Use \texttt{alertblock} to flag caveats or warnings.
+			\end{alertblock}
+			\begin{infoblock}{Info}
+				Use \texttt{infoblock} (or \texttt{gothamfloatinginfoblock} to
+				place it in a corner, see \texttt{k4p}) for supplementary
+				information.
+			\end{infoblock}
+		\end{column}
+	\end{columns}
+\end{standardframe}

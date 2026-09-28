@@ -1,0 +1,32 @@
+% Demo slide showcasing the standard content layout, including footnotes.
+% Copy from here when starting a new slide; see README.md for the
+% naming/versioning convention.
+%
+% v1-1-0 (2026-09-22, direct instruction): the innermost footnote is now a
+% real \fullcite{} example (markowitz1952, Slidemaster.bib) instead of
+% another plain "Test footnote." -- demonstrates the bibliography mechanism
+% (README.md's "Decks with a bibliography") right alongside the plain-
+% footnote demo above it, on the one slide that already showcases footnotes.
+% Needs decks/test.tex's own \usepackage{biblatex}/\addbibresource{} (see
+% that file) and the extra `biber` compile pass -- see README.md.
+%% Included in decks: test-slides
+%%
+
+\setSlideVersion{1-1-0}
+\begin{standardframe}{Standard content slide}
+	\begin{itemize}
+		\item Use \texttt{standardframe}\footnote{Test footnote.} for ordinary bullet-point content\footnote{Test footnote.}
+		\item Sub-items work as usual\footnote{This is a longer test footnote that wraps across more than one line, to demonstrate the tightened line spacing between wrapped lines of the same footnote. It needs to be quite a bit longer than before now that the footnote font itself is smaller, since more characters fit on a single line at this size. Here is some extra filler text to make sure it actually wraps: lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.}
+		\begin{itemize}
+			\item A \texttt{\textbackslash fullcite\{\}} pulls a formatted reference straight from \texttt{Slidemaster.bib}\footnote{\fullcite{markowitz1952}}
+		\end{itemize}
+	\end{itemize}
+
+	\vspace{1em}
+	\noindent Plain (non-itemized) paragraph text can mix \textbf{bold},
+	\textit{italic}, \texttt{monospace}, \textsc{small caps}, \emph{emphasis},
+	and \underline{underline}, plus beamer's semantic \alert{alerted text}
+	and the project's custom palette, e.g.\
+	\textcolor{c_secondary_blue}{blue} or
+	\textcolor{c_secondary_green}{green}.
+\end{standardframe}

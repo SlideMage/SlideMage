@@ -1,0 +1,383 @@
+## Core latex/pdflatex auxiliary files:
+*.aux
+*.lof
+*.log
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+.*.lb
+
+## Intermediate documents:
+*.dvi
+*.xdv
+*-converted-to.*
+# *.ps
+# *.eps
+
+# *.pdf/*.png/*.svg used to be blanket-ignored here (leftover from a
+# generic LaTeX .gitignore template) -- removed 2026-07-20, direct
+# instruction: this project tracks media/ images as real project assets
+# (many were already tracked despite this rule, via git add -f overriding
+# it), including generated vector figures like media/chart-*.pdf. Compiled
+# deck PDFs are a different case -- those regenerate on every compile and
+# would bloat history for no benefit, so they're excluded specifically
+# below instead of via a rule that also caught real assets.
+**/decks/*.pdf
+**/pdf/*.pdf
+# Same reasoning, one export step further downstream (pptx_export.py,
+# 2026-08-27): a deck's own "Export PPTX" button regenerates this from a
+# fresh compile too, every time it's clicked.
+**/pdf/*.pptx
+# decks/render/: baseline PDFs for a deck's front-to-back final-check
+# render/diff pass (see decks/render/compare_render.py's own docstring) --
+# same regenerate-on-every-compile reasoning as decks/*.pdf above, just one
+# directory deeper than that glob reaches. The .py tooling alongside them
+# stays tracked as normal (not covered by this pattern).
+**/decks/render/*.pdf
+
+## Source PowerPoint decks (large binaries, not meant to be tracked):
+*.pptx
+
+## Generated if empty string is given at "Please type another file name for output:"
+.pdf
+
+## Bibliography auxiliary files (bibtex/biblatex/biber):
+*.bbl
+*.bcf
+*.blg
+*-blx.aux
+*-blx.bib
+*.run.xml
+
+## Build tool auxiliary files:
+*.fdb_latexmk
+*.synctex
+*.synctex(busy)
+*.synctex.gz
+*.synctex.gz(busy)
+*.pdfsync
+*.timestamp
+
+## Build tool directories for auxiliary files
+# latexrun
+latex.out/
+
+## Custom build output directory
+.build/
+
+## Auxiliary and intermediate files from other packages:
+# algorithms
+*.alg
+*.loa
+
+# achemso
+acs-*.bib
+
+# amsthm
+*.thm
+
+# beamer
+*.nav
+*.pre
+*.snm
+*.vrb
+
+# changes
+*.soc
+
+# comment
+*.cut
+
+# cprotect
+*.cpt
+
+# elsarticle (documentclass of Elsevier journals)
+*.spl
+
+# endnotes
+*.ent
+
+# fixme
+*.lox
+
+# feynmf/feynmp
+*.mf
+*.mp
+*.t[1-9]
+*.t[1-9][0-9]
+*.tfm
+
+#(r)(e)ledmac/(r)(e)ledpar
+*.end
+*.?end
+*.[1-9]
+*.[1-9][0-9]
+*.[1-9][0-9][0-9]
+*.[1-9]R
+*.[1-9][0-9]R
+*.[1-9][0-9][0-9]R
+*.eledsec[1-9]
+*.eledsec[1-9]R
+*.eledsec[1-9][0-9]
+*.eledsec[1-9][0-9]R
+*.eledsec[1-9][0-9][0-9]
+*.eledsec[1-9][0-9][0-9]R
+
+# glossaries
+*.acn
+*.acr
+*.glg
+*.glo
+*.gls
+*.glsdefs
+
+# uncomment this for glossaries-extra (will ignore makeindex's style files!)
+# *.ist
+
+# gnuplottex
+*-gnuplottex-*
+
+# gregoriotex
+*.gaux
+*.gtex
+
+# htlatex
+*.4ct
+*.4tc
+*.idv
+*.lg
+*.trc
+*.xref
+
+# hyperref
+*.brf
+
+# knitr
+*-concordance.tex
+# TODO Comment the next line if you want to keep your tikz graphics files
+*.tikz
+*-tikzDictionary
+
+# listings
+*.lol
+
+# luatexja-ruby
+*.ltjruby
+
+# makeidx
+*.idx
+*.ilg
+*.ind
+
+# minitoc
+*.maf
+*.mlf
+*.mlt
+*.mtc[0-9]*
+*.slf[0-9]*
+*.slt[0-9]*
+*.stc[0-9]*
+
+# minted
+_minted*
+*.pyg
+
+# morewrites
+*.mw
+
+# nomencl
+*.nlg
+*.nlo
+*.nls
+
+# pax
+*.pax
+
+# pdfpcnotes
+*.pdfpc
+
+# sagetex
+*.sagetex.sage
+*.sagetex.py
+*.sagetex.scmd
+
+# scrwfile
+*.wrt
+
+# sympy
+*.sout
+*.sympy
+sympy-plots-for-*.tex/
+
+# pdfcomment
+*.upa
+*.upb
+
+# pythontex
+*.pytxcode
+pythontex-files-*/
+
+# tcolorbox
+*.listing
+
+# thmtools
+*.loe
+
+# TikZ & PGF
+*.dpth
+*.md5
+*.auxlock
+
+# todonotes
+*.tdo
+
+# vhistory
+*.hst
+*.ver
+
+# easy-todo
+*.lod
+
+# xcolor
+*.xcp
+
+# xmpincl
+*.xmpi
+
+# xindy
+*.xdy
+
+# xypic precompiled matrices and outlines
+*.xyc
+*.xyd
+
+# endfloat
+*.ttt
+*.fff
+
+# Latexian
+TSWLatexianTemp*
+
+## Editors:
+# WinEdt
+*.bak
+*.sav
+
+# Texpad
+.texpadtmp
+
+# LyX
+*.lyx~
+
+# Kile
+*.backup
+
+# KBibTeX
+*~[0-9]*
+
+# auto folder when using emacs and auctex
+./auto/*
+*.el
+
+# expex forward references with \gathertags
+*-tags.tex
+
+# standalone packages
+*.sta
+
+## Claude Code local (per-machine) settings:
+.claude/settings.local.json
+
+## Python bytecode cache (decks/*.py helper scripts, SlideMage/):
+__pycache__/
+*.pyc
+
+## Virtual environment (SlideMage's PySide6 migration, see
+## SlideMage/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
+## committed -- kept here as a legacy-path safety net only. As of
+## 2026-08-11, the real venv no longer lives inside the project folder at
+## all: this whole folder is Dropbox/SyncBackPro-synced, and a venv is
+## tens of thousands of small files whose absolute interpreter path is
+## baked in per-machine anyway (confirmed directly: a venv synced over
+## from a second PC pointed at a python.exe that doesn't exist here and
+## failed outright; the sync clients also locked/indexed its files badly
+## enough that even deleting it repeatedly timed out). The venv now lives
+## machine-locally at `%USERPROFILE%\SlideMaster\venv` (not
+## `%LOCALAPPDATA%` -- that's virtualized per-app on a machine whose
+## system Python is the Microsoft Store package, which silently broke venv
+## isolation entirely; confirmed directly, 2026-08-11), outside any synced
+## folder, one real venv per machine, auto-created/auto-migrated by
+## `SlideMage.bat` on first run -- see its own comments. This `.venv/`
+## entry just stays as a guard in case one ever gets created here again by
+## habit (e.g. `python -m venv .venv` run by hand).
+.venv/
+
+## Python build output (`pip wheel`/`python -m build`).
+build/
+dist/
+
+## SlideMage's slide-source editor: a local undo net (full timestamped
+## history, kept per slide file) for its own saves -- not meant to be
+## committed (2026-07-23):
+**/slides/.backups/
+
+## RStudio per-user session state (R_Slidemaster/), untracked 2026-07-27,
+## direct instruction. `.Rproj.user/` is RStudio's own scratch state --
+## pane layouts, breakpoints, and cached copies of open/unsaved editor
+## buffers (`sources/per/t/*-contents`) -- and is gitignored by RStudio's
+## own project template; 24 of its files plus three `.Rhistory` console
+## logs had nevertheless been committed here. The project file itself
+## (`R_Slidemaster/R_Slidemaster.Rproj`) stays tracked, as is conventional,
+## and so does every real package file (DESCRIPTION/NAMESPACE/LICENSE/
+## R/*.R/man/*.Rd). `.RData`/`.Ruserdata` are listed pre-emptively: same
+## category, not currently present.
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# Accessibility outputs: generated on demand, never committed (see
+# ALT_TEXT_NOTES.md). Transcripts are regenerated from the deck + slide
+# files + media/alt-text.json; the bake-off is a one-off model comparison.
+transcripts/
+alt-text-bakeoff.md
+
+# Compile-time slide preview PNGs (slide_snapshot.py) -- a best-effort
+# cache refreshed opportunistically on every compile that touches a slide,
+# not a build artifact worth keeping in history. Moved under previews/
+# 2026-09-18 (was a project-root folder before that), then under .previews/
+# the same day (dot-prefixed: nothing the user needs to interact with).
+**/.previews/slide_previews/
+
+# Rendered PNGs of .pdf media (media_render.py, 2026-08-26) -- same
+# regeneratable-cache reasoning as slide_previews/ above, for the Images
+# tab's own preview and Ollama drafting, both of which need a raster image
+# a .pdf media file itself isn't. Moved under previews/ 2026-09-18, then
+# .previews/ the same day (was a project-root folder before that).
+**/.previews/pdf_render_cache/
+
+# Rendered/cropped PNGs of \tikzillustration{} bodies (tikz_render.py) --
+# same regeneratable-cache reasoning again: entirely derived, on demand,
+# from a slide's own current tikz source, for the Images tab's preview and
+# Ollama drafting of a hand-drawn diagram that has no media/ file at all.
+# Moved under previews/ 2026-09-18, then .previews/ the same day (was a
+# project-root folder before that).
+**/.previews/tikz_illustration_previews/
+
+# SlideMage's own local UI preferences (app_settings.py -- currently
+# just dark mode) -- a personal taste, not project content worth
+# version-controlling/diffing on every toggle, same category as
+# .claude/settings.local.json above. Still a plain file physically inside
+# the project's .slidemage/ (not the Windows registry), so the folder's own cloud-sync
+# client -- not git -- carries it across machines; see dist/ above for the
+# identical git-ignored-but-not-sync-ignored precedent.
+**/.slidemage/app_settings.json
+
+## Scratch folder for source PDFs/pptx used while converting slides (large,
+## machine-local, never meant to be committed).
+.temp/
