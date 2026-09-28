@@ -6,13 +6,12 @@ see `PYSIDE6_MIGRATION.md`). This file is the "what and why" for future
 sessions working on this code -- the module docstrings cover the "how" at
 the code level.
 
-> This is the app half of the Slidemaster/SlideMage project. The LaTeX/
-> beamer framework it drives lives in a separate repo,
-> [github.com/stpalan/slidemaster](https://github.com/stpalan/slidemaster)
-> -- clone this repo into a `SlideMage/` folder at that project's root
-> (see its own `PROJECT_OVERVIEW.md` for the exact layout). This repo is
-> kept in sync with a larger private project via `git subtree`, so its
-> commit history reflects real development, not a one-off export.
+> How the app itself is built, module by module. The app lives in
+> `src/slidemage/` of this repository, next to the LaTeX framework it
+> drives (`latex/`) and a demo project (`example/`); see
+> [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for the layout. Before v4.0.0
+> this repository was only the app folder, exported by `git subtree` from
+> a larger private project; its history continues here.
 
 ## What it does
 
@@ -452,9 +451,20 @@ What matters when touching *this code*:
   remembered as "last used" any more) with a **"Translation prompts…"**
   button next to the Translation row (2026-09-27; see
   `qt_translation_prompts_dialog.py` below -- a separate dialog now, no
-  longer a permanent tab here), and an Ollama models tab. Close-only
-  dialog -- every field saves immediately via its own Save button, there's
-  no separate "Cancel without saving" state to reconcile.
+  longer a permanent tab here) and, below a divider, the Ollama models
+  section (2026-09-27; since v4.0.0 headed by the Ollama host URL). Since
+  v4.0.0 also an **Updates** group on the General tab (the GitHub token for
+  Info → Check for updates…, stored per user in `project.config_dir()`,
+  never in the project folder) and an **AI prompts** tab (editable system
+  prompts for image-description drafting and the slide rewrite, stored by
+  `draft_prompts.py`). The per-task model pickers are refilled by
+  `_reload_ollama_models()` whenever the host changes or a model is
+  deleted/updated; `qt_gui.py`'s `_on_open_settings()` then passes the
+  dialog's `available_models`/`vision_models` to every open picker's
+  `refresh_model_preference(s)()`, so a changed default reaches them
+  without another Ollama round trip. Close-only dialog -- every field
+  saves immediately, except the two AI prompt texts, which have their own
+  Save buttons and an unsaved-changes check in `reject()`.
 - [`qt_translation_prompts_dialog.py`](../src/slidemage/qt_translation_prompts_dialog.py) --
   `TranslationPromptsDialog`, split out of `qt_settings_dialog.py` 2026-09-27
   (direct instruction: reach it from a button next to the Translation model

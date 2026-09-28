@@ -5,26 +5,34 @@ LaTeX/beamer setup for research and teaching slides, built on the
 customization, plus SlideMage, a PySide6 GUI for compiling decks and
 managing slide IDs, image descriptions, and accessible transcripts.
 
-> **This is a trimmed copy** of a larger private project, prepared to share
-> the framework itself: the Gotham theme, the Uni Graz institution layer,
-> SlideMage, and one small demo deck (`decks/test.tex`/`test-student.tex`,
-> `slides/ZZ*`) in place of hundreds of real course slides. Read
+> **This repository is self-contained**: the framework, the app and a small
+> demo project (`example/`: `decks/test.tex`/`test-student.tex`,
+> `slides/ZZ*`) -- everything needed to compile slides and to start a
+> project of your own. Real course content lives in separate project
+> folders (any folder with a `slide_ids.csv`), which SlideMage opens. Read
 > [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) first -- it covers the core
 > concepts (slide IDs, deck versions, accessibility, Ollama) at a higher
 > level than this file, plus what to install before compiling anything.
-> This file (README.md) is the same detailed reference the original
-> project uses day to day; a few passages illustrate a point with a file
-> that isn't part of this copy (another institution's preamble, a real
-> course deck, a working-log file like `CONVERSION_NOTES.md`) -- the
-> mechanism being explained still applies regardless.
+> This file (README.md) is the detailed day-to-day reference; a few
+> passages illustrate a point with a file that isn't part of the demo
+> (another institution's preamble, a real course deck, a working-log file
+> like `CONVERSION_NOTES.md`) -- the mechanism being explained still
+> applies regardless.
+
+`stpalan/SlideMage` is the authoritative repository (it was a flat copy of
+the app folder before v4.0.0, when it took over the `latex/`/`example/`/
+`src/` structure from Jürgen Fleiß's fork, `JuergenFleiss/slidemage`,
+merged with that fork's history).
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
 | `latex/` | The framework: Gotham beamer theme (`beamer*themegotham.sty`, `gotham.dtx`), `Slidemaster_preamble_base.tex`, `Slidemaster_alt.lua`. Institution-independent. |
-| `example/` | A complete Slidemaster project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`Slidemaster_preamble_uni-graz.tex`, `schemes/`), `Slidemaster.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. |
-| `src/slidemage/` | SlideMage, the PySide6 app (formerly its own repo, merged with its history). |
+| `example/` | A complete Slidemaster project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`Slidemaster_preamble_uni-graz.tex`, `schemes/`), `Slidemaster.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
+| `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`). |
+| `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
+| `.github/workflows/` | `release.yml` builds the Windows and Linux executables for every version tag; `ci.yml` (run by hand) runs the tests and compiles the demo decks. |
 | `docs/` | Project overview, deck-version manual, SlideMage internals. |
 | `tests/` | Smoke tests, run in CI together with a compile of the demo decks. |
 
@@ -54,6 +62,31 @@ No Python install needed: build a stand-alone executable once
 ./dist/SlideMage --project example       # Linux/macOS
 dist\SlideMage.exe --project example     # Windows
 ```
+
+## Releases and updates
+
+Pushing a tag `vX.Y.Z` to `stpalan/SlideMage` makes GitHub build the
+Windows and Linux executables (`.github/workflows/release.yml`) and attach
+them, zipped, to that tag's release page. The workflow refuses a tag that
+doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
+always says which code it was built from:
+
+1. Bump `VERSION_NUMBER` and add its history entry in `version.py`, commit.
+2. `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+3. A few minutes later the release has `SlideMage-windows.zip` and
+   `SlideMage-linux.zip`.
+
+A downloaded executable can update itself: **Info → Check for updates…**
+compares its version with the newest release and, if newer, downloads and
+swaps in the new executable. Because the repository is private, that
+needs a GitHub token with read access to it (Settings → General →
+Updates, or `$SLIDEMAGE_GITHUB_TOKEN`). A source checkout is updated with
+`git pull` instead.
+
+The executable does not contain LaTeX: a project's decks still compile
+with the machine's own LuaLaTeX/biber, against the framework in this
+repository's `latex/` folder (see "Quick start" above) -- keep that
+checkout updated alongside the executable.
 
 ## Directory layout
 
@@ -866,9 +899,12 @@ institution file, since none of this depends on the palette):
   font, scaling automatically at other levels/font sizes): `\tallitem[1.5]`
   for 1.5x that, for a formula tall enough that the default doesn't read as
   enough room. Only reach for it on a genuine stacked display fraction, not
-  any small inline `\frac` embedded mid-sentence. `\tallitem`'s own optional
-  argument is the multiplier, not a pass-through to `\item`'s own custom
-  label — a line that needs both an empty `\item[]` label *and* the extra
+  any small inline `\frac` embedded mid-sentence. If the optional argument is
+  not a number it is taken as the bullet label instead (2026-09-26):
+  `\tallitem[\gothamBulletEllipsis]` is an `\item[\gothamBulletEllipsis]` with
+  the default extra headroom (`\tallitem[]` gives a label-less one) — a custom
+  label cannot be combined with a custom multiplier. A line that needs an empty
+  `\item[]` label *and* the extra
   spacing (e.g. a display equation continuing the previous `\item`'s own
   sentence rather than starting a new bulleted point) uses `\tallitemnobullet`
   instead — same drop-in replacement, same optional multiplier
@@ -1253,6 +1289,19 @@ The second argument is the person it's from, set smaller/plain/italic,
 below the yellow block and right-aligned to *its* right edge (not the
 page's usual text margin) — pass an empty second argument (`{}`) for an
 unattributed quote.
+
+Two rules for the rest of the slide:
+
+- **Source line:** put `\quotesource{...}` *before* `\quoteframe`, as every
+  quote slide does. A plain `\source{}` after it lands outside the frame
+  and produces an extra, nearly empty page carrying only the footer.
+- **Reveal steps:** the quote text may contain `\conditionalpause`,
+  `\uncover` and the like, to reveal it sentence by sentence. It is set in
+  a `\parbox` (rather than the node's own `text width`) precisely so that
+  works, and so the reveal doesn't cover the source line and footer that
+  follow it; see the comment above that node in
+  `Slidemaster_preamble_base.tex` for the two beamer/TikZ failures this
+  avoids. Existing quote slides render pixel-identically.
 
 Every piece of this — box, logo, quote text, attribution — is drawn as a
 zero-space overlay anchored to absolute page coordinates, rather than any
@@ -2086,6 +2135,52 @@ Markdown + HTML land in `transcripts/` (or the deck's own
   button) renders just the currently-selected slide and opens it in its
   own preview tab — nothing is saved to `transcripts/`, or anywhere else.
 
+## Pre-render syntax check
+
+Every path that starts a PDF render first runs a fast static check (`src/slidemage/latex_lint.py`,
+GUI in `qt_render_check.py`) over exactly the LaTeX that render will read, and only asks
+before rendering when it finds an **error**:
+
+- **Slide editor -- Render to PDF:** the editor buffer (unsaved edits included).
+- **Preview popup -- Render now** (slide editor and deck editor): the saved slide file.
+- **Create PDF** (any selection of decks, versions, chapters, presenter) and **Export PPTX**:
+  the deck file (for a per-chapter job only its preamble and that chapter) plus the slide
+  files its `\slide`-family calls load in that version -- a `\conditionalslide` or
+  `\slidestep` left out of the version is not checked -- plus any `\input`ed deck fragment
+  such as `test-slides.tex`.
+- **Update slide previews:** every slide any deck uses.
+
+No findings: the render simply starts (one log line). Warnings only: listed in the log, the
+render starts. Errors: a dialog lists them; **Cancel** (the default), **Show in editor**
+(opens the file at that line) or **Render anyway**. It is lexical -- no macro is expanded --
+so it only reports things that are wrong whatever the project's own macros do. Cost: about
+0.1 ms per slide file (a 395-slide deck: ~300 ms cold including reading the files, ~65 ms
+when nothing changed); it was run over all ~930 slide/deck files and tuned until it was quiet
+on everything that compiles.
+
+| Check | Level | What it finds |
+|---|---|---|
+| `encoding` | error | control characters (e.g. a stray backspace/form feed) or invalid UTF-8 -- LuaTeX: "Text line contains an invalid character" |
+| `braces` | error | an opening `{` never closed, a closing `}` with nothing to close (`\{`, `\}` and comments ignored) |
+| `environments` | error | `\begin{x}` without `\end{x}`, `\end{x}` without `\begin{x}`, wrong nesting order |
+| `math-dollar` | error | odd number of `$` (math left open), or `$...$` still open at a blank line |
+| `math-delims` | error | unpaired `\[ \]` or `\( \)`, different number of `\left` and `\right` |
+| `ampersand` | error | unescaped `&` in running text (allowed in tabular/array/align/matrix/tikz and in URLs) |
+| `hash` | error | unescaped `#` outside macro definitions and URLs |
+| `citation` | error | `\fullcite`/`\cite`/`\textcite`/`\parencite`/... with a key that is not in `Slidemaster.bib` |
+| `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe` pointing at a file that does not exist (extension optional) |
+| `slide-file` | error | a deck call whose `slides/<id>-current.tex` / `-vX-Y-Z.tex` does not exist |
+| `underscore` | warning | `_` in running text outside math, tikz and name/path arguments ("Missing $ inserted") |
+| `caret` | warning | `^` in running text outside math (`10^6` typed without `$...$`) |
+| `percent` | warning | `5% growth`: a `%` right after a digit followed by more text -- the rest of the line becomes a comment |
+| `overlay` | warning | `\only<2-{...}` -- overlay specification without its closing `>` |
+| `optional-arg` | warning | `\item[label` without `]` on that line |
+
+Inside `verbatim`/`lstlisting`, `\verb`, `\iffalse ... \fi`, `\ExplSyntaxOn`/`\makeatletter`
+regions and macro-definition bodies the character checks are skipped. Not checked (needs a
+real TeX run): undefined macros, wrong argument counts, missing packages, anything that
+depends on macro expansion.
+
 ## Slide previews
 
 Every compile that touches a slide — rendering it on its own, or compiling
@@ -2170,8 +2265,9 @@ deck decides where it appears and which steps show, per deck version:
   lands there); later ones do not, so there is no "multiply defined" warning.
 - SlideMage: the deck editor lists the calls (with their versions), `Included in decks`
   headers count them, a transcript numbers them like `\conditionalslide`, the appendix
-  TOC shows the slide once, and slide rename follows the id. Steps are edited in the deck
-  file (the variant dropdown does not offer `\slidestep`).
+  TOC shows the slide once, and slide rename follows the id. Since 2026-09-26 the variant
+  dropdown (deck editor rows and the "Add slide" dialog) offers `\slidestep`, with the
+  version checkboxes and a "steps" field (`1,2`, `2-`, `1-2,4`) next to it.
 
 ### List labels: where they start
 

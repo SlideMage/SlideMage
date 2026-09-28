@@ -7,10 +7,10 @@ is a PySide6 (Qt) desktop app that sits on top of it: compiling decks,
 managing slide IDs and versions, drafting/reviewing image descriptions via
 a local Ollama model, and generating accessible transcripts.
 
-This is a **trimmed copy** of a larger private project (hundreds of real
-course slides, two more institution templates, several real course decks),
-shared to hand over the framework and workflow, not the course content.
-What's here: the Gotham theme, the Uni Graz institution layer, and one
+This repository holds the framework and the app, not course content:
+real slides and decks live in separate project folders (the original one
+has hundreds of course slides, two more institution templates and several
+real course decks) that SlideMage opens. What's here: the Gotham theme, the Uni Graz institution layer, and one
 small demo deck (~20 slides, all with uppercase test IDs — see "Slide IDs"
 below) that exercises every layout, the deck-version/reveal-step system,
 and the image-accessibility pipeline end to end. Everything below was
@@ -21,8 +21,7 @@ described.
 framework (Gotham theme, `Slidemaster_preamble_base.tex`,
 `Slidemaster_alt.lua`); `example/` is a complete Slidemaster *project* —
 slides, decks, media, the Uni Graz institution layer and `slide_ids.csv`,
-which marks a project's root; `src/slidemage/` is SlideMage, the app
-(formerly its own repo, merged in with its full history). Paths like
+which marks a project's root; `src/slidemage/` is SlideMage, the app. Paths like
 `decks/…`, `slides/…` or `media/…` in these docs are relative to the
 project folder, i.e. `example/` here.
 
@@ -159,8 +158,8 @@ license, read live from the `LICENSE` file).
 
 1. **Clone the repo:**
    ```bash
-   git clone <repo-url> slidemaster
-   cd slidemaster
+   git clone https://github.com/stpalan/SlideMage.git
+   cd SlideMage
    ```
 2. **A LaTeX distribution with LuaLaTeX.** TeX Live is the natural choice
    on Linux/macOS; MiKTeX on Windows. `lualatex` is the *only* supported
