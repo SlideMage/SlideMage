@@ -1,5 +1,11 @@
 """Fetch a deck's linked Uni Graz course and insert admin slides from it:
-a course-sessions table and/or a title slide, each optional."""
+a course-sessions table and/or a title slide, each optional.
+
+The slides follow the deck's own \\decklanguage: an English deck gets
+English table headings, its German schedule terms translated
+(course_schedule.translate_schedule()), UGO's English course title and
+semester on the title slide, and EN instead of DE in the new slides'
+id-slugs."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from . import course_schedule, deck_editor, slide_ids
 from .deck_scan import Deck
+from .transcript import deck_language_of
 
 
 # Keep an in-flight request alive if its dialog is closed before the request ends.
@@ -41,9 +48,10 @@ class _AdminDataFetcher(QThread):
 
     loaded = Signal(object, object)
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, language: str) -> None:
         super().__init__()
         self.url = url
+        self.language = language
 
     def run(self) -> None:
         try:
@@ -51,7 +59,7 @@ class _AdminDataFetcher(QThread):
         except Exception as exc:
             schedule = str(exc)
         try:
-            detail: object = course_schedule.fetch_course_detail(self.url)
+            detail: object = course_schedule.fetch_course_detail(self.url, self.language)
         except Exception as exc:
             detail = str(exc)
         self.loaded.emit(schedule, detail)
@@ -64,9 +72,10 @@ def _build_slide_source(body: str) -> str:
     return slide_ids.build_new_slide_header() + "\r\n".join(lines)
 
 
-def build_sessions_slide_source(table: str) -> str:
+def build_sessions_slide_source(table: str, language: str = "de") -> str:
+    title = course_schedule.LABELS.get(language, course_schedule.LABELS["de"])["title"]
     return _build_slide_source("\n".join((
-        r"\begin{standardframe}{Abhaltungstermine}", table.strip(), r"\end{standardframe}",
+        r"\begin{standardframe}{" + title + "}", table.strip(), r"\end{standardframe}",
     )))
 
 
@@ -76,6 +85,7 @@ def build_title_slide_source(titleframe_call: str) -> str:
 
 def insert_admin_slides(
     deck: Deck, position: deck_editor.InsertPosition, slide_specs: list[tuple[str, str]],
+    language: str = "de",
 ) -> list[Path]:
     """Create one new slide per ``(id_suffix, slide_source)`` spec, then add
     all their calls to the deck in one edit, in order, at the insert
@@ -86,7 +96,7 @@ def insert_admin_slides(
     try:
         for id_suffix, source in slide_specs:
             slide_id = slide_ids.mint_slide_id()
-            id_slug = f"{slide_id}-DE-{id_suffix}"
+            id_slug = f"{slide_id}-{'EN' if language == 'en' else 'DE'}-{id_suffix}"
             slide_path = slide_ids.SLIDES_DIR / f"{id_slug}-current.tex"
             slide_path.parent.mkdir(parents=True, exist_ok=True)
             # Reserve the ID before editing the deck, like the ordinary Add slide path.
@@ -119,6 +129,8 @@ class AdminSlidesDialog(QDialog):
         self.selected_group: course_schedule.CourseGroup | None = None
         self._lecturer_checks: list[tuple[QCheckBox, course_schedule.Lecturer]] = []
         self.slide_specs: list[tuple[str, str]] = []
+        # "en" or "de", as a compile of this deck would use.
+        self.language = deck_language_of(deck.text)
         self._positions = deck_editor.slide_insert_positions(deck)
         self.setWindowTitle("Admin slides")
         self.resize(790, 620)
@@ -186,7 +198,7 @@ class AdminSlidesDialog(QDialog):
         return self._positions[self.position_combo.currentIndex()]
 
     def _start_fetch(self) -> None:
-        fetcher = _AdminDataFetcher(self.deck.course_url or "")
+        fetcher = _AdminDataFetcher(self.deck.course_url or "", self.language)
         app = QApplication.instance()
         if app is not None and not app.property("_slidemage_admin_slides_quit_hook"):
             app.aboutToQuit.connect(_wait_for_fetchers)
@@ -256,8 +268,12 @@ class AdminSlidesDialog(QDialog):
             call = course_schedule.render_title_slide(self.detail, selected)
             specs.append(("Title-Slide", build_title_slide_source(call)))
         if self.sessions_group.isChecked() and self.schedule is not None and self.selected_group is not None:
-            table = course_schedule.render_group_table(self.selected_group)
-            specs.append(("Course-Sessions", build_sessions_slide_source(table)))
+            group = self.selected_group
+            if self.language == "en":
+                group = course_schedule.translate_schedule(
+                    course_schedule.CourseSchedule((group,))).groups[0]
+            table = course_schedule.render_group_table(group, self.language)
+            specs.append(("Course-Sessions", build_sessions_slide_source(table, self.language)))
         self.slide_specs = specs
         self.preview.setPlainText("\n\n".join(source for _, source in specs))
         self.insert_button.setEnabled(bool(specs))

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import re
 from typing import Union
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
@@ -104,8 +105,8 @@ def course_data_url(course_url: str) -> str:
 
 def _get_json(url: str, label: str) -> bytes:
     # The server picks each text field's default language from
-    # Accept-Language; ask for German explicitly, since the generated slides
-    # are German. _german() below doesn't rely on this either way.
+    # Accept-Language; ask for German, the schedule's source language.
+    # _localized() below picks translations explicitly either way.
     request = Request(url, headers={"Accept": "application/json", "Accept-Language": "de"})
     try:
         with urlopen(request, timeout=15) as response:  # nosec B310: URL is validated by the caller
@@ -125,18 +126,25 @@ def fetch_schedule(course_url: str) -> CourseSchedule:
     return parse_schedule(_get_json(course_groups_url(course_url), "course groups"))
 
 
-def fetch_course_detail(course_url: str) -> CourseDetail:
-    """Download and parse a public Uni Graz course's title/number/semester/lecturers."""
-    return parse_course_detail(_get_json(course_data_url(course_url), "course data"))
+def fetch_course_detail(course_url: str, language: str = "de") -> CourseDetail:
+    """Download and parse a public Uni Graz course's title/number/semester/lecturers,
+    with the title and semester in `language` ("de" or "en") where UGO has it."""
+    return parse_course_detail(_get_json(course_data_url(course_url), "course data"), language)
 
 
-def _german(langdata: dict | None) -> str:
-    """The German text of a UGO "langdata" field, else its default value."""
+def _localized(langdata: dict | None, language: str = "de") -> str:
+    """A UGO "langdata" field's text in `language`, else German, else its
+    default value -- stripped, since UGO's translations can carry stray
+    whitespace."""
     if not langdata:
         return ""
-    for translation in (langdata.get("translations") or {}).get("translation") or []:
-        if translation.get("lang") == "de" and translation.get("value"):
-            return translation["value"].strip()
+    translations = {
+        translation.get("lang"): translation.get("value")
+        for translation in (langdata.get("translations") or {}).get("translation") or []
+    }
+    for lang in (language, "de"):
+        if translations.get(lang):
+            return translations[lang].strip()
     return (langdata.get("value") or "").strip()
 
 
@@ -149,7 +157,7 @@ def _parse_appointment(appointment: dict) -> CourseSession:
         start=start.strftime("%H:%M"),
         end=end.strftime("%H:%M"),
         location=(appointment.get("resourceName") or "").strip(),
-        event=_german(event_type.get("name")),
+        event=_localized(event_type.get("name")),
         remark=(appointment.get("comment") or "").strip(),
     )
 
@@ -202,9 +210,10 @@ def parse_schedule(json_source: Union[bytes, str]) -> CourseSchedule:
     )
 
 
-def parse_course_detail(json_source: Union[bytes, str]) -> CourseDetail:
+def parse_course_detail(json_source: Union[bytes, str], language: str = "de") -> CourseDetail:
     """Parse the ``slc.tm.cp`` course-data REST response without making a
-    network request. Raises ``ValueError`` if it isn't that response shape."""
+    network request, with the title and semester in `language` where UGO
+    has it. Raises ``ValueError`` if it isn't that response shape."""
     try:
         payload = json.loads(json_source)
         course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
@@ -218,8 +227,8 @@ def parse_course_detail(json_source: Union[bytes, str]) -> CourseDetail:
         )
         return CourseDetail(
             number=course["courseNumber"]["courseNumber"],
-            title=_german(course["courseTitle"]),
-            semester=_german(course["semesterDto"]["semesterDesignation"]),
+            title=_localized(course["courseTitle"], language),
+            semester=_localized(course["semesterDto"]["semesterDesignation"], language),
             lecturers=lecturers,
         )
     except _SHAPE_ERRORS as exc:
@@ -230,10 +239,119 @@ def _escape_latex(text: str) -> str:
     return "".join(_LATEX_SPECIALS.get(character, character) for character in text)
 
 
-def render_group_table(group: CourseGroup) -> str:
-    """Render one group as safe LaTeX that can be placed inside a frame."""
+# The slide's own wording per deck language ("de"/"en", as
+# transcript.deck_language_of() reports it). UNIGRAZonline serves the
+# schedule in German; an English deck gets its table translated by
+# translate_to_english() below (v4.1.0, direct instruction).
+LABELS = {
+    "de": {
+        "title": "Abhaltungstermine",
+        "date": "Datum", "time": "Zeit", "location": "Ort", "event": "Termin",
+        "no_sessions": "Keine Termine verfügbar.",
+    },
+    "en": {
+        "title": "Course sessions",
+        "date": "Date", "time": "Time", "location": "Location", "event": "Session",
+        "no_sessions": "No sessions available.",
+    },
+}
+
+# German terms UNIGRAZonline uses in group names, event types and
+# remarks. Whole words only, longest first. Group names and event types
+# are translated term by term ("Gruppe Wirtschaftsinformatik" -> "Group
+# Wirtschaftsinformatik"); a free-text remark only when every word in it
+# is known, since a half-translated sentence reads worse than German.
+_GERMAN_TO_ENGLISH = {
+    "Standardgruppe": "Standard group",
+    "Gruppe": "Group",
+    "Abhaltung": "Class",
+    "Vorbesprechung": "Preliminary meeting",
+    "Nachbesprechung": "Review meeting",
+    "Einführung": "Introduction",
+    "Vorlesung": "Lecture",
+    "Übung": "Exercise",
+    "Tutorium": "Tutorial",
+    "Präsentation": "Presentation",
+    "Präsentationen": "Presentations",
+    "Prüfung": "Exam",
+    "Klausur": "Exam",
+    "Zwischenprüfung": "Midterm exam",
+    "Endprüfung": "Final exam",
+    "Abschlussprüfung": "Final exam",
+    "Nachtermin": "Resit",
+    "Wiederholungsprüfung": "Resit exam",
+    "Ersatztermin": "Replacement session",
+    "Zusatztermin": "Additional session",
+    "Blocktermin": "Block session",
+    "Exkursion": "Excursion",
+    "Sprechstunde": "Office hours",
+    "Fragestunde": "Q&A session",
+    "Ausfall": "Cancelled",
+    "entfällt": "cancelled",
+    "abgesagt": "cancelled",
+    "verschoben": "postponed",
+    "Hörsaal": "Lecture hall",
+    "Seminarraum": "Seminar room",
+    "und": "and",
+    "bis": "to",
+    "mit": "with",
+    "ohne": "without",
+    "Anwesenheitspflicht": "attendance required",
+    "Anmeldung": "registration",
+}
+_GERMAN_WORD_RE = re.compile(
+    r"(?<!\w)(" + "|".join(
+        re.escape(word) for word in sorted(_GERMAN_TO_ENGLISH, key=len, reverse=True)
+    ) + r")(?!\w)"
+)
+
+
+# Letters only: numbers ("Gruppe 2", "Prüfung 1") need no translation.
+_WORD_RE = re.compile(r"[^\W\d_]+")
+
+
+def translate_to_english(text: str, whole_only: bool = False) -> str:
+    """Replace the known German schedule terms in `text` with English.
+    With `whole_only`, `text` comes back unchanged unless every word in it
+    is a known term."""
+    translated = _GERMAN_WORD_RE.sub(lambda match: _GERMAN_TO_ENGLISH[match.group(1)], text)
+    if whole_only and _WORD_RE.search(_GERMAN_WORD_RE.sub(" ", text)):
+        return text
+    return translated
+
+
+def translate_schedule(schedule: CourseSchedule) -> CourseSchedule:
+    """The same schedule with group names, event types and (fully known)
+    remarks translated from German to English; dates, times and rooms
+    unchanged."""
+    return CourseSchedule(
+        truncated=schedule.truncated,
+        groups=tuple(
+            CourseGroup(
+                name=translate_to_english(group.name),
+                sessions=tuple(
+                    CourseSession(
+                        date=session.date, start=session.start, end=session.end,
+                        location=session.location,
+                        event=translate_to_english(session.event),
+                        remark=translate_to_english(session.remark, whole_only=True),
+                    )
+                    for session in group.sessions
+                ),
+            )
+            for group in schedule.groups
+        ),
+    )
+
+
+def render_group_table(group: CourseGroup, language: str = "de") -> str:
+    """Render one group as safe LaTeX that can be placed inside a frame,
+    with the column headings in `language` ("de" or "en"). The cells are
+    used as they are -- translate_schedule() first for an English deck."""
+    labels = LABELS.get(language, LABELS["de"])
     if not group.sessions:
-        return "\\small \\textbf{" + _escape_latex(group.name) + "}\\par Keine Termine verfügbar."
+        return ("\\small \\textbf{" + _escape_latex(group.name) + "}\\par "
+                + labels["no_sessions"])
 
     rows = []
     for session in group.sessions:
@@ -242,6 +360,8 @@ def render_group_table(group: CourseGroup) -> str:
         rows.append(" & ".join(_escape_latex(value) for value in (
             session.date, time, session.location, detail,
         )) + r" \\")
+    heading = " & ".join(
+        "\\textbf{" + labels[key] + "}" for key in ("date", "time", "location", "event"))
     return "\n".join((
         r"\scriptsize",
         "\\textbf{" + _escape_latex(group.name) + "}\\par\\vspace{2pt}",
@@ -249,7 +369,7 @@ def render_group_table(group: CourseGroup) -> str:
         r"\setlength{\tabcolsep}{2pt}",
         r"\begin{tabular}{@{}p{.13\linewidth}p{.14\linewidth}p{.22\linewidth}p{.42\linewidth}@{}}",
         r"\toprule",
-        r"\textbf{Datum} & \textbf{Zeit} & \textbf{Ort} & \textbf{Termin} \\",
+        heading + r" \\",
         r"\midrule",
         *rows,
         r"\bottomrule",

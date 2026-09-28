@@ -1240,7 +1240,8 @@ class DeckEditorTab(QWidget):
             return
         previous_text = self.deck.text
         try:
-            slide_paths = insert_admin_slides(self.deck, dialog.position, dialog.slide_specs)
+            slide_paths = insert_admin_slides(
+                self.deck, dialog.position, dialog.slide_specs, dialog.language)
         except (OSError, ValueError, deck_editor.StaleFileError) as exc:
             QMessageBox.critical(self, "Admin slides failed", str(exc))
             return

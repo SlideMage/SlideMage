@@ -113,6 +113,7 @@ RUN_NUMBER_RE = re.compile(r"^Run number (\d+) of rule '([^']+)'")
 TEMP_DIR = PROJECT_ROOT / ".temp"
 
 SPINNER_INTERVAL_MS = 400
+STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "icon.ico"
 
 
@@ -133,6 +134,9 @@ class CompileSignals(QObject):
     # everything else here. Signal(object) rather than Signal(QPushButton)
     # so this can carry any widget type, not just buttons.
     enable_button = Signal(object)
+    # The startup update check's result (updater.UpdatePlan, or the
+    # updater.UpdateError it failed with), from its background thread.
+    update_check_done = Signal(object)
 
 
 class SlideMageWindow(QMainWindow):
@@ -189,6 +193,7 @@ class SlideMageWindow(QMainWindow):
         self.signals.log.connect(self._log)
         self.signals.enable_button.connect(lambda w: w.setEnabled(True))
         self.signals.batch_done.connect(self._on_batch_done)
+        self.signals.update_check_done.connect(self._on_startup_update_check_done)
 
         central = QWidget()
         outer = QVBoxLayout(central)
@@ -611,7 +616,7 @@ class SlideMageWindow(QMainWindow):
     def _on_check_for_updates(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            release = updater.fetch_latest_release()
+            releases = updater.fetch_releases()
         except updater.UpdateError as exc:
             QMessageBox.warning(self, "Check for updates", str(exc))
             return
@@ -619,30 +624,170 @@ class SlideMageWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
         current = version_mod.VERSION_NUMBER
-        if not updater.is_newer(release.tag, current):
+        plan = updater.plan_update(releases, current)
+        if plan.latest is None:
             QMessageBox.information(
-                self, "Check for updates",
-                f"SlideMage {current} is up to date (latest release: {release.tag}).",
-            )
+                self, "Check for updates", f"SlideMage {current} is up to date.")
             return
         if not updater.can_self_update():
             QMessageBox.information(
                 self, "Update available",
-                f"SlideMage {release.tag} is available (you have {current}).\n\n"
+                f"SlideMage {plan.latest.tag} is available (you have {current}).\n\n"
                 "This copy runs from source, so it can't replace itself -- "
-                f"update it with git pull, or download the release from:\n{release.page_url}",
+                f"update it with git pull, or download the release from:\n{plan.latest.page_url}",
             )
             return
+        self._offer_update(plan, updater.get_update_mode(), manual=True)
+
+    # -- update check on start (v4.1.0, direct instruction) --------------------
+    #
+    # Per the update mode in Preferences → General (updater.get_update_mode()):
+    # "off" skips it, "ask" offers a newer release, "auto" installs it (the
+    # restart is still asked about). A release that breaks with the past is
+    # always asked about, whatever the mode. Runs once per start, so a
+    # declined update is not offered again until the next one.
+
+    def schedule_startup_update_check(self) -> None:
+        if not updater.can_self_update():
+            return  # a copy run from source is updated with git
+        if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
+            return
+        QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, self._startup_update_check)
+
+    def _startup_update_check(self) -> None:
+        def work() -> None:
+            try:
+                result = updater.plan_update(
+                    updater.fetch_releases(), version_mod.VERSION_NUMBER)
+            except updater.UpdateError as exc:
+                result = exc
+            self.signals.update_check_done.emit(result)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_startup_update_check_done(self, result) -> None:
+        """Never a popup for a failed check or an up-to-date copy -- only
+        the log, so an offline start stays quiet."""
+        if isinstance(result, updater.UpdateError):
+            self.log(f"Update check failed: {result}")
+            return
+        if result.latest is None:
+            self.log(f"SlideMage {version_mod.VERSION_NUMBER} is up to date.")
+            return
+        mode = updater.get_update_mode()
+        if mode == updater.UPDATE_MODE_OFF:
+            return  # switched off while the check was running
+        self._offer_update(result, mode, manual=False)
+
+    def _offer_update(self, plan: updater.UpdatePlan, mode: str, manual: bool) -> None:
+        """Offer (or, in "auto" mode, install) `plan.latest`. `manual` is
+        Info → Check for updates…, which always asks with a plain Yes/No."""
+        latest = plan.latest
+        if latest is None:
+            return
+        if plan.breaking:
+            choice = self._ask_breaking_update(plan)
+            if choice == "install":
+                self._download_and_install_update(latest)
+            elif choice == "stay" and plan.safe is not None:
+                if mode == updater.UPDATE_MODE_AUTO or self._confirm_safe_update(plan.safe):
+                    self._download_and_install_update(plan.safe)
+            return
+        if manual:
+            reply = QMessageBox.question(
+                self, "Update available",
+                f"SlideMage {latest.tag} is available (you have "
+                f"{version_mod.VERSION_NUMBER}).\n\nDownload it and replace this copy now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._download_and_install_update(latest)
+            return
+        if mode == updater.UPDATE_MODE_AUTO:
+            self.log(f"Installing SlideMage {latest.tag} (updates install automatically)")
+            self._download_and_install_update(latest)
+            return
+        self._apply_update_choice(self._ask_update_choice(latest), latest)
+
+    def _ask_update_choice(self, release: updater.Release) -> str:
+        """"install", "later", "auto" or "off"."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Update available")
+        box.setText(
+            f"SlideMage {release.tag} is available (you have {version_mod.VERSION_NUMBER}).")
+        box.setInformativeText(
+            "Install it now? You can also change how SlideMage handles updates "
+            "(Preferences → General).")
+        install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
+        later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        auto = box.addButton("Always install automatically", QMessageBox.ButtonRole.ActionRole)
+        off = box.addButton("Stop checking for updates", QMessageBox.ButtonRole.ActionRole)
+        box.setDefaultButton(install)
+        box.setEscapeButton(later)
+        box.exec()
+        return {install: "install", auto: "auto", off: "off"}.get(box.clickedButton(), "later")
+
+    def _apply_update_choice(self, choice: str, release: updater.Release) -> None:
+        if choice in ("auto", "off"):
+            mode = updater.UPDATE_MODE_AUTO if choice == "auto" else updater.UPDATE_MODE_OFF
+            try:
+                updater.set_update_mode(mode)
+            except OSError as exc:
+                self.log(f"Couldn't save the update setting: {exc}")
+            else:
+                self.log(
+                    "Updates will be installed automatically (Preferences → General)"
+                    if choice == "auto" else
+                    "SlideMage will no longer check for updates on start "
+                    "(Preferences → General; Info → Check for updates… still works)")
+        if choice in ("install", "auto"):
+            self._download_and_install_update(release)
+        elif choice == "later":
+            self.log(f"SlideMage {release.tag} is available; not installed for now")
+
+    def _ask_breaking_update(self, plan: updater.UpdatePlan) -> str:
+        """"install", "stay" or "later" -- asked whatever the update mode."""
+        latest = plan.latest
+        current = version_mod.VERSION_NUMBER
+        notes = [note for release in plan.breaking for note in updater.breaking_notes(release)]
+        if not notes:
+            notes = [
+                f"The major version number changes ({current} → {latest.tag}); "
+                f"see the release notes: {latest.page_url}"
+            ]
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("This update changes how SlideMage works")
+        box.setText(
+            f"SlideMage {latest.tag} is available (you have {current}). It breaks "
+            "with the past -- some things may no longer work the way they did:")
+        box.setInformativeText("\n\n".join(notes))
+        install = box.addButton(f"Install {latest.tag} anyway", QMessageBox.ButtonRole.AcceptRole)
+        stay = None
+        if plan.safe is not None:
+            major = (updater.parse_version(current) or (0,))[0]
+            stay = box.addButton(f"Stay on v{major}.x", QMessageBox.ButtonRole.ActionRole)
+        later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(later)
+        box.setEscapeButton(later)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is install:
+            return "install"
+        if stay is not None and clicked is stay:
+            return "stay"
+        return "later"
+
+    def _confirm_safe_update(self, release: updater.Release) -> bool:
         reply = QMessageBox.question(
             self, "Update available",
-            f"SlideMage {release.tag} is available (you have {current}).\n\n"
-            "Download it and replace this copy now?",
+            f"Install SlideMage {release.tag} instead? It has no breaking changes.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        self._download_and_install_update(release)
+        return reply == QMessageBox.StandardButton.Yes
 
     def _download_and_install_update(self, release: updater.Release) -> None:
         executable = Path(sys.executable)
@@ -1975,6 +2120,7 @@ def main() -> None:
     window = SlideMageWindow(theme)
     window.show()
     splash.close()
+    window.schedule_startup_update_check()
     sys.exit(app.exec())
 
 

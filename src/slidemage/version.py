@@ -14,6 +14,16 @@ add_deck_headers.py) -- patch for a small fix, minor for a new feature or
 UI change, major for a breaking/structural change. Never leave it stale;
 a version number nobody trusts is worse than none at all.
 
+Breaking releases (v4.1.0): a release that breaks with the past -- a
+project, deck, setting or workflow that worked before no longer does, or
+now behaves differently -- raises the major number AND its history entry
+below gets a paragraph of its own starting "BREAKING:" that says what
+changes and what to do about it. The release workflow copies the entry
+into the GitHub release notes (packaging/release_notes.py, which refuses a
+major bump without that paragraph), and the updater always asks before
+installing such a release, even when updates install automatically
+(updater.plan_update()). Raising project.PROJECT_FORMAT is always breaking.
+
 Estimated at v2.9.0 on 2026-07-28 from this app's commit history (`git log
 --oneline -- slidemanager/`): v1.x covered the original compile/archive
 tool through its Stop-compilation button; v2.0 began with the deck
@@ -1761,16 +1771,18 @@ v3.41.0 (2026-09-28, direct instructions): (1) "Create PDF" and "Export PPTX" no
 v3.41.1 (2026-09-28, direct instructions): slide_ids.BANNED_WORDS grows from just "pee" to 16 entries -- sex, wtf, ass, cum, tit, fag, cnt, kkk, fap, ffs, poo, hos, gun, gay, rip added, none colliding with any existing slide id so no rename was needed. Mirrored in .scripts/R_Slidemaster/R/slide.new.id.R's own denylist.
 
 v4.0.0 (2026-09-28, direct instructions): SlideMage becomes a stand-alone, installable app in its own repository, stpalan/SlideMage, the authoritative one -- no longer a folder inside the SlideMaster project. The repository takes over the structure of Jürgen Fleiß's fork (JuergenFleiss/slidemage), merged with that fork's full history: the app as a Python package in src/slidemage (pyproject.toml; pip install -e . gives a slidemage command), the LaTeX framework in latex/ (Gotham theme, Slidemaster_preamble_base.tex, Slidemaster_alt.lua), a self-contained demo project in example/ (also the template for a new project), docs/, tests/, and GitHub Actions that build the Windows and Linux executables for every version tag (release.yml; the tag must equal VERSION_NUMBER). A project is any folder with a slide_ids.csv, chosen by --project, $SLIDEMASTER_PROJECT, an upward search, or the last project opened; per-project settings live in <project>/.slidemage/. From the fork: Open/create project, ODP/PPTX import, course schedule and course links, section editing and slide moving in the deck editor, editable slide numbers, Info -> Check for updates (now reading stpalan/SlideMage's releases; the GitHub token goes in Settings -> General -> Updates), editable AI prompts (Settings -> AI prompts), the Ollama host setting, Copy/Clear log. Kept from this line where both changed the same thing: the per-task default AI models (the fork's single 'Other AI tasks' default is dropped; its live refresh of open model pickers is kept and now follows the per-task defaults), the Settings dialog layout with translation prompts in their own dialog, the deck editor's Find-slide box and Add-slide button (the fork's inline 'Add first slide' button is dropped as a duplicate). Also: the splash screen is back for the Windows executable (the fork had dropped it); the version string's commit time now comes from the app's own checkout rather than the project's; the Settings and Translation prompts dialogs no longer open extra wide; the demo project's .latexmkrc files now work under MiKTeX with Git for Windows' Perl (it reports itself as 'cygwin' with /d/... paths, which left TEXINPUTS unusable); latex/ and example/ carry SlideMaster's framework and demo changes up to 2026-09-28. Version numbers v3.30.0 to v3.33.2 exist twice -- this repository's and the fork's (labelled "Jürgen Fleiß's fork" above) are different changes; both lines are merged here.
+
+v4.1.0 (2026-09-28, direct instructions): (1) Settings -> AI prompts has three pages, Image descriptions, Slide rewrite and Translation; the translation prompts (default prompt and per-model overrides) moved there from the dialog behind the AI models tab's "Translation prompts…" button, which is gone (qt_translation_prompts_panel.py replaces qt_translation_prompts_dialog.py; unsaved text on the Translation page is asked about when Settings closes, like the other prompts). (2) Update behaviour: Settings -> General -> Updates chooses "Don't check for updates", "Check for updates and ask before installing" (default) or "Check for updates and install them automatically", stored per user and machine next to the GitHub token (updater.get_update_mode()). The packaged app checks three seconds after it starts, on a background thread; a failed check or an up-to-date copy only goes to the log. In "ask" mode a newer release offers Install now / Not now / Always install automatically / Stop checking for updates; "auto" installs and still asks before restarting. (3) Breaking releases: a release whose notes have a paragraph starting "BREAKING:" (or a "## Breaking changes" section), or whose major number is higher, is always asked about, even in automatic mode -- the dialog shows those paragraphs and offers Install anyway / Stay on vN.x (the newest release before the first breaking one) / Not now; every release between the running one and the newest counts (updater.plan_update(), using the release list instead of only the latest release). Convention, documented at the top of this docstring and in the README: a breaking release raises the major number and its history entry here gets a BREAKING: paragraph; the release workflow publishes the entry as the release notes (packaging/release_notes.py) and fails a major bump without that paragraph. (4) Project format guard: opening a project writes .slidemage/project.json ({"format": 1, "last_app_version": ...}, meant to be committed); a project whose format is newer than the app's gets a warning before it opens (Open anyway / Quit) and its file is left alone. (5) Import sessions follows the deck's \\decklanguage: an English deck gets "Course sessions" with Date/Time/Location/Session, its German group names, session types and (fully known) remarks translated from a fixed word list (course_schedule.translate_schedule()), and the slide is named <id>-EN-Course-Sessions. (6) Transcripts omit colour: \\textcolor, \\color, \\colorbox, \\fcolorbox, \\cellcolor, \\rowcolor and \\columncolor keep only their text -- before, the colour name was glued to it ("c_primary_highlightdata dredging"). Checked on all 14 SlideMaster decks: 427 colour specs removed, no other change. Not a breaking release: settings, prompts, projects and decks all keep working as before.
 """
 from __future__ import annotations
 
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v4.0.0"
+VERSION_NUMBER = "v4.1.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
@@ -1790,6 +1802,10 @@ class HistoryEntry:
     version: str
     meta: str          # whatever's in parens -- usually a date + reason
     description: str
+    # The same text split at blank lines, each paragraph's own line wraps
+    # joined -- keeps a "BREAKING:" paragraph recognizable
+    # (packaging/release_notes.py, updater.breaking_notes()).
+    paragraphs: list[str] = field(default_factory=list)
 
 
 def parse_history() -> list[HistoryEntry]:
@@ -1806,7 +1822,12 @@ def parse_history() -> list[HistoryEntry]:
         version, meta, body = match.group(1), match.group(2), match.group(3)
         meta = re.sub(r"\s+", " ", meta).strip()
         description = re.sub(r"\s+", " ", body).strip()
-        entries.append(HistoryEntry(version=version, meta=meta, description=description))
+        paragraphs = [
+            re.sub(r"\s+", " ", paragraph).strip()
+            for paragraph in re.split(r"\n\s*\n", body) if paragraph.strip()
+        ]
+        entries.append(HistoryEntry(
+            version=version, meta=meta, description=description, paragraphs=paragraphs))
     return entries
 
 

@@ -1,23 +1,20 @@
-"""Translation prompt configuration (2026-08-25; split out of
-qt_settings_dialog.py's own tabbed dialog into its own window 2026-09-27,
-direct instruction: reached from Settings -> AI models' "Translation
-prompts…" button, next to the Translation model picker, rather than
-living as a permanent tab of its own).
+"""Translation prompt configuration, as the "Translation" page of the
+Settings dialog's "AI prompts" tab (v4.1.0, direct instruction: the
+translation prompts belong with the other AI prompts). Replaces
+qt_translation_prompts_dialog.py's TranslationPromptsDialog, which was
+reached from a "Translation prompts…" button on the AI models tab
+(2026-09-27 to v4.0.0); before that it was a tab of its own (2026-08-25).
 
 Per-(model, source language, target language) prompt overrides
 (translation_prompts.py), used by alt_draft.OllamaTranslationBackend for
 both the Images tab's per-image "Translate now" button and its
-"Translate all…" batch. Unchanged behavior from the old tab -- only the
-container moved, plus this dialog's own unsaved-changes-on-close check
-(previously the SettingsDialog's own reject() covered both prompt forms
-and this app-models picker together; now each dialog only has its own
-state to worry about)."""
+"Translate all…" batch. The two forms here only save on their own Save
+buttons; SettingsDialog.reject() asks about unsaved text through
+dirty_descriptions()/save_dirty() below."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
-    QDialogButtonBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -28,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from . import alt_draft
@@ -42,12 +40,10 @@ def _note_label(text: str) -> QLabel:
     return label
 
 
-class TranslationPromptsDialog(QDialog):
-    def __init__(self, parent, app) -> None:
+class TranslationPromptsPanel(QWidget):
+    def __init__(self, app, parent=None) -> None:
         super().__init__(parent)
         self.app = app
-        self.setWindowTitle("Translation prompts")
-        self.resize(680, 520)
 
         self._default_prompt_snapshot: tuple[str, int] | None = None
         self._prompt_form_snapshot: tuple[str, str, str, str, int] | None = None
@@ -81,15 +77,17 @@ class TranslationPromptsDialog(QDialog):
         outer.addWidget(default_group)
         self._load_default_prompt()
 
-        outer.addWidget(_note_label(
-            "Per-model, per-language-pair overrides. When the model + "
-            "From + To below match exactly, this prompt is used instead "
-            "of the default above -- for both the Images tab's per-image "
-            "\"Translate now\" button and \"Translate all…\"."
+        overrides_group = QGroupBox("Per-model overrides")
+        overrides_layout = QVBoxLayout(overrides_group)
+        outer.addWidget(overrides_group, stretch=1)
+        overrides_layout.addWidget(_note_label(
+            "When the model + From + To below match exactly, this prompt "
+            "is used instead of the default above -- for both the Images "
+            "tab's per-image \"Translate now\" button and \"Translate all…\"."
         ))
 
         body = QHBoxLayout()
-        outer.addLayout(body, stretch=1)
+        overrides_layout.addLayout(body, stretch=1)
 
         self.prompt_list = QListWidget()
         self.prompt_list.setMaximumWidth(240)
@@ -103,6 +101,11 @@ class TranslationPromptsDialog(QDialog):
         model_row.addWidget(QLabel("Model:"))
         self.prompt_model_combo = QComboBox()
         self.prompt_model_combo.setEditable(True)
+        # Don't size to the longest model name -- that would widen the
+        # whole Settings dialog (same as the AI models tab's pickers).
+        self.prompt_model_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.prompt_model_combo.setMinimumContentsLength(16)
         self.prompt_model_combo.addItems(alt_draft.list_all_models())
         model_row.addWidget(self.prompt_model_combo, stretch=1)
         form.addLayout(model_row)
@@ -132,7 +135,7 @@ class TranslationPromptsDialog(QDialog):
             "(no separate system-role turn):"
         ))
         self.prompt_text_edit = QPlainTextEdit()
-        self.prompt_text_edit.setMinimumHeight(180)
+        self.prompt_text_edit.setMinimumHeight(120)
         form.addWidget(self.prompt_text_edit)
 
         blank_row = QHBoxLayout()
@@ -160,53 +163,25 @@ class TranslationPromptsDialog(QDialog):
         self._configs: list[tuple[str, str, str, tp.PromptConfig]] = []
         self._reload_prompt_list()
 
-        # Close only, same reasoning as SettingsDialog's own button_box:
-        # every field here saves immediately via its own Save button, so
-        # there's nothing to "commit" -- except the two prompt text forms,
-        # which don't save on their own, so unsaved text sitting in either
-        # when this dialog closes would otherwise silently vanish. Routed
-        # through self.reject (overridden below), which is also what
-        # Escape and the window's X button already funnel through.
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        button_box.rejected.connect(self.reject)
-        outer.addWidget(button_box)
+    # -- unsaved changes (asked about by SettingsDialog.reject()) ----------------
 
-    # -- unsaved-changes-on-close ------------------------------------------------
-
-    def _dirty_prompt_descriptions(self) -> list[str]:
+    def dirty_descriptions(self) -> list[str]:
         descriptions = []
         if self._default_prompt_dirty():
-            descriptions.append("the default prompt")
+            descriptions.append("the default translation prompt")
         if self._prompt_form_dirty():
-            descriptions.append("the per-model prompt shown on the right")
+            descriptions.append("the per-model translation prompt")
         return descriptions
 
-    def reject(self) -> None:
-        dirty = self._dirty_prompt_descriptions()
-        if dirty:
-            box = QMessageBox(self)
-            box.setWindowTitle("Unsaved changes")
-            box.setText(
-                "You have unsaved changes to " + " and ".join(dirty) + ". "
-                "Save before closing?"
-            )
-            save_button = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
-            discard_button = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
-            box.addButton(QMessageBox.StandardButton.Cancel)
-            box.setDefaultButton(save_button)
-            box.exec()
-            clicked = box.clickedButton()
-            if clicked is save_button:
-                ok = True
-                if self._default_prompt_dirty():
-                    ok = self._on_default_prompt_save() and ok
-                if self._prompt_form_dirty():
-                    ok = self._on_prompt_save() and ok
-                if not ok:
-                    return
-            elif clicked is not discard_button:
-                return  # Cancel -- stay open, nothing saved or discarded
-        super().reject()
+    def save_dirty(self) -> bool:
+        """Save whichever form has unsaved text; False if a save failed
+        validation (its own QMessageBox already explained why)."""
+        ok = True
+        if self._default_prompt_dirty():
+            ok = self._on_default_prompt_save() and ok
+        if self._prompt_form_dirty():
+            ok = self._on_prompt_save() and ok
+        return ok
 
     # -- default prompt --------------------------------------------------------
 
@@ -308,7 +283,7 @@ class TranslationPromptsDialog(QDialog):
         confirm = QMessageBox.question(
             self, "Delete prompt",
             f"Delete the translation prompt for {model} ({source} → {target})? "
-            "Translation will fall back to the built-in default for this "
+            "Translation will fall back to the default prompt for this "
             "model/pair afterward.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )

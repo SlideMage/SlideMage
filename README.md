@@ -72,16 +72,48 @@ doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
 always says which code it was built from:
 
 1. Bump `VERSION_NUMBER` and add its history entry in `version.py`, commit.
-2. `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+2. `git tag vX.Y.Z && git push origin HEAD vX.Y.Z` (the branch and the tag).
 3. A few minutes later the release has `SlideMage-windows.zip` and
-   `SlideMage-linux.zip`.
+   `SlideMage-linux.zip`, and its release notes are that version's
+   history entry (`packaging/release_notes.py`).
 
-A downloaded executable can update itself: **Info → Check for updates…**
-compares its version with the newest release and, if newer, downloads and
-swaps in the new executable. Because the repository is private, that
-needs a GitHub token with read access to it (Settings → General →
-Updates, or `$SLIDEMAGE_GITHUB_TOKEN`). A source checkout is updated with
-`git pull` instead.
+**Breaking releases.** A release that breaks with the past -- a project,
+deck, setting or workflow that worked before no longer does, or now
+behaves differently -- raises the major number (`v5.0.0`), and its
+history entry in `version.py` gets a paragraph of its own starting
+`BREAKING:` that says what changes and what to do about it. The release
+workflow refuses a major bump without that paragraph. Try it before
+tagging: `python packaging/release_notes.py vX.Y.Z`.
+
+A downloaded executable can update itself. **Settings → General →
+Updates** chooses what happens when SlideMage starts (per user and
+machine, stored next to the token, not in the project):
+
+- **Don't check for updates.**
+- **Check for updates and ask before installing** (the default): a newer
+  release offers *Install now*, *Not now*, *Always install automatically*
+  or *Stop checking for updates*.
+- **Check for updates and install them automatically**: downloads and
+  installs, then asks before restarting.
+
+A failed check (offline, say) or an up-to-date copy only writes a line to
+the log. A breaking release -- a `BREAKING:` paragraph in its notes, or a
+higher major number -- is **always asked about, even in automatic mode**:
+the dialog shows the `BREAKING:` paragraphs and offers *Install anyway*,
+*Stay on vN.x* (installs the newest non-breaking release instead, if there
+is one) or *Not now*. **Info → Check for updates…** works in every mode.
+Because the repository is private, all of this needs a GitHub token with
+read access to it (Settings → General → Updates, or
+`$SLIDEMAGE_GITHUB_TOKEN`). A source checkout is updated with `git pull`
+instead and never checks on start.
+
+**Project format.** Opening a project writes
+`<project>/.slidemage/project.json` (`{"format": 1, "last_app_version":
+"vX.Y.Z"}`) -- commit it with the project. If a project was last used
+with a SlideMage whose project format is newer than this one's, SlideMage
+warns before opening it (*Open anyway* / *Quit*) and leaves the file as it
+is. Raising the format is always a breaking release; a future release that
+migrates an older project backs up every file it rewrites first.
 
 The executable does not contain LaTeX: a project's decks still compile
 with the machine's own LuaLaTeX/biber, against the framework in this
@@ -393,6 +425,17 @@ sessions…**. SlideMage reads the course's
 Abhaltungstermine page, asks which group to use when several are listed,
 and previews the LaTeX table. Choose a deck position and click **Insert
 slide** to create an editable schedule slide.
+
+The table follows the deck's `\decklanguage`: a German deck gets
+"Abhaltungstermine" with Datum/Zeit/Ort/Termin, an English deck (also one
+with no `\decklanguage`, which compiles in English) gets "Course sessions"
+with Date/Time/Location/Session, and the new slide is named
+`<id>-EN-Course-Sessions` instead of `<id>-DE-Course-Sessions`. For an
+English deck, group names ("Standardgruppe"), session types ("Abhaltung",
+"Prüfung", ...) and remarks are translated from a fixed word list in
+`course_schedule.py`; a remark with a word that isn't on the list stays
+German rather than half-translated, and dates, times and rooms are kept as
+UNIGRAZonline lists them.
 
 ### Decks with a bibliography (`\fullcite{}`/`Slidemaster.bib`)
 
@@ -2121,6 +2164,9 @@ Markdown + HTML land in `transcripts/` (or the deck's own
   separate transcript-time choice.
 - `\note{}` content never reaches it. Citations resolve against
   `Slidemaster.bib`.
+- Colour is omitted: `\textcolor{...}{text}`, `\colorbox`, `\fcolorbox`,
+  `\color{...}`, `\cellcolor`/`\rowcolor`/`\columncolor` keep only their
+  text.
 - Images with no description yet are flagged **in place** rather than silently
   omitted, so a half-described deck produces an honest transcript.
 - A slide can also carry a free-text **summary**, independent of any image

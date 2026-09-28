@@ -24,6 +24,8 @@ jobs:
             binary_path: dist/SlideMage.exe
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # release_notes.py needs the previous tag
       # Info -> "Check for updates…" compares the release tag with the
       # running build's VERSION_NUMBER, so the two must be the same.
       - name: Tag matches VERSION_NUMBER
@@ -42,6 +44,18 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
       - run: pip install -e ".[build]"
+      # The release notes are this version's history entry in version.py.
+      # Fails the release when the major number goes up without a
+      # "BREAKING:" paragraph there -- the updater relies on that marker to
+      # ask before installing a release that breaks with the past.
+      - name: Release notes
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            tag=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
+          fi
+          python packaging/release_notes.py "$tag" > release_notes.md
       - run: pyinstaller packaging/slidemage.spec
 
       # PyInstaller produces one file (dist/SlideMage[.exe]) -- zipped so
@@ -77,4 +91,5 @@ jobs:
         with:
           files: out/${{ matrix.asset_name }}.zip
           fail_on_unmatched_files: true
+          body_path: release_notes.md
           generate_release_notes: true

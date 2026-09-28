@@ -140,12 +140,20 @@ name, event type, ...) is a "langdata" object: `{"value": "<default>",
 
 **`.value` depends on the request's `Accept-Language` header** -- with
 `Accept-Language: en` the title comes back as `"Bachelor's Course
-(Management Science)\t \t"` (stray whitespace included). The generated
-slides are German, so `course_schedule._german()` reads the `de`
-translation explicitly, falls back to `.value`, and strips whitespace;
+(Management Science)\t \t"` (stray whitespace included). So
+`course_schedule._localized()` never relies on `.value` when a
+translation exists: it reads the translation for the deck's language,
+falls back to `de`, then to `.value`, and strips whitespace.
 `_get_json()` also sends `Accept-Language: de`. `$ctx=lang=EN` in the
 query string, which the app uses elsewhere, has no effect on this
 endpoint.
+
+The Admin slides follow the deck's `\decklanguage`. An English deck's
+title slide uses UGO's own English title and semester (German where UGO
+has no English one). Its sessions table gets English headings, and its
+group names, event types and fully known remarks are translated from a
+fixed word list (`course_schedule.translate_schedule()`, v4.1.0). The
+slides are named `<id>-EN-...` instead of `<id>-DE-...`.
 
 Both parsers raise `ValueError` for any response that doesn't have the
 expected shape, including a single malformed session or lecturer, and

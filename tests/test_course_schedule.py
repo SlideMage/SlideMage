@@ -20,6 +20,8 @@ from slidemage.course_schedule import (
     parse_schedule,
     render_group_table,
     render_title_slide,
+    translate_schedule,
+    translate_to_english,
 )
 
 
@@ -265,6 +267,28 @@ def test_renderer_handles_empty_group():
     assert render_group_table(CourseGroup("None & One", ())) == r"\small \textbf{None \& One}\par Keine Termine verfügbar."
 
 
+def test_english_rendering_and_translation():
+    schedule = translate_schedule(parse_schedule(GROUPS_JSON))
+    assert [group.name for group in schedule.groups] == [
+        "Standard group", "Group Wirtschaftsinformatik"]
+    first = schedule.groups[0].sessions[0]
+    assert (first.event, first.remark, first.location) == (
+        "Class", "Preliminary meeting", "SR 15.37 & A")
+    rendered = render_group_table(schedule.groups[1], "en")
+    assert r"\textbf{Date} & \textbf{Time} & \textbf{Location} & \textbf{Session}" in rendered
+    assert r"HS 01 & Exam — R\&D" in rendered
+    empty = render_group_table(CourseGroup("X", ()), "en")
+    assert empty.endswith("No sessions available.")
+
+
+def test_translation_is_whole_word_only():
+    assert translate_to_english("Übungsgruppe 2") == "Übungsgruppe 2"
+    assert translate_to_english("Gruppe 2 und Gruppe 3") == "Group 2 and Group 3"
+    assert translate_to_english("Fragestunde") == "Q&A session"
+    assert translate_to_english("Raum und Zeit tba", whole_only=True) == "Raum und Zeit tba"
+    assert translate_to_english("Prüfung 1 entfällt", whole_only=True) == "Exam 1 cancelled"
+
+
 def test_fetch_schedule_uses_course_groups_url(monkeypatch):
     requested = []
 
@@ -333,3 +357,18 @@ def test_render_title_slide_escapes_and_joins_selected_lecturers():
     detail = parse_course_detail(COURSE_DATA_JSON)
     rendered = render_title_slide(detail, detail.lecturers[:1])
     assert rendered == r"\titleframe{Bachelorkurs (Management Science)}{Andreas Darmann\\Wintersemester 2026/27}"
+
+
+def test_course_detail_in_english_uses_ugo_translations():
+    payload = json.loads(COURSE_DATA_JSON)
+    course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
+    course["courseTitle"] = {"value": "Bachelorkurs", "translations": {"translation": [
+        {"lang": "de", "value": "Bachelorkurs"}, {"lang": "en", "value": "Bachelor's Course\t \t"},
+    ]}}
+    course["semesterDto"]["semesterDesignation"] = {"value": "Wintersemester 2026/27", "translations": {
+        "translation": [{"lang": "de", "value": "Wintersemester 2026/27"}, {"lang": "en"}],
+    }}
+    detail = parse_course_detail(json.dumps(payload), "en")
+    assert detail.title == "Bachelor's Course"
+    # No English semester name: falls back to German.
+    assert detail.semester == "Wintersemester 2026/27"

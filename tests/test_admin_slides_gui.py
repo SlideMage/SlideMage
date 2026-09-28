@@ -43,9 +43,12 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def make_deck(tmp_path, course_url=COURSE_URL):
+def make_deck(tmp_path, course_url=COURSE_URL, language="de"):
     path = tmp_path / "course.tex"
-    text = "\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n"
+    text = (
+        "\\documentclass{beamer}\n\\decklanguage[" + language + "]\n"
+        "\\begin{document}\n\\end{document}\n"
+    )
     path.write_text(text, encoding="utf-8", newline="")
     return Deck(
         name="course", path=path, archived=False, text=text,
@@ -54,9 +57,9 @@ def make_deck(tmp_path, course_url=COURSE_URL):
     )
 
 
-def make_dialog(tmp_path, monkeypatch):
+def make_dialog(tmp_path, monkeypatch, language="de"):
     monkeypatch.setattr(AdminSlidesDialog, "_start_fetch", lambda self: None)
-    return AdminSlidesDialog(None, make_deck(tmp_path))
+    return AdminSlidesDialog(None, make_deck(tmp_path, language=language))
 
 
 def test_editor_admin_slides_button_requires_link_and_course_deck(tmp_path, qapp):
@@ -232,3 +235,44 @@ def test_stale_deck_keeps_external_change_and_removes_new_slide(tmp_path, monkey
 
     assert "% external edit" in deck.path.read_text(encoding="utf-8")
     assert not list((tmp_path / "slides").glob("*.tex"))
+
+
+def test_english_deck_gets_a_translated_sessions_table(tmp_path, monkeypatch, qapp):
+    group = CourseGroup("Standardgruppe", (
+        CourseSession("05.10.2026", "09:00", "10:00", "SR 15.25", "Abhaltung", "Vorbesprechung"),
+        CourseSession("12.10.2026", "09:00", "10:00", "HS 01", "Prüfung", "Bitte Ausweis mitbringen"),
+    ))
+    dialog = make_dialog(tmp_path, monkeypatch, language="en")
+    assert dialog.language == "en"
+    dialog._on_loaded(CourseSchedule((group,)), "not needed")
+    source = dialog.slide_specs[0][1]
+
+    assert r"\begin{standardframe}{Course sessions}" in source
+    assert r"\textbf{Date} & \textbf{Time} & \textbf{Location} & \textbf{Session}" in source
+    assert r"\textbf{Standard group}" in source
+    assert "SR 15.25 & Class — Preliminary meeting" in source
+    # A remark with unknown words stays German rather than half-translated.
+    assert "HS 01 & Exam — Bitte Ausweis mitbringen" in source
+    assert "Zeit" not in source and "Abhaltungstermine" not in source
+
+    german = make_dialog(tmp_path, monkeypatch, language="de")
+    german._on_loaded(CourseSchedule((group,)), "not needed")
+    assert r"\textbf{Datum} & \textbf{Zeit}" in german.slide_specs[0][1]
+    assert "Abhaltung — Vorbesprechung" in german.slide_specs[0][1]
+
+
+def test_english_deck_slides_are_named_en(tmp_path, monkeypatch):
+    deck = make_deck(tmp_path, language="en")
+    monkeypatch.setattr(slide_ids, "SLIDES_DIR", tmp_path / "slides")
+    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", tmp_path / "slide_ids.csv")
+    ids = iter(["abc", "def"])
+    monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: next(ids))
+    position = deck_editor.slide_insert_positions(deck)[0]
+    slide_paths = insert_admin_slides(deck, position, [
+        ("Title-Slide", build_title_slide_source("A")),
+        ("Course-Sessions", build_sessions_slide_source("Table", "en")),
+    ], "en")
+    assert [path.name for path in slide_paths] == [
+        "abc-EN-Title-Slide-current.tex", "def-EN-Course-Sessions-current.tex",
+    ]
+    assert r"\slide{def-EN-Course-Sessions}" in deck.path.read_text(encoding="utf-8")

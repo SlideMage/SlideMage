@@ -68,3 +68,36 @@ def test_preferences_dialog_has_a_sensible_width():
     assert dialog.width() < 1000
     dialog.close()
     window.close()
+
+
+def test_preferences_ai_prompts_tab_holds_the_translation_prompts():
+    from PySide6.QtWidgets import QApplication, QTabWidget
+
+    from slidemage import qt_gui
+    from slidemage.qt_settings_dialog import SettingsDialog
+
+    app = QApplication.instance() or QApplication([])
+    window = qt_gui.SlideMageWindow(qt_gui.ThemeManager())
+    dialog = SettingsDialog(window)
+    tabs = dialog.findChild(QTabWidget)
+    assert [tabs.tabText(i) for i in range(tabs.count())] == [
+        "General", "AI models", "AI prompts"]
+    pages = dialog.ai_prompt_pages
+    assert [pages.tabText(i) for i in range(pages.count())] == [
+        "Image descriptions", "Slide rewrite", "Translation"]
+    assert pages.widget(2) is dialog.translation_prompts_panel
+    # General tab: one radio button per update mode, the saved one checked.
+    from slidemage import updater
+    buttons = dialog.update_mode_buttons
+    assert list(buttons) == list(updater.UPDATE_MODES)
+    assert [m for m, b in buttons.items() if b.isChecked()] == [updater.get_update_mode()]
+
+    panel = dialog.translation_prompts_panel
+    assert dialog._dirty_prompt_descriptions() == []
+    saved_text = panel.default_prompt_edit.toPlainText()
+    panel.default_prompt_edit.setPlainText(saved_text + " (edited)")
+    assert dialog._dirty_prompt_descriptions() == ["the default translation prompt"]
+    panel.default_prompt_edit.setPlainText(saved_text)  # close without the unsaved-changes box
+    app.processEvents()
+    dialog.close()
+    window.close()
