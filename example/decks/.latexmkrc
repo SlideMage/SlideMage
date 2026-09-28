@@ -37,5 +37,5 @@ $ENV{'TEXINPUTS'} = join($slidemaster_sep,
 	map({ slidemaster_native_path($_) } dirname($abs_rc) . '/..', $slidemaster_latex),
 	$ENV{'TEXINPUTS'} // '');
 
-$ENV{'BIBINPUTS'} = dirname($abs_rc) . '/../:' . ($ENV{'BIBINPUTS'} // '')
-	unless $slidemaster_windows;
+$ENV{'BIBINPUTS'} = join($slidemaster_sep,
+	slidemaster_native_path(dirname($abs_rc) . '/..'), $ENV{'BIBINPUTS'} // '');

@@ -95,7 +95,9 @@ $ENV{'TEXINPUTS'} = join($slidemaster_sep,
 # decks/*.tex compile that took the bare-filename branch of the deck's
 # \IfFileExists{Slidemaster.bib} fallback logs "Bib file(s) not found in
 # search path", leaving \fullcite{} unresolved (which then cascades into
-# spurious "missing \item" errors). Left off on Windows, where MiKTeX
-# compiles never needed it.
-$ENV{'BIBINPUTS'} = dirname($abs_rc) . ':' . ($ENV{'BIBINPUTS'} // '')
-	unless $slidemaster_windows;
+# spurious "missing \item" errors). Needed on Windows too: with the
+# project root on TEXINPUTS, \IfFileExists finds the bare filename there,
+# and latexmk then vetoes biber outright ("only use bibtex/biber if all
+# .bib files exist") unless BIBINPUTS can find it as well.
+$ENV{'BIBINPUTS'} = join($slidemaster_sep,
+	slidemaster_native_path(dirname($abs_rc)), $ENV{'BIBINPUTS'} // '');
