@@ -34,6 +34,14 @@ from . import alt_draft
 from . import translation_prompts as tp
 
 
+def _note_label(text: str) -> QLabel:
+    """A word-wrapping QLabel -- an unwrapped long explanation sets the
+    whole dialog's minimum width (same fix as qt_settings_dialog.py)."""
+    label = QLabel(text)
+    label.setWordWrap(True)
+    return label
+
+
 class TranslationPromptsDialog(QDialog):
     def __init__(self, parent, app) -> None:
         super().__init__(parent)
@@ -51,7 +59,7 @@ class TranslationPromptsDialog(QDialog):
         # over this when both could apply.
         default_group = QGroupBox("Default prompt")
         default_layout = QVBoxLayout(default_group)
-        default_layout.addWidget(QLabel(
+        default_layout.addWidget(_note_label(
             "Used for any model/language pair with no override below. "
             "Same single-message format: this text, then the blank "
             "line(s), then the text to translate."
@@ -73,7 +81,7 @@ class TranslationPromptsDialog(QDialog):
         outer.addWidget(default_group)
         self._load_default_prompt()
 
-        outer.addWidget(QLabel(
+        outer.addWidget(_note_label(
             "Per-model, per-language-pair overrides. When the model + "
             "From + To below match exactly, this prompt is used instead "
             "of the default above -- for both the Images tab's per-image "
@@ -118,7 +126,7 @@ class TranslationPromptsDialog(QDialog):
         lang_row.addStretch(1)
         form.addLayout(lang_row)
 
-        form.addWidget(QLabel(
+        form.addWidget(_note_label(
             "Prompt -- sent as a single message: this text, then the "
             "blank line(s) below, then the text to translate verbatim "
             "(no separate system-role turn):"

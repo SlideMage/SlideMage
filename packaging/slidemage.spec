@@ -43,9 +43,26 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# Windows only: a splash screen (splash.png) shown by the bootloader while
+# the one-file build unpacks itself, several seconds before any Python code
+# runs -- without it, double-clicking the exe looks like nothing happened.
+# slidemage/splash.py closes it. Not on macOS (unsupported by PyInstaller)
+# or Linux (would need Tk on the build runner; untested).
+splash_parts = []
+if sys.platform == "win32":
+    splash = Splash(
+        str(ASSETS / "splash.png"),
+        binaries=a.binaries,
+        datas=a.datas,
+        text_pos=None,
+        always_on_top=True,
+    )
+    splash_parts = [splash, splash.binaries]
+
 exe = EXE(
     pyz,
     a.scripts,
+    *splash_parts,
     a.binaries,
     a.datas,
     [],

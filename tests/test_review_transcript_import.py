@@ -159,7 +159,9 @@ def test_resolve_deck_reports_missing_and_cyclic_includes(
         transcript.resolve_deck(deck, "during-course")
 
 
-def test_shipped_demo_decks_resolve_thirteen_during_course_slides(monkeypatch):
+def test_shipped_demo_decks_resolve_seventeen_during_course_slides(monkeypatch):
+    # 13 until v4.0.0 wired the ZZJ/ZZK/ZZL/ZZO demo slides into
+    # test-slides.tex -- four plain \slide{} calls, in every version.
     repo_root = Path(__file__).resolve().parents[1]
     project_root = repo_root / "example"
     monkeypatch.setattr(transcript, "PROJECT_ROOT", project_root)
@@ -169,4 +171,4 @@ def test_shipped_demo_decks_resolve_thirteen_during_course_slides(monkeypatch):
         slides = transcript.resolve_deck(
             project_root / "decks" / name, "during-course"
         )
-        assert len([slide for slide in slides if slide.included]) == 13
+        assert len([slide for slide in slides if slide.included]) == 17

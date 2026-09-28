@@ -1766,8 +1766,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-
-from .deck_scan import PROJECT_ROOT
+from pathlib import Path
 
 VERSION_NUMBER = "v4.0.0"
 
@@ -1815,7 +1814,10 @@ def _run_git(*args: str) -> str | None:
         popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
         result = subprocess.run(
-            ["git", *args], cwd=PROJECT_ROOT, capture_output=True, text=True,
+            # The app's own checkout, not the project: since v4.0.0 the two
+            # are separate repositories, and the version string is about
+            # the app. (A frozen build has no checkout -> plain number.)
+            ["git", *args], cwd=Path(__file__).resolve().parent, capture_output=True, text=True,
             timeout=5, **popen_kwargs,
         )
     except (OSError, subprocess.SubprocessError):

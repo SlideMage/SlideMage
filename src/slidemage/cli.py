@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import project
+from . import project, splash
 
 
 def _ask_for_project(parent_hint: Path | None):
@@ -33,12 +33,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.project is not None:
         root = args.project.resolve()
         if not project.is_project(root):
+            splash.close()
             QMessageBox.critical(
                 None, "Not a Slidemaster project", f"{root} has no {project.MARKER}."
             )
             sys.exit(2)
     else:
-        root = project.discover() or _ask_for_project(Path.cwd())
+        root = project.discover()
+        if root is None:
+            splash.close()  # the folder picker would open underneath it
+            root = _ask_for_project(Path.cwd())
         if root is None:
             sys.exit(1)
 

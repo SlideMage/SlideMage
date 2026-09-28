@@ -47,6 +47,7 @@ from . import app_settings
 from . import archive as archive_mod
 from . import bibliography
 from . import compile_progress
+from . import splash
 from . import compiler
 from . import deck_duplicate
 from . import deck_editor
@@ -1973,6 +1974,7 @@ def main() -> None:
     theme.apply()
     window = SlideMageWindow(theme)
     window.show()
+    splash.close()
     sys.exit(app.exec())
 
 
