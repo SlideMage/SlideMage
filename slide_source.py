@@ -14,6 +14,20 @@ SLIDES_DIR = PROJECT_ROOT / "slides"
 BACKUPS_DIR = SLIDES_DIR / ".backups"
 
 
+class StaleFileError(RuntimeError):
+    """The slide file on disk no longer matches the text a caller last
+    loaded (e.g. another tab, TeXstudio, or git changed it in the
+    meantime). Callers should reload the slide and let the user retry
+    rather than silently overwriting whatever's actually on disk now --
+    same stale-check-then-write shape as deck_editor.py's own _apply()
+    (2026-09-28, porting SlideMage upstream commit 34cdbd7: unlike a deck
+    file edited from a handful of well-defined mutator functions, a slide
+    source tab lets the user freely retype the whole file, so this is the
+    one place in the app where two tabs -- or a tab and an outside editor --
+    editing the same slide at once could otherwise silently clobber one
+    another)."""
+
+
 def read_slide_source(path: Path) -> tuple[str, str]:
     """Read a slide's own .tex file, returning (text, eol).
 
@@ -41,7 +55,9 @@ def _unique_backup_path(backup_dir: Path) -> Path:
     return candidate
 
 
-def save_slide_source(path: Path, new_text: str, eol: str) -> Path:
+def save_slide_source(
+    path: Path, new_text: str, eol: str, expected_text: str | None = None
+) -> Path:
     """Back up the file's current on-disk bytes verbatim, then write
     new_text back with every line re-terminated with `eol`. Returns the
     backup file's path (or None if there was nothing on disk yet to back
@@ -57,7 +73,21 @@ def save_slide_source(path: Path, new_text: str, eol: str) -> Path:
     one consistent eol rather than preserving per-line mixed endings --
     never touches content, always visible in git diff, backstopped by
     both this backup and git itself (slides/ is already tracked).
+
+    If `expected_text` is given and the file already exists, its current
+    on-disk text (read the same way read_slide_source() normalizes it --
+    bare \\n) must match `expected_text` exactly, or this raises
+    StaleFileError without touching the file or writing a backup at all.
+    Left as None (the default) for a caller that hasn't been ported to the
+    stale-check yet, which always saves last-write-wins as before.
     """
+    if expected_text is not None and path.exists():
+        current, _ = read_slide_source(path)
+        if current != expected_text:
+            raise StaleFileError(
+                f"{path.name} changed on disk since it was last loaded -- "
+                "reload the slide and retry."
+            )
     backup_path = None
     if path.exists():
         backup_dir = BACKUPS_DIR / path.name

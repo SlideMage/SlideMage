@@ -1189,6 +1189,12 @@ class TranslationResult:
     model: str = ""
     elapsed_s: float = 0.0
     error: str | None = None
+    # alt_images.en_text_hash() of the entry's EN text at the moment this
+    # translation was requested -- "" for a backend that hasn't been ported
+    # to set it, which apply_one_translation() then treats as "no staleness
+    # check possible, apply anyway" rather than refusing every result
+    # outright (2026-09-28, porting SlideMage upstream commit 34cdbd7).
+    source_hash: str = ""
 
     @property
     def ok(self) -> bool:
@@ -1292,6 +1298,12 @@ class OllamaTranslationBackend:
 
     def translate(self, entry: "alt_images.ImageEntry") -> TranslationResult:
         started = time.monotonic()
+        # Captured from the exact entry snapshot handed to this call, before
+        # any of the (potentially slow) network round-trips below -- so a
+        # later apply_one_translation() can tell whether the store's EN text
+        # is still the same text this translation was actually produced
+        # from (2026-09-28, porting SlideMage upstream commit 34cdbd7).
+        source_hash = alt_images.en_text_hash(entry)
         short_de, short_err = self._translate_one(entry.short)
         long_de, long_err = self._translate_one(entry.long)
         takeaway_de, takeaway_err = self._translate_one(entry.takeaway_default)
@@ -1308,6 +1320,7 @@ class OllamaTranslationBackend:
             short_de=short_de, long_de=long_de, takeaway_de=takeaway_de,
             model=self.label, elapsed_s=elapsed,
             error="; ".join(errors) if errors else None,
+            source_hash=source_hash,
         )
 
 
@@ -1330,7 +1343,19 @@ def apply_one_translation(image: str, result: TranslationResult, model_label: st
         # The queue this came from was built against some earlier snapshot
         # of the store; re-check freshness now, the same "never trust the
         # queue's own age" caution apply_one_draft() already applies to its
-        # reviewed-status check.
+        # reviewed-status check. Unlike that computation above suggests on
+        # its own, computing current_hash was never enough by itself --
+        # this refuses the write outright (rather than only stamping
+        # translated_from_hash with whatever current_hash turns out to be)
+        # when the EN text result was actually translated from no longer
+        # matches what's in the store right now, e.g. someone edited the
+        # EN short/long/takeaway text in the time between this translation
+        # being queued and it finishing (2026-09-28, porting SlideMage
+        # upstream commit 34cdbd7). A blank result.source_hash (a backend
+        # that predates this field) skips the check rather than refusing
+        # every result unconditionally.
+        if result.source_hash and result.source_hash != current_hash:
+            return False
         entry.short_de = result.short_de
         entry.long_de = result.long_de
         if result.takeaway_de:

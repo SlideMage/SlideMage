@@ -39,6 +39,11 @@ DECKS_DIR = PROJECT_ROOT / "decks"
 ARCHIVE_DIR = DECKS_DIR / "archive"
 
 SECTION_RE = re.compile(r"\\section\{([^}]*)\}")
+# A "%" that isn't escaped as "\%" starts a LaTeX comment running to the end
+# of its line -- used by is_commented() below to recognize a commented-out
+# \section{}/\slide{}-family call as not really there (2026-09-28, porting
+# SlideMage upstream commit 34cdbd7).
+COMMENT_RE = re.compile(r"(?<!\\)%.*")
 DOCUMENT_BEGIN_RE = re.compile(r"\\begin\{document\}")
 DOCUMENT_END_RE = re.compile(r"\\end\{document\}")
 DOCUMENTCLASS_RE = re.compile(r"\\documentclass")
@@ -152,11 +157,26 @@ def slugify(title: str) -> str:
     return slug or "chapter"
 
 
+def is_commented(text: str, pos: int) -> bool:
+    """Whether the character at `pos` in `text` falls inside a "%"-started
+    LaTeX comment -- true if an unescaped "%" appears anywhere between the
+    start of pos's own line and pos itself. Shared by _parse_chapters()
+    below and deck_editor.is_commented_out(), so a commented-out
+    \\section{}/\\slide{}-family call is recognized as not really there by
+    both this module's chapter list and appendix_toc.py's own slide-call
+    filtering. Unlike _parse_output_folders()/find_decktags()'s own
+    narrower "starts-with-%" check, this also catches a macro that follows
+    a live "%" occurring earlier on the same line, not just one at the very
+    start of it (2026-09-28, porting SlideMage upstream commit 34cdbd7)."""
+    line_start = text.rfind("\n", 0, pos) + 1
+    return bool(COMMENT_RE.search(text, line_start, pos))
+
+
 def _parse_chapters(text: str) -> list[Chapter]:
     doc_end_match = DOCUMENT_END_RE.search(text)
     doc_end = doc_end_match.start() if doc_end_match else len(text)
 
-    matches = list(SECTION_RE.finditer(text))
+    matches = [m for m in SECTION_RE.finditer(text) if not is_commented(text, m.start())]
     chapters: list[Chapter] = []
     for i, m in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else doc_end

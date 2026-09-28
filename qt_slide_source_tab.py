@@ -1702,7 +1702,21 @@ class SlideSourceTab(QWidget):
                 else slide_versioning.strip_marker(new_text)
             )
 
-        backup_path = slide_source.save_slide_source(self.path, new_text, self.eol)
+        try:
+            backup_path = slide_source.save_slide_source(
+                self.path, new_text, self.eol, expected_text=previous_text
+            )
+        except slide_source.StaleFileError as exc:
+            # Someone else (another tab, TeXstudio, git) changed this exact
+            # file since it was loaded here -- refuse the save rather than
+            # silently clobbering whatever's actually on disk now (2026-09-28,
+            # porting SlideMage upstream commit 34cdbd7). Any version-bump
+            # bookkeeping already done above (freezing an outgoing version)
+            # has already happened by this point and is not undone here --
+            # same accepted trade-off deck_editor.py's own _apply() callers
+            # already live with for a stale deck-file write.
+            QMessageBox.critical(self, "Save failed", str(exc))
+            return False
         self.text = new_text
         if new_text != raw_text:
             # The version-bump above rewrote the \setSlideVersion{} line in

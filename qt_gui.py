@@ -980,6 +980,29 @@ class SlideMageWindow(QMainWindow):
         self.archived_table.rebuild(archived_decks)
         self.active_rows = self.active_table.rows
         self.archived_rows = self.archived_table.rows
+        self._remap_job_status_rows()
+
+    def _remap_job_status_rows(self) -> None:
+        """After rebuild() above hands both tables an entirely fresh set of
+        DeckRow widgets, re-point self._job_status_map at the new row for
+        each jobname's own deck -- without this, a compile already in
+        flight when "Refresh decks" (or anything else that calls
+        reload_decks(), e.g. after_deck_edit()) runs kept updating the just-
+        discarded old row widgets: the compile itself and its log lines
+        were unaffected, but its running/moving/pass/fail status badge
+        silently stopped appearing anywhere on screen (2026-09-28, porting
+        SlideMage upstream commit 34cdbd7). A jobname whose deck no longer
+        exists in either table (e.g. it was archived or deleted mid-compile)
+        is dropped rather than kept pointing at a stale row."""
+        if not self._job_status_map:
+            return
+        by_name = {row.deck.name: row for row in (*self.active_rows, *self.archived_rows)}
+        remapped: dict[str, tuple[DeckRow, str]] = {}
+        for jobname, (old_row, key) in self._job_status_map.items():
+            new_row = by_name.get(old_row.deck.name)
+            if new_row is not None:
+                remapped[jobname] = (new_row, key)
+        self._job_status_map = remapped
 
     def _on_refresh_decks_clicked(self) -> None:
         """DeckTable's own "Refresh decks" button (direct instruction) --
@@ -1035,6 +1058,21 @@ class SlideMageWindow(QMainWindow):
                 self, "Nothing selected", "Check at least one version per deck to compile."
             )
             return
+        jobs, job_status_map, empty_descriptions = self._drop_empty_jobs(jobs, job_status_map)
+        if not jobs:
+            QMessageBox.critical(
+                self, "Nothing to compile",
+                "No slides to typeset -- every checked job is empty:\n\n"
+                + "\n".join(f"  • {d}" for d in empty_descriptions),
+            )
+            return
+        if empty_descriptions:
+            QMessageBox.warning(
+                self, "Some jobs skipped",
+                "Skipped (no slides to typeset):\n\n"
+                + "\n".join(f"  • {d}" for d in empty_descriptions)
+                + "\n\nCompiling the rest.",
+            )
         # Pre-render syntax check (2026-09-26), scoped to exactly what these
         # jobs read: the deck files plus the slides their versions/chapters
         # actually include.
@@ -1044,6 +1082,45 @@ class SlideMageWindow(QMainWindow):
                 show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
             return
         self._start_jobs(jobs, job_status_map)
+
+    def _drop_empty_jobs(
+        self, jobs: list[CompileJob], job_status_map: dict[str, tuple[DeckRow, str]]
+    ) -> tuple[list[CompileJob], dict[str, tuple[DeckRow, str]], list[str]]:
+        """Filters out any job that would typeset zero slides (2026-09-28,
+        direct instruction: "SlideMage should give an error message instead
+        of trying to compile it" for an empty deck) -- clicking "Create
+        PDF" on a deck with no \\slide{}-family calls of its own (e.g.
+        #workdeck-mini right after being cleared out, or a brand-new empty
+        deck) used to run a real latexmk compile for a PDF with nothing on
+        it, the same pointless-but-not-obviously-wrong result whether the
+        compile "succeeded" or not.
+
+        compile_progress.count_job_slides() (built for the progress bar's
+        own sizing) is reused here rather than a fresh check, since it
+        already resolves a job's real slide count correctly for every case
+        that matters: version/chapter filtering (\\conditionalslide/
+        \\slidestep), and \\input{}-ed fragments like test-slides.tex --
+        so a wrapper deck that only \\input{}s a shared slide list is
+        correctly NOT flagged as empty, only a deck (or, for a per-chapter
+        job, a chapter) that genuinely has nothing to typeset is.
+
+        Returns (surviving jobs, correspondingly trimmed job_status_map,
+        one human-readable description per dropped job)."""
+        surviving: list[CompileJob] = []
+        descriptions: list[str] = []
+        for job in jobs:
+            if compile_progress.count_job_slides(job.deck, job.version, job.chapter) > 0:
+                surviving.append(job)
+                continue
+            where = job.deck.name
+            if job.chapter is not None:
+                where += f", chapter {job.chapter.order} ({job.chapter.title})"
+            if job.version:
+                where += f" ({job.version})"
+            descriptions.append(where)
+            job_status_map.pop(job.jobname, None)
+            self._job_output_paths.pop(job.jobname, None)
+        return surviving, job_status_map, descriptions
 
     def _on_edit_deck(self, deck: Deck) -> None:
         """Active decks table's own "Source" button -- straight to this
@@ -1153,6 +1230,11 @@ class SlideMageWindow(QMainWindow):
                 "progress -- wait for it to finish first.",
             )
             return
+        if compile_progress.count_job_slides(deck, "instructor", None) == 0:
+            QMessageBox.critical(
+                self, "Nothing to export", f"{deck.name} has no slides to typeset."
+            )
+            return
         if not qt_render_check.confirm_render(
                 self, self, latex_lint.check_jobs([CompileJob(deck, version="instructor", chapter=None)]),
                 deck.name,
@@ -1174,11 +1256,39 @@ class SlideMageWindow(QMainWindow):
             # through, auto-opening the compiled PDF too if that
             # checkbox is on) -- nothing extra needed here for the
             # compile step itself, only for what happens after it.
-            if not run_job(job, log):
+            #
+            # run_job() only *starts* the compiled PDF's move into place on
+            # its own background thread and returns immediately without
+            # waiting for it (see its own docstring) -- reading straight
+            # from .build/{jobname}.pdf right after run_job() returned used
+            # to race that move's own aux-file cleanup, which deletes that
+            # exact file as soon as the move succeeds, and usually won by
+            # sheer luck (the move finishing after, not before, this read)
+            # rather than by any actual guarantee (2026-09-28, porting
+            # SlideMage upstream commit 34cdbd7). on_relocated fires exactly
+            # once relocation is truly done (or has definitively given up),
+            # from whichever thread finishes it -- blocking this thread
+            # (not the GUI thread) on relocated.wait() until then, then
+            # reading from its own final destination instead of .build/,
+            # closes that race.
+            relocated = threading.Event()
+            relocation: dict[str, object] = {}
+
+            def on_relocated(success: bool, dest_pdf: Path) -> None:
+                relocation["success"] = success
+                relocation["dest_pdf"] = dest_pdf
+                relocated.set()
+
+            if not run_job(job, log, on_relocated=on_relocated):
                 log(f"*** FAIL: PowerPoint export of {deck.name} -- "
                    f"compile failed, see above ***")
                 return
-            pdf_path = BUILD_DIR / f"{job.jobname}.pdf"
+            relocated.wait()
+            if not relocation.get("success"):
+                log(f"*** FAIL: PowerPoint export of {deck.name} -- "
+                   f"couldn't move the compiled PDF into place, see above ***")
+                return
+            pdf_path = relocation["dest_pdf"]
             out_path = PDF_DIR / f"{job.jobname}.pptx"
             try:
                 pptx_export.export_deck_to_pptx(pdf_path, out_path, log=log)

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from .archive import _read, _write
-from .deck_scan import PROJECT_ROOT, Chapter, Deck, find_decktags
+from .deck_scan import PROJECT_ROOT, Chapter, Deck, find_decktags, is_commented
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -186,6 +186,20 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
             chapter=_find_chapter(deck.chapters, m.start()),
         ))
     return calls
+
+
+def is_commented_out(deck_text: str, call: SlideCall) -> bool:
+    """Whether `call`'s own "\\macro{...}" token sits inside a "%"-started
+    LaTeX comment -- distinct from call.editable, which is False for *any*
+    reason the call shares its line with other content, comment or not.
+    appendix_toc.py's own TOC/appendix listing needs specifically this:
+    "commented out, so doesn't really exist for the appendix" rather than
+    "shares a line with something else, but still compiles for real"
+    (2026-09-28, porting SlideMage upstream commit 34cdbd7 -- a
+    commented-out \\section{}/\\slide{}-family call used to still show up in
+    the generated appendix, since parse_slide_calls()'s own SLIDE_CALL_RE
+    match has no notion of comments at all)."""
+    return is_commented(deck_text, call.call_start)
 
 
 def available_versions(id_slug: str) -> list[str]:

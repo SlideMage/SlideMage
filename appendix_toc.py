@@ -85,6 +85,8 @@ def _sections(deck: Deck) -> list[tuple[int, str, list[SlideCall]]]:
     calls = []
     step_ids: set[str] = set()
     for c in deck_editor.parse_slide_calls(deck):
+        if deck_editor.is_commented_out(deck.text, c):
+            continue
         if not _visible_for_instructor(c):
             continue
         if c.macro == "slidestep":

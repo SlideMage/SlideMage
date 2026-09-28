@@ -627,7 +627,11 @@ class _ImageEditor(QFrame):
             # indistinguishable from the translation never having started
             # at all.
             try:
-                self.app.log(
+                # Still running on this background thread here -- self.app.log()
+                # is main-thread-only (see its own docstring); the Qt signal is
+                # the one cross-thread-safe way to reach the log pane from here
+                # (2026-09-28, porting SlideMage upstream commit 34cdbd7).
+                self.app.signals.log.emit(
                     f"*** Translation of {self.reference} finished, but its "
                     f"editor panel was already gone -- discarded. ***"
                 )
@@ -2475,7 +2479,11 @@ class TranscriptTab(QWidget):
 
     def _draft_batch_bg(self, queue, backend) -> None:
         def progress(index, total, job):
-            self.app.log(f"  [{index}/{total}] {job.image} (via {job.slide_id})")
+            # Called from this background thread (run_batch's own
+            # on_progress callback) -- self.app.log() is main-thread-only,
+            # so this must go through the Qt signal instead (2026-09-28,
+            # porting SlideMage upstream commit 34cdbd7).
+            self.app.signals.log.emit(f"  [{index}/{total}] {job.image} (via {job.slide_id})")
 
         try:
             summary = alt_draft.run_batch(
@@ -2540,7 +2548,9 @@ class TranscriptTab(QWidget):
 
     def _translate_batch_bg(self, queue: list[str], backend) -> None:
         def progress(index: int, total: int, image: str) -> None:
-            self.app.log(f"  [{index}/{total}] {image}")
+            # Same cross-thread fix as _draft_batch_bg's own progress()
+            # above (2026-09-28, porting SlideMage upstream commit 34cdbd7).
+            self.app.signals.log.emit(f"  [{index}/{total}] {image}")
 
         try:
             summary = alt_draft.run_translation_batch(

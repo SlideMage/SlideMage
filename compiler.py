@@ -348,9 +348,13 @@ def _relocate_pdf(pdf_source: Path, dest_pdf: Path) -> None:
     shutil.copy2(str(pdf_source), str(dest_pdf))
 
 
+RelocatedCallback = Callable[[bool, Path], None]
+
+
 def _relocate_pdf_and_finish(
     pdf_source: Path, dest_pdf: Path, jobname: str, deck_dir: Path, job: CompileJob,
     log: LogCallback, cancel: Optional["CancelToken"] = None,
+    on_relocated: Optional[RelocatedCallback] = None,
 ) -> None:
     """Move the compiled PDF into place, retrying every
     PDF_MOVE_RETRY_INTERVAL_SECONDS for up to PDF_MOVE_RETRY_TOTAL_SECONDS,
@@ -364,6 +368,18 @@ def _relocate_pdf_and_finish(
     refresh, and the final PASS/FAIL log line -- since all of it is
     contingent on the move actually succeeding, whenever that turns out to
     be.
+
+    `on_relocated`, if given, is called exactly once, from whichever thread
+    happens to finish this function -- (True, dest_pdf) once the move has
+    actually landed, or (False, dest_pdf) on every give-up path (stopped by
+    the user, or the retry budget ran out). A caller that itself needs the
+    PDF right after compiling (pptx_export -- see qt_gui.py's
+    _export_pptx_bg) has no other reliable way to know the move (dispatched
+    onto this function's own background thread by run_job(), which returns
+    immediately without waiting for it) has actually finished, rather than
+    racing its own aux-file cleanup below, which deletes the .build/ copy
+    run_job() itself just told the caller succeeded (2026-09-28, porting
+    SlideMage upstream commit 34cdbd7).
 
     **Why retrying is safe even though a single attempt can hang
     indefinitely** (confirmed directly, see git history: a real run
@@ -424,6 +440,8 @@ def _relocate_pdf_and_finish(
         if cancel is not None and cancel.is_set():
             log(f"*** FAIL: {jobname} -- stopped by user while relocating the "
                f"PDF; left at .build/{jobname}.pdf for manual recovery ***")
+            if on_relocated is not None:
+                on_relocated(False, dest_pdf)
             return
         attempt_count += 1
         threading.Thread(target=_attempt, args=(attempt_count,), daemon=True).start()
@@ -440,6 +458,8 @@ def _relocate_pdf_and_finish(
         log(f"*** FAIL: {jobname} -- couldn't move PDF into pdf/ after "
            f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min; left at "
            f".build/{jobname}.pdf for manual recovery ***")
+        if on_relocated is not None:
+            on_relocated(False, dest_pdf)
         return
 
     # pdf/ holds only the PDF -- .synctex.gz (wherever it landed) is just
@@ -474,15 +494,30 @@ def _relocate_pdf_and_finish(
     elapsed = time.monotonic() - started
     suffix = f" (after {elapsed:.0f}s)" if elapsed >= 5 else ""
     log(f"==== PASS: {jobname} -> {_display_path(dest_pdf)}{suffix} ====")
+    if on_relocated is not None:
+        on_relocated(True, dest_pdf)
 
 
-def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None) -> bool:
+def run_job(
+    job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None,
+    on_relocated: Optional[RelocatedCallback] = None,
+    dest_override: Optional[Path] = None,
+) -> bool:
     """Compile one job. Returns True once the LaTeX compile itself
     succeeded -- *not* once the PDF has actually landed in pdf/. `log`
     receives one string per line of progress/output, for a GUI (or the
     console) to display. `cancel`, if given, registers the live subprocess
     so a "Stop creation" request can kill it immediately (see
-    CancelToken).
+    CancelToken). `on_relocated`, if given, is threaded straight through to
+    _relocate_pdf_and_finish() (see that function's own docstring) -- a
+    caller that needs to know once the PDF has actually landed at its final
+    destination, not just that the compile itself succeeded. `dest_override`,
+    if given, is used as this job's actual output destination in place of
+    resolve_output_location(job)'s own result -- run_jobs()'s own
+    _disambiguated_destinations() is the only caller that sets this, to
+    keep two jobs in the same batch from silently overwriting each other's
+    PDF when their own \\deckoutputfolder declarations resolve to the exact
+    same file.
 
     The move into pdf/ is dispatched to its own detached background thread
     (_relocate_pdf_and_finish) and this function does not wait for it.
@@ -502,7 +537,17 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
     wrapper_path = deck_dir / f"_slidemage_{jobname}.tex"
 
     log(f"==== Compiling {job.deck.name} -> {jobname} ====")
-    wrapper_path.write_text(_wrapper_text(job), encoding="utf-8")
+    # newline="" -- same reasoning as deck_scan.py's own _scan_dir() read and
+    # every other writer of an already-CRLF string in this project:
+    # write_text()'s universal-newlines default would otherwise translate
+    # every bare "\n" _wrapper_text() emits into "\r\n" *again* on top of any
+    # "\r\n" already embedded in job.deck.preamble_text/chapter_text() (the
+    # per-chapter and appendix branches splice the deck's own raw CRLF text
+    # in verbatim), doubling those lines' line endings to "\r\r\n" in the
+    # wrapper file that's actually compiled (2026-09-28, porting SlideMage
+    # upstream commit 34cdbd7).
+    with open(wrapper_path, "w", encoding="utf-8", newline="") as f:
+        f.write(_wrapper_text(job))
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     # Stale timestamp/aux from a previous attempt at this exact jobname
@@ -606,9 +651,12 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
         ok = False
 
     if ok:
-        output_dir, output_stem = resolve_output_location(job)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        dest_pdf = output_dir / f"{output_stem}.pdf"
+        if dest_override is not None:
+            dest_pdf = dest_override
+        else:
+            output_dir, output_stem = resolve_output_location(job)
+            dest_pdf = output_dir / f"{output_stem}.pdf"
+        dest_pdf.parent.mkdir(parents=True, exist_ok=True)
         # "==== MOVING: {jobname} -> <dest> ====" is a fixed prefix
         # qt_gui.py's MOVING_LOG_RE parses to drive this job's per-row
         # status badge -- that regex only anchors on "^==== MOVING: (\S+)
@@ -623,6 +671,7 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
         threading.Thread(
             target=_relocate_pdf_and_finish,
             args=(pdf_source, dest_pdf, jobname, deck_dir, job, log, cancel),
+            kwargs={"on_relocated": on_relocated},
             daemon=True,
         ).start()
     else:
@@ -630,6 +679,48 @@ def run_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = N
 
     wrapper_path.unlink(missing_ok=True)
     return ok
+
+
+def _disambiguated_destinations(
+    jobs: list[CompileJob], log: LogCallback
+) -> dict[str, Path]:
+    """Every job's own resolve_output_location() destination, with a
+    same-batch collision broken by appending the colliding jobs' own
+    jobnames to their filename.
+
+    Concretely reachable, not just theoretical: resolve_output_location()
+    ignores job.jobname entirely and returns a \\deckoutputfolder's own
+    literal filename's stem whenever that declaration names an exact file
+    rather than a bare folder (see that function's own docstring) -- a
+    deck declaring e.g. "\\deckoutputfolder[instructor]{D:/Teaching/IA2/
+    Slides.pdf}" and then compiled as several per-chapter jobs (or a
+    per-chapter job alongside the whole deck) in the same batch would
+    otherwise have every one of those jobs resolve to that exact same
+    dest_pdf, each one silently overwriting whichever of the others
+    finished moving its PDF into place first (2026-09-28, porting SlideMage
+    upstream commit 34cdbd7; IA2's own real \\deckoutputfolder declarations
+    plus its per-chapter compiles make this a real, not just hypothetical,
+    same-batch collision).
+
+    Logs one line per job renamed this way, so the departure from the
+    deck's own declared filename is never silent."""
+    dests: dict[str, Path] = {}
+    seen_dest: dict[Path, list[str]] = {}
+    for job in jobs:
+        output_dir, output_stem = resolve_output_location(job)
+        dest = output_dir / f"{output_stem}.pdf"
+        dests[job.jobname] = dest
+        seen_dest.setdefault(dest, []).append(job.jobname)
+    for dest, jobnames in seen_dest.items():
+        if len(jobnames) < 2:
+            continue
+        for jobname in jobnames:
+            disambiguated = dest.with_name(f"{dest.stem}-{jobname}{dest.suffix}")
+            dests[jobname] = disambiguated
+            log(f"    (note: {jobname} would share {_display_path(dest)} with "
+               f"{len(jobnames) - 1} other job(s) in this run -- writing to "
+               f"{_display_path(disambiguated)} instead)")
+    return dests
 
 
 def run_jobs(
@@ -640,11 +731,14 @@ def run_jobs(
     (the GUI's "Stop creation" button), the job in progress is killed
     (see run_job) and whatever's still queued is skipped rather than
     started."""
+    dest_overrides = _disambiguated_destinations(jobs, log)
     results: dict[str, bool] = {}
     for job in jobs:
         if cancel is not None and cancel.is_set():
             skipped = len(jobs) - len(results)
             log(f"==== Stopped: {skipped} job(s) skipped ====")
             break
-        results[job.jobname] = run_job(job, log, cancel=cancel)
+        results[job.jobname] = run_job(
+            job, log, cancel=cancel, dest_override=dest_overrides.get(job.jobname)
+        )
     return results
