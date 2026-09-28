@@ -602,6 +602,20 @@ def insert_slide_call(
     return _apply(deck_path, expected_text, mutate)
 
 
+def insert_slide_calls(
+    deck_path: Path, expected_text: str, insert_at: int, indent: str, id_slugs: list[str],
+) -> str:
+    """Insert one plain ``\\slide{}`` line per slug, consecutively and in
+    order, at `insert_at` as a single edit -- so either all land or none."""
+
+    def mutate(text: str) -> str:
+        eol = _eol(text)
+        lines = "".join(f"{indent}{format_call('slide', slug)}{eol}" for slug in id_slugs)
+        return _splice(text, insert_at, lines)
+
+    return _apply(deck_path, expected_text, mutate)
+
+
 def move_slide_call(deck_path: Path, expected_text: str, call: SlideCall, neighbor: SlideCall) -> str:
     """Swap `call`'s line with `neighbor`'s (the adjacent call above or
     below it) as one edit. Only the two call lines trade places -- anything

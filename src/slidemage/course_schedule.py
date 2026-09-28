@@ -1,23 +1,25 @@
-"""Fetch, parse, and render public Uni Graz course schedules.
+"""Fetch, parse, and render public Uni Graz course data.
 
-The public course detail page and its appointment page use different paths,
-but both identify a course with the numeric ``pStpSpNr`` query parameter.
+The public course detail page is a client-rendered app, so this module
+doesn't scrape it directly -- everything here comes from the same two
+REST/JSON endpoints that page's own app calls, both keyed by the numeric
+``pStpSpNr`` course id. See docs/UGO_api.md for how these were found and
+what else they return.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
+from datetime import datetime
+import json
 from typing import Union
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
-from urllib.request import urlopen
-
-from lxml import html
+from urllib.parse import parse_qs, urlsplit
+from urllib.request import Request, urlopen
 
 
 _UNIGRAZ_HOST = "online.uni-graz.at"
-_SCHEDULE_PATH = "/kfu_online/wbTvw_List.lehrveranstaltung"
-_WHITESPACE_RE = re.compile(r"\s+")
+_COURSE_GROUPS_PATH = "/kfu_online/ee/rest/slc.tm.cp/student/courseGroups/firstGroups"
+_COURSE_DATA_PATH = "/kfu_online/ee/rest/slc.tm.cp/student/courses"
 _LATEX_SPECIALS = {
     "\\": r"\textbackslash{}",
     "&": r"\&",
@@ -50,8 +52,24 @@ class CourseGroup:
 
 @dataclass(frozen=True)
 class CourseSchedule:
-    title: str
     groups: tuple[CourseGroup, ...]
+    # "firstGroups" can stop short of the course's totalCount of groups.
+    truncated: bool = False
+
+
+@dataclass(frozen=True)
+class Lecturer:
+    first_name: str
+    last_name: str
+    function: str
+
+
+@dataclass(frozen=True)
+class CourseDetail:
+    number: str
+    title: str
+    semester: str
+    lecturers: tuple[Lecturer, ...]
 
 
 def _course_number(course_url: str) -> str:
@@ -67,103 +85,153 @@ def _course_number(course_url: str) -> str:
     return values[0]
 
 
-def schedule_url(course_url: str) -> str:
-    """Build the public appointment URL for a public Uni Graz course URL."""
+def course_groups_url(course_url: str) -> str:
+    """Build the public course-groups REST URL for a public Uni Graz course URL."""
     number = _course_number(course_url)
-    return urlunsplit(("https", _UNIGRAZ_HOST, _SCHEDULE_PATH,
-                       urlencode({"pStpSpNr": number}), ""))
+    return f"https://{_UNIGRAZ_HOST}{_COURSE_GROUPS_PATH}/{number}"
+
+
+def course_data_url(course_url: str) -> str:
+    """Build the public course-data REST URL for a public Uni Graz course URL.
+
+    This is the same JSON endpoint the course detail page's Angular app
+    calls (and, unlike that page, answers without a browser or a session)
+    -- it's what supplies title/number/semester/lecturers.
+    """
+    number = _course_number(course_url)
+    return f"https://{_UNIGRAZ_HOST}{_COURSE_DATA_PATH}/{number}"
+
+
+def _get_json(url: str, label: str) -> bytes:
+    # The server picks each text field's default language from
+    # Accept-Language; ask for German explicitly, since the generated slides
+    # are German. _german() below doesn't rely on this either way.
+    request = Request(url, headers={"Accept": "application/json", "Accept-Language": "de"})
+    try:
+        with urlopen(request, timeout=15) as response:  # nosec B310: URL is validated by the caller
+            if urlsplit(response.geturl()).hostname != _UNIGRAZ_HOST:
+                raise RuntimeError(f"Uni Graz {label} request redirected to another host")
+            return response.read()
+    except HTTPError as exc:
+        raise RuntimeError(f"Uni Graz {label} request failed (HTTP {exc.code})") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Unable to reach Uni Graz {label}: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError(f"Uni Graz {label} request timed out") from exc
 
 
 def fetch_schedule(course_url: str) -> CourseSchedule:
-    """Download and parse a public Uni Graz schedule.
-
-    ``urlopen`` follows the University's redirect to ``wbTermin_list``.  Both
-    network failures and an unexpected redirected host are reported clearly.
-    """
-    url = schedule_url(course_url)
-    try:
-        with urlopen(url, timeout=15) as response:  # nosec B310: URL is validated above
-            final_url = response.geturl()
-            final_host = urlsplit(final_url).hostname
-            if final_host != _UNIGRAZ_HOST:
-                raise RuntimeError("Uni Graz schedule request redirected to another host")
-            body = response.read()
-    except HTTPError as exc:
-        raise RuntimeError(f"Uni Graz schedule request failed (HTTP {exc.code})") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Unable to reach Uni Graz schedule: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise RuntimeError("Uni Graz schedule request timed out") from exc
-    return parse_schedule(body, final_url)
+    """Download and parse a public Uni Graz course's session groups."""
+    return parse_schedule(_get_json(course_groups_url(course_url), "course groups"))
 
 
-def _text(element: object) -> str:
-    """Extract visible HTML text and normalize its whitespace."""
-    if element is None:
+def fetch_course_detail(course_url: str) -> CourseDetail:
+    """Download and parse a public Uni Graz course's title/number/semester/lecturers."""
+    return parse_course_detail(_get_json(course_data_url(course_url), "course data"))
+
+
+def _german(langdata: dict | None) -> str:
+    """The German text of a UGO "langdata" field, else its default value."""
+    if not langdata:
         return ""
-    return _WHITESPACE_RE.sub(" ", " ".join(element.itertext())).strip()
+    for translation in (langdata.get("translations") or {}).get("translation") or []:
+        if translation.get("lang") == "de" and translation.get("value"):
+            return translation["value"].strip()
+    return (langdata.get("value") or "").strip()
 
 
-def parse_schedule(html_source: Union[bytes, str], source_url: str) -> CourseSchedule:
-    """Parse a Uni Graz appointment page without making a network request.
+def _parse_appointment(appointment: dict) -> CourseSession:
+    start = datetime.fromisoformat(appointment["timestampFrom"]["value"])
+    end = datetime.fromisoformat(appointment["timestampTo"]["value"])
+    event_type = appointment.get("appointmentEventTypeDto") or {}
+    return CourseSession(
+        date=start.strftime("%d.%m.%Y"),
+        start=start.strftime("%H:%M"),
+        end=end.strftime("%H:%M"),
+        location=(appointment.get("resourceName") or "").strip(),
+        event=_german(event_type.get("name")),
+        remark=(appointment.get("comment") or "").strip(),
+    )
 
-    A missing appointments table is a valid empty schedule. ``source_url`` is
-    accepted to make the source explicit and checked when it is supplied.
+
+# Anything a malformed response can raise while being walked.
+_SHAPE_ERRORS = (TypeError, ValueError, KeyError, IndexError, AttributeError)
+
+
+def parse_schedule(json_source: Union[bytes, str]) -> CourseSchedule:
+    """Parse the ``slc.tm.cp`` course-groups REST response without making a
+    network request. Raises ``ValueError`` if it isn't that response shape.
+
+    The response repeats the course's shared (standard-group) sessions
+    inside every group. They're pulled out into one "Standardgruppe" group,
+    listed first, and each other group keeps only its own sessions -- the
+    same split as the old appointments page. A group with no sessions of
+    its own is kept, with no sessions.
     """
-    if source_url:
-        parsed = urlsplit(source_url)
-        if parsed.hostname and parsed.hostname != _UNIGRAZ_HOST:
-            raise ValueError("schedule source is not hosted by online.uni-graz.at")
     try:
-        document = html.fromstring(html_source)
-    except (TypeError, ValueError, UnicodeDecodeError) as exc:
-        raise ValueError("schedule response is not valid HTML") from exc
+        payload = json.loads(json_source)
+        course_groups = payload["courseGroupDtos"] or []
+        shared: dict[object, tuple[str, CourseSession]] = {}
+        standard_group_ids: set[object] = set()
+        listed: list[tuple[object, CourseGroup]] = []
+        for group in course_groups:
+            own: list[CourseSession] = []
+            for appointment in group.get("appointmentDtos") or []:
+                session = _parse_appointment(appointment)
+                owner = appointment.get("courseGroupDto") or {}
+                if owner.get("standardgroupFlag") == "J":
+                    standard_group_ids.add(owner.get("id"))
+                    key = appointment.get("id") or session
+                    shared.setdefault(key, (appointment["timestampFrom"]["value"], session))
+                else:
+                    own.append(session)
+            name = (group.get("name") or "").strip() or "Standardgruppe"
+            listed.append((group.get("id"), CourseGroup(name, tuple(own))))
+        # The standard group itself, if listed, is already the "Standardgruppe" below.
+        groups = [group for group_id, group in listed
+                  if group.sessions or group_id is None or group_id not in standard_group_ids]
+        if shared:
+            ordered = sorted(shared.values(), key=lambda item: item[0])
+            groups.insert(0, CourseGroup("Standardgruppe", tuple(session for _, session in ordered)))
+        total = payload.get("totalCount")
+    except _SHAPE_ERRORS as exc:
+        raise ValueError("course groups response is not the expected shape") from exc
+    return CourseSchedule(
+        groups=tuple(groups),
+        truncated=isinstance(total, int) and total > len(course_groups),
+    )
 
-    tables = document.xpath('//table[@id="tabLvTermine"]')
-    if not tables:
-        return CourseSchedule(title="", groups=())
-    table = tables[0]
-    title = _text(table.xpath("./caption")[0] if table.xpath("./caption") else None)
 
-    groups: list[CourseGroup] = []
-    group_name: str | None = None
-    sessions: list[CourseSession] = []
-
-    def finish_group() -> None:
-        nonlocal sessions
-        if group_name is not None:
-            groups.append(CourseGroup(group_name, tuple(sessions)))
-        sessions = []
-
-    for row in table.xpath("./tbody/tr"):
-        cells = row.xpath("./td")
-        if len(cells) == 1 and cells[0].get("colspan") == "8":
-            finish_group()
-            group_name = _text(cells[0]) or "Standardgruppe"
-            continue
-        if len(cells) < 8:
-            continue
-        if group_name is None:
-            group_name = "Standardgruppe"
-        sessions.append(CourseSession(
-            date=_text(cells[1]),
-            start=_text(cells[2]),
-            end=_text(cells[3]),
-            location=_text(cells[4]),
-            event=_text(cells[5]),
-            remark=_text(cells[7]),
-        ))
-    finish_group()
-    return CourseSchedule(title=title, groups=tuple(groups))
+def parse_course_detail(json_source: Union[bytes, str]) -> CourseDetail:
+    """Parse the ``slc.tm.cp`` course-data REST response without making a
+    network request. Raises ``ValueError`` if it isn't that response shape."""
+    try:
+        payload = json.loads(json_source)
+        course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
+        lecturers = tuple(
+            Lecturer(
+                first_name=(lectureship["identityLibDto"]["firstName"] or "").strip(),
+                last_name=(lectureship["identityLibDto"]["lastName"] or "").strip(),
+                function=(lectureship["teachingFunction"]["name"] or "").strip(),
+            )
+            for lectureship in course.get("lectureships") or []
+        )
+        return CourseDetail(
+            number=course["courseNumber"]["courseNumber"],
+            title=_german(course["courseTitle"]),
+            semester=_german(course["semesterDto"]["semesterDesignation"]),
+            lecturers=lecturers,
+        )
+    except _SHAPE_ERRORS as exc:
+        raise ValueError("course data response is not the expected shape") from exc
 
 
 def _escape_latex(text: str) -> str:
     return "".join(_LATEX_SPECIALS.get(character, character) for character in text)
 
 
-def render_group_table(schedule: CourseSchedule, group: CourseGroup) -> str:
+def render_group_table(group: CourseGroup) -> str:
     """Render one group as safe LaTeX that can be placed inside a frame."""
-    del schedule  # Reserved for callers that select a group from a schedule.
     if not group.sessions:
         return "\\small \\textbf{" + _escape_latex(group.name) + "}\\par Keine Termine verfügbar."
 
@@ -187,3 +255,12 @@ def render_group_table(schedule: CourseSchedule, group: CourseGroup) -> str:
         r"\bottomrule",
         r"\end{tabular}",
     ))
+
+
+def render_title_slide(detail: CourseDetail, lecturers: tuple[Lecturer, ...]) -> str:
+    """Render a ``\\titleframe{title}{names\\\\semester}`` call from fetched
+    course data and a caller-selected subset of its lecturers."""
+    names = _escape_latex(", ".join(f"{lecturer.first_name} {lecturer.last_name}" for lecturer in lecturers))
+    semester = _escape_latex(detail.semester)
+    subtitle = r"\\".join(part for part in (names, semester) if part)
+    return r"\titleframe{" + _escape_latex(detail.title) + "}{" + subtitle + "}"

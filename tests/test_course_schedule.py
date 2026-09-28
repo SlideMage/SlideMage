@@ -1,38 +1,86 @@
-"""Uni Graz course schedule parsing and LaTeX rendering tests."""
+"""Uni Graz course-groups/course-detail REST parsing and LaTeX rendering."""
 from __future__ import annotations
 
+import json
 from io import BytesIO
 
 import pytest
 
 from slidemage.course_schedule import (
+    CourseDetail,
     CourseGroup,
     CourseSchedule,
     CourseSession,
+    Lecturer,
+    course_data_url,
+    course_groups_url,
+    fetch_course_detail,
     fetch_schedule,
+    parse_course_detail,
     parse_schedule,
     render_group_table,
-    schedule_url,
+    render_title_slide,
 )
 
 
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
-SCHEDULE_URL = "https://online.uni-graz.at/kfu_online/wbTvw_List.lehrveranstaltung?pStpSpNr=1002516"
-HTML = b"""<!doctype html><meta charset="utf-8"><table id="tabLvTermine">
-<caption>355.001 Management &amp; Science</caption><tbody>
-<tr class="coTableGR1"><td colspan="8"><span>Standardgruppe</span></td></tr>
-<tr><td>Mo</td><td>05.10.2026</td><td>09:00</td><td>10:00</td>
-<td><a>SR 15.37 &amp; A</a></td><td>Abhaltung</td><td>fix</td><td>Vorbesprechung</td></tr>
-<tr class="coTableGR1"><td colspan="8">Gruppe Wirtschaftsinformatik</td></tr>
-<tr><td>Di</td><td>06.10.2026</td><td>08:30</td><td>10:00</td>
-<td>HS 01</td><td>Pr\xc3\xbcfung</td><td>fix</td><td>R&amp;D 50% #1 _x_ {y} ~ ^ \\end</td></tr>
-</tbody></table>"""
+GROUPS_URL = "https://online.uni-graz.at/kfu_online/ee/rest/slc.tm.cp/student/courseGroups/firstGroups/1002516"
+COURSE_DATA_URL = "https://online.uni-graz.at/kfu_online/ee/rest/slc.tm.cp/student/courses/1002516"
+
+GROUPS_JSON = json.dumps({
+    "totalCount": 2,
+    "courseGroupDtos": [
+        {
+            "name": "Standardgruppe",
+            "appointmentDtos": [{
+                "timestampFrom": {"value": "2026-10-05T09:00:00"},
+                "timestampTo": {"value": "2026-10-05T10:00:00"},
+                "resourceName": "SR 15.37 & A",
+                "appointmentEventTypeDto": {"name": {"value": "Abhaltung"}},
+                "comment": "Vorbesprechung",
+            }],
+        },
+        {
+            "name": "Gruppe Wirtschaftsinformatik",
+            "appointmentDtos": [{
+                "timestampFrom": {"value": "2026-10-06T08:30:00"},
+                "timestampTo": {"value": "2026-10-06T10:00:00"},
+                "resourceName": "HS 01",
+                "appointmentEventTypeDto": {"name": {"value": "Prüfung"}},
+                "comment": "R&D 50% #1 _x_ {y} ~ ^ \\end",
+            }],
+        },
+    ],
+}).encode()
+
+COURSE_DATA_JSON = json.dumps({
+    "resource": [{
+        "content": {
+            "cpCourseDetailDto": {
+                "cpCourseDto": {
+                    "courseNumber": {"courseNumber": "355.001"},
+                    "courseTitle": {"value": "Bachelorkurs (Management Science)"},
+                    "semesterDto": {"semesterDesignation": {"value": "Wintersemester 2026/27"}},
+                    "lectureships": [
+                        {
+                            "identityLibDto": {"firstName": "Andreas", "lastName": "Darmann"},
+                            "teachingFunction": {"name": "Vortragende*r"},
+                        },
+                        {
+                            "identityLibDto": {"firstName": "Jürgen", "lastName": "Fleiß"},
+                            "teachingFunction": {"name": "Vortragende*r"},
+                        },
+                    ],
+                },
+            },
+        },
+    }],
+}).encode()
 
 
-def test_parse_official_table_shape_and_multiple_groups():
-    schedule = parse_schedule(HTML, SCHEDULE_URL)
+def test_parse_course_groups_shape_and_multiple_groups():
+    schedule = parse_schedule(GROUPS_JSON)
 
-    assert schedule.title == "355.001 Management & Science"
     assert [group.name for group in schedule.groups] == [
         "Standardgruppe", "Gruppe Wirtschaftsinformatik",
     ]
@@ -44,10 +92,147 @@ def test_parse_official_table_shape_and_multiple_groups():
     assert schedule.groups[1].sessions[0].event == "Prüfung"
 
 
-def test_parser_handles_empty_or_missing_table():
-    assert parse_schedule("<html><body>none</body></html>", SCHEDULE_URL) == CourseSchedule("", ())
-    empty = parse_schedule('<table id="tabLvTermine"><caption>Empty</caption><tbody></tbody></table>', SCHEDULE_URL)
-    assert empty == CourseSchedule("Empty", ())
+def appointment(start, end, comment, *, shared=False, appointment_id=None):
+    return {
+        "id": appointment_id,
+        "courseGroupDto": {"standardgroupFlag": "J" if shared else "N"},
+        "timestampFrom": {"value": start},
+        "timestampTo": {"value": end},
+        "resourceName": "SR 15.37",
+        "appointmentEventTypeDto": {"name": {"value": "Abhaltung"}},
+        "comment": comment,
+    }
+
+
+def test_shared_sessions_become_their_own_standard_group():
+    # Shape of the real response: the shared sessions are repeated in every
+    # group, and "Operations Management" has none of its own.
+    shared_a = appointment("2026-10-05T09:00:00", "2026-10-05T10:00:00", "Vorbesprechung", shared=True, appointment_id=1)
+    shared_b = appointment("2026-10-14T10:15:00", "2026-10-14T12:00:00", "Shared 2", shared=True, appointment_id=2)
+    own = appointment("2026-10-06T08:30:00", "2026-10-06T10:00:00", "WI only")
+    schedule = parse_schedule(json.dumps({"totalCount": 2, "courseGroupDtos": [
+        {"name": "Gruppe Operations Management", "appointmentDtos": [shared_a, shared_b]},
+        {"name": "Gruppe Wirtschaftsinformatik", "appointmentDtos": [shared_a, own, shared_b]},
+    ]}))
+
+    assert [(group.name, [s.remark for s in group.sessions]) for group in schedule.groups] == [
+        ("Standardgruppe", ["Vorbesprechung", "Shared 2"]),
+        ("Gruppe Operations Management", []),
+        ("Gruppe Wirtschaftsinformatik", ["WI only"]),
+    ]
+    assert not schedule.truncated
+
+
+def test_listed_standard_group_is_not_repeated_as_an_empty_group():
+    shared = appointment("2026-10-05T09:00:00", "2026-10-05T10:00:00", "Shared", shared=True, appointment_id=1)
+    shared["courseGroupDto"]["id"] = 7
+    schedule = parse_schedule(json.dumps({"courseGroupDtos": [
+        {"id": 7, "name": "Standardgruppe", "appointmentDtos": [shared]},
+    ]}))
+    assert [(group.name, len(group.sessions)) for group in schedule.groups] == [("Standardgruppe", 1)]
+
+
+def test_parser_handles_missing_or_unnamed_groups():
+    assert parse_schedule(json.dumps({"courseGroupDtos": []}).encode()) == CourseSchedule(())
+    unnamed = parse_schedule(json.dumps({"courseGroupDtos": [
+        {"name": None, "appointmentDtos": [appointment("2026-10-05T09:00:00", "2026-10-05T10:00:00", "x")]},
+    ]}).encode())
+    assert unnamed.groups[0].name == "Standardgruppe"
+    with pytest.raises(ValueError):
+        parse_schedule(b"{}")
+
+
+def test_parser_tolerates_null_fields():
+    schedule = parse_schedule(json.dumps({"courseGroupDtos": [
+        {"name": "G", "appointmentDtos": None},
+        {"name": "H", "appointmentDtos": [{
+            "timestampFrom": {"value": "2026-10-05T09:00:00"},
+            "timestampTo": {"value": "2026-10-05T10:00:00"},
+            "courseGroupDto": None,
+            "resourceName": None, "appointmentEventTypeDto": None, "comment": None,
+        }]},
+    ]}).encode())
+    assert [group.name for group in schedule.groups] == ["G", "H"]
+    assert schedule.groups[0].sessions == ()
+    assert schedule.groups[1].sessions[0] == CourseSession("05.10.2026", "09:00", "10:00", "", "", "")
+
+
+@pytest.mark.parametrize("appointment", [
+    {},
+    {"timestampFrom": {"value": "not a date"}, "timestampTo": {"value": "2026-10-05T10:00:00"}},
+    {"timestampFrom": None, "timestampTo": None},
+    "not an object",
+])
+def test_parser_reports_malformed_appointments_as_value_error(appointment):
+    with pytest.raises(ValueError):
+        parse_schedule(json.dumps({"courseGroupDtos": [{"name": "G", "appointmentDtos": [appointment]}]}))
+
+
+def test_parser_flags_truncated_group_list():
+    source = {"totalCount": 3, "courseGroupDtos": [{"name": "G", "appointmentDtos": []}]}
+    assert parse_schedule(json.dumps(source)).truncated
+    source["totalCount"] = 1
+    assert not parse_schedule(json.dumps(source)).truncated
+
+
+def test_text_fields_prefer_german_translation_and_are_stripped():
+    langdata = {"value": "Bachelor's Course\t \t", "translations": {"translation": [
+        {"lang": "de", "value": " Bachelorkurs "}, {"lang": "en", "value": "Bachelor's Course\t \t"},
+    ]}}
+    payload = json.loads(COURSE_DATA_JSON)
+    course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
+    course["courseTitle"] = langdata
+    course["semesterDto"]["semesterDesignation"] = {"value": "Winter semester 2026/27 "}
+    course["lectureships"] = None
+    detail = parse_course_detail(json.dumps(payload))
+    assert detail.title == "Bachelorkurs"
+    assert detail.semester == "Winter semester 2026/27"
+    assert detail.lecturers == ()
+
+
+def test_parse_course_detail_reports_malformed_lecturer_as_value_error():
+    payload = json.loads(COURSE_DATA_JSON)
+    payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]["lectureships"] = [{}]
+    with pytest.raises(ValueError):
+        parse_course_detail(json.dumps(payload))
+
+
+def test_fetch_asks_for_german(monkeypatch):
+    headers = []
+
+    class Response(BytesIO):
+        def geturl(self):
+            return COURSE_DATA_URL
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_urlopen(request, timeout):
+        headers.append(request.get_header("Accept-language"))
+        return Response(COURSE_DATA_JSON)
+
+    monkeypatch.setattr("slidemage.course_schedule.urlopen", fake_urlopen)
+    fetch_course_detail(COURSE_URL)
+    assert headers == ["de"]
+
+
+def test_fetch_rejects_redirect_to_another_host(monkeypatch):
+    class Response(BytesIO):
+        def geturl(self):
+            return "https://example.org/elsewhere"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    monkeypatch.setattr("slidemage.course_schedule.urlopen", lambda request, timeout: Response(GROUPS_JSON))
+    with pytest.raises(RuntimeError, match="redirected"):
+        fetch_schedule(COURSE_URL)
 
 
 @pytest.mark.parametrize("bad_url", [
@@ -56,15 +241,18 @@ def test_parser_handles_empty_or_missing_table():
     "https://online.uni-graz.at/?pStpSpNr=abc",
     "https://online.uni-graz.at/?pStpSpNr=1&pStpSpNr=2",
 ])
-def test_schedule_url_validates_course_url(bad_url):
+def test_urls_validate_course_url(bad_url):
     with pytest.raises(ValueError):
-        schedule_url(bad_url)
-    assert schedule_url(COURSE_URL) == SCHEDULE_URL
+        course_groups_url(bad_url)
+    with pytest.raises(ValueError):
+        course_data_url(bad_url)
+    assert course_groups_url(COURSE_URL) == GROUPS_URL
+    assert course_data_url(COURSE_URL) == COURSE_DATA_URL
 
 
 def test_renderer_escapes_latex_special_characters():
-    group = parse_schedule(HTML, SCHEDULE_URL).groups[1]
-    rendered = render_group_table(CourseSchedule("", (group,)), group)
+    group = parse_schedule(GROUPS_JSON).groups[1]
+    rendered = render_group_table(group)
 
     assert r"R\&D 50\% \#1 \_x\_ \{y\} \textasciitilde{} \textasciicircum{} \textbackslash{}end" in rendered
     assert r"\begin{tabular}" in rendered
@@ -74,15 +262,15 @@ def test_renderer_escapes_latex_special_characters():
 
 
 def test_renderer_handles_empty_group():
-    assert render_group_table(CourseSchedule("", ()), CourseGroup("None & One", ())) == r"\small \textbf{None \& One}\par Keine Termine verfügbar."
+    assert render_group_table(CourseGroup("None & One", ())) == r"\small \textbf{None \& One}\par Keine Termine verfügbar."
 
 
-def test_fetch_uses_schedule_url_and_redirect_target(monkeypatch):
+def test_fetch_schedule_uses_course_groups_url(monkeypatch):
     requested = []
 
     class Response(BytesIO):
         def geturl(self):
-            return "https://online.uni-graz.at/kfu_online/wbTermin_list.wbLehrveranstaltung?pStpSpNr=1002516"
+            return requested[-1][0]
 
         def __enter__(self):
             return self
@@ -90,11 +278,58 @@ def test_fetch_uses_schedule_url_and_redirect_target(monkeypatch):
         def __exit__(self, *args):
             self.close()
 
-    def fake_urlopen(url, timeout):
-        requested.append((url, timeout))
-        return Response(HTML)
+    def fake_urlopen(request, timeout):
+        requested.append((request.full_url, request.headers.get("Accept"), timeout))
+        return Response(GROUPS_JSON)
 
     monkeypatch.setattr("slidemage.course_schedule.urlopen", fake_urlopen)
     schedule = fetch_schedule(COURSE_URL)
-    assert requested == [(SCHEDULE_URL, 15)]
+    assert requested == [(GROUPS_URL, "application/json", 15)]
     assert schedule.groups[0].name == "Standardgruppe"
+
+
+def test_parse_course_detail_shape():
+    detail = parse_course_detail(COURSE_DATA_JSON)
+
+    assert detail == CourseDetail(
+        number="355.001", title="Bachelorkurs (Management Science)",
+        semester="Wintersemester 2026/27",
+        lecturers=(
+            Lecturer("Andreas", "Darmann", "Vortragende*r"),
+            Lecturer("Jürgen", "Fleiß", "Vortragende*r"),
+        ),
+    )
+
+
+def test_parse_course_detail_rejects_unexpected_shape():
+    with pytest.raises(ValueError):
+        parse_course_detail(b"{}")
+
+
+def test_fetch_course_detail_uses_course_data_url(monkeypatch):
+    requested = []
+
+    class Response(BytesIO):
+        def geturl(self):
+            return requested[-1][0]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_urlopen(request, timeout):
+        requested.append((request.full_url, request.headers.get("Accept"), timeout))
+        return Response(COURSE_DATA_JSON)
+
+    monkeypatch.setattr("slidemage.course_schedule.urlopen", fake_urlopen)
+    detail = fetch_course_detail(COURSE_URL)
+    assert requested == [(COURSE_DATA_URL, "application/json", 15)]
+    assert detail.title == "Bachelorkurs (Management Science)"
+
+
+def test_render_title_slide_escapes_and_joins_selected_lecturers():
+    detail = parse_course_detail(COURSE_DATA_JSON)
+    rendered = render_title_slide(detail, detail.lecturers[:1])
+    assert rendered == r"\titleframe{Bachelorkurs (Management Science)}{Andreas Darmann\\Wintersemester 2026/27}"

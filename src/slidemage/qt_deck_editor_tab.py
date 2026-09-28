@@ -186,14 +186,15 @@ class DeckEditorTab(QWidget):
         self.add_slide_button.clicked.connect(self._on_add_slide_to_empty_deck)
         toolbar.addWidget(self.add_slide_button)
 
-        self.import_sessions_button = QPushButton("Import sessions…")
-        self.import_sessions_button.setToolTip(
-            "Create a slide with the sessions from this deck's linked Uni Graz course."
+        self.admin_slides_button = QPushButton("Admin slides…")
+        self.admin_slides_button.setToolTip(
+            "Insert a title slide and/or a course-sessions table generated "
+            "from this deck's linked Uni Graz course."
         )
-        self.import_sessions_button.setEnabled(bool(deck.course_url))
-        self.import_sessions_button.setVisible(deck.group == TAG_COURSE)
-        self.import_sessions_button.clicked.connect(self._on_import_course_sessions)
-        toolbar.addWidget(self.import_sessions_button)
+        self.admin_slides_button.setEnabled(bool(deck.course_url))
+        self.admin_slides_button.setVisible(deck.group == TAG_COURSE)
+        self.admin_slides_button.clicked.connect(self._on_admin_slides)
+        toolbar.addWidget(self.admin_slides_button)
 
         add_section_button = QPushButton("Add section…")
         add_section_button.clicked.connect(
@@ -339,8 +340,8 @@ class DeckEditorTab(QWidget):
 
     def reload(self, deck: Deck) -> None:
         self.deck = deck
-        self.import_sessions_button.setEnabled(bool(deck.course_url))
-        self.import_sessions_button.setVisible(deck.group == TAG_COURSE)
+        self.admin_slides_button.setEnabled(bool(deck.course_url))
+        self.admin_slides_button.setVisible(deck.group == TAG_COURSE)
         self._template = slide_snapshot.detect_template(deck.preamble_text)
         self._build_rows()
 
@@ -1229,25 +1230,25 @@ class DeckEditorTab(QWidget):
             previous_text=previous_text,
         )
 
-    def _on_import_course_sessions(self) -> None:
-        from .qt_course_schedule_dialog import CourseScheduleDialog, insert_schedule_slide
+    def _on_admin_slides(self) -> None:
+        from .qt_admin_slides_dialog import AdminSlidesDialog, insert_admin_slides
 
-        dialog = CourseScheduleDialog(self, self.deck)
-        if dialog.exec() != CourseScheduleDialog.DialogCode.Accepted:
+        dialog = AdminSlidesDialog(self, self.deck)
+        if dialog.exec() != AdminSlidesDialog.DialogCode.Accepted:
             return
-        if dialog.slide_source is None:
+        if not dialog.slide_specs:
             return
         previous_text = self.deck.text
         try:
-            slide_path = insert_schedule_slide(self.deck, dialog.position, dialog.slide_source)
+            slide_paths = insert_admin_slides(self.deck, dialog.position, dialog.slide_specs)
         except (OSError, ValueError, deck_editor.StaleFileError) as exc:
-            QMessageBox.critical(self, "Import course sessions failed", str(exc))
+            QMessageBox.critical(self, "Admin slides failed", str(exc))
             return
         self.app.after_deck_edit(
-            self.deck.path, f"Imported course sessions into {self.deck.name}",
+            self.deck.path, f"Inserted admin slides into {self.deck.name}",
             previous_text=previous_text,
         )
-        self.app.open_slide_editor(slide_path, return_to=self)
+        self.app.open_slide_editor(slide_paths[0], return_to=self)
 
     def _set_preview_tooltip(self, label: QLabel, id_slug: str) -> None:
         """Hover preview: Qt's tooltips render a real (if limited) HTML
