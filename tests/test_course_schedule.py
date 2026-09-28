@@ -372,3 +372,15 @@ def test_course_detail_in_english_uses_ugo_translations():
     assert detail.title == "Bachelor's Course"
     # No English semester name: falls back to German.
     assert detail.semester == "Wintersemester 2026/27"
+
+
+def test_parse_course_detail_reads_languages_of_instruction_main_first():
+    payload = json.loads(COURSE_DATA_JSON)
+    course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
+    assert parse_course_detail(json.dumps(payload)).languages == ()
+    course["courseLanguageDtos"] = [
+        {"languageDto": {"key": "EN"}, "mainLanguage": False},
+        {"languageDto": {"key": "DE"}, "mainLanguage": True},
+        {"languageDto": None},
+    ]
+    assert parse_course_detail(json.dumps(payload)).languages == ("de", "en")

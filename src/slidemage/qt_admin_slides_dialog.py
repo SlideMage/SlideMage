@@ -31,6 +31,8 @@ from .deck_scan import Deck
 from .transcript import deck_language_of
 
 
+_LANGUAGE_NAMES = {"de": "German", "en": "English"}
+
 # Keep an in-flight request alive if its dialog is closed before the request ends.
 _active_fetchers: set[QThread] = set()
 
@@ -139,6 +141,10 @@ class AdminSlidesDialog(QDialog):
         self.status_label = QLabel("Loading the linked course…")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+        self.language_warning = QLabel()
+        self.language_warning.setWordWrap(True)
+        self.language_warning.setVisible(False)
+        layout.addWidget(self.language_warning)
 
         self.title_group = QGroupBox("Title slide")
         self.title_group.setCheckable(True)
@@ -218,6 +224,7 @@ class AdminSlidesDialog(QDialog):
         self.status_label.setText("")
         self._apply_schedule_result(schedule_result)
         self._apply_detail_result(detail_result)
+        self._check_language(detail_result)
         self._update_preview()
 
     def _apply_schedule_result(self, result: object) -> None:
@@ -238,6 +245,22 @@ class AdminSlidesDialog(QDialog):
             self.sessions_status.setText(f"Not available: {message}")
             self.sessions_group.setChecked(False)
             self.sessions_group.setEnabled(False)
+
+    def _check_language(self, result: object) -> None:
+        """Warn, without blocking, when the deck's language isn't one the
+        course is taught in -- most often a deck with no \\decklanguage,
+        which counts as English."""
+        if not isinstance(result, course_schedule.CourseDetail) or not result.languages:
+            return
+        if self.language in result.languages:
+            return
+        taught = " and ".join(_LANGUAGE_NAMES.get(key, key.upper()) for key in result.languages)
+        deck = _LANGUAGE_NAMES.get(self.language, self.language)
+        self.language_warning.setText(
+            f"Warning: this course is taught in {taught}, but the deck is {deck} -- "
+            f"the slides will be {deck}. Check the deck's \\decklanguage if that's unintended."
+        )
+        self.language_warning.setVisible(True)
 
     def _apply_detail_result(self, result: object) -> None:
         if isinstance(result, course_schedule.CourseDetail) and result.lecturers:

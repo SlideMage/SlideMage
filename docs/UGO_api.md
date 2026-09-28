@@ -155,6 +155,15 @@ group names, event types and fully known remarks are translated from a
 fixed word list (`course_schedule.translate_schedule()`, v4.1.0). The
 slides are named `<id>-EN-...` instead of `<id>-DE-...`.
 
+The course's languages of instruction (`CourseDetail.languages`, main one
+first) are only used for a check: if the deck's language isn't among
+them, the dialog shows a warning, but inserting still works. The typical
+cause is a deck with no `\decklanguage` line, which counts as English,
+for a course taught in German. A mismatch isn't an error, because it's
+often deliberate (English slides for a German-taught course) and a course
+can list several languages. Only `"DE"` has been seen from this endpoint
+so far.
+
 Both parsers raise `ValueError` for any response that doesn't have the
 expected shape, including a single malformed session or lecturer, and
 treat `null` lists and text fields as empty. Both fetches reject a
@@ -168,7 +177,7 @@ Fields available on `cpCourseDto` (used by this module marked ✓):
 | `courseNumber.courseNumber` ✓ | LV number, e.g. `"355.001"` |
 | `courseTitle` ✓ | Title (langdata) |
 | `courseTypeDto` | Type code (`"KS"`), name ("Kurs"/"Course") |
-| `courseLanguageDtos[]` | Language(s) of instruction, `mainLanguage` flag |
+| `courseLanguageDtos[]` ✓ | Language(s) of instruction (`languageDto.key`, e.g. `"DE"`), `mainLanguage` flag |
 | `ectsCredits` | ECTS points |
 | `courseNormConfigs[]` | Workload unit, e.g. `"1"` Semesterstunde (SSt) |
 | `semesterDto.semesterDesignation` ✓ | Full semester name, e.g. "Wintersemester 2026/27" |

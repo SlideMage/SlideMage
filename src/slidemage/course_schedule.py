@@ -71,6 +71,8 @@ class CourseDetail:
     title: str
     semester: str
     lecturers: tuple[Lecturer, ...]
+    # Languages of instruction as lower-case keys ("de", "en"), main one first.
+    languages: tuple[str, ...] = ()
 
 
 def _course_number(course_url: str) -> str:
@@ -225,11 +227,21 @@ def parse_course_detail(json_source: Union[bytes, str], language: str = "de") ->
             )
             for lectureship in course.get("lectureships") or []
         )
+        course_languages = sorted(
+            course.get("courseLanguageDtos") or [],
+            key=lambda entry: not entry.get("mainLanguage"),
+        )
+        languages = tuple(dict.fromkeys(
+            key.strip().lower()
+            for entry in course_languages
+            if (key := (entry.get("languageDto") or {}).get("key"))
+        ))
         return CourseDetail(
             number=course["courseNumber"]["courseNumber"],
             title=_localized(course["courseTitle"], language),
             semester=_localized(course["semesterDto"]["semesterDesignation"], language),
             lecturers=lecturers,
+            languages=languages,
         )
     except _SHAPE_ERRORS as exc:
         raise ValueError("course data response is not the expected shape") from exc

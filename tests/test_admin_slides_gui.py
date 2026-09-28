@@ -276,3 +276,19 @@ def test_english_deck_slides_are_named_en(tmp_path, monkeypatch):
         "abc-EN-Title-Slide-current.tex", "def-EN-Course-Sessions-current.tex",
     ]
     assert r"\slide{def-EN-Course-Sessions}" in deck.path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(("deck_language", "taught", "warned"), [
+    ("en", ("de",), True),
+    ("de", ("de",), False),
+    ("en", ("de", "en"), False),
+    ("de", (), False),
+])
+def test_language_mismatch_warns_without_blocking(tmp_path, monkeypatch, qapp, deck_language, taught, warned):
+    dialog = make_dialog(tmp_path, monkeypatch, language=deck_language)
+    dialog._on_loaded("no sessions", replace(DETAIL, languages=taught))
+
+    assert dialog.language_warning.isHidden() is not warned
+    if warned:
+        assert "taught in German, but the deck is English" in dialog.language_warning.text()
+    assert dialog.insert_button.isEnabled()
