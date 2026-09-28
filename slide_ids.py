@@ -43,12 +43,17 @@ ALL_NUMERIC_RE = re.compile(r"^[0-9]+$")
 SCIENTIFIC_NOTATION_RE = re.compile(r"^[0-9]+[eE][+-]?[0-9]+$")
 FLOAT_WORDS = {"inf", "nan"}
 WINDOWS_DEVICE_NAMES = {"aux", "con", "nul", "prn"}
-# Real English words that happen to be legal 3-character ids but read badly
-# on a slide's own footer/in conversation (2026-09-27, direct instruction,
-# after "pee" turned up as slide id_slug). Add to this set by hand as more
-# turn up -- there's no automated word-list check, just this explicit
-# denylist. Mirrored in .scripts/R_Slidemaster/R/slide.new.id.R.
-BANNED_WORDS = {"pee"}
+# Real (or widely recognized) 3-character words/abbreviations that happen to
+# be legal ids but read badly, vulgar, or offensive on a slide's own
+# footer/in conversation (2026-09-27, direct instruction, after "pee" turned
+# up as slide id_slug; expanded 2026-09-28 by direct request to a broader
+# vulgarity/slur/slang denylist). Add to this set by hand as more turn up --
+# there's no automated word-list check, just this explicit denylist. Mirrored
+# in .scripts/R_Slidemaster/R/slide.new.id.R.
+BANNED_WORDS = {
+    "pee", "sex", "wtf", "ass", "cum", "tit", "fag", "cnt", "kkk",
+    "fap", "ffs", "poo", "hos", "gun", "gay", "rip",
+}
 
 
 def illegal_id_reason(slide_id: str) -> Optional[str]:
