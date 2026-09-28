@@ -1239,7 +1239,8 @@ class DeckEditorTab(QWidget):
             return
         previous_text = self.deck.text
         try:
-            slide_path = insert_schedule_slide(self.deck, dialog.position, dialog.slide_source)
+            slide_path = insert_schedule_slide(
+                self.deck, dialog.position, dialog.slide_source, dialog.language)
         except (OSError, ValueError, deck_editor.StaleFileError) as exc:
             QMessageBox.critical(self, "Import course sessions failed", str(exc))
             return

@@ -5,6 +5,7 @@ cli.py must settle the project before deck_scan computes PROJECT_ROOT at import.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -13,6 +14,18 @@ from pathlib import Path
 
 MARKER = "slide_ids.csv"
 ENV_VAR = "SLIDEMASTER_PROJECT"
+
+# Project format guard (v4.1.0). <project>/.slidemage/project.json records
+# {"format": N, "last_app_version": "vX.Y.Z"} and is tracked with the
+# project, unlike app_settings.json. PROJECT_FORMAT goes up only when a
+# SlideMage release changes what it writes into a project in a way older
+# releases can't read -- always a breaking release (major bump + BREAKING:
+# paragraph, see version.py). A project with a higher format than this
+# app's gets a warning before opening (cli.py); one with a lower format is
+# where a migration would go -- none exist yet. A migration MUST back up
+# every file it rewrites before touching it.
+PROJECT_FORMAT = 1
+PROJECT_INFO_PATH = Path(".slidemage") / "project.json"
 
 def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     """shutil.copytree() ignore callback for init_project()'s template
@@ -120,6 +133,43 @@ def save_last_project(path: Path) -> None:
         target.write_text(str(path), encoding="utf-8")
     except OSError:
         pass
+
+
+def read_project_info(root: Path) -> dict:
+    """{"format": int, "last_app_version": str} from the project's
+    project.json; a missing or unreadable file reads as format
+    PROJECT_FORMAT with no known last version."""
+    info = {"format": PROJECT_FORMAT, "last_app_version": ""}
+    try:
+        data = json.loads((root / PROJECT_INFO_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return info
+    if isinstance(data, dict):
+        if isinstance(data.get("format"), int):
+            info["format"] = data["format"]
+        if isinstance(data.get("last_app_version"), str):
+            info["last_app_version"] = data["last_app_version"]
+    return info
+
+
+def record_project_open(root: Path, app_version: str) -> None:
+    """Write project.json after the project was opened with `app_version`.
+    A project newer than this app keeps its format and last version, so
+    the warning still names the release that changed it."""
+    info = read_project_info(root)
+    if info["format"] <= PROJECT_FORMAT:
+        # Migrations from an older format go here (none exist yet); each
+        # must back up what it rewrites first.
+        info = {"format": PROJECT_FORMAT, "last_app_version": app_version}
+    path = root / PROJECT_INFO_PATH
+    text = json.dumps(info, indent=2) + "\n"
+    try:
+        if path.read_text(encoding="utf-8") == text:
+            return  # unchanged -- don't touch a cloud-synced file for nothing
+    except OSError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def _template_dir(name: str) -> Path | None:

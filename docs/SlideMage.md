@@ -23,7 +23,10 @@ cross-compiles: run it on the OS you want the executable for. Pushing a
 `v*` tag builds both platforms via `.github/workflows/release.yml` and
 attaches them to a GitHub Release instead, no local build needed. The tag
 must equal `VERSION_NUMBER` in `src/slidemage/version.py` (e.g. `v3.31.0`),
-or the workflow stops -- the update check below compares the two.
+or the workflow stops -- the update check below compares the two. The
+release notes are that version's history entry, printed by
+`packaging/release_notes.py`, which also stops the workflow when the major
+number goes up without a `BREAKING:` paragraph in the entry.
 
 On Linux, `SlideMage-linux.zip` also bundles `icon.svg` and
 `slidemage.desktop.template` next to the binary -- unzip the release to
@@ -94,12 +97,31 @@ way without deleting them.
 ## Updates
 
 **Info → Check for updates…** compares this copy's version with the
-latest release of `stpalan/SlideMage` on GitHub. When a newer one
+releases of `stpalan/SlideMage` on GitHub. When a newer one
 exists, the packaged app offers to download that platform's release zip,
 unpacks it into the folder the running app lives in, and restarts. The
 old binary is kept as `SlideMage.old` (`SlideMage.exe.old` on Windows)
 until the next start deletes it. A copy running from source only reports
 the new version -- update it with `git pull`.
+
+Since v4.1.0 the packaged app also checks by itself, three seconds after
+it starts, as chosen under **System → Preferences… → General → Updates**:
+*Don't check for updates*, *Check for updates and ask before installing*
+(the default; the question also offers "Always install automatically" and
+"Stop checking for updates") or *Check for updates and install them
+automatically* (still asks before restarting). The choice is stored per
+user and machine, in `update_mode` next to `github_token` below. The check
+runs on a background thread; a failure or an up-to-date copy only goes to
+the log. A release that breaks with the past -- a paragraph starting
+`BREAKING:` in its notes, or a higher major number -- is always asked
+about, even in automatic mode, with its `BREAKING:` paragraphs shown and
+the choice to install it anyway, stay on the current major version (the
+newest release before the first breaking one) or wait. Every release
+between the running version and the newest counts, so skipping over a
+breaking release to a later one is still asked about
+(`updater.plan_update()`). See the README's "Releases and updates" for the
+marker convention and the project format guard
+(`.slidemage/project.json`).
 
 ### Access token for a private repository
 
@@ -394,10 +416,9 @@ What matters when touching *this code*:
 - [`translation_prompts.py`](../src/slidemage/translation_prompts.py) -- per-(model, source
   language, target language) prompt configuration for
   `alt_draft.OllamaTranslationBackend`, editable from **Settings →
-  Preferences… → AI models → Translation prompts…** (opens
-  `qt_translation_prompts_dialog.py`'s own dialog -- a permanent tab of
-  the Settings dialog until 2026-09-27, when it moved next to the
-  Translation model picker it configures). Different
+  Preferences… → AI prompts → Translation** (`qt_translation_prompts_panel.py`;
+  a tab of its own until 2026-09-27, then a dialog behind a button on the
+  AI models tab until v4.1.0, when it joined the other AI prompts). Different
   Ollama models expect very different prompt shapes -- a dedicated MT model
   wants a short bare instruction with an exact blank-line count before the
   text, a general instruction-tuned model tolerates a longer one -- so each
@@ -448,33 +469,33 @@ What matters when touching *this code*:
   (2026-09-26: the default Ollama model for Syntax check, AI drafting, Image
   descriptions and Translation -- every model picker preselects it, and
   picking another one there applies to that dialog only; nothing is
-  remembered as "last used" any more) with a **"Translation prompts…"**
-  button next to the Translation row (2026-09-27; see
-  `qt_translation_prompts_dialog.py` below -- a separate dialog now, no
-  longer a permanent tab here) and, below a divider, the Ollama models
+  remembered as "last used" any more) and, below a divider, the Ollama models
   section (2026-09-27; since v4.0.0 headed by the Ollama host URL). Since
-  v4.0.0 also an **Updates** group on the General tab (the GitHub token for
-  Info → Check for updates…, stored per user in `project.config_dir()`,
-  never in the project folder) and an **AI prompts** tab (editable system
-  prompts for image-description drafting and the slide rewrite, stored by
-  `draft_prompts.py`). The per-task model pickers are refilled by
+  v4.0.0 also an **Updates** group on the General tab (since v4.1.0 the
+  update mode -- three radio buttons, saved immediately -- above the GitHub
+  token for update checks; both stored per user in `project.config_dir()`,
+  never in the project folder) and an **AI prompts** tab, since v4.1.0 with
+  three pages: Image descriptions and Slide rewrite (editable system
+  prompts, stored by `draft_prompts.py`) and Translation
+  (`qt_translation_prompts_panel.py` below). The per-task model pickers are refilled by
   `_reload_ollama_models()` whenever the host changes or a model is
   deleted/updated; `qt_gui.py`'s `_on_open_settings()` then passes the
   dialog's `available_models`/`vision_models` to every open picker's
   `refresh_model_preference(s)()`, so a changed default reaches them
   without another Ollama round trip. Close-only dialog -- every field
-  saves immediately, except the two AI prompt texts, which have their own
-  Save buttons and an unsaved-changes check in `reject()`.
-- [`qt_translation_prompts_dialog.py`](../src/slidemage/qt_translation_prompts_dialog.py) --
-  `TranslationPromptsDialog`, split out of `qt_settings_dialog.py` 2026-09-27
-  (direct instruction: reach it from a button next to the Translation model
-  picker instead of a permanent tab). Unchanged content/behavior from the
-  old tab: a "Default prompt" group plus a per-(model, source, target)
-  list/editor backed by `translation_prompts.py`, with the model combo
-  populated from `alt_draft.list_all_models()` (editable, so a not-yet-
-  installed model name can still be pre-configured) -- including its own
-  unsaved-changes-on-close check (`reject()`), since it now closes
-  independently of `SettingsDialog` rather than sharing that dialog's own.
+  saves immediately, except the AI prompt texts (including the Translation
+  page's two forms), which have their own Save buttons and an
+  unsaved-changes check in `reject()`.
+- [`qt_translation_prompts_panel.py`](../src/slidemage/qt_translation_prompts_panel.py) --
+  `TranslationPromptsPanel` (v4.1.0), the Translation page of Settings →
+  AI prompts; replaces `qt_translation_prompts_dialog.py`'s
+  `TranslationPromptsDialog` (2026-09-27 to v4.0.0), same content: a
+  "Default prompt" group plus a "Per-model overrides" group -- a
+  per-(model, source, target) list/editor backed by
+  `translation_prompts.py`, with the model combo populated from
+  `alt_draft.list_all_models()` (editable, so a not-yet-installed model
+  name can still be pre-configured). `dirty_descriptions()`/`save_dirty()`
+  feed `SettingsDialog.reject()`'s unsaved-changes question.
 - [`qt_archive_unused_dialog.py`](../src/slidemage/qt_archive_unused_dialog.py) --
   `ArchiveUnusedDialog` (2026-09-27, direct instruction, after a real batch
   run archived far more than expected -- see `unused_content.py`'s own
@@ -488,6 +509,9 @@ What matters when touching *this code*:
 - [`transcript.py`](../src/slidemage/transcript.py) -- per-deck accessible transcripts,
   Markdown source and HTML delivery. Resolves deck versions exactly as the
   PDF compile does and keeps PDF slide numbering. Student versions only.
+  Colour commands are dropped with their colour arguments, keeping the
+  text (`_COLOR_COMMAND_RE`, v4.1.0; the colour name used to end up glued
+  to the text, e.g. "c_primary_highlightdata dredging").
   A slide's `SlideNotes.summary` (alt_images.py), when set, renders as
   `**Summary.**` right after the `*Slide ID ...*` line and before the
   slide's own body -- ahead of the content, not after, so a reader gets

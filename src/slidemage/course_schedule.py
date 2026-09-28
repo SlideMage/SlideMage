@@ -161,11 +161,120 @@ def _escape_latex(text: str) -> str:
     return "".join(_LATEX_SPECIALS.get(character, character) for character in text)
 
 
-def render_group_table(schedule: CourseSchedule, group: CourseGroup) -> str:
-    """Render one group as safe LaTeX that can be placed inside a frame."""
+# The slide's own wording per deck language ("de"/"en", as
+# transcript.deck_language_of() reports it). UNIGRAZonline serves the
+# schedule in German; an English deck gets its table translated by
+# translate_to_english() below (v4.1.0, direct instruction).
+LABELS = {
+    "de": {
+        "title": "Abhaltungstermine",
+        "date": "Datum", "time": "Zeit", "location": "Ort", "event": "Termin",
+        "no_sessions": "Keine Termine verfügbar.",
+    },
+    "en": {
+        "title": "Course sessions",
+        "date": "Date", "time": "Time", "location": "Location", "event": "Session",
+        "no_sessions": "No sessions available.",
+    },
+}
+
+# German terms UNIGRAZonline uses in group names, event types and
+# remarks. Whole words only, longest first. Group names and event types
+# are translated term by term ("Gruppe Wirtschaftsinformatik" -> "Group
+# Wirtschaftsinformatik"); a free-text remark only when every word in it
+# is known, since a half-translated sentence reads worse than German.
+_GERMAN_TO_ENGLISH = {
+    "Standardgruppe": "Standard group",
+    "Gruppe": "Group",
+    "Abhaltung": "Class",
+    "Vorbesprechung": "Preliminary meeting",
+    "Nachbesprechung": "Review meeting",
+    "Einführung": "Introduction",
+    "Vorlesung": "Lecture",
+    "Übung": "Exercise",
+    "Tutorium": "Tutorial",
+    "Präsentation": "Presentation",
+    "Präsentationen": "Presentations",
+    "Prüfung": "Exam",
+    "Klausur": "Exam",
+    "Zwischenprüfung": "Midterm exam",
+    "Endprüfung": "Final exam",
+    "Abschlussprüfung": "Final exam",
+    "Nachtermin": "Resit",
+    "Wiederholungsprüfung": "Resit exam",
+    "Ersatztermin": "Replacement session",
+    "Zusatztermin": "Additional session",
+    "Blocktermin": "Block session",
+    "Exkursion": "Excursion",
+    "Sprechstunde": "Office hours",
+    "Fragestunde": "Q&A session",
+    "Ausfall": "Cancelled",
+    "entfällt": "cancelled",
+    "abgesagt": "cancelled",
+    "verschoben": "postponed",
+    "Hörsaal": "Lecture hall",
+    "Seminarraum": "Seminar room",
+    "und": "and",
+    "bis": "to",
+    "mit": "with",
+    "ohne": "without",
+    "Anwesenheitspflicht": "attendance required",
+    "Anmeldung": "registration",
+}
+_GERMAN_WORD_RE = re.compile(
+    r"(?<!\w)(" + "|".join(
+        re.escape(word) for word in sorted(_GERMAN_TO_ENGLISH, key=len, reverse=True)
+    ) + r")(?!\w)"
+)
+
+
+# Letters only: numbers ("Gruppe 2", "Prüfung 1") need no translation.
+_WORD_RE = re.compile(r"[^\W\d_]+")
+
+
+def translate_to_english(text: str, whole_only: bool = False) -> str:
+    """Replace the known German schedule terms in `text` with English.
+    With `whole_only`, `text` comes back unchanged unless every word in it
+    is a known term."""
+    translated = _GERMAN_WORD_RE.sub(lambda match: _GERMAN_TO_ENGLISH[match.group(1)], text)
+    if whole_only and _WORD_RE.search(_GERMAN_WORD_RE.sub(" ", text)):
+        return text
+    return translated
+
+
+def translate_schedule(schedule: CourseSchedule) -> CourseSchedule:
+    """The same schedule with group names, event types and (fully known)
+    remarks translated from German to English; dates, times and rooms
+    unchanged."""
+    return CourseSchedule(
+        title=schedule.title,
+        groups=tuple(
+            CourseGroup(
+                name=translate_to_english(group.name),
+                sessions=tuple(
+                    CourseSession(
+                        date=session.date, start=session.start, end=session.end,
+                        location=session.location,
+                        event=translate_to_english(session.event),
+                        remark=translate_to_english(session.remark, whole_only=True),
+                    )
+                    for session in group.sessions
+                ),
+            )
+            for group in schedule.groups
+        ),
+    )
+
+
+def render_group_table(schedule: CourseSchedule, group: CourseGroup, language: str = "de") -> str:
+    """Render one group as safe LaTeX that can be placed inside a frame,
+    with the column headings in `language` ("de" or "en"). The cells are
+    used as they are -- translate_schedule() first for an English deck."""
     del schedule  # Reserved for callers that select a group from a schedule.
+    labels = LABELS.get(language, LABELS["de"])
     if not group.sessions:
-        return "\\small \\textbf{" + _escape_latex(group.name) + "}\\par Keine Termine verfügbar."
+        return ("\\small \\textbf{" + _escape_latex(group.name) + "}\\par "
+                + labels["no_sessions"])
 
     rows = []
     for session in group.sessions:
@@ -174,6 +283,8 @@ def render_group_table(schedule: CourseSchedule, group: CourseGroup) -> str:
         rows.append(" & ".join(_escape_latex(value) for value in (
             session.date, time, session.location, detail,
         )) + r" \\")
+    heading = " & ".join(
+        "\\textbf{" + labels[key] + "}" for key in ("date", "time", "location", "event"))
     return "\n".join((
         r"\scriptsize",
         "\\textbf{" + _escape_latex(group.name) + "}\\par\\vspace{2pt}",
@@ -181,7 +292,7 @@ def render_group_table(schedule: CourseSchedule, group: CourseGroup) -> str:
         r"\setlength{\tabcolsep}{2pt}",
         r"\begin{tabular}{@{}p{.13\linewidth}p{.14\linewidth}p{.22\linewidth}p{.42\linewidth}@{}}",
         r"\toprule",
-        r"\textbf{Datum} & \textbf{Zeit} & \textbf{Ort} & \textbf{Termin} \\",
+        heading + r" \\",
         r"\midrule",
         *rows,
         r"\bottomrule",

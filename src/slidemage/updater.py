@@ -9,6 +9,16 @@ The running binary can't be overwritten in place on Windows, but it can
 be renamed, so installing moves it aside as "<name>.old" first and drops
 the new one in under the original name; the next start removes the
 leftover (remove_leftover_binary()). Linux takes the same path.
+
+v4.1.0 (direct instruction): an update mode per user and machine --
+"off" (never check on start), "ask" (default: check on start and ask) or
+"auto" (check on start and install) -- stored next to the token in
+config_dir(), never in the project. A release that breaks with the past
+is always asked about, even in "auto" mode: see plan_update(). A release
+is breaking when its notes contain a paragraph starting "BREAKING:" (or a
+"## Breaking changes" section) -- version.py's history entry supplies
+them, packaging/release_notes.py enforces the marker for a major bump --
+or when its major version number is higher than the running one.
 """
 from __future__ import annotations
 
@@ -28,6 +38,7 @@ from .project import config_dir
 
 REPO = "stpalan/SlideMage"
 LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases"
 # A private repo's releases are only visible with a token that can read it.
 # The environment variable wins over the token saved in Preferences, which
 # lives in the per-user config folder -- never the project's .slidemage/,
@@ -41,6 +52,16 @@ ASSETS = {
 }
 OLD_SUFFIX = ".old"
 
+UPDATE_MODE_OFF = "off"
+UPDATE_MODE_ASK = "ask"
+UPDATE_MODE_AUTO = "auto"
+UPDATE_MODES = (UPDATE_MODE_OFF, UPDATE_MODE_ASK, UPDATE_MODE_AUTO)
+DEFAULT_UPDATE_MODE = UPDATE_MODE_ASK
+UPDATE_MODE_FILENAME = "update_mode"
+
+BREAKING_PREFIX = "BREAKING:"
+BREAKING_HEADING = "## breaking changes"
+
 
 class UpdateError(RuntimeError):
     pass
@@ -52,6 +73,15 @@ class Release:
     page_url: str
     asset_url: Optional[str]   # API url of this platform's zip, if attached
     asset_size: int
+    body: str = ""             # the release notes (Markdown)
+
+
+@dataclass
+class UpdatePlan:
+    """What plan_update() found for the running version."""
+    latest: Optional[Release]  # newest release newer than the running one; None = up to date
+    breaking: list[Release]    # releases in (running, latest] that break with the past
+    safe: Optional[Release]    # newest newer release before the first breaking one, if any
 
 
 def parse_version(tag: str) -> Optional[tuple[int, ...]]:
@@ -69,6 +99,92 @@ def is_newer(latest_tag: str, current_tag: str) -> bool:
 
 def can_self_update() -> bool:
     return getattr(sys, "frozen", False) and sys.platform in ASSETS
+
+
+def _update_mode_file() -> Path:
+    return config_dir() / UPDATE_MODE_FILENAME
+
+
+def get_update_mode() -> str:
+    """"off", "ask" or "auto"; a missing or unknown value means "ask"."""
+    try:
+        mode = _update_mode_file().read_text(encoding="utf-8").strip()
+    except OSError:
+        return DEFAULT_UPDATE_MODE
+    return mode if mode in UPDATE_MODES else DEFAULT_UPDATE_MODE
+
+
+def set_update_mode(mode: str) -> None:
+    if mode not in UPDATE_MODES:
+        raise ValueError(f"Unknown update mode {mode!r}")
+    path = _update_mode_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(mode + "\n", encoding="utf-8")
+
+
+def breaking_notes(release: Release) -> list[str]:
+    """The paragraphs of `release`'s notes that describe a break with the
+    past: each paragraph starting "BREAKING:", and everything under a
+    "## Breaking changes" heading up to the next heading."""
+    notes: list[str] = []
+    paragraph: list[str] = []
+    in_section = False
+
+    def flush() -> None:
+        text = "\n".join(paragraph).strip()
+        if text and (in_section or text.startswith(BREAKING_PREFIX)):
+            notes.append(text)
+        paragraph.clear()
+
+    for line in release.body.replace("\r\n", "\n").split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            flush()
+            in_section = stripped.lower().startswith(BREAKING_HEADING)
+            continue
+        if not stripped:
+            flush()
+            continue
+        if stripped.startswith(BREAKING_PREFIX):
+            flush()
+        paragraph.append(line.rstrip())
+    flush()
+    return notes
+
+
+def is_breaking(release: Release, current_tag: str) -> bool:
+    """True if `release` is marked as breaking, or if its major version
+    number is higher than `current_tag`'s."""
+    if breaking_notes(release):
+        return True
+    if any(line.strip().lower().startswith(BREAKING_HEADING)
+           for line in release.body.splitlines()):
+        return True
+    new, current = parse_version(release.tag), parse_version(current_tag)
+    return new is not None and current is not None and new[0] > current[0]
+
+
+def plan_update(releases: list[Release], current_tag: str) -> UpdatePlan:
+    """Decide what to offer. Every release between the running version and
+    the newest one counts: skipping over a breaking release to a later,
+    unmarked one still breaks with the past."""
+    newer = sorted(
+        (r for r in releases if is_newer(r.tag, current_tag)),
+        key=lambda r: parse_version(r.tag),
+    )
+    if not newer:
+        return UpdatePlan(latest=None, breaking=[], safe=None)
+    breaking = [r for r in newer if is_breaking(r, current_tag)]
+    safe = None
+    for release in newer:
+        if release in breaking:
+            break
+        safe = release
+    return UpdatePlan(latest=newer[-1], breaking=breaking, safe=safe)
+
+
+def newest_non_breaking(releases: list[Release], current_tag: str) -> Optional[Release]:
+    return plan_update(releases, current_tag).safe
 
 
 def _token_file() -> Path:
@@ -109,12 +225,12 @@ def _request(url: str, accept: str) -> urllib.request.Request:
     return urllib.request.Request(url, headers=headers)
 
 
-def fetch_latest_release(timeout: float = 10) -> Release:
+def _get_json(url: str, timeout: float):
     try:
         with urllib.request.urlopen(
-            _request(LATEST_RELEASE_URL, "application/vnd.github+json"), timeout=timeout,
+            _request(url, "application/vnd.github+json"), timeout=timeout,
         ) as response:
-            data = json.load(response)
+            return json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             raise UpdateError(
@@ -132,6 +248,8 @@ def fetch_latest_release(timeout: float = 10) -> Release:
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise UpdateError(f"Couldn't reach GitHub: {exc}") from exc
 
+
+def _release_from(data: dict) -> Release:
     asset_name = ASSETS.get(sys.platform, (None, None))[0]
     asset = next((a for a in data.get("assets", []) if a.get("name") == asset_name), None)
     return Release(
@@ -139,7 +257,24 @@ def fetch_latest_release(timeout: float = 10) -> Release:
         page_url=data.get("html_url", f"https://github.com/{REPO}/releases"),
         asset_url=asset["url"] if asset else None,
         asset_size=asset.get("size", 0) if asset else 0,
+        body=data.get("body") or "",
     )
+
+
+def fetch_latest_release(timeout: float = 10) -> Release:
+    return _release_from(_get_json(LATEST_RELEASE_URL, timeout))
+
+
+def fetch_releases(limit: int = 30, timeout: float = 10) -> list[Release]:
+    """The newest `limit` published releases (drafts and prereleases
+    skipped), in GitHub's order -- plan_update() sorts them itself."""
+    data = _get_json(f"{RELEASES_URL}?per_page={limit}", timeout)
+    if not isinstance(data, list):
+        raise UpdateError("GitHub sent an unexpected answer for the release list.")
+    return [
+        _release_from(item) for item in data
+        if isinstance(item, dict) and not item.get("draft") and not item.get("prerelease")
+    ]
 
 
 def download(

@@ -381,3 +381,7 @@ alt-text-bakeoff.md
 ## Scratch folder for source PDFs/pptx used while converting slides (large,
 ## machine-local, never meant to be committed).
 .temp/
+
+# Written by SlideMage on opening the demo project (project format guard,
+# v4.1.0); a new project gets its own on first open.
+example/.slidemage/project.json

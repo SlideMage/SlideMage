@@ -13,6 +13,41 @@ def _ask_for_project(parent_hint: Path | None):
     return project.pick_or_create_project(None, parent_hint or Path.home())
 
 
+def _confirm_newer_project(root: Path, info: dict) -> bool:
+    """Open anyway (True) or Quit, for a project whose format is newer
+    than this app's."""
+    from PySide6.QtWidgets import QMessageBox
+
+    last = info["last_app_version"] or "a newer SlideMage"
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Project from a newer SlideMage")
+    box.setText(
+        f"This project was last used with SlideMage {last}, which changed its "
+        "format; this version may not handle it correctly.")
+    box.setInformativeText(f"{root}\n\nUpdate SlideMage (Info → Check for updates…) to be safe.")
+    open_button = box.addButton("Open anyway", QMessageBox.ButtonRole.AcceptRole)
+    quit_button = box.addButton("Quit", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(quit_button)
+    box.exec()
+    return box.clickedButton() is open_button
+
+
+def check_project_format(root: Path, app_version: str) -> bool:
+    """False if the user chose not to open a project from a newer
+    SlideMage; otherwise records this open in project.json."""
+    info = project.read_project_info(root)
+    if info["format"] > project.PROJECT_FORMAT:
+        splash.close()
+        if not _confirm_newer_project(root, info):
+            return False
+    try:
+        project.record_project_open(root, app_version)
+    except OSError:
+        pass  # e.g. a read-only project folder -- nothing to record then
+    return True
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="slidemage",
@@ -45,6 +80,11 @@ def main(argv: list[str] | None = None) -> None:
             root = _ask_for_project(Path.cwd())
         if root is None:
             sys.exit(1)
+
+    from .version import VERSION_NUMBER
+
+    if not check_project_format(root, VERSION_NUMBER):
+        sys.exit(1)
 
     os.environ[project.ENV_VAR] = str(root)
     project.save_last_project(root)

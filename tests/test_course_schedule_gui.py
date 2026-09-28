@@ -26,9 +26,12 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def make_deck(tmp_path, course_url=COURSE_URL):
+def make_deck(tmp_path, course_url=COURSE_URL, language="de"):
     path = tmp_path / "course.tex"
-    text = "\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n"
+    text = (
+        "\\documentclass{beamer}\n\\decklanguage[" + language + "]\n"
+        "\\begin{document}\n\\end{document}\n"
+    )
     path.write_text(text, encoding="utf-8", newline="")
     return Deck(
         name="course", path=path, archived=False, text=text,
@@ -95,6 +98,43 @@ def test_multiple_groups_trigger_choice_and_preview(tmp_path, monkeypatch, qapp)
     assert "06.10.2026" in dialog.preview.toPlainText()
     assert "05.10.2026" not in dialog.preview.toPlainText()
     assert dialog.insert_button.isEnabled()
+
+
+def test_english_deck_gets_a_translated_table(tmp_path, monkeypatch, qapp):
+    monkeypatch.setattr(CourseScheduleDialog, "_start_fetch", lambda self: None)
+    group = CourseGroup("Standardgruppe", (
+        CourseSession("05.10.2026", "09:00", "10:00", "SR 15.25", "Abhaltung", "Vorbesprechung"),
+        CourseSession("12.10.2026", "09:00", "10:00", "HS 01", "Prüfung", "Bitte Ausweis mitbringen"),
+    ))
+    dialog = CourseScheduleDialog(None, make_deck(tmp_path, language="en"))
+    assert dialog.language == "en"
+    dialog._show_schedule(CourseSchedule("Course", (group,)))
+    source = dialog.slide_source
+
+    assert r"\begin{standardframe}{Course sessions}" in source
+    assert r"\textbf{Date} & \textbf{Time} & \textbf{Location} & \textbf{Session}" in source
+    assert r"\textbf{Standard group}" in source
+    assert "SR 15.25 & Class — Preliminary meeting" in source
+    # A remark with unknown words stays German rather than half-translated.
+    assert "HS 01 & Exam — Bitte Ausweis mitbringen" in source
+    assert "Zeit" not in source and "Abhaltungstermine" not in source
+
+    german = CourseScheduleDialog(None, make_deck(tmp_path, language="de"))
+    german._show_schedule(CourseSchedule("Course", (group,)))
+    assert r"\textbf{Datum} & \textbf{Zeit}" in german.slide_source
+    assert "Abhaltung — Vorbesprechung" in german.slide_source
+
+
+def test_english_slide_is_named_en(tmp_path, monkeypatch):
+    deck = make_deck(tmp_path, language="en")
+    monkeypatch.setattr(slide_ids, "SLIDES_DIR", tmp_path / "slides")
+    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", tmp_path / "slide_ids.csv")
+    monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: "abc")
+    position = deck_editor.slide_insert_positions(deck)[0]
+    slide_path = insert_schedule_slide(
+        deck, position, build_schedule_slide_source("Table", "en"), "en")
+    assert slide_path.name == "abc-EN-Course-Sessions-current.tex"
+    assert r"\slide{abc-EN-Course-Sessions}" in deck.path.read_text(encoding="utf-8")
 
 
 

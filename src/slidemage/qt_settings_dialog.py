@@ -2,19 +2,22 @@
 holding cross-cutting app preferences that don't belong scattered across
 individual toolbars -- dark mode (moved here from its own toolbar
 checkbox in qt_gui.py), the default Ollama model per AI task (an "AI
-models" tab, whose "Translation prompts…" button opens
-TranslationPromptsDialog's own per-(model, source language, target
-language) prompt configuration -- its own dialog since 2026-09-27, no
-longer a permanent tab here), and (2026-08-25) an "Ollama models" tab to
-delete models this app no longer needs -- genuinely from Ollama's own
-local model store (alt_draft.delete_model(), its own DELETE /api/delete),
-not just some SlideMage-side list.
+models" tab), and (2026-08-25) an "Ollama models" section to delete
+models this app no longer needs -- genuinely from Ollama's own local model
+store (alt_draft.delete_model(), its own DELETE /api/delete), not just
+some SlideMage-side list.
 
 Merged in v4.0.0 from Jürgen Fleiß's fork: the General tab's "Updates"
 group (GitHub token for Info -> "Check for updates…"), the Ollama host
 field at the top of the Ollama models section, and the "AI prompts" tab
 (editable system prompts for image-description drafting and the slide
 rewrite, persisted by draft_prompts.py).
+
+v4.1.0 (direct instruction): the AI prompts tab has three pages -- Image
+descriptions, Slide rewrite and Translation (TranslationPromptsPanel, the
+per-(model, source language, target language) translation prompts that
+used to open from a "Translation prompts…" button on the AI models tab);
+the General tab's Updates group chooses the update mode (updater.py).
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -40,6 +44,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -52,7 +57,7 @@ from . import app_settings
 from . import draft_prompts
 from . import updater
 from .qt_slide_source_tab import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
-from .qt_translation_prompts_dialog import TranslationPromptsDialog
+from .qt_translation_prompts_panel import TranslationPromptsPanel
 
 
 def _note_label(text: str) -> QLabel:
@@ -115,12 +120,11 @@ class SettingsDialog(QDialog):
         # every other dialog in this app that edits durable state (e.g.
         # qt_transcript_tab.py's review panel) -- there is nothing to
         # "commit" on an OK button, and nothing a Cancel could sensibly
-        # undo. The one exception is the two "AI prompts" text fields,
-        # which only save on their own Save button -- reject() (overridden
-        # below; also what Escape and the window's X button call) asks
-        # before discarding unsaved text there. (The translation-prompt
-        # forms moved out to TranslationPromptsDialog 2026-09-27, along
-        # with their own check.)
+        # undo. The one exception is the "AI prompts" text fields
+        # (including the Translation page's two forms), which only save on
+        # their own Save buttons -- reject() (overridden below; also what
+        # Escape and the window's X button call) asks before discarding
+        # unsaved text there.
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
@@ -131,6 +135,7 @@ class SettingsDialog(QDialog):
             descriptions.append("the image description prompt")
         if self._rewrite_prompt_dirty():
             descriptions.append("the slide rewrite prompt")
+        descriptions.extend(self.translation_prompts_panel.dirty_descriptions())
         return descriptions
 
     def reject(self) -> None:
@@ -154,6 +159,7 @@ class SettingsDialog(QDialog):
                     ok = self._on_draft_prompt_save() and ok
                 if self._rewrite_prompt_dirty():
                     ok = self._on_rewrite_prompt_save() and ok
+                ok = self.translation_prompts_panel.save_dirty() and ok
                 if not ok:
                     # A save failed validation (an empty prompt) -- its own
                     # QMessageBox already explained why; stay open.
@@ -195,11 +201,37 @@ class SettingsDialog(QDialog):
         return page
 
     def _build_update_token_group(self) -> QGroupBox:
-        """GitHub token for Info -> "Check for updates…" while the release
-        repository is private. Saved on Enter/leaving the field, like the
+        """Update mode (v4.1.0, direct instruction; saved immediately) and
+        the GitHub token for update checks while the release repository is
+        private. The token is saved on Enter/leaving the field, like the
         Ollama host; clearing the field removes it."""
         group = QGroupBox("Updates")
         group_layout = QVBoxLayout(group)
+
+        self.update_mode_buttons: dict[str, QRadioButton] = {}
+        mode_group = QButtonGroup(group)
+        current_mode = updater.get_update_mode()
+        for mode, label in (
+            (updater.UPDATE_MODE_OFF, "Don't check for updates"),
+            (updater.UPDATE_MODE_ASK, "Check for updates and ask before installing (default)"),
+            (updater.UPDATE_MODE_AUTO, "Check for updates and install them automatically"),
+        ):
+            button = QRadioButton(label)
+            button.setChecked(mode == current_mode)
+            button.toggled.connect(
+                lambda checked, m=mode: checked and self._on_update_mode_changed(m))
+            mode_group.addButton(button)
+            self.update_mode_buttons[mode] = button
+            group_layout.addWidget(button)
+        mode_note = _note_label(
+            "Checked when SlideMage starts. Applies to the downloaded app; a "
+            "copy run from source is updated with git. An update that "
+            "changes how SlideMage works is always asked about, even when "
+            "installing automatically. Info → Check for updates… always works."
+        )
+        mode_note.setObjectName("mutedLabel")
+        group_layout.addWidget(mode_note)
+
         row = QHBoxLayout()
         row.addWidget(QLabel("GitHub token:"))
         self.github_token_edit = QLineEdit(updater.saved_token())
@@ -222,6 +254,14 @@ class SettingsDialog(QDialog):
         note_label.setObjectName("mutedLabel")
         group_layout.addWidget(note_label)
         return group
+
+    def _on_update_mode_changed(self, mode: str) -> None:
+        try:
+            updater.set_update_mode(mode)
+        except OSError as exc:
+            QMessageBox.warning(self, "Updates", f"Couldn't save the update setting: {exc}")
+            return
+        self.app.log(f"Update mode set to {mode!r}")
 
     def _on_github_token_changed(self) -> None:
         token = self.github_token_edit.text().strip()
@@ -276,19 +316,7 @@ class SettingsDialog(QDialog):
             combo.activated.connect(
                 lambda index, t=task, c=combo: app_settings.set(
                     app_settings.MODEL_SETTINGS[t], c.itemData(index) or ""))
-            if task == "translation":
-                # "Translation prompts…" (2026-09-27, direct instruction --
-                # replaces this dialog's own former "Translation prompts"
-                # tab) opens the per-(model, source, target) prompt editor
-                # right next to the model this row picks a default for.
-                row_widget = QHBoxLayout()
-                row_widget.addWidget(combo, stretch=1)
-                prompts_button = QPushButton("Translation prompts…")
-                prompts_button.clicked.connect(self._on_translation_prompts)
-                row_widget.addWidget(prompts_button)
-                form.addRow(label, row_widget)
-            else:
-                form.addRow(label, combo)
+            form.addRow(label, combo)
         layout.addLayout(form)
         self._models_unreachable_label = _note_label("")
         layout.addWidget(self._models_unreachable_label)
@@ -305,14 +333,6 @@ class SettingsDialog(QDialog):
         layout.addWidget(heading)
         self._build_ollama_models_section(layout)
         return page
-
-    def _on_translation_prompts(self) -> None:
-        """"Translation prompts…" button, next to the Translation model
-        picker (2026-09-27, direct instruction -- replaces this dialog's
-        own former "Translation prompts" tab). Non-modal-in-spirit but a
-        plain exec() is simplest here: nothing else in this dialog needs
-        to keep working while it's open."""
-        TranslationPromptsDialog(self, self.app).exec()
 
     # -- Ollama models (a section of the AI models tab, not its own tab) --------
 
@@ -584,12 +604,17 @@ class SettingsDialog(QDialog):
     # hardcoded SYSTEM_PROMPT constants (alt_draft.py/ai_draft.py) with no way
     # to tune them short of editing source -- draft_prompts.py now persists a
     # user override for each. Explicit Save button + snapshot dirty check,
-    # see reject() above.
+    # see reject() above. v4.1.0: one inner tab per kind of prompt, the
+    # translation prompts (TranslationPromptsPanel) as the third.
 
     def _build_ai_prompts_tab(self) -> QWidget:
         page = QWidget()
-        layout = QVBoxLayout(page)
+        page_layout = QVBoxLayout(page)
+        self.ai_prompt_pages = QTabWidget()
+        page_layout.addWidget(self.ai_prompt_pages)
 
+        draft_page = QWidget()
+        layout = QVBoxLayout(draft_page)
         draft_group = QGroupBox("Image description prompt")
         draft_layout = QVBoxLayout(draft_group)
         draft_layout.addWidget(_note_label(
@@ -612,8 +637,12 @@ class SettingsDialog(QDialog):
         draft_button_row.addWidget(draft_save_button)
         draft_layout.addLayout(draft_button_row)
         layout.addWidget(draft_group)
+        layout.addStretch(1)
         self._load_draft_prompt()
+        self.ai_prompt_pages.addTab(draft_page, "Image descriptions")
 
+        rewrite_page = QWidget()
+        layout = QVBoxLayout(rewrite_page)
         rewrite_group = QGroupBox("Slide rewrite prompt")
         rewrite_layout = QVBoxLayout(rewrite_group)
         rewrite_layout.addWidget(_note_label(
@@ -638,9 +667,12 @@ class SettingsDialog(QDialog):
         rewrite_button_row.addWidget(rewrite_save_button)
         rewrite_layout.addLayout(rewrite_button_row)
         layout.addWidget(rewrite_group)
-        self._load_rewrite_prompt()
-
         layout.addStretch(1)
+        self._load_rewrite_prompt()
+        self.ai_prompt_pages.addTab(rewrite_page, "Slide rewrite")
+
+        self.translation_prompts_panel = TranslationPromptsPanel(self.app)
+        self.ai_prompt_pages.addTab(self.translation_prompts_panel, "Translation")
         return page
 
     def _load_draft_prompt(self) -> None:

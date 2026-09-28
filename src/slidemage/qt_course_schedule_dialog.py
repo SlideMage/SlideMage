@@ -1,4 +1,9 @@
-"""Import a linked Uni Graz course schedule as an editable SlideMage slide."""
+"""Import a linked Uni Graz course schedule as an editable SlideMage slide.
+
+The table follows the deck's own \\decklanguage (v4.1.0, direct
+instruction): an English deck gets English headings and its German
+schedule terms translated (course_schedule.translate_schedule()), and the
+new slide's id-slug carries EN instead of DE."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from . import course_schedule, deck_editor, slide_ids
 from .deck_scan import Deck
+from .transcript import deck_language_of
 
 
 # Keep an in-flight request alive if its dialog is closed before the request ends.
@@ -50,12 +56,13 @@ class _ScheduleFetcher(QThread):
             self.loaded.emit(schedule)
 
 
-def build_schedule_slide_source(table: str) -> str:
+def build_schedule_slide_source(table: str, language: str = "de") -> str:
     """Wrap a generated LaTeX table in the normal editable slide format."""
     body = table.strip().replace("\r\n", "\n").replace("\r", "\n")
+    title = course_schedule.LABELS.get(language, course_schedule.LABELS["de"])["title"]
     lines = [
         r"\setSlideVersion{1-0-0}",
-        r"\begin{standardframe}{Abhaltungstermine}",
+        r"\begin{standardframe}{" + title + "}",
         body,
         r"\end{standardframe}",
         "",
@@ -65,10 +72,11 @@ def build_schedule_slide_source(table: str) -> str:
 
 def insert_schedule_slide(
     deck: Deck, position: deck_editor.InsertPosition, slide_source: str,
+    language: str = "de",
 ) -> Path:
     """Create a new slide, then add its call to a still-current deck."""
     slide_id = slide_ids.mint_slide_id()
-    id_slug = f"{slide_id}-DE-Course-Sessions"
+    id_slug = f"{slide_id}-{'EN' if language == 'en' else 'DE'}-Course-Sessions"
     slide_path = slide_ids.SLIDES_DIR / f"{id_slug}-current.tex"
     slide_path.parent.mkdir(parents=True, exist_ok=True)
     # Reserve the ID before editing the deck, like the ordinary Add slide path.
@@ -94,6 +102,8 @@ class CourseScheduleDialog(QDialog):
         self.deck = deck
         self._cancelled = False
         self.slide_source: str | None = None
+        # "en" or "de", as a compile of this deck would use.
+        self.language = deck_language_of(deck.text)
         self._positions = deck_editor.slide_insert_positions(deck)
         self.setWindowTitle("Import course sessions")
         self.resize(790, 560)
@@ -173,10 +183,15 @@ class CourseScheduleDialog(QDialog):
                 return
             group = groups[names.index(chosen)]
 
-        table = course_schedule.render_group_table(schedule, group)
-        self.slide_source = build_schedule_slide_source(table)
+        note = ""
+        if self.language == "en":
+            group = course_schedule.translate_schedule(
+                course_schedule.CourseSchedule(schedule.title, (group,))).groups[0]
+            note = " — translated to English for this English deck"
+        table = course_schedule.render_group_table(schedule, group, self.language)
+        self.slide_source = build_schedule_slide_source(table, self.language)
         self.status_label.setText(
-            f"{schedule.title} — {group.name} ({len(group.sessions)} sessions)"
+            f"{schedule.title} — {group.name} ({len(group.sessions)} sessions){note}"
         )
         self.preview.setPlainText(self.slide_source)
         self.position_combo.setEnabled(True)

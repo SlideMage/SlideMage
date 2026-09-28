@@ -134,3 +134,71 @@ def test_frozen_relaunch_starts_an_independent_onefile_instance(monkeypatch, tmp
     [(argv, env)] = calls
     assert argv[1:] == ["--project", str(tmp_path)]
     assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+
+
+def test_update_mode_is_saved_per_user_and_defaults_to_ask(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater, "config_dir", lambda: tmp_path / "cfg")
+    assert updater.get_update_mode() == "ask"
+    for mode in updater.UPDATE_MODES:
+        updater.set_update_mode(mode)
+        assert updater.get_update_mode() == mode
+    (tmp_path / "cfg" / updater.UPDATE_MODE_FILENAME).write_text("sometimes\n")
+    assert updater.get_update_mode() == "ask"
+    with pytest.raises(ValueError):
+        updater.set_update_mode("sometimes")
+
+
+def _release(tag, body=""):
+    return updater.Release(tag, f"https://example.invalid/{tag}", None, 0, body)
+
+
+def test_breaking_notes_and_markers():
+    marked = _release("v4.2.0", "Intro.\n\nBREAKING: projects need format 2.\nSecond line.\n\nOther.")
+    assert updater.breaking_notes(marked) == ["BREAKING: projects need format 2.\nSecond line."]
+    section = _release("v4.2.0", "## Breaking changes\n\n- one\n- two\n\n## Fixes\n\n- three")
+    assert updater.breaking_notes(section) == ["- one\n- two"]
+    assert updater.is_breaking(marked, "v4.1.0")
+    assert updater.is_breaking(section, "v4.1.0")
+    assert updater.is_breaking(_release("v5.0.0"), "v4.1.0")  # major bump without a marker
+    assert not updater.is_breaking(_release("v4.2.0", "Mentions BREAKING: mid-line only"), "v4.1.0")
+
+
+def test_plan_update_counts_every_release_in_between():
+    releases = [
+        _release("v5.0.0", "BREAKING: new layout."),
+        _release("v4.3.0"),
+        _release("v4.2.0"),
+        _release("v4.0.0"),
+    ]
+    plan = updater.plan_update(releases, "v4.1.0")
+    assert plan.latest.tag == "v5.0.0"
+    assert [r.tag for r in plan.breaking] == ["v5.0.0"]
+    assert plan.safe.tag == "v4.3.0"
+    assert updater.newest_non_breaking(releases, "v4.1.0").tag == "v4.3.0"
+
+    # A later unmarked release doesn't hide an earlier breaking one.
+    releases = [_release("v4.3.0"), _release("v4.2.0", "BREAKING: x")]
+    plan = updater.plan_update(releases, "v4.1.0")
+    assert plan.latest.tag == "v4.3.0" and [r.tag for r in plan.breaking] == ["v4.2.0"]
+    assert plan.safe is None
+
+    plan = updater.plan_update([_release("v4.1.0")], "v4.1.0")
+    assert plan.latest is None and plan.breaking == [] and plan.safe is None
+
+
+def test_fetch_releases_skips_drafts_and_prereleases(monkeypatch):
+    payload = [
+        {"tag_name": "v4.2.0", "draft": True},
+        {"tag_name": "v4.1.1", "prerelease": True},
+        {"tag_name": "v4.1.0", "body": "BREAKING: x", "html_url": "u"},
+    ]
+    requested = []
+
+    def fake_urlopen(request, **_k):
+        requested.append(request.full_url)
+        return io.BytesIO(json.dumps(payload).encode())
+
+    monkeypatch.setattr(updater.urllib.request, "urlopen", fake_urlopen)
+    [release] = updater.fetch_releases(limit=5)
+    assert (release.tag, release.body) == ("v4.1.0", "BREAKING: x")
+    assert requested == [f"{updater.RELEASES_URL}?per_page=5"]

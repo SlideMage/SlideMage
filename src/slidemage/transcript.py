@@ -671,6 +671,16 @@ _INLINE_MACROS = (
     (re.compile(r"\\texttt\s*\{"), "`", "`"),
 )
 
+# Colour commands (v4.1.0, direct instruction): a transcript omits colour.
+# The command and its colour argument(s) go, the coloured text stays --
+# the generic macro/brace strip in _inline_markdown() used to leave the
+# colour name glued to the text ("c_primary_highlightdata dredging",
+# "[HTML]C00000Promotes ..."). \color is a switch with no text argument.
+_COLOR_COMMAND_RE = re.compile(
+    r"\\fcolorbox\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}\s*\{[^{}]*\}"
+    r"|\\(?:textcolor|colorbox|cellcolor|rowcolor|columncolor|color)(?![a-zA-Z])"
+    r"\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
+)
 _HREF_RE = re.compile(r"\\href\s*\{")
 _URL_RE = re.compile(r"\\url\s*\{")
 _CITE_RE = re.compile(r"\\(fullcite|textcite|citep|citet|cite)\s*\{([^}]*)\}")
@@ -720,6 +730,7 @@ def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> 
 
 def _inline_markdown(text: str) -> str:
     """Inline-level LaTeX to Markdown. Recursive: macros nest."""
+    text = _COLOR_COMMAND_RE.sub("", text)
     # \href{url}{label} -> [label](url)
     while True:
         match = _HREF_RE.search(text)
