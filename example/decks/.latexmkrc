@@ -16,10 +16,26 @@ $aux_dir = dirname($abs_rc) . '/../.build';
 # Same search paths as the project root's .latexmkrc -- see that file's own
 # comment. '/../' (not '/'): from decks/, the project root is one directory
 # up, and the repo's latex/ framework folder two.
-my $slidemaster_sep = $^O eq 'MSWin32' ? ';' : ':';
+# Windows is 'MSWin32' for a native Perl but 'cygwin'/'msys' for the Perl
+# bundled with Git for Windows -- the one MiKTeX's latexmk usually runs on --
+# and MiKTeX wants ';' either way (a ':' would split at every drive letter).
+my $slidemaster_windows = $^O =~ /^(?:MSWin32|cygwin|msys)$/;
+my $slidemaster_sep = $slidemaster_windows ? ';' : ':';
+# That same Perl also reports its own paths ($abs_rc and everything built from
+# it) in POSIX form, /d/... or /cygdrive/d/..., which it translates for
+# command-line arguments but not inside TEXINPUTS -- MiKTeX then can't find
+# anything on it. Convert to D:/... form before joining.
+sub slidemaster_native_path {
+	my ($path) = @_;
+	if ($^O eq 'cygwin' || $^O eq 'msys') {
+		$path =~ s{^/cygdrive/([a-zA-Z])/}{$1:/} or $path =~ s{^/([a-zA-Z])/}{$1:/};
+	}
+	return $path;
+}
 my $slidemaster_latex = $ENV{'SLIDEMASTER_LATEX'} // (dirname($abs_rc) . '/../../latex');
-$ENV{'TEXINPUTS'} = join($slidemaster_sep, dirname($abs_rc) . '/..', $slidemaster_latex,
+$ENV{'TEXINPUTS'} = join($slidemaster_sep,
+	map({ slidemaster_native_path($_) } dirname($abs_rc) . '/..', $slidemaster_latex),
 	$ENV{'TEXINPUTS'} // '');
 
 $ENV{'BIBINPUTS'} = dirname($abs_rc) . '/../:' . ($ENV{'BIBINPUTS'} // '')
-	unless $^O eq 'MSWin32';
+	unless $slidemaster_windows;

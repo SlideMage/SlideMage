@@ -785,10 +785,24 @@
 \newcommand{\gothamTallItemBaseRatio}{0.3}
 \newlength{\gothamTallItemBaseUnit}
 \newlength{\gothamTallItemSpace}
+% The optional argument is either a number (the multiplier above -- any
+% argument made only of digits and dots) or anything else, which is taken as
+% a bullet label and passed on as \item[<label>] with the default spacing:
+% \tallitem[\gothamBulletEllipsis] gives an ellipsis-labelled item with the
+% usual headroom (2026-09-26, direct instruction), \tallitem[] a label-less
+% one. (For a label-less item with a custom multiplier, use
+% \tallitemnobullet[<multiplier>].)
+\ExplSyntaxOn
+\cs_new_protected:Npn \gothamTallItemIfNumberTF #1
+	{ \regex_match:nnTF { \A [0-9.]+ \Z } {#1} }
+\ExplSyntaxOff
 \newcommand{\tallitem}[1][1]{%
 	\setlength{\gothamTallItemBaseUnit}{\gothamTallItemBaseRatio em}%
-	\setlength{\gothamTallItemSpace}{#1\gothamTallItemBaseUnit}%
-	\vspace{\gothamTallItemSpace}\item}
+	\gothamTallItemIfNumberTF{#1}%
+		{\setlength{\gothamTallItemSpace}{#1\gothamTallItemBaseUnit}%
+		 \vspace{\gothamTallItemSpace}\item}%
+		{\setlength{\gothamTallItemSpace}{\gothamTallItemBaseUnit}%
+		 \vspace{\gothamTallItemSpace}\item[#1]}}
 
 % For a line that needs \tallitem's own extra headroom but no bullet at
 % all -- a display equation continuing the previous \item's own sentence,
@@ -5832,10 +5846,33 @@
 		% the same "\color leaks out of a stored \vbox" pitfall documented on
 		% \titleframe's own closing code -- confirmed directly by checking
 		% the frame right after this one for the same symptom.
-		\node[anchor=center, inner sep=0pt,
-		      text width=\dimexpr\gothamTitleframeBoxWidth-2\gothamFrametitleLeftpading\relax]
+		% The quote text is set in a \parbox instead of the node's own
+		% `text width` (2026-09-24), so #1 can hold reveal steps
+		% (\conditionalpause, \uncover, \pause). Two separate failures
+		% with those directly inside the node, both reproduced in plain
+		% beamer and TikZ (no project code): (1) TikZ reads a `text width`
+		% node's text through an \aftergroup hook that a \pause/\uncover
+		% inside it breaks -- "Package tikz Error: Giving up on this path.
+		% Did you forget a semicolon?" on every overlay page; (2) even
+		% with (1) avoided, a text-less \pause starts a "covered" state
+		% that is only ended by a *global* \beamer@endpause at the next
+		% \pause or the end of the frame, so everything after the quote --
+		% the footer included -- stayed covered until the last step.
+		% \beamer@endpause is therefore run at the end of the quote (and
+		% cleared), which confines the covering to the quote itself.
+		%
+		% The parbox reproduces what TikZ builds for `text width`
+		% (minipage[t], \leavevmode\hbox{}, then \tikz@text@action --
+		% ragged-right with its own \rightskip/\spaceskip -- and the
+		% paragraph ended *after* the \Large group, i.e. with the normal
+		% line spacing) so that existing quote slides are unchanged:
+		% verified pixel-identical on all 18 other \quoteframe slides.
+		\node[anchor=center, inner sep=0pt]
 			at ($(current page.north west)+(0.5\gothamTitleframeBoxWidth,-0.5\gothamQuoteBoxHeight)$)
-			{\color{\gothamTitleTextColor}\Large\itshape\textquotedblleft #1\textquotedblright};
+			{\parbox[t]{\dimexpr\gothamTitleframeBoxWidth-2\gothamFrametitleLeftpading\relax}{%
+				\leavevmode\hbox{}\tikz@textfont\tikz@text@action%
+				{\color{\gothamTitleTextColor}\Large\itshape\textquotedblleft #1\textquotedblright%
+				\beamer@endpause\global\let\beamer@endpause\@empty}\par}};
 	\end{tikzpicture}%
 	}%
 	\def\gothamQuoteAttributionTemp{#2}%
@@ -5850,9 +5887,14 @@
 	\fi
 	\ifx\gothamQuoteSource\@empty\else
 		\source{\gothamQuoteSource}%
-		\global\let\gothamQuoteSource\@empty
 	\fi
 	\end{frame}%
+	% Cleared here, *after* \end{frame}, not inside the frame body above
+	% (2026-09-24): beamer re-runs the collected body once per reveal step,
+	% so clearing it in the body left only the first step with a source
+	% line -- the quote's \quotesource vanished on every later step of a
+	% quote with \conditionalpause. Code after \end{frame} runs once.
+	\global\let\gothamQuoteSource\@empty
 }
 \makeatother
 
