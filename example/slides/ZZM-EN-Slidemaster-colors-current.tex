@@ -48,8 +48,8 @@
 	% of it didn't behave the way a fresh, previously-undefined loop
 	% variable name does.
 	\begin{tikzillustration}[
-			swatch/.style={rectangle, draw=c_primary_gray, minimum width=2.1cm, minimum height=1.15cm, inner sep=0pt},
-			swlabel/.style={font=\fontsize{4.3}{5}\selectfont\ttfamily, align=center, text width=2.3cm}
+			swatch/.style={rectangle, draw=c_primary_gray, minimum width=1.75cm, minimum height=0.85cm, inner sep=0pt},
+			swlabel/.style={font=\fontsize{4.3}{5}\selectfont\ttfamily, align=center, text width=1.95cm}
 		]{zzm-tikz}
 		\foreach \name/\dispname [count=\i] in {%
 			c_primary_dark/c\_primary\_dark, c_primary_highlight/c\_primary\_highlight, c_primary_gray/c\_primary\_gray, c_primary_white/c\_primary\_white,%
@@ -57,11 +57,11 @@
 			c_secondary_red/c\_secondary\_red, c_tertiary_red/c\_tertiary\_red, c_secondary_orange/c\_secondary\_orange, c_tertiary_orange/c\_tertiary\_orange, c_secondary_yellow/c\_secondary\_yellow, c_tertiary_yellow/c\_tertiary\_yellow,%
 			c_tertiary_gray/c\_tertiary\_gray, c_custom_gray/c\_custom\_gray, c_custom_red/c\_custom\_red, c_custom_green/c\_custom\_green, c_custom_brown/c\_custom\_brown%
 		} {
-			\pgfmathsetmacro{\col}{mod(\i-1,6)}
-			\pgfmathsetmacro{\row}{floor((\i-1)/6)}
-			\coordinate (sw) at (\col*2.35cm, -\row*1.8cm);
+			\pgfmathsetmacro{\col}{mod(\i-1,7)}
+			\pgfmathsetmacro{\row}{floor((\i-1)/7)}
+			\coordinate (sw) at (\col*2.0cm, -\row*1.45cm);
 			\node[swatch, fill=\name] at (sw) {};
-			\node[swlabel, anchor=north] at ($(sw)+(0,-0.62cm)$) {\dispname};
+			\node[swlabel, anchor=north] at ($(sw)+(0,-0.47cm)$) {\dispname};
 		}
 	\end{tikzillustration}
 \end{standardframe}

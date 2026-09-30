@@ -2859,6 +2859,19 @@
 % footnote convention for the common case of one minipage per frame.
 \renewcommand{\thempfootnote}{\gothamFnSymbol{\value{mpfootnote}}}
 \setbeamerfont{footnote}{size=\fontsize{3.2}{1.9}\selectfont}
+% A \footnote{\fullcite{key}} came out at body size: beamer patches biblatex's
+% bibliography drivers (beamerbaselocalstructure.sty) to apply the beamer fonts
+% "bibliography entry author/title/note", and beamerfontthemegotham.sty sets
+% those to \normalsize. \textcite/\cite are unaffected (no driver). The footnote
+% templates below call this to put the three at footnote size again; the
+% template runs inside its own group, so a real \printbibliography keeps
+% the theme's sizes. Only the size is overridden, series/shape stay.
+\newcommand{\gothamFootnoteBibFonts}{%
+	\setbeamerfont{bibliography entry author}{size=\fontsize{3.2}{1.9}\selectfont}%
+	\setbeamerfont{bibliography entry title}{size=\fontsize{3.2}{1.9}\selectfont}%
+	\setbeamerfont{bibliography entry location}{size=\fontsize{3.2}{1.9}\selectfont}%
+	\setbeamerfont{bibliography entry note}{size=\fontsize{3.2}{1.9}\selectfont}%
+}
 % Beamer's own \@makefnmark (used for the marker both inline in the body
 % text and again next to the footnote itself) hard-codes the "footnote
 % mark" beamerfont onto it -- an *absolute* size, unrelated to whatever
@@ -2976,6 +2989,7 @@
 			\unvbox\gothamSideFootnotesBox
 			\hsize\gothamSideFootnoteHsize
 			\usebeamerfont{footnote}%
+			\gothamFootnoteBibFonts
 			\setlength{\lineskip}{0.6pt}%
 			\settoheight{\dimen0}{Xy}%
 			\settodepth{\dimen1}{Xy}%
@@ -3008,6 +3022,7 @@
 		}%
 	\else
 	\usebeamerfont{footnote}%
+	\gothamFootnoteBibFonts
 	\setlength{\lineskip}{0.6pt}%
 	% beamer's footnote machinery resets to plain \footnotesize (a much
 	% bigger font) before this template runs, and switching to our own
