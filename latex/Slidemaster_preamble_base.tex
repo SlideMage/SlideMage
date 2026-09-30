@@ -3343,6 +3343,30 @@
 		\vspace*{-\gothamColumnsTopCorrection}%
 	\fi
 }
+% The correction above is measured for `columns[t]`. `columns[T]` (top-aligned, used on
+% most text-next-to-image slides) already starts its columns higher by itself -- beamer's
+% own T key adds \vskip-1ex\nointerlineskip at every column head -- so the same pull-up left
+% its first line 13.70pt (itemize) / 13.82pt (plain text) above the Top Margin, flush
+% against the title bar (2026-09-30, direct instruction, seen on c58-DE-Unikat-Tipps).
+% Measured against a plain standardframe: itemize 41.58pt, [t] 41.58pt, [T] 27.89pt;
+% plain text 38.60pt, [T] 24.78pt. The T key gives the difference back while the columns
+% environment is still in vertical mode, i.e. only for the columns[T] call itself (the
+% per-column \setkeys calls run inside the columns' hbox, where \ifvmode is false) and only
+% when the hook above applied its pull-up. A block as first content of a [T] column lands
+% ~7pt below its plain-frame position with this -- extra clearance, not a collision.
+\newlength{\gothamColumnsTTopCompensation}
+\setlength{\gothamColumnsTTopCompensation}{13.76pt}
+\makeatletter
+\define@key{beamer@col}{T}[true]{%
+	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip}%
+	\ifvmode
+		\ifnum0\ifdefined\gothamColumnsAtTop\gothamColumnsAtTop\fi=1
+			\vspace*{\gothamColumnsTTopCompensation}%
+		\fi
+	\fi
+}
+\makeatother
+
 
 % "Top Margin" (above) is one of four deck-wide margin names introduced in
 % conversation from 2026-07-12 onward (direct instruction) for the plain
