@@ -306,8 +306,10 @@ def _bullets_to_itemize(bullets: list[Bullet]) -> str:
     return "\n".join(lines)
 
 
-# Explicit inter-column gap with zeroed \tabcolsep and @{} outer edges --
-# the gothamtable rule-bleed convention in Slidemaster_preamble_base.tex.
+# gothamtable's [gap=12pt] option writes the flush-edge column spec (zero
+# \tabcolsep, @{} outer edges, this gap after each column -- the rule-bleed
+# convention in Slidemaster_preamble_base.tex); a \multicolumn cell still
+# spells its own spec out, so it needs the same gap by hand.
 _TABLE_GAP = r"<{\hspace{12pt}}"
 
 
@@ -322,10 +324,9 @@ def _table_block(rows: list[list[TableCell]]) -> str:
     """A gothamtable for one extracted table, shrunk (never enlarged) to
     fit the frame's width and 0.8\\textheight."""
     ncols = max(sum(cell.colspan for cell in row) for row in rows)
-    spec = "@{}" + _TABLE_GAP.join(["l"] * ncols) + "@{}"
     lines = [
-        r"\sbox0{\setlength{\tabcolsep}{0pt}%",
-        r"\begin{gothamtable}{" + spec + "}",
+        r"\sbox0{%",
+        r"\begin{gothamtable}[gap=12pt]{" + "l" * ncols + "}",
         _TAB + r"\toprule",
     ]
     for index, row in enumerate(rows):

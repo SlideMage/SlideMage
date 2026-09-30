@@ -34,6 +34,9 @@ listing shown in the GUI and in README.md):
     percent       "5% growth": the % starts a comment and swallows the rest
     overlay       \\only<2-> style overlay specification whose > is missing
     optional-arg  \\item[ label never closed on its line
+    table-edges   gothamtable with neither [gap=...] nor @{} edges: its rules
+                  run past the text on both sides
+    heading-text  frame opens with a bare \\textbf{...} line above its list
 
 Not checked (needs a real TeX run): undefined macros, wrong argument counts,
 missing packages, anything that depends on macro expansion.
@@ -72,6 +75,8 @@ CHECKS: list[tuple[str, str, str]] = [
     ("percent", WARNING, "A % directly after a digit and followed by more text (\"5% growth\"): the % starts a comment and silently drops the rest of the line."),
     ("overlay", WARNING, "Overlay specification whose closing > is missing, e.g. \\only<2-{...}."),
     ("optional-arg", WARNING, "\\item[ ... whose closing ] is missing on that line."),
+    ("heading-text", WARNING, "A content frame that opens with a bare \\textbf{...} line directly above its list: the heading reads as a detached label -- make it the list's first \\item."),
+    ("table-edges", WARNING, "\\begin{gothamtable}{...} with neither a [gap=...] option nor @{} at the edges of its column spec: the table rules run \\tabcolsep past the text on both sides. Write \\begin{gothamtable}[gap=12pt]{lcc}."),
 ]
 _SEVERITY = {code: sev for code, sev, _ in CHECKS}
 
@@ -448,6 +453,15 @@ _IMAGE_RES = (
     re.compile(r"\\begin\{sideimageframe\}\{[^{}]*\}\{([^{}]+)\}"),
 )
 _IMAGE_SUFFIXES = ("", ".png", ".jpg", ".jpeg", ".pdf", ".eps", ".svg", ".gif")
+# \begin{gothamtable}{spec} without an option (an option is [gap=...])
+_GOTHAMTABLE_RE = re.compile(r"\\begin\{gothamtable\}\s*\{")
+# A content frame whose first line is a bare \textbf{...} with a list right
+# below it ("fix the itemization (first line should be an item)", given 14
+# times on converted slides, 2026-07-15)
+_HEADING_TEXT_RE = re.compile(
+    r"\\begin\{(?:standard|figure|highlight|sideimage)frame\}(?:\[[^\]\n]*\])?\{[^\n]*\}[ \t]*\n"
+    r"\s*(?P<head>\\textbf\{[^{}\n]*\})[ \t]*(?:\\\\|\\par)?[ \t]*\n"
+    r"\s*\\begin\{(?:itemize|enumerate)\}")
 
 _bib_cache: tuple[tuple[float, int], frozenset[str]] | None = None
 
@@ -487,6 +501,15 @@ def _external(text: str) -> list[LintIssue]:
                     continue
                 if not any((PROJECT_ROOT / (ref + s)).is_file() for s in _IMAGE_SUFFIXES):
                     issues.append(LintIssue("image", f"image file '{ref}' does not exist", line_of(m.start(1))))
+    for m in _GOTHAMTABLE_RE.finditer(masked):
+        if not masked[m.end():].lstrip().startswith("@{}"):
+            issues.append(LintIssue(
+                "table-edges", "gothamtable rules will run past the text: "
+                "use \\begin{gothamtable}[gap=12pt]{...} (or @{} at both edges)", line_of(m.start())))
+    for m in _HEADING_TEXT_RE.finditer(masked):
+        issues.append(LintIssue(
+            "heading-text", "the slide opens with bold text above its list: "
+            "make it the list's first \\item instead", line_of(m.start("head"))))
     return issues
 
 

@@ -153,6 +153,16 @@ STRINGS = {
 _DECK_COND_RE = re.compile(
     r"\\(?:deckonly|deckuncover|deckvisible)\s*(?:<[^>]*>)?\s*(?:\[(?P<versions>[^\]]*)\])?\s*(?=\{)"
 )
+# \deckreveal[*][step]{content}: absent in during-course, shown otherwise.
+# \deckrevealfinal[*][step]{content}: shown in every student version.
+_DECK_REVEAL_RE = re.compile(r"\\deckreveal(?P<final>final)?(?![a-zA-Z])\s*\*?\s*(?:\[[^\]]*\])?\s*(?=\{)")
+# \deckitem<spec>: a plain \item in every student version.
+_DECK_ITEM_RE = re.compile(r"\\deckitem(?![a-zA-Z])\s*(?:<[^>]*>)?")
+# \ifgothamInstructorVersion / \ifgothamDuringCourseVersion / \ifgothamAfterCourseVersion
+_VERSION_IF_RE = re.compile(r"\\ifgotham(Instructor|DuringCourse|AfterCourse)Version(?![a-zA-Z])")
+_TEX_IF_TOKEN_RE = re.compile(r"\\(if[a-zA-Z@]*|else|fi)(?![a-zA-Z@])")
+_VERSION_OF_IF = {"Instructor": VERSION_INSTRUCTOR, "DuringCourse": VERSION_DURING,
+                  "AfterCourse": VERSION_AFTER}
 
 
 @dataclass
@@ -407,6 +417,59 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     return slides
 
 
+def _resolve_version_ifs(text: str, version: str) -> str:
+    """Keep the branch of \\ifgotham<X>Version ... [\\else ...] \\fi that
+    `version` compiles, drop the other one. Nested \\if...\\fi pairs are
+    counted so an inner \\else/\\fi doesn't end the outer conditional.
+    Before this (2026-09-30) both branches reached the transcript, so a
+    slide writing each item once per branch listed every item twice."""
+    while True:
+        m = _VERSION_IF_RE.search(text)
+        if m is None:
+            return text
+        depth, else_at, fi_at = 0, None, None
+        for tok in _TEX_IF_TOKEN_RE.finditer(text, m.end()):
+            word = tok.group(1)
+            if word.startswith("if"):
+                depth += 1
+            elif word == "else" and depth == 0 and else_at is None:
+                else_at = tok
+            elif word == "fi":
+                if depth == 0:
+                    fi_at = tok
+                    break
+                depth -= 1
+        if fi_at is None:                        # unbalanced; leave the rest alone
+            return text[:m.start()] + text[m.end():]
+        true_part = text[m.end():else_at.start() if else_at else fi_at.start()]
+        false_part = text[else_at.end():fi_at.start()] if else_at else ""
+        keep = true_part if _VERSION_OF_IF[m.group(1)] == version else false_part
+        text = text[:m.start()] + keep + text[fi_at.end():]
+
+
+def _resolve_deck_reveals(text: str, version: str) -> str:
+    """\\deckitem -> \\item; \\deckreveal/\\deckrevealfinal (starred or not)
+    -> their content. \\deckreveal's content stays in the during-course
+    transcript too, although that PDF omits it -- the policy pinned by
+    tests/test_transcript_policy.py; this only removes the macro and its
+    [step] cleanly (they used to leave "[2]" behind)."""
+    text = _DECK_ITEM_RE.sub(r"\\item", text)
+    out: list[str] = []
+    index = 0
+    while True:
+        match = _DECK_REVEAL_RE.search(text, index)
+        if match is None:
+            out.append(text[index:])
+            return "".join(out)
+        out.append(text[index:match.start()])
+        content, after = alt_blocks.braced_argument(text, match.end())
+        if after == match.end():
+            out.append(text[match.start():])
+            return "".join(out)
+        out.append(_resolve_deck_reveals(content, version))
+        index = after
+
+
 def resolve_deck_conditionals(text: str, version: str) -> str:
     """Apply `\\deckonly` / `\\deckuncover` / `\\deckvisible` for one version.
 
@@ -418,6 +481,8 @@ def resolve_deck_conditionals(text: str, version: str) -> str:
     completeness, even though only student versions are ever generated -- so
     this function stays correct if that ever changes.
     """
+    text = _resolve_version_ifs(text, version)
+    text = _resolve_deck_reveals(text, version)
     out: list[str] = []
     index = 0
     while True:
@@ -485,11 +550,14 @@ _DIMENSION_RE = re.compile(
 # the bracket group ("[instructor]") behind as stray text -- caught
 # 2026-08-14 in #workdeck's transcript (used in 51 slides).
 _CONDITIONAL_PAUSE_RE = re.compile(r"\\conditionalpause\s*(?:\[[^\]]*\])?")
+# "\ " (control space) is just a space; not the "\\" of a line break before one
+_CONTROL_SPACE_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\ ")
 # Environments that only wrap; their content is kept, the wrapper discarded.
 _UNWRAP_ENVIRONMENTS = ("minipage", "center", "column", "columns", "figure",
                         "table", "adjustbox")
 # Beamer-style blocks: rendered as a titled quote so the label survives.
 _BLOCK_ENVIRONMENTS = ("definitionblock", "infoblock", "gothamfloatinginfoblock",
+                       "gothamfloatingexampleblock", "gothamfloatingblock",
                        "alertblock", "exampleblock", "block")
 _LIST_ENVIRONMENTS = {
     "itemize": "-",
@@ -601,10 +669,27 @@ def _render_list(body: str, marker: str, depth: int) -> str:
     return "\n".join(lines)
 
 
+def _skip_optional_argument(body: str) -> str:
+    """Drop a leading [...] option (\\begin{gothamtable}[gap=12pt]{...},
+    \\begin{gothamfloatinginfoblock}[top=0pt]{...}{...})."""
+    stripped = body.lstrip()
+    if stripped.startswith("["):
+        close = stripped.find("]")
+        if close > 0:
+            return stripped[close + 1:]
+    return body
+
+
 def _render_block(body: str, label: str) -> str:
     """A beamer block becomes a titled Markdown quote."""
     title = ""
-    stripped = body.lstrip()
+    stripped = _skip_optional_argument(body).lstrip()
+    if label.startswith("gothamfloating") and stripped.startswith("{"):
+        # the floating variants take the block's width first: {6cm}{Title}
+        _width, after = alt_blocks.braced_argument(stripped, 0)
+        if after > 0:
+            stripped = stripped[after:].lstrip()
+    body = stripped
     if stripped.startswith("{"):
         title, after = alt_blocks.braced_argument(stripped, 0)
         if after > 0:
@@ -625,7 +710,8 @@ _TABLE_SPEC_ARGS = {"gothamtable": 1, "tabular": 1, "tabularx": 2}
 
 
 def _strip_column_spec(body: str, count: int) -> str:
-    """Drop a table environment's leading mandatory argument(s)."""
+    """Drop a table environment's leading option and mandatory argument(s)."""
+    body = _skip_optional_argument(body)
     for _ in range(count):
         stripped = body.lstrip()
         if not stripped.startswith("{"):
@@ -815,6 +901,7 @@ def _tikz_labels(body: str) -> str:
 
 
 def _convert_body(text: str, depth: int = 0) -> str:
+    text = _CONTROL_SPACE_RE.sub(r"\1 ", text)
     text = _GRAPHICS_RE.sub(" ", text)
     text = _CONDITIONAL_PAUSE_RE.sub(" ", text)
     text = _BOX_TO_RE.sub(" ", text)

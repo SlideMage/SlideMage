@@ -5,6 +5,18 @@
 \usetikzlibrary{positioning} % for `right=<dist> of <node>`-style relative node placement
 \usetikzlibrary{decorations.text} % text-along-a-path, for a circular photo's curved caption
 \usetikzlibrary{decorations.pathreplacing} % the `brace` decoration shape, for \gothamUnderbrace below
+% TikZ reveal steps that keep the picture's size (2026-09-30): `visible on=<3->`
+% draws an element on steps 3+ and draws it invisibly (opacity 0) before, so it
+% still counts toward the bounding box -- unlike \only<3->{\draw ...;}, whose
+% element is simply missing on steps 1-2 and can make the whole picture jump
+% when it appears (the "diagram shifts downward in step 7" class of fix).
+% Same key names as the aobs-tikz library (overlay-beamer-styles), defined here
+% so no extra package is needed.
+\tikzset{
+	invisible/.style={opacity=0, text opacity=0},
+	alt/.code args={<#1>#2#3}{\alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}}},
+	visible on/.style={alt={#1{}{invisible}}},
+}
 \usepackage{booktabs} % \toprule/\midrule/\bottomrule for gothamtable
 \usepackage{colortbl} % \arrayrulecolor{}, used by gothamtable to color those rules
 \usepackage{pifont} % \ding{51}/\ding{55} checkmark/X-mark glyphs, e.g. slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex's own validity ratings
@@ -390,6 +402,49 @@
 \newlength{\gothamImageBorderWidth}
 \setlength{\gothamImageBorderWidth}{2.5pt}
 \tikzset{gothamImageBorder/.style={draw=c_primary_highlight, line width=\gothamImageBorderWidth}}
+
+% Named styles for the drawing conventions slides repeat by hand
+% (2026-09-30): a restyle -- "make the arrows a bit bolder", "all
+% highlights dashed" -- is then one edit here instead of one per slide.
+% Each is exactly the option list the slides used, so switching a slide to
+% the name changes nothing on the page.
+\tikzset{
+	gotham highlight/.style={c_custom_red, very thick, rounded corners},   % red box around part of a figure/table (18x)
+	gotham dotted highlight/.style={densely dotted, thick, c_custom_red},  % red dotted guide line (19x)
+	gotham arrow/.style={-{Stealth[length=2mm]}},                         % the usual arrow tip (54x)
+}
+
+% \gothamTikzmark{name} -- a zero-size remember-picture node at the current
+% text position (on the baseline, 2pt up), for arrows/braces that point at
+% a word. Three slides defined their own identical copy (\tikzmark on 33r
+% and ha9 -- two \newcommand's of one name, an error the moment both land in
+% one deck -- and ebq's \ebqTikzmark).
+\newcommand{\gothamTikzmark}[1]{\tikz[remember picture, overlay, baseline] \node[inner sep=0pt, anchor=base, yshift=2pt] (#1) {};}
+
+% \EUR -- the euro sign in Fira Sans, in text and in math alike. In math,
+% \text{\texteuro} came out in the math font's style ("Euro symbols ...
+% proper", 2026-07-25); slides wrote \text{\sffamily€} by hand (34x).
+\newcommand{\EUR}{\ifmmode\text{\sffamily€}\else\texteuro\fi}
+
+% \shrinklists{n} -- all list levels n font steps smaller, for a slide with
+% more text than fits (put it inside the frame, like the \setbeamerfont
+% lines it replaces; the frame's group resets it). The beamer defaults are
+% normal/\small/\footnotesize for levels 1-3; n=1 gives
+% \small/\footnotesize/\scriptsize, n=2 \footnotesize/\scriptsize/\scriptsize
+% (\scriptsize is the floor). 13 slides wrote 2-3 \setbeamerfont lines for
+% this, in five different combinations.
+\newcommand{\shrinklists}[1]{%
+	\ifcase#1\relax
+	\or
+		\setbeamerfont{itemize/enumerate body}{size=\small}%
+		\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}%
+		\setbeamerfont{itemize/enumerate subsubbody}{size=\scriptsize}%
+	\else
+		\setbeamerfont{itemize/enumerate body}{size=\footnotesize}%
+		\setbeamerfont{itemize/enumerate subbody}{size=\scriptsize}%
+		\setbeamerfont{itemize/enumerate subsubbody}{size=\scriptsize}%
+	\fi
+}
 
 % The "padding gotcha" promised above, finally root-caused (2026-07-23,
 % background-task follow-up to the IA2 fine-tuning batch #2 anomaly on
@@ -1788,13 +1843,14 @@
 % (`\item<step->`) directly on the \item, not wrapped from outside; see
 % 37s's own comment for that variant, hand-written rather than factored
 % into a second macro since only one call site needs it so far.
-\newcommand{\deckreveal}[2][2]{%
+% (2026-09-30: that variant is now \deckitem<step->, below.)
+\NewDocumentCommand{\deckreveal}{s O{2} m}{%
 	\ifgothamDuringCourseVersion
 	\else
 		\ifgothamInstructorVersion
-			\only<#1->{#2}%
+			\IfBooleanTF{#1}{\visible<#2->{#3}}{\only<#2->{#3}}%
 		\else
-			#2%
+			#3%
 		\fi
 	\fi
 }
@@ -1806,12 +1862,38 @@
 % content too (not omitted), and like it no overlay spec is emitted outside
 % the instructor version, so a non-instructor compile has no extra pages.
 % For plain \pause steps use \conditionalpause[instructor] instead.
-\newcommand{\deckrevealfinal}[2][2]{%
+\NewDocumentCommand{\deckrevealfinal}{s O{2} m}{%
 	\ifgothamInstructorVersion
-		\only<#1->{#2}%
+		\IfBooleanTF{#1}{\visible<#2->{#3}}{\only<#2->{#3}}%
 	\else
-		#2%
+		#3%
 	\fi
+}
+
+% Starred forms, \deckreveal*[step]{content} and \deckrevealfinal*[step]{content}
+% (2026-09-30, direct instruction: systematic replacements for per-slide
+% fixes): the instructor steps before `step` keep the content's space
+% (\visible instead of \only), so nothing around it moves when it appears --
+% the "the diagram/equation/text jumps between reveal steps" class of
+% complaint. Replaces the per-slide helpers that did the same by hand
+% (\only<N->{x}\only<1..N-1>{\phantom{x}}; vxd's \vxdRevealB/C/D, c4c's
+% \cRevealVisible). Other versions behave exactly as the unstarred forms.
+
+% \deckitem<spec> - a list item whose overlay spec only applies in the
+% instructor version; every other version gets a plain \item (the
+% "student versions show the final state" rule). Replaces the pattern
+%   \ifgothamInstructorVersion \item<3-> text \else \item text \fi
+% which repeated each item's text twice (42 items in 12 slides by
+% 2026-09-30). An item label may follow: \deckitem<2->[\gothamBulletEllipsis].
+% Without a <spec> it is a plain \item.
+\newcommand{\deckitem}{\@ifnextchar<{\gotham@deckitem}{\item}}
+\def\gotham@deckitem<#1>{%
+	\ifgothamInstructorVersion
+		\def\gotham@next{\item<#1>}%
+	\else
+		\let\gotham@next\item
+	\fi
+	\gotham@next
 }
 
 % \conditionalslide[versions]{ID-slug} - \slide{}, but only included in the
@@ -3149,6 +3231,9 @@
 % (non-\centering) table where the mismatch is easy to see against the
 % title's own left margin.
 %
+% (2026-09-30: write new tables as \begin{gothamtable}[gap=12pt]{...}
+% instead -- see "FLUSH EDGES BUILT IN" below; the rest of this comment
+% describes the hand-written form that option now produces.)
 % Not fixed here in the environment definition itself: doing so would
 % change every existing gothamtable's own column spacing out from under it
 % (this environment has no way to tell "plain default spacing was intended"
@@ -3202,14 +3287,72 @@
 % afterward, so this never leaks into a later table. First applied on
 % slides/6ux-Example-51-BMA-Payback-Table-current.tex's own
 % `gothamfloatinginfoblock`.
-\newenvironment{gothamtable}[1]{%
+%
+% FLUSH EDGES BUILT IN (2026-09-30, direct instruction: "propose a more
+% systematic solution" for per-slide fixes -- 53 tables carried the
+% three-part pattern above by hand): give the column gap as an option and
+% write the plain column spec,
+%   \begin{gothamtable}[gap=12pt]{lccc} ... \end{gothamtable}
+% which produces exactly the hand-written form -- \tabcolsep 0pt, @{} at
+% both edges, <{\hspace{12pt}} after every column that is followed by
+% another one (not before an explicit @{...}/!{...} separator), *{n}{...}
+% expanded -- so a table rewritten this way renders identically. After a
+% fixed-width p/m/b/w column the gap is an @{\hspace{...}} separator
+% instead: array places a <{...} suffix inside such a column's box, where
+% it only pads the end of the cell text and leaves the columns touching
+% (the hand-written pattern had exactly that flaw for p columns). The
+% expansion is done by Slidemaster_layout.lua (gotham_layout.gap_spec).
+% gap=12pt is the ordinary look (2 x beamer's 6pt \tabcolsep). Without the
+% option the environment behaves as it always has (plain tabular with
+% yellow rules), so every existing table is untouched.
+\makeatletter
+\pgfqkeys{/gothamtable}{
+	gap/.store in=\gothamtable@gap,
+}
+\ifluatex
+	\directlua{
+		local path = kpse.find_file("Slidemaster_layout.lua", "lua")
+			or kpse.find_file("Slidemaster_layout.lua", "tex")
+		if path then
+			dofile(path)
+		end
+	}
+\fi
+\def\gothamtable@begin#1{\begin{tabular}{#1}}
+% BLOCK-RULE-COLOR, automatic (2026-09-30): inside any block (the
+% convention above) the rules default to c_primary_dark -- all 11 tables
+% placed in a block so far set that by hand. An \arrayrulecolor inside the
+% table still overrides it, as before.
+\newif\ifgotham@inblock
+\AtBeginEnvironment{block}{\gotham@inblocktrue}
+\AtBeginEnvironment{exampleblock}{\gotham@inblocktrue}
+\AtBeginEnvironment{alertblock}{\gotham@inblocktrue}
+\AtBeginEnvironment{infoblock}{\gotham@inblocktrue}
+\AtBeginEnvironment{referenceblock}{\gotham@inblocktrue}
+\AtBeginEnvironment{definitionblock}{\gotham@inblocktrue}
+\NewDocumentEnvironment{gothamtable}{O{}m}{%
 	\begingroup
-	\arrayrulecolor{c_primary_highlight}%
-	\begin{tabular}{#1}%
+	\ifgotham@inblock
+		\arrayrulecolor{c_primary_dark}%
+	\else
+		\arrayrulecolor{c_primary_highlight}%
+	\fi
+	\let\gothamtable@gap\@empty
+	\pgfqkeys{/gothamtable}{#1}%
+	\ifx\gothamtable@gap\@empty
+		\def\gothamtable@spec{#2}%
+	\else
+		\setlength{\tabcolsep}{0pt}%
+		\directlua{gotham_layout.set_gap_spec(
+			"\luaescapestring{\detokenize{#2}}",
+			"\luaescapestring{\detokenize\expandafter{\gothamtable@gap}}")}%
+	\fi
+	\expandafter\gothamtable@begin\expandafter{\gothamtable@spec}%
 }{%
 	\end{tabular}%
 	\endgroup
 }
+\makeatother
 
 % For a side-corner image overlay (the usual \vbox to 0pt{...} tikz overlay
 % pattern used throughout this deck's converted slides) whose *top edge*
@@ -3352,8 +3495,17 @@
 		return true
 	end
 }
+% Since 2026-09-30 only for frames the automatic Top Margin doesn't manage
+% (see AUTOMATIC TOP MARGIN below: [c] frames, sectionframe,
+% \gothamManualTopMargin, a deck with \gothamAutoTopMarginfalse) -- in every
+% other frame the measurement puts a columns-first slide on the margin by
+% itself, so this correction (and the [T] compensation below) stays out.
 \BeforeBeginEnvironment{columns}{%
-	\edef\gothamColumnsAtTop{\directlua{tex.sprint(gotham_list_has_no_visible_box() and "1" or "0")}}%
+	\ifnum0\ifdefined\gothamTopAutoActive\gothamTopAutoActive\fi=1
+		\def\gothamColumnsAtTop{0}%
+	\else
+		\edef\gothamColumnsAtTop{\directlua{tex.sprint(gotham_list_has_no_visible_box() and "1" or "0")}}%
+	\fi
 	\ifnum\gothamColumnsAtTop=1
 		\vspace*{-\gothamColumnsTopCorrection}%
 	\fi
@@ -3600,6 +3752,80 @@
 % sign.
 \newcommand{\gothamIncreaseContentTopShift}[1]{\global\def\gothamContentTopShiftReduction{-#1}}
 
+% AUTOMATIC TOP MARGIN (2026-09-30, direct instruction: "propose a more
+% systematic solution" -- 195 slides carried a hand-measured
+% \gothamIncrease/ReduceContentTopShift, 89 of them a raw pt value, every one
+% of them re-measured by hand whenever \gothamContentTopShift or a frame type
+% changed, and a stale one survived a central change unnoticed more than
+% once, e.g. six slides double-corrected after the 2026-09-21 columns fix).
+% Where a frame's first line lands depends on what comes first -- a plain
+% paragraph sits 3pt higher than a list, an image 3.5pt higher, a minipage,
+% columns, a table each differently -- so no constant pull-up can be right
+% for all. Instead every top-aligned standardframe (and figureframe,
+% highlightframe, sideimageframe) now measures where its first visible
+% content actually landed (at shipout, Slidemaster_layout.lua; overlays at
+% absolute positions don't count, they are placed on the margin already) and
+% moves its body onto the Top Margin line on the next run, via \jobname.top
+% -- the same record-then-apply-on-rerun pattern as \jobname.ovl above;
+% latexmk reruns while the file changes, and one rerun converges.
+% Any older \gothamIncrease/ReduceContentTopShift call still works but no
+% longer matters: the measurement corrects whatever is left.
+% Exceptions: [c] frames (centred on purpose), sectionframe (own geometry),
+% a \progressstrip frame, and any frame opened after
+%   \gothamManualTopMargin
+% which keeps the old hand-placed position. \gothamAutoTopMarginfalse in a
+% deck's preamble switches the whole mechanism off.
+\newif\ifgothamAutoTopMargin
+\gothamAutoTopMargintrue
+\makeatletter
+\newif\ifgotham@topmanual
+\newcommand{\gothamManualTopMargin}{\global\gotham@topmanualtrue}
+\newcount\gotham@topindex
+\newwrite\gotham@topfile
+\newcommand{\gothamSetTopCorrection}[2]{\global\@namedef{gotham@topcorr@#1}{#2}}
+\ifluatex
+	\directlua{
+		luatexbase.add_to_callback("pre_shipout_filter", function(head)
+			if gotham_layout and gotham_layout.top_measure_page then
+				gotham_layout.top_measure_page(head)
+			end
+			return true
+		end, "gotham top margin")
+	}
+	\AtBeginDocument{%
+		\InputIfFileExists{\jobname.top}{}{}%
+		\immediate\openout\gotham@topfile=\jobname.top\relax
+	}
+	\AtEndDocument{\directlua{gotham_layout.top_emit()}\immediate\closeout\gotham@topfile}
+\fi
+% Before \begin{frame} (runs once per frame, not once per overlay page):
+% number the frame and fetch its correction from the previous run.
+\newcommand{\gotham@topprepare}{%
+	\global\advance\gotham@topindex by 1
+	\xdef\gotham@topthis{\the\gotham@topindex}%
+	\ifcsname gotham@topcorr@\gotham@topthis\endcsname
+		\xdef\gotham@topcorr{\csname gotham@topcorr@\gotham@topthis\endcsname}%
+	\else
+		\gdef\gotham@topcorr{0pt}%
+	\fi
+	\ifgothamAutoTopMargin\ifgotham@topmanual\gdef\gotham@topcorr{0pt}\fi\else\gdef\gotham@topcorr{0pt}\fi
+}
+% In the frame body, right after the pull-up: the start marker.
+\newcommand{\gotham@topstart}{%
+	\ifluatex\ifgothamAutoTopMargin\ifgotham@topmanual\else
+		\directlua{gotham_layout.top_begin(\gotham@topthis, \strip@pt\dimexpr\gotham@topcorr\relax)}%
+		\def\gothamTopAutoActive{1}% this frame is measured: the columns hook stays out
+	\fi\fi\fi
+}
+% End of the body, or anywhere a frame wants to stop the measurement
+% (\progressstrip): nothing after this marker counts as first content.
+\newcommand{\gotham@topstop}{%
+	\ifluatex\ifgothamAutoTopMargin
+		\directlua{gotham_layout.top_end(\gotham@topthis)}%
+	\fi\fi
+}
+\makeatother
+
 % Define custom frame type with en-dash bullets
 \newenvironment{standardframe}[2][t]{%
 	% Restart footnote numbering (the *, dagger, ... symbols) fresh on every
@@ -3617,6 +3843,7 @@
 	% after \begin{frame} would be reset too late, after that baseline was
 	% already captured.
 	\setcounter{footnote}{0}%
+	\csname gotham@topprepare\endcsname
 	\gothamOpenFrame{[#1]{#2}}%
 	% Forces this frame's own body to start with the correct default text
 	% color, regardless of what any *previous* frame left active
@@ -3665,8 +3892,11 @@
 	% symmetric). Guarded with \ifstrequal (etoolbox, already loaded above)
 	% rather than \ifx, matching this file's own \ifstrequal{##1}{...}
 	% pattern elsewhere (\ifx would need #1 fully expanded first).
-	\ifstrequal{#1}{c}{}{\vspace*{-\dimexpr\gothamContentTopShift-\gothamContentTopShiftReduction\relax}}%
+	\ifstrequal{#1}{c}{}{%
+		\vspace*{-\dimexpr\gothamContentTopShift-\gothamContentTopShiftReduction+\csname gotham@topcorr\endcsname\relax}%
+		\csname gotham@topstart\endcsname}%
 }{%
+	\csname gotham@topstop\endcsname
 	% Must run *before* \end{frame}: like any other frame content, a
 	% \footnote{}/\source{} call has to happen while the frame body is
 	% still open -- everything in this closing block from \end{frame}
@@ -3677,6 +3907,7 @@
 	\end{frame}%
 	\global\def\gothamChapterLogoPath{}% opt-in only for the frame just closed
 	\global\def\gothamContentTopShiftReduction{0pt}% opt-in only for the frame just closed
+	\global\csname gotham@topmanualfalse\endcsname% opt-in only for the frame just closed
 	\global\gothamSideFootnotesfalse% opt-in only for the frame just closed
 	\global\def\gothamFrametitleFullHeightYellow{}% opt-in only for the frame just closed
 	\global\def\gothamFrametitleLogoFixed{}% opt-in only for the frame just closed
@@ -5083,13 +5314,39 @@
 % {\footnotesize \begin{gothamfloatingblock}{5cm}{Excel} ... \end{gothamfloatingblock}})
 % rather than fixed here, since the right size depends entirely on how
 % much room the block ends up placed in.
-\newenvironment{gothamfloatingblock}[2]{%
-	\begin{minipage}{#1}
-	\begin{block}{#2}
+%
+% INNER PADDING (2026-09-30, direct instruction: systematic replacements for
+% per-slide fixes): 20 of 27 floating blocks opened with a hand-written
+% \vspace{2mm} and 17 closed with \par\vspace{1.2mm} (or 1mm/3.4pt), to give
+% the body text room from the title bar and the block's bottom edge. All
+% three gothamfloating*block environments now do that themselves, via an
+% optional key list:
+%   \begin{gothamfloatinginfoblock}[top=2mm, bottom=1.2mm]{6cm}{Title}
+% Defaults top=2mm, bottom=1.2mm (the common values); 0pt inserts nothing
+% at all. Blocks that had no or other padding carry their own values
+% explicitly (e.g. [top=0pt]), so every block kept its exact look.
+\makeatletter
+\pgfqkeys{/gothamfloatingblock}{
+	top/.store in=\gotham@fb@top,
+	bottom/.store in=\gotham@fb@bottom,
+}
+\newcommand{\gotham@fb@begin}[1]{%
+	\pgfqkeys{/gothamfloatingblock}{top=2mm, bottom=1.2mm, #1}%
+	\ifdim\gotham@fb@top=0pt \else\vspace{\gotham@fb@top}\fi
+}
+\newcommand{\gotham@fb@end}{%
+	\ifdim\gotham@fb@bottom=0pt \else\par\vspace{\gotham@fb@bottom}\fi
+}
+\NewDocumentEnvironment{gothamfloatingblock}{O{}mm}{%
+	\begin{minipage}{#2}
+	\begin{block}{#3}
+	\gotham@fb@begin{#1}%
 }{%
+	\gotham@fb@end
 	\end{block}
 	\end{minipage}
 }
+\makeatother
 
 % Same idea, but wrapping \exampleblock instead of \block (2026-07-06,
 % direct instruction, first used on
@@ -5100,26 +5357,34 @@
 % macro parameterized over the block name: \gothamfloatingblock's own body
 % is only two lines, so a third variant is cheaper to just write out than
 % to build a block-name-dispatch layer for.
-\newenvironment{gothamfloatingexampleblock}[2]{%
-	\begin{minipage}{#1}
-	\begin{exampleblock}{#2}
+\makeatletter
+\NewDocumentEnvironment{gothamfloatingexampleblock}{O{}mm}{%
+	\begin{minipage}{#2}
+	\begin{exampleblock}{#3}
+	\gotham@fb@begin{#1}%
 }{%
+	\gotham@fb@end
 	\end{exampleblock}
 	\end{minipage}
 }
+\makeatother
 
 % Same idea again, wrapping \infoblock (2026-07-06, direct instruction,
 % first used on
 % slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex's
 % own "Random walk" formula box, switched from the green
 % \gothamfloatingexampleblock to this blue one the same day).
-\newenvironment{gothamfloatinginfoblock}[2]{%
-	\begin{minipage}{#1}
-	\begin{infoblock}{#2}
+\makeatletter
+\NewDocumentEnvironment{gothamfloatinginfoblock}{O{}mm}{%
+	\begin{minipage}{#2}
+	\begin{infoblock}{#3}
+	\gotham@fb@begin{#1}%
 }{%
+	\gotham@fb@end
 	\end{infoblock}
 	\end{minipage}
 }
+\makeatother
 
 % Every gothamfloatinginfoblock anchored top-right against the institute
 % logo (the deck's standard
@@ -5159,6 +5424,187 @@
 % length from the start rather than re-measuring their own one-off nudge.
 \newlength{\gothamFloatingInfoblockRightAlign}
 \setlength{\gothamFloatingInfoblockRightAlign}{\dimexpr\gothamFrametitleRightpading-3.165pt\relax}
+
+% An infoblock's colored title bar starts 6.02pt below the top of its own
+% box (the block template's top padding); a floating infoblock anchored at
+% the Top Margin therefore sits 6.02pt low unless its anchor is lifted by
+% this much. Measured 2026-07-23 (y3a/gf2: title-bar rect at 47.60pt vs.
+% the 41.58pt Top Margin), written as a literal "+6.02pt" on 15 anchors
+% until 2026-09-30.
+\newlength{\gothamFloatingInfoblockTopAlign}
+\setlength{\gothamFloatingInfoblockTopAlign}{6.02pt}
+
+% "Bottom Margin" as a length (2026-09-30): the gap between the footer box
+% and content anchored at the bottom of a slide, the mirror image of the Top
+% Margin gap between the title bar and the first line (direct instruction on
+% bwi, 2026-07-2x: "the same clearance from the footer that the text has from
+% the title bar"). Measured from the page's bottom edge, like
+% \gothamContentTopAlign is from its top edge.
+\newlength{\gothamContentBottomAlign}
+\setlength{\gothamContentBottomAlign}{\dimexpr\gothamFooterBoxHeight+\gothamContentTopAlign-\gothamTitleBarBottomAlign\relax}
+
+% \cornerfigure[keys]{content} (2026-09-30, direct instruction: systematic
+% replacements for per-slide fixes) -- content placed in a corner of the
+% content area, as a zero-space overlay: the construct 105 slides wrote out
+% by hand,
+%   \vbox to 0pt{\vss\begin{tikzpicture}[overlay, remember picture]
+%     \node[anchor=north east, inner sep=0pt] at ($(current page.north east)
+%       +(-\gothamFrametitleRightpading,-\gothamContentTopAlign)$) {...};
+%   \end{tikzpicture}}
+% Keys:
+%   corner=ne|nw|se|sw   which corner (default ne): Top/Bottom Margin
+%                        (\gothamContentTopAlign/\gothamContentBottomAlign)
+%                        and Right/Left Margin (\gothamFrametitleRightpading,
+%                        \gothamFrametitleLeftpading)
+%   block                the content is a gothamfloatinginfoblock: lifts it by
+%                        \gothamFloatingInfoblockTopAlign and aligns its
+%                        visible right edge with the logo
+%                        (\gothamFloatingInfoblockRightAlign)
+%   xshift, yshift       a deliberate offset from that corner (right/up +)
+%   node={...}           extra TikZ node options (e.g. gothamImageBorder)
+% Like any remember-picture overlay it needs the usual second compile.
+% A slide whose text must not run under the figure: see besidefigure below.
+\makeatletter
+\newif\ifgotham@cf@block
+\pgfqkeys{/gothamcorner}{
+	corner/.store in=\gotham@cf@corner,
+	xshift/.store in=\gotham@cf@x,
+	yshift/.store in=\gotham@cf@y,
+	node/.store in=\gotham@cf@node,
+	block/.code={\gotham@cf@blocktrue},
+}
+\NewDocumentCommand{\cornerfigure}{O{} +m}{%
+	\begingroup
+	\gotham@cf@blockfalse
+	\pgfqkeys{/gothamcorner}{corner=ne, xshift=0pt, yshift=0pt, node={}, #1}%
+	\ifgotham@cf@block
+		\edef\gotham@cf@right{\gothamFloatingInfoblockRightAlign}%
+		\edef\gotham@cf@top{\dimexpr\gothamContentTopAlign-\gothamFloatingInfoblockTopAlign\relax}%
+	\else
+		\edef\gotham@cf@right{\gothamFrametitleRightpading}%
+		\edef\gotham@cf@top{\gothamContentTopAlign}%
+	\fi
+	\def\gotham@cf@anchor{north east}%
+	\edef\gotham@cf@at{(current page.north east)+(-\gotham@cf@right+\gotham@cf@x,-\gotham@cf@top+\gotham@cf@y)}%
+	\ifdefstring{\gotham@cf@corner}{nw}{%
+		\def\gotham@cf@anchor{north west}%
+		\edef\gotham@cf@at{(current page.north west)+(\gothamFrametitleLeftpading+\gotham@cf@x,-\gotham@cf@top+\gotham@cf@y)}}{}%
+	\ifdefstring{\gotham@cf@corner}{se}{%
+		\def\gotham@cf@anchor{south east}%
+		\edef\gotham@cf@at{(current page.south east)+(-\gotham@cf@right+\gotham@cf@x,\gothamContentBottomAlign+\gotham@cf@y)}}{}%
+	\ifdefstring{\gotham@cf@corner}{sw}{%
+		\def\gotham@cf@anchor{south west}%
+		\edef\gotham@cf@at{(current page.south west)+(\gothamFrametitleLeftpading+\gotham@cf@x,\gothamContentBottomAlign+\gotham@cf@y)}}{}%
+	% TikZ's calc parser must see the coordinate itself, not a macro: build
+	% the \node call with everything but the content already expanded
+	\edef\gotham@cf@cmd{\noexpand\node[anchor=\gotham@cf@anchor, inner sep=0pt%
+		\ifx\gotham@cf@node\@empty\else,\unexpanded\expandafter{\gotham@cf@node}\fi]
+		at ($\gotham@cf@at$)}%
+	\vbox to 0pt{\vss
+		\begin{tikzpicture}[overlay, remember picture]
+			\gotham@cf@cmd {#2};
+		\end{tikzpicture}%
+	}%
+	\endgroup
+}
+
+% \begin{besidefigure}[gap=12pt]{<figure width>}{<figure>} text \end{besidefigure}
+% (2026-09-30) -- text next to a figure in the top-right corner: the figure
+% goes into \cornerfigure (Top and Right Margin), the text into a top-aligned
+% minipage exactly as wide as the room left of the figure minus `gap`. 84
+% slides built this by hand, each with its own guessed minipage width
+% (9.3cm, 0.58\linewidth, ...). The figure argument is set in a box of
+% <figure width>, e.g. {\includegraphics[width=3cm]{...}}.
+\pgfqkeys{/gothambeside}{gap/.store in=\gotham@bf@gap}
+\newlength{\gotham@bf@width}
+\NewDocumentEnvironment{besidefigure}{O{} m +m}{%
+	\pgfqkeys{/gothambeside}{gap=12pt, #1}%
+	\cornerfigure{\parbox[t]{#2}{#3}}%
+	% text column: from the text's left edge to the figure's left edge minus gap
+	\setlength{\gotham@bf@width}{\dimexpr\linewidth+\beamer@rightmargin-\gothamFrametitleRightpading-#2-\gotham@bf@gap\relax}%
+	\begin{minipage}[t]{\gotham@bf@width}%
+}{%
+	\end{minipage}%
+}
+
+% \fitfigure[keys]{image file} (2026-09-30) -- an image as large as it fits,
+% keeping its aspect ratio, in the box from a top line down to the Bottom
+% Margin (\gothamContentBottomAlign) and from the Left to the Right Margin,
+% placed as a zero-space overlay. Replaces the per-slide
+% "scale up ... as much as possible" arithmetic (hand-computed widths and
+% \vspace offsets, often converged in two passes).
+%   top=here|margin   where the box starts: 'here' (default) = the current
+%                     position in the slide (below the text so far), plus
+%                     `gap`; 'margin' = the Top Margin
+%   gap=<length>      space below the text for top=here (default 6pt)
+%   valign=top|center|bottom, halign=left|center|right  (default center, center)
+%   bottom=<length>   the box's bottom, from the page's bottom edge (default
+%                     \gothamContentBottomAlign)
+%   node={...}        extra TikZ node options (e.g. gothamImageBorder)
+% The position is a remember-picture coordinate, so like every overlay here
+% it needs the second compile.
+\newcount\gotham@fit@count
+\def\gotham@fit@settop#1{\coordinate (gothamfit@top) at #1;}
+\pgfqkeys{/gothamfit}{
+	top/.store in=\gotham@fit@top,
+	gap/.store in=\gotham@fit@gap,
+	valign/.store in=\gotham@fit@valign,
+	halign/.store in=\gotham@fit@halign,
+	bottom/.store in=\gotham@fit@bottom,
+	node/.store in=\gotham@fit@node,
+}
+\NewDocumentCommand{\fitfigure}{O{} m}{%
+	\begingroup
+	\pgfqkeys{/gothamfit}{top=here, gap=6pt, valign=center, halign=center,
+		bottom=\gothamContentBottomAlign, node={}, #1}%
+	\global\advance\gotham@fit@count by 1
+	\edef\gotham@fit@name{gothamfit\the\gotham@fit@count}%
+	\ifdefstring{\gotham@fit@top}{here}{%
+		\vbox to 0pt{\hbox{\tikz[remember picture, overlay]\coordinate (\gotham@fit@name) at (0,0);}\vss}%
+	}{}%
+	% alignment choices, decided here (pgfmath can't evaluate \ifstrequal)
+	\def\gotham@fit@xexpr{(\x2+\x3)/2}\def\gotham@fit@h@anchor{}%
+	\ifdefstring{\gotham@fit@halign}{left}{\def\gotham@fit@xexpr{\x2}\def\gotham@fit@h@anchor{west}}{}%
+	\ifdefstring{\gotham@fit@halign}{right}{\def\gotham@fit@xexpr{\x3}\def\gotham@fit@h@anchor{east}}{}%
+	\def\gotham@fit@yexpr{(\y1+\y2)/2}\def\gotham@fit@v@anchor{}%
+	\ifdefstring{\gotham@fit@valign}{top}{\def\gotham@fit@yexpr{\y1}\def\gotham@fit@v@anchor{north}}{}%
+	\ifdefstring{\gotham@fit@valign}{bottom}{\def\gotham@fit@yexpr{\y2}\def\gotham@fit@v@anchor{south}}{}%
+	\edef\gotham@fit@anchor{\gotham@fit@v@anchor
+		\ifx\gotham@fit@v@anchor\@empty\else\ifx\gotham@fit@h@anchor\@empty\else\space\fi\fi
+		\gotham@fit@h@anchor}%
+	\ifx\gotham@fit@anchor\@empty\def\gotham@fit@anchor{center}\fi
+	\ifdefstring{\gotham@fit@top}{here}{%
+		\edef\gotham@fit@topcoord{(\gotham@fit@name)}%
+		\edef\gotham@fit@gapexpr{\gotham@fit@gap}%
+	}{%
+		\def\gotham@fit@topcoord{($(current page.north)+(0,-\gothamContentTopAlign)$)}%
+		\def\gotham@fit@gapexpr{0pt}%
+	}%
+	\edef\gotham@fit@nodeopts{anchor=\gotham@fit@anchor, inner sep=0pt%
+		\ifx\gotham@fit@node\@empty\else,\unexpanded\expandafter{\gotham@fit@node}\fi}%
+	\vbox to 0pt{\vss
+		\begin{tikzpicture}[overlay, remember picture]
+			\expandafter\gotham@fit@settop\expandafter{\gotham@fit@topcoord}%
+			\coordinate (gothamfit@bl) at ($(current page.south west)+(\gothamFrametitleLeftpading,\gotham@fit@bottom)$);
+			\coordinate (gothamfit@r) at ($(current page.east)+(-\gothamFrametitleRightpading,0)$);
+			\path let \p1 = (gothamfit@top), \p2 = (gothamfit@bl), \p3 = (gothamfit@r) in
+				\pgfextra{%
+					\pgfmathsetlengthmacro\gotham@fit@h{max(\y1-\gotham@fit@gapexpr-\y2,1pt)}%
+					\pgfmathsetlengthmacro\gotham@fit@w{max(\x3-\x2,1pt)}%
+					\pgfmathsetlengthmacro\gotham@fit@x{\gotham@fit@xexpr}%
+					\pgfmathsetlengthmacro\gotham@fit@y{\gotham@fit@yexpr}%
+					\ifdefstring{\gotham@fit@valign}{top}{\pgfmathsetlengthmacro\gotham@fit@y{\y1-\gotham@fit@gapexpr}}{}%
+					\ifdefstring{\gotham@fit@valign}{center}{\pgfmathsetlengthmacro\gotham@fit@y{(\y1-\gotham@fit@gapexpr+\y2)/2}}{}%
+					\global\let\gotham@fit@H\gotham@fit@h \global\let\gotham@fit@W\gotham@fit@w
+					\global\let\gotham@fit@X\gotham@fit@x \global\let\gotham@fit@Y\gotham@fit@y
+				};
+			\expandafter\node\expandafter[\gotham@fit@nodeopts] at (\gotham@fit@X,\gotham@fit@Y)
+				{\includegraphics[width=\gotham@fit@W, height=\gotham@fit@H, keepaspectratio]{#2}};
+		\end{tikzpicture}%
+	}%
+	\endgroup
+}
+\makeatother
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Special frame types (converted from ExampleSlides.pptx; see README.md)
@@ -5715,6 +6161,7 @@
 \newbox\gothamSectionframeTitleBox
 \newenvironment{sectionframe}[2][t]{%
 	\begingroup
+	\gothamManualTopMargin% own title-bar geometry: no automatic Top Margin
 	% Disable hyphenation for the title -- both here, in the measurement
 	% box below, and (since this is in effect for the rest of the group,
 	% which \begin{standardframe} -- triggering the real \insertframetitle
@@ -6023,6 +6470,7 @@
 % cannot); the \vspace after it reserves its height so the body starts just
 % below it.
 \newcommand{\progressstrip}[2]{%
+	\csname gotham@topstop\endcsname% the text below the strip is placed by the strip, not by the Top Margin
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
 		\node[fill=c_tertiary_yellow, anchor=north west, outer sep=0pt,

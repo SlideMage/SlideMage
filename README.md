@@ -1094,6 +1094,56 @@ each deeper level indented just enough for its dash to land under the text
 of the level above. Pass `[c]` explicitly (`\begin{standardframe}[c]{Title}`)
 if you want a particular slide vertically centered instead.
 
+## Layout helpers (instead of per-slide adjustments)
+
+Added 2026-09-30, after an audit found the same hand-measured fixes repeated
+across hundreds of slides (and silently going stale whenever a central value
+changed). Existing slides were switched over where the result is
+pixel-identical; everything below is what new slides should use.
+
+- **Top Margin is automatic.** Every top-aligned `standardframe` (and
+  `figureframe`, `highlightframe`, `sideimageframe`) measures where its first
+  visible content landed -- a text line's top, an image's or a table rule's
+  top edge -- and moves its body onto the Top Margin line on the next compile
+  (recorded in `<jobname>.top`, the way `\gothamFinalStateForStudents` uses
+  `<jobname>.ovl`; latexmk reruns by itself). No more
+  `\gothamIncreaseContentTopShift`/`\gothamReduceContentTopShift` values:
+  they still compile but no longer matter. A slide that is full never gets
+  pushed down into its footnotes/footer -- the correction stops 1pt above
+  them. Absolute overlays (corner images) are not moved; they are placed on
+  the margin by `\cornerfigure` already. Exceptions: `[c]` frames,
+  `sectionframe`, a `\progressstrip` frame, and any frame preceded by
+  `\gothamManualTopMargin` (keeps the hand-placed position). A deck can
+  switch the whole mechanism off with `\gothamAutoTopMarginfalse`.
+- **`\cornerfigure[corner=ne|nw|se|sw, block, xshift=, yshift=, node={...}]{content}`**
+  -- content in a corner of the content area as a zero-space overlay (Top/
+  Bottom and Left/Right Margin). `block` for a `gothamfloatinginfoblock`
+  (lifts it by its own top padding, aligns its visible right edge with the
+  logo). `node={gothamImageBorder}` for a bordered image.
+- **`\begin{besidefigure}[gap=12pt]{<width>}{<figure>} ... \end{besidefigure}`**
+  -- text next to a top-right figure; the text column is exactly as wide as
+  the room left of the figure, no hand-picked minipage width.
+- **`\fitfigure[top=here|margin, gap=6pt, valign=, halign=, bottom=, node=]{file}`**
+  -- an image as large as it fits (aspect ratio kept) between the current
+  position (or the Top Margin) and the Bottom Margin, Left to Right Margin.
+- **Bottom Margin** is now a length, `\gothamContentBottomAlign`: the footer
+  box plus the same gap the Top Margin leaves below the title bar.
+- **`\begin{gothamtable}[gap=12pt]{lccc}`** -- flush table edges (rules end
+  at the text) with the column gap built in; after a `p`/`m`/`b` column the
+  gap is a real separator. Without the option a gothamtable is unchanged.
+  Inside any block the rules are dark automatically.
+- **Floating blocks** (`gothamfloatingblock`/`...exampleblock`/`...infoblock`)
+  pad their body themselves: `[top=2mm, bottom=1.2mm]` by default, `0pt`
+  for none.
+- **Reveals:** `\deckitem<3->` (an item revealed in the instructor deck, a
+  plain `\item` in the student decks -- no more writing the item twice);
+  `\deckreveal*`/`\deckrevealfinal*` keep the content's space on the earlier
+  steps (nothing jumps when it appears); TikZ `visible on=<3->` does the same
+  for a drawing element.
+- **Small ones:** `\shrinklists{1|2}` (all list levels one/two sizes smaller),
+  `\EUR` (euro sign in text and math), `\gothamTikzmark{name}`, TikZ styles
+  `gotham highlight`, `gotham dotted highlight`, `gotham arrow`.
+
 ## Special frame types
 
 Five more frame types, all converted from `ExampleSlides.pptx`. All five
@@ -2221,6 +2271,8 @@ on everything that compiles.
 | `percent` | warning | `5% growth`: a `%` right after a digit followed by more text -- the rest of the line becomes a comment |
 | `overlay` | warning | `\only<2-{...}` -- overlay specification without its closing `>` |
 | `optional-arg` | warning | `\item[label` without `]` on that line |
+| `heading-text` | warning | a content frame whose first line is a bare `\textbf{...}` directly above its list -- make it the list's first `\item` |
+| `table-edges` | warning | `\begin{gothamtable}{...}` with neither `[gap=...]` nor `@{}` edges: the rules run past the text on both sides (write `\begin{gothamtable}[gap=12pt]{lcc}`) |
 
 Inside `verbatim`/`lstlisting`, `\verb`, `\iffalse ... \fi`, `\ExplSyntaxOn`/`\makeatletter`
 regions and macro-definition bodies the character checks are skipped. Not checked (needs a
