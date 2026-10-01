@@ -1,4 +1,4 @@
-"""Rename this project's own \\gotham... names to \\SM... (v6.0.0, 2026-10-01).
+"""Rename this project's own \\gotham... names to \\SM... (v5.3.0, 2026-10-01).
 
 Direct instruction: "rename all \\gotham... commands that this project newly
 created to \\SM...". The vendored Gotham beamer theme (latex/beamer*gotham.sty,

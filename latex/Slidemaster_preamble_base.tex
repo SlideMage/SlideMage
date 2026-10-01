@@ -1984,7 +1984,7 @@
 \makeatletter
 \newwrite\SMOverlayFile
 \newcommand{\SMSetOverlays}[2]{\global\@namedef{SMOverlays@#1}{#2}}
-% Build files written before v6.0.0 (2026-10-01: this framework's \gotham...
+% Build files written before v5.3.0 (2026-10-01: this framework's \gotham...
 % names became \SM...) still use the old names: .ovl (\gotham...SetOverlays),
 % .top (...SetTopCorrection), .timestamp (...CompileTimestampValue, see
 % \SMCompileTimestamp). The old names are assembled from \SMOldPrefix so a
@@ -2732,7 +2732,7 @@
 	\else
 		\IfFileExists{\jobname.timestamp}{%
 			\input{\jobname.timestamp}%
-			% a file from before v6.0.0 defines the old name (see \SMOldPrefix)
+			% a file from before v5.3.0 defines the old name (see \SMOldPrefix)
 			\ifdefined\SMCompileTimestampValue\else
 				\expandafter\global\expandafter\let\expandafter\SMCompileTimestampValue
 					\csname\SMOldPrefix CompileTimestampValue\endcsname
