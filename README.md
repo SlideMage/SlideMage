@@ -1,4 +1,4 @@
-# SlideMaster
+# SlideMage
 
 LaTeX/beamer setup for research and teaching slides, built on the
 [Gotham beamer theme](https://github.com/) with a Uni Graz color/logo
