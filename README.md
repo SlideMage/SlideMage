@@ -1162,6 +1162,11 @@ pixel-identical; everything below is what new slides should use.
 - **`\SMTikzword{name}{text}`** -- a word as a named TikZ node, so an
   overlay arrow can point at it (`(name.south)`, ...) and follows it when the
   layout moves; transcripts keep the word.
+- **Text column beside a figure (two minipages):** align them at the top --
+  `\begin{minipage}[t]{...}\vspace{0pt}` for both -- and start the text's first
+  line with `\SMLineTop`; text and figure then both start on the Top Margin.
+  Without `[t]` the minipages are vertically *centred* (LaTeX's default) and the
+  shorter column starts lower.
 - **`\sectionfigure[keys]{image}`** (in a `sectionframe`) -- the side image
   from the title bar to the footer, flush with the right edge; the frame's
   footnotes (image source included) go into the rotated strip beside it.

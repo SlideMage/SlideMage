@@ -438,6 +438,22 @@
 % coordinates had drifted off its words). Transcripts keep the text.
 \newcommand{\SMTikzword}[2]{\tikz[remember picture, baseline=(#1.base)] \node[inner sep=0pt, outer sep=0pt] (#1) {#2};}
 
+% \SMLineTop -- a zero-width strut as tall as a text line's *line box*
+% (0.935em above the baseline, Fira Sans' ascender: the box the Top Margin is
+% measured on). Put at the start of the first line of a text column that sits
+% next to a figure in top-aligned minipages,
+%   \begin{minipage}[t]{0.4\linewidth}\vspace{0pt}
+%   	\begin{itemize}\item \SMLineTop First item ...
+%   \end{minipage}\hfill
+%   \begin{minipage}[t]{0.56\linewidth}\vspace{0pt} <figure> \end{minipage}
+% and the text's line box starts exactly where the figure starts -- so the
+% automatic Top Margin puts both on it. Without it the first line's box is
+% only as tall as its glyphs and the figure lands ~1.8pt below the margin
+% (2026-10-01, m2k: its two minipages were vertically *centred*, LaTeX's
+% default, and the text column started 12pt below the Top Margin;
+% check_layout.py's `coltop` check now reports that pattern).
+\newcommand{\SMLineTop}{\rule{0pt}{0.935em}}
+
 % \EUR -- the euro sign in Fira Sans, in text and in math alike. In math,
 % \text{\texteuro} came out in the math font's style ("Euro symbols ...
 % proper", 2026-07-25); slides wrote \text{\sffamily€} by hand (34x).
