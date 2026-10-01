@@ -158,8 +158,8 @@ _DECK_COND_RE = re.compile(
 _DECK_REVEAL_RE = re.compile(r"\\deckreveal(?P<final>final)?(?![a-zA-Z])\s*\*?\s*(?:\[[^\]]*\])?\s*(?=\{)")
 # \deckitem<spec>: a plain \item in every student version.
 _DECK_ITEM_RE = re.compile(r"\\deckitem(?![a-zA-Z])\s*(?:<[^>]*>)?")
-# \ifgothamInstructorVersion / \ifgothamDuringCourseVersion / \ifgothamAfterCourseVersion
-_VERSION_IF_RE = re.compile(r"\\ifgotham(Instructor|DuringCourse|AfterCourse)Version(?![a-zA-Z])")
+# \ifSMInstructorVersion / \ifSMDuringCourseVersion / \ifSMAfterCourseVersion
+_VERSION_IF_RE = re.compile(r"\\ifSM(Instructor|DuringCourse|AfterCourse)Version(?![a-zA-Z])")
 _TEX_IF_TOKEN_RE = re.compile(r"\\(if[a-zA-Z@]*|else|fi)(?![a-zA-Z@])")
 _VERSION_OF_IF = {"Instructor": VERSION_INSTRUCTOR, "DuringCourse": VERSION_DURING,
                   "AfterCourse": VERSION_AFTER}
@@ -476,7 +476,7 @@ def resolve_deck_conditionals(text: str, version: str) -> str:
     Keeps the braced content when the version qualifies and drops it entirely
     when it does not.
 
-    The instructor short-circuit in the preamble (`\\ifgothamInstructorVersion`
+    The instructor short-circuit in the preamble (`\\ifSMInstructorVersion`
     renders the content whatever `[versions]` says) is reproduced here for
     completeness, even though only student versions are ever generated -- so
     this function stays correct if that ever changes.
@@ -550,10 +550,20 @@ _DIMENSION_RE = re.compile(
 # the bracket group ("[instructor]") behind as stray text -- caught
 # 2026-08-14 in #workdeck's transcript (used in 51 slides).
 _CONDITIONAL_PAUSE_RE = re.compile(r"\\conditionalpause\s*(?:\[[^\]]*\])?")
-# \gothamTikzmark{name} is an invisible anchor; \gothamTikzword{name}{text}
+# \SMTikzmark{name} is an invisible anchor; \SMTikzword{name}{text}
 # keeps its text. Only the name goes -- the generic strip left it behind as a
-# stray word ("a \gothamTikzmark{x}mark" read "a xmark").
-_TIKZ_MARK_NAME_RE = re.compile(r"\\gothamTikz(?:mark|word)\s*\{[^{}]*\}")
+# stray word ("a \SMTikzmark{x}mark" read "a xmark").
+_TIKZ_MARK_NAME_RE = re.compile(r"\\SMTikz(?:mark|word)\s*\{[^{}]*\}")
+# \setbeamertemplate{itemize subitem}{...}, \setbeamerfont{...}{...},
+# \setbeamercolor{...}{...} are styling: the generic strip left the template
+# name behind as text ("itemize subitem"). One level of nested braces in the
+# value ({\SMBulletEllipsis}, {size=\small}).
+_SETBEAMER_RE = re.compile(
+    r"\\setbeamer(?:template|font|color|covered)\*?\s*\{[^{}]*\}"
+    r"(?:\s*\[[^\]]*\])?(?:\s*\{(?:[^{}]|\{[^{}]*\})*\})?")
+# The project's ellipsis bullets (\item[\SMBulletEllipsis]) and \ldots.
+_ELLIPSIS_RE = re.compile(
+    r"\\(?:SMBulletEllipsis(?:Script)?|ldots|dots|textellipsis)(?![a-zA-Z])(?:\{\})?")
 # "\ " (control space) is just a space; not the "\\" of a line break before one
 _CONTROL_SPACE_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\ ")
 # Environments that only wrap; their content is kept, the wrapper discarded.
@@ -660,7 +670,18 @@ def _render_list(body: str, marker: str, depth: int) -> str:
         lines.append(rendered_lead)
     indent = "  " * depth
     for number, raw in enumerate(items[1:], start=1):
+        # \item[label]: the label leads the item's text (it used to be left
+        # behind as "[]" once its macro was stripped).
+        label = ""
+        stripped = raw.lstrip()
+        if stripped.startswith("["):
+            close = stripped.find("]")
+            if close != -1:
+                label = _inline_markdown(stripped[1:close]).strip()
+                raw = stripped[close + 1:]
         rendered = _convert_body(raw, depth + 1).strip()
+        if label and rendered:
+            rendered = f"{label} {rendered}"
         for slot, text in enumerate(parked):
             rendered = rendered.replace(f"\x00{slot}\x00", text)
         if not rendered:
@@ -838,6 +859,7 @@ def _inline_markdown(text: str) -> str:
                 + text[after2:])
 
     text = _apply_wrapped(text, _URL_RE, "<", ">")
+    text = _ELLIPSIS_RE.sub("…", text)
     # Footnotes are inlined: a transcript reader has nothing to hover over.
     text = _apply_wrapped(text, _FOOTNOTE_RE, " (", ")")
     # Citation keys are resolved against Slidemaster.bib, so a source line
@@ -906,6 +928,7 @@ def _tikz_labels(body: str) -> str:
 
 def _convert_body(text: str, depth: int = 0) -> str:
     text = _CONTROL_SPACE_RE.sub(r"\1 ", text)
+    text = _SETBEAMER_RE.sub("", text)
     text = _TIKZ_MARK_NAME_RE.sub("", text)
     text = _GRAPHICS_RE.sub(" ", text)
     text = _CONDITIONAL_PAUSE_RE.sub(" ", text)
@@ -954,7 +977,7 @@ _MULTILINGUAL_NEEDLE = "\\multilingualtext{"
 
 def _resolve_multilingual_text(text: str, language: str) -> str:
     """Replaces every \\multilingualtext{EN}{DE} call with just its EN or
-    DE argument, mirroring \\ifgothamGerman's own choice at compile time
+    DE argument, mirroring \\ifSMGerman's own choice at compile time
     (Slidemaster_preamble_base.tex) -- brace-matched
     (alt_blocks.braced_argument), not a naive regex, since either argument
     can itself contain a braced macro (e.g. \\textbf{...}).

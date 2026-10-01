@@ -189,27 +189,27 @@ def _deck_language_line(deck_language: Optional[str]) -> str:
 
 
 def _footer_timestamp_line(footer_timestamp: bool) -> str:
-    """`\\def\\gothamFooterTimestampOverride{0}`, the same hook
+    """`\\def\\SMFooterTimestampOverride{0}`, the same hook
     compiler.py's own wrapper defines for a full-deck compile when the
     main toolbar's "Include footer timestamp" checkbox is unticked
     (2026-08-26, direct report -- the slide-source editor's own "Render to
     PDF" ignored that checkbox entirely, always showing the timestamp).
     Unlike _deck_version_line/_deck_language_line above, this can't be
     placed after `preamble` in the wrapper -- Slidemaster_preamble_base.tex
-    (which is what actually reads \\gothamFooterTimestampOverride) is
+    (which is what actually reads \\SMFooterTimestampOverride) is
     \\input{}'d *inside* `preamble` itself, near its top, so the \\def has
     to come first for \\ifdefined to see it in time. Only emitted when
     False, same as compiler.py's own `if not job.footer_timestamp`."""
     if footer_timestamp:
         return ""
-    return "\\def\\gothamFooterTimestampOverride{0}\n"
+    return "\\def\\SMFooterTimestampOverride{0}\n"
 
 
 def _presenter_mode_line(presenter: bool) -> str:
-    """`\\def\\gothamPresenterModeOverride{1}`, the same hook compiler.py's
+    """`\\def\\SMPresenterModeOverride{1}`, the same hook compiler.py's
     own wrapper defines for a real "Presenter" job (CompileJob.presenter)
     -- turns on beamer's dual-screen presenter mechanism
-    (Slidemaster_preamble_base.tex's own \\ifdefined\\gothamPresenterModeOverride
+    (Slidemaster_preamble_base.tex's own \\ifdefined\\SMPresenterModeOverride
     block: pgfpages "show notes on second screen"). Same placement
     constraint as _footer_timestamp_line above (has to come before
     `preamble`, since that's what \\input{}s Slidemaster_preamble_base.tex),
@@ -217,7 +217,7 @@ def _presenter_mode_line(presenter: bool) -> str:
     `if job.presenter`."""
     if not presenter:
         return ""
-    return "\\def\\gothamPresenterModeOverride{1}\n"
+    return "\\def\\SMPresenterModeOverride{1}\n"
 
 
 def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,

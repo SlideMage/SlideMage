@@ -484,7 +484,7 @@ def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
         # carry both languages in one file rather than a second CSV/second
         # Lua load() call -- Slidemaster_alt.lua picks the *_en/*_de pair
         # to actually use per-image based on the compiling deck's own
-        # \gothamDeckLanguage. `role` stays a single shared column: it's
+        # \SMDeckLanguage. `role` stays a single shared column: it's
         # language-independent (decorative/informative is a property of
         # the picture, not of which language is being read).
         writer.writerow([

@@ -5,7 +5,7 @@ the slide/deck edit tabs).
 Heuristic, not a real LaTeX parser: a language model can plausibly catch
 unbalanced braces, mismatched \\begin{}/\\end{} pairs, and unescaped
 special characters, but it has no notion of this project's own large set
-of custom macros (\\tallitem, \\gothamArtifactBegin, \\slide{}, ...) being
+of custom macros (\\tallitem, \\SMArtifactBegin, \\slide{}, ...) being
 genuinely valid syntax -- SYSTEM_PROMPT explicitly tells it not to flag an
 unfamiliar command name on its own. Report every finding to the user as a
 "possible issue" for a human to judge, never as a definitive error.
@@ -55,7 +55,7 @@ broken across a line, a brace argument left open, a stray closing brace \
 with nothing to close).
 
 Do NOT flag: custom macros you do not recognize (this project defines \
-many of its own, e.g. \\tallitem, \\slide{}, \\gothamArtifactBegin -- an \
+many of its own, e.g. \\tallitem, \\slide{}, \\SMArtifactBegin -- an \
 unfamiliar command name is not itself an error), intentional TikZ/math \
 syntax, or stylistic choices. Only report things you are reasonably \
 confident are genuine syntax problems that would cause a LaTeX compile to \

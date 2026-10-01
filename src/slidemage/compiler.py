@@ -265,10 +265,10 @@ class CompileJob:
     version: Optional[str]     # "instructor" / "during-course" / "after-course",
                                 # or None for a deck with no version support
     chapter: Optional[Chapter]  # None = whole deck
-    # Whether the footer shows \gothamCompileTimestamp -- True (the shared
+    # Whether the footer shows \SMCompileTimestamp -- True (the shared
     # preamble's own default) unless the GUI's "Footer timestamp" checkbox
     # was unticked for this batch. A deck can still hardcode
-    # \gothamShowCompileTimestampfalse/true in its own preamble (as
+    # \SMShowCompileTimestampfalse/true in its own preamble (as
     # t-Uni-IA2-2026w.tex does temporarily, for its front-to-back render/diff
     # final check) -- that runs *after* this override is read, so it always
     # wins over whatever this checkbox says.
@@ -348,11 +348,11 @@ def _wrapper_text(job: CompileJob) -> str:
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
     if not job.footer_timestamp:
-        lines.append("\\def\\gothamFooterTimestampOverride{0}")
+        lines.append("\\def\\SMFooterTimestampOverride{0}")
     if job.presenter:
-        lines.append("\\def\\gothamPresenterModeOverride{1}")
+        lines.append("\\def\\SMPresenterModeOverride{1}")
     if job._appendix_applies:
-        lines.append("\\def\\gothamAppendixTocOverride{1}")
+        lines.append("\\def\\SMAppendixTocOverride{1}")
 
     if job.chapter is not None:
         lines.append(job.deck.preamble_text)

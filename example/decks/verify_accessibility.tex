@@ -1,6 +1,6 @@
 % !TeX program = lualatex
 % Compilable regression deck for the project's PDF-accessibility machinery
-% (\gothamArtifactBegin/\gothamArtifactEnd marked-content tags, pdflang,
+% (\SMArtifactBegin/\SMArtifactEnd marked-content tags, pdflang,
 % reading order) -- same idiom as decks/test.tex, but exists specifically so
 % every frame type that draws something artifact-worthy can be re-verified
 % in one place after a future edit, without needing a real course deck.
@@ -14,7 +14,7 @@
 % all three of the frametitle hook's own chapter-logo code paths: kew and
 % 3bs (standardframe's "beside" placement -- kew with the specially-nudged
 % "beyond CAPM" asset, 3bs with an ordinary one) and 65b (sectionframe's
-% "below" placement, via \gothamFrametitleLogoFixed) -- none of ZZ*/dfc/nai
+% "below" placement, via \SMFrametitleLogoFixed) -- none of ZZ*/dfc/nai
 % exercise \chapterlogo{} at all. All six of *this file's own* slides are
 % standalone, no biblatex dependency of their own -- but this deck picked up
 % one anyway (2026-09-22) via test-slides.tex's own ZZZ-EN-Standard-content,
@@ -40,10 +40,10 @@
 % it) -- see that file's own comment for the details.
 \usepackage[style=authoryear, backend=biber]{biblatex}
 \makeatletter
-\let\gothamSavedInputPath\input@path
+\let\SMSavedInputPath\input@path
 \def\input@path{}%
 \IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
-\let\input@path\gothamSavedInputPath
+\let\input@path\SMSavedInputPath
 \makeatother
 
 \newcommand{\FooterText}{Accessibility regression check | Stefan Palan}

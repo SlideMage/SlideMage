@@ -26,7 +26,7 @@ gothamalt = { by_name = {}, by_stem = {} }
 -- "Bildquelle(n):" auto-footnote further below. Which language's pair
 -- (_en/_de) actually gets used is decided per-call by gothamalt.altText/
 -- recordSource's own `language` argument (the compiling deck's
--- \gothamDeckLanguage), not by anything stored here.
+-- \SMDeckLanguage), not by anything stored here.
 
 -- Minimal RFC-4180-ish field splitter: handles quoted fields with embedded
 -- commas and doubled quotes, because every short_alt/source column can
@@ -161,7 +161,7 @@ end
 -- still emits the "Image: " prefix, and a screen reader announces an image
 -- and then says nothing about it -- worse than staying silent.
 --
--- `language` ("en"/"de", the compiling deck's own \gothamDeckLanguage,
+-- `language` ("en"/"de", the compiling deck's own \SMDeckLanguage,
 -- passed through by the \includegraphics wrapper) picks which pair to
 -- read (2026-08-24). Unlike source below, short_alt has no default+
 -- override fallback: an untranslated German short_alt just means no
@@ -178,7 +178,7 @@ function gothamalt.altText(reference, language)
 	if short == "" then
 		return
 	end
-	tex.sprint("\\gothamAltHasTexttrue\\def\\gothamAltShort{"
+	tex.sprint("\\SMAltHasTexttrue\\def\\SMAltShort{"
 		.. gothamalt.escape(short) .. "}")
 end
 
@@ -186,7 +186,7 @@ end
 -- than returning a string, so the caller never has to string-compare in TeX.
 function gothamalt.mark(reference)
 	if gothamalt.role(reference) == "decorative" then
-		tex.sprint("\\gothamAltDecorativetrue")
+		tex.sprint("\\SMAltDecorativetrue")
 	end
 end
 
@@ -207,7 +207,7 @@ end
 -- source only once. Reset once per \begin{standardframe} pass -- beamer
 -- replays a frame's whole body once per overlay step, and standardframe's
 -- own opening code already resets its side-footnote box the same way on
--- every one of those replays (see \gothamClearSideFootnotesBox), so this
+-- every one of those replays (see \SMClearSideFootnotesBox), so this
 -- follows the identical pattern: every overlay step of a multi-step frame
 -- sees the frame's full, identical set of images (only their *visibility*
 -- is gated per step, not whether the \includegraphics call itself runs),
@@ -267,7 +267,7 @@ end
 -- Sets a TeX-side conditional plus a stashed macro, same pattern as
 -- gothamalt.altText above, rather than tex.sprint-ing a \source{...} call
 -- directly -- keeps "whether/how to call \source{}" a TeX-side decision
--- (gothamEmitImageSourceFootnote below) rather than baked into this string.
+-- (SMEmitImageSourceFootnote below) rather than baked into this string.
 -- Deliberately NOT run through gothamalt.escape(): unlike the invisible
 -- alt-text layer (which types literal PDF-string glyphs via a raw
 -- \pdfextension primitive and therefore needs every TeX special character
@@ -285,6 +285,6 @@ function gothamalt.emitSourceFootnote()
 		parts[i] = strip_trailing_period(source)
 	end
 	local joined = table.concat(parts, ". ") .. "."
-	tex.sprint("\\gothamImageSourcesHasTexttrue\\def\\gothamImageSourcesText{"
+	tex.sprint("\\SMImageSourcesHasTexttrue\\def\\SMImageSourcesText{"
 		.. joined .. "}")
 end

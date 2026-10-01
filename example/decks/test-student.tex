@@ -23,10 +23,10 @@
 % own comment for the details.
 \usepackage[style=authoryear, backend=biber]{biblatex}
 \makeatletter
-\let\gothamSavedInputPath\input@path
+\let\SMSavedInputPath\input@path
 \def\input@path{}%
 \IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
-\let\input@path\gothamSavedInputPath
+\let\input@path\SMSavedInputPath
 \makeatother
 
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}

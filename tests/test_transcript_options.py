@@ -13,8 +13,8 @@ def test_gap_table_spec_is_not_a_cell():
 
 
 def test_version_if_keeps_one_branch_per_version():
-    text = ("\\ifgothamInstructorVersion\n\\item<3-> Answer\n\\else\n\\item Answer\n\\fi\n"
-            "\\ifgothamDuringCourseVersion\\else Solution \\ifx\\a\\b inner\\else other\\fi\\fi")
+    text = ("\\ifSMInstructorVersion\n\\item<3-> Answer\n\\else\n\\item Answer\n\\fi\n"
+            "\\ifSMDuringCourseVersion\\else Solution \\ifx\\a\\b inner\\else other\\fi\\fi")
     during = transcript.resolve_deck_conditionals(text, "during-course")
     after = transcript.resolve_deck_conditionals(text, "after-course")
     assert during.count("Answer") == 1 and "<3->" not in during
@@ -48,6 +48,19 @@ def test_floating_block_title_is_the_title_not_the_width():
 
 def test_tikz_mark_names_are_dropped_and_tikzword_text_kept():
     out = transcript._convert_body(
-        "grow'', \\gothamTikzword{acUse}{use} the tree and a \\gothamTikzmark{x}mark", 0)
+        "grow'', \\SMTikzword{acUse}{use} the tree and a \\SMTikzmark{x}mark", 0)
     assert "use the tree" in out
     assert "acUse" not in out and "xmark" not in out and "a mark" in out
+
+
+def test_beamer_templates_dropped_and_item_labels_kept():
+    template = transcript._convert_body(
+        r"\setbeamertemplate{itemize subitem}{\SMBulletEllipsis}" "\n"
+        r"\begin{itemize}" "\n" r"\item Good\ldots" "\n" r"\begin{itemize}" "\n"
+        r"\item one" "\n" r"\end{itemize}" "\n" r"\end{itemize}", 0)
+    assert "itemize subitem" not in template and "Good…" in template
+    label = transcript._convert_body(
+        r"\begin{itemize}" "\n" r"\item[\SMBulletEllipsis] one" "\n"
+        r"\item[(a)] two" "\n" r"\end{itemize}", 0)
+    assert "- … one" in label and "- (a) two" in label and "[]" not in label
+

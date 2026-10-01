@@ -141,7 +141,7 @@ checkout updated alongside the executable.
   other institutions), each following exactly this same pattern with its
   own colors/logo and nothing else different — not included in this copy,
   but add your own the same way if you need a second institution: copy
-  this file, swap the `c_*` colors and `\gothamInstituteLogoPath`, keep
+  this file, swap the `c_*` colors and `\SMInstituteLogoPath`, keep
   the trailing `\input{Slidemaster_preamble_base}` line.
 - `slides/` — one set of files per slide, named by a permanent, opaque ID
   (see below). This is where actual slide content lives.
@@ -944,7 +944,7 @@ institution file, since none of this depends on the palette):
   enough room. Only reach for it on a genuine stacked display fraction, not
   any small inline `\frac` embedded mid-sentence. If the optional argument is
   not a number it is taken as the bullet label instead (2026-09-26):
-  `\tallitem[\gothamBulletEllipsis]` is an `\item[\gothamBulletEllipsis]` with
+  `\tallitem[\SMBulletEllipsis]` is an `\item[\SMBulletEllipsis]` with
   the default extra headroom (`\tallitem[]` gives a label-less one) — a custom
   label cannot be combined with a custom multiplier. A line that needs an empty
   `\item[]` label *and* the extra
@@ -1058,9 +1058,9 @@ institution file, since none of this depends on the palette):
   `gothamfloatinginfoblock` (same two-argument call shape), typically
   anchored top-right against the institute logo via the same absolute-tikz-
   overlay corner pattern the institute logo itself uses, with a fixed
-  `-\gothamContentTopAlign+6.02pt` intrinsic gap correction on the anchor
+  `-\SMContentTopAlign+6.02pt` intrinsic gap correction on the anchor
   node (confirmed empirically, not derived — see
-  `\gothamFloatingInfoblockRightAlign`'s own comment in
+  `\SMFloatingInfoblockRightAlign`'s own comment in
   `Slidemaster_preamble_base.tex`) —
   `slides/k4p-Introductory-Question-Answer-current.tex` and
   `slides/2s4-EN-Groups-SE-COF-current.tex` are worked examples.
@@ -1096,6 +1096,13 @@ if you want a particular slide vertically centered instead.
 
 ## Layout helpers (instead of per-slide adjustments)
 
+**Names:** everything this framework adds is named `\SM...` (`\SMContentTopAlign`,
+`\ifSMInstructorVersion`, TikZ style `SMImageBorder`); `\gotham...` names belong
+to the vendored Gotham theme only. Up to v5.2.0 the framework's own names were
+`\gotham...` too -- a project still using them is migrated with
+`python -m slidemage.sm_rename <project folder>` (`--dry-run` first to see the
+counts).
+
 Added 2026-09-30, after an audit found the same hand-measured fixes repeated
 across hundreds of slides (and silently going stale whenever a central value
 changed). Existing slides were switched over where the result is
@@ -1105,28 +1112,37 @@ pixel-identical; everything below is what new slides should use.
   `figureframe`, `highlightframe`, `sideimageframe`) measures where its first
   visible content landed -- a text line's top, an image's or a table rule's
   top edge -- and moves its body onto the Top Margin line on the next compile
-  (recorded in `<jobname>.top`, the way `\gothamFinalStateForStudents` uses
+  (recorded in `<jobname>.top`, the way `\SMFinalStateForStudents` uses
   `<jobname>.ovl`; latexmk reruns by itself). No more
-  `\gothamIncreaseContentTopShift`/`\gothamReduceContentTopShift` values:
+  `\SMIncreaseContentTopShift`/`\SMReduceContentTopShift` values:
   they still compile but no longer matter. A slide that is full never gets
   pushed down into its footnotes/footer -- the correction stops 1pt above
   them. Absolute overlays (corner images) are not moved; they are placed on
   the margin by `\cornerfigure` already. Exceptions: `[c]` frames,
   `sectionframe`, a `\progressstrip` frame, and any frame preceded by
-  `\gothamManualTopMargin` (keeps the hand-placed position). A deck can
-  switch the whole mechanism off with `\gothamAutoTopMarginfalse`.
-- **`\cornerfigure[corner=ne|nw|se|sw, block, xshift=, yshift=, node={...}]{content}`**
-  -- content in a corner of the content area as a zero-space overlay (Top/
-  Bottom and Left/Right Margin). `block` for a `gothamfloatinginfoblock`
-  (lifts it by its own top padding, aligns its visible right edge with the
-  logo). `node={gothamImageBorder}` for a bordered image.
-- **`\begin{besidefigure}[gap=12pt]{<width>}{<figure>} ... \end{besidefigure}`**
-  -- text next to a top-right figure; the text column is exactly as wide as
-  the room left of the figure, no hand-picked minipage width.
+  `\SMManualTopMargin` (keeps the hand-placed position). A deck can
+  switch the whole mechanism off with `\SMAutoTopMarginfalse`.
+- **`\cornerfigure[height=5cm, border]{media/chart-x.png}`** -- an image in a
+  corner of the content area as a zero-space overlay. Give `width=` or
+  `height=` (the other follows from the aspect ratio) and the argument is the
+  image file; `border` adds the yellow image border. Other keys:
+  `corner=ne|nw|se|sw|e|w` (default `ne`; `e`/`w` = on the Right/Left Margin,
+  centred between Top and Bottom Margin), `xshift=`, `yshift=`, `node={...}`.
+  Without `width`/`height` the argument is arbitrary content; `block` for a
+  `gothamfloatinginfoblock` (lifts it by its own top padding, aligns its
+  visible right edge with the logo).
+- **Borders position the figure:** a node with the `SMImageBorder` style has
+  its anchors on the border's *outer* edge, so a bordered figure anchored at a
+  margin has its border on the margin; without a border the image's own edge
+  is on it.
+- **`\begin{besidefigure}[height=5cm, border]{media/chart-x.png} ... \end{besidefigure}`**
+  -- text next to a corner figure (same keys as `\cornerfigure`, plus
+  `gap=`, default 12pt); the text column is exactly as wide as the room left
+  of the figure, measured from the figure itself.
 - **`\fitfigure[top=here|margin, gap=6pt, valign=, halign=, bottom=, node=]{file}`**
   -- an image as large as it fits (aspect ratio kept) between the current
   position (or the Top Margin) and the Bottom Margin, Left to Right Margin.
-- **Bottom Margin** is now a length, `\gothamContentBottomAlign`: the footer
+- **Bottom Margin** is now a length, `\SMContentBottomAlign`: the footer
   box plus the same gap the Top Margin leaves below the title bar.
 - **`\begin{gothamtable}[gap=12pt]{lccc}`** -- flush table edges (rules end
   at the text) with the column gap built in; after a `p`/`m`/`b` column the
@@ -1141,9 +1157,9 @@ pixel-identical; everything below is what new slides should use.
   steps (nothing jumps when it appears); TikZ `visible on=<3->` does the same
   for a drawing element.
 - **Small ones:** `\shrinklists{1|2}` (all list levels one/two sizes smaller),
-  `\EUR` (euro sign in text and math), `\gothamTikzmark{name}`, TikZ styles
+  `\EUR` (euro sign in text and math), `\SMTikzmark{name}`, TikZ styles
   `gotham highlight`, `gotham dotted highlight`, `gotham arrow`.
-- **`\gothamTikzword{name}{text}`** -- a word as a named TikZ node, so an
+- **`\SMTikzword{name}{text}`** -- a word as a named TikZ node, so an
   overlay arrow can point at it (`(name.south)`, ...) and follows it when the
   layout moves; transcripts keep the word.
 - **`\sectionfigure[keys]{image}`** (in a `sectionframe`) -- the side image
@@ -1193,7 +1209,7 @@ self-contained inside one macro invocation with no begin/end split for
 beamer's collector to trip over. `quoteframe` below hits the same constraint
 for the same reason.
 
-The box's height (`\gothamTitleframeBoxHeight`) is a fixed target for its
+The box's height (`\SMTitleframeBoxHeight`) is a fixed target for its
 *bottom* edge, not for the blank space above the text — that space is
 derived from it instead (box height minus the title+subtitle content's own
 measured height), so the bottom edge stays put even if a longer title ever
@@ -1202,7 +1218,7 @@ wraps onto a second line; the blank space above just shrinks to compensate
 start above the page's top edge — there's no fallback for that case, since
 `titleframe` is normally used once with short, predictable copy). The text
 itself doesn't sit flush with the box's bottom edge either — a further
-length, `\gothamTitleframeBottomPad`, reserves about 1.5 line-heights of
+length, `\SMTitleframeBottomPad`, reserves about 1.5 line-heights of
 blank box below the last line, empirically calibrated the same way (both
 these lengths need re-measuring if the title/subtitle font sizes change).
 
@@ -1255,7 +1271,7 @@ edge down to the title box's true bottom edge, to trim away what's normally
 just a ~1-2pt sliver of yellow poking out past the logo on an ordinary short
 bar. On a bar this tall, that "sliver" is most of the box — silently wiping
 out nearly all the yellow with white the first time this was built.
-`\gothamFrametitleFullHeightYellow` is `sectionframe`'s opt-out for that
+`\SMFrametitleFullHeightYellow` is `sectionframe`'s opt-out for that
 specific patch (set the same way, and reset the same way, as
 `\chapterlogo{}`'s path).
 
@@ -1268,7 +1284,7 @@ to do this — its only two knobs are the top/bottom padding struts, both
 anchored to one end of a single top-down flow — so
 `\gothamFrametitleToppading` is computed fresh for every `sectionframe`,
 from a separate measurement of the title text's own rendered height
-(`\gothamSectionframeTitleBox`, built with the same font/approximate width
+(`\SMSectionframeTitleBox`, built with the same font/approximate width
 gotham gives it) rather than left at a fixed value:
 `toppading = boxHeight - bottompading - measuredTitleHeight` (plus a small
 empirically-measured correction — gotham's real leading strut doesn't
@@ -1279,16 +1295,16 @@ gap below it.
 
 **This toppading formula has a real, confirmed side effect: the bar's own
 visible height depends on whether the title text has any descenders (`g j p
-q y`), not just on `\gothamSectionframeBoxHeight` (2026-07-25, direct
+q y`), not just on `\SMSectionframeBoxHeight` (2026-07-25, direct
 instruction: "the image extends into the title box" on
 [neb](example/slides/neb-Market-Environment-Section-Overview-current.tex)/
 [u97](example/slides/u97-Household-Finance-Section-Overview-current.tex) — root-caused
-after their own images, placed flush against `\gothamSectionframeBoxHeight`
+after their own images, placed flush against `\SMSectionframeBoxHeight`
 directly, turned out to sit ~4.2pt too high; see those two files' own header
-comments for the fix actually applied).** `\gothamSectionframeBoxHeight`
+comments for the fix actually applied).** `\SMSectionframeBoxHeight`
 (85.04pt) is only the *target* this formula solves for — by construction,
 `toppading + measuredTitleHeight + measuredTitleDepth + bottompading` should
-algebraically equal `\gothamSectionframeBoxHeight + \gothamSectionframeHeightCorrection`
+algebraically equal `\SMSectionframeBoxHeight + \SMSectionframeHeightCorrection`
 regardless of title content, since the formula solves for toppading from the
 other three. In practice it doesn't stay constant, because gotham's own
 `\gotham@frametitlestrut@start`/`@end` (`gotham.dtx`) don't actually implement
@@ -1299,7 +1315,7 @@ way that algebra assumes:
   height dominates the line, so the line's rendered height ends up
   `≈ toppading + capheight`, not `toppading + <real title's own ht>`.
 - `@end` is a zero-height `\rule` of depth `bottompading` (19.90pt for
-  `sectionframe`, `\gothamSectionframeBottomGap+\gothamSectionframeBottomPadCorrection`)
+  `sectionframe`, `\SMSectionframeBottomGap+\SMSectionframeBottomPadCorrection`)
   — a *fixed* depth, not the real title's own depth.
 - The real title text (`\insertframetitle`) sits between these two struts and
   contributes its own real height/depth to the same line — but a line's
@@ -1325,19 +1341,19 @@ the same way, both
 [vtm](example/slides/vtm-Measuring-and-Managing-Risk-Section-Overview-current.tex)
 ("Measuring and managing risk") land at 85.04pt too, both titles with a
 descender). This is presumably a coincidence of whichever title was on
-screen when `\gothamSectionframeHeightCorrection` was originally calibrated
+screen when `\SMSectionframeHeightCorrection` was originally calibrated
 (a descender'd one), not a design choice — but it means
-**`\gothamSectionframeBoxHeight` was never actually a title-independent
+**`\SMSectionframeBoxHeight` was never actually a title-independent
 constant**, and anything anchoring itself directly against it (as neb/u97's
 own decorative-image overlay does, the `sideimageframe` technique from
 "Side image" below applied to `sectionframe`'s own box) needs the bar's real,
 per-title rendered height, not this target.
-`\gothamSectionframeTrueBoxBottom` (`Slidemaster_preamble_base.tex`, right
-after `\gothamSectionframeBoxHeight`'s own definition) is that measured
+`\SMSectionframeTrueBoxBottom` (`Slidemaster_preamble_base.tex`, right
+after `\SMSectionframeBoxHeight`'s own definition) is that measured
 value — but it's **only valid for a title with no descenders**, matching the
 two slides (neb/u97) that currently use it; a *different* sectionframe with
 a descender'd title (like tyn/vtm above) should keep anchoring against
-`\gothamSectionframeBoxHeight` directly instead (already correct for them,
+`\SMSectionframeBoxHeight` directly instead (already correct for them,
 confirmed the same way), and a sectionframe whose title text might change
 in the future should re-measure (real vector fill, not a visual guess) as
 part of that edit rather than assume either constant still applies.
@@ -1345,14 +1361,14 @@ part of that edit rather than assume either constant still applies.
 The institute logo, though, stays exactly where it sits on every other
 frame type — even though gotham normally vertically centers it against the
 title's own baseline (which would otherwise drag it down along with a
-bottom-anchored title). `\gothamFrametitleLogoFixed` is `sectionframe`'s
+bottom-anchored title). `\SMFrametitleLogoFixed` is `sectionframe`'s
 opt-in for the frametitle hook to redraw the logo at a fixed page-corner
 position instead of wherever the title line puts it (same
-set-before/reset-after mechanism as `\gothamChapterLogoPath`/
-`\gothamFrametitleFullHeightYellow` above) — the white patch behind it
+set-before/reset-after mechanism as `\SMChapterLogoPath`/
+`\SMFrametitleFullHeightYellow` above) — the white patch behind it
 already covers the logo's full column down to the bar's bottom edge
 regardless of which position is used, so this doesn't need any patch
-changes of its own. `\gothamSectionframeContentDrop` adds a little extra
+changes of its own. `\SMSectionframeContentDrop` adds a little extra
 room below the bar before the body content starts, on top of
 `standardframe`'s usual pull-up.
 
@@ -1458,7 +1474,7 @@ chrome:
 The image is scaled to fit the slide while keeping its own aspect ratio
 (`\includegraphics`'s `keepaspectratio`, capped by width *and* height
 together); whatever's left over on the binding axis is filled by a solid
-black backdrop (`\gothamFullBleedBlack`, a fixed HTML black — deliberately
+black backdrop (`\SMFullBleedBlack`, a fixed HTML black — deliberately
 *not* a `\colorlet` of `c_primary_dark`, so this stays neutral even if
 that color is ever restyled) rather than showing the frame's usual white
 canvas. A single command, not an environment — same reasoning as
@@ -1514,11 +1530,11 @@ presenter can never flip to it without immediately noticing:
 ```
 
 Everything else — body, logo, bullet styling — is exactly `standardframe`'s
-own. The accent color is the named color `gothamHighlightColor`, set via
+own. The accent color is the named color `SMHighlightColor`, set via
 `\colorlet` rather than baked directly into the environment, so retargeting
 every `highlightframe` in a deck to a different color — title bar and
 footer both — is still a one-line change
-(`\colorlet{gothamHighlightColor}{...}`).
+(`\colorlet{SMHighlightColor}{...}`).
 
 ### Step strip (`\progressstrip`)
 
@@ -1537,7 +1553,7 @@ Call it as the very first thing in a `standardframe`:
 
 The strip is a zero-space absolute overlay (so it can span the whole page
 width); the macro's trailing `\vspace` reserves its height, so no
-`\gothamIncreaseContentTopShift` is needed.
+`\SMIncreaseContentTopShift` is needed.
 
 ## Title bar and logo
 
@@ -1722,7 +1738,7 @@ shows on *every* overlay slide of its frame in side mode. Like the title-bar
 patches, the strip is positioned via a remembered tikz coordinate, so it too
 needs the usual second compile pass. The strip's geometry (its vertical run,
 top gap, and inset from the page edge) is set by
-`\gothamSideFootnoteHsize`/`\gothamSideFootnoteTopSep`/`\gothamSideFootnoteRightInset`
+`\SMSideFootnoteHsize`/`\SMSideFootnoteTopSep`/`\SMSideFootnoteRightInset`
 in `Slidemaster_preamble_base.tex`; the first is calibrated against the measured
 title-bar position and needs re-measuring if the title bar ever changes.
 
@@ -1742,7 +1758,7 @@ checking the switch resets.
 > setting up a new course deck. What's below is still live, but only
 > `decks/test.tex`/`test-student.tex` use it, as the worked demo of the
 > shared-slide-list pattern. The two do not interoperate:
-> `\omitslide{}` is gated on `\ifgothamStudentVersion`, which only
+> `\omitslide{}` is gated on `\ifSMStudentVersion`, which only
 > `\studentversion` ever sets, so an `\omitslide{}` in a deck that uses
 > `\deckversion[...]` silently does nothing at all — include such a slide
 > with `\conditionalslide[versions]{}` instead.
@@ -1859,7 +1875,7 @@ on the left and a notes panel on the right holding that slide's own
 compact one-line breadcrumb above it (current section/subsection/frame
 title, whichever apply) if this deck uses `\section{}`. The note-page
 template is customized (`Slidemaster_preamble_base.tex`'s own
-`\gothamPresenterModeOverride` block) to drop beamer's own default
+`\SMPresenterModeOverride` block) to drop beamer's own default
 thumbnail-of-the-current-slide and printed compile-date from that
 panel — redundant since presenter software already shows the current
 slide on its own — leaving the panel almost entirely for note text.
@@ -1966,8 +1982,8 @@ internal error in `tagpdf`'s LuaTeX backend, from the non-standard load
 order — not something to build real coursework on.
 
 **LuaTeX-only**, same as the rest of this project (see "Compiling" above —
-`lualatex` is the one supported engine). `\gothamArtifactBegin`/
-`\gothamArtifactEnd` are `\ifluatex`-guarded and silently do nothing under
+`lualatex` is the one supported engine). `\SMArtifactBegin`/
+`\SMArtifactEnd` are `\ifluatex`-guarded and silently do nothing under
 any other engine, a leftover safety net from when xelatex was still (nominally,
 if not actually) supported: an unguarded first version hard-failed every
 frame under xelatex with `! Undefined control sequence: \pdfextension`. Not
@@ -1978,12 +1994,12 @@ wrong engine by accident.
 What actually works: `/Artifact` is a standalone PDF
 marked-content tag (PDF spec 14.8.2.2), valid in *any* PDF with or without a
 structure tree — no `/Properties` resource entry or MCID needed.
-`\gothamArtifactBegin{dict}`/`\gothamArtifactEnd` (in
+`\SMArtifactBegin{dict}`/`\SMArtifactEnd` (in
 `Slidemaster_preamble_base.tex`, "PDF accessibility" comment) wrap a region in
 `/Artifact <<dict>> BDC ... EMC` via LuaTeX's raw
 `\pdfextension literal direct{...}` primitive, e.g.
-`\gothamArtifactBegin{/Type /Pagination /Subtype /Footer}` for the footer,
-`\gothamArtifactBegin{/Type /Background}` for a plain decorative fill (the
+`\SMArtifactBegin{/Type /Pagination /Subtype /Footer}` for the footer,
+`\SMArtifactBegin{/Type /Background}` for a plain decorative fill (the
 PDF spec's own two different standard artifact types — not hardcoded to one,
 since a background color fill isn't a "Pagination" artifact).
 
@@ -2161,7 +2177,7 @@ background pattern — wrapping one would try to typeset it in-flow instead,
 breaking its own positioning), when it's nested inside *another*
 tikzpicture's own node content (a `\scalebox{}{\begin{tikzpicture}...}`
 used as one `\node`'s content), or when its only content is a single
-`\node[gothamImageBorder]{\includegraphics{...}}`/`\gothamMugshot{}` call
+`\node[SMImageBorder]{\includegraphics{...}}`/`\SMMugshot{}` call
 — a decorative border around one real image, which already has its own
 alt-text entry; wrapping the border too would just duplicate it.
 
@@ -2379,15 +2395,15 @@ deck decides where it appears and which steps show, per deck version:
 
 A list label starts at the left edge of the bullet dot of its own level (12.76pt for level 1, then +8.84pt per
 level), the way the source PowerPoint places it: enumerate numerals (level 1 additionally puts the item text at
-27.9pt, nested bullets unchanged; `\gothamEnumerateTextExtra`), ellipsis labels via `\item[\gothamBulletEllipsis]`,
-and a bullet template that is itself an ellipsis via `\setbeamertemplate{itemize subitem}{\gothamBulletEllipsisScript}`.
-Hand-tuned label environments (`gothamnum*`/`gothamalpha*` itemize, `\gothamTocLabelFlushLeft`, ...) keep their own
+27.9pt, nested bullets unchanged; `\SMEnumerateTextExtra`), ellipsis labels via `\item[\SMBulletEllipsis]`,
+and a bullet template that is itself an ellipsis via `\setbeamertemplate{itemize subitem}{\SMBulletEllipsisScript}`.
+Hand-tuned label environments (`gothamnum*`/`gothamalpha*` itemize, `\SMTocLabelFlushLeft`, ...) keep their own
 measured geometry. `python .scripts/check_list_labels.py <compiled.pdf>` measures every label of a compiled deck
 against this rule and lists the exceptions.
 
-### `\gothamFinalStateForStudents` — student decks show only the final state
+### `\SMFinalStateForStudents` — student decks show only the final state
 
-Put `\gothamFinalStateForStudents` in a slide file, right before its frame environment (after
+Put `\SMFinalStateForStudents` in a slide file, right before its frame environment (after
 `\setSlideVersion`): the instructor and presenter compiles are unchanged, every other deck version then
 typesets only the frame's **last overlay page** -- the state that is left after all reveal steps, including
 steps that hide things again. It needs no change to the slide body, so it covers `\pause`, `\only<n>`,

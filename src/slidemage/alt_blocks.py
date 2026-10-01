@@ -29,7 +29,7 @@ INCLUDEGRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]*
 # \chapterlogo{path} and \begin{sideimageframe}{title}{path} both take a
 # literal image path as one of their own arguments, even though the
 # \includegraphics{...} they internally feed it to is itself macro-valued
-# (\gothamChapterLogoPath, #3) and therefore invisible to INCLUDEGRAPHICS_RE
+# (\SMChapterLogoPath, #3) and therefore invisible to INCLUDEGRAPHICS_RE
 # above. Missing these cost real coverage: checked directly against the
 # real project, 2026-08-16 -- 105 of 281 images (~37%) had an empty
 # `used_on` in alt-text.json purely because they're only ever placed
@@ -52,7 +52,7 @@ SIDEIMAGEFRAME_RE = re.compile(r"\\begin\{sideimageframe\}(?:\[[^\]]*\])?\s*\{")
 TITLEFRAME_RE = re.compile(r"\\titleframe\s*\{")
 FULLBLEEDFRAME_RE = re.compile(r"\\fullbleedframe\s*\{")
 
-# \gothamMugshot{coord}{path}{diameter}{caption} -- the small circular
+# \SMMugshot{coord}{path}{diameter}{caption} -- the small circular
 # portrait photos (Fama, Modigliani, Miller, Thaler, ...). Its own 2nd
 # argument is a real literal path, same shape as sideimageframe's 2nd
 # argument above; found 2026-08-17 while correlating image sources against
@@ -63,7 +63,7 @@ FULLBLEEDFRAME_RE = re.compile(r"\\fullbleedframe\s*\{")
 # chapterlogo/sideimageframe gap above: \includegraphics{#2} inside the
 # macro body is templated, not literal, so only the call site carries a
 # real path.
-MUGSHOT_RE = re.compile(r"\\gothamMugshot\s*\{")
+MUGSHOT_RE = re.compile(r"\\SMMugshot\s*\{")
 
 # \begin{tikzillustration}[options]{ID} ... \end{tikzillustration}
 # (Slidemaster_preamble_base.tex) -- a hand-drawn tikz diagram with no
@@ -415,7 +415,7 @@ def referenced_images(source: str) -> list[str]:
 
     Three call shapes, each contributing a literal path: a bare
     `\\includegraphics{...}`, a `\\chapterlogo{...}` call (its own argument
-    is a real path even though the `\\includegraphics{\\gothamChapterLogoPath}`
+    is a real path even though the `\\includegraphics{\\SMChapterLogoPath}`
     it feeds is itself macro-valued and gets skipped below), and
     `\\begin{sideimageframe}{title}{path}` (that environment's own second
     mandatory argument -- its *internal* `\\includegraphics{#3}` is
@@ -423,7 +423,7 @@ def referenced_images(source: str) -> list[str]:
     path). Missing the latter two used to cost real coverage -- see
     CHAPTERLOGO_RE/SIDEIMAGEFRAME_RE's own comment above.
 
-    A reference built from a macro or a macro argument (`\\gothamChapterLogoPath`,
+    A reference built from a macro or a macro argument (`\\SMChapterLogoPath`,
     a bare `#1` inside another macro's body) can't be resolved without
     expanding TeX, so it is skipped rather than guessed at. In practice those
     live in the preamble, not in slides/ -- slide files spell their paths out.
@@ -494,7 +494,7 @@ def replace_image_reference(source: str, old_reference: str, new_reference: str)
     across the same five call shapes referenced_images() recognizes --
     `\\includegraphics{...}`, `\\chapterlogo{...}`, `\\fullbleedframe{...}`,
     `\\begin{sideimageframe}{title}{path}`, and
-    `\\gothamMugshot{coord}{path}{...}` -- for the Images tab's own "Replace
+    `\\SMMugshot{coord}{path}{...}` -- for the Images tab's own "Replace
     image…" button (2026-09-18), which swaps a slide's reference to a
     freshly copied-in file. Returns the edited source and how many call
     sites actually changed (0 if `old_reference` isn't used here at all --

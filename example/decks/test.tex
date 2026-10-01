@@ -26,16 +26,16 @@
 % to demonstrate the mechanism itself.
 \usepackage[style=authoryear, backend=biber]{biblatex}
 \makeatletter
-\let\gothamSavedInputPath\input@path
+\let\SMSavedInputPath\input@path
 \def\input@path{}%
 \IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
-\let\input@path\gothamSavedInputPath
+\let\input@path\SMSavedInputPath
 \makeatother
 
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
 % Added 2026-09-22 alongside the ZZH \slidestep demo slide (test-slides.tex)
-% -- without this, \gothamDeckVersion never moves off its own "instructor"
+% -- without this, \SMDeckVersion never moves off its own "instructor"
 % default (see Slidemaster_preamble_base.tex), so a during-course/after-course
 % compile of this deck (SlideMage's own version checkboxes, or a manual
 % \def\deckversionoverride{...} wrapper) would silently still show every

@@ -280,7 +280,7 @@ What matters when touching *this code*:
   matched literal `\includegraphics{...}` until 2026-08-16 -- it missed
   `\chapterlogo{...}` and `\begin{sideimageframe}{title}{path}`, whose own
   arguments are real literal paths even though the `\includegraphics{...}`
-  they *internally* feed (`\gothamChapterLogoPath`, `#3`) is itself
+  they *internally* feed (`\SMChapterLogoPath`, `#3`) is itself
   macro-valued and correctly stays skipped. Measured impact, not assumed:
   105 of 281 images had an empty `used_on` before the fix, 121 new
   (image, slide) uses turned up on the very next `sync_store()` after it.

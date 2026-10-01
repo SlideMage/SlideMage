@@ -627,8 +627,8 @@ function gotham_layout.top_emit()
     end
     if math.abs(value) >= 0.0005 then
       tex.sprint(string.format(
-        "\\immediate\\write\\csname gotham@topfile\\endcsname"
-        .. "{\\string\\gothamSetTopCorrection{%d}{%.3fpt}}", index, value))
+        "\\immediate\\write\\csname SM@topfile\\endcsname"
+        .. "{\\string\\SMSetTopCorrection{%d}{%.3fpt}}", index, value))
     end
   end
 end

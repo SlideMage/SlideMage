@@ -156,7 +156,7 @@ VERSION_LABELS = {
 # instructor-version (SlideMage/compiler.py's own real-deck job
 # building does exactly this: presenter_version = "instructor"), just
 # with beamer's dual-screen presenter mechanism turned on via a
-# separate \gothamPresenterModeOverride hook (Slidemaster_preamble_base.tex),
+# separate \SMPresenterModeOverride hook (Slidemaster_preamble_base.tex),
 # the same \ifdefined pattern _footer_timestamp_line below already
 # uses for its own override. Still one more choice in the *same*
 # "Render version" combo, not a second control -- matches how the deck
@@ -248,7 +248,7 @@ def _contrasting_text_color(hex_color: str) -> QColor:
 #                 via _wrap_environment.
 #   "wrap_env_ellipsis" -- same mechanic as "wrap_env" (payload is again
 #                           the environment name), except each item's
-#                           label is \item[\gothamBulletEllipsis] instead
+#                           label is \item[\SMBulletEllipsis] instead
 #                           of a bare \item, and the \begin{} line is
 #                           preceded by a "%Use \ldots for in-text
 #                           ellipses" comment reminding the editor of the
@@ -475,7 +475,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
     # "\item \begin{itemize}" (an item that itself opens a nested list)
     # still gets the more specific begin/end handling, not this one.
     # Captures an optional bracketed label (2026-09-24, direct
-    # instruction: continuing a "\item[\gothamBulletEllipsis]" line
+    # instruction: continuing a "\item[\SMBulletEllipsis]" line
     # produced a bare "\item " instead of repeating that same label) --
     # see _smart_return below for how the captured label is reused.
     _ITEM_LINE_RE = re.compile(r"^\\item\b(\[[^\]]*\])?")
@@ -588,7 +588,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
                 # Same indentation as the \item line itself, not one level
                 # deeper -- sibling items in one list, not nested content.
                 # Repeats the current item's own bracketed label, if any
-                # (e.g. "\item[\gothamBulletEllipsis]") rather than always
+                # (e.g. "\item[\SMBulletEllipsis]") rather than always
                 # falling back to a bare "\item" -- a label the editor
                 # started typing with is presumably the label every
                 # sibling item in that same list wants too.
@@ -655,7 +655,7 @@ class SlideSourceTab(QWidget):
 
         # Whether the render bar's "Render language:" control is worth
         # showing: this slide is tagged "mult" (the whole point of that
-        # tag), or its text reads \ifgothamGerman via \multilingualtext{}{}
+        # tag), or its text reads \ifSMGerman via \multilingualtext{}{}
         # somewhere anyway (a legacy untagged slide that happens to use the
         # macro). Initial value only -- _update_render_language_visibility()
         # (2026-08-25) recomputes this from *live* state after a rename or
@@ -1393,7 +1393,7 @@ class SlideSourceTab(QWidget):
 
         `item_prefix`/`leading_comment` (2026-09-24, direct instruction):
         the "Bulleted list (ellipses)" insert-command reuses this same
-        mechanic with item_prefix="\\item[\\gothamBulletEllipsis] " and a
+        mechanic with item_prefix="\\item[\\SMBulletEllipsis] " and a
         leading_comment reminding the editor of the companion in-text
         \\ldots convention -- see INSERT_COMMANDS' own "wrap_env_ellipsis"
         comment for the full rationale. `leading_comment`, when given, is
@@ -1542,7 +1542,7 @@ class SlideSourceTab(QWidget):
         elif kind == "wrap_env_ellipsis":
             self._wrap_environment(
                 payload,
-                item_prefix="\\item[\\gothamBulletEllipsis] ",
+                item_prefix="\\item[\\SMBulletEllipsis] ",
                 leading_comment="%Use \\ldots for in-text ellipses",
             )
         elif kind == "wrap_multilingual":

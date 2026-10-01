@@ -1785,6 +1785,10 @@ BREAKING: every slide with a level-1 list at \\small/\\footnotesize (a manual si
 v5.2.0 (2026-10-01, direct instructions): LaTeX framework. (1) \\gothamTikzword{name}{text}: a word as a named TikZ node, so an overlay arrow can point at the word and follows it when the layout moves (3ac's arrow at measured page coordinates had drifted off its words). (2) \\sectionfigure[keys]{image} for sectionframe: the image fills the gap from the title bar to the footer, flush with the right edge, and the frame's footnotes -- the image source included -- go into the rotated strip beside it (bij's image overlapped the title bar and covered its own source line; neb, u97, tyn and vtm did the same by hand with per-title measurements). The bar's bottom edge is computed from the title's depth (89.44bp minus it, at most 85.04bp, measured). (3) Footnotes inside a minipage or column now join the frame's other footnotes at the bottom (beamer's [frame] footnotes are the default; mje, zv4). (4) Transcripts: \\gothamTikzmark{name} no longer leaves its name behind as a word, \\gothamTikzword keeps its text.
 
 BREAKING: a \\footnote{} or \\source{} inside a minipage/column used to be set right below that minipage with its own marker sequence; it now sits with the frame's other footnotes at the bottom and continues their markers (in this project: mje, zv4).
+
+v6.0.0 (2026-10-01, direct instructions): (1) Every \\gotham... name this project created is now \\SM... (\\SMContentTopAlign, \\ifSMInstructorVersion, \\SMBulletEllipsis, the TikZ style SMImageBorder, ...): framework, institution preambles, Lua, SlideMage's own code, the demo project and every slide including frozen versions. The vendored Gotham theme keeps its names (\\gothamset, \\gothamFrametitleLeftpading, ...), and so do the environments (gothamtable, gothamfloatinginfoblock, ...). New module slidemage.sm_rename does the rename; `python -m slidemage.sm_rename <project folder>` applies it to another project. (2) \\cornerfigure[height=5cm, border]{media/x.png}: with width= or height= the argument is an image file, the other size follows from its aspect ratio; `border` adds the yellow image border; corner=e|w puts it on the Right/Left Margin, centred between Top and Bottom Margin. besidefigure takes the same keys and measures the figure itself (no width argument). (3) A bordered node (SMImageBorder) has its anchors on the border's outer edge, so the border -- not the stroke's centre line -- lands on a margin; \\cornerfigure's node has no inner/outer sep, so an unbordered image's own edge does. (4) Transcripts: \\setbeamertemplate/\\setbeamerfont/\\setbeamercolor no longer leave their names behind, \\item[label] keeps its label, \\ldots is an ellipsis.
+
+BREAKING: (a) the \\gotham... -> \\SM... rename: a project or deck that uses this framework's own commands under their old names stops compiling -- run `python -m slidemage.sm_rename <project folder>` once (it rewrites slides, decks, preambles and .slidemage settings; the Gotham theme's own names are left alone). Old .top/.ovl files in a build folder are still read without errors. (b) \\cornerfigure content without a border sits 0.2pt closer to its corner (its node has no outer sep any more); a bordered node keeps TikZ's outer sep of half its line width even where \\cornerfigure sets outer sep=0pt, so its border's outer edge is on the margin. A slide that writes outer sep=0pt after SMImageBorder still opts out (needed where the node's corners are a coordinate frame for highlights). (c) besidefigure's arguments changed from {width}{figure} to [keys]{image file or content}.
 """
 from __future__ import annotations
 
@@ -1794,7 +1798,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.2.0"
+VERSION_NUMBER = "v6.0.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

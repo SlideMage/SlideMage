@@ -18,7 +18,7 @@ line add_deck_headers.py maintains -- never hand-edited, always the
 first thing this module's own set_marker()/strip_marker() touch on save.
 A slide with no such line has simply never been through this workflow
 yet; its footer omits the version segment entirely rather than showing
-something wrong (\\ifgothamSlideVersionSet, reset per-frame -- see that
+something wrong (\\ifSMSlideVersionSet, reset per-frame -- see that
 file's own comments).
 """
 from __future__ import annotations

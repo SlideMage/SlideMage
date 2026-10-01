@@ -7,7 +7,7 @@ calls generate_appendix_tex() and appends the result right before
 - \\hypertarget{\\slideID}{} in \\setSlideID@aux (Slidemaster_preamble_base.tex)
   as the jump target every real slide already carries, any frame type.
 - slide_snapshot.THUMB_SIZE-cached previews for the grid thumbnails.
-- \\gothamInstituteLogoGraphic's own \\hyperlink to "gothamAppendixAgenda"
+- \\SMInstituteLogoGraphic's own \\hyperlink to "SMAppendixAgenda"
   (Slidemaster_preamble_base.tex), which this module's agenda slide is the
   landing target for.
 """
@@ -23,8 +23,8 @@ PER_PAGE = GRID_ROWS * GRID_COLS
 FRONT_MATTER_ORDER = 0
 
 # Computed once per compile from this project's own preamble length
-# registers (\paperwidth, \gothamFrametitleRightpading, \gothamFooterBoxHeight,
-# \gothamTitleBarBottomAlign) rather than a hardcoded cm value, so it adapts
+# registers (\paperwidth, \gothamFrametitleRightpading, \SMFooterBoxHeight,
+# \SMTitleBarBottomAlign) rather than a hardcoded cm value, so it adapts
 # automatically to whichever institution's logo/padding the compiling deck
 # actually uses (Graz/Innsbruck/MCI each set these differently). Left-aligned
 # to the .45cm text margin, scaled up until either the right edge reaches
@@ -33,30 +33,30 @@ FRONT_MATTER_ORDER = 0
 # candidates (an exact-fit first attempt produced small but real Overfull
 # \hbox/\vbox warnings from font/box-metric rounding).
 _GEOMETRY_TEX = r"""
-\newlength{\gothamAppendixThumbW}
-\newlength{\gothamAppendixThumbH}
-\newlength{\gothamAppendixWBoundTmp}
-\newlength{\gothamAppendixHBoundTmp}
+\newlength{\SMAppendixThumbW}
+\newlength{\SMAppendixThumbH}
+\newlength{\SMAppendixWBoundTmp}
+\newlength{\SMAppendixHBoundTmp}
 \setlength{\tabcolsep}{2pt}
-\setlength{\gothamAppendixWBoundTmp}{\dimexpr\paperwidth-\gothamFrametitleRightpading-0.45cm\relax}
-\setlength{\gothamAppendixWBoundTmp}{0.98\gothamAppendixWBoundTmp}
-\setlength{\gothamAppendixWBoundTmp}{\dimexpr(\gothamAppendixWBoundTmp-8\tabcolsep)/5\relax}
-\setlength{\gothamAppendixHBoundTmp}{\dimexpr\paperheight-\gothamFooterBoxHeight-\gothamTitleBarBottomAlign\relax}
-\setlength{\gothamAppendixHBoundTmp}{0.98\gothamAppendixHBoundTmp}
-\setlength{\gothamAppendixHBoundTmp}{\dimexpr\gothamAppendixHBoundTmp/4-0.5pt\relax}
+\setlength{\SMAppendixWBoundTmp}{\dimexpr\paperwidth-\gothamFrametitleRightpading-0.45cm\relax}
+\setlength{\SMAppendixWBoundTmp}{0.98\SMAppendixWBoundTmp}
+\setlength{\SMAppendixWBoundTmp}{\dimexpr(\SMAppendixWBoundTmp-8\tabcolsep)/5\relax}
+\setlength{\SMAppendixHBoundTmp}{\dimexpr\paperheight-\SMFooterBoxHeight-\SMTitleBarBottomAlign\relax}
+\setlength{\SMAppendixHBoundTmp}{0.98\SMAppendixHBoundTmp}
+\setlength{\SMAppendixHBoundTmp}{\dimexpr\SMAppendixHBoundTmp/4-0.5pt\relax}
 % Divide-then-multiply, not multiply-then-divide: dimexpr computes the
 % *intermediate* product before applying the division, and 304 times a
 % ~2cm dimension (56.7pt) alone already exceeds TeX's ~16384pt dimension
 % ceiling ("Dimension too large", confirmed via a real compile) even
 % though the final, post-division result is a perfectly ordinary ~2.5cm.
-% Same reasoning applied to \gothamAppendixThumbH below.
-\setlength{\gothamAppendixHBoundTmp}{\dimexpr\gothamAppendixHBoundTmp/171*304\relax}
-\ifdim\gothamAppendixWBoundTmp<\gothamAppendixHBoundTmp
-  \setlength{\gothamAppendixThumbW}{\gothamAppendixWBoundTmp}
+% Same reasoning applied to \SMAppendixThumbH below.
+\setlength{\SMAppendixHBoundTmp}{\dimexpr\SMAppendixHBoundTmp/171*304\relax}
+\ifdim\SMAppendixWBoundTmp<\SMAppendixHBoundTmp
+  \setlength{\SMAppendixThumbW}{\SMAppendixWBoundTmp}
 \else
-  \setlength{\gothamAppendixThumbW}{\gothamAppendixHBoundTmp}
+  \setlength{\SMAppendixThumbW}{\SMAppendixHBoundTmp}
 \fi
-\setlength{\gothamAppendixThumbH}{\dimexpr\gothamAppendixThumbW/304*171\relax}
+\setlength{\SMAppendixThumbH}{\dimexpr\SMAppendixThumbW/304*171\relax}
 """.strip()
 
 
@@ -67,7 +67,7 @@ def _visible_for_instructor(call: SlideCall) -> bool:
     \\conditionalslide is the only macro whose visibility actually depends
     on the deck version; every other macro (\\slide, \\slidefinal,
     \\slideversion, \\omitslide, \\omitslideversion) always renders here --
-    \\omitslide{}/\\omitslideversion{} only skip under \\ifgothamStudentVersion,
+    \\omitslide{}/\\omitslideversion{} only skip under \\ifSMStudentVersion,
     which no real deck in this project currently ever sets true."""
     if call.macro in ("conditionalslide", "slidestep"):
         return "instructor" in (call.conditions or [])
@@ -118,7 +118,7 @@ def _chunks(items: list, size: int) -> list[list]:
 def _thumb_cell(call: SlideCall, template: str) -> str:
     png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE)
     if png.is_file():
-        inner = f"\\includegraphics[width=\\gothamAppendixThumbW]{{{png.as_posix()}}}"
+        inner = f"\\includegraphics[width=\\SMAppendixThumbW]{{{png.as_posix()}}}"
     else:
         # No cached preview yet (slide_snapshot's own "best-effort, never
         # guaranteed-fresh" cache) -- a plain bordered id+title box instead
@@ -126,7 +126,7 @@ def _thumb_cell(call: SlideCall, template: str) -> str:
         # \hyperlink below.
         label = call.slug.replace("-", " ")
         inner = (
-            f"\\fbox{{\\parbox[c][\\gothamAppendixThumbH][c]{{\\gothamAppendixThumbW}}"
+            f"\\fbox{{\\parbox[c][\\SMAppendixThumbH][c]{{\\SMAppendixThumbW}}"
             f"{{\\centering\\tiny {call.id}: {label}}}}}"
         )
     return f"\\hyperlink{{{call.id}}}{{{inner}}}"
@@ -161,7 +161,7 @@ def _agenda_slide(sections: list[tuple[int, str, list[SlideCall]]]) -> str:
     # nested *inside* standardframe, not wrapped in a custom environment).
     def itemize(entries: list[tuple[int, str, list[SlideCall]]]) -> str:
         items = "\n".join(
-            f"\\item \\hyperlink{{gothamAppendixCh{order}}}{{{title}}}"
+            f"\\item \\hyperlink{{SMAppendixCh{order}}}{{{title}}}"
             for order, title, _calls in entries
         )
         return f"\\begin{{itemize}}\n{items}\n\\end{{itemize}}"
@@ -177,7 +177,7 @@ def _agenda_slide(sections: list[tuple[int, str, list[SlideCall]]]) -> str:
     )
     return (
         "\\begin{standardframe}{Appendix}\n"
-        "\\hypertarget{gothamAppendixAgenda}{}%\n"
+        "\\hypertarget{SMAppendixAgenda}{}%\n"
         f"{columns}\n"
         "\\end{standardframe}\n"
     )
@@ -208,6 +208,6 @@ def generate_appendix_tex(deck: Deck, template: str) -> str:
         total = len(pages)
         for i, page_calls in enumerate(pages):
             page_title = title if total == 1 else f"{title} ({i + 1}/{total})"
-            hypertarget = f"gothamAppendixCh{order}" if i == 0 else None
+            hypertarget = f"SMAppendixCh{order}" if i == 0 else None
             parts.append(_grid_slide(page_title, page_calls, template, hypertarget))
     return "\n".join(parts)
