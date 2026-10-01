@@ -433,6 +433,8 @@
 % \small/\footnotesize/\scriptsize, n=2 \footnotesize/\scriptsize/\scriptsize
 % (\scriptsize is the floor). 13 slides wrote 2-3 \setbeamerfont lines for
 % this, in five different combinations.
+% The item gaps shrink with the font since 2026-10-01 -- see \gothamNoListParsep
+% next to the itemize code.
 \newcommand{\shrinklists}[1]{%
 	\ifcase#1\relax
 	\or
@@ -4191,7 +4193,22 @@
 % acceptable here since the override is one line different from upstream
 % and clearly marked, but re-diff against beamerbaselocalstructure.sty's
 % own \itemize if beamer is ever upgraded and itemize behavior looks off.
+% \gothamNoListParsep (2026-10-01, direct instruction: "Implement a general
+% fix"): a level-1 list typeset at \small or \footnotesize -- an ambient size
+% switch before it, \setbeamerfont, \shrinklists -- loads LaTeX's
+% size-specific \@listi, which brings \parsep 3pt plus 2pt (\footnotesize:
+% similar) and \parskip with it; a normal-size list has neither. So a smaller
+% list's items sat *further* apart than at normal size (6j4: 19.9pt per item
+% at normal size, 20.8pt at \small), against this deck's rule that list
+% spacing is em-based and shrinks with the font (\gothamItemsepRatioI etc.).
+% Removed wherever \parsep has a natural (non-stretch) part, i.e. exactly in
+% those lists; deeper levels (0pt plus 1pt) are left as they were.
 \makeatletter
+\newcommand{\gothamNoListParsep}{%
+	\ifdim\parsep>\z@
+		\setlength{\parsep}{\z@}\setlength{\parskip}{\z@}%
+	\fi
+}
 \long\def\beamer@computepref#1{%
 	\let\beameritemnestingprefix\@empty%
 	\ifcase#1\or\or\def\beameritemnestingprefix{sub}\or\def\beameritemnestingprefix{subsub}\or\def\beameritemnestingprefix{subsubsub}\or\@toodeep\fi%
@@ -4233,6 +4250,7 @@
 	\or\setlength{\itemsep}{\gothamItemsepRatioIII em}% level 3
 	\or\setlength{\itemsep}{\gothamItemsepRatioIV em}% level 4
 	\fi%
+	\gothamNoListParsep
 	\raggedright%
 	\beamer@firstlineitemizeunskip%
 }
@@ -4407,6 +4425,7 @@
 							\fi}}}}%
 				\fi}%
 	\beamer@cramped%
+	\gothamNoListParsep
 	\raggedright%
 	\beamer@firstlineitemizeunskip%
 }

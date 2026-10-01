@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import (
-    alt_images, app_settings, bibliography, latex_lint, qt_render_check, slide_import,
+    alt_images, app_settings, bibliography, deck_editor, latex_lint, qt_render_check, slide_import,
     slide_language, slide_preview, slide_rename, slide_snapshot, slide_source,
     slide_versioning, transcript,
 )
@@ -273,10 +273,15 @@ INSERT_COMMANDS = [
     ("\\only<2->{...}", "wrap_macro", "only<2->"),
     ("\\tallitem", "literal", None),
     ("\\tallitemnobullet", "literal", None),
+    # all list levels one font size smaller, for a slide whose text doesn't
+    # fit (v5.1.0, direct instruction: "{1} by default"); goes inside the
+    # frame -- change the 1 to 2 for two sizes smaller
+    ("\\shrinklists{1}", "literal", None),
     ("\\multilingualtext{EN}{DE}", "wrap_multilingual", "multilingualtext"),
     ("\\href{LINK}{WORD} (hyperlink…)", "hyperlink", None),
 ]
 COMMAND_COMBO_PLACEHOLDER = "Insert command..."
+VERSIONS_COMBO_PLACEHOLDER = "Previous versions..."
 
 # The three list flavors get their own dropdown (2026-09-24, direct
 # instruction), left of the general "Insert command..." one above --
@@ -756,6 +761,19 @@ class SlideSourceTab(QWidget):
             self.delete_button.clicked.connect(self._on_delete_slide)
             toolbar.addWidget(self.delete_button)
 
+            # Previous versions (v5.1.0, direct instruction): every frozen
+            # -vX-Y-Z.tex snapshot of this slide, newest first; picking one
+            # opens it in its own read-only editor tab (Preview/Render to PDF
+            # work there as for any slide file).
+            self.versions_combo = QComboBox()
+            self.versions_combo.setToolTip(
+                "Open an earlier, frozen version of this slide (read-only) to "
+                "look at or render it. Versions are frozen when a Save bumps "
+                "the version number."
+            )
+            self.versions_combo.activated.connect(self._on_version_chosen)
+            toolbar.addWidget(self.versions_combo)
+
         if self._is_slide:
             # Language badge + rename control (2026-08-24) -- only for
             # -current.tex (mirrors the version-bump dialog's own
@@ -1175,10 +1193,71 @@ class SlideSourceTab(QWidget):
         self.widget.document().setModified(False)
         self.widget.document().modificationChanged.connect(self._set_dirty)
         self.widget.cursorPositionChanged.connect(self._highlight_matching_brace)
+        # A frozen -vX-Y-Z.tex snapshot (opened e.g. from the "Previous
+        # versions" dropdown, v5.1.0) is a historical record: it opens
+        # read-only, with a button to unlock it for the rare deliberate edit.
+        if self._is_slide and not self._is_current_slide:
+            self.widget.setReadOnly(True)
+            frozen_bar = QHBoxLayout()
+            frozen_label = QLabel(
+                "Frozen version -- read-only. Preview and Render to PDF show this version."
+            )
+            frozen_label.setObjectName(MUTED_LABEL)
+            frozen_bar.addWidget(frozen_label)
+            self.unlock_button = QPushButton("Unlock editing")
+            self.unlock_button.setToolTip(
+                "Allow editing this frozen snapshot directly. Normally a past "
+                "version is never changed -- edit the current slide instead."
+            )
+            self.unlock_button.clicked.connect(self._on_unlock_frozen)
+            frozen_bar.addWidget(self.unlock_button)
+            frozen_bar.addStretch()
+            outer.addLayout(frozen_bar)
         outer.addWidget(self.widget)
 
         if self._header_fold_line_count > 0:
             self._set_header_folded(True)
+        self._refresh_versions_combo()
+
+    def _on_unlock_frozen(self) -> None:
+        self.widget.setReadOnly(False)
+        self.unlock_button.setEnabled(False)
+
+    def previous_version_paths(self) -> list[tuple[str, Path]]:
+        """This slide's frozen versions, newest first, as ("v1.2.0", path)."""
+        if not self._is_current_slide:
+            return []
+        out = []
+        for version in reversed(deck_editor.available_versions(self._slide_id_slug)):
+            path = deck_editor.SLIDES_DIR / f"{self._slide_id_slug}-v{version}.tex"
+            out.append(("v" + version.replace("-", "."), path))
+        return out
+
+    def _refresh_versions_combo(self) -> None:
+        if not hasattr(self, "versions_combo"):
+            return
+        versions = self.previous_version_paths()
+        self.versions_combo.blockSignals(True)
+        self.versions_combo.clear()
+        self.versions_combo.addItem(
+            VERSIONS_COMBO_PLACEHOLDER if versions else "No previous versions"
+        )
+        for label, path in versions:
+            self.versions_combo.addItem(label, str(path))
+        self.versions_combo.setCurrentIndex(0)
+        self.versions_combo.setEnabled(bool(versions))
+        self.versions_combo.blockSignals(False)
+
+    def _on_version_chosen(self, index: int) -> None:
+        if index <= 0:
+            return
+        path = Path(self.versions_combo.itemData(index))
+        self.versions_combo.setCurrentIndex(0)
+        if path.is_file():
+            self.app.open_slide_editor(path, return_to=self)
+        else:
+            QMessageBox.warning(self, "Version not found", f"{path.name} no longer exists.")
+            self._refresh_versions_combo()
 
     def refresh_tab_width(self) -> None:
         """Called from qt_gui.py's set_tab_width_chars() on every already-
@@ -1867,6 +1946,7 @@ class SlideSourceTab(QWidget):
             self._apply_minimal_text_replace(raw_text, new_text)
         self.widget.document().setModified(False)
         self._update_render_language_visibility()
+        self._refresh_versions_combo()  # a bump may have frozen a new version
         if backup_path is not None:
             from .deck_scan import PROJECT_ROOT
 
