@@ -1781,6 +1781,10 @@ BREAKING: the automatic Top Margin changes where the first content of existing s
 v5.1.0 (2026-10-01, direct instructions): (1) LaTeX framework: list item gaps now shrink with the font. A level-1 itemize/enumerate set at \\small or \\footnotesize used to pick up LaTeX's size-specific \\parsep (3pt plus 2pt, copied into \\parskip), so its items sat ~3pt further apart than at normal size and \\shrinklists{1} often gained nothing; the new \\gothamNoListParsep removes that extra space in every list. (2) Slide editor: a "Previous versions..." dropdown in the toolbar of a current slide lists its frozen versions (newest first) and opens the chosen one in its own tab; a frozen version opens read-only (Preview and Render to PDF show that version) until "Unlock editing" is clicked. (3) Insert command offers \\shrinklists{1} (change the 1 to 2 for the stronger step).
 
 BREAKING: every slide with a level-1 list at \\small/\\footnotesize (a manual size switch, \\shrinklists, or a smaller block font) now has tighter item gaps than before -- typically ~3pt less per item. Slides tuned by hand around the old gaps (\\vspace, \\itemsep, a smaller font chosen only to make room) may now have unused space at the bottom and can be simplified; no slide gets taller.
+
+v5.2.0 (2026-10-01, direct instructions): LaTeX framework. (1) \\gothamTikzword{name}{text}: a word as a named TikZ node, so an overlay arrow can point at the word and follows it when the layout moves (3ac's arrow at measured page coordinates had drifted off its words). (2) \\sectionfigure[keys]{image} for sectionframe: the image fills the gap from the title bar to the footer, flush with the right edge, and the frame's footnotes -- the image source included -- go into the rotated strip beside it (bij's image overlapped the title bar and covered its own source line; neb, u97, tyn and vtm did the same by hand with per-title measurements). The bar's bottom edge is computed from the title's depth (89.44bp minus it, at most 85.04bp, measured). (3) Footnotes inside a minipage or column now join the frame's other footnotes at the bottom (beamer's [frame] footnotes are the default; mje, zv4). (4) Transcripts: \\gothamTikzmark{name} no longer leaves its name behind as a word, \\gothamTikzword keeps its text.
+
+BREAKING: a \\footnote{} or \\source{} inside a minipage/column used to be set right below that minipage with its own marker sequence; it now sits with the frame's other footnotes at the bottom and continues their markers (in this project: mje, zv4).
 """
 from __future__ import annotations
 
@@ -1790,7 +1794,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.1.0"
+VERSION_NUMBER = "v5.2.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

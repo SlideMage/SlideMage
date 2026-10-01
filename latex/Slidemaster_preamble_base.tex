@@ -421,6 +421,13 @@
 % one deck -- and ebq's \ebqTikzmark).
 \newcommand{\gothamTikzmark}[1]{\tikz[remember picture, overlay, baseline] \node[inner sep=0pt, anchor=base, yshift=2pt] (#1) {};}
 
+% \gothamTikzword{name}{text} -- typesets text as usual, but as a named
+% remember-picture node, so an overlay arrow can point at the word itself
+% ((name.south), (name.north east), ...) and follows it when the layout
+% moves (2026-10-01, direct instruction: 3ac's arrow at measured page
+% coordinates had drifted off its words). Transcripts keep the text.
+\newcommand{\gothamTikzword}[2]{\tikz[remember picture, baseline=(#1.base)] \node[inner sep=0pt, outer sep=0pt] (#1) {#2};}
+
 % \EUR -- the euro sign in Fira Sans, in text and in math alike. In math,
 % \text{\texteuro} came out in the math font's style ("Euro symbols ...
 % proper", 2026-07-25); slides wrote \text{\sffamily€} by hand (34x).
@@ -2942,6 +2949,17 @@
 % below), which happens to already match this deck's "restart every slide"
 % footnote convention for the common case of one minipage per frame.
 \renewcommand{\thempfootnote}{\gothamFnSymbol{\value{mpfootnote}}}
+% Every footnote goes to the frame's own footnote block, also from inside a
+% minipage/column (beamer's class option "framefootnotes", i.e. \footnote
+% defaults to [frame]) -- 2026-10-01, direct instruction ("one footnote is
+% not combined with the other footnotes ... fix that generally", mje): a
+% \footnote{} or \source{} inside a minipage used to be set right below that
+% minipage, apart from the frame's other footnotes, and slides moved it out
+% of the minipage by hand (fk7, xv8). It now also counts with the frame's
+% \c@footnote, so its marker continues the frame's sequence.
+\makeatletter
+\beamer@framefootnotestrue
+\makeatother
 \setbeamerfont{footnote}{size=\fontsize{3.2}{1.9}\selectfont}
 % A \footnote{\fullcite{key}} came out at body size: beamer patches biblatex's
 % bibliography drivers (beamerbaselocalstructure.sty) to apply the beamer fonts
@@ -6178,6 +6196,7 @@
 \newlength{\gothamSectionframeTitleWidth}
 \setlength{\gothamSectionframeTitleWidth}{\dimexpr\paperwidth-\gothamFrametitleLeftpading-\gothamLogoWidth-2\gothamFrametitleRightpading\relax}
 \newbox\gothamSectionframeTitleBox
+\newlength{\gothamSectionframeBarBottom}
 \newenvironment{sectionframe}[2][t]{%
 	\begingroup
 	\gothamManualTopMargin% own title-bar geometry: no automatic Top Margin
@@ -6205,12 +6224,69 @@
 	\global\def\gothamFrametitleFullHeightYellow{1}%
 	\global\def\gothamFrametitleLogoFixed{1}%
 	\setbeamertemplate{frametitle}[gotham_no_inline_logo]%
+	\setlength{\gothamSectionframeBarBottom}{\dimexpr 89.44bp-\dp\gothamSectionframeTitleBox\relax}% see \sectionfigure
+	\ifdim\gothamSectionframeBarBottom<85.04bp
+		\setlength{\gothamSectionframeBarBottom}{85.04bp}%
+	\fi
+	% \sectionfigure sets the side-footnote lengths \global (see there); the
+	% values from before this frame come back at \end{sectionframe}.
+	\edef\gothamSectionframeRestoreSideFootnotes{%
+		\global\gothamSideFootnoteRightInset=\the\gothamSideFootnoteRightInset\relax
+		\global\gothamSideFootnoteHsize=\the\gothamSideFootnoteHsize\relax}%
 	\begin{standardframe}[#1]{#2}%
 	\vspace*{\gothamSectionframeContentDrop}%
 	\large
 }{%
 	\end{standardframe}%
+	\gothamSectionframeRestoreSideFootnotes
 	\endgroup
+}
+
+% \sectionfigure[includegraphics keys]{image} -- a sectionframe's side image
+% (2026-10-01, direct instruction: bij's image should "fit snugly between
+% header box and footer and touch the right edge of the slide", for section
+% slides with images in general, with the image's source visible). Put it
+% anywhere in the sectionframe body. The image is scaled by height to fill
+% the gap from the title bar's bottom edge to the footer box's top edge and
+% sits flush with the page's right edge -- sideimageframe's geometry, but
+% for sectionframe's taller bar. That bar's bottom edge depends on the
+% title: the theme's strut gives the last line a fixed depth of ~4.4pt,
+% but the padding subtracts the title's real depth -- so the bottom edge is
+% 89.44bp minus that depth, but never above 85.04bp (a descender deeper
+% than the strut deepens the bar again). Measured in the PDF, i.e. in bp:
+% 89.19bp for "Market Environment" (depth 0.25pt), 86.01bp for "Market,
+% Environment" (3.44pt), 85.04bp for "Capital asset pricing model"
+% (4.42pt) and "Trends in publishing" (4.73pt). (The two
+% constants \gothamSectionframeTrueBoxBottom/\gothamSectionframeBoxHeight
+% hold the same numbers in TeX pt, 0.3pt short -- neb/u97 used to add
+% that back by hand.) sectionframe computes it as
+% \gothamSectionframeBarBottom. (Not measured
+% from the gothamTitleBottom node: the title bar is typeset after the body,
+% so that node still belongs to the previous frame while the body runs.)
+% The frame's footnotes -- the automatic "Image source(s):" line included --
+% go into the rotated side strip immediately left of the image, as on
+% sideimageframe. The strip's inset is read at shipout, after the frame body,
+% so it and the strip length are set \global here; \end{sectionframe} puts
+% the previous values back. Replaces the per-slide \settowidth/
+% \gothamSideFootnoteRightInset/\gothamSideFootnoteHsize set-up of neb, u97,
+% tyn and vtm.
+\newlength{\gothamSectionFigureHeight}
+\newlength{\gothamSectionFigureWidth}
+\newcommand{\sectionfigure}[2][]{%
+	\setlength{\gothamSectionFigureHeight}{\dimexpr\paperheight-\gothamSectionframeBarBottom-\gothamFooterBoxHeight\relax}%
+	\settowidth{\gothamSectionFigureWidth}{\includegraphics[height=\gothamSectionFigureHeight, keepaspectratio, #1]{#2}}%
+	\vbox to 0pt{\vss
+	\begin{tikzpicture}[overlay, remember picture]
+		\node[anchor=north east, inner sep=0pt, outer sep=0pt] at ($(current page.north east)+(0,-\gothamSectionframeBarBottom)$)
+			{\includegraphics[height=\gothamSectionFigureHeight, keepaspectratio, #1]{#2}};
+	\end{tikzpicture}%
+	}%
+	\global\gothamSideFootnotestrue
+	% 3.1pt: sideimageframe's measured gap between strip and image.
+	% 2.31pt: the clearance above the footer box that \gothamSideFootnoteHsize's
+	% 207pt default leaves under a standard title bar.
+	\global\gothamSideFootnoteRightInset=\dimexpr\gothamSectionFigureWidth+3.1pt\relax
+	\global\gothamSideFootnoteHsize=\dimexpr\gothamSectionFigureHeight-\gothamSideFootnoteTopSep-2.31pt\relax
 }
 
 % quoteframe: a quote slide (ExampleSlides.pptx slide 4) -- institute logo

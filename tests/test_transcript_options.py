@@ -44,3 +44,10 @@ def test_floating_block_title_is_the_title_not_the_width():
             assert "> **Cash flows**" in out, (env, option, out)
             assert "6cm" not in out and "top=" not in out
             assert "Body text" in out
+
+
+def test_tikz_mark_names_are_dropped_and_tikzword_text_kept():
+    out = transcript._convert_body(
+        "grow'', \\gothamTikzword{acUse}{use} the tree and a \\gothamTikzmark{x}mark", 0)
+    assert "use the tree" in out
+    assert "acUse" not in out and "xmark" not in out and "a mark" in out

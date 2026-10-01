@@ -1143,6 +1143,14 @@ pixel-identical; everything below is what new slides should use.
 - **Small ones:** `\shrinklists{1|2}` (all list levels one/two sizes smaller),
   `\EUR` (euro sign in text and math), `\gothamTikzmark{name}`, TikZ styles
   `gotham highlight`, `gotham dotted highlight`, `gotham arrow`.
+- **`\gothamTikzword{name}{text}`** -- a word as a named TikZ node, so an
+  overlay arrow can point at it (`(name.south)`, ...) and follows it when the
+  layout moves; transcripts keep the word.
+- **`\sectionfigure[keys]{image}`** (in a `sectionframe`) -- the side image
+  from the title bar to the footer, flush with the right edge; the frame's
+  footnotes (image source included) go into the rotated strip beside it.
+- **Footnotes inside a minipage/column** now join the frame's other footnotes
+  at the bottom (beamer's `[frame]` footnotes are the default).
 
 ## Special frame types
 

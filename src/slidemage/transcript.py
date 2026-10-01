@@ -550,6 +550,10 @@ _DIMENSION_RE = re.compile(
 # the bracket group ("[instructor]") behind as stray text -- caught
 # 2026-08-14 in #workdeck's transcript (used in 51 slides).
 _CONDITIONAL_PAUSE_RE = re.compile(r"\\conditionalpause\s*(?:\[[^\]]*\])?")
+# \gothamTikzmark{name} is an invisible anchor; \gothamTikzword{name}{text}
+# keeps its text. Only the name goes -- the generic strip left it behind as a
+# stray word ("a \gothamTikzmark{x}mark" read "a xmark").
+_TIKZ_MARK_NAME_RE = re.compile(r"\\gothamTikz(?:mark|word)\s*\{[^{}]*\}")
 # "\ " (control space) is just a space; not the "\\" of a line break before one
 _CONTROL_SPACE_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\ ")
 # Environments that only wrap; their content is kept, the wrapper discarded.
@@ -902,6 +906,7 @@ def _tikz_labels(body: str) -> str:
 
 def _convert_body(text: str, depth: int = 0) -> str:
     text = _CONTROL_SPACE_RE.sub(r"\1 ", text)
+    text = _TIKZ_MARK_NAME_RE.sub("", text)
     text = _GRAPHICS_RE.sub(" ", text)
     text = _CONDITIONAL_PAUSE_RE.sub(" ", text)
     text = _BOX_TO_RE.sub(" ", text)
