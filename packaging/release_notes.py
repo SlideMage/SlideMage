@@ -40,6 +40,22 @@ def notes_for(tag: str) -> list[str] | None:
     return None
 
 
+def entries_since(tag: str, previous: str | None) -> list[tuple[str, list[str]]]:
+    """(version, paragraphs) of every history entry after the previous release
+    up to and including TAG, newest first -- a release that bundles several
+    unreleased versions (v5.4.0 after v4.1.0) lists them all, and the BREAKING:
+    check sees all of them. Without a previous release: TAG's entry only."""
+    new, old = updater.parse_version(tag), updater.parse_version(previous or "")
+    picked = []
+    for entry in version.parse_history():
+        v = updater.parse_version(entry.version)
+        if entry.version == tag or (
+                old is not None and v is not None and new is not None and old < v <= new):
+            picked.append((entry.version, entry.paragraphs))
+    picked.sort(key=lambda e: updater.parse_version(e[0]) or (0, 0, 0), reverse=True)
+    return picked
+
+
 def check(tag: str, previous: str | None, paragraphs: list[str]) -> list[str]:
     """Problems that must stop the release (empty = fine)."""
     new, old = updater.parse_version(tag), updater.parse_version(previous or "")
@@ -62,11 +78,12 @@ def main(argv: list[str] | None = None) -> int:
     # can't hold "→" or "ü"; the notes file is read back as UTF-8.
     sys.stdout.reconfigure(encoding="utf-8")
 
-    paragraphs = notes_for(args.tag)
-    if paragraphs is None:
+    if notes_for(args.tag) is None:
         print(f"error: version.py has no history entry for {args.tag}", file=sys.stderr)
         return 1
     previous = args.previous or previous_tag(args.tag)
+    entries = entries_since(args.tag, previous)
+    paragraphs = [p for _, paras in entries for p in paras]
     problems = check(args.tag, previous, paragraphs)
     for problem in problems:
         print(f"error: {problem}", file=sys.stderr)
@@ -77,7 +94,10 @@ def main(argv: list[str] | None = None) -> int:
     if marked and new is not None and old is not None and new[0] == old[0]:
         print(f"warning: {args.tag} has a {BREAKING_PREFIX} paragraph but keeps the "
               f"major version of {previous}", file=sys.stderr)
-    sys.stdout.write("\n\n".join(paragraphs) + "\n")
+    if len(entries) == 1:
+        sys.stdout.write("\n\n".join(paragraphs) + "\n")
+    else:
+        sys.stdout.write("\n\n".join(f"## {v}\n\n" + "\n\n".join(paras) for v, paras in entries) + "\n")
     return 0
 
 
