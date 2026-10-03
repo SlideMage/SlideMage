@@ -143,25 +143,29 @@ checkout updated alongside the executable.
   but add your own the same way if you need a second institution: copy
   this file, swap the `c_*` colors and `\SMInstituteLogoPath`, keep
   the trailing `\input{Slidemaster_preamble_base}` line.
-- `Slidemaster_preamble_slidemage.tex` — the generic **SlideMage template**
-  (since v5.7.0), for decks that don't belong to an institution: the
-  SlideMage logo (`schemes/scheme_slidemage/`, a vector copy of the app
-  icon), dark title and footer boxes with white text (the splash screen's
-  `#1e1e1e`), the app's button blue `#0066cc` as highlight colour (bullets,
-  image borders, table rules) and the app's other colours as the `c_*`
-  palette, each pair the framework combines checked against WCAG 2.1 (see
-  the file's comments). Same structure as the Graz layer; a deck selects it
-  with `\input{Slidemaster_preamble_slidemage}`, and SlideMage keeps its
-  previews apart from the institutions' (template name "SlideMage"). It is
-  part of `example/`, so every new project created from SlideMage gets it.
+- `latex/Slidemaster_preamble_slidemage.tex` (with `latex/slidemage-logo.pdf`)
+  — the generic **SlideMage template** (since v5.7.0; part of the framework
+  since v5.9.0), for decks that don't belong to an institution: the
+  SlideMage logo (a vector copy of the app icon), dark title and footer
+  boxes with white text (the splash screen's `#1e1e1e`), the app's button
+  blue `#0066cc` as highlight colour (bullets, image borders, table rules)
+  and the app's other colours as the `c_*` palette, each pair the framework
+  combines checked against WCAG 2.1 (see the file's comments). Same
+  structure as the Graz layer, but in `latex/` rather than in a project:
+  every project finds it on the same search path as
+  `Slidemaster_preamble_base.tex`, so any deck can select it with
+  `\input{Slidemaster_preamble_slidemage}` without a copy of its own (a
+  project's own copy would win). SlideMage keeps its previews apart from
+  the institutions' (template name "SlideMage"); `decks/test-slidemage.tex`
+  is the demo deck in it.
   **Default render template** (since v5.8.0): a slide rendered outside a
   deck -- the slide editor's "Render to PDF" and "Preview", tikz
   illustration renders -- uses the template chosen under Settings → General
-  → Slide rendering, which lists the templates whose
-  `Slidemaster_preamble_<name>.tex` the project has. Out of the box that is
-  the SlideMage template; a project without it falls back to Graz, then to
-  whichever template it has. A deck's own renders always use the deck's
-  template.
+  → Slide rendering, which lists every template a deck of the project can
+  find: the project's own `Slidemaster_preamble_<name>.tex` files plus the
+  framework's SlideMage template. Out of the box that is the SlideMage
+  template; if it can't be found, Graz, then whichever template there is.
+  A deck's own renders always use the deck's template.
 - `slides/` — one set of files per slide, named by a permanent, opaque ID
   (see below). This is where actual slide content lives.
 - `media/` — images referenced from `slides/` (charts, chapter logos,

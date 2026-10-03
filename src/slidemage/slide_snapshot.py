@@ -54,6 +54,7 @@ mass-regenerating when this landed.
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -110,22 +111,43 @@ def _template_name(template: str) -> str:
 # The template a slide is rendered in when no deck is involved -- the slide
 # editor's Render to PDF and Preview, tikz illustration renders (2026-10-03,
 # direct instruction: chosen in Settings -> General, out of the box the
-# generic SlideMage template). Only a template whose preamble file the
-# project actually has can be used; otherwise the choice falls back to the
-# SlideMage template, then Graz, then whichever template the project has.
+# generic SlideMage template). Only a template whose preamble file a deck of
+# this project can find is offered; otherwise the choice falls back to the
+# SlideMage template, then Graz, then whichever template there is.
 RENDER_TEMPLATE_SETTING_KEY = "default_template"
 OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
 
 
+def framework_dirs(root: Path | None = None) -> list[Path]:
+    """The LaTeX framework folders a project's decks search (its .latexmkrc
+    puts one on TEXINPUTS): $SLIDEMASTER_LATEX, else ../latex (a project
+    next to the framework, like example/) or ../SlideMage/latex (a project
+    next to a SlideMage checkout). Only folders holding
+    Slidemaster_preamble_base.tex count."""
+    root = root or PROJECT_ROOT
+    candidates = []
+    if os.environ.get("SLIDEMASTER_LATEX"):
+        candidates.append(Path(os.environ["SLIDEMASTER_LATEX"]))
+    candidates += [root.parent / "latex", root.parent / "SlideMage" / "latex"]
+    return [d for d in candidates if (d / "Slidemaster_preamble_base.tex").is_file()]
+
+
 def preamble_file(template: str, root: Path | None = None) -> Path:
-    """The template's preamble file, Slidemaster_preamble_<key>.tex, in the
-    project root (where every institution layer lives)."""
-    return (root or PROJECT_ROOT) / f"Slidemaster_preamble_{template}.tex"
+    """The template's preamble file, Slidemaster_preamble_<key>.tex: the
+    project's own (institution layers live in the project root), else the
+    framework's (the SlideMage template, since v5.9.0). The project-root path
+    when neither exists."""
+    root = root or PROJECT_ROOT
+    name = f"Slidemaster_preamble_{template}.tex"
+    for folder in (root, *framework_dirs(root)):
+        if (folder / name).is_file():
+            return folder / name
+    return root / name
 
 
 def available_templates(root: Path | None = None) -> list[str]:
-    """The TEMPLATES keys whose preamble file exists in the project, in
-    TEMPLATES order."""
+    """The TEMPLATES keys whose preamble file a deck of the project can find
+    (project root or framework), in TEMPLATES order."""
     return [key for key in TEMPLATES if preamble_file(key, root).is_file()]
 
 

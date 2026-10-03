@@ -7,6 +7,12 @@
 % (see that file's header comment for the institution-layer/base split). A
 % deck picks it by \input{}ing this file instead of an institution's.
 %
+% Part of the framework (latex/, since SlideMage v5.9.0; it was in example/
+% in v5.7.0-v5.8.x), not of a project: every project finds it on the TeX
+% search path its .latexmkrc sets up, the same way it finds
+% Slidemaster_preamble_base.tex, so it needs no copy in the project. A
+% project's own Slidemaster_preamble_slidemage.tex, if it has one, wins.
+%
 % Colours: wherever possible a colour SlideMage itself uses
 % (src/slidemage/palette.py, qt_deck_table.py, assets/splash.png); every pair
 % the framework combines was checked against WCAG 2.1 -- body/block text
@@ -43,12 +49,12 @@
 \definecolor{c_custom_brown}{HTML}{996600}      % palette light "syntax_brace"
 
 % Logo + calibration.
-% schemes/scheme_slidemage/Logo_SlideMage-cropped.pdf -- the app icon
-% (src/slidemage/assets/icon.svg, copied alongside as Logo_SlideMage.svg, the
-% untouched source; the same drawing the splash screen shows), converted to
-% PDF with svglib/reportlab and cropped to its ink bounding box. Vector, like
-% the institution logos.
-\newcommand{\SMInstituteLogoPath}{schemes/scheme_slidemage/Logo_SlideMage-cropped.pdf}
+% slidemage-logo.pdf (latex/, next to this file, found on the TeX search
+% path like gotham-logo.pdf) -- the app icon (src/slidemage/assets/icon.svg,
+% copied alongside as slidemage-logo.svg, the untouched source; the same
+% drawing the splash screen shows), converted to PDF with svglib/reportlab
+% and cropped to its ink bounding box. Vector, like the institution logos.
+\newcommand{\SMInstituteLogoPath}{slidemage-logo.pdf}
 \newlength{\SMLogoHeight}
 \setlength{\SMLogoHeight}{3ex}
 % Re-measured against the compiled PDF for this logo -- see
