@@ -1797,6 +1797,8 @@ v5.4.1 (2026-10-03, direct instruction): a compile run with several jobs now goe
 v5.4.2 (2026-10-03, direct instruction): main window stays left-aligned. In a window wider than the deck table needs, the extra width goes to the right: the version checkboxes (Instructor ... Presenter) keep their place instead of being spread over the window, the Create PDF / Stop / Create Transcript / ? / Clear selection / Refresh decks buttons sit next to each other on the left, and so do the three checkboxes under the tabs (footer timestamp, appendix TOC, auto-open) -- less mouse travel.
 
 v5.4.3 (2026-10-03, direct instruction): "Clear selection" on the main screen also clears the pass/fail marks of earlier compiles (✓, ✗, →) next to the checkboxes, in every row of that table. A job that is still running keeps its animated dots until it ends.
+
+v5.5.0 (2026-10-03, direct instruction): "Generate appendix TOC" now also works for the student versions: every whole-deck compile -- Presenter, Instructor, During-course and After-course -- gets the generated appendix (agenda plus thumbnail grids) and the `-appendix` file-name suffix; each lists the slides its own version shows (\\conditionalslide/\\slidestep conditions), and the logo on every slide links to its agenda. Per-chapter compiles stay without one. The appendix is appended after the deck's last slide, so it already follows a deck's own appendix slides (a \\section{Appendix}) -- verified on #workdeck, where the deck's appendix slide comes first and the generated agenda and grids after it. Before, During-course/After-course compiles ignored the checkbox.
 """
 from __future__ import annotations
 
@@ -1806,7 +1808,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.4.3"
+VERSION_NUMBER = "v5.5.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

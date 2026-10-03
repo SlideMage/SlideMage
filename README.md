@@ -1937,9 +1937,14 @@ inherent to any permanent-id-based target scheme, not something to design
 around.
 
 **"Generate appendix TOC"** (SlideMage's Active decks toolbar, next to
-"Include footer timestamp") adds a clickable appendix to the Instructor/
-version-less and Presenter compiles only (a no-op, no jobname suffix, on
-During-course/After-course or a per-chapter compile): an agenda slide —
+"Include footer timestamp") adds a clickable appendix to every whole-deck
+compile — Presenter, Instructor, During-course and After-course (since
+v5.5.0; before, the Instructor/version-less and Presenter compiles only) —
+but not to a per-chapter compile, whose PDF holds one chapter only. Each
+version's appendix lists the slides that version shows
+(`\conditionalslide`/`\slidestep` conditions), and its file name ends in
+`-appendix`. It comes after the deck's last slide, so after the deck's own
+appendix slides (a `\section{Appendix}`, say). It is an agenda slide —
 one entry per chapter plus a leading "Front matter" entry for whatever
 comes before the first `\section{}` — followed by a 4×5 thumbnail grid per
 chapter (paginated "(2/3)"-style once a chapter exceeds 20 slides), using

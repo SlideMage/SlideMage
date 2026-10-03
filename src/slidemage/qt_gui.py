@@ -880,8 +880,9 @@ class SlideMageWindow(QMainWindow):
         self.appendix_toc_checkbox = QCheckBox("Generate appendix TOC")
         self.appendix_toc_checkbox.setToolTip(
             "Adds a clickable appendix (agenda + one thumbnail grid per "
-            "chapter) to the Instructor/version-less and Presenter compiles "
-            "-- a no-op on During-course/After-course and per-chapter jobs."
+            "chapter) at the end of every whole-deck compile -- Presenter, "
+            "Instructor, During-course and After-course, each listing the "
+            "slides its version shows -- but not to the per-chapter jobs."
         )
         # Persisted (app_settings.py, same local per-machine store dark
         # mode/tab-width/model-picker settings already use) -- unlike

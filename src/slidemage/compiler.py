@@ -285,21 +285,21 @@ class CompileJob:
     # SlideMage's "Generate appendix TOC" checkbox -- set uniformly on
     # every job a compile batch builds (qt_gui.py's _compile_rows(), same
     # pattern as footer_timestamp), but _wrapper_text() below only actually
-    # generates the appendix for an instructor-equivalent, whole-deck job
-    # (job.version in (None, "instructor") and job.chapter is None) --
-    # silently a no-op on a during-course/after-course or per-chapter job
-    # even with this set, per the feature's own scope decision (appendix
-    # jobname suffix, but no appendix content, on those).
+    # generates the appendix for a whole-deck job (job.chapter is None) --
+    # of any version since 2026-10-03 (direct instruction; it used to be
+    # the instructor/presenter compiles only). A per-chapter job stays
+    # without one, even with this set: its PDF holds one chapter, and an
+    # appendix of the whole deck's slides would link to slides that aren't
+    # in it.
     appendix_toc: bool = False
 
     @property
     def _appendix_applies(self) -> bool:
         """Whether appendix_toc actually generates content for *this* job
-        -- an instructor-equivalent, whole-deck compile only (see
-        appendix_toc field's own comment). Shared by jobname and
-        _wrapper_text() below so a during-course/after-course/per-chapter
-        job's filename never claims an appendix it doesn't have."""
-        return self.appendix_toc and self.chapter is None and self.version in (None, "instructor")
+        -- a whole-deck compile (see appendix_toc field's own comment).
+        Shared by jobname and _wrapper_text() below so a per-chapter job's
+        filename never claims an appendix it doesn't have."""
+        return self.appendix_toc and self.chapter is None
 
     @property
     def jobname(self) -> str:
@@ -373,7 +373,8 @@ def _wrapper_text(job: CompileJob) -> str:
         template = slide_snapshot.detect_template(job.deck.preamble_text)
         lines.append(job.deck.preamble_text)
         lines.append(body_without_end)
-        lines.append(appendix_toc.generate_appendix_tex(job.deck, template))
+        lines.append(appendix_toc.generate_appendix_tex(
+            job.deck, template, job.version or "instructor"))
         lines.append("\\end{document}")
     else:
         lines.append(f"\\input{{{job.deck.path.name}}}")

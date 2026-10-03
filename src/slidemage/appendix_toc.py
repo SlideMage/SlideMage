@@ -60,21 +60,21 @@ _GEOMETRY_TEX = r"""
 """.strip()
 
 
-def _visible_for_instructor(call: SlideCall) -> bool:
-    """Whether `call` renders on an instructor-equivalent compile -- the
-    only version generate_appendix_tex() is ever called for (compiler.py
-    gates job.appendix_toc to job.version in (None, "instructor")).
-    \\conditionalslide is the only macro whose visibility actually depends
-    on the deck version; every other macro (\\slide, \\slidefinal,
-    \\slideversion, \\omitslide, \\omitslideversion) always renders here --
-    \\omitslide{}/\\omitslideversion{} only skip under \\ifSMStudentVersion,
-    which no real deck in this project currently ever sets true."""
+def _visible_for_version(call: SlideCall, version: str) -> bool:
+    """Whether `call` renders on a compile of deck version `version`
+    ("instructor", "during-course" or "after-course"; a version-less or
+    presenter job counts as "instructor"). \\conditionalslide and \\slidestep
+    are the macros whose visibility depends on the deck version; every other
+    macro (\\slide, \\slidefinal, \\slideversion, \\omitslide,
+    \\omitslideversion) always renders -- \\omitslide{}/\\omitslideversion{}
+    only skip under \\ifSMStudentVersion, which no real deck in this project
+    currently ever sets true."""
     if call.macro in ("conditionalslide", "slidestep"):
-        return "instructor" in (call.conditions or [])
+        return version in (call.conditions or [])
     return True
 
 
-def _sections(deck: Deck) -> list[tuple[int, str, list[SlideCall]]]:
+def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, list[SlideCall]]]:
     """(order, title, calls) per appendix entry, in agenda order -- a
     leading "Front matter" entry (order 0) for slides before the first
     \\section, then one entry per real chapter, each skipped entirely if it
@@ -87,7 +87,7 @@ def _sections(deck: Deck) -> list[tuple[int, str, list[SlideCall]]]:
     for c in deck_editor.parse_slide_calls(deck):
         if deck_editor.is_commented_out(deck.text, c):
             continue
-        if not _visible_for_instructor(c):
+        if not _visible_for_version(c, version):
             continue
         if deck_editor.is_commented_out(deck.text, c):
             # A disabled "% \slide{abc-EN-Old}" is not a real slide in
@@ -183,12 +183,13 @@ def _agenda_slide(sections: list[tuple[int, str, list[SlideCall]]]) -> str:
     )
 
 
-def generate_appendix_tex(deck: Deck, template: str) -> str:
+def generate_appendix_tex(deck: Deck, template: str, version: str = "instructor") -> str:
     """The full appendix block: \\appendix, the agenda slide, then each
-    section's thumbnail grid (paginated at GRID_ROWS*GRID_COLS per page).
-    Empty string for a deck with no visible slides at all (shouldn't happen
-    for a real deck)."""
-    sections = _sections(deck)
+    section's thumbnail grid (paginated at GRID_ROWS*GRID_COLS per page),
+    for the slides the deck shows in `version` ("instructor", "during-course"
+    or "after-course"). Empty string for a deck with no visible slides at all
+    (shouldn't happen for a real deck)."""
+    sections = _sections(deck, version)
     if not sections:
         return ""
 
