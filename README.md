@@ -144,7 +144,7 @@ checkout updated alongside the executable.
   this file, swap the `c_*` colors and `\SMInstituteLogoPath`, keep
   the trailing `\input{Slidemaster_preamble_base}` line.
 - `Slidemaster_preamble_slidemage.tex` — the generic **SlideMage template**
-  (since v6.1.0), for decks that don't belong to an institution: the
+  (since v5.7.0), for decks that don't belong to an institution: the
   SlideMage logo (`schemes/scheme_slidemage/`, a vector copy of the app
   icon), dark title and footer boxes with white text (the splash screen's
   `#1e1e1e`), the app's button blue `#0066cc` as highlight colour (bullets,

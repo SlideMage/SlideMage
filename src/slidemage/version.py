@@ -1806,11 +1806,11 @@ v5.5.2 (2026-10-03, direct instruction): "Clear selection" while a compile is ru
 
 v5.5.3 (2026-10-03, direct instruction): the status line by "Log:" counts compiles, not decks: ten deck versions of four decks read "Deck 1/10" ... "Deck 10/10" (each version is a compile of its own), not "Deck 2/4".
 
-v6.0.0 (2026-10-03, direct instruction): \\SMCashCycleBars and \\SMCircularFlowDiagram are no longer part of the framework. They draw two specific finance-course diagrams (an operating/cash conversion cycle bar chart, a cash -> raw materials -> finished goods -> receivables circle), which is course content, not a framework feature; they now live in the content project that uses them (SlideMaster_SP's Slidemaster_project_macros.tex, loaded by its institution preambles). Its five slides render pixel-identically.
+v5.6.0 (2026-10-03, direct instruction): \\SMCashCycleBars and \\SMCircularFlowDiagram are no longer part of the framework. They draw two specific finance-course diagrams (an operating/cash conversion cycle bar chart, a cash -> raw materials -> finished goods -> receivables circle), which is course content, not a framework feature; they now live in the content project that uses them (SlideMaster_SP's Slidemaster_project_macros.tex, loaded by its institution preambles). Its five slides render pixel-identically.
 
 BREAKING: a project whose slides use \\SMCashCycleBars or \\SMCircularFlowDiagram stops compiling ("Undefined control sequence") until it defines them itself -- copy both \\newcommand blocks from SlideMage v5.5.3's latex/Slidemaster_preamble_base.tex into a file of the project and \\input it from each institution preamble after \\input{Slidemaster_preamble_base}.
 
-v6.1.0 (2026-10-03, direct instruction): a generic SlideMage template, example/Slidemaster_preamble_slidemage.tex, for decks that don't belong to an institution -- the SlideMage logo (the app icon as a vector PDF, example/schemes/scheme_slidemage/), title and footer boxes in the splash screen's dark gray #1e1e1e with white text, the app's button blue #0066cc as highlight colour instead of Uni Graz yellow, and the app's other colours as the c_* palette (block titles, info blocks, link underlines, ...; every colour pair the framework combines checked against WCAG 2.1). It ships with the app as part of the example project new projects are created from; a deck selects it with \\input{Slidemaster_preamble_slidemage}. SlideMage recognises it like the institution templates: previews are stored under the template name "SlideMage", and Update previews builds them with this template.
+v5.7.0 (2026-10-03, direct instruction): a generic SlideMage template, example/Slidemaster_preamble_slidemage.tex, for decks that don't belong to an institution -- the SlideMage logo (the app icon as a vector PDF, example/schemes/scheme_slidemage/), title and footer boxes in the splash screen's dark gray #1e1e1e with white text, the app's button blue #0066cc as highlight colour instead of Uni Graz yellow, and the app's other colours as the c_* palette (block titles, info blocks, link underlines, ...; every colour pair the framework combines checked against WCAG 2.1). It ships with the app as part of the example project new projects are created from; a deck selects it with \\input{Slidemaster_preamble_slidemage}. SlideMage recognises it like the institution templates: previews are stored under the template name "SlideMage", and Update previews builds them with this template.
 """
 from __future__ import annotations
 
@@ -1820,7 +1820,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v6.1.0"
+VERSION_NUMBER = "v5.7.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
