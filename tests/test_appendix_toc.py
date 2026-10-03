@@ -36,11 +36,14 @@ def test_every_whole_deck_job_gets_the_appendix_but_not_a_chapter_job():
     deck = make_deck()
     for version in (None, "instructor", "during-course", "after-course"):
         job = CompileJob(deck, version, None, appendix_toc=True)
-        assert job._appendix_applies and job.jobname.endswith("-appendix"), version
+        assert job._appendix_applies, version
+        # same file with or without the appendix: no "-appendix" in the name
+        assert "appendix" not in job.jobname
+        assert job.jobname == CompileJob(deck, version, None).jobname
     presenter = CompileJob(deck, "instructor", None, presenter=True, appendix_toc=True)
     assert presenter._appendix_applies
     chapter = CompileJob(deck, "after-course", deck.chapters[0], appendix_toc=True)
-    assert not chapter._appendix_applies and "appendix" not in chapter.jobname
+    assert not chapter._appendix_applies
     assert not CompileJob(deck, "after-course", None, appendix_toc=False)._appendix_applies
 
 

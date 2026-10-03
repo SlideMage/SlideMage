@@ -165,18 +165,17 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
 def latest_pdf_for_deck(deck: Deck) -> Optional[Path]:
     """The most recently written PDF SlideMage has produced for `deck`, or
     None if there is none on disk. Checks every output this deck could have
-    (each version, presenter, appendix and per-chapter variant) at both the
+    (each version, presenter and per-chapter variant) at both the
     destination its current \\deckoutputfolder declarations resolve to and the
     default pdf/ folder -- so a PDF compiled before an output folder was
     declared (or after it was changed) still counts. "Latest" is by file
     modification time."""
     versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
     jobs: list[CompileJob] = []
-    for appendix in (False, True):
-        for version in versions:
-            jobs.append(CompileJob(deck, version, None, appendix_toc=appendix))
-        presenter_version = "instructor" if deck.supports_version else None
-        jobs.append(CompileJob(deck, presenter_version, None, presenter=True, appendix_toc=appendix))
+    for version in versions:
+        jobs.append(CompileJob(deck, version, None))
+    presenter_version = "instructor" if deck.supports_version else None
+    jobs.append(CompileJob(deck, presenter_version, None, presenter=True))
     chapter_version = "after-course" if deck.supports_version else None
     for chapter in deck.chapters:
         jobs.append(CompileJob(deck, chapter_version, chapter))
@@ -297,8 +296,7 @@ class CompileJob:
     def _appendix_applies(self) -> bool:
         """Whether appendix_toc actually generates content for *this* job
         -- a whole-deck compile (see appendix_toc field's own comment).
-        Shared by jobname and _wrapper_text() below so a per-chapter job's
-        filename never claims an appendix it doesn't have."""
+        Used by _wrapper_text() below."""
         return self.appendix_toc and self.chapter is None
 
     @property
@@ -310,8 +308,9 @@ class CompileJob:
             parts.append(f"{self.chapter.order:02d}-{self.chapter.slug}")
         if self.presenter:
             parts.append("presenter")
-        if self._appendix_applies:
-            parts.append("appendix")
+        # No "-appendix" suffix (2026-10-03, direct instruction; it used to
+        # mark a compile with the generated appendix): with or without the
+        # appendix a job writes the same file.
         return "-".join(parts)
 
 

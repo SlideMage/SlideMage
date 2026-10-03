@@ -1942,8 +1942,10 @@ compile — Presenter, Instructor, During-course and After-course (since
 v5.5.0; before, the Instructor/version-less and Presenter compiles only) —
 but not to a per-chapter compile, whose PDF holds one chapter only. Each
 version's appendix lists the slides that version shows
-(`\conditionalslide`/`\slidestep` conditions), and its file name ends in
-`-appendix`. It comes after the deck's last slide, so after the deck's own
+(`\conditionalslide`/`\slidestep` conditions). The PDF keeps the name it has
+without the appendix (the `-appendix` ending of earlier versions is gone: a
+compile with the checkbox on replaces the one without). It comes after the
+deck's last slide, so after the deck's own
 appendix slides (a `\section{Appendix}`, say). It is an agenda slide —
 one entry per chapter plus a leading "Front matter" entry for whatever
 comes before the first `\section{}` — followed by a 4×5 thumbnail grid per
