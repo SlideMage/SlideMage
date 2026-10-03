@@ -143,6 +143,17 @@ checkout updated alongside the executable.
   but add your own the same way if you need a second institution: copy
   this file, swap the `c_*` colors and `\SMInstituteLogoPath`, keep
   the trailing `\input{Slidemaster_preamble_base}` line.
+- `Slidemaster_preamble_slidemage.tex` — the generic **SlideMage template**
+  (since v6.1.0), for decks that don't belong to an institution: the
+  SlideMage logo (`schemes/scheme_slidemage/`, a vector copy of the app
+  icon), dark title and footer boxes with white text (the splash screen's
+  `#1e1e1e`), the app's button blue `#0066cc` as highlight colour (bullets,
+  image borders, table rules) and the app's other colours as the `c_*`
+  palette, each pair the framework combines checked against WCAG 2.1 (see
+  the file's comments). Same structure as the Graz layer; a deck selects it
+  with `\input{Slidemaster_preamble_slidemage}`, and SlideMage keeps its
+  previews apart from the institutions' (template name "SlideMage"). It is
+  part of `example/`, so every new project created from SlideMage gets it.
 - `slides/` — one set of files per slide, named by a permanent, opaque ID
   (see below). This is where actual slide content lives.
 - `media/` — images referenced from `slides/` (charts, chapter logos,

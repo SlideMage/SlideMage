@@ -83,13 +83,15 @@ _SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 # real deck actually use, so it's the reasonable default when detection
 # finds nothing (a deck with a preamble this regex doesn't recognize at
 # all, not merely "no institution chosen" -- there's no such thing as a
-# deck with no institution).
+# deck with no institution). "slidemage" (2026-10-03) is the generic
+# SlideMage template shipped in example/, not an institution's.
 TEMPLATE_RE = re.compile(
-    r"\\input\{Slidemaster_preamble_(uni-graz|uni-ibk|mci)\}")
+    r"\\input\{Slidemaster_preamble_(uni-graz|uni-ibk|mci|slidemage)\}")
 TEMPLATES = {
     "uni-graz": "UniGraz",
     "uni-ibk": "UniIbk",
     "mci": "Mci",
+    "slidemage": "SlideMage",
 }
 DEFAULT_TEMPLATE = "uni-graz"
 

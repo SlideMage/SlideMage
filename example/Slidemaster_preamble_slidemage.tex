@@ -1,0 +1,68 @@
+% Slidemaster preamble for the generic SlideMage template (2026-10-03, direct
+% instruction): the look of SlideMage itself rather than of an institution --
+% the SlideMage logo, the app's own colours, dark title and footer boxes with
+% white text (the splash screen's look), the app's button blue as highlight
+% colour. Meant as the default for anyone without an institution template of
+% their own; derived from Slidemaster_preamble_uni-graz.tex, same structure
+% (see that file's header comment for the institution-layer/base split). A
+% deck picks it by \input{}ing this file instead of an institution's.
+%
+% Colours: wherever possible a colour SlideMage itself uses
+% (src/slidemage/palette.py, qt_deck_table.py, assets/splash.png); every pair
+% the framework combines was checked against WCAG 2.1 -- body/block text
+% (c_primary_dark) on each c_secondary_* block-title colour >= 4.5:1, white
+% title/footer text on c_primary_dark 16.7:1, white text on c_primary_gray
+% (highlightframe) 5.0:1, link underline c_secondary_blue on white >= 3:1.
+\definecolor{c_primary_dark}{HTML}{1e1e1e}      % splash screen background (palette dark "bg")
+\definecolor{c_primary_highlight}{HTML}{0066cc} % SlideMage button blue (Create PDF, progress bar, links)
+\definecolor{c_primary_gray}{HTML}{6f6f6f}      % palette dark "disabled_fg"; dark enough for highlightframe's white text
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{ba68c8}  % palette dark "tab_deck_editor"
+\definecolor{c_tertiary_violet}{HTML}{dcb4e4}   % derived (50% white-blend)
+% Derived, not an app colour: the button blue is too dark for the dark text
+% an infoblock title puts on it, the app's dark-mode link blue (4da6ff) too
+% light for a link underline on white; this one sits between them and passes
+% both (4.9:1 and 3.4:1).
+\definecolor{c_secondary_blue}{HTML}{3d8fe0}
+\definecolor{c_tertiary_blue}{HTML}{9ec7f0}     % derived (50% white-blend)
+\definecolor{c_secondary_green}{HTML}{4caf50}   % palette dark "status_pass"
+\definecolor{c_tertiary_green}{HTML}{81c784}    % palette dark "tab_slide_editor"
+\definecolor{c_secondary_red}{HTML}{f04848}     % palette dark "status_fail"
+\definecolor{c_tertiary_red}{HTML}{f8a4a4}      % derived (50% white-blend)
+\definecolor{c_secondary_orange}{HTML}{ffb74d}  % palette dark "tab_archived"
+\definecolor{c_tertiary_orange}{HTML}{ffdba6}   % derived (50% white-blend)
+\definecolor{c_secondary_yellow}{HTML}{ffd500}  % logo/splash yellow
+\definecolor{c_tertiary_yellow}{HTML}{ffe066}   % deck editor's highlight yellow
+\definecolor{c_tertiary_gray}{HTML}{e4e4e4}     % palette light "panel_bg" (block bodies)
+% Supporting colours ("custom": not part of the palette proper; same roles as
+% in the institution templates). c_custom_gray is hyperlink text and the
+% quote attribution: a softer near-black, palette dark "panel_bg".
+\definecolor{c_custom_gray}{HTML}{2d2d2d}
+\definecolor{c_custom_red}{HTML}{cc0000}        % palette light "status_fail"
+\definecolor{c_custom_green}{HTML}{1a8a1a}      % palette light "status_pass"
+\definecolor{c_custom_brown}{HTML}{996600}      % palette light "syntax_brace"
+
+% Logo + calibration.
+% schemes/scheme_slidemage/Logo_SlideMage-cropped.pdf -- the app icon
+% (src/slidemage/assets/icon.svg, copied alongside as Logo_SlideMage.svg, the
+% untouched source; the same drawing the splash screen shows), converted to
+% PDF with svglib/reportlab and cropped to its ink bounding box. Vector, like
+% the institution logos.
+\newcommand{\SMInstituteLogoPath}{schemes/scheme_slidemage/Logo_SlideMage-cropped.pdf}
+\newlength{\SMLogoHeight}
+\setlength{\SMLogoHeight}{3ex}
+% Re-measured against the compiled PDF for this logo -- see
+% Slidemaster_preamble_base.tex's comment on \gothamFrametitleRightpading.
+\setlength{\gothamFrametitleRightpading}{0.28cm}
+
+% Itemize bullets in the highlight colour, as in the Graz template.
+\newcommand{\SMBulletColor}{c_primary_highlight}
+
+% Title bar and footer: the splash screen's dark background with white text
+% (the MCI/Innsbruck pattern of a dark box with white text).
+\newcommand{\SMTitleBoxColor}{c_primary_dark}
+\newcommand{\SMTitleTextColor}{c_primary_white}
+\newcommand{\SMFooterBoxColorDefault}{c_primary_dark}
+\newcommand{\SMFooterTextColor}{c_primary_white}
+
+\input{Slidemaster_preamble_base}
