@@ -1795,6 +1795,8 @@ v5.4.0 (2026-10-01, direct instruction): \\SMLineTop -- a zero-width strut as ta
 v5.4.1 (2026-10-03, direct instruction): a compile run with several jobs now goes version by version, then deck by deck (compiler.order_jobs()): Presenter, Instructor, During-course, After-course, After-course per chapter; within each version the deck table's groups in order -- work decks, course decks, research presentations, test decks -- and decks of one group in table order. Selecting During-course and Presenter for #workdeck and IA2 compiles #workdeck Presenter, IA2 Presenter, #workdeck During-course, IA2 During-course. Before, it went deck by deck (all of one deck's versions, then the next deck).
 
 v5.4.2 (2026-10-03, direct instruction): main window stays left-aligned. In a window wider than the deck table needs, the extra width goes to the right: the version checkboxes (Instructor ... Presenter) keep their place instead of being spread over the window, the Create PDF / Stop / Create Transcript / ? / Clear selection / Refresh decks buttons sit next to each other on the left, and so do the three checkboxes under the tabs (footer timestamp, appendix TOC, auto-open) -- less mouse travel.
+
+v5.4.3 (2026-10-03, direct instruction): "Clear selection" on the main screen also clears the pass/fail marks of earlier compiles (✓, ✗, →) next to the checkboxes, in every row of that table. A job that is still running keeps its animated dots until it ends.
 """
 from __future__ import annotations
 
@@ -1804,7 +1806,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.4.2"
+VERSION_NUMBER = "v5.4.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -53,3 +53,30 @@ def test_wide_window_does_not_spread_columns_or_buttons(qapp):
     assert wide == narrow           # the extra width goes to the right
     # and the buttons sit at the left, not at the far right edge
     assert max(wide[1].values()) < 900
+
+
+def test_clear_selection_clears_checkboxes_and_pass_fail_marks(qapp):
+    table = make_table([make_deck()])
+    row = table.rows[0]
+    row.vars["instructor"].setChecked(True)
+    row.presenter_var.setChecked(True)
+    row.set_status("instructor", "pass")
+    row.set_status("during-course", "fail")
+    row.set_status("presenter", "moving")
+    assert row.status_labels["instructor"].text() == "✓"
+    table._on_clear_selection()
+    assert not row.vars["instructor"].isChecked() and not row.presenter_var.isChecked()
+    assert all(label.text() == "" for label in row.status_labels.values())
+    # a sticky fail is cleared too, so the next compile starts clean
+    row.set_status("during-course", "pass")
+    assert row.status_labels["during-course"].text() == "✓"
+
+
+def test_clear_selection_keeps_the_dots_of_a_running_job(qapp):
+    table = make_table([make_deck()])
+    row = table.rows[0]
+    row.set_status("instructor", "running")
+    row.set_status("after-course", "pass")
+    table._on_clear_selection()
+    assert row.status_labels["instructor"].text() == "."
+    assert row.status_labels["after-course"].text() == ""

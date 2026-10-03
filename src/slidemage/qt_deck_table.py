@@ -268,12 +268,18 @@ class DeckRow:
         """Unchecks every compile-option checkbox this row owns -- the
         three version checkboxes, "After-course, per chapter", and
         Presenter -- regardless of which are currently enabled/visible for
-        this particular deck. Used by the table's own "Clear selection"
-        button to reset every row in one click."""
+        this particular deck, and the pass/fail indicators of earlier
+        compiles (2026-10-03, direct instruction). A job that is still
+        running keeps its animated dots until it ends. Used by the table's
+        own "Clear selection" button to reset every row in one click."""
         for checkbox in self.vars.values():
             checkbox.setChecked(False)
         self.chapter_var.setChecked(False)
         self.presenter_var.setChecked(False)
+        for key, label in self.status_labels.items():
+            if key not in self._running_keys:
+                label.setText("")
+                label.setStyleSheet("")
 
     def selected_versions(self) -> list[Optional[str]]:
         if not self.deck.supports_version:
@@ -473,7 +479,7 @@ class DeckTable(QWidget):
         clear_selection_button = QPushButton("Clear selection")
         clear_selection_button.setToolTip(
             "Unchecks every version/chapter/Presenter checkbox in this "
-            "table, in one click."
+            "table and clears the pass/fail marks of earlier compiles."
         )
         clear_selection_button.clicked.connect(self._on_clear_selection)
         button_row.addWidget(clear_selection_button)
