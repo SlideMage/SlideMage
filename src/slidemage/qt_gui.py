@@ -871,7 +871,6 @@ class SlideMageWindow(QMainWindow):
         _build_menu_bar(), direct instruction: get rid of the bottom
         button row entirely)."""
         toolbar = QHBoxLayout()
-        toolbar.addStretch()
 
         self.footer_timestamp_checkbox = QCheckBox("Include footer timestamp")
         # Default off (2026-08-20, direct instruction) -- was on by default.
@@ -897,6 +896,9 @@ class SlideMageWindow(QMainWindow):
         self.auto_open_checkbox = QCheckBox("Auto-open generated PDFs")
         self.auto_open_checkbox.setChecked(True)
         toolbar.addWidget(self.auto_open_checkbox)
+        # Left-aligned like the deck table above it (2026-10-03, direct
+        # instruction): extra window width stays to the right.
+        toolbar.addStretch()
 
         return toolbar
 

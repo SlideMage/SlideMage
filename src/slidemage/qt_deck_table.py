@@ -430,8 +430,7 @@ class DeckTable(QWidget):
         # Create PDF/Stop creation exist on *both* tables --
         # archived decks are still compilable (an archived deck can still
         # have its own Instructor-only checkbox ticked), they just have no
-        # Archive/Quick-compile buttons of their own. Only "Refresh decks"'s
-        # alignment differs by table below.
+        # Archive/Quick-compile buttons of their own.
         button_row = QHBoxLayout()
         self.compile_button = QPushButton("Create PDF")
         self._style_compile_button(active=True)
@@ -471,7 +470,6 @@ class DeckTable(QWidget):
         )
         button_row.addWidget(self.help_button)
 
-        button_row.addStretch()
         clear_selection_button = QPushButton("Clear selection")
         clear_selection_button.setToolTip(
             "Unchecks every version/chapter/Presenter checkbox in this "
@@ -483,6 +481,10 @@ class DeckTable(QWidget):
         refresh_button = QPushButton("Refresh decks")
         refresh_button.clicked.connect(self.on_refresh)
         button_row.addWidget(refresh_button)
+        # Everything stays left-aligned (2026-10-03, direct instruction): in
+        # a wider window the extra space goes to the right of the buttons,
+        # not between them -- less travel for the mouse.
+        button_row.addStretch()
         self.content_layout.addLayout(button_row)
         self.content_layout.addStretch()
 
@@ -622,6 +624,13 @@ class DeckTable(QWidget):
             label = QLabel(text)
             label.setStyleSheet("font-weight: bold;")
             self.grid.addWidget(label, 0, col)
+        # Extra width goes to an empty last column, to the right of the
+        # buttons (2026-10-03, direct instruction): without it the grid
+        # spread its columns -- the version checkboxes included -- over a
+        # wide window, and the mouse had to travel.
+        for col in range(len(header)):
+            self.grid.setColumnStretch(col, 0)
+        self.grid.setColumnStretch(len(header), 1)
 
         # Groups (2026-09-19, direct instruction), decided by each deck's
         # own \decktags{...} (Deck.group), never by its filename. Each group
