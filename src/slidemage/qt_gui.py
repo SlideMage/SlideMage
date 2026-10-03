@@ -71,6 +71,7 @@ from .compiler import (
     CancelToken,
     CompileJob,
     latest_pdf_for_deck,
+    order_jobs,
     resolve_output_location,
     run_job,
     run_jobs,
@@ -1456,6 +1457,7 @@ class SlideMageWindow(QMainWindow):
                 self, "Nothing selected", "Check at least one version per deck to compile."
             )
             return
+        jobs = order_jobs(jobs)   # version by version, then deck by deck
         jobs, job_status_map, empty_descriptions = self._drop_empty_jobs(jobs, job_status_map)
         if not jobs:
             QMessageBox.critical(

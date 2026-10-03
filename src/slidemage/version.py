@@ -1791,6 +1791,8 @@ v5.3.0 (2026-10-01, direct instructions): (1) Every \\gotham... name this projec
 BREAKING: (a) the \\gotham... -> \\SM... rename: a project or deck that uses this framework's own commands under their old names stops compiling -- run `python -m slidemage.sm_rename <project folder>` once (it rewrites slides, decks, preambles and .slidemage settings; the Gotham theme's own names are left alone). Old .top/.ovl files in a build folder are still read without errors. (b) \\cornerfigure content without a border sits 0.2pt closer to its corner (its node has no outer sep any more); a bordered node keeps TikZ's outer sep of half its line width even where \\cornerfigure sets outer sep=0pt, so its border's outer edge is on the margin. A slide that writes outer sep=0pt after SMImageBorder still opts out (needed where the node's corners are a coordinate frame for highlights). (c) besidefigure's arguments changed from {width}{figure} to [keys]{image file or content}.
 
 v5.4.0 (2026-10-01, direct instruction): \\SMLineTop -- a zero-width strut as tall as a text line's line box (0.935em, the box the Top Margin is measured on). At the start of the first line of a text column beside a figure in top-aligned minipages ([t] plus \\vspace{0pt}) it makes the text and the figure start on the same line, so the automatic Top Margin puts both on it (m2k: its minipages were vertically centred, LaTeX's default, and the text started 12pt below the Top Margin).
+
+v5.4.1 (2026-10-03, direct instruction): a compile run with several jobs now goes version by version, then deck by deck (compiler.order_jobs()): Presenter, Instructor, During-course, After-course, After-course per chapter; within each version the deck table's groups in order -- work decks, course decks, research presentations, test decks -- and decks of one group in table order. Selecting During-course and Presenter for #workdeck and IA2 compiles #workdeck Presenter, IA2 Presenter, #workdeck During-course, IA2 During-course. Before, it went deck by deck (all of one deck's versions, then the next deck).
 """
 from __future__ import annotations
 
@@ -1800,7 +1802,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.4.0"
+VERSION_NUMBER = "v5.4.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

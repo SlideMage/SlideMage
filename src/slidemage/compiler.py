@@ -41,7 +41,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import appendix_toc, slide_snapshot
-from .deck_scan import DOCUMENT_END_RE, PROJECT_ROOT, Chapter, Deck
+from .deck_scan import DOCUMENT_END_RE, GROUP_TAGS, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
 PDF_DIR = PROJECT_ROOT / "pdf"
@@ -691,6 +691,31 @@ def _disambiguated_destinations(
         for job in colliding:
             dests[id(job)] = (output_dir, job.jobname)
     return dests
+
+
+def job_stage(job: CompileJob) -> int:
+    """Where a job falls in a multi-job run: Presenter, Instructor,
+    During-course, After-course, After-course per chapter (0..4)."""
+    if job.presenter:
+        return 0
+    if job.chapter is not None:
+        return 4
+    return {"during-course": 2, "after-course": 3}.get(job.version, 1)
+
+
+def order_jobs(jobs: list[CompileJob]) -> list[CompileJob]:
+    """The order a batch of jobs is compiled in (2026-10-03, direct
+    instruction): version by version -- Presenter, Instructor, During-course,
+    After-course, After-course per chapter -- and within each version deck by
+    deck, by the deck table's groups: work decks, course decks, research
+    presentations, test decks. Decks of one group, and the chapters of one
+    deck, stay in the order the jobs came in (the table's order): the sort is
+    stable. Selecting During-course and Presenter for #workdeck and IA2
+    compiles #workdeck Presenter, IA2 Presenter, #workdeck During-course,
+    IA2 During-course."""
+    group_rank = {tag: i for i, tag in enumerate(GROUP_TAGS)}
+    return sorted(jobs, key=lambda job: (
+        job_stage(job), group_rank.get(job.deck.group, len(group_rank))))
 
 
 def run_jobs(
