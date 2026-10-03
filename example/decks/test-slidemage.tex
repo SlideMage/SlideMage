@@ -1,0 +1,61 @@
+% !TeX program = lualatex
+% The demo deck (test-slides.tex, shared with test.tex) in the generic
+% SlideMage template (Slidemaster_preamble_slidemage.tex, SlideMage v5.7.0)
+% instead of the Uni Graz one -- the same slides, so the two PDFs show the
+% difference between the templates. Otherwise identical to test.tex.
+% Moved into decks/ from the project root 2026-07-08, direct instruction --
+% needs the same \input@path/\graphicspath fallback every other decks/
+% file already carries (e.g. decks/t-Uni-FM2-2027s.tex's own header
+% comment has the fuller reasoning), so \input{Slidemaster_preamble_uni-graz} below
+% and every \slide{}/\includegraphics inside test-slides.tex still resolve
+% correctly whether compiled from the project root or from inside decks/
+% itself.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{gotham}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\input{Slidemaster_preamble_slidemage}
+
+% Bibliography (biblatex + biber, opt-in per deck -- see README.md's
+% "Decks with a bibliography" section for the extra `biber` compile pass
+% this needs beyond the usual two lualatex passes). Added 2026-09-22 so
+% ZZZ-EN-Standard-content's own \fullcite{markowitz1952} footnote has a
+% Slidemaster.bib to resolve against -- plain biblatex defaults here
+% (no custom citation-format drivers), unlike the real course decks'
+% own house style (decks/t-Uni-FM2-2027s.tex), since this is just meant
+% to demonstrate the mechanism itself.
+\usepackage[style=authoryear, backend=biber]{biblatex}
+\makeatletter
+\let\SMSavedInputPath\input@path
+\def\input@path{}%
+\IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
+\let\input@path\SMSavedInputPath
+\makeatother
+
+\newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
+
+% Added 2026-09-22 alongside the ZZH \slidestep demo slide (test-slides.tex)
+% -- without this, \SMDeckVersion never moves off its own "instructor"
+% default (see Slidemaster_preamble_base.tex), so a during-course/after-course
+% compile of this deck (SlideMage's own version checkboxes, or a manual
+% \def\deckversionoverride{...} wrapper) would silently still show every
+% \slidestep step, same as instructor. Same block, same position, as every
+% real course deck (e.g. decks/t-Uni-IA2-2026w.tex).
+\ifdefined\deckversionoverride
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]           % options: instructor, during-course, after-course
+\fi
+
+%
+
+\decktags{test}
+\begin{document}
+
+	\input{test-slides}
+
+\end{document}
