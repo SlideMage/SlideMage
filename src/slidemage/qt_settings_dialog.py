@@ -55,6 +55,7 @@ from . import ai_draft
 from . import alt_draft
 from . import app_settings
 from . import draft_prompts
+from . import slide_snapshot
 from . import updater
 from .qt_slide_source_tab import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from .qt_translation_prompts_panel import TranslationPromptsPanel
@@ -196,9 +197,45 @@ class SettingsDialog(QDialog):
         tab_width_row.addStretch(1)
         layout.addLayout(tab_width_row)
 
+        layout.addWidget(self._build_render_template_group())
         layout.addWidget(self._build_update_token_group())
         layout.addStretch(1)
         return page
+
+    def _build_render_template_group(self) -> QGroupBox:
+        """Default template for renders without a deck (2026-10-03, direct
+        instruction; saved immediately): the slide editor's Render to PDF
+        and Preview, tikz illustration renders. Lists the templates whose
+        preamble file this project has; out of the box the SlideMage
+        template (slide_snapshot.render_template())."""
+        group = QGroupBox("Slide rendering")
+        group_layout = QVBoxLayout(group)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Default template:"))
+        self.render_template_combo = QComboBox()
+        current = slide_snapshot.render_template()
+        for key in slide_snapshot.available_templates():
+            self.render_template_combo.addItem(slide_snapshot.TEMPLATES[key], key)
+            if key == current:
+                self.render_template_combo.setCurrentIndex(
+                    self.render_template_combo.count() - 1)
+        self.render_template_combo.currentIndexChanged.connect(
+            self._on_render_template_changed)
+        row.addWidget(self.render_template_combo)
+        row.addStretch(1)
+        group_layout.addLayout(row)
+        group_layout.addWidget(_note_label(
+            "Used when a slide is rendered on its own, outside a deck: the slide "
+            "editor's \"Render to PDF\" and \"Preview\", and tikz illustration "
+            "renders. A deck's own renders always use the deck's template."))
+        return group
+
+    def _on_render_template_changed(self, index: int) -> None:
+        key = self.render_template_combo.itemData(index)
+        if key:
+            app_settings.set(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, key)
+            self.app.log(
+                f"Default render template set to {slide_snapshot.TEMPLATES[key]}")
 
     def _build_update_token_group(self) -> QGroupBox:
         """Update mode (v4.1.0, direct instruction; saved immediately) and

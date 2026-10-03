@@ -29,14 +29,7 @@ from typing import Optional
 from . import deck_editor, slide_snapshot
 from .compiler import CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
-from .slide_preview import DECKS_DIR, GENERIC_PREAMBLE
-
-# The exact line GENERIC_PREAMBLE selects Graz with -- swapped wholesale
-# for another institution's own \input{} line to build that template's
-# preamble instead. Matches slide_snapshot.TEMPLATE_RE's own pattern
-# (kept as a plain string here, not a shared regex, since this side needs
-# to *substitute* a specific key, not merely detect one already present).
-_GRAZ_INPUT = "\\input{Slidemaster_preamble_uni-graz}"
+from .slide_preview import DECKS_DIR, template_preamble
 
 # qt_gui.py's own log parser watches every "==== PASS: <jobname> ->" line
 # globally (it's the only channel this background compile has back to the
@@ -123,10 +116,7 @@ def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> Non
 
 
 def _preamble_for(template: str) -> str:
-    if template not in slide_snapshot.TEMPLATES:
-        template = slide_snapshot.DEFAULT_TEMPLATE
-    return GENERIC_PREAMBLE.replace(
-        _GRAZ_INPUT, f"\\input{{Slidemaster_preamble_{template}}}")
+    return template_preamble(template)
 
 
 def _build_deck_text(template: str, slide_ids: list[str]) -> tuple[str, int]:

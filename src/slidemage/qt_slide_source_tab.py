@@ -2132,15 +2132,14 @@ class SlideSourceTab(QWidget):
         # keyed by the short id \setSlideID actually derives from it (see
         # slide_snapshot.bare_id()).
         #
-        # Always the default (Graz) template here, not a picker -- this
-        # tab has no one deck it belongs to (a slide file can be used by
-        # several, under different institutions), and every real deck
-        # today is Graz anyway. render() above renders with GENERIC_PREAMBLE
-        # (also Graz), so this lookup matches what "Render now" will
-        # actually produce.
+        # The default render template (Settings -> General), not a picker
+        # -- this tab has no one deck it belongs to (a slide file can be
+        # used by several, under different templates). render() above
+        # renders with that same template (slide_preview.default_preamble()),
+        # so this lookup matches what "Render now" will actually produce.
         popup = SlidePreviewPopup(
             self, slide_snapshot.bare_id(id_slug), self.path, render_fn=render,
-            template=slide_snapshot.DEFAULT_TEMPLATE, precheck_fn=self._preview_precheck)
+            template=slide_snapshot.render_template(), precheck_fn=self._preview_precheck)
         popup.exec()
 
     def jump_to_line(self, line: int) -> None:

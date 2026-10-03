@@ -129,6 +129,26 @@ GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
 \begin{document}
 """
 
+# GENERIC_PREAMBLE's template line; template_preamble() swaps it for another
+# template's (2026-10-03: the default render template is a setting now, see
+# slide_snapshot.render_template()).
+_GRAZ_INPUT = "\\input{Slidemaster_preamble_uni-graz}"
+
+
+def template_preamble(template: str) -> str:
+    """GENERIC_PREAMBLE rendering in `template` (a slide_snapshot.TEMPLATES
+    key; an unknown one falls back to slide_snapshot.DEFAULT_TEMPLATE)."""
+    if template not in slide_snapshot.TEMPLATES:
+        template = slide_snapshot.DEFAULT_TEMPLATE
+    return GENERIC_PREAMBLE.replace(
+        _GRAZ_INPUT, f"\\input{{Slidemaster_preamble_{template}}}")
+
+
+def default_preamble() -> str:
+    """The preamble for a render with no deck: the default render template
+    chosen in Settings -> General (slide_snapshot.render_template())."""
+    return template_preamble(slide_snapshot.render_template())
+
 
 def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
     """Given slides/<id>-<slug>-current.tex or slides/<id>-<slug>-vX-Y-Z.tex,
@@ -386,7 +406,8 @@ def render_slide_to_pdf(
     a build artifact) and return its path. Raises RuntimeError (with the
     compile log's own tail) on failure.
 
-    preamble_text defaults to GENERIC_PREAMBLE; pass a real Deck's own
+    preamble_text defaults to default_preamble() (the default render
+    template from Settings -> General); pass a real Deck's own
     preamble_text (everything through \\begin{document}) to render with
     that deck's actual theme/colors/footer instead.
 
@@ -421,7 +442,7 @@ def render_slide_to_pdf(
     caching the *right* template's image, not always Graz.
     """
     log = log or (lambda line: None)
-    preamble = GENERIC_PREAMBLE if preamble_text is None else preamble_text
+    preamble = default_preamble() if preamble_text is None else preamble_text
     # \slidestep keeps its own reveal-step restriction, but is shown for every deck
     # version: a preview compiles as the instructor deck, which would otherwise
     # render nothing for a call listed only for the student versions.
@@ -506,7 +527,7 @@ def render_slide_text_to_pdf(
     layout is nothing like a normal compile's, so reading it the normal
     way would corrupt the snapshot cache)."""
     log = log or (lambda line: None)
-    preamble = GENERIC_PREAMBLE if preamble_text is None else preamble_text
+    preamble = default_preamble() if preamble_text is None else preamble_text
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{_presenter_mode_line(presenter)}{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"

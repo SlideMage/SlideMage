@@ -30,7 +30,7 @@ from PIL import Image, ImageChops
 
 from . import alt_blocks, alt_images
 from .deck_scan import PROJECT_ROOT
-from .slide_preview import GENERIC_PREAMBLE, _compile_and_extract
+from .slide_preview import _compile_and_extract, default_preamble
 
 # Gitignored, same regeneratable-cache reasoning as slide_previews/ and
 # pdf_render_cache/ (media_render.py) -- nothing here is ever authored, it
@@ -188,7 +188,7 @@ def _wrapper_text(illustration_id: str, options: str, body: str, slide_preamble:
     # for genuinely oversized native content (ys3's own \resizebox case)
     # that's larger than any reasonable fixed margin would absorb.
     return (
-        f"{GENERIC_PREAMBLE}"
+        f"{default_preamble()}"
         f"\\pagewidth=60cm\n"
         f"\\pageheight=60cm\n"
         f"\\hoffset=20cm\n"

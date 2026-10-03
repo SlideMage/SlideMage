@@ -107,6 +107,40 @@ def _template_name(template: str) -> str:
     return TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
 
 
+# The template a slide is rendered in when no deck is involved -- the slide
+# editor's Render to PDF and Preview, tikz illustration renders (2026-10-03,
+# direct instruction: chosen in Settings -> General, out of the box the
+# generic SlideMage template). Only a template whose preamble file the
+# project actually has can be used; otherwise the choice falls back to the
+# SlideMage template, then Graz, then whichever template the project has.
+RENDER_TEMPLATE_SETTING_KEY = "default_template"
+OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
+
+
+def preamble_file(template: str, root: Path | None = None) -> Path:
+    """The template's preamble file, Slidemaster_preamble_<key>.tex, in the
+    project root (where every institution layer lives)."""
+    return (root or PROJECT_ROOT) / f"Slidemaster_preamble_{template}.tex"
+
+
+def available_templates(root: Path | None = None) -> list[str]:
+    """The TEMPLATES keys whose preamble file exists in the project, in
+    TEMPLATES order."""
+    return [key for key in TEMPLATES if preamble_file(key, root).is_file()]
+
+
+def render_template(root: Path | None = None) -> str:
+    """The template single-slide renders use (see RENDER_TEMPLATE_SETTING_KEY)."""
+    from . import app_settings  # app settings live in the project too
+
+    available = available_templates(root)
+    for key in (app_settings.get(RENDER_TEMPLATE_SETTING_KEY),
+                OUT_OF_THE_BOX_RENDER_TEMPLATE, DEFAULT_TEMPLATE):
+        if key in available:
+            return key
+    return available[0] if available else DEFAULT_TEMPLATE
+
+
 # Full HD, requested directly rather than picked via a DPI value: this
 # project's slides are all exactly 16:9 (aspectratio=169), so 1920x1080
 # fits with no letterboxing, but a fixed DPI doesn't hit that pixel size

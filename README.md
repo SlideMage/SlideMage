@@ -154,6 +154,14 @@ checkout updated alongside the executable.
   with `\input{Slidemaster_preamble_slidemage}`, and SlideMage keeps its
   previews apart from the institutions' (template name "SlideMage"). It is
   part of `example/`, so every new project created from SlideMage gets it.
+  **Default render template** (since v5.8.0): a slide rendered outside a
+  deck -- the slide editor's "Render to PDF" and "Preview", tikz
+  illustration renders -- uses the template chosen under Settings → General
+  → Slide rendering, which lists the templates whose
+  `Slidemaster_preamble_<name>.tex` the project has. Out of the box that is
+  the SlideMage template; a project without it falls back to Graz, then to
+  whichever template it has. A deck's own renders always use the deck's
+  template.
 - `slides/` — one set of files per slide, named by a permanent, opaque ID
   (see below). This is where actual slide content lives.
 - `media/` — images referenced from `slides/` (charts, chapter logos,
