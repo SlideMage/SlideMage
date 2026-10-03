@@ -76,21 +76,13 @@ def job_column_key(job: CompileJob) -> str:
 
 def build_progress_texts(jobs: list[CompileJob]) -> dict[str, str]:
     """One human-readable "what job is this" line per job, keyed by
-    jobname -- identical logic to gui.py's own _build_progress_texts."""
-    deck_order: list[str] = []
-    for job in jobs:
-        if job.deck.name not in deck_order:
-            deck_order.append(job.deck.name)
-    deck_position = {name: i + 1 for i, name in enumerate(deck_order)}
-    total_decks = len(deck_order)
-
+    jobname. The "Deck n/m" prefix counts compiles, not distinct decks
+    (2026-10-03, direct instruction): ten deck versions of four decks are
+    "Deck 1/10" ... "Deck 10/10", each version being a compile of its own."""
+    total = len(jobs)
     texts: dict[str, str] = {}
-    for job in jobs:
-        prefix = (
-            f"Deck {deck_position[job.deck.name]}/{total_decks} | "
-            if total_decks > 1
-            else ""
-        )
+    for position, job in enumerate(jobs, start=1):
+        prefix = f"Deck {position}/{total} | " if total > 1 else ""
         if job.chapter is None:
             texts[job.jobname] = f"{prefix}Compiling {job.deck.name}"
         else:

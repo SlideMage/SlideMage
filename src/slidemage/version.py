@@ -1803,6 +1803,8 @@ v5.5.0 (2026-10-03, direct instruction): "Generate appendix TOC" now also works 
 v5.5.1 (2026-10-03, direct instruction): the "-appendix" ending of PDF names is gone: a compile with "Generate appendix TOC" ticked writes the same file as one without (<deck>-instructor.pdf, <deck>-during-course.pdf, ... and -presenter), replacing it. PDFs named *-appendix.pdf left in pdf/ by earlier versions are no longer touched or offered by "Open pdf"; delete them by hand.
 
 v5.5.2 (2026-10-03, direct instruction): "Clear selection" while a compile is running clears only the checkboxes -- the animated dots and the pass/fail marks of the run stay. A click after the run has finished clears the marks too (v5.4.3 cleared them at once, running jobs excepted).
+
+v5.5.3 (2026-10-03, direct instruction): the status line by "Log:" counts compiles, not decks: ten deck versions of four decks read "Deck 1/10" ... "Deck 10/10" (each version is a compile of its own), not "Deck 2/4".
 """
 from __future__ import annotations
 
@@ -1812,7 +1814,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.5.2"
+VERSION_NUMBER = "v5.5.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

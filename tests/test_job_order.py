@@ -62,3 +62,17 @@ def test_deck_without_version_support_counts_as_instructor():
     plain = CompileJob(FM2, None, None)
     assert [label(j) for j in order_jobs(
         [CompileJob(FM2, "during-course", None), plain])] == ["FM2:None", "FM2:during-course"]
+
+
+def test_progress_text_counts_compiles_not_decks():
+    from slidemage.qt_deck_table import build_progress_texts
+
+    versions = ("instructor", "during-course", "after-course")
+    jobs = order_jobs([CompileJob(d, v, None) for d in (WORK, IA2, FM2, TEST) for v in versions][:10])
+    texts = build_progress_texts(jobs)
+    assert len(jobs) == 10 and len({j.deck.name for j in jobs}) == 4
+    assert [texts[j.jobname].split(" | ")[0] for j in jobs] == [f"Deck {i}/10" for i in range(1, 11)]
+    assert texts[jobs[3].jobname].endswith(f"Compiling {jobs[3].deck.name}")
+    # a single job has no prefix; a chapter job names its chapter
+    single = [CompileJob(IA2, "after-course", IA2.chapters[1])]
+    assert build_progress_texts(single)[single[0].jobname] == "Compiling IA2: Chapter 2/2"
