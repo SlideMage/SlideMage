@@ -264,22 +264,22 @@ class DeckRow:
             grid.addWidget(archive_button, row_index, col)
             col += 1
 
-    def clear_selection(self) -> None:
+    def clear_selection(self, clear_status: bool = True) -> None:
         """Unchecks every compile-option checkbox this row owns -- the
         three version checkboxes, "After-course, per chapter", and
         Presenter -- regardless of which are currently enabled/visible for
-        this particular deck, and the pass/fail indicators of earlier
-        compiles (2026-10-03, direct instruction). A job that is still
-        running keeps its animated dots until it ends. Used by the table's
-        own "Clear selection" button to reset every row in one click."""
+        this particular deck. With `clear_status` (the default) it also
+        clears the pass/fail indicators of earlier compiles (2026-10-03,
+        direct instruction); DeckTable passes False while a compile is
+        running, so the animated dots and the results so far stay until a
+        second click after the run. Used by the table's own "Clear
+        selection" button to reset every row in one click."""
         for checkbox in self.vars.values():
             checkbox.setChecked(False)
         self.chapter_var.setChecked(False)
         self.presenter_var.setChecked(False)
-        for key, label in self.status_labels.items():
-            if key not in self._running_keys:
-                label.setText("")
-                label.setStyleSheet("")
+        if clear_status:
+            self.reset_status()
 
     def selected_versions(self) -> list[Optional[str]]:
         if not self.deck.supports_version:
@@ -393,6 +393,7 @@ class DeckTable(QWidget):
         self.on_refresh = on_refresh
 
         self.rows: list[DeckRow] = []
+        self._compiling = False        # a compile run is in progress (set_compiling)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -479,7 +480,8 @@ class DeckTable(QWidget):
         clear_selection_button = QPushButton("Clear selection")
         clear_selection_button.setToolTip(
             "Unchecks every version/chapter/Presenter checkbox in this "
-            "table and clears the pass/fail marks of earlier compiles."
+            "table; clicked again after a compile has finished it also clears "
+            "the pass/fail marks (while one is running they stay)."
         )
         clear_selection_button.clicked.connect(self._on_clear_selection)
         button_row.addWidget(clear_selection_button)
@@ -495,8 +497,12 @@ class DeckTable(QWidget):
         self.content_layout.addStretch()
 
     def _on_clear_selection(self) -> None:
+        """While a compile is running only the checkboxes are cleared: the
+        animated dots and the result marks of the run stay, and a click
+        after the run has finished clears them (direct instruction,
+        2026-10-03)."""
         for row in self.rows:
-            row.clear_selection()
+            row.clear_selection(clear_status=not self._compiling)
 
     def _style_stop_button(self, enabled: bool) -> None:
         if enabled:
@@ -531,6 +537,7 @@ class DeckTable(QWidget):
             )
 
     def set_compiling(self, compiling: bool) -> None:
+        self._compiling = compiling
         self._style_compile_button(active=not compiling)
         self.stop_button.setVisible(compiling)
         self._style_stop_button(enabled=compiling)

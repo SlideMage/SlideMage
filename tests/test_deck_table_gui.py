@@ -55,7 +55,7 @@ def test_wide_window_does_not_spread_columns_or_buttons(qapp):
     assert max(wide[1].values()) < 900
 
 
-def test_clear_selection_clears_checkboxes_and_pass_fail_marks(qapp):
+def test_clear_selection_after_a_run_clears_checkboxes_and_pass_fail_marks(qapp):
     table = make_table([make_deck()])
     row = table.rows[0]
     row.vars["instructor"].setChecked(True)
@@ -67,16 +67,31 @@ def test_clear_selection_clears_checkboxes_and_pass_fail_marks(qapp):
     table._on_clear_selection()
     assert not row.vars["instructor"].isChecked() and not row.presenter_var.isChecked()
     assert all(label.text() == "" for label in row.status_labels.values())
-    # a sticky fail is cleared too, so the next compile starts clean
+    # a sticky fail is gone too, so the next compile starts clean
     row.set_status("during-course", "pass")
     assert row.status_labels["during-course"].text() == "✓"
 
 
-def test_clear_selection_keeps_the_dots_of_a_running_job(qapp):
+def test_clear_selection_during_a_run_keeps_dots_and_results_until_clicked_again(qapp):
     table = make_table([make_deck()])
     row = table.rows[0]
+    row.vars["instructor"].setChecked(True)
+    row.vars["after-course"].setChecked(True)
+    table.set_compiling(True)
     row.set_status("instructor", "running")
     row.set_status("after-course", "pass")
+    row.set_status("during-course", "fail")
     table._on_clear_selection()
+    # checkboxes are cleared, the indicators stay
+    assert not row.vars["instructor"].isChecked() and not row.vars["after-course"].isChecked()
     assert row.status_labels["instructor"].text() == "."
-    assert row.status_labels["after-course"].text() == ""
+    assert row.status_labels["after-course"].text() == "✓"
+    assert row.status_labels["during-course"].text() == "✗"
+    row.tick_spinner(1)
+    assert row.status_labels["instructor"].text() == ".."      # still animated
+    # the run ends; another click clears the indicators
+    row.set_status("instructor", "pass")
+    table.set_compiling(False)
+    assert row.status_labels["instructor"].text() == "✓"
+    table._on_clear_selection()
+    assert all(label.text() == "" for label in row.status_labels.values())

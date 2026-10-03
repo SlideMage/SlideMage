@@ -1801,6 +1801,8 @@ v5.4.3 (2026-10-03, direct instruction): "Clear selection" on the main screen al
 v5.5.0 (2026-10-03, direct instruction): "Generate appendix TOC" now also works for the student versions: every whole-deck compile -- Presenter, Instructor, During-course and After-course -- gets the generated appendix (agenda plus thumbnail grids) and the `-appendix` file-name suffix; each lists the slides its own version shows (\\conditionalslide/\\slidestep conditions), and the logo on every slide links to its agenda. Per-chapter compiles stay without one. The appendix is appended after the deck's last slide, so it already follows a deck's own appendix slides (a \\section{Appendix}) -- verified on #workdeck, where the deck's appendix slide comes first and the generated agenda and grids after it. Before, During-course/After-course compiles ignored the checkbox.
 
 v5.5.1 (2026-10-03, direct instruction): the "-appendix" ending of PDF names is gone: a compile with "Generate appendix TOC" ticked writes the same file as one without (<deck>-instructor.pdf, <deck>-during-course.pdf, ... and -presenter), replacing it. PDFs named *-appendix.pdf left in pdf/ by earlier versions are no longer touched or offered by "Open pdf"; delete them by hand.
+
+v5.5.2 (2026-10-03, direct instruction): "Clear selection" while a compile is running clears only the checkboxes -- the animated dots and the pass/fail marks of the run stay. A click after the run has finished clears the marks too (v5.4.3 cleared them at once, running jobs excepted).
 """
 from __future__ import annotations
 
@@ -1810,7 +1812,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.5.1"
+VERSION_NUMBER = "v5.5.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
