@@ -2420,9 +2420,9 @@ A slide exempts itself from a check with a comment line in its own file,
 the exemptions are read from the slide files of the PDF's project (`--project`,
 else the folder with `slide_ids.csv` above the PDF, else
 `$SLIDEMASTER_PROJECT`). Exit code 1 if anything is reported. The Right Margin
-is measured as the logo's right edge, about 1.5-2.4pt inside the framework's
-own Right Margin (`\gothamFrametitleRightpading` from the page edge), so a
-figure placed exactly on the framework's margin is reported by 1-2.5pt.
+is the logo's visible right edge, measured on the rendered page (since
+v5.15.1); in every template it coincides with the framework's own Right Margin,
+`\gothamFrametitleRightpading` from the page edge.
 
 ## Slide previews
 

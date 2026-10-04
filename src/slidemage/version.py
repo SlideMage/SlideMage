@@ -1837,6 +1837,8 @@ v5.14.1 (2026-10-04, found by the layout check on the SlideMage manual): two fra
 v5.14.2 (2026-10-04, direct report): "Archive unused content" finds everything in one run. Images were judged against every slide file, including the slides archived in the same run, so an image only such a slide used survived until the next click (screenshot-jcr-science-journal-profile-2023.png, used only by the archived uwj). Now only slides that stay in use keep their images -- this includes frozen versions no deck pins, which are archived anyway.
 
 v5.15.0 (2026-10-04, direct instruction): the compile progress label counts the passes a deck really needs. Every compile counts its LaTeX passes and remembers them per deck and job kind (instructor, during-course, after-course, presenter, per-chapter) in the project's .slidemage/compile_passes.json; the next compile of that deck shows "pass 3/6" instead of the fixed guess of 4 (3 without a bibliography), which stays for a deck compiled for the first time. Every SlideMage compile starts in a fresh build folder, so a deck's count only changes with its content. Not stored in the deck file: a compile writing into the deck would make an open deck editor refuse its next edit as "changed on disk".
+
+v5.15.1 (2026-10-04, direct instruction: "the visible edge counts"): tools/check_layout.py measures the Right Margin as the logo's visible right edge on the rendered page. It used the PDF's drawing list, which skipped a white shape with a dark outline (the SlideMage logo's front card) and a small text mark (MCI's "®"), and so put the margin 2.4pt (SlideMage) to 12.7pt (MCI) too far left. Measured right, every template's logo ends on the framework's own Right Margin, so nothing changes in the framework.
 """
 from __future__ import annotations
 
@@ -1846,7 +1848,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.15.0"
+VERSION_NUMBER = "v5.15.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

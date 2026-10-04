@@ -89,6 +89,32 @@ def is_white(color) -> bool:
     return color is not None and all(c > 0.985 for c in color)
 
 
+LOGO_DPI = 288
+
+
+def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float) -> float:
+    """The institute logo's visible right edge: the rightmost rendered pixel
+    in the top-right corner that differs from the page's corner colour.
+    Measured on pixels, not on the PDF's drawing list: a logo's outermost
+    shape can be a white card with a dark outline (SlideMage's own logo) or
+    a small text mark (MCI's "®"), and the drawing-list version skipped
+    both and put the margin 2.4pt (SlideMage) to 12.7pt (MCI) too far left."""
+    top = max(bar_bottom, 20.0)
+    clip = fitz.Rect(width - 60, 0, width, top)
+    pix = page.get_pixmap(dpi=LOGO_DPI, clip=clip, colorspace=fitz.csRGB, alpha=False)
+    samples, n = pix.samples, pix.n
+    background = samples[(pix.width - 1) * n:(pix.width - 1) * n + 3]   # top-right pixel
+
+    def differs(x: int, y: int) -> bool:
+        i = (y * pix.width + x) * n
+        return max(abs(samples[i + k] - background[k]) for k in range(3)) > 40
+
+    for x in range(pix.width - 1, -1, -1):
+        if any(differs(x, y) for y in range(pix.height)):
+            return clip.x0 + (x + 1) * 72 / LOGO_DPI
+    return width - 9.6
+
+
 class Page:
     """The measurable pieces of one page: frame chrome and body content."""
 
@@ -115,11 +141,8 @@ class Page:
         self.footer_top = min((d["rect"].y0 for d in feet), default=self.h)
         self.standard = self.slide_id is not None and 20 < self.bar_bottom < 30
 
-        # logo: the drawings/images in the top-right corner region
-        self.logo_right = max((d["rect"].x1 for d in drawings
-                               if d["rect"].x0 > self.w - 40 and d["rect"].y1 < self.bar_bottom + 1
-                               and d["rect"].x1 < self.w - 1 and not is_white(d.get("fill"))),
-                              default=self.w - 9.6)
+        # logo: its visible right edge, the Right Margin
+        self.logo_right = logo_visible_right(page, self.w, self.bar_bottom)
 
         self.items: list[tuple[str, fitz.Rect, str]] = []   # (kind, rect, label)
         self.footnotes: list[fitz.Rect] = []
