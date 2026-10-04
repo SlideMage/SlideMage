@@ -1204,7 +1204,9 @@ pixel-identical; everything below is what new slides should use.
   is `\SMCodeSize`. Write the files in ASCII (umlauts, dashes, `·`, `…` and
   `→` are mapped). The transcript shows the file as a code block, and the
   pre-render check reports a missing file. Name them after the slide:
-  `snippets/<slide id>-<n>.tex`.
+  `snippets/<slide id>-<n>.tex`. The panel is a box that holds everything it
+  draws (since v5.14.1), so beside text in `columns[T]` both start on the
+  Top Margin.
 - **`\SMCode{text}`, `\SMCmd{name}`** (since v5.13.0) -- code in running
   text: Fira Mono Regular at 90% (`\texttt` is the theme's Fira Mono Bold,
   heavy and wide next to the Fira Sans Light body text). `\SMCmd{slide}`
@@ -2399,6 +2401,28 @@ Inside `verbatim`/`lstlisting`, `\verb`, `\iffalse ... \fi`, `\ExplSyntaxOn`/`\m
 regions and macro-definition bodies the character checks are skipped. Not checked (needs a
 real TeX run): undefined macros, wrong argument counts, missing packages, anything that
 depends on macro expansion.
+
+### Layout check after a compile
+
+`tools/check_layout.py` measures a compiled PDF against the framework's margins
+(since v5.14.1 in this repository; it lived in the Slidemaster project before):
+
+```bash
+python tools/check_layout.py [--project DIR] [--checks top,coltop,...] deck.pdf
+```
+
+Per page it reports content that misses the Top Margin (`top`), a text column
+that starts below it beside a figure (`coltop`), content past the Left/Right
+Margin or into the footer (`left`, `right`, `bottom`), table rules longer than
+their text (`bleed`) and anything that moves between overlay steps (`jitter`).
+A slide exempts itself from a check with a comment line in its own file,
+`%% layout-check: skip top -- why` (several checks comma-separated, or `all`);
+the exemptions are read from the slide files of the PDF's project (`--project`,
+else the folder with `slide_ids.csv` above the PDF, else
+`$SLIDEMASTER_PROJECT`). Exit code 1 if anything is reported. The Right Margin
+is measured as the logo's right edge, about 1.5-2.4pt inside the framework's
+own Right Margin (`\gothamFrametitleRightpading` from the page edge), so a
+figure placed exactly on the framework's margin is reported by 1-2.5pt.
 
 ## Slide previews
 

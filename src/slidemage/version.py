@@ -1831,6 +1831,8 @@ v5.13.2 (2026-10-04, found in the SlideMage manual): the generated appendix's fo
 v5.13.3 (2026-10-04, found in the SlideMage manual): images placed with the v5.x figure helpers -- \\cornerfigure[width/height]{file}, besidefigure, \\fitfigure, \\sectionfigure -- are now seen by the image scan (alt_blocks.referenced_images(): the Images tab's slide list, `used_on`, takeaways, transcripts) and by the pre-render check's "image" rule. Before, an image placed only that way had no slide in its `used_on`. An argument containing a backslash is content (a block, an \\includegraphics), not a file.
 
 v5.14.0 (2026-10-04, found in the SlideMage manual's transcript): transcripts read the constructs a v5 slide uses. Inline code (\\SMCode, \\SMCmd, \\texttt) is verbatim -- escaped braces, \\textbackslash, "--" and "gap=12pt" survive, and adjacent spans join (`\\input{...}`). Maths: arrows, Greek letters and common symbols become characters, \\frac{a}{b} becomes a/b, \\SMUnderbrace{x}{label} becomes "x [label]". A \\tableofcontents lists the deck's chapters with their first slide numbers. A slide's own \\providecommand/\\newcommand macros are expanded. tikzillustration bodies are left to their description; figure-helper paths, \\shrinklists, \\fontsize, \\setcounter, \\ifnum...\\fi, overlay specifications and \\hyperlink targets no longer leak as text; \\progressstrip, \\SMWarningSign, \\quotesource, referenceblock, sideimageframe and \\begin{frame}[standout] are rendered; a table inside a table cell and "\\\\[1pt]" row ends no longer break a table. Framework: \\SMCode/\\SMCmd's font no longer applies TeX ligatures, so "--project" prints as typed.
+
+v5.14.1 (2026-10-04, found by the layout check on the SlideMage manual): two framework layout fixes, and the layout check moves here. \\SMCodeFile's panel is a \\colorbox around the listing instead of listings' own frame, which was drawn 4-8pt above the box it occupied, so a code panel stuck out over the Top Margin. In columns[T] a list at the top of a column now starts on the column's top, like one at the top of a minipage: a smaller list (\\shrinklists, \\small) used to keep \\@listi's 4pt \\topsep and start below a figure beside it -- Slidemaster slides with such a list at the top of a [T] column move up by that much, onto the Top Margin. tools/check_layout.py (from the Slidemaster project's .scripts/) works on any project (--project, or the folder with slide_ids.csv above the PDF); frames around code panels and pictures are no longer reported as table rules, and a slide with a \\progressstrip is not held to the Top Margin.
 """
 from __future__ import annotations
 
@@ -1840,7 +1842,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.14.0"
+VERSION_NUMBER = "v5.14.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

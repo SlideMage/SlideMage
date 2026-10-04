@@ -3466,11 +3466,16 @@
 % per-column \setkeys calls run inside the columns' hbox, where \ifvmode is false) and only
 % when the hook above applied its pull-up. A block as first content of a [T] column lands
 % ~7pt below its plain-frame position with this -- extra clearance, not a collision.
+% The column head also sets LaTeX's "top of a minipage" flag again (v5.14.1, found by
+% check_layout.py's `coltop` in the SlideMage manual): beamer opens each column with
+% \leavevmode, which clears it, so a list at the top of a [T] column kept its \topsep --
+% zero at normal size, but a smaller list (\shrinklists, \small) loads \@listi's 4pt and
+% started that much below a figure beside it that sat on the Top Margin.
 \newlength{\SMColumnsTTopCompensation}
 \setlength{\SMColumnsTTopCompensation}{13.76pt}
 \makeatletter
 \define@key{beamer@col}{T}[true]{%
-	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip}%
+	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip\@minipagetrue}%
 	\ifvmode
 		\ifnum0\ifdefined\SMColumnsAtTop\SMColumnsAtTop\fi=1
 			\vspace*{\SMColumnsTTopCompensation}%
@@ -6598,16 +6603,21 @@
 	keywordstyle=\color{c_primary_highlight},
 	morecomment=[l]\%, commentstyle=\color{c_primary_gray},
 	showstringspaces=false, upquote=true,
-	backgroundcolor=\color{c_tertiary_gray},
-	frame=single, rulecolor=\color{c_tertiary_gray}, framesep=3pt,
-	xleftmargin=3pt, xrightmargin=3pt,
 	breaklines=true, breakindent=1.5em,
 	aboveskip=0pt, belowskip=0pt,
 	literate={\\\%}{{\SMCodePercent}}2 {\\\\}{{\SMCodeNewline}}2 {ä}{{\"a}}1 {ö}{{\"o}}1 {ü}{{\"u}}1 {Ä}{{\"A}}1 {Ö}{{\"O}}1 {Ü}{{\"U}}1
 		{ß}{{\ss}}1 {é}{{\'e}}1 {–}{{--}}1 {—}{{---}}1 {·}{{$\cdot$}}1 {…}{{...}}1
 		{→}{{$\rightarrow$}}1,
 }
-\newcommand{\SMCodeFile}[2][]{\lstinputlisting[style=SMCode,#1]{#2}}
+% The panel is a \colorbox around the listing, not listings' own frame and
+% background: listings draws its frame outside the box it typesets, so a
+% panel stuck out above the top of its column by 4-8pt (depending on the font
+% size) and missed the Top Margin (v5.14.1, found by check_layout.py in the
+% SlideMage manual). The box holds everything it draws.
+\newcommand{\SMCodeFile}[2][]{\par\noindent{\setlength{\fboxsep}{3pt}%
+	\colorbox{c_tertiary_gray}{\begin{minipage}{\dimexpr\linewidth-2\fboxsep\relax}%
+		\lstinputlisting[style=SMCode,#1]{#2}%
+	\end{minipage}}}\par}
 
 % \SMCode{text} / \SMCmd{name} -- code in running text: Fira Mono Regular at
 % 90% (\texttt is the theme's Fira Mono Bold, which reads heavy and wide in a
