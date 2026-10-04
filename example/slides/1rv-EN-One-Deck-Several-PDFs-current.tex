@@ -11,23 +11,29 @@
 		{\scriptsize #2}
 	\end{tabular}}
 \begin{standardframe}{One deck, several PDFs}
+	\small
+	Students need the slides before a lecture, but without the answers to the
+	questions you ask; after the course they should get everything. Instead of
+	three decks, you keep one: each compile produces one \emph{deck version},
+	and the slides say what each version shows.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.4\linewidth}
+		\begin{column}{0.42\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item \textbf{instructor}: everything, every reveal step
-				\item \textbf{during-course}: for students at the start of term -- answers left out
-				\item \textbf{after-course}: for students at the end -- the final state, answers in
+				\item \textbf{instructor}: everything, step by step
+				\item \textbf{during-course}: answers left out
+				\item \textbf{after-course}: everything, all at once
 				\item Also: a \textbf{presenter} PDF with your notes, and after-course \textbf{per chapter}
-				\item The footer says which one you hold
+				\item The footer names the version
 			\end{itemize}
 		\end{column}
-		\begin{column}{0.58\linewidth}
+		\begin{column}{0.56\linewidth}
 			\centering
-			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-instructor-step1.png}}{instructor, first step} \hspace{4pt}
-			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-instructor-step4.png}}{instructor, last step}\\[4pt]
-			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-during-course-step1.png}}{during-course} \hspace{4pt}
-			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-after-course-step1.png}}{after-course}
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-instructor-step1.png}}{instructor, first step} \hspace{4pt}
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-instructor-step4.png}}{instructor, last step}\\[3pt]
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-during-course-step1.png}}{during-course} \hspace{4pt}
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-after-course-step1.png}}{after-course}
 		\end{column}
 	\end{columns}
 \end{standardframe}

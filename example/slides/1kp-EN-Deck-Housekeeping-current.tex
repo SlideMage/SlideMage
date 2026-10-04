@@ -3,13 +3,17 @@
 
 % SlideMage manual, chapter "Decks and deck versions": the deck-level tools.
 \begin{standardframe}{Deck housekeeping}
+	\small
+	A collection of decks grows every term. These tools keep it manageable;
+	none of them deletes anything -- what is archived can always be moved back.
+	\par\medskip
 	\shrinklists{1}
 	\begin{itemize}
-		\item \textbf{The workdeck}, \SMCode{decks/\#workdeck.tex}: your scratch deck for the slides you are working on, always on top of the table
+		\item \textbf{The workdeck}, \SMCode{decks/\#workdeck.tex}: your scratch deck, always at the top of the deck table
 		\item \textbf{Duplicate} copies a deck under a new name -- next term's course, say
-		\item \textbf{Archive} moves a finished deck to \SMCode{decks/archive/}; it stays compilable from the \emph{Archived decks} tab
-		\item \textbf{Course link}: the deck remembers its course page (\SMCode{\%\% SlideMage course URL:} in the deck); for a UNIGRAZonline course, \emph{Admin slides} makes a title slide and a table of the course sessions from it (\emph{Import sessions}: the table alone)
-		\item \textbf{Included in decks}: every slide file lists the decks that use it, kept up to date by SlideMage -- so you see what an edit affects
-		\item \emph{Housekeeping} $\rightarrow$ \emph{Archive unused content} moves slides and images no deck uses out of the way (nothing is deleted)
+		\item \textbf{Archive} moves a finished deck to \SMCode{decks/archive/}; the \emph{Archived decks} tab still compiles it
+		\item \textbf{Course link}: a deck can remember its course page; for a UNIGRAZonline course, \emph{Admin slides} makes a title slide and a table of the sessions from it
+		\item \textbf{Included in decks}: every slide file lists the decks that use it, so you see what an edit affects
+		\item Housekeeping $\rightarrow$ \emph{Archive unused content} moves slides and images no deck uses into \SMCode{archive/} folders
 	\end{itemize}
 \end{standardframe}

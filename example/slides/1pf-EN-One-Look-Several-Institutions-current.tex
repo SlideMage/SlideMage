@@ -13,20 +13,25 @@
 		{\scriptsize #2}
 	\end{tabular}}
 \begin{standardframe}{One look, several institutions}
+	\small
+	How a slide looks -- colors, logo, title bar, footer -- is set by a
+	\emph{template}, not by the slide. A deck names its template once, so one slide
+	appears in a different design in each deck -- below, one slide of this manual
+	under four templates.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.53\linewidth}
-			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage} \hspace{2pt}
-			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-uni-graz.png}}{University of Graz}\\[3pt]
-			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-mci.png}}{MCI} \hspace{2pt}
-			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-uni-ibk.png}}{University of Innsbruck}
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage} \hspace{2pt}
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-uni-graz.png}}{University of Graz}\\[3pt]
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-mci.png}}{MCI} \hspace{2pt}
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-uni-ibk.png}}{University of Innsbruck}
 		\end{column}
 		\begin{column}{0.44\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item A template is a small file: colors, logo, title and footer colors, then \SMCmd{input}\SMCode{\{Slidemaster\_preamble\_base\}}
-				\item A deck picks one; the slides stay the same
-				\item The SlideMage template comes with the app; for your own, copy one and change colors and logo
-				\item Colors have names, \SMCode{c\_<tier>\_<hue>} -- this template's:
+				\item A template is one small file, \SMCode{Slidemaster\_preamble\_<name>.tex}
+				\item SlideMage brings its own; for your institution, copy it and change colors and logo
+				\item Slides name colors, \SMCode{c\_<tier>\_<hue>}; the template fills them in. Here:
 			\end{itemize}
 			\smallskip
 			\begin{tikzpicture}[x=9.5pt, y=9.5pt]

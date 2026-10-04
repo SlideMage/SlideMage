@@ -4,24 +4,31 @@
 % SlideMage manual, chapter "Slides": the ID system, with the parts of this
 % slide's own file name labeled (\SMUnderbrace).
 \begin{standardframe}{Slide IDs}
+	\small
+	Every slide has a permanent ID of three characters. SlideMage makes it up
+	when you add the slide, and it never changes, whatever happens to the
+	slide's title or content -- so it is what you cite and link to. The file
+	name around the ID only describes the slide; this slide's file is:
+	\par\medskip
 	\centering
 	$\SMUnderbrace{\text{\SMCode{1cx}}}{ID}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{EN}}}{language}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{Slide-IDs}}}{slug}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{current}}}{version}\text{\SMCode{.tex}}$
-	\par\vspace{24pt}
+	\par\bigskip
 	\raggedright
-	\begin{columns}[t,onlytextwidth]
+	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.5\linewidth}
+			\shrinklists{1}
 			\begin{itemize}
-				\item Three characters, made by SlideMage when you add a slide -- never typed, never reused, without look-alikes (no \SMCode{l}/\SMCode{1}, \SMCode{o}/\SMCode{0})
-				\item Opaque on purpose: it survives every change of title or content
-				\item Starts with a letter; IDs starting with a digit are reserved for this manual (\SMCode{1..}) and demo slides (\SMCode{2..})
+				\item IDs avoid look-alike characters (no \SMCode{l}/\SMCode{1}, \SMCode{o}/\SMCode{0}) and are never reused
+				\item They start with a letter; IDs that start with a digit are reserved for this manual (\SMCode{1..}) and demo slides (\SMCode{2..})
+				\item \SMCode{slide\_ids.csv} registers every ID ever given
 			\end{itemize}
 		\end{column}
-		\begin{column}{0.47\linewidth}
+		\begin{column}{0.46\linewidth}
+			\shrinklists{1}
 			\begin{itemize}
-				\item The ID is what you cite: it is in every footer, in \emph{Find slide}, in \SMCmd{hyperlink}\SMCode{\{1cx\}}
-				\item The slug is only a label (\emph{Rename slide} changes it everywhere)
-				\item \SMCode{slide\_ids.csv} registers every ID ever given
-				\item One slide, any number of decks
+				\item The ID is in every slide's footer, \emph{Find slide} looks it up, and \SMCmd{hyperlink}\SMCode{\{1cx\}\{...\}} links to the slide
+				\item The \emph{slug} is a label only: \emph{Rename slide} changes it in every deck
+				\item One slide can be part of any number of decks
 			\end{itemize}
 		\end{column}
 	\end{columns}

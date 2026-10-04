@@ -5,11 +5,17 @@
 % workflow, as a described diagram (\tikzillustration; also the example on
 % slide 1pn, "Describing diagrams").
 \begin{standardframe}{Framework, project and app}
+	\small
+	SlideMage keeps every slide in a small LaTeX file of its own and builds decks
+	from these slides. Three parts work together: the \emph{framework} decides how
+	a slide looks, your \emph{project} holds the content, and the \emph{app} does
+	the bookkeeping and runs LaTeX for you.
+	\par\medskip
 	\begin{tikzillustration}[
 			part/.style={draw=c_primary_dark, line width=0.6pt, fill=white, rounded corners=2pt,
-				text width=108pt, minimum height=74pt, align=left, inner sep=6pt, anchor=north west, font=\small,
+				text width=108pt, minimum height=62pt, align=left, inner sep=5pt, anchor=north west, font=\footnotesize,
 				execute at begin node={\hyphenpenalty=10000\exhyphenpenalty=10000}},
-			wstep/.style={fill=c_tertiary_gray, rounded corners=2pt, inner sep=4pt, font=\small},
+			wstep/.style={fill=c_tertiary_gray, rounded corners=2pt, inner sep=3pt, font=\footnotesize},
 		]{1ym-tikz}
 		\node[part] (fw) at (0,0) {\textbf{LaTeX framework}\\[2pt]
 			\SMCode{latex/}: the Gotham theme, the base preamble, the templates};
@@ -20,13 +26,13 @@
 		\draw[gotham arrow, c_primary_highlight, thick] (fw.east) -- (pj.west);
 		\draw[gotham arrow, c_primary_highlight, thick] (app.west) -- (pj.east);
 		% the workflow
-		\node[wstep, anchor=west] (s1) at (0,-110pt) {write slides};
+		\node[wstep, anchor=west] (s1) at (0,-84pt) {write slides};
 		\node[wstep, right=12pt of s1] (s2) {assemble decks};
 		\node[wstep, right=12pt of s2] (s3) {compile the deck versions};
 		\node[wstep, right=12pt of s3] (s4) {hand out PDFs, transcripts};
 		\foreach \a/\b in {s1/s2, s2/s3, s3/s4} \draw[gotham arrow, thick] (\a.east) -- (\b.west);
 	\end{tikzillustration}
-	\vspace{12pt}
-
-	{\small Compiling means LuaLaTeX through \SMCode{latexmk} (SlideMage does that for you) -- never a bare \SMCode{lualatex}, which skips the reruns and the bibliography.\par}
+	\par\medskip
+	Compiling means LuaLaTeX through \SMCode{latexmk}, which SlideMage starts for
+	you; a bare \SMCode{lualatex} would skip the repeated runs and the bibliography.
 \end{standardframe}

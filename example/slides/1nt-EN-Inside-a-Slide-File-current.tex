@@ -6,15 +6,21 @@
 % \setSlideVersion below is real: it is what puts "v1.0.0EN" into the footer.
 \setSlideVersion{1-0-0}
 \begin{standardframe}{Inside a slide file, and its footer}
+	\small
+	A slide file holds exactly one frame -- the slide -- and a few comment lines.
+	Lines that start with \SMCode{\%\%} belong to SlideMage, which keeps them up
+	to date; everything else is yours. The footer tells every reader which slide,
+	version and deck they are looking at.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.52\linewidth}
 			\SMCodeFile{snippets/1nt-1.tex}
 		\end{column}
 		\begin{column}{0.45\linewidth}
+			\shrinklists{1}
 			\begin{itemize}
-				\item The \SMCode{\%\%} lines are SlideMage's: which decks use the slide, and its translations
-				\item \SMCmd{setSlideVersion}: written by SlideMage when you save a new version
-				\item One frame per file
+				\item \SMCode{\%\%} lines: the decks that use the slide; a translation also names its original
+				\item \SMCmd{setSlideVersion}: written when you save a new version
 			\end{itemize}
 		\end{column}
 	\end{columns}

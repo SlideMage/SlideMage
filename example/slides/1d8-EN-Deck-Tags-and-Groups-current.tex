@@ -4,19 +4,25 @@
 % SlideMage manual, chapter "Decks and deck versions": the tagging system,
 % with SlideMage's deck table and Tags dialog (tools/manual/make_screenshots.py).
 \begin{standardframe}{Deck tags and groups}
+	\small
+	The main window sorts your decks into groups -- course decks, research
+	talks, test decks, with the workdeck on top -- so a long list stays easy to
+	scan. A deck's group is a tag kept in the deck file itself, so it travels
+	with the deck.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.55\linewidth}
-			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-table.png}}}\par\medskip
-			\SMCmd{decktags}\SMCode{\{course\}} -- just before \SMCode{\textbackslash begin\{document\}}; inert for LaTeX
+		\begin{column}{0.52\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-table.png}}}\par\smallskip
+			{\footnotesize\SMCmd{decktags}\SMCode{\{course\}}, just before \SMCode{\textbackslash begin\{document\}}; LaTeX ignores it\par}
 		\end{column}
-		\begin{column}{0.42\linewidth}
+		\begin{column}{0.45\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item The group tags \SMCode{work}, \SMCode{course}, \SMCode{research}, \SMCode{test} put a deck under that heading in the deck tables (click a heading to fold it)
-				\item No group tag: a course deck; several: the first in that order wins
-				\item Set it with the row's \emph{Tags} button (or when duplicating), never by file name
+				\item The tags \SMCode{work}, \SMCode{course}, \SMCode{research}, \SMCode{test} choose the group; click a group's heading to fold it
+				\item No group tag: a course deck
+				\item Set it with the row's \emph{Tags} button:
 			\end{itemize}
-			\includegraphics[width=0.66\linewidth]{media/screenshot-slidemage-tags-dialog.png}
+			\hspace*{\SMItemStep}\includegraphics[width=0.6\linewidth]{media/screenshot-slidemage-tags-dialog.png}
 		\end{column}
 	\end{columns}
 \end{standardframe}

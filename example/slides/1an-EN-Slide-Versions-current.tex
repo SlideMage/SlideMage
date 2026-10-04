@@ -4,16 +4,25 @@
 % SlideMage manual, chapter "Slides": versions, with SlideMage's save dialog
 % (media/screenshot-slidemage-save-dialog.png, tools/manual/make_screenshots.py).
 \begin{standardframe}{Slide versions}
-	\begin{itemize}
-		\item \SMCode{...-current.tex} is the live slide; \SMCode{...-v1-2-0.tex} files are frozen snapshots, never edited again
-		\item Every \emph{Save} in SlideMage's slide editor asks:
-	\end{itemize}
-	\smallskip
-	\hspace*{\SMItemStep}{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=0.55\linewidth]{media/screenshot-slidemage-save-dialog.png}}}
-	\smallskip
-	\begin{itemize}
-		\item Major, Minor, Patch: the old content is frozen first, then the new one gets the higher number; \emph{Overwrite}: just save (a typo)
-		\item A reveal-only change is a patch; the first version is 1.0.0
-		\item A deck can pin a version: \SMCmd{slideversion}\SMCode{\{1an-EN-Slide-Versions\}\{1-0-0\}}
-	\end{itemize}
+	\small
+	A slide used in several courses changes over the years, but last year's deck
+	should still compile as it was. So SlideMage keeps old versions: the file
+	\SMCode{...-current.tex} is the live slide, and every \SMCode{...-v1-2-0.tex}
+	beside it is a frozen copy that is never edited again. Each \emph{Save} in the
+	slide editor asks how big the change is:
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.5\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-save-dialog.png}}}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \emph{Major}, \emph{Minor}, \emph{Patch}: the old content is frozen first, then the new one gets the higher number
+				\item \emph{Overwrite}: just save, for a typo
+				\item A change to reveal steps only is a patch
+				\item A deck can keep using an old version with \SMCmd{slideversion} (see \emph{Six ways to put a slide into a deck})
+			\end{itemize}
+		\end{column}
+	\end{columns}
 \end{standardframe}
