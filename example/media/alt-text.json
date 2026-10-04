@@ -6,8 +6,9 @@
       "status": "auto",
       "short": "",
       "long": "",
-      "source": "",
+      "source": "Own illustration.",
       "takeaway_default": "",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1j2": {}
       }
@@ -15,287 +16,342 @@
     "media/correlation-matrix-example.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "A correlation matrix showing pairwise correlations between 30 DJIA stocks, with values ranging from -1 to 1.",
+      "long": "This is a correlation matrix showing the correlation coefficients between 30 DJIA stocks over 15 years, with values ranging from -1 to 1. The matrix contains 30 data series (one for each stock). The color scale at the bottom indicates that dark red represents -1 (perfect negative correlation), white represents 0 (no correlation), and dark blue represents 1 (perfect positive correlation). The average correlation is 0.21 as stated in the title. The matrix is symmetric, with the diagonal showing 1.0 for each stock's correlation with itself. The highest positive correlation observed is 0.87 (between JPM and GS), and the highest negative correlation observed is -0.69 (between CVX and AMZN). The matrix contains 900 correlation values in total, but not all can be precisely read due to the small size of the cells. The values range from approximately -0.7 to 0.9, with most values falling between -0.3 and 0.5.",
+      "source": "Own illustration, data from Yahoo! Finance, 24.02.2026.",
+      "takeaway_default": "This image demonstrates the low average correlation (0.21) between DJIA stocks over 15 years, showing that while some pairs have strong positive or negative correlations, most have weak correlations, which is important for understanding portfolio diversification.",
+      "drafted_by": "qwen3-vl:32b",
+      "short_de": "Eine Korrelationsmatrix, die paarweise Korrelationen zwischen 30 Aktien des DJIA zeigt, wobei die Werte von -1 bis 1 reichen.",
+      "long_de": "Dies ist eine Korrelationsmatrix, die die Korrelationskoeffizienten zwischen 30 DJIA-Aktien über einen Zeitraum von 15 Jahren darstellt, wobei die Werte von -1 bis 1 reichen. Die Matrix enthält 30 Datensätze (einen für jede Aktie). Die Farbskala am unteren Rand zeigt, dass dunkles Rot -1 (perfekte negative Korrelation) darstellt, Weiß 0 (keine Korrelation) und dunkles Blau 1 (perfekte positive Korrelation). Die durchschnittliche Korrelation beträgt 0,21, wie im Titel angegeben. Die Matrix ist symmetrisch, wobei die Diagonale für jede Aktie eine Korrelation von 1,0 mit sich selbst anzeigt. Die höchste beobachtete positive Korrelation beträgt 0,87 (zwischen JPM und GS), und die höchste beobachtete negative Korrelation beträgt -0,69 (zwischen CVX und AMZN). Die Matrix enthält insgesamt 900 Korrelationswerte, aber nicht alle können aufgrund der geringen Größe der Zellen präzise abgelesen werden. Die Werte reichen von etwa -0,7 bis 0,9, wobei die meisten Werte zwischen -0,3 und 0,5 liegen.",
+      "takeaway_default_de": "Dieses Bild veranschaulicht die geringe durchschnittliche Korrelation (0,21) zwischen den Aktien des DJIA über einen Zeitraum von 15 Jahren. Es zeigt, dass zwar einige Aktienpaare eine starke positive oder negative Korrelation aufweisen, die meisten jedoch eine schwache Korrelation haben, was für das Verständnis der Portfoliodiversifizierung wichtig ist.",
+      "translated_from_hash": "ef325ca61779",
       "used_on": {
+        "1c9": {},
         "1rb": {},
         "ZZP": {}
       }
     },
     "media/illustration-slide-stack-portrait.pdf": {
-      "role": "informative",
+      "role": "decorative",
       "status": "auto",
       "short": "",
       "long": "",
-      "source": "",
+      "source": "Own illustration.",
       "takeaway_default": "",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
-        "1vh": {}
+        "1vh": {},
+        "1y9": {}
       }
     },
     "media/illustration-slidemage-splash.pdf": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "The SlideMage logo, a stack of slide cards, above the name SlideMage and the line \"Slides as building blocks\", on a dark background.",
+      "long": "A full-slide dark gray image. In its upper half, the SlideMage logo: three overlapping white slide cards with black outlines, the front one showing a dark title bar, a yellow circle in its corner and two lines of text with yellow bullets. Below the logo the word SlideMage in large white bold letters, underlined by a short yellow bar, and below that, in light gray, the line \"Slides as building blocks\".",
+      "source": "Own illustration.",
+      "takeaway_default": "A full-bleed slide shows only its image, filling the whole slide.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1vk": {}
       }
     },
-    "media/screenshot-slide-gallery-figureframe.pdf": {
+    "media/screenshot-slide-appendix-grid.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "A page of the generated appendix: small previews of the slides of the chapter \"Frame types\" in a grid.",
+      "long": "A slide titled \"Frame types\" holding eleven small slide previews in rows of five: the chapter divider, the gallery, the standardframe slide, the code slide, the quote, the full-bleed image, the figure, side image, highlight and standout slides, and the step-strip slide. Each preview is a link to its slide.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "The generated appendix shows every slide as a clickable preview.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1kg": {}
+      }
     },
     "media/screenshot-slide-gallery-figureframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-fullbleedframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a figure slide of this manual.",
+      "long": "A reduced picture of a figure slide of this manual: a correlation matrix chart on the left and a code panel on the right. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a figure slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-fullbleedframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-highlightframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a full-bleed image slide of this manual.",
+      "long": "A reduced picture of a full-bleed image slide of this manual: nothing but the SlideMage logo image on a dark background, filling the whole slide. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a full-bleed image slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-highlightframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-quoteframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a presenter-attention slide of this manual.",
+      "long": "A reduced picture of a presenter-attention slide of this manual: a gray title bar and gray footer instead of the usual dark ones, with bullets and two code panels. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a presenter-attention slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-quoteframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-sectionframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a quote slide of this manual.",
+      "long": "A reduced picture of a quote slide of this manual: a large dark box with a quotation in italics and its author's name below it. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a quote slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-sectionframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-sideimageframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a chapter divider of this manual.",
+      "long": "A reduced picture of a chapter divider of this manual: a tall dark title bar reading \"The big picture\", the chapter's slide titles as two short lists below it, and a portrait image of stacked slide cards on the right. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a chapter divider looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-sideimageframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-standardframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a slide with a side image of this manual.",
+      "long": "A reduced picture of a slide with a side image of this manual: a bullet list and a code panel on the left, and a portrait image of stacked slide cards along the whole right edge. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a slide with a side image looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-standardframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-standout.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a standard slide of this manual.",
+      "long": "A reduced picture of a standard slide of this manual: the title \"The default frame: standardframe\", a bullet list on the left and a gray code panel on the right. It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a standard slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-standout.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slide-gallery-titleframe.pdf": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of a standout slide of this manual.",
+      "long": "A reduced picture of a standout slide of this manual: a dark slide with the single sentence \"One slide, one statement\". It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what a standout slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
     "media/screenshot-slide-gallery-titleframe.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "Small picture of the title slide of this manual.",
+      "long": "A reduced picture of the title slide of this manual: a large dark box with the title SlideMage and the lines \"Manual and demonstration\" and \"SlideMage 5.12\". It is one of nine thumbnails in the gallery of frame types, each a link to the slide it shows.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "This is what the title slide looks like.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1td": {}
+      }
     },
-    "media/screenshot-slidemage-add-slide-dialog.png": {
+    "media/screenshot-slide-presenter.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "A presenter page: the slide on the left, its note on the right.",
+      "long": "A wide page split in two. The left half is the slide \"Frames that are one command\" with its four code panels. The right half is the notes panel: at the top a small breadcrumb, \"Frame types\" and below it \"Frames that are one command\", then the note text \"The headings are links to the four demo slides.\"",
+      "source": "A slide of this manual.",
+      "takeaway_default": "A presenter PDF puts each slide next to its notes.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1kg": {}
+      }
+    },
+    "media/screenshot-slide-template-mci.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Columns and tables\" in the MCI template.",
+      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the MCI template: a dark blue title bar and footer, the MCI logo, blue bullets and table rules. The content and layout are the same as in the other templates; only colours and logo differ.",
+      "source": "A slide of this manual, compiled with a template that is not part of SlideMage.",
+      "takeaway_default": "The same slide looks different only in colours and logo under each institution's template.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1pf": {}
+      }
+    },
+    "media/screenshot-slide-template-slidemage.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Columns and tables\" in the SlideMage template.",
+      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the SlideMage template: a dark title bar and footer, the SlideMage logo, blue bullets and blue table rules. The content and layout are the same as in the other templates; only colours and logo differ.",
+      "source": "Slides of this manual.",
+      "takeaway_default": "The same slide looks different only in colours and logo under each institution's template.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1pf": {}
+      }
+    },
+    "media/screenshot-slide-template-uni-graz.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Columns and tables\" in the University of Graz template.",
+      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the University of Graz template: a yellow title bar and footer, the Uni Graz logo, yellow bullets and yellow table rules. The content and layout are the same as in the other templates; only colours and logo differ.",
+      "source": "Slides of this manual.",
+      "takeaway_default": "The same slide looks different only in colours and logo under each institution's template.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1pf": {}
+      }
+    },
+    "media/screenshot-slide-template-uni-ibk.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Columns and tables\" in the University of Innsbruck template.",
+      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the University of Innsbruck template: a dark blue title bar and footer, the University of Innsbruck logo, orange bullets and blue table rules. The content and layout are the same as in the other templates; only colours and logo differ.",
+      "source": "A slide of this manual, compiled with a template that is not part of SlideMage.",
+      "takeaway_default": "The same slide looks different only in colours and logo under each institution's template.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1pf": {}
+      }
+    },
+    "media/screenshot-slide-version-after-course-step1.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Reveals that depend on the deck version\" as it appears in the after-course deck.",
+      "long": "A reduced picture of the slide \"Reveals that depend on the deck version\" in the after-course deck: all four bullets are visible at once, the solution included. The table on the right, comparing the reveal commands across the three deck versions, is the same in every version.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "The same slide shows different content in each deck version.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1rv": {}
+      }
+    },
+    "media/screenshot-slide-version-during-course-step1.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Reveals that depend on the deck version\" as it appears in the during-course deck.",
+      "long": "A reduced picture of the slide \"Reveals that depend on the deck version\" in the during-course deck: the question, the answer and the \\deckitem line are visible at once; the solution line is left out. The table on the right, comparing the reveal commands across the three deck versions, is the same in every version.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "The same slide shows different content in each deck version.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1rv": {}
+      }
+    },
+    "media/screenshot-slide-version-instructor-step1.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Reveals that depend on the deck version\" as it appears in the instructor deck, at the slide's first reveal step.",
+      "long": "A reduced picture of the slide \"Reveals that depend on the deck version\" in the instructor deck, at the slide's first reveal step: only the first bullet, \"A question for the class\", is visible next to the table. The table on the right, comparing the reveal commands across the three deck versions, is the same in every version.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "The same slide shows different content in each deck version.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1rv": {}
+      }
+    },
+    "media/screenshot-slide-version-instructor-step4.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide \"Reveals that depend on the deck version\" as it appears in the instructor deck, at the slide's last reveal step.",
+      "long": "A reduced picture of the slide \"Reveals that depend on the deck version\" in the instructor deck, at the slide's last reveal step: all four bullets are visible: the question, the answer, the \\deckitem line and the solution line. The table on the right, comparing the reveal commands across the three deck versions, is the same in every version.",
+      "source": "A slide of this manual.",
+      "takeaway_default": "The same slide shows different content in each deck version.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1rv": {}
+      }
     },
     "media/screenshot-slidemage-deck-editor-grid.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "The deck editor in Grid view: previews of this manual's slides, grouped by chapter.",
+      "long": "SlideMage's deck editor in Grid view: cards with a picture of each slide and its number and id-slug, such as \"1. 1jh-EN-Title-Slide\" and \"2. 1r2-EN-Contents\", under the heading \"(before first chapter)\", followed by the chapter heading \"The big picture\" and the first slides of that chapter.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "The Grid view shows the slides' previews.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1gu": {}
+      }
     },
     "media/screenshot-slidemage-deck-editor-list.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slidemage-deck-editor-thumbnails.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "The deck editor in List view, showing this manual's slides and chapters.",
+      "long": "SlideMage's deck editor for slidemage-manual. A toolbar with Refresh, Source, Transcript, Add section, Undo, Select all, a Quick navigation dropdown, a Find slide in deck field, Close, and the view choice List, Thumbnail, Grid. Below, one row per slide -- a checkbox, the slide's number, arrow buttons, the id-slug such as 1jh-EN-Title-Slide, a dropdown reading \"\\slide (current)\" and the buttons + before, + section, + after, Remove and Preview -- and a row per chapter, such as \"Section: The big picture\", with Rename, + section before, + slide here and Remove.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "The deck editor lists a deck's slides and chapters for editing.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1ti": {}
+      }
     },
     "media/screenshot-slidemage-deck-table.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "SlideMage's deck table, with the decks grouped under the heading \"Test decks\".",
+      "long": "The deck table of SlideMage's main window: column headings Deck, Instructor, During-course, After-course, After-course per chapter and Presenter; a folded group \"Research presentations (0)\" and an open group \"Test decks (5)\" with the decks slidemage-manual, test-slidemage, test-student, test and verify_accessibility, each with its checkboxes and buttons.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "Decks appear under the group their tag names.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1d8": {}
+      }
     },
     "media/screenshot-slidemage-images-tab.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "The Images tab with the figure slide's correlation chart selected.",
+      "long": "SlideMage's Images tab. A toolbar with the drafting model, Draft descriptions, Draft all, Tune prompt, Clear draft, the translation model, Translate all, the transcript version and Generate transcript. On the left a list of slides with images, such as \"1rb -- Figure only: figureframe\"; on the right that slide's image media/correlation-matrix-example.png with the role choice informative or decorative, the buttons Replace image, Save draft and Save and mark reviewed, and the image itself at full size.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "Images are described in the Images tab.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1ih": {}
+      }
     },
     "media/screenshot-slidemage-main-window.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slidemage-preferences.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "media/screenshot-slidemage-preview-popup.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "SlideMage's main window with the Active decks table.",
+      "long": "SlideMage's main window. At the top the menus System, Tabs, Housekeeping and Info, and on the right a Find slide field and a \"Search all slide texts\" button. The Active decks tab lists five test decks, slidemage-manual first, each row with checkboxes for Instructor, During-course, After-course, After-course per chapter and Presenter, and the buttons Open pdf, Source, Duplicate, Tags, Export PPTX and Archive. Below the table the buttons Create PDF, Create Transcript, Clear selection and Refresh decks; under them the checkboxes Include footer timestamp, Generate appendix TOC and Auto-open generated PDFs; at the bottom an empty log pane.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "The main window lists the decks and compiles them.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1ub": {}
+      }
     },
     "media/screenshot-slidemage-save-dialog.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "The Save slide dialog asking how significant the change is.",
+      "long": "A dialog reading \"Current version: untracked -- How significant is this change?\" with the buttons Major (to 2.0.0), Minor (to 1.1.0), Patch (to 1.0.1), Overwrite (no version tracked) and Cancel.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "Saving a slide asks for the size of the change and versions it.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1an": {}
       }
@@ -303,29 +359,38 @@
     "media/screenshot-slidemage-slide-editor.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "The slide editor with the source of the standardframe demo slide.",
+      "long": "SlideMage's slide editor for 1y8-EN-Standardframe-current.tex. Two toolbar rows: Save, Revert, Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide, Delete slide, a versions dropdown, the language EN with a Set button, Close and Close and save; then Preview, a Render version dropdown, Render to PDF and Render transcript. Below, a Transcript summary field, a formatting toolbar (italic, bold, underline, monospace, Source, Footnote, Text color, Insert list, Insert block, Insert command, Add reference to .bib, Insert citation), and the LaTeX source with line numbers and syntax colouring.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "The slide editor edits, renders and versions one slide.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1b6": {}
+      }
     },
     "media/screenshot-slidemage-tags-dialog.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "The Tags dialog: four choices for a deck's group.",
+      "long": "A small dialog: \"Group (the tag decides which section of the deck table it appears in):\" with four radio buttons -- Workdeck (pinned to the top of the table), Course deck, Research presentation, and the selected Test deck -- and the note \"Stored in the deck's own file as \\decktags{...}, so it stays with the deck.\", with OK and Cancel buttons.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "A deck's group is chosen in the Tags dialog.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1d8": {}
+      }
     },
     "media/screenshot-slidemage-transcript.png": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
+      "short": "The start of this manual's accessible transcript, as SlideMage shows it.",
+      "long": "SlideMage's transcript view: the heading \"slidemage-manual -- accessible transcript\", the deck and version (during-course), the number of slides, an introduction saying that the transcript reproduces the text of every slide with a description of every image, a warning about images not described yet, and the beginning of the entries \"Slide 1 -- SlideMage\" and \"Slide 2 -- Contents\", each with its slide ID.",
+      "source": "Screenshot of SlideMage 5.13.",
+      "takeaway_default": "A transcript is the deck's text and image descriptions for screen readers.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1az": {}
+      }
     },
     "schemes/scheme_uni_graz/Logo Uni Graz 4c-cropped.png": {
       "role": "decorative",
@@ -366,10 +431,11 @@
     "tikz:1gr-tikz": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "Diagram of a slide with its title bar, footer and the four margins drawn in.",
+      "long": "A scaled-down slide outline. A dark title bar labelled \\SMTitleBarBottomAlign across the top, a dark footer labelled \\SMFooterBoxHeight along the bottom. Dashed blue lines mark the Top Margin (\\SMContentTopAlign) below the title bar, the Bottom Margin (\\SMContentBottomAlign) above the footer, and the Left and Right Margins near the edges; a bullet and a gray line stand for the first line of text, sitting on the Top Margin.",
+      "source": "Own illustration.",
+      "takeaway_default": "The framework places content on fixed margins, which your own drawings can use too.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1gr": {}
       }
@@ -377,10 +443,11 @@
     "tikz:1t2-tikz": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "A small bar chart whose third, green bar appears only at reveal step 3.",
+      "long": "Two blue bars of increasing height on a gray base line; from the third reveal step on, a taller green bar labelled \"step 3\" appears to their right, without moving the other two.",
+      "source": "Own illustration.",
+      "takeaway_default": "A TikZ element can appear at a later step without moving the rest.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1t2": {}
       }
@@ -388,10 +455,11 @@
     "tikz:1u5-tikz": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "A small bar chart with one bar highlighted, a dotted guide line and an arrow labelled \"peak\".",
+      "long": "Five blue bars of different heights. The fourth and tallest bar is enclosed in a red rounded rectangle (the gotham highlight style); a red dotted line (gotham dotted highlight) runs from the left to the top of that bar, and a red arrow (gotham arrow) labelled \"peak\" points at it from the upper left.",
+      "source": "Own illustration.",
+      "takeaway_default": "The framework's TikZ styles mark a part of a chart.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1u5": {}
       }
@@ -399,10 +467,11 @@
     "tikz:1ym-tikz": {
       "role": "informative",
       "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
+      "short": "Diagram: the LaTeX framework, your project and the SlideMage app, and the workflow from writing slides to handing out PDFs.",
+      "long": "Three boxes side by side. \"LaTeX framework: latex/: the Gotham theme, the base preamble, the templates\" with an arrow to \"Your project: any folder with a slide_ids.csv: slides, decks, images\", and from the right \"SlideMage: the app: compiles decks, manages IDs, versions, images, transcripts\" with an arrow pointing to the project. Below, four steps joined by arrows: write slides, assemble decks, compile the deck versions, hand out PDFs and transcripts.",
+      "source": "Own illustration.",
+      "takeaway_default": "SlideMage works on a project of slides and decks with the LaTeX framework.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1ym": {}
       }

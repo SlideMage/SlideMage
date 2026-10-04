@@ -4,10 +4,10 @@
 % SlideMage manual, chapter "Decks and deck versions": the deck versions, with
 % the same slide (1th, "Reveals that depend on the deck version") cropped from
 % this manual compiled as each version (tools/manual/make_crops.py versions).
-\providecommand{\versioncrop}[2]{% crop name, caption
+\providecommand{\versioncrop}[2]{% image, caption
 	\begin{tabular}[t]{@{}c@{}}
 		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
-		\fcolorbox{c_primary_gray}{white}{\includegraphics[width=118pt]{media/screenshot-slide-version-#1.png}}}\\[-1pt]
+		\fcolorbox{c_primary_gray}{white}{#1}}\\[-1pt]
 		{\scriptsize #2}
 	\end{tabular}}
 \begin{standardframe}{One deck, several PDFs}
@@ -24,10 +24,10 @@
 		\end{column}
 		\begin{column}{0.58\linewidth}
 			\centering
-			\versioncrop{instructor-step1}{instructor, first step} \hspace{4pt}
-			\versioncrop{instructor-step4}{instructor, last step}\\[4pt]
-			\versioncrop{during-course-step1}{during-course} \hspace{4pt}
-			\versioncrop{after-course-step1}{after-course}
+			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-instructor-step1.png}}{instructor, first step} \hspace{4pt}
+			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-instructor-step4.png}}{instructor, last step}\\[4pt]
+			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-during-course-step1.png}}{during-course} \hspace{4pt}
+			\versioncrop{\includegraphics[width=118pt]{media/screenshot-slide-version-after-course-step1.png}}{after-course}
 		\end{column}
 	\end{columns}
 \end{standardframe}

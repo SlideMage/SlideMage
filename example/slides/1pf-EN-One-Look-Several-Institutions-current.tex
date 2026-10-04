@@ -6,19 +6,19 @@
 % templates are not part of SlideMage; the crops were made once in a project
 % that has them). The colour strip is live: it shows the palette of the
 % template this deck uses.
-\providecommand{\templatecrop}[2]{% file name part, caption
+\providecommand{\templatecrop}[2]{% image, caption
 	\begin{tabular}[t]{@{}c@{}}
 		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
-		\fcolorbox{c_primary_gray}{white}{\includegraphics[width=108pt]{media/screenshot-slide-template-#1.png}}}\\[-1pt]
+		\fcolorbox{c_primary_gray}{white}{#1}}\\[-1pt]
 		{\scriptsize #2}
 	\end{tabular}}
 \begin{standardframe}{One look, several institutions}
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.53\linewidth}
-			\templatecrop{slidemage}{SlideMage} \hspace{2pt}
-			\templatecrop{uni-graz}{University of Graz}\\[3pt]
-			\templatecrop{mci}{MCI} \hspace{2pt}
-			\templatecrop{uni-ibk}{University of Innsbruck}
+			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage} \hspace{2pt}
+			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-uni-graz.png}}{University of Graz}\\[3pt]
+			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-mci.png}}{MCI} \hspace{2pt}
+			\templatecrop{\includegraphics[width=108pt]{media/screenshot-slide-template-uni-ibk.png}}{University of Innsbruck}
 		\end{column}
 		\begin{column}{0.44\linewidth}
 			\shrinklists{1}

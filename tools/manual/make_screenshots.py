@@ -28,10 +28,7 @@ from PySide6.QtGui import QFont  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget  # noqa: E402
 
-from slidemage import deck_scan, qt_gui, slide_snapshot, transcript, updater  # noqa: E402
-from slidemage.qt_add_slide_dialog import AddSlideDialog  # noqa: E402
-from slidemage.qt_settings_dialog import SettingsDialog  # noqa: E402
-from slidemage.qt_slide_preview_popup import SlidePreviewPopup  # noqa: E402
+from slidemage import deck_scan, qt_gui, slide_snapshot, transcript  # noqa: E402
 
 MEDIA = EXAMPLE / "media"
 MANUAL = "slidemage-manual"
@@ -101,35 +98,25 @@ def main() -> int:
 
     deck = next(d for d in deck_scan.scan_decks() if d.name == MANUAL)
 
-    # 2-4. the deck editor in its three views
+    # 2-3. the deck editor, List and Grid view
     window.open_deck_editor(deck)
     settle(app)
     editor = window.tabs.currentWidget()
     save(window, "deck-editor-list", down_to=window.tabs)
-    editor.thumbnail_view_radio.setChecked(True)
-    settle(app, 12)
-    save(window, "deck-editor-thumbnails", down_to=window.tabs)
     editor.grid_view_radio.setChecked(True)
     settle(app, 12)
     save(window, "deck-editor-grid", down_to=window.tabs)
     editor.list_view_radio.setChecked(True)
     settle(app)
 
-    # 5. the Add slide dialog, opened from the deck editor
-    dialog = AddSlideDialog(window, deck, insert_at=len(deck.text), indent="\t", return_to=editor)
-    dialog.show()
-    settle(app)
-    save(dialog, "add-slide-dialog")
-    dialog.close()
-
-    # 6. the slide editor on the standardframe demo slide
+    # 4. the slide editor on the standardframe demo slide
     slide = EXAMPLE / "slides" / "1y8-EN-Standardframe-current.tex"
     window.open_slide_editor(slide)
     settle(app)
     save(window, "slide-editor", down_to=window.tabs)
     source_tab = window.tabs.currentWidget()
 
-    # 7. the save dialog (version choice), grabbed instead of exec()'d
+    # 5. the save dialog (version choice), grabbed instead of exec()'d
     def grab_instead_of_exec(box: QMessageBox) -> int:
         box.show()
         settle(app)
@@ -143,19 +130,12 @@ def main() -> int:
     finally:
         QMessageBox.exec = original_exec
 
-    # 8. the preview popup for the same slide
-    popup = SlidePreviewPopup(window, "1y8", slide, template="slidemage")
-    popup.show()
-    settle(app, 12)
-    save(popup, "preview-popup")
-    popup.close()
-
-    # 9. the Images tab, on the figure slide
+    # 6. the Images tab, on the figure slide
     window.open_images_for_slide("1rb-EN-Figureframe")
     settle(app, 12)
     save(window, "images-tab", down_to=window.tabs)
 
-    # 10. a transcript of this manual, as SlideMage shows it
+    # 7. a transcript of this manual, as SlideMage shows it
     result = transcript.generate(deck.path, "during-course")
     tab = window.open_transcript_preview("manual", "Transcript: slidemage-manual (during-course)")
     tab.set_html(transcript.to_html(result, "slidemage-manual"))
@@ -163,21 +143,6 @@ def main() -> int:
     tab.browser.verticalScrollBar().setValue(0)
     settle(app)
     save(window, "transcript", down_to=window.tabs)
-
-    # 11. Preferences -- with an empty GitHub token field: the user's own
-    # token is neither shown nor touched (the field's save-on-edit signal is
-    # disconnected before anything could fire it)
-    original_saved_token = updater.saved_token
-    updater.saved_token = lambda: ""
-    try:
-        settings = SettingsDialog(window)
-        settings.github_token_edit.editingFinished.disconnect()
-        settings.show()
-        settle(app)
-        save(settings, "preferences")
-        settings.close()
-    finally:
-        updater.saved_token = original_saved_token
 
     window.close()
     return 0

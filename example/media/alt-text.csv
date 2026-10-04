@@ -1,45 +1,42 @@
 image,role,status_en,short_alt_en,source_en,status_de,short_alt_de,source_de
-media/chapter-logo-building-blocks.pdf,decorative,auto,,,auto,,
-media/correlation-matrix-example.png,informative,auto,,,auto,,
-media/illustration-slide-stack-portrait.pdf,informative,auto,,,auto,,
-media/illustration-slidemage-splash.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-figureframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-figureframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-fullbleedframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-fullbleedframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-highlightframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-highlightframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-quoteframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-quoteframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-sectionframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-sectionframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-sideimageframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-sideimageframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-standardframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-standardframe.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-standout.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-standout.png,informative,auto,,,auto,,
-media/screenshot-slide-gallery-titleframe.pdf,informative,auto,,,auto,,
-media/screenshot-slide-gallery-titleframe.png,informative,auto,,,auto,,
-media/screenshot-slidemage-add-slide-dialog.png,informative,auto,,,auto,,
-media/screenshot-slidemage-deck-editor-grid.png,informative,auto,,,auto,,
-media/screenshot-slidemage-deck-editor-list.png,informative,auto,,,auto,,
-media/screenshot-slidemage-deck-editor-thumbnails.png,informative,auto,,,auto,,
-media/screenshot-slidemage-deck-table.png,informative,auto,,,auto,,
-media/screenshot-slidemage-images-tab.png,informative,auto,,,auto,,
-media/screenshot-slidemage-main-window.png,informative,auto,,,auto,,
-media/screenshot-slidemage-preferences.png,informative,auto,,,auto,,
-media/screenshot-slidemage-preview-popup.png,informative,auto,,,auto,,
-media/screenshot-slidemage-save-dialog.png,informative,auto,,,auto,,
-media/screenshot-slidemage-slide-editor.png,informative,auto,,,auto,,
-media/screenshot-slidemage-tags-dialog.png,informative,auto,,,auto,,
-media/screenshot-slidemage-transcript.png,informative,auto,,,auto,,
+media/chapter-logo-building-blocks.pdf,decorative,auto,,Own illustration.,auto,,Own illustration.
+media/correlation-matrix-example.png,informative,auto,"A correlation matrix showing pairwise correlations between 30 DJIA stocks, with values ranging from -1 to 1.","Own illustration, data from Yahoo! Finance, 24.02.2026.",auto,"Eine Korrelationsmatrix, die paarweise Korrelationen zwischen 30 Aktien des DJIA zeigt, wobei die Werte von -1 bis 1 reichen.","Own illustration, data from Yahoo! Finance, 24.02.2026."
+media/illustration-slide-stack-portrait.pdf,decorative,auto,,Own illustration.,auto,,Own illustration.
+media/illustration-slidemage-splash.pdf,informative,auto,"The SlideMage logo, a stack of slide cards, above the name SlideMage and the line ""Slides as building blocks"", on a dark background.",Own illustration.,auto,,Own illustration.
+media/screenshot-slide-appendix-grid.png,informative,auto,"A page of the generated appendix: small previews of the slides of the chapter ""Frame types"" in a grid.",A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-figureframe.png,informative,auto,Small picture of a figure slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-fullbleedframe.png,informative,auto,Small picture of a full-bleed image slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-highlightframe.png,informative,auto,Small picture of a presenter-attention slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-quoteframe.png,informative,auto,Small picture of a quote slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-sectionframe.png,informative,auto,Small picture of a chapter divider of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-sideimageframe.png,informative,auto,Small picture of a slide with a side image of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-standardframe.png,informative,auto,Small picture of a standard slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-standout.png,informative,auto,Small picture of a standout slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-gallery-titleframe.png,informative,auto,Small picture of the title slide of this manual.,A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-presenter.png,informative,auto,"A presenter page: the slide on the left, its note on the right.",A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-template-mci.png,informative,auto,"The slide ""Columns and tables"" in the MCI template.","A slide of this manual, compiled with a template that is not part of SlideMage.",auto,,"A slide of this manual, compiled with a template that is not part of SlideMage."
+media/screenshot-slide-template-slidemage.png,informative,auto,"The slide ""Columns and tables"" in the SlideMage template.",Slides of this manual.,auto,,Slides of this manual.
+media/screenshot-slide-template-uni-graz.png,informative,auto,"The slide ""Columns and tables"" in the University of Graz template.",Slides of this manual.,auto,,Slides of this manual.
+media/screenshot-slide-template-uni-ibk.png,informative,auto,"The slide ""Columns and tables"" in the University of Innsbruck template.","A slide of this manual, compiled with a template that is not part of SlideMage.",auto,,"A slide of this manual, compiled with a template that is not part of SlideMage."
+media/screenshot-slide-version-after-course-step1.png,informative,auto,"The slide ""Reveals that depend on the deck version"" as it appears in the after-course deck.",A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-version-during-course-step1.png,informative,auto,"The slide ""Reveals that depend on the deck version"" as it appears in the during-course deck.",A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-version-instructor-step1.png,informative,auto,"The slide ""Reveals that depend on the deck version"" as it appears in the instructor deck, at the slide's first reveal step.",A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slide-version-instructor-step4.png,informative,auto,"The slide ""Reveals that depend on the deck version"" as it appears in the instructor deck, at the slide's last reveal step.",A slide of this manual.,auto,,A slide of this manual.
+media/screenshot-slidemage-deck-editor-grid.png,informative,auto,"The deck editor in Grid view: previews of this manual's slides, grouped by chapter.",Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-deck-editor-list.png,informative,auto,"The deck editor in List view, showing this manual's slides and chapters.",Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-deck-table.png,informative,auto,"SlideMage's deck table, with the decks grouped under the heading ""Test decks"".",Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-images-tab.png,informative,auto,The Images tab with the figure slide's correlation chart selected.,Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-main-window.png,informative,auto,SlideMage's main window with the Active decks table.,Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-save-dialog.png,informative,auto,The Save slide dialog asking how significant the change is.,Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-slide-editor.png,informative,auto,The slide editor with the source of the standardframe demo slide.,Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-tags-dialog.png,informative,auto,The Tags dialog: four choices for a deck's group.,Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
+media/screenshot-slidemage-transcript.png,informative,auto,"The start of this manual's accessible transcript, as SlideMage shows it.",Screenshot of SlideMage 5.13.,auto,,Screenshot of SlideMage 5.13.
 schemes/scheme_uni_graz/Logo Uni Graz 4c-cropped.png,decorative,auto,,,auto,,
 schemes/scheme_uni_graz/Logo Uni Graz 4c.png,decorative,auto,,,auto,,
 schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf,decorative,auto,,,auto,,
 schemes/scheme_uni_graz/Logo_Uni-Graz_4c.eps,decorative,auto,,,auto,,
-tikz:1gr-tikz,informative,auto,,,auto,,
-tikz:1t2-tikz,informative,auto,,,auto,,
-tikz:1u5-tikz,informative,auto,,,auto,,
-tikz:1ym-tikz,informative,auto,,,auto,,
+tikz:1gr-tikz,informative,auto,"Diagram of a slide with its title bar, footer and the four margins drawn in.",Own illustration.,auto,,Own illustration.
+tikz:1t2-tikz,informative,auto,"A small bar chart whose third, green bar appears only at reveal step 3.",Own illustration.,auto,,Own illustration.
+tikz:1u5-tikz,informative,auto,"A small bar chart with one bar highlighted, a dotted guide line and an arrow labelled ""peak"".",Own illustration.,auto,,Own illustration.
+tikz:1ym-tikz,informative,auto,"Diagram: the LaTeX framework, your project and the SlideMage app, and the workflow from writing slides to handing out PDFs.",Own illustration.,auto,,Own illustration.
 tikz:zzm-tikz,informative,auto,,,auto,,
