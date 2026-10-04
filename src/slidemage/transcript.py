@@ -795,7 +795,14 @@ _INLINE_MACROS = (
     (re.compile(r"\\underline\s*\{"), "**", "**"),
     (re.compile(r"\\(?:emph|textit)\s*\{"), "*", "*"),
     (re.compile(r"\\texttt\s*\{"), "`", "`"),
+    (re.compile(r"\\SMCode\s*\{"), "`", "`"),
+    (re.compile(r"\\SMCmd\s*\{"), "`" + "\x03", "`"),
 )
+# A literal backslash in the text (\textbackslash, \SMCmd{name}): parked as
+# \x03 while the inline conversion strips macro names, put back by
+# render_slide() once the whole body is converted.
+_BACKSLASH_SLOT = "\x03"
+_TEXTBACKSLASH_RE = re.compile(r"\\textbackslash(?![a-zA-Z])(?:\{\})?\s?")
 
 # Colour commands (v4.1.0, direct instruction): a transcript omits colour.
 # The command and its colour argument(s) go, the coloured text stays --
@@ -857,6 +864,7 @@ def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> 
 def _inline_markdown(text: str) -> str:
     """Inline-level LaTeX to Markdown. Recursive: macros nest."""
     text = _COLOR_COMMAND_RE.sub("", text)
+    text = _TEXTBACKSLASH_RE.sub(_BACKSLASH_SLOT, text)
     # \href{url}{label} -> [label](url)
     while True:
         match = _HREF_RE.search(text)
@@ -1094,7 +1102,8 @@ def render_slide(deck_slide: DeckSlide, version: str,
     body = _DECK_AGENDA_RE.sub("", body)
     has_chapter_agenda = bool(_CHAPTER_AGENDA_RE.search(body))
     body = _CHAPTER_AGENDA_RE.sub("\n\n" + _AGENDA_SLOT + "\n\n", body)
-    agenda_title = _inline_markdown(agenda_titles[0]).strip() if agenda_titles else ""
+    agenda_title = (_inline_markdown(agenda_titles[0]).strip().replace(_BACKSLASH_SLOT, "\\")
+                    if agenda_titles else "")
 
     slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
     if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
@@ -1138,8 +1147,9 @@ def render_slide(deck_slide: DeckSlide, version: str,
         number=deck_slide.number,
         slide_id=slide_id,
         title=title,
-        body=_unpark_code_files(_convert_body(body).strip(), code_blocks),
-        source=_inline_markdown(" ".join(sources)).strip(),
+        body=_unpark_code_files(
+            _convert_body(body).strip().replace(_BACKSLASH_SLOT, "\\"), code_blocks),
+        source=_inline_markdown(" ".join(sources)).strip().replace(_BACKSLASH_SLOT, "\\"),
         summary=notes.summary if notes else "",
         agenda_title=agenda_title,
         chapter_agenda=has_chapter_agenda,

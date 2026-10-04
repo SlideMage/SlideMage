@@ -34,3 +34,14 @@ def test_transcript_shows_the_code_file_as_a_code_block(tmp_path: Path, monkeypa
 
     html = transcript.markdown_to_html_body(entry.body)
     assert '<pre><code class="language-latex">\\begin{itemize}\n  \\item A &amp; B\n\\end{itemize}</code></pre>' in html
+
+
+def test_inline_code_keeps_its_backslash_in_the_transcript(tmp_path: Path):
+    path = tmp_path / "abc-EN-Inline-current.tex"
+    path.write_text(
+        "\\begin{standardframe}{Inline}\n\\begin{itemize}\n"
+        "\\item Use \\SMCmd{slide} and \\SMCode{c\\_secondary\\_blue}, or \\texttt{\\textbackslash pause}\n"
+        "\\end{itemize}\n\\end{standardframe}\n", encoding="utf-8")
+    entry = transcript.render_slide(transcript.DeckSlide(1, "abc", path, True), "during-course", {})
+    assert entry is not None
+    assert entry.body == "- Use `\\slide` and `c_secondary_blue`, or `\\pause`"

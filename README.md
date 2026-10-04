@@ -1205,6 +1205,11 @@ pixel-identical; everything below is what new slides should use.
   `→` are mapped). The transcript shows the file as a code block, and the
   pre-render check reports a missing file. Name them after the slide:
   `snippets/<slide id>-<n>.tex`.
+- **`\SMCode{text}`, `\SMCmd{name}`** (since v5.13.0) -- code in running
+  text: Fira Mono Regular at 90% (`\texttt` is the theme's Fira Mono Bold,
+  heavy and wide next to the Fira Sans Light body text). `\SMCmd{slide}`
+  prints `\slide`; the argument is typeset, so write `\_`, `\{`, `\}` as in
+  any text. The transcript shows both as `code`.
 - **`\SMTikzword{name}{text}`** -- a word as a named TikZ node, so an
   overlay arrow can point at it (`(name.south)`, ...) and follows it when the
   layout moves; transcripts keep the word.
@@ -2024,8 +2029,8 @@ link):
   the slides of the current `\section` in two columns, each entry a link to
   that slide -- its frame title, or the slug for a title-less frame unless
   the slide file sets `\SMAgendaTitle{text}` before its frame. Built from the
-  `.aux` like a table of contents (latexmk's rerun fills it in), in `\small`,
-  or `\footnotesize` when that doesn't fit (`\SMChapterAgendaMaxHeight`,
+  `.aux` like a table of contents (latexmk's rerun fills it in), in
+  `\normalsize`, else `\small`, else `\footnotesize`, the first that fits (`\SMChapterAgendaMaxHeight`,
   default: the room below a `sectionframe` title bar). A `\slidestep` slide
   is listed once; the agenda's own slide is not listed. `[width]` leaves
   room for a `\sectionfigure`. In the transcript it becomes the list of the

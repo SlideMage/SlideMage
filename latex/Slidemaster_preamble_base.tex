@@ -6609,6 +6609,15 @@
 }
 \newcommand{\SMCodeFile}[2][]{\lstinputlisting[style=SMCode,#1]{#2}}
 
+% \SMCode{text} / \SMCmd{name} -- code in running text: Fira Mono Regular at
+% 90% (\texttt is the theme's Fira Mono Bold, which reads heavy and wide in a
+% sentence of Fira Sans Light). \SMCmd{slide} prints \slide. The argument is
+% typeset, so write \_ \{ \} \# as in any text. The transcript shows both as
+% `code`.
+\newfontfamily\SMInlineCodeFont{FiraMono-Regular.otf}[Scale=0.9]
+\newcommand{\SMCode}[1]{{\SMInlineCodeFont #1}}
+\newcommand{\SMCmd}[1]{{\SMInlineCodeFont\textbackslash #1}}
+
 % Navigation for readers (2026-10-04, SlideMage manual: readers must find
 % their way without knowing that the logo is a hidden link). Three opt-in
 % pieces, each usable in any deck:
@@ -6618,7 +6627,8 @@
 %   slide's \SMAgendaTitle{...}, or else its slug with spaces). Meant for the
 %   body of a chapter's sectionframe (the manual puts one on every divider).
 %   [width] (default \linewidth) leaves room for e.g. a \sectionfigure. Set in
-%   \small, \footnotesize if that does not fit \SMChapterAgendaMaxHeight.
+%   \normalsize, else \small, else \footnotesize, the first that fits
+%   \SMChapterAgendaMaxHeight.
 %   Works from the .aux file like a table of contents: every slide writes
 %   \SMAgendaSlide{section}{id}{label} (in \setSlideID) and its frame title
 %   (\SMAgendaEntryTitle, in the frametitle hook), and the agenda shows what
@@ -6758,9 +6768,12 @@
 		\else
 			\setlength{\SM@ag@maxh}{\SMChapterAgendaMaxHeight}%
 		\fi
-		\SM@ag@typeset{#1}{\small}%
+		\SM@ag@typeset{#1}{\normalsize}%
 		\ifdim\dimexpr\ht\SM@ag@box+\dp\SM@ag@box\relax>\SM@ag@maxh
-			\SM@ag@typeset{#1}{\footnotesize}%
+			\SM@ag@typeset{#1}{\small}%
+			\ifdim\dimexpr\ht\SM@ag@box+\dp\SM@ag@box\relax>\SM@ag@maxh
+				\SM@ag@typeset{#1}{\footnotesize}%
+			\fi
 		\fi
 		\noindent\box\SM@ag@box\par
 	\fi
