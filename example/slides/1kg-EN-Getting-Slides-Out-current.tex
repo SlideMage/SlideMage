@@ -1,8 +1,27 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Working in SlideMage": the outputs. The two
+% crops are pages of this manual: a presenter page (of slide 1y3, which has a
+% note) and the generated appendix (tools/manual/make_crops.py).
 \begin{standardframe}{Getting slides out}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.47\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item The whole deck, or one PDF per chapter
+				\item \emph{Presenter}: every slide next to its notes (\SMCmd{note}) -- open it in a presenter app such as pympress
+				\item \emph{Export PPTX}: for PowerPoint's recording tools; a slide's reveal steps fade one after the other
+				\item \emph{Generate appendix TOC}: an agenda and a grid of clickable previews after the last slide
+				\item \SMCmd{deckoutputfolder}: where each PDF goes
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.5\linewidth}
+			\centering
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slide-presenter.png}}}\par
+			{\scriptsize a presenter page\par}\smallskip
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=0.58\linewidth]{media/screenshot-slide-appendix-grid.png}}}\par
+			{\scriptsize the appendix: a preview grid\par}
+		\end{column}
+	\end{columns}
 \end{standardframe}

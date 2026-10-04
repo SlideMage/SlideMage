@@ -1,8 +1,40 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, appendix: the commands a slide author uses (the audit of
+% Slidemaster_preamble_base.tex, 2026-10-03: everything else there is
+% internal).
+\providecommand{\qrhead}[1]{\par\smallskip{\color{c_primary_highlight}\textbf{#1}}\par}
 \begin{standardframe}{Quick reference: slide commands}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\fontsize{6.4}{7.6}\selectfont
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.32\linewidth}
+			\qrhead{Frames}
+			\SMCode{standardframe[c]}, \SMCode{sectionframe}, \SMCode{figureframe}, \SMCode{highlightframe}, \SMCode{sideimageframe\{title\}\{image\}}, \SMCode{frame[standout]}; \SMCmd{titleframe}\SMCode{\{\}\{\}}, \SMCmd{quoteframe}\SMCode{\{\}\{\}} with \SMCmd{quotesource}, \SMCmd{fullbleedframe}\SMCode{\{image\}}
+			\qrhead{Before a frame}
+			\SMCmd{chapterlogo}\SMCode{\{image\}}, \SMCmd{sidefootnotes}, \SMCmd{SMFinalStateForStudents}, \SMCmd{SMManualTopMargin}, \SMCmd{SMAgendaTitle}\SMCode{\{text\}}; \SMCmd{setSlideVersion} is SlideMage's
+			\qrhead{Figures}
+			\SMCmd{cornerfigure}\SMCode{[keys]\{\}}, \SMCode{besidefigure}, \SMCmd{fitfigure}, \SMCmd{figurecenter}, \SMCmd{sectionfigure}, style \SMCode{SMImageBorder}, \SMCmd{SMMugshot}
+		\end{column}
+		\begin{column}{0.32\linewidth}
+			\qrhead{Text}
+			\SMCmd{source}, \SMCmd{footnote}, \SMCmd{fullcite}, \SMCmd{multilingualtext}\SMCode{\{en\}\{de\}}, \SMCmd{SMCode}, \SMCmd{SMCmd}, \SMCmd{SMCodeFile}, \SMCmd{EUR}, \SMCmd{SMUnderbrace}, \SMCmd{SMTikzword}, \SMCmd{SMTikzmark}, \SMCmd{SMWarningSign}, \SMCmd{SMLineTop}, \SMCmd{note}
+			\qrhead{Lists}
+			\SMCmd{tallitem}\SMCode{[1.5]}, \SMCmd{tallitemnobullet}, \SMCode{\textbackslash item[\textbackslash SMBulletEllipsis]}, \SMCmd{SMBulletEllipsisScript}; \SMCode{gothamnumitemize}, \SMCode{gothamalphaitemize}, \SMCode{...perioditemize} and \SMCmd{SMNumItem}, \SMCmd{SMAlphaItem}, \SMCmd{SMNumPeriodItem}, \SMCmd{SMAlphaPeriodItem}; \SMCmd{shrinklists}\SMCode{\{1|2\}}, \SMCmd{SMTightDisplaySkips}
+			\qrhead{Blocks and tables}
+			\SMCode{block}, \SMCode{definitionblock}, \SMCode{exampleblock}, \SMCode{alertblock}, \SMCode{infoblock}, \SMCode{referenceblock}, \SMCode{gothamfloating...block}; \SMCode{gothamtable[gap=12pt]}
+		\end{column}
+		\begin{column}{0.32\linewidth}
+			\qrhead{Reveals}
+			\SMCmd{conditionalpause}\SMCode{[v]}, \SMCmd{deckitem}\SMCode{<n->}, \SMCmd{deckonly}, \SMCmd{deckuncover}, \SMCmd{deckvisible}, \SMCmd{deckreveal}\SMCode{(*)}, \SMCmd{deckrevealfinal}\SMCode{(*)}, \SMCmd{ifSMInstructorVersion} (and the other two)
+			\qrhead{Navigation}
+			\SMCmd{hyperlink}\SMCode{\{id\}\{\}}, \SMCmd{beamergotobutton}, \SMCmd{beamerreturnbutton}, \SMCmd{SMDeckAgenda}, \SMCmd{SMChapterAgenda}, \SMCmd{progressstrip}
+			\qrhead{Colours and drawing}
+			\SMCode{c\_<tier>\_<hue>}, \SMCode{SMHighlightColor}; TikZ styles \SMCode{gotham highlight}, \SMCode{gotham dotted highlight}, \SMCode{gotham arrow}; \SMCode{tikzillustration\{id\}}; layout lengths: slide \hyperlink{1gr}{\emph{spacing}}
+			\qrhead{Rarely}
+			\SMCmd{SMArtifactBegin}, \SMCmd{SMArtifactEnd}, \SMCmd{slideID}, \SMCmd{SMOrigHref}, \SMCmd{SMTocLabelFlushLeft}, \SMCmd{SMTocLabelExtraGap}, \SMCmd{SMEnumerateLabelFlushLeftShifted}
+			\par\smallskip
+			Anything else is internal.
+		\end{column}
+	\end{columns}
 \end{standardframe}

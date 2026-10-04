@@ -1,0 +1,423 @@
+{
+  "version": 2,
+  "images": {
+    "media/chapter-logo-building-blocks.pdf": {
+      "role": "decorative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1j2": {}
+      }
+    },
+    "media/correlation-matrix-example.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1rb": {},
+        "ZZP": {}
+      }
+    },
+    "media/illustration-slide-stack-portrait.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1vh": {}
+      }
+    },
+    "media/illustration-slidemage-splash.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1vk": {}
+      }
+    },
+    "media/screenshot-slide-gallery-figureframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-figureframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-fullbleedframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-fullbleedframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-highlightframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-highlightframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-quoteframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-quoteframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-sectionframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-sectionframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-sideimageframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-sideimageframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-standardframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-standardframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-standout.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-standout.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-titleframe.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slide-gallery-titleframe.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-add-slide-dialog.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-deck-editor-grid.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-deck-editor-list.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-deck-editor-thumbnails.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-deck-table.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-images-tab.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-main-window.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-preferences.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-preview-popup.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-save-dialog.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1an": {}
+      }
+    },
+    "media/screenshot-slidemage-slide-editor.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-tags-dialog.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "media/screenshot-slidemage-transcript.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "schemes/scheme_uni_graz/Logo Uni Graz 4c-cropped.png": {
+      "role": "decorative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "schemes/scheme_uni_graz/Logo Uni Graz 4c.png": {
+      "role": "decorative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf": {
+      "role": "decorative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "schemes/scheme_uni_graz/Logo_Uni-Graz_4c.eps": {
+      "role": "decorative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {}
+    },
+    "tikz:1gr-tikz": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1gr": {}
+      }
+    },
+    "tikz:1t2-tikz": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1t2": {}
+      }
+    },
+    "tikz:1u5-tikz": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1u5": {}
+      }
+    },
+    "tikz:1ym-tikz": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "1ym": {}
+      }
+    },
+    "tikz:zzm-tikz": {
+      "role": "informative",
+      "status": "auto",
+      "short": "",
+      "long": "",
+      "source": "",
+      "takeaway_default": "",
+      "used_on": {
+        "ZZM": {}
+      }
+    }
+  },
+  "slides": {}
+}

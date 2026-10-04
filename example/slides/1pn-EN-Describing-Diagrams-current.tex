@@ -1,8 +1,20 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Accessibility": describing TikZ diagrams. The
+% example is the diagram on slide 1ym, a real \tikzillustration.
 \begin{standardframe}{Describing diagrams}
 	\begin{itemize}
-		\item (to be written)
+		\item A drawing made in LaTeX has no image file to describe: wrap it in \SMCode{tikzillustration} with its own ID, \SMCode{<slide id>-tikz}
+		\item It then appears in the Images tab like an image (\SMCode{tikz:1ym-tikz}); SlideMage renders it for the AI draft
+		\item Example: the \hyperlink{1ym}{diagram on \emph{Framework, project and app}}
+	\end{itemize}
+	\medskip
+	\begin{minipage}{0.62\linewidth}
+		\SMCodeFile{snippets/1pn-1.tex}
+	\end{minipage}
+	\medskip
+	\begin{itemize}
+		\item Not for: a picture placed on the page (\SMCode{overlay}), a picture inside another one, or a mere border around one image -- that image has its own description
 	\end{itemize}
 \end{standardframe}

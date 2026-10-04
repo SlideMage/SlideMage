@@ -1,8 +1,33 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Decks and deck versions": the deck versions, with
+% the same slide (1th, "Reveals that depend on the deck version") cropped from
+% this manual compiled as each version (tools/manual/make_crops.py versions).
+\providecommand{\versioncrop}[2]{% crop name, caption
+	\begin{tabular}[t]{@{}c@{}}
+		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
+		\fcolorbox{c_primary_gray}{white}{\includegraphics[width=118pt]{media/screenshot-slide-version-#1.png}}}\\[-1pt]
+		{\scriptsize #2}
+	\end{tabular}}
 \begin{standardframe}{One deck, several PDFs}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \textbf{instructor}: everything, every reveal step
+				\item \textbf{during-course}: for students at the start of term -- answers left out
+				\item \textbf{after-course}: for students at the end -- the final state, answers in
+				\item Also: a \textbf{presenter} PDF with your notes, and after-course \textbf{per chapter}
+				\item The footer says which one you hold
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.58\linewidth}
+			\centering
+			\versioncrop{instructor-step1}{instructor, first step} \hspace{4pt}
+			\versioncrop{instructor-step4}{instructor, last step}\\[4pt]
+			\versioncrop{during-course-step1}{during-course} \hspace{4pt}
+			\versioncrop{after-course-step1}{after-course}
+		\end{column}
+	\end{columns}
 \end{standardframe}

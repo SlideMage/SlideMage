@@ -1,16 +1,23 @@
-"""Extract single slides from compiled decks as vector PDF pages ("crops")
-for the SlideMage manual: example/media/screenshot-slide-<name>.pdf, shown
-on the manual's slides like any other image (\\includegraphics).
+"""Render single slides of compiled decks as images ("crops") for the
+SlideMage manual: example/media/screenshot-slide-<name>.png, shown on the
+manual's slides like any other image (\\includegraphics).
+
+PNG at 4x the slide's point size (1814 px wide), not a vector PDF page: an
+embedded PDF page brings its text along, so the slide showing it would
+contain the cropped slide's footer -- "(slide id: ...)" -- before its own,
+and SlideMage's preview capture (slide_snapshot, first slide id in the page
+text) filed the gallery page as the title slide's preview; a screen reader
+would read every cropped slide's text, too.
 
 A slide is found by the slide id its footer prints ("(slide id: abc ...") --
 the title slide, which has no footer, by its invisible id stamp, which reads
 the same -- and, for a slide with several reveal steps, the last of its pages
-unless a step is given. Links and other annotations are dropped (they would
-point into the source PDF).
+unless a step is given.
 
     python tools/manual/make_crops.py gallery <compiled slidemage-manual.pdf>
     python tools/manual/make_crops.py versions <instructor.pdf> <during.pdf> <after.pdf>
     python tools/manual/make_crops.py one <pdf> <slide id> <name> [step]
+    python tools/manual/make_crops.py titled <pdf> <page title> <name>
 
 The manual's own slides are cropped from a compile of the manual itself (the
 crops then lag one compile behind the slides they show, like a table of
@@ -44,8 +51,14 @@ VERSIONS_SLIDE = "1th"
 
 
 def pages_of(doc: fitz.Document, slide_id: str) -> list[int]:
-    pattern = re.compile(r"\(slide id: " + re.escape(slide_id) + r"\b")
-    return [i for i, page in enumerate(doc) if pattern.search(page.get_text())]
+    # the page's first slide id, the way slide_snapshot reads it
+    first = re.compile(r"\(slide id: ([^\s|)]+)")
+    pages = []
+    for i, page in enumerate(doc):
+        match = first.search(page.get_text())
+        if match and match.group(1) == slide_id:
+            pages.append(i)
+    return pages
 
 
 def crop(doc: fitz.Document, slide_id: str, name: str, step: int | None = None) -> Path:
@@ -53,11 +66,8 @@ def crop(doc: fitz.Document, slide_id: str, name: str, step: int | None = None) 
     if not pages:
         raise SystemExit(f"slide {slide_id} not found in {doc.name}")
     index = pages[-1] if step is None else pages[step - 1]
-    out = fitz.open()
-    out.insert_pdf(doc, from_page=index, to_page=index, links=False, annots=False)
-    path = MEDIA / f"screenshot-slide-{name}.pdf"
-    out.save(path, garbage=4, deflate=True)
-    out.close()
+    path = MEDIA / f"screenshot-slide-{name}.png"
+    doc[index].get_pixmap(dpi=288).save(path)
     print(f"{path.name}  <- {Path(doc.name).name} page {index + 1}")
     return path
 
@@ -79,6 +89,15 @@ def main(argv: list[str]) -> int:
     elif mode == "one":
         doc = fitz.open(argv[1])
         crop(doc, argv[2], argv[3], int(argv[4]) if len(argv) > 4 else None)
+    elif mode == "titled":
+        # the first page whose text starts with a title, e.g. a generated
+        # appendix page (no slide id of its own): titled <pdf> <title> <name>
+        doc = fitz.open(argv[1])
+        index = next(i for i, page in enumerate(doc)
+                     if page.get_text().lstrip().startswith(argv[2]) and i > len(doc) // 2)
+        path = MEDIA / f"screenshot-slide-{argv[3]}.png"
+        doc[index].get_pixmap(dpi=288).save(path)
+        print(f"{path.name}  <- {Path(doc.name).name} page {index + 1}")
     else:
         print(__doc__)
         return 1

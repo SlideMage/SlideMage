@@ -1,8 +1,14 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Slides": the language system. The greeting below
+% is live \multilingualtext: it follows the deck's \decklanguage.
 \begin{standardframe}{Languages}
 	\begin{itemize}
-		\item (to be written)
+		\item Every slide's file name says its language: \SMCode{EN}, \SMCode{DE} or \SMCode{mult}; the footer shows it after the version (\SMCode{v1.2.0EN})
+		\item A deck has one language, \SMCmd{decklanguage}\SMCode{[en]} or \SMCode{[de]}: it also sets the transcript's language and course tables
+		\item A translation is a new slide, with its own ID, linked to the original: \emph{Add slide} $\rightarrow$ \emph{Base on existing slide}, or \emph{Duplicate slide} $\rightarrow$ in another language (optionally machine-translated)
+		\item A light slide holds both: \SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}} gives \emph{\multilingualtext{Hello}{Hallo}} in this deck
+		\item The slide editor's \emph{Language} control renames the files and rewrites every deck; \emph{Sync translation links} repairs the cross-references
 	\end{itemize}
 \end{standardframe}

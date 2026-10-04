@@ -1,0 +1,22 @@
+% !TeX program = lualatex
+\documentclass[aspectratio=169]{beamer}
+\usetheme{gotham}
+\makeatletter\def\input@path{{../}}\makeatother
+\graphicspath{{../}}
+\input{Slidemaster_preamble_slidemage}  % the template
+\usepackage[style=authoryear]{biblatex} % optional
+\addbibresource{Slidemaster.bib}
+\newcommand{\FooterText}{SlideMage Manual}
+\ifdefined\deckversionoverride          % set by SlideMage
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]
+\fi
+\decklanguage[en]
+\deckoutputfolder[after-course]{D:/Teaching/Handouts}
+%% SlideMage course URL: https://...
+\decktags{test}
+\begin{document}
+	\slide{1jh-EN-Title-Slide}
+	\section{The big picture}
+\end{document}

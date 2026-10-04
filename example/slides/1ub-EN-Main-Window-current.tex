@@ -1,8 +1,39 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Working in SlideMage": the main window, with
+% numbered callouts drawn over the screenshot (positions as fractions of the
+% image, so they stay put if the image is resized).
+\providecommand{\callout}[2]{\node[circle, fill=c_primary_highlight, text=white, inner sep=1pt, minimum size=9pt, font=\tiny\bfseries] at (#1) {#2};}
 \begin{standardframe}{The main window}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.66\linewidth}
+			\begin{tikzpicture}
+				\node[anchor=south west, inner sep=0pt] (shot) at (0,0) {\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-main-window.png}}};
+				\begin{scope}[x={(shot.south east)}, y={(shot.north west)}]
+					\callout{0.155,0.985}{1}
+					\callout{0.045,0.905}{2}
+					\callout{0.155,0.835}{3}
+					\callout{0.625,0.70}{4}
+					\callout{0.035,0.48}{5}
+					\callout{0.33,0.325}{6}
+					\callout{0.5,0.19}{7}
+					\callout{0.66,0.905}{8}
+				\end{scope}
+			\end{tikzpicture}
+		\end{column}
+		\begin{column}{0.31\linewidth}
+			\scriptsize
+			\begin{enumerate}
+				\item Menus: preferences, projects, tabs, housekeeping, updates
+				\item Tabs: decks; editors open here
+				\item A row per deck, a checkbox per version
+				\item PDF, source, duplicate, tags, PowerPoint, archive
+				\item \emph{Create PDF}: compile what is ticked
+				\item Timestamp; appendix with previews
+				\item The compile log
+				\item \emph{Find slide}; search all texts
+			\end{enumerate}
+		\end{column}
+	\end{columns}
 \end{standardframe}

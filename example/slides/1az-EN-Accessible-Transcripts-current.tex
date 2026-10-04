@@ -1,8 +1,24 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Accessibility": transcripts, with the transcript
+% of this manual as SlideMage shows it (tools/manual/make_screenshots.py).
 \begin{standardframe}{Accessible transcripts}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.55\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-transcript.png}}}\par
+			{\scriptsize this manual's transcript, during-course\par}
+		\end{column}
+		\begin{column}{0.42\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item Every slide's text plus the descriptions of its images, as HTML and Markdown -- for screen readers
+				\item For the student versions; same slides and numbers as the PDF
+				\item A German deck gets a German transcript
+				\item A slide can add a summary (slide editor)
+				\item Colour is left out; an image without a description is flagged where it is
+				\item The whole deck (\emph{Create Transcript}), or one slide as a preview
+			\end{itemize}
+		\end{column}
+	\end{columns}
 \end{standardframe}

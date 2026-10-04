@@ -1,8 +1,21 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "The big picture": the folders of a project.
 \begin{standardframe}{Anatomy of a project}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.5\linewidth}
+			\SMCodeFile{snippets/1jv-1.tex}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item A project is just a folder: \SMCode{slide\_ids.csv} marks its root, and SlideMage opens it (\SMCode{--project}, or it finds one)
+				\item The framework stays outside, in SlideMage's \SMCode{latex/}
+			\end{itemize}
+			\medskip
+			\begin{infoblock}{Generated, never edited}
+				\SMCode{pdf/}, \SMCode{.build/}, \SMCode{.previews/}, \SMCode{transcripts/}, \SMCode{media/alt-text.csv}
+			\end{infoblock}
+		\end{column}
+	\end{columns}
 \end{standardframe}

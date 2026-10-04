@@ -1,8 +1,28 @@
 %% Included in decks: slidemage-manual
 %%
 
+% SlideMage manual, chapter "Slides": the ID system, with the parts of this
+% slide's own file name labelled (\SMUnderbrace).
 \begin{standardframe}{Slide IDs}
-	\begin{itemize}
-		\item (to be written)
-	\end{itemize}
+	\centering
+	$\SMUnderbrace{\text{\SMCode{1cx}}}{ID}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{EN}}}{language}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{Slide-IDs}}}{slug}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{current}}}{version}\text{\SMCode{.tex}}$
+	\par\vspace{24pt}
+	\raggedright
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.5\linewidth}
+			\begin{itemize}
+				\item Three characters, made by SlideMage when you add a slide -- never typed, never reused, without look-alikes (no \SMCode{l}/\SMCode{1}, \SMCode{o}/\SMCode{0})
+				\item Opaque on purpose: it survives every change of title or content
+				\item Starts with a letter; IDs starting with a digit are reserved for this manual (\SMCode{1..}) and demo slides (\SMCode{2..})
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.47\linewidth}
+			\begin{itemize}
+				\item The ID is what you cite: it is in every footer, in \emph{Find slide}, in \SMCmd{hyperlink}\SMCode{\{1cx\}}
+				\item The slug is only a label (\emph{Rename slide} changes it everywhere)
+				\item \SMCode{slide\_ids.csv} registers every ID ever given
+				\item One slide, any number of decks
+			\end{itemize}
+		\end{column}
+	\end{columns}
 \end{standardframe}
