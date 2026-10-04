@@ -1,7 +1,8 @@
 """Progress of a PDF compile, derived from the log lines the compile already
 produces (2026-09-27, direct instruction: a thin progress bar at the top edge
 of the log window; 4 compile passes assumed, 3 for a deck without a
-bibliography; progress *within* a pass from the slide currently being
+bibliography -- since v5.15.0 the number the deck needed last time, see
+compile_passes.py; progress *within* a pass from the slide currently being
 typeset; also for single-slide renders and Update previews).
 
 No Qt in here -- `BatchProgress.feed(line)` is called by qt_gui.py's `_log()`
@@ -29,7 +30,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from . import latex_lint
+from . import compile_passes, latex_lint
 
 PASSES_WITH_BIBLIOGRAPHY = 4
 PASSES_WITHOUT_BIBLIOGRAPHY = 3
@@ -88,9 +89,10 @@ def count_job_slides(deck, version: Optional[str], chapter) -> int:
 
 
 def spec_for_job(job) -> JobSpec:
-    """JobSpec of a compiler.CompileJob."""
-    return JobSpec(passes_for(job.deck.uses_biblatex),
-                   count_job_slides(job.deck, job.version, job.chapter))
+    """JobSpec of a compiler.CompileJob: the passes this deck needed last
+    time (compile_passes), else the 4/3 guess."""
+    passes = compile_passes.expected(job) or passes_for(job.deck.uses_biblatex)
+    return JobSpec(passes, count_job_slides(job.deck, job.version, job.chapter))
 
 
 class BatchProgress:

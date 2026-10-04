@@ -377,6 +377,9 @@ alt-text-bakeoff.md
 # client -- not git -- carries it across machines; see dist/ above for the
 # identical git-ignored-but-not-sync-ignored precedent.
 **/.slidemage/app_settings.json
+# How many passes each deck's compile needed last time (compile_passes.py):
+# rewritten by compiles, only a progress estimate.
+**/.slidemage/compile_passes.json
 
 ## Scratch folder for source PDFs/pptx used while converting slides (large,
 ## machine-local, never meant to be committed).

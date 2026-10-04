@@ -1835,6 +1835,8 @@ v5.14.0 (2026-10-04, found in the SlideMage manual's transcript): transcripts re
 v5.14.1 (2026-10-04, found by the layout check on the SlideMage manual): two framework layout fixes, and the layout check moves here. \\SMCodeFile's panel is a \\colorbox around the listing instead of listings' own frame, which was drawn 4-8pt above the box it occupied, so a code panel stuck out over the Top Margin. In columns[T] a list at the top of a column now starts on the column's top, like one at the top of a minipage: a smaller list (\\shrinklists, \\small) used to keep \\@listi's 4pt \\topsep and start below a figure beside it -- Slidemaster slides with such a list at the top of a [T] column move up by that much, onto the Top Margin. tools/check_layout.py (from the Slidemaster project's .scripts/) works on any project (--project, or the folder with slide_ids.csv above the PDF); frames around code panels and pictures are no longer reported as table rules, and a slide with a \\progressstrip is not held to the Top Margin.
 
 v5.14.2 (2026-10-04, direct report): "Archive unused content" finds everything in one run. Images were judged against every slide file, including the slides archived in the same run, so an image only such a slide used survived until the next click (screenshot-jcr-science-journal-profile-2023.png, used only by the archived uwj). Now only slides that stay in use keep their images -- this includes frozen versions no deck pins, which are archived anyway.
+
+v5.15.0 (2026-10-04, direct instruction): the compile progress label counts the passes a deck really needs. Every compile counts its LaTeX passes and remembers them per deck and job kind (instructor, during-course, after-course, presenter, per-chapter) in the project's .slidemage/compile_passes.json; the next compile of that deck shows "pass 3/6" instead of the fixed guess of 4 (3 without a bibliography), which stays for a deck compiled for the first time. Every SlideMage compile starts in a fresh build folder, so a deck's count only changes with its content. Not stored in the deck file: a compile writing into the deck would make an open deck editor refuse its next edit as "changed on disk".
 """
 from __future__ import annotations
 
@@ -1844,7 +1846,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.14.2"
+VERSION_NUMBER = "v5.15.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -40,7 +40,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import appendix_toc, slide_snapshot
+from . import appendix_toc, compile_passes, slide_snapshot
 from .deck_scan import DOCUMENT_END_RE, GROUP_TAGS, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
@@ -594,7 +594,11 @@ def run_job(
             if cancel is not None:
                 cancel._set_process(proc)
             assert proc.stdout is not None
+            passes = 0
             for line in proc.stdout:
+                run = compile_passes.RUN_RE.match(line)
+                if run:
+                    passes = max(passes, int(run.group(1)))
                 log(line.rstrip("\n"))
             proc.wait()
         except FileNotFoundError:
@@ -626,6 +630,7 @@ def run_job(
             if on_relocated is not None:
                 on_relocated(False, pdf_source)
             return False
+        compile_passes.remember(job, passes)   # the next progress estimate
 
         output_dir.mkdir(parents=True, exist_ok=True)
         if not _mark_output_success(destination_key, generation):
