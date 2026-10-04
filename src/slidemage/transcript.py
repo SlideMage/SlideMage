@@ -19,6 +19,7 @@ Three requirements from the design, each of which is a correctness trap:
 """
 from __future__ import annotations
 
+import bisect
 import html as _html
 import re
 import shutil
@@ -74,6 +75,7 @@ _SLIDE_CALL_RE = re.compile(
     r"(?:\s*\{(?P<second>[^}]*)\})?"
 )
 
+_SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
 _DECK_VERSION_RE = re.compile(r"\\deckversion\s*\[([^\]]*)\]")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 
@@ -115,6 +117,8 @@ STRINGS = {
         "short_description_label": "**Short description.**",
         "full_description_label": "**Full description.**",
         "takeaway_label": "**Takeaway.**",
+        "chapter_agenda_label": "**This chapter's slides:**",
+        "chapter_agenda_item": "{title} (slide {n})",
     },
     "de": {
         "transcript_title": "{deck} — barrierefreies Transkript",
@@ -144,6 +148,8 @@ STRINGS = {
         "short_description_label": "**Kurzbeschreibung.**",
         "full_description_label": "**Vollständige Beschreibung.**",
         "takeaway_label": "**Erkenntnis.**",
+        "chapter_agenda_label": "**Die Folien dieses Kapitels:**",
+        "chapter_agenda_item": "{title} (Folie {n})",
     },
 }
 
@@ -173,6 +179,7 @@ class DeckSlide:
     slide_id: str
     path: Path
     included: bool       # False = counted for numbering but not in this version
+    chapter: int = 0     # how many \section{}s come before it (0 = front matter)
 
 
 @dataclass
@@ -197,6 +204,10 @@ class TranscriptSlide:
     # Free text authored in the slide-source editor (not tied to any one
     # image), shown before the slide's own body -- see alt_images.SlideNotes.
     summary: str = ""
+    # \SMAgendaTitle{...}: how chapter agendas list this slide
+    agenda_title: str = ""
+    # the body holds \SMChapterAgenda's placeholder (generate() fills it in)
+    chapter_agenda: bool = False
 
 
 # --------------------------------------------------------------------------
@@ -373,8 +384,10 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     text = _expand_literal_includes(source, deck_path, deck_dir, (deck_path.resolve(),))
     slides: list[DeckSlide] = []
     number = 0
+    section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
 
     for match in _SLIDE_CALL_RE.finditer(text):
+        chapter = bisect.bisect_left(section_starts, match.start())
         if match.group("ss_id") is not None:
             step_id = match.group("ss_id").strip()
             if not step_id or version not in _versions_from(match.group("ss_versions"), _ALL_VERSIONS):
@@ -385,6 +398,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
                 slide_id=step_id.partition("-")[0],
                 path=SLIDES_DIR / f"{step_id}-current.tex",
                 included=True,
+                chapter=chapter,
             ))
             continue
         command = match.group("cmd")
@@ -413,6 +427,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
             slide_id=slide_id.partition("-")[0],
             path=SLIDES_DIR / filename,
             included=included,
+            chapter=chapter,
         ))
     return slides
 
@@ -1000,6 +1015,16 @@ def _park_code_files(text: str) -> tuple[str, list[str]]:
     return _CODE_FILE_RE.sub(park, text), blocks
 
 
+# Navigation (Slidemaster_preamble_base.tex, "Navigation for readers"):
+# \SMChapterAgenda becomes the list of the chapter's slides (filled in by
+# generate(), which knows the deck); \SMDeckAgenda is a link target only;
+# \SMAgendaTitle{text} names the slide in agendas.
+_CHAPTER_AGENDA_RE = re.compile(r"\\SMChapterAgenda(?![a-zA-Z@])\s*(?:\[[^\]]*\])?")
+_DECK_AGENDA_RE = re.compile(r"\\SMDeckAgenda(?![a-zA-Z@])")
+_AGENDA_TITLE_RE = re.compile(r"\\SMAgendaTitle\s*\{")
+_AGENDA_SLOT = "\x02SMAGENDA\x02"
+
+
 def _unpark_code_files(text: str, blocks: list[str]) -> str:
     for slot, block in enumerate(blocks):
         text = text.replace(_CODE_SLOT.format(slot), block)
@@ -1065,8 +1090,16 @@ def render_slide(deck_slide: DeckSlide, version: str,
     stripped, _notes = alt_blocks.extract_note_calls(stripped)
     body = stripped
     body, sources = alt_blocks.extract_macro_calls(body, "source")
+    body, agenda_titles = alt_blocks.extract_macro_calls(body, "SMAgendaTitle")
+    body = _DECK_AGENDA_RE.sub("", body)
+    has_chapter_agenda = bool(_CHAPTER_AGENDA_RE.search(body))
+    body = _CHAPTER_AGENDA_RE.sub("\n\n" + _AGENDA_SLOT + "\n\n", body)
+    agenda_title = _inline_markdown(agenda_titles[0]).strip() if agenda_titles else ""
 
     slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
+    if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
+                             or alt_blocks.TITLEFRAME_RE.search(stripped)):
+        title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)
 
     begin = alt_blocks.FRAME_OPEN_RE.search(body)
     end = _FRAME_END_RE.search(body)
@@ -1108,6 +1141,8 @@ def render_slide(deck_slide: DeckSlide, version: str,
         body=_unpark_code_files(_convert_body(body).strip(), code_blocks),
         source=_inline_markdown(" ".join(sources)).strip(),
         summary=notes.summary if notes else "",
+        agenda_title=agenda_title,
+        chapter_agenda=has_chapter_agenda,
     )
 
     for reference in alt_blocks.referenced_images(stripped):
@@ -1175,6 +1210,28 @@ def _entry_markdown_lines(entry: TranscriptSlide, language: str = "en") -> list[
     return lines
 
 
+def _fill_chapter_agendas(entries: list[TranscriptSlide], chapters: list[int],
+                          language: str = "en") -> None:
+    """Replace each \\SMChapterAgenda placeholder with the list of the other
+    slides in the same chapter (by \\section), as the PDF's agenda shows them:
+    each slide once (a \\slidestep slide at its first place), its
+    \\SMAgendaTitle or title, plus its slide number."""
+    strings = STRINGS[language]
+    for index, entry in enumerate(entries):
+        if not entry.chapter_agenda:
+            continue
+        seen: set[str] = set()
+        items: list[str] = []
+        for other, chapter in zip(entries, chapters):
+            if other is entry or chapter != chapters[index] or other.slide_id in seen:
+                continue
+            seen.add(other.slide_id)
+            items.append("- " + strings["chapter_agenda_item"].format(
+                title=other.agenda_title or other.title, n=other.number))
+        block = "\n".join([strings["chapter_agenda_label"], ""] + items) if items else ""
+        entry.body = entry.body.replace(_AGENDA_SLOT, block).strip()
+
+
 def generate_single_slide(
     source_text: str, bare_id: str, version: str, language: str
 ) -> TranscriptResult:
@@ -1213,6 +1270,7 @@ def generate_single_slide(
 
     if entry is None:
         raise RuntimeError("Could not read this slide's own text.")
+    _fill_chapter_agendas([entry], [0], language)  # no deck: no chapter to list
 
     lines = _entry_markdown_lines(entry, language=language)
     return TranscriptResult(
@@ -1252,6 +1310,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     slide_notes = alt_images.load_slide_notes()
     deck_slides = resolve_deck(deck_path, version)
     rendered: list[TranscriptSlide] = []
+    chapters: list[int] = []
     missing_files: list[str] = []
 
     for deck_slide in deck_slides:
@@ -1262,6 +1321,8 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
             missing_files.append(deck_slide.path.name)
             continue
         rendered.append(entry)
+        chapters.append(deck_slide.chapter)
+    _fill_chapter_agendas(rendered, chapters, language)
 
     undescribed = sum(1 for s in rendered if s.missing_description)
 

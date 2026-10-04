@@ -944,6 +944,7 @@
 % unaffected -- outer sep is symmetric around the center -- so the
 % SMLogoAnchor.center redraw below doesn't need it.)
 \newcommand{\SMFrametitleHookCode}{%
+	\SMAgendaFrametitleHook% records the frame title for \SMChapterAgenda
 	\tikz[remember picture, overlay]\node(SMTitleBottom){};%
 	\begin{tikzpicture}[remember picture, overlay]
 		\path let \p1=(current page.north east), \p2=(SMTitleBottom) in
@@ -1257,7 +1258,7 @@
 	% link to that id lands on whichever instance is last in the document
 	% -- inherent to any permanent-id-keyed target scheme, not specific to
 	% this one.
-	\ifSMSuppressSlideTarget\else\hypertarget{\slideID}{}\fi%
+	\ifSMSuppressSlideTarget\else\hypertarget{\slideID}{}\SM@agenda@slide{#1}{#2}\fi%
 }
 \makeatother
 
@@ -2697,12 +2698,13 @@
 	\rule[-\dp\SMFooterIDMeasureBox]{0pt}{\ht\SMFooterIDMeasureBox}%
 }
 
+\newif\ifSMNavigationBar % \SMNavigationBar, see "Navigation for readers" at the end
 \setbeamertemplate{frame footer}{%
 	\vspace*{\SMFooterTextDrop}%
 	\ifSMHideFooterText
 		\global\SMHideFooterTextfalse
 	\else
-		\FooterText%
+		\FooterText\ifSMNavigationBar\SMNavigationLinks\fi
 	\fi
 	\hfill%
 	{\fontsize{4}{4}\selectfont \SMFooterIDStrut (slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ | \SMDeckVersionText\ifSMShowCompileTimestamp\ | \SMCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
@@ -6606,3 +6608,206 @@
 		{→}{{$\rightarrow$}}1,
 }
 \newcommand{\SMCodeFile}[2][]{\lstinputlisting[style=SMCode,#1]{#2}}
+
+% Navigation for readers (2026-10-04, SlideMage manual: readers must find
+% their way without knowing that the logo is a hidden link). Three opt-in
+% pieces, each usable in any deck:
+%
+% \SMChapterAgenda[width] -- the slides of the current \section as a
+%   two-column list, each entry a link to that slide (its frame title, or the
+%   slide's \SMAgendaTitle{...}, or else its slug with spaces). Meant for the
+%   body of a chapter's sectionframe (the manual puts one on every divider).
+%   [width] (default \linewidth) leaves room for e.g. a \sectionfigure. Set in
+%   \small, \footnotesize if that does not fit \SMChapterAgendaMaxHeight.
+%   Works from the .aux file like a table of contents: every slide writes
+%   \SMAgendaSlide{section}{id}{label} (in \setSlideID) and its frame title
+%   (\SMAgendaEntryTitle, in the frametitle hook), and the agenda shows what
+%   the previous pass recorded -- latexmk's rerun fills it in. A slide shown
+%   twice (\slidestep) is listed once, at its first place; the agenda's own
+%   slide is not listed.
+% \SMAgendaTitle{text} -- in a slide file, before the frame: the entry text
+%   for a slide whose frame has no title (\quoteframe, \fullbleedframe, ...)
+%   or should read differently in the agenda.
+% \SMDeckAgenda -- marks the deck's contents slide (put it in that slide's
+%   body, next to \tableofcontents) as the target of the navigation bar's
+%   first link.
+% \SMNavigationBar[deck,chapter,previews] -- in the deck preamble: the footer
+%   then reads "\FooterText | Navigation: <deck> · <chapter> · <previews>",
+%   three links to the \SMDeckAgenda slide, the current chapter's
+%   \SMChapterAgenda (the contents slide before the first \section, or where
+%   a chapter has none) and the generated appendix agenda with the slide
+%   previews. A link whose target is not in this PDF is left out: the last
+%   one exists only when SlideMage generates the appendix (the Generate
+%   appendix TOC checkbox, or \deckappendixtoc in the deck). Default labels
+%   "Contents,Chapter contents,Slide previews"; the word before them is
+%   \SMNavigationLead ("Navigation:"). Off by default: other decks' footers
+%   and the logo link are unchanged.
+% \deckappendixtoc -- in the deck preamble, inert for LaTeX (like
+%   \decktags): SlideMage then generates the appendix for this deck on every
+%   whole-deck compile, whatever the toolbar checkbox says.
+\newcommand{\deckappendixtoc}{}
+\newlength{\SMChapterAgendaMaxHeight}
+\newcommand{\SMNavigationLead}{Navigation:}
+\newcommand{\SMNavigationLabelDeck}{Contents}
+\newcommand{\SMNavigationLabelChapter}{Chapter contents}
+\newcommand{\SMNavigationLabelPreviews}{Slide previews}
+\makeatletter
+% -- recording (writes to the .aux) --
+\newcommand{\SM@agenda@slide}[2]{%
+	\ifcsname SM@ag@written@#1\endcsname\else
+		\expandafter\gdef\csname SM@ag@written@#1\endcsname{}%
+		% label from the rest of the id-slug ("EN-Slide-IDs-"): language
+		% segment and trailing hyphen dropped, hyphens to spaces. (No % in
+		% the Lua code -- TeX would read it as a comment -- and no hash
+		% sign, which is a macro parameter here.)
+		\edef\SM@ag@label{\directlua{
+			local s = "\luaescapestring{#2}"
+			while string.sub(s, -1) == "-" do s = string.sub(s, 1, -2) end
+			for _, p in ipairs({"EN-", "DE-", "mult-"}) do
+				if string.sub(s, 1, string.len(p)) == p then s = string.sub(s, string.len(p) + 1) end
+			end
+			s = string.gsub(s, "[-]", " ")
+			tex.sprint(-2, s)}}%
+		\immediate\write\@auxout{\string\SMAgendaSlide{\the\c@section}{#1}{\SM@ag@label}}%
+	\fi
+}
+\newcommand{\SM@agenda@title}[1]{%
+	\ifcsname SM@ag@titled@\slideID\endcsname\else
+		\expandafter\gdef\csname SM@ag@titled@\slideID\endcsname{}%
+		\immediate\write\@auxout{\string\SMAgendaEntryTitle{\slideID}{\detokenize{#1}}}%
+	\fi
+}
+\newcommand{\SMAgendaTitle}[1]{\SM@agenda@title{#1}}
+\newcommand{\SM@agenda@frametitle}{%
+	\ifx\beamer@frametitle\@empty\else\expandafter\SM@agenda@title\expandafter{\beamer@frametitle}\fi
+}
+\newcommand{\SMAgendaFrametitleHook}{\SM@agenda@frametitle}% called by \SMFrametitleHookCode
+\newcommand{\SMDeckAgenda}{%
+	\hypertarget{SMDeckAgenda}{}%
+	\immediate\write\@auxout{\string\SMAgendaDeckTarget}%
+}
+% -- reading (the .aux, at \begin{document}; its second reading at
+% \end{document} changes nothing) --
+\newcommand{\SMAgendaSlide}[3]{%
+	\ifcsname SM@ag@seen@#2\endcsname\else
+		\expandafter\gdef\csname SM@ag@seen@#2\endcsname{}%
+		\listcsgadd{SM@ag@list@#1}{#2}%
+		\expandafter\gdef\csname SM@ag@label@#2\endcsname{#3}%
+	\fi
+}
+\newcommand{\SMAgendaEntryTitle}[2]{%
+	\ifcsname SM@ag@title@#1\endcsname\else
+		\expandafter\gdef\csname SM@ag@title@#1\endcsname{#2}%
+	\fi
+}
+\newcommand{\SMAgendaDeckTarget}{\gdef\SM@ag@decktarget{}}
+\newcommand{\SMAgendaChapterTarget}[1]{\expandafter\gdef\csname SM@ag@chtarget@#1\endcsname{}}
+% -- the chapter agenda --
+\newcount\SM@ag@n
+\newcount\SM@ag@i
+\newbox\SM@ag@box
+\newcommand{\SM@ag@entry}[1]{%
+	\item\hyperlink{#1}{\ifcsname SM@ag@title@#1\endcsname\csname SM@ag@title@#1\endcsname
+		\else\csname SM@ag@label@#1\endcsname\fi}%
+}
+% (\def + \ifx, not \ifstrequal: that one would compare the *name* of
+% \SM@ag@self, see \decklanguage)
+\newcommand{\SM@ag@count}[1]{\def\SM@ag@this{#1}\ifx\SM@ag@this\SM@ag@self\else\advance\SM@ag@n by 1 \fi}
+\newcommand{\SM@ag@split}[1]{%
+	\def\SM@ag@this{#1}%
+	\ifx\SM@ag@this\SM@ag@self\else
+		\advance\SM@ag@i by 1
+		\ifnum\SM@ag@i>\SM@ag@half
+			\gappto\SM@ag@right{\SM@ag@entry{#1}}%
+		\else
+			\gappto\SM@ag@left{\SM@ag@entry{#1}}%
+		\fi
+	\fi
+}
+\newlength{\SM@ag@maxh}
+\newcommand{\SM@ag@typeset}[2]{% #1 width, #2 font switch
+	\setbox\SM@ag@box=\hbox{\begin{minipage}[t]{#1}%
+		#2%
+		\begin{columns}[t,onlytextwidth]
+			\begin{column}{0.48\linewidth}
+				\ifx\SM@ag@left\@empty\else\begin{itemize}\SM@ag@left\end{itemize}\fi
+			\end{column}
+			\begin{column}{0.48\linewidth}
+				\ifx\SM@ag@right\@empty\else\begin{itemize}\SM@ag@right\end{itemize}\fi
+			\end{column}
+		\end{columns}%
+	\end{minipage}}%
+}
+\newcommand{\SMChapterAgenda}[1][\linewidth]{%
+	\edef\SM@ag@sec{\the\c@section}%
+	\edef\SM@ag@self{\slideID}%
+	\hypertarget{SMChapterAgenda\SM@ag@sec}{}%
+	\immediate\write\@auxout{\string\SMAgendaChapterTarget{\SM@ag@sec}}%
+	\SM@ag@n=0
+	\ifcsdef{SM@ag@list@\SM@ag@sec}{\forlistcsloop{\SM@ag@count}{SM@ag@list@\SM@ag@sec}}{}%
+	\ifnum\SM@ag@n>0
+		\SM@ag@i=0
+		\edef\SM@ag@half{\the\numexpr(\SM@ag@n+1)/2\relax}% ceil(n/2); \numexpr rounds
+		\ifodd\SM@ag@n\else\edef\SM@ag@half{\the\numexpr\SM@ag@n/2\relax}\fi
+		\gdef\SM@ag@left{}\gdef\SM@ag@right{}%
+		\forlistcsloop{\SM@ag@split}{SM@ag@list@\SM@ag@sec}%
+		\ifdim\SMChapterAgendaMaxHeight=0pt
+			% the room below a sectionframe's title bar, down to the Bottom Margin
+			\setlength{\SM@ag@maxh}{\dimexpr\paperheight-\SMSectionframeBarBottom
+				-\SMSectionframeContentDrop-\SMContentBottomAlign-14pt\relax}%
+		\else
+			\setlength{\SM@ag@maxh}{\SMChapterAgendaMaxHeight}%
+		\fi
+		\SM@ag@typeset{#1}{\small}%
+		\ifdim\dimexpr\ht\SM@ag@box+\dp\SM@ag@box\relax>\SM@ag@maxh
+			\SM@ag@typeset{#1}{\footnotesize}%
+		\fi
+		\noindent\box\SM@ag@box\par
+	\fi
+}
+% -- the navigation bar (footer) --
+\newcommand{\SMNavigationBar}[1][\SMNavigationLabelDeck,\SMNavigationLabelChapter,\SMNavigationLabelPreviews]{%
+	\global\SMNavigationBartrue
+	\SM@nav@labels#1,,,\@nil
+}
+\def\SM@nav@labels#1,#2,#3,#4\@nil{%
+	\gdef\SMNavigationLabelDeck{#1}\gdef\SMNavigationLabelChapter{#2}\gdef\SMNavigationLabelPreviews{#3}%
+}
+% Link text in the footer: the footer's own text colour, underlined in
+% c_secondary_blue (the \href underline, see \SMHrefUnderline).
+\newcommand{\SMLinkUnderline}[1]{%
+	\sbox{\SMHrefTextBox}{#1}%
+	\usebox{\SMHrefTextBox}%
+	\hspace{-\wd\SMHrefTextBox}%
+	\SMHrefUnderlineMeasureRefHeights
+	\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
+	\SMHrefUnderlineSetThickness
+	\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+}
+\newcommand{\SM@nav@link}[2]{{\hypersetup{linkcolor=\SMFooterTextColor}\hyperlink{#1}{\SMLinkUnderline{#2}}}}
+\newcommand{\SM@nav@sep}{\ \textperiodcentered\ }
+\newcommand{\SMNavigationLinks}{%
+	\def\SM@nav@chapter{}%
+	\ifnum\c@section>0
+		\ifcsname SM@ag@chtarget@\the\c@section\endcsname
+			\edef\SM@nav@chapter{SMChapterAgenda\the\c@section}%
+		\fi
+	\fi
+	\ifx\SM@nav@chapter\@empty
+		\ifdefined\SM@ag@decktarget\def\SM@nav@chapter{SMDeckAgenda}\fi
+	\fi
+	\def\SM@nav@any{}%
+	\ \textbar\ \SMNavigationLead\ %
+	\ifdefined\SM@ag@decktarget
+		\SM@nav@link{SMDeckAgenda}{\SMNavigationLabelDeck}\def\SM@nav@any{1}%
+	\fi
+	\ifx\SM@nav@chapter\@empty\else
+		\ifx\SM@nav@any\@empty\else\SM@nav@sep\fi
+		\SM@nav@link{\SM@nav@chapter}{\SMNavigationLabelChapter}\def\SM@nav@any{1}%
+	\fi
+	\ifdefined\SMAppendixTocOverride
+		\ifx\SM@nav@any\@empty\else\SM@nav@sep\fi
+		\SM@nav@link{SMAppendixAgenda}{\SMNavigationLabelPreviews}%
+	\fi
+}
+\makeatother

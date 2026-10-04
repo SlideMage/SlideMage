@@ -2002,6 +2002,39 @@ clicking a thumbnail jumps straight to the real slide. The institute logo
 on every slide becomes an invisible link back to the appendix agenda, but
 only on a compile that actually generated one.
 
+**Visible navigation for readers** (since v5.12.0, opt-in per deck; written
+for the SlideMage manual, whose readers can't know that the logo is a
+link):
+
+- **`\SMNavigationBar[Contents,Chapter contents,Slide previews]`** in the
+  deck preamble turns the footer's left text into
+  "`\FooterText` | Navigation: Contents · Chapter contents · Slide previews"
+  -- three underlined links to the deck's contents slide, the current
+  chapter's agenda and the generated appendix agenda (the labels are the
+  optional argument, e.g. `\SMNavigationBar[Kapitel,Kapitelinhalt,Folienvorschau]`;
+  the word before them is `\SMNavigationLead`). A link whose target isn't in
+  the PDF is left out rather than dead: "Slide previews" exists only on a
+  compile with the generated appendix; "Chapter contents" falls back to the
+  contents slide before the first `\section` and in a chapter without an
+  agenda. Frames without a footer (`\titleframe`, `\fullbleedframe`) have no
+  bar; every other deck's footer is unchanged.
+- **`\SMDeckAgenda`** marks the contents slide (put it next to its
+  `\tableofcontents`) as the target of the first link.
+- **`\SMChapterAgenda[width]`** (in a chapter's `sectionframe` body) lists
+  the slides of the current `\section` in two columns, each entry a link to
+  that slide -- its frame title, or the slug for a title-less frame unless
+  the slide file sets `\SMAgendaTitle{text}` before its frame. Built from the
+  `.aux` like a table of contents (latexmk's rerun fills it in), in `\small`,
+  or `\footnotesize` when that doesn't fit (`\SMChapterAgendaMaxHeight`,
+  default: the room below a `sectionframe` title bar). A `\slidestep` slide
+  is listed once; the agenda's own slide is not listed. `[width]` leaves
+  room for a `\sectionfigure`. In the transcript it becomes the list of the
+  chapter's slides with their numbers.
+- **`\deckappendixtoc`** (deck preamble, inert for LaTeX like `\decktags`)
+  makes SlideMage generate the appendix for that deck on every whole-deck
+  compile, whatever the toolbar checkbox says -- so the "Slide previews"
+  link always has a target.
+
 The grid's own size isn't a fixed cm value — it's computed in LaTeX from
 this project's real per-institution length registers (paper size, logo
 padding, title-bar/footer height), left-aligned to the text margin and

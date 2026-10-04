@@ -323,6 +323,10 @@ def _slide_title(source: str, slide_path: Path) -> tuple[str, str]:
         title = " ".join(title.split()).strip(" *")
         if title:
             return slide_id, title
+    # the slug without its language segment ("EN-Quote-Demo" -> "Quote Demo")
+    language, _, rest = slug.partition("-")
+    if language in ("EN", "DE", "mult") and rest:
+        slug = rest
     return slide_id, slug.replace("-", " ")
 
 

@@ -1450,7 +1450,8 @@ class SlideMageWindow(QMainWindow):
             row.reset_status()
             for job in row.build_jobs():
                 job.footer_timestamp = footer_timestamp
-                job.appendix_toc = appendix_toc
+                # \deckappendixtoc in the deck: always, checkbox or not
+                job.appendix_toc = appendix_toc or job.deck.appendix_toc
                 job_status_map[job.jobname] = (row, job_column_key(job))
                 output_dir, output_stem = resolve_output_location(job)
                 self._job_output_paths[job.jobname] = output_dir / f"{output_stem}.pdf"

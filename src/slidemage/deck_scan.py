@@ -56,6 +56,9 @@ OUTPUT_FOLDER_RE = re.compile(r"\\deckoutputfolder(?:\[([^\]]*)\])?\{([^}]*)\}")
 # deck carries; a deck carrying none is a course deck. When a deck carries
 # several, the first one in GROUP_TAGS' order wins.
 DECKTAGS_RE = re.compile(r"\\decktags\{([^}]*)\}")
+# \deckappendixtoc in the preamble: always generate the appendix TOC for
+# this deck (whole-deck compiles), whatever the toolbar checkbox says.
+DECKAPPENDIXTOC_RE = re.compile(r"\\deckappendixtoc(?![a-zA-Z@])")
 COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*([^\r\n]*)\r?$", re.MULTILINE)
 TAG_WORK = "work"
 TAG_COURSE = "course"
@@ -98,6 +101,8 @@ class Deck:
     # the deck's text (parse_tags()), never inferred from its filename.
     tags: list[str] = field(default_factory=list)
     course_url: str | None = None
+    # \deckappendixtoc in the preamble (parse_appendix_toc())
+    appendix_toc: bool = False
 
     @property
     def group(self) -> str:
@@ -232,6 +237,14 @@ def parse_tags(text: str) -> list[str]:
     return [t for t in (part.strip().lower() for part in m.group(1).split(",")) if t]
 
 
+def parse_appendix_toc(text: str) -> bool:
+    """Whether the deck's preamble has a live \\deckappendixtoc."""
+    begin = DOCUMENT_BEGIN_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    return any(not is_commented(preamble, m.start())
+               for m in DECKAPPENDIXTOC_RE.finditer(preamble))
+
+
 def parse_course_url(text: str) -> str | None:
     """Read the first course URL marker in the deck preamble."""
     begin = DOCUMENT_BEGIN_LINE_RE.search(text)
@@ -274,6 +287,7 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
                 output_folders=_parse_output_folders(text),
                 tags=parse_tags(text),
                 course_url=parse_course_url(text),
+                appendix_toc=parse_appendix_toc(text),
             )
         )
     return decks
