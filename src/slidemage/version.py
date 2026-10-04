@@ -1825,6 +1825,8 @@ v5.12.0 (2026-10-04, SlideMage manual, build step 1b): visible navigation for re
 v5.13.0 (2026-10-04, SlideMage manual, found while building it): \\SMCode{text} and \\SMCmd{name} set code in running text in Fira Mono Regular at 90% (\\texttt is the theme's Fira Mono Bold, which reads heavy and wide next to the Fira Sans Light body text and made the manual's slides overflow); \\SMCmd{slide} prints \\slide. Transcript: both become `code`, and a literal backslash survives -- \\textbackslash and \\SMCmd's backslash are parked while the inline conversion strips macro names and put back afterwards (before, \\texttt{\\textbackslash pause} came out as `pause`). \\SMChapterAgenda now tries \\normalsize first, then \\small, then \\footnotesize (it left the dividers mostly empty at \\small).
 
 v5.13.1 (2026-10-04, found in the SlideMage manual's transcript): a \\\\ line break in running text becomes a space -- the macro strip used to take "\\SlideMage" out of "...\\\\SlideMage" and leave a stray backslash ("demonstration\\ 5.12" on a title slide); \\textperiodcentered becomes a middle dot instead of disappearing.
+
+v5.13.2 (2026-10-04, found in the SlideMage manual): the generated appendix's footer no longer shows the last real slide's version and language next to "appendix" (appendix_toc resets \\ifSMSlideVersionSet/\\ifSMSlideLanguageSet with the slide id); a thumbnail cell without a cached preview labels the slide by its slug without the language segment.
 """
 from __future__ import annotations
 
@@ -1834,7 +1836,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.13.1"
+VERSION_NUMBER = "v5.13.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

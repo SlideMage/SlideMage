@@ -124,7 +124,9 @@ def _thumb_cell(call: SlideCall, template: str) -> str:
         # guaranteed-fresh" cache) -- a plain bordered id+title box instead
         # of a broken \includegraphics, still wrapped in the same working
         # \hyperlink below.
-        label = call.slug.replace("-", " ")
+        language, _, rest = call.slug.partition("-")
+        slug = rest if language in ("EN", "DE", "mult") and rest else call.slug
+        label = slug.replace("-", " ")
         inner = (
             f"\\fbox{{\\parbox[c][\\SMAppendixThumbH][c]{{\\SMAppendixThumbW}}"
             f"{{\\centering\\tiny {call.id}: {label}}}}}"
@@ -202,7 +204,11 @@ def generate_appendix_tex(deck: Deck, template: str, version: str = "instructor"
     # make it treat the appendix pages as a later, spurious occurrence of
     # that real slide and overwrite its cached thumbnail with an appendix
     # page. "appendix" can never collide with a real (3-character) bare id.
-    reset_id = "\\renewcommand{\\slideID}{appendix}%"
+    # The last real slide's version and language must not show either
+    # ("(slide id: appendix | v1.0.0EN | ...)", seen 2026-10-04 in the
+    # SlideMage manual).
+    reset_id = ("\\renewcommand{\\slideID}{appendix}%\n"
+                "\\global\\SMSlideVersionSetfalse\\global\\SMSlideLanguageSetfalse%")
     parts = ["\\appendix", reset_id, _GEOMETRY_TEX, _agenda_slide(sections)]
     for order, title, calls in sections:
         pages = _chunks(calls, PER_PAGE)
