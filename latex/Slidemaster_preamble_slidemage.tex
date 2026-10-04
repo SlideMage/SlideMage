@@ -1,8 +1,8 @@
 % Slidemaster preamble for the generic SlideMage template (2026-10-03, direct
 % instruction): the look of SlideMage itself rather than of an institution --
-% the SlideMage logo, the app's own colours, dark title and footer boxes with
+% the SlideMage logo, the app's own colors, dark title and footer boxes with
 % white text (the splash screen's look), the app's button blue as highlight
-% colour. Meant as the default for anyone without an institution template of
+% color. Meant as the default for anyone without an institution template of
 % their own; derived from Slidemaster_preamble_uni-graz.tex, same structure
 % (see that file's header comment for the institution-layer/base split). A
 % deck picks it by \input{}ing this file instead of an institution's.
@@ -13,10 +13,10 @@
 % Slidemaster_preamble_base.tex, so it needs no copy in the project. A
 % project's own Slidemaster_preamble_slidemage.tex, if it has one, wins.
 %
-% Colours: wherever possible a colour SlideMage itself uses
+% Colors: wherever possible a color SlideMage itself uses
 % (src/slidemage/palette.py, qt_deck_table.py, assets/splash.png); every pair
 % the framework combines was checked against WCAG 2.1 -- body/block text
-% (c_primary_dark) on each c_secondary_* block-title colour >= 4.5:1, white
+% (c_primary_dark) on each c_secondary_* block-title color >= 4.5:1, white
 % title/footer text on c_primary_dark 16.7:1, white text on c_primary_gray
 % (highlightframe) 5.0:1, link underline c_secondary_blue on white >= 3:1.
 \definecolor{c_primary_dark}{HTML}{1e1e1e}      % splash screen background (palette dark "bg")
@@ -25,7 +25,7 @@
 \definecolor{c_primary_white}{HTML}{FFFFFF}
 \definecolor{c_secondary_violet}{HTML}{ba68c8}  % palette dark "tab_deck_editor"
 \definecolor{c_tertiary_violet}{HTML}{dcb4e4}   % derived (50% white-blend)
-% Derived, not an app colour: the button blue is too dark for the dark text
+% Derived, not an app color: the button blue is too dark for the dark text
 % an infoblock title puts on it, the app's dark-mode link blue (4da6ff) too
 % light for a link underline on white; this one sits between them and passes
 % both (4.9:1 and 3.4:1).
@@ -40,7 +40,7 @@
 \definecolor{c_secondary_yellow}{HTML}{ffd500}  % logo/splash yellow
 \definecolor{c_tertiary_yellow}{HTML}{ffe066}   % deck editor's highlight yellow
 \definecolor{c_tertiary_gray}{HTML}{e4e4e4}     % palette light "panel_bg" (block bodies)
-% Supporting colours ("custom": not part of the palette proper; same roles as
+% Supporting colors ("custom": not part of the palette proper; same roles as
 % in the institution templates). c_custom_gray is hyperlink text and the
 % quote attribution: a softer near-black, palette dark "panel_bg".
 \definecolor{c_custom_gray}{HTML}{2d2d2d}
@@ -61,7 +61,7 @@
 % Slidemaster_preamble_base.tex's comment on \gothamFrametitleRightpading.
 \setlength{\gothamFrametitleRightpading}{0.28cm}
 
-% Itemize bullets in the highlight colour, as in the Graz template.
+% Itemize bullets in the highlight color, as in the Graz template.
 \newcommand{\SMBulletColor}{c_primary_highlight}
 
 % Title bar and footer: the splash screen's dark background with white text
