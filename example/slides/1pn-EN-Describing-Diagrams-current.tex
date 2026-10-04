@@ -4,17 +4,23 @@
 % SlideMage manual, chapter "Accessibility": describing TikZ diagrams. The
 % example is the diagram on slide 1ym, a real \tikzillustration.
 \begin{standardframe}{Describing diagrams}
-	\begin{itemize}
-		\item A drawing made in LaTeX has no image file to describe: wrap it in \SMCode{tikzillustration} with its own ID, \SMCode{<slide id>-tikz}
-		\item It then appears in the Images tab like an image (\SMCode{tikz:1ym-tikz}); SlideMage renders it for the AI draft
-		\item Example: the \hyperlink{1ym}{diagram on \emph{Framework, project and app}}
-	\end{itemize}
-	\medskip
-	\begin{minipage}{0.62\linewidth}
-		\SMCodeFile{snippets/1pn-1.tex}
-	\end{minipage}
-	\medskip
-	\begin{itemize}
-		\item Not for: a picture placed on the page (\SMCode{overlay}), a picture inside another one, or a mere border around one image -- that image has its own description
-	\end{itemize}
+	\small
+	A diagram drawn in LaTeX (TikZ) has no image file, so there is nothing to
+	attach a description to. Wrap the drawing in a \SMCode{tikzillustration}
+	with an ID of its own, and it becomes an image like any other: it appears in
+	the Images tab, gets a description, and the AI model sees a rendering of it.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\SMCodeFile{snippets/1pn-1.tex}
+		\end{column}
+		\begin{column}{0.41\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item The ID is the slide's ID plus \SMCode{-tikz}; the Images tab lists it as \SMCode{tikz:1ym-tikz}
+				\item Example: the \hyperlink{1ym}{diagram on \emph{Framework, project and app}}
+				\item Not for a picture placed on the page as an overlay, one inside another picture, or a mere frame around an image -- that image has its own description
+			\end{itemize}
+		\end{column}
+	\end{columns}
 \end{standardframe}
