@@ -2126,12 +2126,11 @@ Per frame type:
   unmarked, this one is explicitly decorative filler, marked unconditionally
   regardless of which image file the slide happens to use.
 
-**Verification.** `decks/verify_accessibility.tex` is a compilable regression
-deck exercising every frame type above, including one real
-`sideimageframe` slide and one real `fullbleedframe` slide, on top of the
-shared demo slide list `test-slides.tex` (Slidemaster project; `example/`'s
-copy of this deck needs that project's slides and does not compile on its
-own).
+**Verification.** In the Slidemaster project, `decks/verify_accessibility.tex`
+is a compilable regression deck exercising every frame type above, including
+one real `sideimageframe` slide and one real `fullbleedframe` slide, on top of
+that project's shared demo slide list `test-slides.tex` (`example/` had a copy
+that never compiled there, removed 2026-10-05).
 `.scripts/verify_accessibility_pikepdf.py` compiles that deck and
 checks, directly against the compiled PDF's content streams via
 [pikepdf](https://github.com/pikepdf/pikepdf): every `/Artifact` span is
