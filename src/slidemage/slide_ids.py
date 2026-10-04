@@ -33,6 +33,12 @@ _INCLUDED_IN_DECKS_RE = re.compile(r"%% Included in decks: [^\r\n]*\r?\n%%\r?\n"
 # (no l/1, o/0).
 ID_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"
 ID_LENGTH = 3
+# A regular slide id starts with a letter (2026-10-04, direct instruction):
+# ids starting with a digit are reserved for the SlideMage manual (1##) and
+# the demo slides (2##), so the first character alone tells them apart.
+ID_FIRST_ALPHABET = "".join(c for c in ID_ALPHABET if c.isalpha())
+# First digits of the reserved ids: 1 = SlideMage manual, 2 = demo slides.
+RESERVED_FIRST_DIGITS = "12"
 
 ALL_NUMERIC_RE = re.compile(r"^[0-9]+$")
 # An id must never be readable as a number or another special value by any tool that
@@ -68,6 +74,31 @@ def illegal_id_reason(slide_id: str) -> Optional[str]:
         return "is a reserved Windows device name"
     if slide_id.lower() in BANNED_WORDS:
         return "is a banned word"
+    return None
+
+
+def regular_id_reason(slide_id: str) -> Optional[str]:
+    """illegal_id_reason() plus the letter-first rule for regular slides:
+    why `slide_id` must not be given to a regular (non-manual, non-demo)
+    slide, or None if it is fine."""
+    reason = illegal_id_reason(slide_id)
+    if reason:
+        return reason
+    if not slide_id[:1].isalpha():
+        return "starts with a digit (reserved for the SlideMage manual and demo slides)"
+    return None
+
+
+def reserved_id_reason(slide_id: str) -> Optional[str]:
+    """Why `slide_id` must not be given to a SlideMage manual or demo slide
+    (form: a digit from RESERVED_FIRST_DIGITS, then a letter), or None."""
+    reason = illegal_id_reason(slide_id)
+    if reason:
+        return reason
+    if slide_id[:1] not in RESERVED_FIRST_DIGITS:
+        return f"a manual/demo slide id starts with one of {RESERVED_FIRST_DIGITS!r}"
+    if not slide_id[1:2].isalpha():
+        return "a manual/demo slide id has a letter in second place"
     return None
 # Matches SPslide(refresh=TRUE)'s own "^([^-]+)-.*\\.tex$": the ID is
 # everything before the first hyphen, for both ID-slug-current.tex and
@@ -110,18 +141,34 @@ def list_id_slugs() -> list[str]:
     )
 
 
-def mint_slide_id() -> str:
+def mint_slide_id(reserved: Optional[str] = None) -> str:
     """Draw a random 3-char ID, avoiding collisions with both
     slide_ids.csv *and* every ID actually present under slides/ (a
     superset check -- this can only avoid more collisions than the R
     side's CSV-only check, never fewer, so the two mints can never
     collide with each other), and rejecting any draw illegal_id_reason()
     names (so an ID is never mistaken for a number or a special value
-    elsewhere in the toolchain)."""
-    existing = _existing_ids_from_csv() | _existing_ids_from_disk()
+    elsewhere in the toolchain). The first character is always a letter
+    (ID_FIRST_ALPHABET), and the collision check ignores case, since
+    Windows can't tell "zzh-..." from "ZZH-..." apart.
+
+    `reserved` (one of RESERVED_FIRST_DIGITS) mints a SlideMage manual or
+    demo slide id instead: that digit, a letter, then any character."""
+    if reserved is not None and reserved not in RESERVED_FIRST_DIGITS:
+        raise ValueError(f"reserved must be one of {RESERVED_FIRST_DIGITS!r}, got {reserved!r}")
+    existing = {i.lower() for i in _existing_ids_from_csv() | _existing_ids_from_disk()}
     while True:
-        candidate = "".join(random.choice(ID_ALPHABET) for _ in range(ID_LENGTH))
-        if candidate in existing or illegal_id_reason(candidate):
+        if reserved is None:
+            candidate = random.choice(ID_FIRST_ALPHABET) + "".join(
+                random.choice(ID_ALPHABET) for _ in range(ID_LENGTH - 1)
+            )
+            reason = regular_id_reason(candidate)
+        else:
+            candidate = reserved + random.choice(ID_FIRST_ALPHABET) + "".join(
+                random.choice(ID_ALPHABET) for _ in range(ID_LENGTH - 2)
+            )
+            reason = reserved_id_reason(candidate)
+        if candidate in existing or reason:
             continue
         return candidate
 

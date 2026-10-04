@@ -1815,6 +1815,8 @@ v5.7.0 (2026-10-03, direct instruction): a generic SlideMage template, example/S
 v5.8.0 (2026-10-03, direct instruction): a default template for slides rendered outside a deck -- Settings -> General -> Slide rendering -> "Default template", listing the templates whose Slidemaster_preamble_<name>.tex the project has, saved immediately in .slidemage/app_settings.json ("default_template"). The slide editor's "Render to PDF" and "Preview" (including its cached preview image), and tikz illustration renders use it; before, they always used the Uni Graz template. Out of the box it is the SlideMage template; a project that doesn't have the chosen template falls back to SlideMage, then Graz, then whichever template it has (so SlideMaster_SP, which has no SlideMage template, keeps rendering in Graz). Renders from a deck editor row keep using that deck's own template. (slide_snapshot.render_template(), slide_preview.default_preamble()/template_preamble().)
 
 v5.9.0 (2026-10-03, direct instruction): the SlideMage template is part of the framework now, not of the example project: latex/Slidemaster_preamble_slidemage.tex with its logo latex/slidemage-logo.pdf (+ .svg source), found on the same TeX search path as Slidemaster_preamble_base.tex. Every project next to the framework can use it without a copy of its own -- e.g. SlideMaster_SP, which has only institution layers, can now select it in a deck (\\input{Slidemaster_preamble_slidemage}) and in Settings -> General -> Slide rendering, which lists the project's own templates plus the framework's (slide_snapshot.framework_dirs(): $SLIDEMASTER_LATEX, ../latex, ../SlideMage/latex). A project's own Slidemaster_preamble_slidemage.tex would still win. Since the SlideMage template is now available everywhere, single-slide renders use it out of the box in every project, unless another default template is chosen there.
+
+v5.10.0 (2026-10-04, direct instruction): regular slide ids start with a letter. Every newly minted id (Add slide, Duplicate slide, Admin slides, PPTX/ODP import) now has a letter first (slide_ids.ID_FIRST_ALPHABET); ids starting with a digit are reserved for the SlideMage manual (1 + letter + one more character) and the demo slides (2 + letter + one more character), minted with slide_ids.mint_slide_id(reserved="1"/"2") and checked by slide_ids.reserved_id_reason(); slide_ids.regular_id_reason() is illegal_id_reason() plus the letter-first rule. Minting and slide_rename.rename_slide_id() now compare ids without regard to case (Windows can't tell "zzh-..." from "ZZH-..." apart). rename_slide_id() refuses a digit-first new id unless reserved=True, and also renames the slide's cached previews (.previews/slide_previews/<old>-*.png), so they need no re-render. Existing digit-first ids keep working everywhere; they are just no longer handed out (SlideMaster_SP's 217 were renamed with rename_slide_id()).
 """
 from __future__ import annotations
 
@@ -1824,7 +1826,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.9.0"
+VERSION_NUMBER = "v5.10.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

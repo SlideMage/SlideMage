@@ -699,11 +699,20 @@ description or content changes, so it's safe to reference in your own notes
 ("see slide `xyz`") or to cite across decks. IDs deliberately avoid
 confusable characters (no `l`/`1`, `o`/`0`, etc.).
 
-By convention, **testing/demo slides use uppercase IDs** (e.g. `ZZZ`, `ZZY`
-— pass `use_uppercase = TRUE, use_lowercase = FALSE` to `slide.new()`/
-`slide.new.id()`), while **real slides use lowercase IDs** (the default).
-This makes it obvious at a glance, from the filename alone, whether a slide
-is throwaway test content or actual course/research material.
+**Regular slide IDs start with a letter** (since v5.10.0; SlideMage and
+`slide.new.id()` only mint such IDs). IDs **starting with a digit are
+reserved**: `1` + a letter + one more character for the SlideMage manual,
+`2` + a letter + one more character for demo/test slides
+(`slide_ids.mint_slide_id(reserved="1")` / `"2"`). This makes it obvious at
+a glance, from the filename alone, whether a slide is manual/demo content
+or actual course/research material. IDs are compared without regard to
+case when minting or renaming, since Windows file names can't tell `zzh`
+from `ZZH`. (Older demo slides still carry uppercase IDs such as `ZZZ`;
+existing digit-first IDs keep working, they are just no longer minted.)
+To give an existing slide a new ID, use `slide_rename.rename_slide_id(old,
+new)`: it moves the files, rewrites every deck reference and
+`\hyperlink{old}`, and updates `slide_ids.csv`, `media/alt-text.json` and
+the cached previews.
 
 Each slide also has a short, human-readable **slug** (hyphenated, e.g.
 `MM-Theorem`). The slide's live content lives directly in its

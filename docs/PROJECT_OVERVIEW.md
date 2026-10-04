@@ -36,9 +36,10 @@ for a quick-lookup table of the deck-version commands.
 
 Every slide is a file in `slides/`, named by a permanent, opaque 3-character
 ID plus a human-readable slug: `slides/<id>-<slug>-current.tex` is the live
-content you actually edit. Real slides use lowercase IDs; test/demo slides
-(like this copy's own `ZZ*` ones) use uppercase, so it's obvious at a
-glance which is which. The ID never changes even if the slide's content
+content you actually edit. Real slides' IDs start with a letter; IDs
+starting with a digit are reserved for the SlideMage manual (`1..`) and
+demo slides (`2..`; this copy's older `ZZ*` demo slides still use
+uppercase), so it's obvious at a glance which is which. The ID never changes even if the slide's content
 does, so it's safe to reference in notes or cite across decks; `slide_ids.csv`
 is the registry that keeps new IDs from colliding.
 

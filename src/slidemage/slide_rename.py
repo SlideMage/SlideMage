@@ -37,7 +37,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from . import alt_images, deck_headers, slide_ids, slide_language
+from . import alt_images, deck_headers, slide_ids, slide_language, slide_snapshot
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -369,7 +369,7 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
     return changed, missing
 
 
-def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
+def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[str, str]:
     """Give a slide a new 3-character id (2026-09-21, direct instruction:
     "838"/"538" are all-digit ids, which slide_ids.illegal_id_reason() now
     rules out for good). Everything that carries the bare id follows:
@@ -384,17 +384,26 @@ def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
       media/alt-text.json;
     - slide_ids.csv gets the new id (the old one stays registered, so it is
       never handed out again), then deck-inclusion headers and translation
-      cross-references are regenerated.
+      cross-references are regenerated;
+    - the cached slide previews (.previews/slide_previews/<old>-*.png) are
+      renamed too, so they need no re-render.
+
+    `new_id` must start with a letter (slide_ids.regular_id_reason());
+    `reserved=True` instead requires the form of the SlideMage manual and
+    demo slides (slide_ids.reserved_id_reason()). The collision check
+    ignores case, like slide_ids.mint_slide_id().
 
     Returns {old id-slug: new id-slug} for every renamed slide.
     """
-    reason = slide_ids.illegal_id_reason(new_id)
+    check = slide_ids.reserved_id_reason if reserved else slide_ids.regular_id_reason
+    reason = check(new_id)
     if reason:
         raise ValueError(f"{new_id!r} is not a legal slide id: {reason}")
-    if len(new_id) != slide_ids.ID_LENGTH or not all(c in slide_ids.ID_ALPHABET for c in new_id):
+    first_ok = new_id[:1] in (slide_ids.RESERVED_FIRST_DIGITS if reserved else slide_ids.ID_ALPHABET)
+    if len(new_id) != slide_ids.ID_LENGTH or not first_ok or not all(c in slide_ids.ID_ALPHABET for c in new_id[1:]):
         raise ValueError(f"{new_id!r} must be {slide_ids.ID_LENGTH} characters from {slide_ids.ID_ALPHABET!r}")
     taken = slide_ids._existing_ids_from_csv() | slide_ids._existing_ids_from_disk()
-    if new_id in taken:
+    if new_id.lower() in {i.lower() for i in taken}:
         raise FileExistsError(f"slide id {new_id!r} is already in use")
     old_files = sorted(SLIDES_DIR.glob(f"{old_id}-*.tex"))
     if not old_files:
@@ -452,6 +461,12 @@ def rename_slide_id(old_id: str, new_id: str) -> dict[str, str]:
         return False
 
     alt_images.update_slide_notes(_move_notes)
+
+    if slide_snapshot.SNAPSHOT_DIR.is_dir():
+        for src in slide_snapshot.SNAPSHOT_DIR.glob(f"{old_id}-*.png"):
+            dest = src.with_name(new_id + src.name[len(old_id):])
+            if not dest.exists():
+                src.rename(dest)
 
     slide_ids.append_slide_id(new_id)
     deck_headers.regenerate_headers()
