@@ -6613,8 +6613,9 @@
 % 90% (\texttt is the theme's Fira Mono Bold, which reads heavy and wide in a
 % sentence of Fira Sans Light). \SMCmd{slide} prints \slide. The argument is
 % typeset, so write \_ \{ \} \# as in any text. The transcript shows both as
-% `code`.
-\newfontfamily\SMInlineCodeFont{FiraMono-Regular.otf}[Scale=0.9]
+% `code`. Ligatures=TeXOff: code shows -- and `` as typed, not as an en dash
+% and a curly quote (fontspec's default for \newfontfamily).
+\newfontfamily\SMInlineCodeFont{FiraMono-Regular.otf}[Scale=0.9, Ligatures=TeXOff]
 \newcommand{\SMCode}[1]{{\SMInlineCodeFont #1}}
 \newcommand{\SMCmd}[1]{{\SMInlineCodeFont\textbackslash #1}}
 

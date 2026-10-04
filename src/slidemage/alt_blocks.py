@@ -296,7 +296,7 @@ def extract_macro_calls(text: str, macro: str) -> tuple[str, list[str]]:
 
 
 FRAME_OPEN_RE = re.compile(
-    r"\\begin\{(?:standard|figure|section|highlight|quote|title)frame\}"
+    r"\\begin\{(?:standard|figure|section|highlight|quote|title|sideimage)frame\}"
     r"(?:\[[^\]]*\])?\s*\{"
 )
 

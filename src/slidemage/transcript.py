@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import bisect
 import html as _html
+import itertools
 import re
 import shutil
 import tempfile
@@ -583,11 +584,11 @@ _ELLIPSIS_RE = re.compile(
 _CONTROL_SPACE_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\ ")
 # Environments that only wrap; their content is kept, the wrapper discarded.
 _UNWRAP_ENVIRONMENTS = ("minipage", "center", "column", "columns", "figure",
-                        "table", "adjustbox")
+                        "table", "adjustbox", "besidefigure")
 # Beamer-style blocks: rendered as a titled quote so the label survives.
 _BLOCK_ENVIRONMENTS = ("definitionblock", "infoblock", "gothamfloatinginfoblock",
                        "gothamfloatingexampleblock", "gothamfloatingblock",
-                       "alertblock", "exampleblock", "block")
+                       "alertblock", "exampleblock", "referenceblock", "block")
 _LIST_ENVIRONMENTS = {
     "itemize": "-",
     "gothamalphaitemize": "-",
@@ -600,7 +601,10 @@ _ENV_OPEN_RE_CACHE: dict[str, re.Pattern] = {}
 # Environments taking a mandatory argument after \begin{...}: minipage's
 # width, column's width. Without consuming it the argument leaks into the
 # transcript as stray text ("0.42" from \begin{minipage}{0.42\textwidth}).
-_MANDATORY_ARG_ENVIRONMENTS = ("minipage", "column", "adjustbox")
+# besidefigure's argument is its image path (described in its own section);
+# tikzillustration's is the illustration's ID.
+_MANDATORY_ARG_ENVIRONMENTS = ("minipage", "column", "adjustbox", "besidefigure",
+                               "tikzillustration")
 
 
 def _env_open_re(name: str) -> re.Pattern:
@@ -763,18 +767,36 @@ def _strip_column_spec(body: str, count: int) -> str:
     return body
 
 
-def _render_table(body: str, spec_args: int = 1) -> str:
+# A row ends at \\ (with an optional [<skip>], which used to start the next
+# row as "[ ]"); a cell at an & that is not the escaped \&.
+_TABLE_ROW_END_RE = re.compile(r"\\\\\*?(?:\s*\[[^\]]*\])?")
+_TABLE_CELL_END_RE = re.compile(r"(?<!\\)&")
+
+
+def _flatten_table(body: str, spec_args: int = 1) -> str:
+    """A table inside a table cell (a picture over its caption) as one line:
+    left in place, its own \\\\ and & split the outer table's rows."""
     body = _strip_column_spec(body, spec_args)
+    return " ".join(part.strip() for part in
+                    _TABLE_CELL_END_RE.split(_TABLE_ROW_END_RE.sub(" ", body)))
+
+
+def _render_table(body: str, spec_args: int = 1) -> str:
     """Best-effort LaTeX table to Markdown table.
 
     Deliberately conservative: rows are split on `\\\\` and cells on `&`, and
     anything that doesn't look rectangular is emitted as plain lines instead of
     a malformed table. A wrong table is harder to read than no table.
     """
+    body = _strip_column_spec(body, spec_args)
+    for name, count in _TABLE_SPEC_ARGS.items():
+        body = _transform_environments(
+            body, name, lambda inner, n=count: _flatten_table(inner, n))
     body = re.sub(r"\\(?:hline|toprule|midrule|bottomrule|rowcolor\{[^}]*\})", "",
                   body)
-    rows = [r.strip() for r in re.split(r"\\\\", body) if r.strip()]
-    cells = [[_inline_markdown(c).strip() for c in row.split("&")] for row in rows]
+    rows = [r.strip() for r in _TABLE_ROW_END_RE.split(body) if r.strip()]
+    cells = [[_inline_markdown(c).strip() for c in _TABLE_CELL_END_RE.split(row)]
+             for row in rows]
     cells = [row for row in cells if any(c for c in row)]
     if not cells:
         return ""
@@ -794,15 +816,140 @@ _INLINE_MACROS = (
     (re.compile(r"\\alert\s*\{"), "**", "**"),
     (re.compile(r"\\underline\s*\{"), "**", "**"),
     (re.compile(r"\\(?:emph|textit)\s*\{"), "*", "*"),
-    (re.compile(r"\\texttt\s*\{"), "`", "`"),
-    (re.compile(r"\\SMCode\s*\{"), "`", "`"),
-    (re.compile(r"\\SMCmd\s*\{"), "`" + "\x03", "`"),
 )
-# A literal backslash in the text (\textbackslash, \SMCmd{name}): parked as
-# \x03 while the inline conversion strips macro names, put back by
-# render_slide() once the whole body is converted.
+# A literal backslash in the text (\textbackslash): parked as \x03 while the
+# inline conversion strips macro names, put back by _finish() once the whole
+# body is converted.
 _BACKSLASH_SLOT = "\x03"
 _TEXTBACKSLASH_RE = re.compile(r"\\textbackslash(?![a-zA-Z])(?:\{\})?\s?")
+
+# Code in running text -- \SMCode{text}, \SMCmd{name} (which prints
+# \name), \texttt{text} -- is shown verbatim as `code`. Its argument is
+# typeset LaTeX (\{ \_ \textbackslash), so it is decoded once and then
+# parked behind a \x04<n>\x04 slot until _finish(): every later pass (the
+# brace strip, "--" to an en dash, `` to a curly quote, the bare-dimension
+# strip that ate the "12pt" of "gap=12pt") would otherwise mangle it -- the
+# manual's \SMCmd{input}\SMCode{\{...\}} came out as "`\input“...\`".
+# Adjacent spans are one span: \SMCmd{slide}\SMCode{\{id\}} is `\slide{id}`.
+_CODE_SPAN_RE = re.compile(r"\\(SMCode|SMCmd|texttt)\s*\{")
+_CODE_SPAN_RUN_RE = re.compile(r"(?:\x04\d+\x04)+")
+_CODE_SPAN_ID_RE = re.compile(r"\x04(\d+)\x04")
+_code_spans: dict[int, str] = {}
+_code_span_ids = itertools.count()
+
+
+def _code_text(raw: str) -> str:
+    """A code argument's typeset text: escapes decoded, formatting dropped."""
+    text = _TEXTBACKSLASH_RE.sub(_BACKSLASH_SLOT, raw)
+    text = text.replace("\\{", "\x05").replace("\\}", "\x06")
+    for escaped, plain in (("\\_", "_"), ("\\#", "#"), ("\\%", "%"), ("\\&", "&"),
+                           ("\\$", "$"), ("\\,", " "), ("\\ ", " ")):
+        text = text.replace(escaped, plain)
+    text = re.sub(r"\\textasciitilde(?![a-zA-Z])(?:\{\})?", "\x07", text)
+    text = re.sub(r"\\textasciicircum(?![a-zA-Z])(?:\{\})?", "^", text)
+    text = _ELLIPSIS_RE.sub("...", text)
+    text = _SYMBOL_RE.sub(lambda m: _SYMBOLS[m.group(1)], text)
+    text = text.replace("~", " ").replace("\x07", "~")
+    text = re.sub(r"\\[a-zA-Z]+\*?", "", text)
+    text = text.replace("{", "").replace("}", "")
+    return (text.replace("\x05", "{").replace("\x06", "}")
+            .replace(_BACKSLASH_SLOT, "\\"))
+
+
+def _park_code_spans(text: str) -> str:
+    out: list[str] = []
+    index = 0
+    while True:
+        match = _CODE_SPAN_RE.search(text, index)
+        if match is None:
+            out.append(text[index:])
+            return "".join(out)
+        out.append(text[index:match.start()])
+        content, after = alt_blocks.braced_argument(text, match.end() - 1)
+        if after == match.end() - 1:
+            out.append(text[match.start():])
+            return "".join(out)
+        code = ("\\" if match.group(1) == "SMCmd" else "") + _code_text(content)
+        if code.strip():
+            slot = next(_code_span_ids)
+            _code_spans[slot] = code
+            out.append(f"\x04{slot}\x04")
+        index = after
+
+
+def _finish(text: str) -> str:
+    """Put the parked code spans and literal backslashes back."""
+    def span(match: re.Match) -> str:
+        code = "".join(_code_spans.pop(int(n), "")
+                       for n in _CODE_SPAN_ID_RE.findall(match.group(0)))
+        return f"`{code}`" if code else ""
+    return _CODE_SPAN_RUN_RE.sub(span, text).replace(_BACKSLASH_SLOT, "\\")
+
+
+# Maths and symbols a reader should hear as what they are -- stripped as
+# macros, "$\rightarrow$" left an empty "$$" and \dfrac{a}{b} became "ab".
+_SYMBOLS = {
+    "rightarrow": "→", "to": "→", "Rightarrow": "⇒", "leftarrow": "←",
+    "Leftarrow": "⇐", "leftrightarrow": "↔", "Leftrightarrow": "⇔",
+    "mapsto": "↦", "uparrow": "↑", "downarrow": "↓",
+    "times": "×", "cdot": "·", "pm": "±", "mp": "∓", "div": "÷",
+    "le": "≤", "leq": "≤", "ge": "≥", "geq": "≥", "ne": "≠", "neq": "≠",
+    "approx": "≈", "sim": "∼", "equiv": "≡", "triangleq": "≜", "propto": "∝",
+    "infty": "∞", "partial": "∂", "sum": "∑", "prod": "∏", "int": "∫",
+    "in": "∈", "notin": "∉", "subset": "⊂", "cup": "∪", "cap": "∩",
+    "forall": "∀", "exists": "∃", "sqrt": "√", "degree": "°", "textdegree": "°",
+    "EUR": "€", "euro": "€", "checkmark": "✓", "quad": " ", "qquad": " ",
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
+    "varepsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ", "kappa": "κ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ",
+    "sigma": "σ", "tau": "τ", "phi": "φ", "varphi": "φ", "chi": "χ",
+    "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ",
+    "Lambda": "Λ", "Xi": "Ξ", "Pi": "Π", "Sigma": "Σ", "Phi": "Φ",
+    "Psi": "Ψ", "Omega": "Ω",
+    "textdagger": "†", "dag": "†", "textdaggerdbl": "‡", "ddag": "‡",
+    "S": "§", "textsection": "§", "P": "¶", "textparagraph": "¶",
+    "pounds": "£", "copyright": "©", "textregistered": "®", "texttrademark": "™",
+}
+_SYMBOL_RE = re.compile(
+    r"\\(" + "|".join(sorted(_SYMBOLS, key=len, reverse=True)) + r")(?![a-zA-Z])(?:\{\})?")
+_FRAC_RE = re.compile(r"\\[dt]?frac\s*\{")
+_UNDERBRACE_RE = re.compile(r"\\SMUnderbrace\s*\{")
+# Maths holding only code (the manual's labelled file name) is not maths to
+# a reader: its dollars go.
+_CODE_ONLY_MATH_RE = re.compile(r"(?<!\\)\$([^$]*\x04\d+\x04[^$]*)(?<!\\)\$")
+# ... and neither is a lone symbol: "$→$" reads as the arrow
+_SYMBOL_ONLY_MATH_RE = re.compile(r"(?<!\\)\$([^$a-zA-Z0-9\\\s]+)\$")
+# \hyperlink{target}{text}: the target is an ID, the text is the link
+_HYPERLINK_TARGET_RE = re.compile(r"\\hyperlink\s*\{[^{}]*\}")
+
+
+def _replace_two_arguments(text: str, pattern: re.Pattern, render) -> str:
+    """Every `pattern{a}{b}` replaced by render(a, b) (both brace-matched)."""
+    out: list[str] = []
+    index = 0
+    while True:
+        match = pattern.search(text, index)
+        if match is None:
+            out.append(text[index:])
+            return "".join(out)
+        first, after = alt_blocks.braced_argument(text, match.end() - 1)
+        cursor = after
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        second, after2 = alt_blocks.braced_argument(text, cursor)
+        if after == match.end() - 1 or after2 == cursor:
+            out.append(text[index:match.end()])
+            index = match.end()
+            continue
+        out.append(text[index:match.start()] + render(first, second))
+        index = after2
+
+
+def _fraction(numerator: str, denominator: str) -> str:
+    def group(part: str) -> str:
+        part = part.strip()
+        return f"({part})" if re.search(r"[-+*/=, ]", part) else part
+    return f"{group(numerator)}/{group(denominator)}"
 # A \\ line break (with an optional [<skip>]) is a space in running text: the
 # generic macro strip used to take "\SlideMage" out of "...\\SlideMage" and
 # leave a stray backslash behind ("demonstration\ 5.12").
@@ -817,7 +964,7 @@ _PERIODCENTERED_RE = re.compile(r"\\textperiodcentered(?![a-zA-Z])(?:\{\})?")
 _COLOR_COMMAND_RE = re.compile(
     r"\\fcolorbox\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}\s*\{[^{}]*\}"
     r"|\\(?:textcolor|colorbox|cellcolor|rowcolor|columncolor|color)(?![a-zA-Z])"
-    r"\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
+    r"\s*(?:<[^>]*>)?\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
 )
 _HREF_RE = re.compile(r"\\href\s*\{")
 _URL_RE = re.compile(r"\\url\s*\{")
@@ -868,8 +1015,16 @@ def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> 
 
 def _inline_markdown(text: str) -> str:
     """Inline-level LaTeX to Markdown. Recursive: macros nest."""
+    text = _park_code_spans(text)
     text = _COLOR_COMMAND_RE.sub("", text)
     text = _TEXTBACKSLASH_RE.sub(_BACKSLASH_SLOT, text)
+    text = _HYPERLINK_TARGET_RE.sub("", text)
+    text = _replace_two_arguments(text, _FRAC_RE, _fraction)
+    text = _replace_two_arguments(
+        text, _UNDERBRACE_RE, lambda term, label: f"{term} [{label.strip()}]")
+    text = _CODE_ONLY_MATH_RE.sub(r"\1", text)
+    text = _SYMBOL_RE.sub(lambda m: _SYMBOLS[m.group(1)], text)
+    text = _SYMBOL_ONLY_MATH_RE.sub(r"\1", text)
     text = _LINE_BREAK_RE.sub(" ", text)
     text = _PERIODCENTERED_RE.sub("·", text)
     # \href{url}{label} -> [label](url)
@@ -906,7 +1061,8 @@ def _inline_markdown(text: str) -> str:
     text = text.replace("~", " ")
     text = text.replace("``", "\u201c").replace("''", "\u201d")
     text = text.replace("---", "\u2014").replace("--", "\u2013")
-    text = re.sub(r"\\[a-zA-Z]+\*?", "", text)
+    # a macro and its overlay specification (\only<4>, \uncover<2->)
+    text = re.sub(r"\\[a-zA-Z]+\*?(?:<[-\d,|+@a-z.]*>)?", "", text)
     text = text.replace("{", "").replace("}", "")
     return re.sub(r"[ \t]+", " ", text)
 
@@ -956,16 +1112,117 @@ def _tikz_labels(body: str) -> str:
     return "\n\n".join(labels)
 
 
+# Layout commands whose arguments are numbers, counters or lengths: the
+# generic macro strip left those behind ("1" from \shrinklists{1}, "6.47.6"
+# from \fontsize{6.4}{7.6}, "enumi5" from \setcounter{enumi}{5}).
+_LAYOUT_COMMAND_RE = re.compile(
+    r"\\(?:shrinklists|SMTocLabelFlushLeft|SMEnumerateLabelFlushLeftShifted"
+    r"|stepcounter|refstepcounter)\s*\{[^{}]*\}"
+    r"|\\(?:fontsize|setcounter|addtocounter|setlength|addtolength)\s*"
+    r"\{[^{}]*\}\s*\{[^{}]*\}"
+    r"|\\(?:hangindent|hangafter|parindent|leftskip|rightskip|baselineskip"
+    r"|tabcolsep|arraystretch)\s*=?\s*[-+]?\d*\.?\d+\s*(?:pt|cm|mm|em|ex|in|bp|sp)?")
+# \ifnum ... \fi: a test on a counter or a length -- layout logic (the
+# agenda slides' "\ifnum\value{enumi}=0 \item[] \fi"); the condition cannot
+# be evaluated here and the branch holds no slide text.
+_IFNUM_RE = re.compile(r"\\ifnum(?![a-zA-Z]).*?\\fi(?![a-zA-Z])", re.DOTALL)
+# Figure helpers (Slidemaster_preamble_base.tex): the argument is an image
+# path (described in its own section) or, for \cornerfigure[block], content
+# that stays.
+_FIGURE_COMMAND_RE = re.compile(
+    r"\\(?:cornerfigure|fitfigure|sectionfigure)\s*(?:\[[^\]]*\])?\s*\{")
+_PROGRESS_STRIP_RE = re.compile(r"\\progressstrip\s*\{")
+_WARNING_SIGN_RE = re.compile(r"\\SMWarningSign\s*(?:\[[^\]]*\])?\s*\{")
+_TOC_RE = re.compile(r"\\tableofcontents\s*(?:\[([^\]]*)\])?")
+_TOC_SECTIONS_RE = re.compile(r"sections\s*=\s*\{?\s*([\d\s,\-]+)\}?")
+_TOC_SLOT_RE = re.compile(r"\x02SMTOC:([\d,\-]*)\x02")
+
+
+def _figure_commands(text: str) -> str:
+    out: list[str] = []
+    index = 0
+    while True:
+        match = _FIGURE_COMMAND_RE.search(text, index)
+        if match is None:
+            out.append(text[index:])
+            return "".join(out)
+        argument, after = alt_blocks.braced_argument(text, match.end() - 1)
+        if after == match.end() - 1:
+            out.append(text[index:])
+            return "".join(out)
+        out.append(text[index:match.start()])
+        out.append(f"\n{argument}\n" if "\\" in argument else " ")
+        index = after
+
+
+def _arguments(text: str, start: int, count: int) -> tuple[list[str], int]:
+    """`count` brace-matched arguments from `start` on; ([], start) if short."""
+    arguments: list[str] = []
+    cursor = start
+    for _ in range(count):
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        content, after = alt_blocks.braced_argument(text, cursor)
+        if after == cursor:
+            return [], start
+        arguments.append(content)
+        cursor = after
+    return arguments, cursor
+
+
+def _replace_command(text: str, pattern: re.Pattern, count: int, render) -> str:
+    """Every `pattern` call with `count` arguments (the first one's brace
+    ends the pattern) replaced by render(arguments)."""
+    out: list[str] = []
+    index = 0
+    while True:
+        match = pattern.search(text, index)
+        if match is None:
+            out.append(text[index:])
+            return "".join(out)
+        arguments, after = _arguments(text, match.end() - 1, count)
+        if not arguments:
+            out.append(text[index:match.end()])
+            index = match.end()
+            continue
+        out.append(text[index:match.start()] + render(arguments))
+        index = after
+
+
+def _progress_strip(arguments: list[str]) -> str:
+    steps = [step.strip() for step in arguments[0].split(",") if step.strip()]
+    current = arguments[1].strip()
+    return " → ".join(
+        f"**{step}**" if str(number) == current else step
+        for number, step in enumerate(steps, start=1))
+
+
+def _toc_slot(match: re.Match) -> str:
+    sections = _TOC_SECTIONS_RE.search(match.group(1) or "")
+    spec = re.sub(r"\s", "", sections.group(1)) if sections else ""
+    return f"\n\x02SMTOC:{spec}\x02\n"
+
+
 def _convert_body(text: str, depth: int = 0) -> str:
+    text = _park_code_spans(text)
     text = _CONTROL_SPACE_RE.sub(r"\1 ", text)
     text = _SETBEAMER_RE.sub("", text)
     text = _TIKZ_MARK_NAME_RE.sub("", text)
+    text = _IFNUM_RE.sub(" ", text)
+    text = _LAYOUT_COMMAND_RE.sub(" ", text)
+    text = _figure_commands(text)
+    text = _replace_command(text, _PROGRESS_STRIP_RE, 2, _progress_strip)
+    text = _replace_command(text, _WARNING_SIGN_RE, 5,
+                            lambda arguments: f"⚠ {arguments[2].strip()}")
     text = _GRAPHICS_RE.sub(" ", text)
     text = _CONDITIONAL_PAUSE_RE.sub(" ", text)
     text = _BOX_TO_RE.sub(" ", text)
     text = _DIMENSION_RE.sub(" ", text)
     for name in _DROP_ENVIRONMENTS:
         text = _transform_environments(text, name, lambda _body: "")
+    # A tikzillustration is described like an image, in its own section;
+    # its node labels would only repeat that description.
+    text = _transform_environments(text, "tikzillustration", lambda _body: "")
     text = _transform_environments(text, "tikzpicture", _tikz_labels)
     for name in _UNWRAP_ENVIRONMENTS:
         text = _transform_environments(text, name, lambda body: "\n" + body + "\n")
@@ -1001,6 +1258,7 @@ def _convert_body(text: str, depth: int = 0) -> str:
 # --------------------------------------------------------------------------
 
 _FRAME_END_RE = re.compile(r"\\end\{\w*frame\}")
+_PLAIN_FRAME_OPEN_RE = re.compile(r"\\begin\{frame\}\s*(?:<[^>]*>)?\s*(?:\[[^\]]*\])?")
 
 # \SMCodeFile[listings keys]{path}: LaTeX source a slide shows from a file
 # (snippets/<id>-<n>.tex). The transcript shows the file's text as a fenced
@@ -1043,6 +1301,65 @@ _AGENDA_SLOT = "\x02SMAGENDA\x02"
 def _unpark_code_files(text: str, blocks: list[str]) -> str:
     for slot, block in enumerate(blocks):
         text = text.replace(_CODE_SLOT.format(slot), block)
+    return text
+
+
+# A slide's own macros (\providecommand{\galleryitem}[3]{...} at its top):
+# expanded, so their arguments are read where they are used -- the
+# definition's #1 #2 and the call's bare arguments otherwise both leaked
+# into the transcript. Mandatory arguments, and an optional first one with
+# its default; \def is left alone.
+_LOCAL_MACRO_DEF_RE = re.compile(
+    r"\\(?:provide|new|renew)command\*?\s*(?:\{\s*\\([a-zA-Z@]+)\s*\}|\\([a-zA-Z@]+))"
+    r"\s*(?:\[(\d)\])?\s*(?:\[([^\]]*)\])?\s*\{")
+
+
+def _expand_local_macros(text: str) -> str:
+    macros: dict[str, tuple[int, str | None, str]] = {}
+    while True:
+        match = _LOCAL_MACRO_DEF_RE.search(text)
+        if match is None:
+            break
+        body, after = alt_blocks.braced_argument(text, match.end() - 1)
+        if after == match.end() - 1:
+            break
+        macros[match.group(1) or match.group(2)] = (
+            int(match.group(3) or 0), match.group(4), body)
+        text = text[:match.start()] + text[after:]
+
+    for _ in range(5):                      # macros using macros
+        changed = False
+        for name, (count, default, body) in macros.items():
+            pattern = re.compile(r"\\" + re.escape(name) + r"(?![a-zA-Z@])")
+            out: list[str] = []
+            index = 0
+            for match in pattern.finditer(text):
+                if match.start() < index:
+                    continue
+                cursor = match.end()
+                arguments: list[str] = []
+                if default is not None and count:
+                    rest = text[cursor:].lstrip()
+                    if rest.startswith("["):
+                        close = rest.find("]")
+                        arguments.append(rest[1:close])
+                        cursor = len(text) - len(rest) + close + 1
+                    else:
+                        arguments.append(default)
+                more, cursor = _arguments(text, cursor, count - len(arguments))
+                if len(arguments) + len(more) < count:
+                    continue
+                arguments += more
+                expansion = body
+                for number, argument in enumerate(arguments, start=1):
+                    expansion = expansion.replace(f"#{number}", argument)
+                out.append(text[index:match.start()] + expansion)
+                index = cursor
+                changed = True
+            out.append(text[index:])
+            text = "".join(out)
+        if not changed:
+            break
     return text
 
 
@@ -1103,13 +1420,16 @@ def render_slide(deck_slide: DeckSlide, version: str,
     stripped = alt_blocks.COMMENT_RE.sub("", source_text)
     stripped = resolve_deck_conditionals(stripped, version)
     stripped, _notes = alt_blocks.extract_note_calls(stripped)
-    body = stripped
+    body = _expand_local_macros(stripped)
     body, sources = alt_blocks.extract_macro_calls(body, "source")
+    body, quote_sources = alt_blocks.extract_macro_calls(body, "quotesource")
+    sources += quote_sources
     body, agenda_titles = alt_blocks.extract_macro_calls(body, "SMAgendaTitle")
     body = _DECK_AGENDA_RE.sub("", body)
     has_chapter_agenda = bool(_CHAPTER_AGENDA_RE.search(body))
     body = _CHAPTER_AGENDA_RE.sub("\n\n" + _AGENDA_SLOT + "\n\n", body)
-    agenda_title = (_inline_markdown(agenda_titles[0]).strip().replace(_BACKSLASH_SLOT, "\\")
+    body = _TOC_RE.sub(_toc_slot, body)
+    agenda_title = (_finish(_inline_markdown(agenda_titles[0]).strip())
                     if agenda_titles else "")
 
     slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
@@ -1118,11 +1438,22 @@ def render_slide(deck_slide: DeckSlide, version: str,
         title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)
 
     begin = alt_blocks.FRAME_OPEN_RE.search(body)
+    plain = _PLAIN_FRAME_OPEN_RE.search(body)
     end = _FRAME_END_RE.search(body)
     if begin and end:
         _title_arg, after_title = alt_blocks.braced_argument(body, begin.end() - 1)
+        if begin.group(0).startswith("\\begin{sideimageframe}"):
+            _path, after_title = _arguments(body, after_title, 1)  # its image
         if after_title < end.start():
             body = body[after_title:end.start()]
+    elif plain and end:
+        # \begin{frame}[standout]: beamer's own frame, title optional
+        cursor = plain.end()
+        while cursor < len(body) and body[cursor].isspace():
+            cursor += 1
+        if body.startswith("{", cursor):
+            _title_arg, cursor = alt_blocks.braced_argument(body, cursor)
+        body = body[cursor:end.start()]
     else:
         # \titleframe{title}{subtitle}/\fullbleedframe{path} are commands,
         # not environments, so they never match FRAME_OPEN_RE/_FRAME_END_RE
@@ -1154,9 +1485,8 @@ def render_slide(deck_slide: DeckSlide, version: str,
         number=deck_slide.number,
         slide_id=slide_id,
         title=title,
-        body=_unpark_code_files(
-            _convert_body(body).strip().replace(_BACKSLASH_SLOT, "\\"), code_blocks),
-        source=_inline_markdown(" ".join(sources)).strip().replace(_BACKSLASH_SLOT, "\\"),
+        body=_unpark_code_files(_finish(_convert_body(body).strip()), code_blocks),
+        source=_finish(" ".join(_inline_markdown(" ".join(sources)).split())),
         summary=notes.summary if notes else "",
         agenda_title=agenda_title,
         chapter_agenda=has_chapter_agenda,
@@ -1249,6 +1579,58 @@ def _fill_chapter_agendas(entries: list[TranscriptSlide], chapters: list[int],
         entry.body = entry.body.replace(_AGENDA_SLOT, block).strip()
 
 
+def _section_titles(deck_path: Path) -> list[str]:
+    """The deck's \\section titles, in order (literal includes expanded, as
+    resolve_deck() counts them)."""
+    source = deck_path.read_text(encoding="utf-8")
+    text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
+                                    (deck_path.resolve(),))
+    text = alt_blocks.COMMENT_RE.sub("", text)
+    titles: list[str] = []
+    for match in _SECTION_RE.finditer(text):
+        title, _after = alt_blocks.braced_argument(text, match.end() - 1)
+        titles.append(_finish(_inline_markdown(title).strip()))
+    return titles
+
+
+def _section_numbers(spec: str, total: int) -> list[int]:
+    """beamer's sections={1-5,7} option; empty means every section."""
+    if not spec:
+        return list(range(1, total + 1))
+    numbers: list[int] = []
+    for part in spec.split(","):
+        first, _, last = part.partition("-")
+        if first.isdigit():
+            numbers.extend(range(int(first), int(last or first) + 1)
+                           if (last or first).isdigit() else [int(first)])
+    return numbers
+
+
+def _fill_deck_tocs(entries: list[TranscriptSlide], chapters: list[int],
+                    section_titles: list[str], language: str = "en") -> None:
+    """Replace each \\tableofcontents placeholder with the deck's chapters
+    (the sections it asks for), each with the number of its first slide."""
+    strings = STRINGS[language]
+    first_slide: dict[int, int] = {}
+    for entry, chapter in zip(entries, chapters):
+        first_slide.setdefault(chapter, entry.number)
+
+    def render(match: re.Match) -> str:
+        items: list[str] = []
+        for number in _section_numbers(match.group(1), len(section_titles)):
+            if not 1 <= number <= len(section_titles):
+                continue
+            title = section_titles[number - 1]
+            if number in first_slide:
+                title = strings["chapter_agenda_item"].format(
+                    title=title, n=first_slide[number])
+            items.append(f"{number}. {title}")
+        return "\n".join(items)
+
+    for entry in entries:
+        entry.body = _TOC_SLOT_RE.sub(render, entry.body).strip()
+
+
 def generate_single_slide(
     source_text: str, bare_id: str, version: str, language: str
 ) -> TranscriptResult:
@@ -1288,6 +1670,7 @@ def generate_single_slide(
     if entry is None:
         raise RuntimeError("Could not read this slide's own text.")
     _fill_chapter_agendas([entry], [0], language)  # no deck: no chapter to list
+    _fill_deck_tocs([entry], [0], [], language)
 
     lines = _entry_markdown_lines(entry, language=language)
     return TranscriptResult(
@@ -1340,6 +1723,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
         rendered.append(entry)
         chapters.append(deck_slide.chapter)
     _fill_chapter_agendas(rendered, chapters, language)
+    _fill_deck_tocs(rendered, chapters, _section_titles(deck_path), language)
 
     undescribed = sum(1 for s in rendered if s.missing_description)
 
