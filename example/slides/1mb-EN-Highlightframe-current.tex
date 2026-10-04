@@ -1,0 +1,20 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Frame types": highlightframe, plus the source of
+% the standout frame that follows it (slide 1xf has no room for its own).
+\begin{highlightframe}{Presenter attention: \SMCode{highlightframe}}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\begin{itemize}
+				\item Title bar and footer in \SMCode{SMHighlightColor}: you cannot flip to this slide without noticing
+				\item For the moments when you stop and do something -- a poll, an exercise, a break
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\SMCodeFile{snippets/1mb-1.tex}\par\bigskip
+			\hyperlink{1xf}{\textbf{Next slide}}: a \SMCode{standout} frame\par\smallskip
+			\SMCodeFile{snippets/1mb-2.tex}
+		\end{column}
+	\end{columns}
+\end{highlightframe}

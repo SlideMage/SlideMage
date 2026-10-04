@@ -1,0 +1,21 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Assembling decks": the \slidestep demo. The deck
+% shows this slide twice (before and after "Linking and navigating"); the
+% slide itself only has plain overlay specifications, the deck decides which
+% steps each place and each deck version shows (snippets/1mu-1.tex).
+\begin{standardframe}{\SMCmd{slidestep}: one slide, two places}
+	\begin{itemize}
+		\item Step 1, in every deck version and at both places
+		\item<2-> Step 2, instructor only, first place: say, the answer to a question
+		\item<3-> Step 3, instructor only, second place: a follow-up after the discussion
+	\end{itemize}
+	\medskip
+	\begin{minipage}{0.7\linewidth}
+		\SMCodeFile{snippets/1mu-1.tex}
+	\end{minipage}
+	\medskip
+
+	{\small Each place is one frame in every version, so the slide numbers after it agree across versions; a link to the slide lands on its first place.\par}
+\end{standardframe}

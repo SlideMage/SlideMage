@@ -1,0 +1,32 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual: the deck agenda, built from the deck's \section{}s
+% (\tableofcontents), Part A on the left, Part B on the right. \SMDeckAgenda
+% makes this slide the target of the footer's "Manual chapters" link. Same
+% enumerate set-up as any agenda slide (see the comment on
+% \beamer@sectionintoc in Slidemaster_preamble_base.tex); the \ifnum lines
+% keep each enumerate legal on the very first pass, before the .toc exists.
+\setbeamertemplate{section in toc}[gotham plain enumerate]
+\begin{standardframe}{Contents}
+	\SMDeckAgenda
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\textcolor{c_primary_highlight}{\textbf{Part A: How SlideMage works}}\par\smallskip
+			\begin{enumerate}
+				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
+				\tableofcontents[sections={1-5},hideallsubsections]
+				\ifnum\value{enumi}=0 \item[] \fi
+			\end{enumerate}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\textcolor{c_primary_highlight}{\textbf{Part B: Showcase}}\par\smallskip
+			\begin{enumerate}
+				\setcounter{enumi}{5}
+				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
+				\tableofcontents[sections={6-10},hideallsubsections]
+				\ifnum\value{enumi}=5 \item[] \fi
+			\end{enumerate}
+		\end{column}
+	\end{columns}
+\end{standardframe}

@@ -1,0 +1,32 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Assembling decks": the \slide family.
+\begin{standardframe}{Six ways to put a slide into a deck}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\footnotesize
+			\begin{gothamtable}[gap=8pt]{l>{\raggedright\arraybackslash}p{0.56\linewidth}}
+				\toprule
+				Call & What the deck gets \\
+				\midrule
+				\SMCmd{slide} & the live \SMCode{current.tex} \\
+				\SMCmd{slideversion} & a frozen version, pinned \\
+				\SMCmd{slidefinal} & fully revealed, in every version \\
+				\SMCmd{conditionalslide} & only in the listed deck versions; the slide numbers still agree \\
+				\SMCmd{slidestep} & the listed versions see the listed reveal steps \\
+				\SMCmd{omitslide} & left out by \SMCmd{studentversion} (the older two-way system) \\
+				\bottomrule
+			\end{gothamtable}
+		\end{column}
+		\begin{column}{0.41\linewidth}
+			\SMCodeFile{snippets/1u4-1.tex}
+			\smallskip
+			{\small The deck editor writes them for you.\par}
+			\smallskip
+			\begin{alertblock}{Dated slides are pinned}
+				A slide with a course date goes into every deck as \SMCmd{slideversion}
+			\end{alertblock}
+		\end{column}
+	\end{columns}
+\end{standardframe}

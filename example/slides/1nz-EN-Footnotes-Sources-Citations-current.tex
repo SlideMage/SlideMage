@@ -1,0 +1,18 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": footnotes, sources and
+% citations, all live on this slide (the deck loads biblatex for \fullcite).
+\begin{standardframe}{Footnotes, sources, citations}
+	\begin{itemize}
+		\item Footnote markers are currency signs\footnote{The first marker on every slide.}, starting afresh on every slide\footnote{The second.}
+		\begin{itemize}
+			\item \SMCode{\textbackslash setfootnotesymbols\{\textdagger,\textdaggerdbl,\S\}} chooses others -- see the \hyperlink{ZZU}{reference sheet} in the appendix
+		\end{itemize}
+		\item \SMCode{\textbackslash fullcite\{key\}} formats a reference from \SMCode{Slidemaster.bib}\footnote{\fullcite{markowitz1952}}
+		\item \SMCode{\textbackslash source\{...\}}: a source line without a marker, written out in full (below)
+		\item An image's source is entered once, in SlideMage's Images tab, and appears as an automatic \emph{Image source:} line
+		\item Links look like \href{https://ctan.org/pkg/beamer}{this one}
+	\end{itemize}
+	\source{Source: SlideMage README, sections ``Footnote markers'' and ``Source citations''.}
+\end{standardframe}

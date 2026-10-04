@@ -1,0 +1,16 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Frame types": sideimageframe. The footnote below
+% demonstrates the rotated footnote strip the frame switches on by itself.
+\begin{sideimageframe}{Side image: \SMCode{sideimageframe}}{media/illustration-slide-stack-portrait.pdf}
+	\begin{minipage}[t]{0.66\linewidth}
+		\begin{itemize}
+			\item The image fills the space from the title bar to the footer, flush with the right edge
+			\item Footnotes and sources move into a rotated strip beside it\footnote{Like this one.}
+			\item \SMCmd{sidefootnotes} does the same for any other frame
+		\end{itemize}
+		\medskip
+		\SMCodeFile{snippets/1vh-1.tex}
+	\end{minipage}
+\end{sideimageframe}

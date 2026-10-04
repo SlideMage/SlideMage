@@ -1,0 +1,15 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Reveal steps": \SMFinalStateForStudents, live on
+% this slide. Plain overlay specifications build it up in three steps for
+% the instructor; every student version gets only the last page.
+\SMFinalStateForStudents
+\begin{standardframe}{Final state for students}
+	\begin{itemize}
+		\item \SMCmd{SMFinalStateForStudents}, written before the frame: the instructor deck builds the slide step by step\ldots
+		\item<2-> \ldots every student version shows only its last overlay page
+		\item<3-> No change to the slide body: covers \SMCmd{pause}, \SMCmd{only}, \SMCode{\textbackslash item<n->}, \SMCmd{uncover}, \SMCmd{alt}, even steps that hide something again
+		\item<3-> Compile this manual as \emph{during-course}: this slide has one page there
+	\end{itemize}
+\end{standardframe}

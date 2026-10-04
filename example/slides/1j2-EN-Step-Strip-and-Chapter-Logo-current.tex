@@ -1,0 +1,24 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Frame types": \progressstrip and \chapterlogo,
+% two decorations of a standardframe, both live on this slide.
+\chapterlogo{media/chapter-logo-building-blocks.pdf}
+\begin{standardframe}{Step strip and chapter logo}
+	\progressstrip{Frame,Content,Reveals,Deck}{1}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.5\linewidth}
+			\begin{itemize}
+				\item \textbf{Step strip}: a chain of steps below the title bar, the current one underlined -- for a run of slides that walk through the same chain
+				\item \textbf{Chapter logo}: a second logo beside the institute logo, for this one frame
+				\begin{itemize}
+					\item Call \SMCmd{chapterlogo} before the frame
+					\item Crop the image to its ink first
+				\end{itemize}
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\SMCodeFile{snippets/1j2-1.tex}
+		\end{column}
+	\end{columns}
+\end{standardframe}

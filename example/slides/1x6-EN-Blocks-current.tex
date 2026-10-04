@@ -1,0 +1,33 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": the six block environments,
+% each naming itself, and the floating variants.
+\begin{standardframe}{Blocks}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\begin{block}{block}
+				Neutral: a statement, a formula
+			\end{block}
+			\begin{definitionblock}{definitionblock}
+				A definition, marked $\triangleq$
+			\end{definitionblock}
+			\begin{exampleblock}{exampleblock}
+				A worked example
+			\end{exampleblock}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\begin{alertblock}{alertblock}
+				A caveat or a warning
+			\end{alertblock}
+			\begin{infoblock}{infoblock}
+				An aside
+			\end{infoblock}
+			\begin{referenceblock}{referenceblock}
+				A reference or citation
+			\end{referenceblock}
+		\end{column}
+	\end{columns}
+	\smallskip
+	{\small Narrow, placed freely: \SMCode{gothamfloatingblock}, \SMCode{...exampleblock}, \SMCode{...infoblock}, in a corner with \SMCmd{cornerfigure}\SMCode{[block]}\par}
+\end{standardframe}

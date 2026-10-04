@@ -1,0 +1,30 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": columns, top-aligned
+% minipages and gothamtable. The slide itself is two columns; the table is
+% live.
+\begin{standardframe}{Columns and tables}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.47\linewidth}
+			\begin{itemize}
+				\item \SMCode{columns[t,onlytextwidth]}, inside the frame
+				\item Beside a figure: two \SMCode{minipage[t]}, the first line with \SMCmd{SMLineTop}
+				\item \SMCode{gothamtable[gap=12pt]}: rules flush with the text
+			\end{itemize}
+			\medskip
+			\begin{gothamtable}[gap=12pt]{lcc}
+				\toprule
+				Frame & Title bar & Footer \\
+				\midrule
+				\SMCode{standardframe} & yes & yes \\
+				\SMCmd{titleframe} & large box & no \\
+				\SMCmd{fullbleedframe} & no & no \\
+				\bottomrule
+			\end{gothamtable}
+		\end{column}
+		\begin{column}{0.5\linewidth}
+			\SMCodeFile{snippets/1wa-1.tex}
+		\end{column}
+	\end{columns}
+\end{standardframe}

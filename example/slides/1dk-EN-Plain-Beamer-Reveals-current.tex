@@ -1,0 +1,31 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Reveal steps": beamer's own overlay commands. The
+% left column reveals live (four steps, in every deck version -- plain
+% overlays do not know about deck versions; see the next slides). The
+% \only line comes last, so that nothing below it moves when it appears.
+\begin{standardframe}{Plain beamer reveals}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item Always visible
+				\item<2-> From step 2 on
+				\item<3-> From step 3 on, \textcolor<4>{c_custom_red}{red} on step 4
+			\end{itemize}
+			\medskip
+			\SMCodeFile{snippets/1dk-1.tex}
+			\medskip
+			\only<4>{Step 4 only, no space kept before}
+		\end{column}
+		\begin{column}{0.5\linewidth}
+			\begin{alertblock}{Two traps}
+				\begin{itemize}
+					\item A reveal inside \SMCode{columns} or a \SMCode{minipage} keeps its full height from step 1 on: a figure next to it can be pushed off the slide
+					\item A zero-space overlay (a picture placed on the page) \emph{after} a \SMCmd{pause} is hidden until the last step: write \SMCmd{onslide}\SMCode{<1->}\SMCmd{relax} before it
+				\end{itemize}
+			\end{alertblock}
+			Also \SMCmd{uncover}, \SMCmd{visible}, \SMCmd{alt}, \SMCode{\textbackslash only<2->\{...\}}
+		\end{column}
+	\end{columns}
+\end{standardframe}

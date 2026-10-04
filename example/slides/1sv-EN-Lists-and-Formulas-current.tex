@@ -1,0 +1,29 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": lists and formulas. The left
+% column is the live result of the code on the right (snippets/1sv-1.tex);
+% the variants that are not shown live are listed below it.
+\begin{standardframe}{Lists and formulas}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.44\linewidth}
+			\begin{itemize}
+				\item First level
+				\begin{itemize}
+					\item Second level
+					\item[\SMBulletEllipsis] an ellipsis label
+				\end{itemize}
+				\tallitem Sharpe ratio $S=\dfrac{E[R]-r_f}{\sigma}$
+				\tallitem The item after a fraction, too
+			\end{itemize}
+			\begin{gothamalphaitemize}
+				\item Lettered: a), b), \ldots
+			\end{gothamalphaitemize}
+		\end{column}
+		\begin{column}{0.53\linewidth}
+			\SMCodeFile{snippets/1sv-1.tex}
+			\medskip
+			{\footnotesize Also \SMCode{gothamnumitemize} 1), \SMCode{gothamnumperioditemize} 1., \SMCode{gothamalphaperioditemize} a., \SMCode{enumerate}; display maths in a list: \SMCmd{SMTightDisplaySkips}; a crowded slide: \SMCmd{shrinklists}\SMCode{\{1\}}\par}
+		\end{column}
+	\end{columns}
+\end{standardframe}

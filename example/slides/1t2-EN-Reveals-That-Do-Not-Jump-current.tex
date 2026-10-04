@@ -1,0 +1,29 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Reveal steps": reveals that keep their space. Both
+% lines reveal "b +" at step 2; only the starred one leaves "c" where it was.
+% The drawing reveals a bar at step 3 with TikZ's visible on=<3->. [T]: the
+% drawing's top, not its baseline, lines up with the list.
+\begin{standardframe}{Reveals that do not jump}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.6\linewidth}
+			\begin{itemize}
+				\item \SMCmd{deckrevealfinal}\SMCode{[2]}: $a + \deckrevealfinal[2]{b +{}} c$ \quad (\emph{c} moves)
+				\item \SMCmd{deckrevealfinal*}\SMCode{[2]}: $a + \deckrevealfinal*[2]{b +{}} c$ \quad (\emph{c} stays)
+				\item The starred forms, \SMCmd{deckreveal*} and \SMCmd{deckrevealfinal*}, keep the content's space on the earlier steps, so nothing around it moves
+				\item In a TikZ drawing: \SMCode{visible on=<3->} on a node or path
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.36\linewidth}
+			\centering
+			\begin{tikzillustration}[x=0.6cm, y=0.5cm]{1t2-tikz}
+				\fill[c_secondary_blue] (0.2,0) rectangle (0.8,2);
+				\fill[c_secondary_blue] (1.2,0) rectangle (1.8,3);
+				\fill[c_secondary_green, visible on=<3->] (2.2,0) rectangle (2.8,4);
+				\node[visible on=<3->, font=\scriptsize, text=c_custom_green, anchor=south] at (2.5,4) {step 3};
+				\draw[c_primary_gray] (0,0) -- (3.2,0);
+			\end{tikzillustration}
+		\end{column}
+	\end{columns}
+\end{standardframe}

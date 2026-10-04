@@ -1,0 +1,17 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": placing figures. The slide
+% itself is a besidefigure: the figure in the top-right corner with its
+% border on the margins, the text column exactly as wide as the room left.
+\begin{standardframe}{Placing figures}
+	\begin{besidefigure}[height=4.2cm, border]{media/correlation-matrix-example.png}
+		\begin{itemize}
+			\item \SMCmd{cornerfigure}: a figure in a corner (\SMCode{ne}, \SMCode{nw}, \SMCode{se}, \SMCode{sw}, or \SMCode{e}/\SMCode{w} centred), give its width \emph{or} height
+			\item \SMCode{besidefigure}: text beside it (this slide)
+			\item \SMCmd{fitfigure}: as large as fits below the text
+			\item \SMCode{border}: the outer edge of the border sits on the margins
+		\end{itemize}
+		\SMCodeFile{snippets/1c9-1.tex}
+	\end{besidefigure}
+\end{standardframe}

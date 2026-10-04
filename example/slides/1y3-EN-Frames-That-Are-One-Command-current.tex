@@ -1,0 +1,24 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Frame types": the frames that are a single
+% command and have no body of their own -- \titleframe, \quoteframe,
+% \fullbleedframe -- plus the sectionframe dividers, shown as the sources of
+% this manual's own slides (each heading links to that slide).
+\begin{standardframe}{Frames that are one command}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\hyperlink{1jh}{\textbf{Title slide}} -- no body, no footer\par\smallskip
+			\SMCodeFile{snippets/1y3-1.tex}\par\bigskip
+			\hyperlink{1y9}{\textbf{Chapter divider}} -- with \SMCmd{sectionfigure}\par\smallskip
+			\SMCodeFile{snippets/1y3-2.tex}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\hyperlink{1i4}{\textbf{Quote}} -- revealed in two steps\par\smallskip
+			\SMCodeFile{snippets/1y3-3.tex}\par\bigskip
+			\hyperlink{1vk}{\textbf{Full-bleed image}} -- nothing but the image\par\smallskip
+			\SMCodeFile{snippets/1y3-4.tex}
+		\end{column}
+	\end{columns}
+	\note{The headings are links to the four demo slides.}
+\end{standardframe}

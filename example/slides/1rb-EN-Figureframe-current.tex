@@ -1,0 +1,11 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Frame types": figureframe, the frame for a slide
+% that is just a figure. The code panel is a zero-space overlay on the Right
+% Margin (\cornerfigure with arbitrary content), so the figure itself is
+% placed exactly as on a real figure slide.
+\begin{figureframe}{Figure only: \SMCode{figureframe}}
+	\includegraphics[height=0.7\textheight]{media/correlation-matrix-example.png}
+	\cornerfigure[corner=e]{\begin{minipage}{0.4\linewidth}\SMCodeFile{snippets/1rb-1.tex}\end{minipage}}
+\end{figureframe}
