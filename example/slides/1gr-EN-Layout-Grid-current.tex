@@ -22,7 +22,8 @@
 			\node[anchor=west, text=c_primary_highlight] at (60pt,-\SMContentTopAlign-10pt) {Top Margin: \textbackslash SMContentTopAlign};
 			\node[anchor=west, text=c_primary_highlight] at (60pt,-\paperheight+\SMContentBottomAlign+10pt) {Bottom Margin: \textbackslash SMContentBottomAlign};
 			\node[anchor=west, text=white] at (40pt,-0.55\SMTitleBarBottomAlign) {title bar: \textbackslash SMTitleBarBottomAlign};
-			\node[anchor=west, text=white] at (40pt,-\paperheight+0.5\SMFooterBoxHeight) {\textbackslash SMFooterBoxHeight};
+			% below the footer box: at this scale the box is thinner than the label
+			\node[anchor=north west, text=c_primary_dark] at (40pt,-\paperheight) {footer box: \textbackslash SMFooterBoxHeight};
 			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\gothamFrametitleLeftpading+10pt,-200pt) {Left Margin};
 			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\paperwidth-\gothamFrametitleRightpading-10pt,-200pt) {Right Margin};
 			% a first line on the Top Margin
