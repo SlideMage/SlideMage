@@ -9,23 +9,29 @@
 % keep each enumerate legal on the very first pass, before the .toc exists.
 \setbeamertemplate{section in toc}[gotham plain enumerate]
 \begin{standardframe}{Contents}
+	\small
 	\SMDeckAgenda
+	Part A explains how SlideMage works and how to set it up. Part B shows what
+	a slide can contain: almost every slide there is its own example, with its
+	source code beside it. The footer links lead back here (\emph{Manual chapters})
+	and to the start of the current chapter (\emph{Chapter contents}).
+	\par\medskip
 	\begin{columns}[t,onlytextwidth]
 		\begin{column}{0.48\linewidth}
 			\textcolor{c_primary_highlight}{\textbf{Part A: How SlideMage works}}\par\smallskip
 			\begin{enumerate}
 				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
-				\tableofcontents[sections={1-5},hideallsubsections]
+				\tableofcontents[sections={1-6},hideallsubsections]
 				\ifnum\value{enumi}=0 \item[] \fi
 			\end{enumerate}
 		\end{column}
 		\begin{column}{0.48\linewidth}
 			\textcolor{c_primary_highlight}{\textbf{Part B: Showcase}}\par\smallskip
 			\begin{enumerate}
-				\setcounter{enumi}{5}
+				\setcounter{enumi}{6}
 				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
-				\tableofcontents[sections={6-10},hideallsubsections]
-				\ifnum\value{enumi}=5 \item[] \fi
+				\tableofcontents[sections={7-11},hideallsubsections]
+				\ifnum\value{enumi}=6 \item[] \fi
 			\end{enumerate}
 		\end{column}
 	\end{columns}

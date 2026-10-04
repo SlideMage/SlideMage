@@ -1,0 +1,32 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the app itself, its first
+% start and its updates.
+\begin{standardframe}{Installing SlideMage}
+	\small
+	SlideMage comes as a single Windows program; it needs no Python. Its
+	repository on GitHub is private, so your GitHub account needs access to it,
+	both for the download and for automatic updates.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.49\linewidth}
+			\shrinklists{1}
+			\textbf{Download and first start}
+			\begin{itemize}
+				\item \SMCode{SlideMage-windows.zip} from the newest release on the repository's \emph{Releases} page
+				\item Unzip \SMCode{SlideMage.exe} into a folder you keep and start it (if Windows warns: \emph{More info} $\rightarrow$ \emph{Run anyway})
+				\item Choose a project folder; an empty one becomes a new project, with this manual as its first deck
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.47\linewidth}
+			\shrinklists{1}
+			\textbf{Updates and more}
+			\begin{itemize}
+				\item System $\rightarrow$ Preferences $\rightarrow$ General $\rightarrow$ \emph{Updates}: a GitHub token (read access) and whether to check, ask or install
+				\item The LaTeX framework is the folder \SMCode{latex} beside your project; an app update leaves it as it is
+				\item From the source code: Python 3.11+, \SMCode{git clone}, \SMCode{pip install -e .}, \SMCode{slidemage --project <folder>}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

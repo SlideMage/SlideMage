@@ -1,0 +1,38 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the TeX distribution.
+% Not a click-by-click guide: where to download, which choices matter,
+% what to do afterwards.
+\begin{standardframe}{Installing LaTeX}
+	\small
+	SlideMage compiles every deck with LuaLaTeX through latexmk, so it needs a
+	TeX distribution. On Windows, MiKTeX is the smaller install: it fetches each
+	package the first time a deck needs it. TeX Live installs everything at once.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\shrinklists{1}
+			\textbf{MiKTeX} (\SMCode{miktex.org/download}, the basic installer)
+			\begin{itemize}
+				\item ``Only for me'' needs no administrator rights
+				\item Set \emph{Install missing packages on-the-fly} to \emph{Yes}, or every first compile stops to ask
+				\item Afterwards: MiKTeX Console $\rightarrow$ \emph{Updates} $\rightarrow$ \emph{Check for updates}, then \emph{Update now}
+				\item latexmk needs Perl: install Git for Windows (\SMCode{git-scm.com}, default choices); SlideMage finds its Perl by itself
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\textbf{TeX Live} (\SMCode{tug.org/texlive})
+			\begin{itemize}
+				\item \SMCode{install-tl-windows.exe}, scheme \emph{full} (about 8\,GB, Perl included)
+			\end{itemize}
+			\medskip
+			\textbf{Either way}
+			\begin{itemize}
+				\item The first compile fetches fonts and packages: it needs the internet and takes minutes
+				\item Test in a terminal: \SMCode{lualatex --version}, \SMCode{latexmk -v}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}
