@@ -11,9 +11,12 @@ def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
 
     media_dir = tmp_path / "media"
     slides_dir = tmp_path / "slides"
+    decks_dir = tmp_path / "decks"
     media_dir.mkdir()
     slides_dir.mkdir()
-    (slides_dir / "used.tex").write_text(
+    decks_dir.mkdir()
+    (decks_dir / "deck.tex").write_text(r"\slide{abc-EN-Used}", encoding="utf-8")
+    (slides_dir / "abc-EN-Used-current.tex").write_text(
         r"\includegraphics{media/chart.png}", encoding="utf-8"
     )
     (media_dir / "chart.png").write_bytes(b"image")
@@ -28,11 +31,48 @@ def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
 
     monkeypatch.setattr(unused_content, "MEDIA_DIR", media_dir)
     monkeypatch.setattr(unused_content, "SLIDES_DIR", slides_dir)
+    monkeypatch.setattr(unused_content, "DECKS_DIR", decks_dir)
+    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
 
     assert unused_content.find_unused_media() == [unused]
     assert authored.is_file()
     assert generated.is_file()
     assert atomic_write.is_file()
+
+
+def test_archive_takes_the_images_of_archived_slides_in_one_run(tmp_path, monkeypatch):
+    # Direct report (v5.14.2): a second click on "Archive unused content"
+    # found an image that only a slide archived by the first click had used.
+    from slidemage import unused_content
+
+    media_dir = tmp_path / "media"
+    slides_dir = tmp_path / "slides"
+    decks_dir = tmp_path / "decks"
+    for directory in (media_dir, slides_dir, decks_dir):
+        directory.mkdir()
+    (decks_dir / "deck.tex").write_text(r"\slide{abc-EN-Kept}", encoding="utf-8")
+    (slides_dir / "abc-EN-Kept-current.tex").write_text(
+        r"\includegraphics{media/kept.png}", encoding="utf-8")
+    (slides_dir / "abd-EN-Gone-current.tex").write_text(
+        r"\includegraphics{media/gone.png}", encoding="utf-8")
+    (slides_dir / "abc-EN-Kept-v1-0-0.tex").write_text(
+        r"\includegraphics{media/old.png}", encoding="utf-8")
+    for name in ("kept.png", "gone.png", "old.png"):
+        (media_dir / name).write_bytes(b"image")
+
+    monkeypatch.setattr(unused_content, "MEDIA_DIR", media_dir)
+    monkeypatch.setattr(unused_content, "MEDIA_ARCHIVE_DIR", media_dir / "archive")
+    monkeypatch.setattr(unused_content, "SLIDES_DIR", slides_dir)
+    monkeypatch.setattr(unused_content, "SLIDES_ARCHIVE_DIR", slides_dir / "archive")
+    monkeypatch.setattr(unused_content, "DECKS_DIR", decks_dir)
+    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
+
+    assert [p.name for p in unused_content.find_unused_media()] == ["gone.png", "old.png"]
+    assert unused_content.archive_unused_content(lambda _line: None) == (2, 2)
+    # a second run has nothing left to do
+    assert unused_content.find_unused_media() == []
+    assert unused_content.find_unused_slides() == []
+    assert (media_dir / "kept.png").is_file()
 
 
 def test_init_project_preflights_template_collisions(tmp_path, monkeypatch):

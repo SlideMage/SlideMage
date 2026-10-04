@@ -2,8 +2,8 @@
 
 Two independent scans, both run by archive_unused_content():
 
-- media/: a file is "in use" if any slides/*.tex file actually
-  \\includegraphics{}s it (or similar -- \\chapterlogo{}, \\fullbleedframe{},
+- media/: a file is "in use" if any slides/*.tex file that is itself in
+  use (see below) actually \\includegraphics{}s it (or similar -- \\chapterlogo{}, \\fullbleedframe{},
   \\begin{sideimageframe}{}{}, etc. all just take a bare "media/<name>"
   argument, so this looks for that literal substring rather than
   enumerating every macro that can carry one). A reference can omit the
@@ -152,7 +152,11 @@ def find_unused_slides() -> list[Path]:
 def find_used_media_filenames() -> set[str]:
     """Every media/ filename actually referenced (directly, or via a bare
     stem, or by sharing a stem with a file that is -- see module
-    docstring)."""
+    docstring) by a slide that is itself in use. A slide that is about to
+    be archived does not keep its images (v5.14.2, direct report: one
+    click archived the unused slides, and the next click found an image
+    only one of those slides had used -- the media scan read every slide
+    file, the ones being archived in the same run included)."""
     if not MEDIA_DIR.is_dir() or not SLIDES_DIR.is_dir():
         return set()
 
@@ -163,7 +167,10 @@ def find_used_media_filenames() -> set[str]:
         by_stem.setdefault(p.stem, []).append(p)
 
     directly_used: set[str] = set()
+    used_slides = find_used_slide_filenames()
     for path in SLIDES_DIR.glob("*.tex"):
+        if path.name not in used_slides:
+            continue
         text = _strip_comments(path.read_text(encoding="utf-8", errors="replace"))
         for token in MEDIA_REF_RE.findall(text):
             if token in by_name:
