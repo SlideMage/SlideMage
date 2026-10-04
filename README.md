@@ -6,8 +6,9 @@ customization, plus SlideMage, a PySide6 GUI for compiling decks and
 managing slide IDs, image descriptions, and accessible transcripts.
 
 > **This repository is self-contained**: the framework, the app and a small
-> demo project (`example/`: `decks/test.tex`/`test-student.tex`,
-> `slides/ZZ*`) -- everything needed to compile slides and to start a
+> demo project (`example/`: the SlideMage manual,
+> `decks/slidemage-manual.tex`, which explains SlideMage and shows every
+> feature working) -- everything needed to compile slides and to start a
 > project of your own. Real course content lives in separate project
 > folders (any folder with a `slide_ids.csv`), which SlideMage opens. Read
 > [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) first -- it covers the core
@@ -156,8 +157,8 @@ checkout updated alongside the executable.
   `Slidemaster_preamble_base.tex`, so any deck can select it with
   `\input{Slidemaster_preamble_slidemage}` without a copy of its own (a
   project's own copy would win). SlideMage keeps its previews apart from
-  the institutions' (template name "SlideMage"); `decks/test-slidemage.tex`
-  is the demo deck in it.
+  the institutions' (template name "SlideMage"); the manual,
+  `decks/slidemage-manual.tex`, is the demo deck in it.
   **Default render template** (since v5.8.0): a slide rendered outside a
   deck -- the slide editor's "Render to PDF" and "Preview", tikz
   illustration renders -- uses the template chosen under Settings → General
@@ -227,10 +228,11 @@ checkout updated alongside the executable.
   start with `slidemage`; see [docs/SlideMage.md](docs/SlideMage.md) for
   how it works and [docs/PYSIDE6_MIGRATION.md](docs/PYSIDE6_MIGRATION.md)
   for why it is no longer Tkinter.
-- `decks/test.tex`/`decks/test-student.tex` — a minimal example deck; also
-  a working demo of every layout/frame type, not a real course. This copy's
-  one demo deck — see "Getting started" in
-  [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md).
+- `decks/slidemage-manual.tex` — the SlideMage manual: how SlideMage
+  works, and a working demo of every frame type and feature, compiled in
+  every deck version (since v5.16.0; it replaced the `test.tex`/
+  `test-student.tex` demo decks and the `ZZ*` demo slides). See "Getting
+  started" in [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md).
 
 A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 
@@ -241,7 +243,7 @@ A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
 \begin{document}
-	\slide{ZZZ-Standard-content}
+	\slide{k7f-EN-Standard-content}
 	\slide{...}
 \end{document}
 ```
@@ -265,7 +267,7 @@ actually invoked from — so every `\input`/`\slide{}`/`\includegraphics`
 call throughout `Slidemaster_preamble_uni-graz.tex` and the slide files themselves
 (not just the deck file's own `\input{Slidemaster_preamble_uni-graz}`) resolves
 correctly either way, with no changes needed to any of those other files.
-`decks/test.tex` has this already; copy it into any new deck under `decks/`.
+`decks/slidemage-manual.tex` has this already; copy it into any new deck under `decks/`.
 
 Each `\slide{...}` call pulls in one slide file from `slides/`, so the same
 slide can be reused across multiple decks (e.g. a definition slide used in
@@ -467,11 +469,10 @@ UNIGRAZonline lists them.
 
 biblatex+biber is opt-in per deck (not loaded globally), for any deck that
 `\usepackage{biblatex}`s and `\addbibresource{Slidemaster.bib}`s itself.
-`decks/test.tex` is this copy's own live example -- plain biblatex
-defaults (no custom citation-format drivers, unlike a real course deck's
-own house style), just enough to resolve
-`slides/ZZZ-EN-Standard-content-current.tex`'s one
-`\fullcite{markowitz1952}` footnote against this copy's trimmed
+`decks/slidemage-manual.tex` is this copy's own live example -- plain
+biblatex defaults (no custom citation-format drivers, unlike a real course
+deck's own house style), just enough to resolve the manual's one
+`\fullcite{markowitz1952}` (slide `1nz`) against this copy's trimmed
 `Slidemaster.bib` (a single entry -- see that file's own header comment).
 This needs one extra step beyond the usual two `lualatex` passes above —
 **`biber`, run in between them**:
@@ -582,8 +583,8 @@ whole lualatex/biber rerun loop above automatically and correctly per deck
    available and correctly configured as its own separate command in the
    Commands panel from step 1.
 
-Every top-level compilable file (`decks/test.tex`, `decks/test-student.tex`,
-`decks/test-mci.tex`, `decks/test-ibk.tex`, `decks/t-Uni-FM2-2027s.tex`,
+Every top-level compilable file (`decks/slidemage-manual.tex`,
+`decks/test.tex`, `decks/test-student.tex`, `decks/test-mci.tex`, `decks/test-ibk.tex`, `decks/t-Uni-FM2-2027s.tex`,
 `decks/t-Uni-IA2-2026w.tex`, `decks/#workdeck.tex`) also starts
 with a `% !TeX program = lualatex` magic comment as a per-file safety net
 independent of both settings above: most editors that recognize it
@@ -696,7 +697,7 @@ same thing above) rather than invoking `lualatex`/`biber` by hand.
 
 ## Naming and versioning convention
 
-Every slide has a permanent, opaque **ID** (3 characters, e.g. `ZZZ`, minted
+Every slide has a permanent, opaque **ID** (3 characters, e.g. `k7f`, minted
 by `slide.new.id()` — see below). The ID never changes, even if the slide's
 description or content changes, so it's safe to reference in your own notes
 ("see slide `xyz`") or to cite across decks. IDs deliberately avoid
@@ -711,8 +712,10 @@ demo/test slides
 a glance, from the filename alone, whether a slide is manual/demo content
 or actual course/research material. IDs are compared without regard to
 case when minting or renaming, since Windows file names can't tell `zzh`
-from `ZZH`. (Older demo slides still carry uppercase IDs such as `ZZZ`;
-existing digit-first IDs keep working, they are just no longer minted.)
+from `ZZH`. (The manual's slides carry `1..` IDs and the demo/reference
+slides `2..`; the uppercase `ZZ*` demo slides were retired or renamed in
+v5.16.0. Existing digit-first IDs keep working, they are just no longer
+minted.)
 To give an existing slide a new ID, use `slide_rename.rename_slide_id(old,
 new)`: it moves the files, rewrites every deck reference and
 `\hyperlink{old}`, and updates `slide_ids.csv`, `media/alt-text.json` and
@@ -749,8 +752,8 @@ tracked version yet just omits that segment.
 In your deck file:
 
 ```latex
-\slide{ZZZ-Standard-content}              % loads current.tex, i.e. the live content
-\slideversion{ZZZ-Standard-content}{1-0-0} % loads a specific frozen version instead
+\slide{k7f-EN-Standard-content}              % loads current.tex, i.e. the live content
+\slideversion{k7f-EN-Standard-content}{1-0-0} % loads a specific frozen version instead
 ```
 
 (`\slide{ID-slug}` extracts the ID for the footer by taking everything before
@@ -788,7 +791,7 @@ full story.
 ### Deck inclusion tracking
 
 Each slide file in `slides/` includes a header comment listing which decks it is
-included in (e.g. `%% Included in decks: t-Uni-FM2-2027s, test-slides`). This is
+included in (e.g. `%% Included in decks: t-Uni-FM2-2027s, slidemage-manual`). This is
 automatically maintained by the project's tooling.
 
 When adding a new slide to a deck:
@@ -1082,8 +1085,8 @@ institution file, since none of this depends on the palette):
   (`bg=c_secondary_blue`) with a circled-i marker flush right in its own
   title bar. `slides/4uq-Definition-of-Capital-Market-Efficiency-current.tex`,
   `slides/dny-Leasing-Definition-current.tex`, and
-  `slides/ZZX-EN-Definition-formula-current.tex` (the demo slide showing
-  all six side by side) are worked examples. All six span the full frame
+  the manual's slide `1x6` (Blocks, all six side by side) are worked
+  examples. All six span the full frame
   width like any other block; for one narrow enough to place freely (e.g.
   beside a table, inside a tikz overlay `\node`), use `gothamfloatingblock`
   instead — same title/body colors and font as `block`, just wrapped in an
@@ -1119,10 +1122,10 @@ institution file, since none of this depends on the palette):
   sequence itself.
 - Single key-statement slide: `\begin{frame}[standout]{...}\end{frame}`.
 
-The `s-ZZ[ZYXW]-*-current.tex` files in `slides/` demonstrate all of the
-above, one layout per slide (`ZZZ` standard content, `ZZY` two columns,
-`ZZX` definition/example/caveat blocks, `ZZW` standout) — copy from
-whichever's closest when starting a new slide.
+The manual's chapters "Frame types" and "Content and layout" demonstrate
+all of the above, one layout per slide, each with its own source beside it
+(`1y8` standardframe, `1wa` columns and tables, `1x6` blocks, `1xf`
+standout) — copy from whichever's closest when starting a new slide.
 
 `standardframe` content is top-aligned (not beamer's default vertical
 centering) and its first itemize level sits flush with the frame title, with
@@ -1236,8 +1239,9 @@ possible: `sectionframe`,
 only what's documented below differs); `titleframe` and `quoteframe` can't
 be `standardframe` wrappers (both are title-less, and `quoteframe` replaces
 the whole body layout) but still reuse its palette, fonts, and margins.
-`s-ZZS/ZZR/ZZQ/ZZP/ZZN-*-current.tex` in `slides/` are working demos of all
-five, one each, in that order.
+The manual's slides `1jh`, `1y9`, `1i4`, `1rb` and `1mb` are working
+demos of all five, one each, in that order (slide `1td` is a gallery of
+every frame type).
 
 ### Title slide (`titleframe`)
 
@@ -1675,8 +1679,8 @@ is the untouched source, `-cropped` is what slides actually reference).
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
 (`\textcolor{c_secondary_blue}{...}`, `fill=c_secondary_blue`
-in tikz, etc. — see the demo slide
-[slides/ZZZ-EN-Standard-content-current.tex](example/slides/ZZZ-EN-Standard-content-current.tex)
+in tikz, etc. — see the manual's slide
+[slides/1u5-EN-Color-and-Emphasis-current.tex](example/slides/1u5-EN-Color-and-Emphasis-current.tex)
 for `\textcolor{}` in body text). These names are shared machinery, defined
 once per institution in that institution's own `Slidemaster_preamble_*.tex`
 (see the directory layout above for the base/institution-layer split) with
@@ -1684,11 +1688,10 @@ different hex values — a slide
 that uses `c_secondary_blue` renders in Graz's blue, MCI's blue, or
 Innsbruck's blue depending only on which preamble the deck `\input{}`s, with
 no change to the slide itself. For a visual reference of all of them under
-whichever preamble is currently loaded — see
-[slides/ZZM-EN-Slidemaster-colors-current.tex](example/slides/ZZM-EN-Slidemaster-colors-current.tex),
-a `standardframe` with a tikz `\foreach` grid of colored boxes (one loop over
-all the color names, rather than one `\node` per color, so adding a new
-color later just means adding one name to the list). Watch for one gotcha if
+whichever preamble is currently loaded — see the swatches on the manual's
+slide [slides/1pf-EN-One-Look-Several-Institutions-current.tex](example/slides/1pf-EN-One-Look-Several-Institutions-current.tex)
+(until v5.16.0 a demo slide, `ZZM`, showed a tikz `\foreach` grid of
+colored boxes, one loop over all the color names). Watch for one gotcha if
 extending that list: a multi-line `\foreach ... in {...}` list needs a
 trailing `%` at the end of every line (including the last item before the
 closing `}`) — without it, the newline before the closing brace becomes part
@@ -1736,7 +1739,8 @@ Call it once per deck (e.g. right after `\input{Slidemaster_preamble_uni-graz}`)
 project-wide style, or partway through to change the marker set from that
 point on. If a slide has more footnotes than the list has entries, indexing
 wraps back around to the start rather than erroring.
-[slides/ZZU-EN-Footnote-symbol-options-current.tex](example/slides/ZZU-EN-Footnote-symbol-options-current.tex)
+[slides/2rg-EN-Footnote-symbol-options-current.tex](example/slides/2rg-EN-Footnote-symbol-options-current.tex)
+(in the manual's appendix; `ZZU` until v5.16.0)
 is a reference sheet of candidate symbols — every character on it was checked
 to actually exist in Fira Sans (many "obvious" choices, like card suits or
 star dingbats, silently render as a blank box in this font and were left
@@ -1813,9 +1817,9 @@ checking the switch resets.
 > `\conditionalslide{}`/`\conditionalpause`/`\deckreveal{}` — described
 > under "Deck version system" at the end of this file and in
 > [SlidemasterManual.md](docs/SlidemasterManual.md). Reach for that one when
-> setting up a new course deck. What's below is still live, but only
-> `decks/test.tex`/`test-student.tex` use it, as the worked demo of the
-> shared-slide-list pattern. The two do not interoperate:
+> setting up a new course deck. What's below is still live (the demo
+> decks `test.tex`/`test-student.tex` that showed it in `example/` were
+> retired in v5.16.0). The two do not interoperate:
 > `\omitslide{}` is gated on `\ifSMStudentVersion`, which only
 > `\studentversion` ever sets, so an `\omitslide{}` in a deck that uses
 > `\deckversion[...]` silently does nothing at all — include such a slide
@@ -1854,7 +1858,7 @@ after it down by one. That way "see slide 12" points at the same physical
 slide for both audiences, whichever deck someone has open. Without
 `\studentversion` (the normal/instructor compile), a tagged slide loads
 exactly like any other, with one difference: its footer's slide ID carries an
-extra marker, e.g. `(slide id: ZZT | omitted from student deck)`, as a
+extra marker, e.g. `(slide id: q4m | omitted from student deck)`, as a
 visible reminder while reviewing the instructor deck of what won't reach
 students.
 
@@ -1868,7 +1872,7 @@ variants can never drift apart on which slides they contain:
 
 ```latex
 % course-content.tex -- shared by both decks below
-\slide{ZZZ-Standard-content}
+\slide{k7f-EN-Standard-content}
 \omitslide{xyz-Answer-key}
 ```
 
@@ -1882,9 +1886,8 @@ variants can never drift apart on which slides they contain:
 \end{document}                     \end{document}
 ```
 
-`test.tex`/`test-student.tex` (sharing `test-slides.tex`) are a working
-example of exactly this pattern, including one `\omitslide{}`'d demo slide
-(`ZZT`).
+Until v5.16.0 `example/`'s `test.tex`/`test-student.tex` (sharing
+`test-slides.tex`) were a working example of exactly this pattern.
 
 ## Speaker notes
 
@@ -2124,9 +2127,11 @@ Per frame type:
   regardless of which image file the slide happens to use.
 
 **Verification.** `decks/verify_accessibility.tex` is a compilable regression
-deck (same idiom as `decks/test.tex`) exercising every frame type above,
-including one real `sideimageframe` slide and one real `fullbleedframe`
-slide that `test-slides.tex`'s own demo slides predate and don't cover.
+deck exercising every frame type above, including one real
+`sideimageframe` slide and one real `fullbleedframe` slide, on top of the
+shared demo slide list `test-slides.tex` (Slidemaster project; `example/`'s
+copy of this deck needs that project's slides and does not compile on its
+own).
 `.scripts/verify_accessibility_pikepdf.py` compiles that deck and
 checks, directly against the compiled PDF's content streams via
 [pikepdf](https://github.com/pikepdf/pikepdf): every `/Artifact` span is

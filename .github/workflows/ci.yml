@@ -31,11 +31,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install TeX Live
         run: sudo apt-get update && sudo apt-get install -y texlive-full biber latexmk
-      - name: Compile demo decks
+      - name: Compile the manual (instructor and during-course)
         working-directory: example/decks
+        # the student version through a one-line wrapper, as SlideMage does;
+        # a clean build of the manual needs 6 passes (automatic Top Margin)
         run: |
-          latexmk test.tex
-          latexmk test-student.tex
+          latexmk -e '$max_repeat=10' slidemage-manual.tex
+          printf '%s\n' '\def\deckversionoverride{during-course}\input{slidemage-manual}' > _during-course.tex
+          latexmk -e '$max_repeat=10' _during-course.tex
 
   # Windows users compile with MiKTeX. Allowed to fail until it has passed
   # once: MiKTeX's TEXINPUTS handling (see example/.latexmkrc) hasn't been
@@ -54,8 +57,11 @@ jobs:
         run: |
           initexmf --admin --set-config-value=[MPM]AutoInstall=1
           miktex --admin packages update-package-database
-      - name: Compile demo decks
+      - name: Compile the manual (instructor and during-course)
         working-directory: example/decks
+        # the student version through a one-line wrapper, as SlideMage does;
+        # a clean build of the manual needs 6 passes (automatic Top Margin)
         run: |
-          latexmk test.tex
-          latexmk test-student.tex
+          latexmk -e '$max_repeat=10' slidemage-manual.tex
+          Set-Content -Path _during-course.tex -Encoding ascii -Value '\def\deckversionoverride{during-course}\input{slidemage-manual}'
+          latexmk -e '$max_repeat=10' _during-course.tex

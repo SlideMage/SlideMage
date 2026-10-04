@@ -28,7 +28,7 @@ def test_scan_finds_demo_decks():
     from slidemage import deck_scan
 
     names = {deck.path.name for deck in deck_scan.scan_decks()}
-    assert {"test.tex", "test-student.tex"} <= names
+    assert "slidemage-manual.tex" in names
 
 
 @pytest.mark.parametrize(

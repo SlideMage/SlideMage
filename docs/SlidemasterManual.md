@@ -14,7 +14,7 @@ This project supports three deck versions:
 
 ### Setting the Deck Version
 
-In your deck file (e.g., `decks/test.tex` -- see its own `\ifdefined\deckversionoverride` block, the pattern every real course deck uses so SlideMage's own version checkboxes can drive it), add `\deckversion[]` after `\input{Slidemaster_preamble_uni-graz}`:
+In your deck file (e.g., `decks/slidemage-manual.tex` -- see its own `\ifdefined\deckversionoverride` block, the pattern every real course deck uses so SlideMage's own version checkboxes can drive it), add `\deckversion[]` after `\input{Slidemaster_preamble_uni-graz}`:
 
 ```latex
 \input{Slidemaster_preamble_uni-graz}
@@ -27,8 +27,8 @@ Use `\omitslide{}` instead of `\slide{}` for slides that should be excluded from
 
 ```latex
 % In deck file:
-\slide{ZZZ-Standard-content}          % in all decks
-\omitslide{ZZT-Omitted-from-student}  % instructor only
+\slide{k7f-EN-Standard-content}      % in all decks
+\omitslide{q4m-EN-Answer-key}        % instructor only
 ```
 
 ### Controlling Individual Reveal Steps

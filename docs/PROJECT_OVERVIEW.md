@@ -51,8 +51,7 @@ and `current.tex` keeps changing. A deck can load either the live version
 one course can keep using an older edition while another moves on. SlideMage's
 own slide-editor **Save** button asks Major/Minor/Patch (or "Overwrite" for
 a change not worth recording) and does the freeze-then-bump automatically;
-see `slides/ZZX-EN-Definition-formula-current.tex` for a slide that's
-already been through one real version bump.
+the manual's slide `1an` (Slide versions) shows the dialog.
 
 ### Deck versions and `\slidestep`
 
@@ -65,13 +64,14 @@ mechanism for the same multi-step slide appearing in different places with
 different steps shown, per version — e.g. an instructor sees a full
 build-up including the answer, while students only ever see the question.
 
-This copy includes a **live, compilable worked example**:
-`slides/ZZH-EN-Deck-Version-Reveal-Steps-current.tex`, wired into
-`decks/test.tex` via two `\slidestep{}` calls (see `decks/test-slides.tex`).
-Compile `decks/test.tex` as instructor and it shows all 3 of that slide's
-reveal steps; compile it as during-course or after-course (see "Getting
-started" below) and it shows only step 1 — the same deck file, the same
-slide file, two different outputs.
+This copy includes a **live, compilable worked example**: the manual's
+slide `1mu` (`slides/1mu-EN-Slidestep-Demo-current.tex`), placed twice in
+`decks/slidemage-manual.tex` with `\slidestep{}`. Compile the manual as
+instructor and its first place shows steps 1-2, its second step 3; compile it
+as during-course or after-course (see "Getting started" below) and both places
+show only step 1 — the same deck file, the same slide file, different
+outputs. The manual's chapter "Reveal steps and deck versions" shows the
+other per-version reveal commands the same way.
 
 ### Bibliography (`\fullcite{}`/`Slidemaster.bib`)
 
@@ -80,10 +80,9 @@ A deck opts into biblatex+biber (it's not loaded globally) by adding
 slide then pulls a fully formatted reference straight out of
 `Slidemaster.bib` with `\fullcite{key}` — usually inside a `\footnote{}`
 or a `\source{}` line, not as a separate references slide (this project
-never uses `\printbibliography`). `decks/test.tex` demonstrates this with
-plain biblatex defaults, no custom citation-format style — see
-`slides/ZZZ-EN-Standard-content-current.tex`'s own
-`\fullcite{markowitz1952}` footnote and this copy's trimmed
+never uses `\printbibliography`). `decks/slidemage-manual.tex` demonstrates
+this with plain biblatex defaults, no custom citation-format style — see the
+`\fullcite{markowitz1952}` on its slide `1nz` and this copy's trimmed
 `Slidemaster.bib` (a single entry; add your own the same way). Compiling
 a deck that uses this needs one extra step beyond the usual two `lualatex`
 passes — `biber`, run in between them — see "Getting started" below and
@@ -103,9 +102,9 @@ edited entirely through SlideMage's **Images** tab, never by hand.
 data that the LaTeX/Lua side reads at compile time (LuaTeX has no JSON
 library); never edit it directly, it's overwritten on every save.
 
-This copy's one real example, `media/correlation-matrix-example.png` (used
-on `slides/ZZP-EN-Figure-only`), already has a full description in both
-English and German — open it in SlideMage's Images tab to see the actual
+Every image of the manual has a description, e.g.
+`media/correlation-matrix-example.png` (on its slides `1rb` and `1c9`), in
+both English and German — open it in SlideMage's Images tab to see the actual
 shape of a finished entry.
 
 A hand-drawn `tikz` diagram gets the same treatment by wrapping it in
@@ -170,10 +169,10 @@ license, read live from the `LICENSE` file).
    the box. Let your distribution auto-install missing packages on first
    compile (or install the `fira`/Fira Sans font package up front) —
    `beamerfontthemegotham.sty` checks for the Fira Sans `.otf` files
-   directly and needs them findable. `biber` is needed too — `decks/test.tex`
-   itself now exercises the bibliography mechanism (see "Bibliography"
-   above); plain `lualatex test.tex` alone leaves its one citation showing
-   as the raw key `markowitz1952` instead of a formatted reference.
+   directly and needs them findable. `biber` is needed too — the manual
+   exercises the bibliography mechanism (see "Bibliography" above); plain
+   `lualatex slidemage-manual.tex` alone leaves its one citation showing as
+   the raw key `markowitz1952` instead of a formatted reference.
 3. **Python 3.11+** with a virtual environment, installing SlideMage from
    this repo:
    ```bash
@@ -227,8 +226,7 @@ per-project settings live in `<project>/.slidemage/`.
 look for the framework in `../latex`; for a project kept elsewhere, set
 `SLIDEMASTER_LATEX` to this repo's `latex/` folder.
 
-The very first `lualatex` run of `decks/test.tex` (or `test-student.tex`)
-will be slow while your TeX distribution fetches whatever packages it's
+The very first `lualatex` run of `decks/slidemage-manual.tex` will be slow while your TeX distribution fetches whatever packages it's
 missing; subsequent compiles are fast. Note that decks typically require
 four compile passes to get all layout and citation details right, but
 these four passes run automatically when using SlideMage.

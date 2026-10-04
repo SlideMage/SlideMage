@@ -159,16 +159,19 @@ def test_resolve_deck_reports_missing_and_cyclic_includes(
         transcript.resolve_deck(deck, "during-course")
 
 
-def test_shipped_demo_decks_resolve_seventeen_during_course_slides(monkeypatch):
-    # 13 until v4.0.0 wired the ZZJ/ZZK/ZZL/ZZO demo slides into
-    # test-slides.tex -- four plain \slide{} calls, in every version.
+def test_shipped_manual_resolves_every_slide_in_both_student_versions(monkeypatch):
+    # The SlideMage manual (the shipped demo deck since the ZZ* demo slides
+    # and test.tex/test-student.tex were retired): 62 slides, the \slidestep
+    # demo 1mu at both of its places, none left out of a student version.
     repo_root = Path(__file__).resolve().parents[1]
     project_root = repo_root / "example"
     monkeypatch.setattr(transcript, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(transcript, "SLIDES_DIR", project_root / "slides")
 
-    for name in ("test.tex", "test-student.tex"):
+    for version in transcript.STUDENT_VERSIONS:
         slides = transcript.resolve_deck(
-            project_root / "decks" / name, "during-course"
+            project_root / "decks" / "slidemage-manual.tex", version
         )
-        assert len([slide for slide in slides if slide.included]) == 17
+        included = [slide for slide in slides if slide.included]
+        assert len(included) == len(slides) == 62
+        assert [slide.slide_id for slide in included].count("1mu") == 2

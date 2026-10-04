@@ -1839,6 +1839,8 @@ v5.14.2 (2026-10-04, direct report): "Archive unused content" finds everything i
 v5.15.0 (2026-10-04, direct instruction): the compile progress label counts the passes a deck really needs. Every compile counts its LaTeX passes and remembers them per deck and job kind (instructor, during-course, after-course, presenter, per-chapter) in the project's .slidemage/compile_passes.json; the next compile of that deck shows "pass 3/6" instead of the fixed guess of 4 (3 without a bibliography), which stays for a deck compiled for the first time. Every SlideMage compile starts in a fresh build folder, so a deck's count only changes with its content. Not stored in the deck file: a compile writing into the deck would make an open deck editor refuse its next edit as "changed on disk".
 
 v5.15.1 (2026-10-04, direct instruction: "the visible edge counts"): tools/check_layout.py measures the Right Margin as the logo's visible right edge on the rendered page. It used the PDF's drawing list, which skipped a white shape with a dark outline (the SlideMage logo's front card) and a small text mark (MCI's "®"), and so put the margin 2.4pt (SlideMage) to 12.7pt (MCI) too far left. Measured right, every template's logo ends on the framework's own Right Margin, so nothing changes in the framework.
+
+v5.16.0 (2026-10-04, SlideMage manual plan, step 7): the SlideMage manual (decks/slidemage-manual.tex) is example/'s demo deck. The demo decks test.tex, test-student.tex, test-slides.tex and test-slidemage.tex and the sixteen ZZ* demo slides the manual replaces (ZZL included: a two-level subset of ZZO) are retired from example/ (their ids stay registered); the reference sheets in the manual's appendix and the empty slide get reserved demo ids: ZZU -> 2rg (footnote symbols), ZZO -> 2v9 (itemize spacing), ZZI -> 2p8 (empty slide). "Open Project..." on an empty folder therefore seeds a new project with the manual. CI compiles the manual (instructor and during-course; a clean build needs 6 passes, so latexmk runs with $max_repeat=10). README and docs point at the manual's slides. The Slidemaster project's own test decks and ZZ* copies are untouched.
 """
 from __future__ import annotations
 
@@ -1848,7 +1850,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.15.1"
+VERSION_NUMBER = "v5.16.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

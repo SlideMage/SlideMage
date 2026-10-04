@@ -3,12 +3,12 @@ import pytest
 from slidemage import slide_language, slide_rename, unused_content
 from slidemage.qt_version_history_dialog import _license_text
 
-STEP_SLIDE = "ZZH-EN-Deck-Version-Reveal-Steps"
+STEP_SLIDE = "1mu-EN-Slidestep-Demo"   # the manual's \slidestep demo
 
 
 def test_raw_reads_work_below_python_313():
-    slide_language.cross_referenced_language("ZZJ-DE-German-Demo")
-    assert "test-slides" in slide_rename.deck_names_referencing(STEP_SLIDE)
+    slide_language.cross_referenced_language("1vn-EN-Languages")
+    assert "slidemage-manual" in slide_rename.deck_names_referencing(STEP_SLIDE)
 
 
 def test_license_found_outside_project():
@@ -384,9 +384,9 @@ def test_init_project_seeds_from_example_and_compiles(tmp_path):
     project.init_project(target, copy_example=True)
     assert project.is_project(target)
     assert (target.parent / "latex").is_dir()
-    assert (target / "decks" / "test.tex").is_file()
+    assert (target / "decks" / "slidemage-manual.tex").is_file()
     # No build output copied in -- a new project compiles its own.
-    assert not (target / "decks" / "test.pdf").exists()
+    assert not (target / "decks" / "slidemage-manual.pdf").exists()
     assert not (target / ".build").exists()
     # The real logo asset (not build output) must still be there, or the
     # copy can't actually compile.

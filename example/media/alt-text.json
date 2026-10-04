@@ -26,8 +26,7 @@
       "takeaway_default_de": "Dieses Bild veranschaulicht die geringe durchschnittliche Korrelation (0,21) zwischen den Aktien des DJIA über einen Zeitraum von 15 Jahren. Es zeigt, dass zwar einige Aktienpaare eine starke positive oder negative Korrelation aufweisen, die meisten jedoch eine schwache Korrelation haben, was für das Verständnis der Portfoliodiversifizierung wichtig ist.",
       "translated_from_hash": "ef325ca61779",
       "used_on": {
-        "1rb": {},
-        "ZZP": {}
+        "1rb": {}
       }
     },
     "media/illustration-bar-chart.pdf": {
@@ -485,17 +484,6 @@
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1ym": {}
-      }
-    },
-    "tikz:zzm-tikz": {
-      "role": "informative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {
-        "ZZM": {}
       }
     }
   },
