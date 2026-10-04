@@ -1954,7 +1954,7 @@ class SlideMageWindow(QMainWindow):
         # passes), each typesetting that template's own slides.
         self._progress.reset({
             f"{base_jobname}-instructor": compile_progress.JobSpec(
-                compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]))
+                compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]), estimated=True)
             for template, base_jobname in base_jobnames.items()
         })
         threading.Thread(

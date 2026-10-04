@@ -48,3 +48,20 @@ def test_unreadable_store_is_no_prediction(tmp_path, monkeypatch):
     assert compile_passes.expected(_job()) is None
     compile_passes.remember(_job(), 5)
     assert compile_passes.expected(_job()) == 5
+
+
+def test_label_says_estimated_until_the_deck_was_compiled_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(compile_passes, "STORE_PATH", tmp_path / "compile_passes.json")
+    job = _job()
+    job.jobname = "deck-instructor"
+
+    def label_after_first_pass():
+        progress = compile_progress.BatchProgress()
+        progress.reset({job.jobname: compile_progress.spec_for_job(job)})
+        progress.feed(f"==== Compiling deck -> {job.jobname} ====")
+        progress.feed("Run number 1 of rule 'lualatex'")
+        return progress.text
+
+    assert label_after_first_pass() == "pass 1/4 (estimated)"
+    compile_passes.remember(job, 6)
+    assert label_after_first_pass() == "pass 1/6"

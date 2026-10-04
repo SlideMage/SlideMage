@@ -53,6 +53,9 @@ _HOLD_BELOW_DONE = 0.99
 class JobSpec:
     passes: int
     slides: int          # slide calls typeset per pass (0 = unknown -> indeterminate)
+    # True when `passes` is a guess, not the count this deck needed last
+    # time (compile_passes.py): the label then says "(estimated)"
+    estimated: bool = False
 
     @property
     def units(self) -> int:
@@ -91,8 +94,10 @@ def count_job_slides(deck, version: Optional[str], chapter) -> int:
 def spec_for_job(job) -> JobSpec:
     """JobSpec of a compiler.CompileJob: the passes this deck needed last
     time (compile_passes), else the 4/3 guess."""
-    passes = compile_passes.expected(job) or passes_for(job.deck.uses_biblatex)
-    return JobSpec(passes, count_job_slides(job.deck, job.version, job.chapter))
+    remembered = compile_passes.expected(job)
+    return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
+                   count_job_slides(job.deck, job.version, job.chapter),
+                   estimated=remembered is None)
 
 
 class BatchProgress:
@@ -152,7 +157,8 @@ class BatchProgress:
         shown = min(self._pass, spec.passes)
         extra = f" (extra pass {self._pass})" if self._pass > spec.passes else ""
         where = f", slide {min(self._seen, spec.slides)}/{spec.slides}" if spec.slides else ""
-        return f"pass {shown}/{spec.passes}{where}{extra}"
+        guess = " (estimated)" if spec.estimated else ""
+        return f"pass {shown}/{spec.passes}{guess}{where}{extra}"
 
     # -- input ------------------------------------------------------------------
 
@@ -182,11 +188,11 @@ class BatchProgress:
         elif line.startswith("===="):
             m = _COMPILING_RE.match(line)
             if m:
-                self._begin(m.group(1), JobSpec(SINGLE_RENDER_PASSES, 0))
+                self._begin(m.group(1), JobSpec(SINGLE_RENDER_PASSES, 0, estimated=True))
             else:
                 m = _RENDERING_RE.match(line)
                 if m:
-                    self._begin(m.group(2), JobSpec(SINGLE_RENDER_PASSES, 1), force=True)
+                    self._begin(m.group(2), JobSpec(SINGLE_RENDER_PASSES, 1, estimated=True), force=True)
                 else:
                     m = _MOVING_RE.match(line)
                     if m and m.group(1) == self._current:
