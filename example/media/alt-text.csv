@@ -37,6 +37,6 @@ schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf,decorative,auto,,,auto,,
 schemes/scheme_uni_graz/Logo_Uni-Graz_4c.eps,decorative,auto,,,auto,,
 tikz:1gr-tikz,informative,auto,"Diagram of a slide with its title bar, footer and the four margins drawn in.",Own illustration.,auto,,Own illustration.
 tikz:1t2-tikz,informative,auto,"A small bar chart whose third, green bar appears only at reveal step 3.",Own illustration.,auto,,Own illustration.
-tikz:1u5-tikz,informative,auto,"A small bar chart with one bar highlighted, a dotted guide line and an arrow labelled ""peak"".",Own illustration.,auto,,Own illustration.
+tikz:1u5-tikz,informative,auto,"A small bar chart with one bar highlighted, a dotted guide line and an arrow labeled ""peak"".",Own illustration.,auto,,Own illustration.
 tikz:1ym-tikz,informative,auto,"Diagram: the LaTeX framework, your project and the SlideMage app, and the workflow from writing slides to handing out PDFs.",Own illustration.,auto,,Own illustration.
 tikz:zzm-tikz,informative,auto,,,auto,,
