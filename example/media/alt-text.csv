@@ -1,6 +1,7 @@
 image,role,status_en,short_alt_en,source_en,status_de,short_alt_de,source_de
 media/chapter-logo-building-blocks.pdf,decorative,auto,,Own illustration.,auto,,Own illustration.
 media/correlation-matrix-example.png,informative,auto,"A correlation matrix showing pairwise correlations between 30 DJIA stocks, with values ranging from -1 to 1.","Own illustration, data from Yahoo! Finance, 24.02.2026.",auto,"Eine Korrelationsmatrix, die paarweise Korrelationen zwischen 30 Aktien des DJIA zeigt, wobei die Werte von -1 bis 1 reichen.","Own illustration, data from Yahoo! Finance, 24.02.2026."
+media/illustration-bar-chart.pdf,informative,auto,A bar chart of annual returns from 2020 to 2025.,Own illustration (made-up numbers).,auto,,Own illustration (made-up numbers).
 media/illustration-slide-stack-portrait.pdf,decorative,auto,,Own illustration.,auto,,Own illustration.
 media/illustration-slidemage-splash.pdf,informative,auto,"The SlideMage logo, a stack of slide cards, above the name SlideMage and the line ""Slides as building blocks"", on a dark background.",Own illustration.,auto,,Own illustration.
 media/screenshot-slide-appendix-grid.png,informative,auto,"A page of the generated appendix: small previews of the slides of the chapter ""Frame types"" in a grid.",A slide of this manual.,auto,,A slide of this manual.

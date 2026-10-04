@@ -1,8 +1,9 @@
 """Compile tools/manual/illustrations.tex and split its pages into the
 SlideMage manual's media files (example/media/). Rerun after editing the
-illustrations; vector PDFs, one page each.
+illustrations; vector PDFs, one page each. Name files to write only those
+(the others keep their bytes, so their image descriptions stay current).
 
-    python tools/manual/make_illustrations.py
+    python tools/manual/make_illustrations.py [illustration-bar-chart.pdf ...]
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ PAGES = [
     "illustration-slidemage-splash.pdf",
     "illustration-slide-stack-portrait.pdf",
     "chapter-logo-building-blocks.pdf",
+    "illustration-bar-chart.pdf",
 ]
 
 
@@ -41,7 +43,10 @@ def main() -> int:
             print(f"expected {len(PAGES)} pages, got {len(doc)}")
             return 1
         MEDIA.mkdir(parents=True, exist_ok=True)
+        wanted = set(sys.argv[1:]) or set(PAGES)
         for index, name in enumerate(PAGES):
+            if name not in wanted:
+                continue
             out = fitz.open()
             out.insert_pdf(doc, from_page=index, to_page=index)
             out.save(MEDIA / name, garbage=4, deflate=True)

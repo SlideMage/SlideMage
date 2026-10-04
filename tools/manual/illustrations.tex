@@ -6,6 +6,8 @@
 %   page 2  illustration-slide-stack-portrait.pdf  portrait, sideimageframe and
 %                                                   \sectionfigure demos
 %   page 3  chapter-logo-building-blocks.pdf       square icon, \chapterlogo demo
+%   page 4  illustration-bar-chart.pdf             4:3 chart with its own white
+%                                                   margin, the bordered besidefigure demo
 % Colors: the SlideMage template's palette (latex/Slidemaster_preamble_slidemage.tex).
 \documentclass[tikz,border=0pt]{standalone}
 \usepackage{fontspec}
@@ -59,6 +61,22 @@
 	\fill[smblue, rounded corners=2pt] (0.05,0.05) rectangle (1.45,1.45);
 	\fill[smdark, rounded corners=2pt] (1.55,0.05) rectangle (2.95,1.45);
 	\fill[smyellow, rounded corners=2pt] (0.8,1.55) rectangle (2.2,2.95);
+\end{tikzpicture}
+
+% 4 -- a bar chart, 4:3, everything at least 0.4 inside its edges (a border
+% drawn around it never touches the heading)
+\begin{tikzpicture}
+	\fill[white] (0,0) rectangle (8,6);
+	\node[anchor=north west, font=\bfseries, text=smdark] at (0.5,5.55) {Annual returns, \%};
+	\foreach \v in {0,5,10} {
+		\draw[smgray, line width=0.4pt] (1.2,1+\v*0.32) -- (7.5,1+\v*0.32);
+		\node[anchor=east, font=\small, text=smmid] at (1.1,1+\v*0.32) {\v};
+	}
+	\foreach \i/\year/\v in {0/2020/3.2, 1/2021/6.5, 2/2022/4.8, 3/2023/8.9, 4/2024/5.6, 5/2025/7.1} {
+		\fill[smblue] (1.55+\i*1.0,1) rectangle (2.25+\i*1.0,1+\v*0.32);
+		\node[anchor=north, font=\small, text=smmid] at (1.9+\i*1.0,0.95) {\year};
+	}
+	\draw[smmid, line width=0.6pt] (1.2,1) -- (7.5,1);
 \end{tikzpicture}
 
 \end{document}

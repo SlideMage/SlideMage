@@ -26,9 +26,20 @@
       "takeaway_default_de": "Dieses Bild veranschaulicht die geringe durchschnittliche Korrelation (0,21) zwischen den Aktien des DJIA über einen Zeitraum von 15 Jahren. Es zeigt, dass zwar einige Aktienpaare eine starke positive oder negative Korrelation aufweisen, die meisten jedoch eine schwache Korrelation haben, was für das Verständnis der Portfoliodiversifizierung wichtig ist.",
       "translated_from_hash": "ef325ca61779",
       "used_on": {
-        "1c9": {},
         "1rb": {},
         "ZZP": {}
+      }
+    },
+    "media/illustration-bar-chart.pdf": {
+      "role": "informative",
+      "status": "auto",
+      "short": "A bar chart of annual returns from 2020 to 2025.",
+      "long": "A bar chart headed \"Annual returns, %\", with six blue bars for the years 2020 to 2025 on a scale from 0 to 10: 3.2 (2020), 6.5 (2021), 4.8 (2022), 8.9 (2023), 5.6 (2024) and 7.1 (2025), with light gray grid lines at 0, 5 and 10.",
+      "source": "Own illustration (made-up numbers).",
+      "takeaway_default": "A sample figure: the slide shows how a figure with a border sits beside its text, the border's outer edge on the margins.",
+      "drafted_by": "claude-opus-5.5 (manual build)",
+      "used_on": {
+        "1c9": {}
       }
     },
     "media/illustration-slide-stack-portrait.pdf": {
