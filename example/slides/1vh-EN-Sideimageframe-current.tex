@@ -6,9 +6,13 @@
 %% layout-check: skip top, bottom -- the side image runs from title bar to footer by design
 \begin{sideimageframe}{Side image: \SMCode{sideimageframe}}{media/illustration-slide-stack-portrait.pdf}
 	\begin{minipage}[t]{0.66\linewidth}
+		\small
+		A \SMCode{sideimageframe} sets a picture beside the text, from the title
+		bar down to the footer, flush with the slide's right edge.
+		\par\smallskip
+		\shrinklists{1}
 		\begin{itemize}
-			\item The image fills the space from the title bar to the footer, flush with the right edge
-			\item Footnotes and sources move into a rotated strip beside it\footnote{Like this one.}
+			\item Footnotes and sources move into a rotated strip beside the picture\footnote{Like this one.}
 			\item \SMCmd{sidefootnotes} does the same for any other frame
 		\end{itemize}
 		\medskip

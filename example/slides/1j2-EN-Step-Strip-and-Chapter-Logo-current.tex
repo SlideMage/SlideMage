@@ -8,13 +8,16 @@
 	\progressstrip{Frame,Content,Reveals,Deck}{1}
 	\begin{columns}[t,onlytextwidth]
 		\begin{column}{0.5\linewidth}
+			\small
+			Two ways to tell readers where they are. The \textbf{step strip} below
+			the title bar shows a chain of steps with the current one underlined,
+			for a run of slides that walk through the same chain. A \textbf{chapter
+			logo} beside the institute logo marks the slides of one chapter.
+			\par\medskip
+			\shrinklists{1}
 			\begin{itemize}
-				\item \textbf{Step strip}: a chain of steps below the title bar, the current one underlined -- for a run of slides that walk through the same chain
-				\item \textbf{Chapter logo}: a second logo beside the institute logo, for this one frame
-				\begin{itemize}
-					\item Call \SMCmd{chapterlogo} before the frame
-					\item Crop the image to its ink first
-				\end{itemize}
+				\item \SMCmd{chapterlogo} goes before the frame and applies to that frame only
+				\item Crop the logo image to its ink first
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.46\linewidth}
