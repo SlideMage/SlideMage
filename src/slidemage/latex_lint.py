@@ -453,6 +453,8 @@ _IMAGE_RES = (
     re.compile(r"\\chapterlogo\{([^{}]+)\}"),
     re.compile(r"\\fullbleedframe\{([^{}]+)\}"),
     re.compile(r"\\begin\{sideimageframe\}\{[^{}]*\}\{([^{}]+)\}"),
+    # the v5.x figure helpers; an argument with a backslash is content, not a file
+    re.compile(r"\\(?:cornerfigure|fitfigure|sectionfigure|begin\{besidefigure\})(?:\[[^\]]*\])?\{([^{}\\\n]+)\}"),
 )
 _CODE_FILE_RE = re.compile(r"\\SMCodeFile(?:\[[^\]]*\])?\{([^{}]+)\}")
 _IMAGE_SUFFIXES = ("", ".png", ".jpg", ".jpeg", ".pdf", ".eps", ".svg", ".gif")

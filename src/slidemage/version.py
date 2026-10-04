@@ -1827,6 +1827,8 @@ v5.13.0 (2026-10-04, SlideMage manual, found while building it): \\SMCode{text} 
 v5.13.1 (2026-10-04, found in the SlideMage manual's transcript): a \\\\ line break in running text becomes a space -- the macro strip used to take "\\SlideMage" out of "...\\\\SlideMage" and leave a stray backslash ("demonstration\\ 5.12" on a title slide); \\textperiodcentered becomes a middle dot instead of disappearing.
 
 v5.13.2 (2026-10-04, found in the SlideMage manual): the generated appendix's footer no longer shows the last real slide's version and language next to "appendix" (appendix_toc resets \\ifSMSlideVersionSet/\\ifSMSlideLanguageSet with the slide id); a thumbnail cell without a cached preview labels the slide by its slug without the language segment.
+
+v5.13.3 (2026-10-04, found in the SlideMage manual): images placed with the v5.x figure helpers -- \\cornerfigure[width/height]{file}, besidefigure, \\fitfigure, \\sectionfigure -- are now seen by the image scan (alt_blocks.referenced_images(): the Images tab's slide list, `used_on`, takeaways, transcripts) and by the pre-render check's "image" rule. Before, an image placed only that way had no slide in its `used_on`. An argument containing a backslash is content (a block, an \\includegraphics), not a file.
 """
 from __future__ import annotations
 
@@ -1836,7 +1838,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.13.2"
+VERSION_NUMBER = "v5.13.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

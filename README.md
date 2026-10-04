@@ -2384,7 +2384,7 @@ on everything that compiles.
 | `ampersand` | error | unescaped `&` in running text (allowed in tabular/array/align/matrix/tikz and in URLs) |
 | `hash` | error | unescaped `#` outside macro definitions and URLs |
 | `citation` | error | `\fullcite`/`\cite`/`\textcite`/`\parencite`/... with a key that is not in `Slidemaster.bib` |
-| `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe` pointing at a file that does not exist (extension optional) |
+| `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe`, `\cornerfigure`, `besidefigure`, `\fitfigure`, `\sectionfigure` pointing at a file that does not exist (extension optional) |
 | `code-file` | error | `\SMCodeFile{path}` pointing at a file that does not exist (path relative to the project root) |
 | `slide-file` | error | a deck call whose `slides/<id>-current.tex` / `-vX-Y-Z.tex` does not exist |
 | `underscore` | warning | `_` in running text outside math, tikz and name/path arguments ("Missing $ inserted") |

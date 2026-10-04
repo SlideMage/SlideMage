@@ -65,6 +65,17 @@ FULLBLEEDFRAME_RE = re.compile(r"\\fullbleedframe\s*\{")
 # real path.
 MUGSHOT_RE = re.compile(r"\\SMMugshot\s*\{")
 
+# \cornerfigure[keys]{file}, \begin{besidefigure}[keys]{file},
+# \fitfigure[keys]{file}, \sectionfigure[keys]{file} (the v5.x figure
+# helpers, Slidemaster_preamble_base.tex): the argument is the image file
+# -- for \cornerfigure/besidefigure only with a width= or height= key, else
+# it is arbitrary content, whose own \includegraphics INCLUDEGRAPHICS_RE
+# finds. They were invisible to referenced_images() until 2026-10-04 (found
+# in the SlideMage manual: an image placed only with besidefigure had no
+# slide in its `used_on`, so no takeaway and no transcript entry).
+FIGURE_HELPER_RE = re.compile(
+    r"\\(?:cornerfigure|fitfigure|sectionfigure|begin\{besidefigure\})\s*(?:\[[^\]]*\])?\s*\{")
+
 # \begin{tikzillustration}[options]{ID} ... \end{tikzillustration}
 # (Slidemaster_preamble_base.tex) -- a hand-drawn tikz diagram with no
 # media/ file behind it at all. Its own ID is the only thing that
@@ -476,6 +487,14 @@ def referenced_images(source: str) -> list[str]:
         while cursor < len(stripped) and stripped[cursor].isspace():
             cursor += 1
         content, _ = braced_argument(stripped, cursor)
+        reference = _clean_reference(content)
+        if reference:
+            references.append(reference)
+
+    for match in FIGURE_HELPER_RE.finditer(stripped):
+        content, _ = braced_argument(stripped, match.end() - 1)
+        if "\\" in content or "\n" in content:
+            continue  # arbitrary content (a block, an \includegraphics)
         reference = _clean_reference(content)
         if reference:
             references.append(reference)
