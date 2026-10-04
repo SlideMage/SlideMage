@@ -5,14 +5,18 @@
 % crops are pages of this manual: a presenter page (of slide 1y3, which has a
 % note) and the generated appendix (tools/manual/make_crops.py).
 \begin{standardframe}{Getting slides out}
+	\small
+	Each compile turns a deck into PDFs: one per deck version you ticked. The
+	options in the deck's row and under the deck table add other outputs.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.47\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
 				\item The whole deck, or one PDF per chapter
-				\item \emph{Presenter}: every slide next to its notes (\SMCmd{note}) -- open it in a presenter app such as pympress
-				\item \emph{Export PPTX}: for PowerPoint's recording tools; a slide's reveal steps fade one after the other
-				\item \emph{Generate appendix TOC}: an agenda and a grid of clickable previews after the last slide
+				\item \emph{Presenter}: every slide next to its notes (\SMCmd{note}), for a presenter app such as pympress
+				\item \emph{Export PPTX}: for PowerPoint's recording tools; reveal steps fade in one by one
+				\item \emph{Generate appendix TOC}: an agenda and a grid of clickable previews at the end
 				\item \SMCmd{deckoutputfolder}: where each PDF goes
 			\end{itemize}
 		\end{column}
@@ -20,7 +24,7 @@
 			\centering
 			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slide-presenter.png}}}\par
 			{\scriptsize a presenter page\par}\smallskip
-			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=0.58\linewidth]{media/screenshot-slide-appendix-grid.png}}}\par
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=0.5\linewidth]{media/screenshot-slide-appendix-grid.png}}}\par
 			{\scriptsize the appendix: a preview grid\par}
 		\end{column}
 	\end{columns}

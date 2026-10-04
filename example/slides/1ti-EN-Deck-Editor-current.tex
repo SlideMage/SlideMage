@@ -4,20 +4,23 @@
 % SlideMage manual, chapter "Working in SlideMage": the deck editor, showing
 % this manual's own deck (tools/manual/make_screenshots.py).
 \begin{standardframe}{The deck editor}
-	{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=0.6\linewidth]{media/screenshot-slidemage-deck-editor-list.png}}}\par\medskip
-	\begin{columns}[t,onlytextwidth]
-		\begin{column}{0.48\linewidth}
-			\shrinklists{1}
-			\begin{itemize}
-				\item A deck's slides and chapters as rows; views \emph{List}, \emph{Thumbnail}, \emph{Grid}
-				\item \emph{+ before} / \emph{+ after}: the \emph{Add slide} dialog -- create a new slide, use an existing one, or duplicate one
-			\end{itemize}
+	\small
+	Click a deck's name in the main window to open the deck editor: one row per
+	slide and per chapter, in deck order. Everything you do here -- adding, moving,
+	removing slides and chapters -- is written into the deck file at once, so
+	you never need to edit it by hand.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-editor-list.png}}}
 		\end{column}
-		\begin{column}{0.48\linewidth}
+		\begin{column}{0.41\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
+				\item \emph{+ before} / \emph{+ after} open the \emph{Add slide} dialog: a new slide, an existing one, or a copy of one
 				\item The dropdown chooses how the slide is included (\SMCmd{slide}, \SMCmd{slidestep}, \ldots)
-				\item Move a slide by typing its new number; chapters: add, rename, move; \emph{Undo}
+				\item Move a slide by typing its new number; \emph{Undo} takes back the last change
+				\item Views: \emph{List}, \emph{Thumbnail}, \emph{Grid}
 			\end{itemize}
 		\end{column}
 	\end{columns}

@@ -4,6 +4,11 @@
 % SlideMage manual, chapter "Working in SlideMage": the checks before and
 % after a compile (README: "Pre-render syntax check").
 \begin{standardframe}{Safety nets}
+	\small
+	LaTeX's error messages are hard to read, and a compile takes time. So
+	before every compile SlideMage checks the slides for the most common
+	mistakes, and names the slide and the line.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.47\linewidth}
 			\scriptsize
@@ -12,7 +17,7 @@
 				Before every compile: & finds \\
 				\midrule
 				\SMCode{braces}, \SMCode{environments} & left open \\
-				\SMCode{math-dollar}, \SMCode{math-delims} & maths left open \\
+				\SMCode{math-dollar}, \SMCode{math-delims} & math left open \\
 				\SMCode{ampersand}, \SMCode{hash} & a stray \SMCode{\&} or \SMCode{\#} \\
 				\SMCode{citation} & unknown key \\
 				\SMCode{image}, \SMCode{code-file} & a missing file \\
@@ -25,7 +30,7 @@
 			\shrinklists{1}
 			\begin{itemize}
 				\item An error stops the compile and asks: \emph{Cancel}, \emph{Show in editor} or \emph{Render anyway}; warnings go to the log
-				\item After a compile, \SMCode{check\_layout.py} measures the PDF against the margins; a slide can exempt itself with \SMCode{\%\% layout-check: skip top}
+				\item After a compile, the repository's \SMCode{tools/check\_layout.py} measures the PDF against the margins; a slide can exempt itself with \SMCode{\%\% layout-check: skip top}
 				\item \emph{Search all slide texts} finds any word in every slide
 			\end{itemize}
 		\end{column}

@@ -4,6 +4,11 @@
 % SlideMage manual, chapter "Working in SlideMage": slide previews, with the
 % deck editor's Grid view of this manual (tools/manual/make_screenshots.py).
 \begin{standardframe}{Slide previews}
+	\small
+	SlideMage keeps a small picture of every slide, taken from its last compile,
+	so you recognize slides at a glance in the deck editor and the dialogs.
+	Previews belong to a template: a slide compiled in two templates has two.
+	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.56\linewidth}
 			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-editor-grid.png}}}
@@ -11,10 +16,9 @@
 		\begin{column}{0.41\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item A picture of every slide as it last compiled, per template
 				\item Shown on hover, in \emph{Preview} (with \emph{Render now}), and in the \emph{Thumbnail} and \emph{Grid} views
-				\item Refreshed by any compile that includes the slide; a cache, not a live view
-				\item \emph{Update slide previews}: one long compile of every slide, and old previews go
+				\item Refreshed by every compile that includes the slide: a cache, not a live view
+				\item Housekeeping $\rightarrow$ \emph{Update slide previews} compiles every slide once and removes outdated previews
 			\end{itemize}
 		\end{column}
 	\end{columns}
