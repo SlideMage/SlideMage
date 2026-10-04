@@ -803,6 +803,11 @@ _INLINE_MACROS = (
 # render_slide() once the whole body is converted.
 _BACKSLASH_SLOT = "\x03"
 _TEXTBACKSLASH_RE = re.compile(r"\\textbackslash(?![a-zA-Z])(?:\{\})?\s?")
+# A \\ line break (with an optional [<skip>]) is a space in running text: the
+# generic macro strip used to take "\SlideMage" out of "...\\SlideMage" and
+# leave a stray backslash behind ("demonstration\ 5.12").
+_LINE_BREAK_RE = re.compile(r"\\\\\*?(?:\[[^\]]*\])?")
+_PERIODCENTERED_RE = re.compile(r"\\textperiodcentered(?![a-zA-Z])(?:\{\})?")
 
 # Colour commands (v4.1.0, direct instruction): a transcript omits colour.
 # The command and its colour argument(s) go, the coloured text stays --
@@ -865,6 +870,8 @@ def _inline_markdown(text: str) -> str:
     """Inline-level LaTeX to Markdown. Recursive: macros nest."""
     text = _COLOR_COMMAND_RE.sub("", text)
     text = _TEXTBACKSLASH_RE.sub(_BACKSLASH_SLOT, text)
+    text = _LINE_BREAK_RE.sub(" ", text)
+    text = _PERIODCENTERED_RE.sub("·", text)
     # \href{url}{label} -> [label](url)
     while True:
         match = _HREF_RE.search(text)

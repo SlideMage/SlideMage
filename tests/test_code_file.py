@@ -45,3 +45,12 @@ def test_inline_code_keeps_its_backslash_in_the_transcript(tmp_path: Path):
     entry = transcript.render_slide(transcript.DeckSlide(1, "abc", path, True), "during-course", {})
     assert entry is not None
     assert entry.body == "- Use `\\slide` and `c_secondary_blue`, or `\\pause`"
+
+
+def test_line_breaks_and_middle_dots_read_as_text(tmp_path: Path):
+    path = tmp_path / "abc-EN-Title-current.tex"
+    path.write_text("\\titleframe{SlideMage}{Manual\\\\SlideMage 5.12 \\textperiodcentered{} 2026}\n",
+                    encoding="utf-8")
+    entry = transcript.render_slide(transcript.DeckSlide(1, "abc", path, True), "during-course", {})
+    assert entry is not None
+    assert entry.body == "Manual SlideMage 5.12 · 2026"

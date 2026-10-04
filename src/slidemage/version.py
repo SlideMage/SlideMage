@@ -1823,6 +1823,8 @@ v5.11.0 (2026-10-04, SlideMage manual, build step 1): \\SMCodeFile[listings keys
 v5.12.0 (2026-10-04, SlideMage manual, build step 1b): visible navigation for readers, opt-in per deck. Framework: \\SMNavigationBar[deck,chapter,previews] (deck preamble) extends the footer's left text to "\\FooterText | Navigation: <three links>" -- the \\SMDeckAgenda contents slide, the current chapter's \\SMChapterAgenda (fallback: the contents slide), and the generated appendix agenda (only when the compile has it) -- white/footer-coloured text with the blue \\href underline (\\SMLinkUnderline); a link without a target in this PDF is left out. \\SMChapterAgenda[width] lists the slides of the current \\section in two columns as links, from what the previous pass recorded in the .aux: \\setSlideID writes \\SMAgendaSlide{section}{id}{slug label}, the frametitle hook writes the frame title (\\SMAgendaEntryTitle), \\SMAgendaTitle{text} names a title-less slide; \\small, \\footnotesize when it does not fit \\SMChapterAgendaMaxHeight; a \\slidestep slide once, the agenda's own slide not at all. \\deckappendixtoc is inert for LaTeX. Every deck now writes those agenda lines to its .aux (no visible change; demo decks pixel-compared against v5.10.0: identical apart from sub-0.01pt bullet rounding on one slide that already came with v5.11.0). App: deck_scan reads \\deckappendixtoc (Deck.appendix_toc) and the compile batch generates the appendix for such a deck whatever the toolbar checkbox says. Transcript: DeckSlide.chapter (number of \\section{}s before it); \\SMChapterAgenda becomes "This chapter's slides:" with each slide's title and number (German strings for German decks), \\SMDeckAgenda disappears, \\SMAgendaTitle names a title-less slide. alt_blocks._slide_title()'s filename fallback drops the language segment ("Quote Demo", not "EN Quote Demo").
 
 v5.13.0 (2026-10-04, SlideMage manual, found while building it): \\SMCode{text} and \\SMCmd{name} set code in running text in Fira Mono Regular at 90% (\\texttt is the theme's Fira Mono Bold, which reads heavy and wide next to the Fira Sans Light body text and made the manual's slides overflow); \\SMCmd{slide} prints \\slide. Transcript: both become `code`, and a literal backslash survives -- \\textbackslash and \\SMCmd's backslash are parked while the inline conversion strips macro names and put back afterwards (before, \\texttt{\\textbackslash pause} came out as `pause`). \\SMChapterAgenda now tries \\normalsize first, then \\small, then \\footnotesize (it left the dividers mostly empty at \\small).
+
+v5.13.1 (2026-10-04, found in the SlideMage manual's transcript): a \\\\ line break in running text becomes a space -- the macro strip used to take "\\SlideMage" out of "...\\\\SlideMage" and leave a stray backslash ("demonstration\\ 5.12" on a title slide); \\textperiodcentered becomes a middle dot instead of disappearing.
 """
 from __future__ import annotations
 
@@ -1832,7 +1834,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.13.0"
+VERSION_NUMBER = "v5.13.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
