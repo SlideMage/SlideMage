@@ -26,6 +26,7 @@ def test_reserved_id_form():
     assert slide_ids.reserved_id_reason("12b")  # second place must be a letter
     assert slide_ids.reserved_id_reason("abc")
     assert slide_ids.reserved_id_reason("1e5")  # scientific notation
+    assert slide_ids.reserved_id_reason("1ex")  # never "e" second
 
 
 def test_minted_ids_start_with_a_letter(project):

@@ -972,6 +972,40 @@ def _convert_body(text: str, depth: int = 0) -> str:
 
 _FRAME_END_RE = re.compile(r"\\end\{\w*frame\}")
 
+# \SMCodeFile[listings keys]{path}: LaTeX source a slide shows from a file
+# (snippets/<id>-<n>.tex). The transcript shows the file's text as a fenced
+# code block. Parked behind a placeholder while the body is converted -- the
+# inline conversion would strip every macro out of it -- and put back after.
+_CODE_FILE_RE = re.compile(r"\\SMCodeFile\s*(?:\[([^\]]*)\])?\s*\{([^{}]+)\}")
+_CODE_LINE_KEY_RE = re.compile(r"\b(firstline|lastline)\s*=\s*(\d+)")
+_CODE_SLOT = "\x02SMCODE{}\x02"
+
+
+def _park_code_files(text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+
+    def park(match: re.Match) -> str:
+        ref = match.group(2).strip()
+        try:
+            lines = (PROJECT_ROOT / ref).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = [f"(code file {ref} not found)"]
+        keys = dict(_CODE_LINE_KEY_RE.findall(match.group(1) or ""))
+        first = int(keys.get("firstline", 1))
+        last = int(keys.get("lastline", len(lines)))
+        code = "\n".join(lines[first - 1:last]).replace("\t", "  ").rstrip()
+        blocks.append(f"```latex\n{code}\n```")
+        return "\n\n" + _CODE_SLOT.format(len(blocks) - 1) + "\n\n"
+
+    return _CODE_FILE_RE.sub(park, text), blocks
+
+
+def _unpark_code_files(text: str, blocks: list[str]) -> str:
+    for slot, block in enumerate(blocks):
+        text = text.replace(_CODE_SLOT.format(slot), block)
+    return text
+
+
 _MULTILINGUAL_NEEDLE = "\\multilingualtext{"
 
 
@@ -1066,11 +1100,12 @@ def render_slide(deck_slide: DeckSlide, version: str,
             body = ""
 
     notes = (slide_notes or {}).get(slide_id)
+    body, code_blocks = _park_code_files(body)
     entry = TranscriptSlide(
         number=deck_slide.number,
         slide_id=slide_id,
         title=title,
-        body=_convert_body(body).strip(),
+        body=_unpark_code_files(_convert_body(body).strip(), code_blocks),
         source=_inline_markdown(" ".join(sources)).strip(),
         summary=notes.summary if notes else "",
     )
@@ -1326,6 +1361,20 @@ def markdown_to_html_body(markdown: str) -> str:
             index += 1
             continue
 
+        # Fenced code block (```lang ... ```): a \SMCodeFile listing.
+        if stripped.startswith("```"):
+            close_paragraph(); close_lists(); close_quote()
+            language = stripped[3:].strip()
+            index += 1
+            code: list[str] = []
+            while index < len(lines) and lines[index].strip() != "```":
+                code.append(lines[index])
+                index += 1
+            index += 1
+            css = f' class="language-{_html.escape(language)}"' if language else ""
+            out.append(f"<pre><code{css}>{_html.escape(chr(10).join(code), quote=False)}</code></pre>")
+            continue
+
         # Table: a header row followed by a |---|---| separator.
         if (stripped.startswith("|") and index + 1 < len(lines)
                 and _TABLE_SEP_RE.match(lines[index + 1].strip())):
@@ -1424,6 +1473,7 @@ _HTML_SHELL = """<!DOCTYPE html>
     border-left: 4px solid #9aa3b2;
   }}
   code {{ font-family: ui-monospace, Consolas, monospace; font-size: .92em; }}
+  pre {{ overflow-x: auto; padding: .6rem .8rem; border: 1px solid #c9ced8; border-radius: 4px; }}
   :focus-visible {{ outline: 3px solid #2f6feb; outline-offset: 2px; }}
 </style>
 </head>

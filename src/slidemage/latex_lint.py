@@ -27,6 +27,7 @@ listing shown in the GUI and in README.md):
     hash          unescaped # outside a macro definition or URL
     citation      \\fullcite/\\cite/... key that is not in Slidemaster.bib
     image         \\includegraphics/\\chapterlogo file that does not exist
+    code-file     \\SMCodeFile{path} whose file does not exist
     slide-file    a \\slide{}-family call whose slides/*.tex file is missing
 
   warnings (very likely a mistake, but the compile may still succeed)
@@ -69,6 +70,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("hash", ERROR, "Unescaped # outside a macro definition or a URL -- \"You can't use macro parameter character #\"."),
     ("citation", ERROR, "\\fullcite/\\cite/\\textcite/\\parencite/... with a key that is not in Slidemaster.bib."),
     ("image", ERROR, "\\includegraphics, \\chapterlogo, \\fullbleedframe or sideimageframe pointing at a file that does not exist (the extension may be omitted)."),
+    ("code-file", ERROR, "\\SMCodeFile{path} pointing at a file that does not exist (the path is relative to the project root, extension included)."),
     ("slide-file", ERROR, "A deck's \\slide/\\slidefinal/\\slidestep/\\conditionalslide/\\slideversion/... call whose slides/<id>-current.tex (or -vX-Y-Z.tex) file does not exist."),
     ("underscore", WARNING, "_ in running text outside math and outside macro arguments that take names/paths (\"Missing $ inserted\")."),
     ("caret", WARNING, "^ in running text outside math (\"10^6\" typed without $...$) -- \"Missing $ inserted\"."),
@@ -135,7 +137,7 @@ _NON_TYPESET_OWNERS = {
     "foreach", "tikzset", "pgfmathsetmacro", "pgfplotsset", "addplot", "setlength",
     "addtolength", "newcommand", "renewcommand", "providecommand", "def", "gdef", "edef",
     "xdef", "let", "pgfkeys", "usepackage", "RequirePackage", "addbibresource",
-    "deckoutputfolder", "decktags", "note",  # \note can hold typeset text, but see below
+    "deckoutputfolder", "decktags", "SMCodeFile", "note",  # \note can hold typeset text, but see below
 }
 _NON_TYPESET_OWNERS.discard("note")  # typeset text: an unescaped _ there is a real error
 
@@ -452,6 +454,7 @@ _IMAGE_RES = (
     re.compile(r"\\fullbleedframe\{([^{}]+)\}"),
     re.compile(r"\\begin\{sideimageframe\}\{[^{}]*\}\{([^{}]+)\}"),
 )
+_CODE_FILE_RE = re.compile(r"\\SMCodeFile(?:\[[^\]]*\])?\{([^{}]+)\}")
 _IMAGE_SUFFIXES = ("", ".png", ".jpg", ".jpeg", ".pdf", ".eps", ".svg", ".gif")
 # \begin{gothamtable}{spec} without an option (an option is [gap=...])
 _GOTHAMTABLE_RE = re.compile(r"\\begin\{gothamtable\}\s*\{")
@@ -501,6 +504,10 @@ def _external(text: str) -> list[LintIssue]:
                     continue
                 if not any((PROJECT_ROOT / (ref + s)).is_file() for s in _IMAGE_SUFFIXES):
                     issues.append(LintIssue("image", f"image file '{ref}' does not exist", line_of(m.start(1))))
+    for m in _CODE_FILE_RE.finditer(masked):
+        ref = m.group(1).strip()
+        if ref and "\\" not in ref and "#" not in ref and not (PROJECT_ROOT / ref).is_file():
+            issues.append(LintIssue("code-file", f"code file '{ref}' does not exist", line_of(m.start(1))))
     for m in _GOTHAMTABLE_RE.finditer(masked):
         if not masked[m.end():].lstrip().startswith("@{}"):
             issues.append(LintIssue(

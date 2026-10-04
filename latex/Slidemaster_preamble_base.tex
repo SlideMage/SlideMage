@@ -6562,3 +6562,47 @@
 	}%
 	\vspace{-3pt}%
 }
+
+% \SMCodeFile[listings keys]{path} -- LaTeX source shown on a slide, read from
+% a file (2026-10-04, for the SlideMage manual: "show the result and the
+% source together"). The code lives in its own small file, e.g.
+% snippets/<slide id>-1.tex at the project root, so the slide itself needs no
+% [fragile] frame and the code is exactly what was compiled elsewhere. Found on
+% the TeX search path like any \input (the project root is on it, see
+% .latexmkrc). Optional keys go to \lstinputlisting (firstline=, lastline=,
+% basicstyle=...). Fira Mono Regular (the theme's \ttfamily is Fira Mono Bold),
+% control sequences in the highlight colour, comments gray, on a light gray
+% panel. Write snippets in ASCII; the few non-ASCII characters below are mapped.
+% SlideMage's transcript shows the file as a code block, and the pre-render
+% check reports a missing file.
+\usepackage{listings}
+\newfontfamily\SMCodeFont{FiraMono-Regular.otf}[BoldFont=FiraMono-Medium.otf]
+\newcommand{\SMCodeSize}{\fontsize{6.6}{8.2}\selectfont}
+% Every control sequence, backslash included, is a keyword: the backslash is
+% made a letter and is the keyword prefix (listings' prefix keywords need a
+% non-empty keyword list to be active, hence the dummy). An escaped \% and a
+% \\ are mapped literally (\% must not start a comment; \\ otherwise loses a
+% backslash to the \% mapping) and reset the prefix flag, which would
+% otherwise colour the word after them.
+\makeatletter
+\newcommand{\SMCodePercent}{\textbackslash\%\global\let\lst@prefixkeyword\relax}
+\newcommand{\SMCodeNewline}{\textcolor{c_primary_highlight}{\textbackslash\textbackslash}\global\let\lst@prefixkeyword\relax}
+\makeatother
+\lstdefinestyle{SMCode}{
+	basicstyle=\SMCodeFont\SMCodeSize,
+	columns=fullflexible, keepspaces=true, tabsize=2,
+	keywords={SMCodeNoSuchKeyword},
+	alsoletter={\\}, keywordsprefix=\\,
+	keywordstyle=\color{c_primary_highlight},
+	morecomment=[l]\%, commentstyle=\color{c_primary_gray},
+	showstringspaces=false, upquote=true,
+	backgroundcolor=\color{c_tertiary_gray},
+	frame=single, rulecolor=\color{c_tertiary_gray}, framesep=3pt,
+	xleftmargin=3pt, xrightmargin=3pt,
+	breaklines=true, breakindent=1.5em,
+	aboveskip=0pt, belowskip=0pt,
+	literate={\\\%}{{\SMCodePercent}}2 {\\\\}{{\SMCodeNewline}}2 {ä}{{\"a}}1 {ö}{{\"o}}1 {ü}{{\"u}}1 {Ä}{{\"A}}1 {Ö}{{\"O}}1 {Ü}{{\"U}}1
+		{ß}{{\ss}}1 {é}{{\'e}}1 {–}{{--}}1 {—}{{---}}1 {·}{{$\cdot$}}1 {…}{{...}}1
+		{→}{{$\rightarrow$}}1,
+}
+\newcommand{\SMCodeFile}[2][]{\lstinputlisting[style=SMCode,#1]{#2}}

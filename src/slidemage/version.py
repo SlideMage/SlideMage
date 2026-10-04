@@ -1817,6 +1817,8 @@ v5.8.0 (2026-10-03, direct instruction): a default template for slides rendered 
 v5.9.0 (2026-10-03, direct instruction): the SlideMage template is part of the framework now, not of the example project: latex/Slidemaster_preamble_slidemage.tex with its logo latex/slidemage-logo.pdf (+ .svg source), found on the same TeX search path as Slidemaster_preamble_base.tex. Every project next to the framework can use it without a copy of its own -- e.g. SlideMaster_SP, which has only institution layers, can now select it in a deck (\\input{Slidemaster_preamble_slidemage}) and in Settings -> General -> Slide rendering, which lists the project's own templates plus the framework's (slide_snapshot.framework_dirs(): $SLIDEMASTER_LATEX, ../latex, ../SlideMage/latex). A project's own Slidemaster_preamble_slidemage.tex would still win. Since the SlideMage template is now available everywhere, single-slide renders use it out of the box in every project, unless another default template is chosen there.
 
 v5.10.0 (2026-10-04, direct instruction): regular slide ids start with a letter. Every newly minted id (Add slide, Duplicate slide, Admin slides, PPTX/ODP import) now has a letter first (slide_ids.ID_FIRST_ALPHABET); ids starting with a digit are reserved for the SlideMage manual (1 + letter + one more character) and the demo slides (2 + letter + one more character), minted with slide_ids.mint_slide_id(reserved="1"/"2") and checked by slide_ids.reserved_id_reason(); slide_ids.regular_id_reason() is illegal_id_reason() plus the letter-first rule. Minting and slide_rename.rename_slide_id() now compare ids without regard to case (Windows can't tell "zzh-..." from "ZZH-..." apart). rename_slide_id() refuses a digit-first new id unless reserved=True, and also renames the slide's cached previews (.previews/slide_previews/<old>-*.png), so they need no re-render. Existing digit-first ids keep working everywhere; they are just no longer handed out (SlideMaster_SP's 217 were renamed with rename_slide_id()).
+
+v5.11.0 (2026-10-04, SlideMage manual, build step 1): \\SMCodeFile[listings keys]{path} shows LaTeX source on a slide, read from a small file at the project root (snippets/<slide id>-<n>.tex), so the slide needs no [fragile] frame. Framework (Slidemaster_preamble_base.tex): listings loaded; style SMCode -- Fira Mono Regular (\\SMCodeFont; the theme's \\ttfamily is Fira Mono Bold) at \\SMCodeSize (6.6/8.2pt), every control sequence backslash included in c_primary_highlight (backslash as letter + keyword prefix), comments c_primary_gray, c_tertiary_gray panel; \\% and \\\\ mapped so neither starts a comment nor colours the next word; umlauts, dashes, middle dot, ellipsis and arrow mapped. Keys go to \\lstinputlisting (firstline/lastline/basicstyle...). Transcript: the file becomes a fenced ```latex block (firstline/lastline honoured, tabs as two spaces), and the HTML transcript renders fenced blocks as <pre><code>. Pre-render check: new error "code-file" for a missing file; \\SMCodeFile's path is a non-typeset argument for the underscore check. Reserved ids (manual/demo) never have "e" in second place.
 """
 from __future__ import annotations
 
@@ -1826,7 +1828,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.10.0"
+VERSION_NUMBER = "v5.11.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

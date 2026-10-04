@@ -91,14 +91,16 @@ def regular_id_reason(slide_id: str) -> Optional[str]:
 
 def reserved_id_reason(slide_id: str) -> Optional[str]:
     """Why `slide_id` must not be given to a SlideMage manual or demo slide
-    (form: a digit from RESERVED_FIRST_DIGITS, then a letter), or None."""
+    (form: a digit from RESERVED_FIRST_DIGITS, then a letter other than
+    "e"), or None."""
     reason = illegal_id_reason(slide_id)
     if reason:
         return reason
     if slide_id[:1] not in RESERVED_FIRST_DIGITS:
         return f"a manual/demo slide id starts with one of {RESERVED_FIRST_DIGITS!r}"
-    if not slide_id[1:2].isalpha():
-        return "a manual/demo slide id has a letter in second place"
+    if not slide_id[1:2].isalpha() or slide_id[1:2] == "e":
+        # never "e": "1e5" would read as scientific notation
+        return "a manual/demo slide id has a letter other than 'e' in second place"
     return None
 # Matches SPslide(refresh=TRUE)'s own "^([^-]+)-.*\\.tex$": the ID is
 # everything before the first hyphen, for both ID-slug-current.tex and

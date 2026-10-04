@@ -172,6 +172,9 @@ checkout updated alongside the executable.
   Midjourney illustrations, etc.), named `<type>-<slug>[-cropped].<ext>` so
   the kind of image is obvious from the filename alone — `chapter-logo-...`,
   `midjourney-...`, `chart-...`, `photo-...`, `screenshot-...`.
+- `snippets/` — small LaTeX source files a slide shows as code with
+  `\SMCodeFile{snippets/<slide id>-<n>.tex}` (the SlideMage manual's code
+  panels; see "Layout helpers").
 - `media/alt-text.json` — the store for everything about every image in the
   project: role (`decorative`/`informative`), confirmation status, short/long
   description, a default takeaway, and per-slide state (which slides use it,
@@ -701,8 +704,9 @@ confusable characters (no `l`/`1`, `o`/`0`, etc.).
 
 **Regular slide IDs start with a letter** (since v5.10.0; SlideMage and
 `slide.new.id()` only mint such IDs). IDs **starting with a digit are
-reserved**: `1` + a letter + one more character for the SlideMage manual,
-`2` + a letter + one more character for demo/test slides
+reserved**: `1` + a letter other than `e` + one more character for the
+SlideMage manual, `2` + a letter other than `e` + one more character for
+demo/test slides
 (`slide_ids.mint_slide_id(reserved="1")` / `"2"`). This makes it obvious at
 a glance, from the filename alone, whether a slide is manual/demo content
 or actual course/research material. IDs are compared without regard to
@@ -1191,6 +1195,16 @@ pixel-identical; everything below is what new slides should use.
 - **Small ones:** `\shrinklists{1|2}` (all list levels one/two sizes smaller),
   `\EUR` (euro sign in text and math), `\SMTikzmark{name}`, TikZ styles
   `gotham highlight`, `gotham dotted highlight`, `gotham arrow`.
+- **`\SMCodeFile[keys]{snippets/abc-1.tex}`** (since v5.11.0) -- LaTeX
+  source on a slide, read from its own small file at the project root (the
+  slide then needs no `[fragile]` frame, and the code is exactly the text
+  in that file): Fira Mono on a light gray panel, every control sequence in
+  the highlight colour, comments gray. The keys go to `\lstinputlisting`
+  (`firstline=`, `lastline=`, `basicstyle=\SMCodeFont\tiny`, ...); the size
+  is `\SMCodeSize`. Write the files in ASCII (umlauts, dashes, `·`, `…` and
+  `→` are mapped). The transcript shows the file as a code block, and the
+  pre-render check reports a missing file. Name them after the slide:
+  `snippets/<slide id>-<n>.tex`.
 - **`\SMTikzword{name}{text}`** -- a word as a named TikZ node, so an
   overlay arrow can point at it (`(name.south)`, ...) and follows it when the
   layout moves; transcripts keep the word.
@@ -2333,6 +2347,7 @@ on everything that compiles.
 | `hash` | error | unescaped `#` outside macro definitions and URLs |
 | `citation` | error | `\fullcite`/`\cite`/`\textcite`/`\parencite`/... with a key that is not in `Slidemaster.bib` |
 | `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe` pointing at a file that does not exist (extension optional) |
+| `code-file` | error | `\SMCodeFile{path}` pointing at a file that does not exist (path relative to the project root) |
 | `slide-file` | error | a deck call whose `slides/<id>-current.tex` / `-vX-Y-Z.tex` does not exist |
 | `underscore` | warning | `_` in running text outside math, tikz and name/path arguments ("Missing $ inserted") |
 | `caret` | warning | `^` in running text outside math (`10^6` typed without `$...$`) |
