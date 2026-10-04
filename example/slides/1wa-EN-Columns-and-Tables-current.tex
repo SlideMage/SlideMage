@@ -5,23 +5,28 @@
 % minipages and gothamtable. The slide itself is two columns; the table is
 % live.
 \begin{standardframe}{Columns and tables}
+	{\small Side by side, text and figures or code use beamer's \SMCode{columns};
+	this slide is two of them. Tables use \SMCode{gothamtable}, whose rules end
+	exactly at the text.\par}
+	\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.47\linewidth}
+			\shrinklists{1}
 			\begin{itemize}
-				\item \SMCode{columns[t,onlytextwidth]}, inside the frame; \SMCode{[T]} beside a figure
-				\item Beside a figure: two \SMCode{minipage[t]}, the first line with \SMCmd{SMLineTop}
-				\item \SMCode{gothamtable[gap=12pt]}: rules flush with the text
+				\item \SMCode{columns[t,onlytextwidth]}; \SMCode{[T]} when a column holds a figure, code or a table
+				\item Or two \SMCode{minipage[t]}, the first line with \SMCmd{SMLineTop}
+				\item \SMCode{gothamtable[gap=12pt]}: the gap between columns, built in
 			\end{itemize}
 			\medskip
+			{\small
 			\begin{gothamtable}[gap=12pt]{lcc}
 				\toprule
 				Frame & Title bar & Footer \\
 				\midrule
 				\SMCode{standardframe} & yes & yes \\
-				\SMCmd{titleframe} & large box & no \\
 				\SMCmd{fullbleedframe} & no & no \\
 				\bottomrule
-			\end{gothamtable}
+			\end{gothamtable}\par}
 		\end{column}
 		\begin{column}{0.5\linewidth}
 			\SMCodeFile{snippets/1wa-1.tex}

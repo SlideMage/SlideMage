@@ -4,22 +4,29 @@
 % SlideMage manual, chapter "Content and layout": the six block environments,
 % each naming itself, and the floating variants.
 \begin{standardframe}{Blocks}
+	{\small A block sets a short piece apart and says what it is: each type has
+	its own color and icon, so readers see its role at a glance. Each block below
+	is named after its environment (\SMCode{\textbackslash begin\{infoblock\}\{Title\}}). Narrow
+	variants for placing anywhere: \SMCode{gothamfloatingblock} and others.\par}
+	\medskip
 	\begin{columns}[t,onlytextwidth]
-		\begin{column}{0.48\linewidth}
+		\begin{column}{0.31\linewidth}
 			\begin{block}{block}
 				Neutral: a statement, a formula
 			\end{block}
 			\begin{definitionblock}{definitionblock}
 				A definition, marked $\triangleq$
 			\end{definitionblock}
+		\end{column}
+		\begin{column}{0.31\linewidth}
 			\begin{exampleblock}{exampleblock}
 				A worked example
 			\end{exampleblock}
-		\end{column}
-		\begin{column}{0.48\linewidth}
 			\begin{alertblock}{alertblock}
 				A caveat or a warning
 			\end{alertblock}
+		\end{column}
+		\begin{column}{0.31\linewidth}
 			\begin{infoblock}{infoblock}
 				An aside
 			\end{infoblock}
@@ -28,6 +35,4 @@
 			\end{referenceblock}
 		\end{column}
 	\end{columns}
-	\smallskip
-	{\small Narrow, placed freely: \SMCode{gothamfloatingblock}, \SMCode{...exampleblock}, \SMCode{...infoblock}, in a corner with \SMCmd{cornerfigure}\SMCode{[block]}\par}
 \end{standardframe}

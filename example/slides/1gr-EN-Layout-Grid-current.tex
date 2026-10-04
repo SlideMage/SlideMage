@@ -32,12 +32,16 @@
 		\end{tikzillustration}
 	\end{minipage}\hfill
 	\begin{minipage}[t]{0.46\linewidth}\vspace{0pt}
+		{\small\SMLineTop You rarely need \SMCmd{vspace}: the framework puts every
+		frame's first line on the Top Margin and keeps content between the
+		margins. Place your own drawings on these lengths, not on measured
+		numbers.\par}
+		\medskip
 		\shrinklists{1}
 		\begin{itemize}
-			\item \SMLineTop A top-aligned frame puts its first line on the Top Margin by itself
-			\item \SMCmd{SMManualTopMargin} before a frame keeps your own position; \SMCmd{SMAutoTopMarginfalse} switches it off
-			\item Place your own overlays on these lengths; also \SMCmd{SMSideImageFrameWidth}, \SMCmd{SMImageBorderWidth}, \SMCmd{SMItemStep}
-			\item \SMCode{check\_layout.py} measures a compiled PDF
+			\item \SMCmd{SMManualTopMargin} before a frame keeps your own position; \SMCmd{SMAutoTopMarginfalse} switches it off for a deck
+			\item More lengths: \SMCmd{SMSideImageFrameWidth}, \SMCmd{SMImageBorderWidth}, \SMCmd{SMItemStep}
+			\item \SMCode{tools/check\_layout.py} measures a compiled PDF
 		\end{itemize}
 	\end{minipage}
 \end{standardframe}

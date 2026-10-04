@@ -5,7 +5,11 @@
 % column is the live result of the code on the right (snippets/1sv-1.tex);
 % the variants that are not shown live are listed below it.
 \begin{standardframe}{Lists and formulas}
-	\begin{columns}[t,onlytextwidth]
+	{\small The framework sets bullets, indents and spacing; you only write
+	\SMCmd{item}. An item that holds a tall formula, such as a fraction, uses
+	\SMCmd{tallitem}, so the item after it keeps its distance.\par}
+	\medskip
+	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.44\linewidth}
 			\begin{itemize}
 				\item First level
@@ -23,7 +27,7 @@
 		\begin{column}{0.53\linewidth}
 			\SMCodeFile{snippets/1sv-1.tex}
 			\medskip
-			{\footnotesize Also \SMCode{gothamnumitemize} 1), \SMCode{gothamnumperioditemize} 1., \SMCode{gothamalphaperioditemize} a., \SMCode{enumerate}; display maths in a list: \SMCmd{SMTightDisplaySkips}; a crowded slide: \SMCmd{shrinklists}\SMCode{\{1\}}\par}
+			{\footnotesize Also \SMCode{gothamnumitemize} 1), \SMCode{...perioditemize} 1./a., \SMCode{enumerate}; smaller lists: \SMCmd{shrinklists}\SMCode{\{1\}}\par}
 		\end{column}
 	\end{columns}
 \end{standardframe}
