@@ -1201,8 +1201,15 @@ pixel-identical; everything below is what new slides should use.
 - **`\SMCodeFile[keys]{snippets/abc-1.tex}`** (since v5.11.0) -- LaTeX
   source on a slide, read from its own small file at the project root (the
   slide then needs no `[fragile]` frame, and the code is exactly the text
-  in that file): Fira Mono on a light gray panel, every control sequence in
-  the highlight colour, comments gray. The keys go to `\lstinputlisting`
+  in that file): Fira Mono on a light gray panel, every control sequence and
+  every comment in its own colour. The three colours are named colours a
+  template sets before `\input{Slidemaster_preamble_base}` (since v5.17.0):
+  `SMCodeKeywordColor`, `SMCodeCommentColor`, `SMCodeBackgroundColor`; a
+  template that doesn't set them gets the highlight colour, `c_primary_gray`
+  and `c_tertiary_gray`, which is unreadable with a yellow or orange
+  highlight colour -- so the Graz, MCI and Innsbruck templates set a dark
+  blue, a dark gray and (MCI, Innsbruck) a lighter panel, all at least 5:1
+  contrast. The keys go to `\lstinputlisting`
   (`firstline=`, `lastline=`, `basicstyle=\SMCodeFont\tiny`, ...); the size
   is `\SMCodeSize`. Write the files in ASCII (umlauts, dashes, `·`, `…` and
   `→` are mapped). The transcript shows the file as a code block, and the

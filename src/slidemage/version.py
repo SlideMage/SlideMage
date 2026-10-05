@@ -1843,6 +1843,8 @@ v5.15.1 (2026-10-04, direct instruction: "the visible edge counts"): tools/check
 v5.16.0 (2026-10-04, SlideMage manual plan, step 7): the SlideMage manual (decks/slidemage-manual.tex) is example/'s demo deck. The demo decks test.tex, test-student.tex, test-slides.tex and test-slidemage.tex and the sixteen ZZ* demo slides the manual replaces (ZZL included: a two-level subset of ZZO) are retired from example/ (their ids stay registered); the reference sheets in the manual's appendix and the empty slide get reserved demo ids: ZZU -> 2rg (footnote symbols), ZZO -> 2v9 (itemize spacing), ZZI -> 2p8 (empty slide). "Open Project..." on an empty folder therefore seeds a new project with the manual. CI compiles the manual (instructor and during-course; a clean build needs 6 passes, so latexmk runs with $max_repeat=10). README and docs point at the manual's slides. The Slidemaster project's own test decks and ZZ* copies are untouched.
 
 v5.16.1 (2026-10-05, direct instruction): the compile progress label says "(estimated)" after the pass count while it is a guess -- a deck never compiled before (4 passes, 3 without a bibliography), a single-slide render, Update previews -- e.g. "pass 2/4 (estimated), slide 12/40"; once a deck has been compiled, its remembered count shows without it.
+
+v5.17.0 (2026-10-05, direct instruction): readable code panels. \\SMCodeFile's three colours are named colours a template can set before \\input{Slidemaster_preamble_base}: SMCodeKeywordColor (control sequences), SMCodeCommentColor (% comments), SMCodeBackgroundColor (the panel). Without them a template keeps the old look -- highlight colour, c_primary_gray, c_tertiary_gray -- which with a yellow or orange highlight colour was about 1.1-1.3:1 contrast. The SlideMage template now sets #0066cc / #5f5f5f on #f0f0f0 (4.9:1 and 5.6:1; was 4.4:1 and 4.0:1), example's Uni Graz template a darkened Graz blue #1f5c99 and #5f5f5f on its tertiary gray (5.4:1, 5.0:1). Only pages with a code panel change. Projects with their own templates set the three colours there (SlideMaster_SP: Graz, MCI, Innsbruck done).
 """
 from __future__ import annotations
 
@@ -1852,7 +1854,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.16.1"
+VERSION_NUMBER = "v5.17.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

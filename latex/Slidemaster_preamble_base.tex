@@ -6578,8 +6578,8 @@
 % the TeX search path like any \input (the project root is on it, see
 % .latexmkrc). Optional keys go to \lstinputlisting (firstline=, lastline=,
 % basicstyle=...). Fira Mono Regular (the theme's \ttfamily is Fira Mono Bold),
-% control sequences in the highlight colour, comments gray, on a light gray
-% panel. Write snippets in ASCII; the few non-ASCII characters below are mapped.
+% control sequences, comments and the panel in the SMCode* colours below
+% (set per template). Write snippets in ASCII; the few non-ASCII characters below are mapped.
 % SlideMage's transcript shows the file as a code block, and the pre-render
 % check reports a missing file.
 \usepackage{listings}
@@ -6591,17 +6591,29 @@
 % \\ are mapped literally (\% must not start a comment; \\ otherwise loses a
 % backslash to the \% mapping) and reset the prefix flag, which would
 % otherwise colour the word after them.
+%
+% Code colours (2026-10-05, direct instruction: "set them to something more
+% readable in the institutions' template files"): three named colours a
+% template defines before \input{Slidemaster_preamble_base} --
+% SMCodeKeywordColor (control sequences), SMCodeCommentColor (% comments),
+% SMCodeBackgroundColor (the panel). A template that doesn't keeps the
+% original look: highlight colour, primary gray, tertiary gray -- which in
+% the Graz/MCI/Innsbruck palettes is yellow/orange and light gray on light
+% gray, about 1.1-1.3:1 contrast; their templates set readable colours.
 \makeatletter
+\@ifundefinedcolor{SMCodeKeywordColor}{\colorlet{SMCodeKeywordColor}{c_primary_highlight}}{}
+\@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}
+\@ifundefinedcolor{SMCodeBackgroundColor}{\colorlet{SMCodeBackgroundColor}{c_tertiary_gray}}{}
 \newcommand{\SMCodePercent}{\textbackslash\%\global\let\lst@prefixkeyword\relax}
-\newcommand{\SMCodeNewline}{\textcolor{c_primary_highlight}{\textbackslash\textbackslash}\global\let\lst@prefixkeyword\relax}
+\newcommand{\SMCodeNewline}{\textcolor{SMCodeKeywordColor}{\textbackslash\textbackslash}\global\let\lst@prefixkeyword\relax}
 \makeatother
 \lstdefinestyle{SMCode}{
 	basicstyle=\SMCodeFont\SMCodeSize,
 	columns=fullflexible, keepspaces=true, tabsize=2,
 	keywords={SMCodeNoSuchKeyword},
 	alsoletter={\\}, keywordsprefix=\\,
-	keywordstyle=\color{c_primary_highlight},
-	morecomment=[l]\%, commentstyle=\color{c_primary_gray},
+	keywordstyle=\color{SMCodeKeywordColor},
+	morecomment=[l]\%, commentstyle=\color{SMCodeCommentColor},
 	showstringspaces=false, upquote=true,
 	breaklines=true, breakindent=1.5em,
 	aboveskip=0pt, belowskip=0pt,
@@ -6615,7 +6627,7 @@
 % size) and missed the Top Margin (v5.14.1, found by check_layout.py in the
 % SlideMage manual). The box holds everything it draws.
 \newcommand{\SMCodeFile}[2][]{\par\noindent{\setlength{\fboxsep}{3pt}%
-	\colorbox{c_tertiary_gray}{\begin{minipage}{\dimexpr\linewidth-2\fboxsep\relax}%
+	\colorbox{SMCodeBackgroundColor}{\begin{minipage}{\dimexpr\linewidth-2\fboxsep\relax}%
 		\lstinputlisting[style=SMCode,#1]{#2}%
 	\end{minipage}}}\par}
 

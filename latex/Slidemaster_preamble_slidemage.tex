@@ -71,4 +71,12 @@
 \newcommand{\SMFooterBoxColorDefault}{c_primary_dark}
 \newcommand{\SMFooterTextColor}{c_primary_white}
 
+% Code panels (\SMCodeFile), 2026-10-05: commands in the highlight blue,
+% comments dark gray, on a lighter panel than the block bodies -- 4.9:1 and
+% 5.6:1 contrast (the defaults, blue and c_primary_gray on c_tertiary_gray,
+% were 4.4:1 and 4.0:1).
+\colorlet{SMCodeKeywordColor}{c_primary_highlight}
+\definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+\definecolor{SMCodeBackgroundColor}{HTML}{f0f0f0}
+
 \input{Slidemaster_preamble_base}
