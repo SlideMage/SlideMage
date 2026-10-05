@@ -2,32 +2,35 @@
 %%
 
 % SlideMage manual, chapter "Slides": the ID system, with the parts of this
-% slide's own file name labeled (\SMUnderbrace).
+% slide's own file name labeled (\SMUnderbrace). "ID" in the highlight blue,
+% "slug" in violet (2026-10-05, direct instruction), in the text and labels.
+\providecommand{\IDword}[1][ID]{\textcolor{c_primary_highlight}{#1}}
+\providecommand{\slugword}{\textcolor{c_secondary_violet}{slug}}
 \begin{standardframe}{Slide IDs}
 	\small
-	Every slide has a permanent ID of three characters. SlideMage makes it up
+	Every slide has a permanent \IDword{} of three characters. SlideMage makes it up
 	when you add the slide, and it never changes, whatever happens to the
 	slide's title or content -- so it is what you cite and link to. The file
-	name around the ID only describes the slide; this slide's file is:
+	name around the \IDword{} only describes the slide; this slide's file is:
 	\par\medskip
 	\centering
-	$\SMUnderbrace{\text{\SMCode{1cx}}}{ID}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{EN}}}{language}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{Slide-IDs}}}{slug}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{current}}}{version}\text{\SMCode{.tex}}$
+	$\SMUnderbrace{\text{\SMCode{1cx}}}{\IDword}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{EN}}}{language}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{Slide-IDs}}}{\slugword}\text{\SMCode{-}}\SMUnderbrace{\text{\SMCode{current}}}{version}\text{\SMCode{.tex}}$
 	\par\bigskip
 	\raggedright
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.5\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item IDs avoid look-alike characters (no \SMCode{l}/\SMCode{1}, \SMCode{o}/\SMCode{0}) and are never reused
-				\item They start with a letter; IDs that start with a digit are reserved for this manual (\SMCode{1..}) and demo slides (\SMCode{2..})
-				\item \SMCode{slide\_ids.csv} registers every ID ever given
+				\item \IDword[IDs] avoid look-alike characters (no \SMCode{l}/\SMCode{1}, \SMCode{o}/\SMCode{0}) and are never reused
+				\item They start with a letter; \IDword[IDs] that start with a digit are reserved for this manual (\SMCode{1..}) and demo slides (\SMCode{2..})
+				\item \SMCode{slide\_ids.csv} registers every \IDword{} ever given
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.46\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item The ID is in every slide's footer, \emph{Find slide} looks it up, and \SMCmd{hyperlink}\SMCode{\{1cx\}\{...\}} links to the slide
-				\item The \emph{slug} is a label only: \emph{Rename slide} changes it in every deck
+				\item The \IDword{} is in every slide's footer, \emph{Find slide} looks it up, and \SMCmd{hyperlink}\SMCode{\{1cx\}\{...\}} links to the slide
+				\item The \emph{\slugword} is a label only: \emph{Rename slide} changes it in every deck
 				\item One slide can be part of any number of decks
 			\end{itemize}
 		\end{column}
