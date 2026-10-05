@@ -1845,6 +1845,8 @@ v5.16.0 (2026-10-04, SlideMage manual plan, step 7): the SlideMage manual (decks
 v5.16.1 (2026-10-05, direct instruction): the compile progress label says "(estimated)" after the pass count while it is a guess -- a deck never compiled before (4 passes, 3 without a bibliography), a single-slide render, Update previews -- e.g. "pass 2/4 (estimated), slide 12/40"; once a deck has been compiled, its remembered count shows without it.
 
 v5.17.0 (2026-10-05, direct instruction): readable code panels. \\SMCodeFile's three colours are named colours a template can set before \\input{Slidemaster_preamble_base}: SMCodeKeywordColor (control sequences), SMCodeCommentColor (% comments), SMCodeBackgroundColor (the panel). Without them a template keeps the old look -- highlight colour, c_primary_gray, c_tertiary_gray -- which with a yellow or orange highlight colour was about 1.1-1.3:1 contrast. The SlideMage template now sets #0066cc / #5f5f5f on #f0f0f0 (4.9:1 and 5.6:1; was 4.4:1 and 4.0:1), example's Uni Graz template a darkened Graz blue #1f5c99 and #5f5f5f on its tertiary gray (5.4:1, 5.0:1). Only pages with a code panel change. Projects with their own templates set the three colours there (SlideMaster_SP: Graz, MCI, Innsbruck done).
+
+v5.18.0 (2026-10-05, direct instruction): the SlideMage manual has a deck group of its own. Tag `manual` (decks/slidemage-manual.tex now carries \\decktags{manual}, was test): a "SlideMage manual" section at the bottom of the deck table; it wins over any other group tag; it is never offered in the Tags or Duplicate dialogs (a copy of the manual starts out as a course deck), and the manual's Tags button is disabled, so it always stays in its section. Unlike a test deck, its name is a link to the deck editor again. Compile runs take it after the test decks.
 """
 from __future__ import annotations
 
@@ -1854,7 +1856,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.17.0"
+VERSION_NUMBER = "v5.18.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

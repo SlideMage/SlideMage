@@ -76,7 +76,7 @@ from .compiler import (
     run_job,
     run_jobs,
 )
-from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, Deck, scan_decks
+from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, TAG_MANUAL, Deck, scan_decks
 from .qt_add_slide_dialog import AddSlideDialog
 from .qt_closable_tab_bar import ClosableTabBar
 from .qt_course_link_dialog import CourseLinkDialog
@@ -1594,6 +1594,8 @@ class SlideMageWindow(QMainWindow):
                 "other.",
             )
             return
+        if deck.group == TAG_MANUAL:
+            return  # its Tags button is disabled; the manual keeps its section
         result = ask_deck_details(self, f"Tags — {deck.name}", deck.group)
         if result is None:
             return

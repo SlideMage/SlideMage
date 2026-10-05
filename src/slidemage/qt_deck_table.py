@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from . import app_settings
 from .compiler import CompileJob
-from .deck_scan import TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
+from .deck_scan import TAG_COURSE, TAG_MANUAL, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
 from .qt_theme import LINK_LABEL, ThemeManager
 
 # The deck table's groups, top to bottom: (tag, heading, shown even while
@@ -49,6 +49,7 @@ GROUPS = [
     (TAG_COURSE, "Course decks", False),
     (TAG_RESEARCH, "Research presentations", True),
     (TAG_TEST, "Test decks", False),
+    (TAG_MANUAL, "SlideMage manual", False),
 ]
 
 VERSIONS = ["instructor", "during-course", "after-course"]
@@ -236,6 +237,10 @@ class DeckRow:
                 "own file as \\decktags{...}."
             )
             tags_button.clicked.connect(lambda: on_tags(deck))
+            if deck.group == TAG_MANUAL:
+                # The SlideMage manual always stays in its own section.
+                tags_button.setEnabled(False)
+                tags_button.setToolTip("The SlideMage manual always stays in its own section.")
             grid.addWidget(tags_button, row_index, col)
             col += 1
 

@@ -64,7 +64,18 @@ TAG_WORK = "work"
 TAG_COURSE = "course"
 TAG_RESEARCH = "research"
 TAG_TEST = "test"
-GROUP_TAGS = (TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST)
+# The SlideMage manual's own group (2026-10-05, direct instruction: "Give the
+# manual its own tag, but do not let the user select that tag, so that it
+# always stays in a dedicated section"). It wins over every other group tag
+# and is never offered in the Tags/Duplicate dialogs.
+TAG_MANUAL = "manual"
+# Precedence: a deck carrying several group tags is in the first one's group.
+GROUP_TAGS = (TAG_MANUAL, TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST)
+# The groups a user can choose for a deck (Tags button, Duplicate dialog).
+SELECTABLE_GROUP_TAGS = (TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST)
+# The deck table's order of the groups, top to bottom -- also the order a
+# compile run works through the decks of one version (compiler.order_jobs()).
+GROUP_ORDER = (TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_MANUAL)
 
 
 @dataclass

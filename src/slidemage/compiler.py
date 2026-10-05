@@ -41,7 +41,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import appendix_toc, compile_passes, slide_snapshot
-from .deck_scan import DOCUMENT_END_RE, GROUP_TAGS, PROJECT_ROOT, Chapter, Deck
+from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
 PDF_DIR = PROJECT_ROOT / "pdf"
@@ -713,12 +713,12 @@ def order_jobs(jobs: list[CompileJob]) -> list[CompileJob]:
     instruction): version by version -- Presenter, Instructor, During-course,
     After-course, After-course per chapter -- and within each version deck by
     deck, by the deck table's groups: work decks, course decks, research
-    presentations, test decks. Decks of one group, and the chapters of one
+    presentations, test decks, the manual. Decks of one group, and the chapters of one
     deck, stay in the order the jobs came in (the table's order): the sort is
     stable. Selecting During-course and Presenter for #workdeck and IA2
     compiles #workdeck Presenter, IA2 Presenter, #workdeck During-course,
     IA2 During-course."""
-    group_rank = {tag: i for i, tag in enumerate(GROUP_TAGS)}
+    group_rank = {tag: i for i, tag in enumerate(GROUP_ORDER)}
     return sorted(jobs, key=lambda job: (
         job_stage(job), group_rank.get(job.deck.group, len(group_rank))))
 

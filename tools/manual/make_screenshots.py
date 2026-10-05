@@ -57,7 +57,7 @@ def write_placeholder_decks() -> list[Path]:
         path = EXAMPLE / "decks" / f"{name}.tex"
         if path.exists():
             raise SystemExit(f"{path} exists -- not overwriting a real deck")
-        text = preamble.replace("\\decktags{test}", f"\\decktags{{{tag}}}")
+        text = preamble.replace("\\decktags{manual}", f"\\decktags{{{tag}}}")
         path.write_text("% TEMPORARY placeholder deck (tools/manual/make_screenshots.py)\n"
                         + text + "\\begin{document}\n\\end{document}\n", encoding="utf-8")
         paths.append(path)
@@ -174,7 +174,7 @@ def screenshots(app: QApplication, theme) -> int:
     original_dialog_exec = qt_deck_group_dialog.QDialog.exec
     qt_deck_group_dialog.QDialog.exec = grab_dialog
     try:
-        qt_deck_group_dialog.ask_deck_details(window, f"Tags — {MANUAL}", "test")
+        qt_deck_group_dialog.ask_deck_details(window, "Tags — course-example-2027s", "course")
     finally:
         qt_deck_group_dialog.QDialog.exec = original_dialog_exec
 

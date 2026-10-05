@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .deck_scan import GROUP_TAGS, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK
+from .deck_scan import SELECTABLE_GROUP_TAGS, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK
 from .qt_theme import MUTED_LABEL
 
 GROUP_LABELS = {
@@ -56,7 +56,11 @@ def ask_deck_details(
     layout.addWidget(QLabel("Group (the tag decides which section of the deck table it appears in):"))
     group_buttons = QButtonGroup(dialog)
     radios: dict[str, QRadioButton] = {}
-    for tag in GROUP_TAGS:
+    # The manual's own group is never offered (deck_scan.TAG_MANUAL): a copy
+    # of the manual starts out as a course deck.
+    if current_group not in SELECTABLE_GROUP_TAGS:
+        current_group = TAG_COURSE
+    for tag in SELECTABLE_GROUP_TAGS:
         radio = QRadioButton(GROUP_LABELS[tag])
         radio.setChecked(tag == current_group)
         group_buttons.addButton(radio)
