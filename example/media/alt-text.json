@@ -75,7 +75,8 @@
       "takeaway_default": "The generated appendix shows every slide as a clickable preview.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
-        "1kg": {}
+        "1kg": {},
+        "1vd": {}
       }
     },
     "media/screenshot-slide-gallery-figureframe.png": {
@@ -364,6 +365,18 @@
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1an": {}
+      }
+    },
+    "media/screenshot-slidemage-slide-editor-buttons.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The two button rows at the top of SlideMage's slide editor.",
+      "long": "A strip with two rows of buttons. The first row: Save, Revert (greyed out), Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide and Delete slide. The second row: Preview, the label Render version: with a dropdown set to Instructor, and the buttons Render to PDF and Render transcript.",
+      "source": "Screenshot of SlideMage 5.26.",
+      "takeaway_default": "The first row manages the slide as a whole; the second row renders it.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1b2": {}
       }
     },
     "media/screenshot-slidemage-slide-editor.png": {

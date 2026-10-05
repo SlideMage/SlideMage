@@ -228,6 +228,18 @@ def screenshots(app: QApplication, theme) -> int:
     settle(app)
     save(window, "slide-editor", down_to=window.tabs)
     source_tab = window.tabs.currentWidget()
+    # ... and just its two button rows, from Save to Delete slide / Render
+    # transcript (slide 1b2 explains those buttons and wants them readable)
+    from PySide6.QtWidgets import QPushButton
+    buttons = {b.text(): b for b in source_tab.findChildren(QPushButton)}
+    top_left = buttons["Save"].mapTo(window, QPoint(0, 0))
+    right = buttons["Delete slide"].mapTo(window, QPoint(buttons["Delete slide"].width(), 0)).x()
+    last = buttons["Render transcript"]
+    bottom = last.mapTo(window, QPoint(0, last.height())).y()
+    strip = window.grab(QRect(top_left.x() - 6, top_left.y() - 6,
+                              right - top_left.x() + 12, bottom - top_left.y() + 12))
+    strip.save(str(MEDIA / "screenshot-slidemage-slide-editor-buttons.png"))
+    print("screenshot-slidemage-slide-editor-buttons.png", strip.width(), "x", strip.height())
 
     # 5. the save dialog (version choice), grabbed instead of exec()'d
     def grab_instead_of_exec(box: QMessageBox) -> int:
