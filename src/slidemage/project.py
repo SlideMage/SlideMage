@@ -118,21 +118,61 @@ def _last_project_file() -> Path:
     return config_dir() / "last_project"
 
 
-def load_last_project() -> Path | None:
+def _exe_sidecar_file() -> Path | None:
+    """The exe's own copy of the last-project pointer, next to the exe.
+    %APPDATA% belongs to one computer, so on a second PC that runs the same
+    (cloud-synced) exe the pointer there is missing and the folder picker
+    would ask again; the copy beside the exe travels with the exe.
+    Frozen builds only -- a source checkout has no exe to sit next to."""
+    if not getattr(sys, "frozen", False):
+        return None
+    return Path(sys.executable).resolve().parent / "last_project"
+
+
+def _read_pointer(file: Path | None) -> Path | None:
+    if file is None:
+        return None
     try:
-        path = Path(_last_project_file().read_text(encoding="utf-8").strip())
+        text = file.read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    return path if is_project(path) else None
+    return Path(text) if text else None
+
+
+def last_project_hint() -> Path | None:
+    """Where the last project was, even if it is gone now: the nearest
+    folder that still exists, as the folder picker's starting point."""
+    for file in (_last_project_file(), _exe_sidecar_file()):
+        path = _read_pointer(file)
+        while path is not None and not path.exists():
+            parent = path.parent
+            path = None if parent == path else parent
+        if path is not None:
+            return path
+    return None
+
+
+def load_last_project() -> Path | None:
+    """The last project opened on this computer, else the one recorded
+    beside the exe (see _exe_sidecar_file), if it is a project here."""
+    for file in (_last_project_file(), _exe_sidecar_file()):
+        path = _read_pointer(file)
+        if path is not None and is_project(path):
+            return path
+    return None
 
 
 def save_last_project(path: Path) -> None:
-    target = _last_project_file()
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(str(path), encoding="utf-8")
-    except OSError:
-        pass
+    for target in (_last_project_file(), _exe_sidecar_file()):
+        if target is None:
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists() and target.read_text(encoding="utf-8").strip() == str(path):
+                continue  # unchanged: no needless write into a synced folder
+            target.write_text(str(path), encoding="utf-8")
+        except OSError:
+            pass
 
 
 def read_project_info(root: Path) -> dict:

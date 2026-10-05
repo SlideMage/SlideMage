@@ -1859,6 +1859,8 @@ v5.21.0 (2026-10-05, direct instructions): (1) A duplicated deck starts with the
 v5.22.0 (2026-10-05, direct instruction): a frozen version opened from "Previous versions" has a button "Make this the current version" (slide_versioning.restore_version): the slide's current content is archived first as a frozen version of its own (under its own tracked version, as a Save would), the frozen content becomes current with a new version number -- the highest known one with the minor number bumped, never reused -- and the current header ("Included in decks") is kept. Refused if the slide already has that content, or if the archive name is taken by different content, or if the current slide's tab has unsaved changes. Manual slide 1nt points at the navigation links again (any deck can have them).
 v5.23.0 (2026-10-05, direct instruction): saving a new version of a slide that is used in more than one deck, is pinned in a deck, or has a translation first shows "Where this slide is used" (slide_usage.py, qt_slide_usage_dialog.py). Per deck: "Move to current" (the default; a pinned \slideversion / \omitslideversion becomes \slide / \omitslide, a call that follows -current already moves on) or "Keep vX.Y.Z" (the call is pinned to the version just frozen; a deck pinned already can "Stay on" its version). \slidefinal, \conditionalslide and \slidestep have no pinned form and always follow -current. The slide's translation partners (from its "Translation of" / "<LANG> translation" header comment) are named with their decks, with a tick box to open the translation after the save. Cancel cancels the save. The deck edits run after the slide is written, through the deck editor's own stale-checked rewrite, and open deck editors refresh. Not shown for "Overwrite" (no new version).
 v5.24.0 (2026-10-05, direct instruction): \multilingualtext has a keyed form for any number of languages: \multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}} typesets the pair whose key is the deck's \decklanguage code (upper or lower case); a deck in a language the list lacks gets the EN text, else the first. The two-argument form \multilingualtext{EN}{DE} is unchanged (and no longer a plain \newcommand but an expl3 NewDocumentCommand with the same behavior). \decklanguage[fr] (any code) now also sets the PDF /Lang to that code instead of en-US. Not yet language-aware beyond en/de: \ifSMGerman and the "Image source(s)" label.
+
+v5.25.0 (2026-10-05, direct instruction): the project SlideMage opens by itself is now also remembered beside the exe (file "last_project" in the exe's folder, written whenever a project is opened). The pointer in %APPDATA% belongs to one computer, so a second PC running the same cloud-synced exe asked for the project again; it now finds it from the copy beside the exe. When the remembered project no longer exists the folder picker starts in its nearest existing parent folder instead of the program folder.
 """
 from __future__ import annotations
 
@@ -1868,7 +1870,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.24.0"
+VERSION_NUMBER = "v5.25.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

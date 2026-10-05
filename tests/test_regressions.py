@@ -309,6 +309,56 @@ def test_discover_ignores_unrelated_cwd_with_no_last_project(monkeypatch, tmp_pa
     assert project.discover() is None
 
 
+def _make_project(root):
+    from slidemage import project
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / project.MARKER).write_text("id,slug\n", encoding="utf-8")
+    return root
+
+
+def test_last_project_is_also_kept_beside_the_exe(monkeypatch, tmp_path):
+    """A second PC running the same cloud-synced exe has no %APPDATA% pointer;
+    the copy beside the exe lets it open the project without the picker."""
+    import sys
+    from slidemage import project
+
+    exe_dir = tmp_path / "dist"
+    exe_dir.mkdir()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "SlideMage.exe"))
+    root = _make_project(tmp_path / "Slidemaster")
+
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "pc1")
+    project.save_last_project(root)
+    assert (exe_dir / "last_project").read_text(encoding="utf-8") == str(root)
+
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "pc2")  # nothing there
+    assert project.load_last_project() == root
+
+
+def test_last_project_without_exe_writes_only_the_config_file(monkeypatch, tmp_path):
+    from slidemage import project
+
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+    root = _make_project(tmp_path / "p")
+    project.save_last_project(root)
+    assert project.load_last_project() == root
+    assert not (tmp_path / "last_project").exists()
+
+
+def test_last_project_hint_is_nearest_existing_folder(monkeypatch, tmp_path):
+    from slidemage import project
+
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+    root = _make_project(tmp_path / "cloud" / "Slidemaster")
+    project.save_last_project(root)
+    (root / project.MARKER).unlink()
+    root.rmdir()
+    assert project.load_last_project() is None
+    assert project.last_project_hint() == tmp_path / "cloud"
+
+
 def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
     """2026-09-23 review finding: the Ollama host was a hardcoded constant
     duplicated in alt_draft.py and ai_draft.py, with no way to point this

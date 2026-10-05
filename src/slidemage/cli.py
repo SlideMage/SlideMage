@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> None:
         root = project.discover()
         if root is None:
             splash.close()  # the folder picker would open underneath it
-            root = _ask_for_project(Path.cwd())
+            root = _ask_for_project(project.last_project_hint() or Path.cwd())
         if root is None:
             sys.exit(1)
 
