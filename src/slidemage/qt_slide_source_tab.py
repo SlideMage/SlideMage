@@ -38,6 +38,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -53,7 +54,7 @@ from PySide6.QtWidgets import (
 from . import (
     alt_images, app_settings, bibliography, deck_editor, latex_lint, qt_render_check, slide_import,
     slide_language, slide_preview, slide_rename, slide_snapshot, slide_source,
-    slide_versioning, transcript,
+    slide_usage, slide_versioning, transcript,
 )
 from .qt_ai_draft_dialog import AiDraftDialog
 from .qt_citation_dialog import CitationDialog
@@ -61,6 +62,7 @@ from .qt_duplicate_slide_dialog import DuplicateSlideDialog
 from .qt_insert_citation_dialog import InsertCitationDialog
 from .qt_syntax_check_dialog import SyntaxCheckDialog
 from .qt_slide_preview_popup import SlidePreviewPopup
+from .qt_slide_usage_dialog import SlideUsageDialog
 from .qt_theme import CLOSE_BUTTON, FORMAT_TOOLBAR, MUTED_LABEL, WARNING_LABEL
 
 # Same three base regexes as slide_source_tab.py, unchanged -- see that
@@ -1937,12 +1939,31 @@ class SlideSourceTab(QWidget):
         new_text = raw_text
         previous_text = self.text
 
+        usage_choices: dict[str, str] = {}
+        open_translation = None
+        frozen_hyphen = None
         if self._is_current_slide:
             old_version = slide_versioning.parse_version(self.text)
             choice = self._prompt_version_choice(old_version)
             if choice is None:
                 return False
             final_version, freeze_as = slide_versioning.plan_save(old_version, choice)
+            if freeze_as is not None:
+                # v5.23.0: a slide in several decks (or pinned, or translated)
+                # asks which version each deck uses from now on
+                frozen_hyphen = slide_versioning.format_hyphen(freeze_as)
+                usages = slide_usage.find_usage(self._slide_id_slug)
+                translations = slide_usage.find_translations(self._slide_id_slug, self.text)
+                if slide_usage.needs_dialog(usages, translations):
+                    dialog = SlideUsageDialog(
+                        self, self._slide_id_slug,
+                        slide_versioning.format_dot(final_version),
+                        slide_versioning.format_dot(freeze_as), usages, translations)
+                    if dialog.exec() != QDialog.DialogCode.Accepted:
+                        return False
+                    usage_choices = dialog.choices()
+                    if dialog.open_translation() and translations:
+                        open_translation = translations[0].path
             if freeze_as is not None:
                 frozen = slide_versioning.freeze_slide(self.path, self._slide_id_slug, freeze_as)
                 if frozen is not None:
@@ -1990,6 +2011,18 @@ class SlideSourceTab(QWidget):
         self.widget.document().setModified(False)
         self._update_render_language_visibility()
         self._refresh_versions_combo()  # a bump may have frozen a new version
+        if usage_choices:
+            try:
+                for line in slide_usage.apply_choices(
+                        self._slide_id_slug, usage_choices, frozen_hyphen):
+                    self.app.log(line)
+                self.app.refresh_open_deck_editors()
+            except (deck_editor.StaleFileError, ValueError) as exc:
+                QMessageBox.warning(
+                    self, "Decks not updated",
+                    f"The slide is saved, but a deck could not be changed: {exc}")
+        if open_translation is not None:
+            self.app.open_slide_editor(open_translation, return_to=self)
         if backup_path is not None:
             from .deck_scan import PROJECT_ROOT
 

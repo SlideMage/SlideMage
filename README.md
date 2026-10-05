@@ -770,6 +770,19 @@ does this freeze-then-bump step automatically (see "Creating and revising a
 slide" below) -- R's `slide.archive()` is still there for anyone editing
 outside SlideMage.
 
+When a save creates a new version of a slide that is used in more than one
+deck, is pinned somewhere, or has a translation, SlideMage first shows
+"Where this slide is used": per deck, *Move to current* (the default: a pinned
+`\slideversion` / `\omitslideversion` becomes `\slide` / `\omitslide`; a call
+that follows `current.tex` already moves on) or *Keep vX-Y-Z* (the call is
+pinned to the version just frozen). Decks that only use `\slidefinal`,
+`\conditionalslide` or `\slidestep` always follow `current.tex` and have
+nothing to choose. A translation is named, with its decks, as a reminder to
+update it too (it can be opened right after the save). A frozen version opened
+from *Previous versions* has *Make this the current version*: the current
+content is archived as a version first, and the old content comes back under a
+new, higher version number.
+
 The tracked version, when there is one, shows in the compiled footer next to
 the slide id -- `(slide id: xyz | v1.2.0 | instructor deck)` -- for both a
 bare `\slide{}` (whatever `current.tex` is currently tracked as) and a
