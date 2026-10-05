@@ -1,5 +1,5 @@
-"""The SlideMage manual's own deck group: tag `manual`, its own section at the
-bottom of the deck table, never offered as a choice, and the manual's Tags
+"""The SlideMage manual's own deck group: tag `manual`, its own section in
+the deck table, above the test decks, never offered as a choice, and the manual's Tags
 button is disabled -- so the manual always stays in its section."""
 from __future__ import annotations
 
@@ -33,8 +33,9 @@ def test_manual_tag_wins_and_is_its_own_group():
     assert make_deck("m", ["test", "manual"]).group == TAG_MANUAL
     assert make_deck("m", ["manual"]).is_test_deck is False   # clickable, has a slide list
     assert TAG_MANUAL not in SELECTABLE_GROUP_TAGS
-    assert GROUP_ORDER[-1] == TAG_MANUAL
-    assert GROUPS[-1][:2] == (TAG_MANUAL, "SlideMage manual")
+    assert GROUP_ORDER[-2:] == (TAG_MANUAL, "test")      # test decks sort below the manual
+    assert [g[0] for g in GROUPS][-2:] == [TAG_MANUAL, "test"]
+    assert GROUPS[-2][1] == "SlideMage manual"
 
 
 def test_shipped_manual_carries_the_tag():
@@ -42,11 +43,11 @@ def test_shipped_manual_carries_the_tag():
     assert "\\decktags{manual}" in text
 
 
-def test_manual_compiles_after_the_other_groups():
+def test_manual_compiles_before_the_test_decks():
     manual, course, test = (make_deck("manual", ["manual"]), make_deck("course", ["course"]),
                             make_deck("test", ["test"]))
     jobs = [CompileJob(d, "instructor", None) for d in (manual, test, course)]
-    assert [j.deck.name for j in order_jobs(jobs)] == ["course", "test", "manual"]
+    assert [j.deck.name for j in order_jobs(jobs)] == ["course", "manual", "test"]
 
 
 def test_dialog_never_offers_the_manual_group(qapp, monkeypatch):

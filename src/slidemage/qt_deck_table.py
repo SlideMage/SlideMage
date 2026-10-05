@@ -48,8 +48,8 @@ GROUPS = [
     (TAG_WORK, None, False),
     (TAG_COURSE, "Course decks", False),
     (TAG_RESEARCH, "Research presentations", True),
-    (TAG_TEST, "Test decks", False),
     (TAG_MANUAL, "SlideMage manual", False),
+    (TAG_TEST, "Test decks", False),
 ]
 
 VERSIONS = ["instructor", "during-course", "after-course"]

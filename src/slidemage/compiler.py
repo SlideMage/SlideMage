@@ -713,7 +713,7 @@ def order_jobs(jobs: list[CompileJob]) -> list[CompileJob]:
     instruction): version by version -- Presenter, Instructor, During-course,
     After-course, After-course per chapter -- and within each version deck by
     deck, by the deck table's groups: work decks, course decks, research
-    presentations, test decks, the manual. Decks of one group, and the chapters of one
+    presentations, the manual, test decks. Decks of one group, and the chapters of one
     deck, stay in the order the jobs came in (the table's order): the sort is
     stable. Selecting During-course and Presenter for #workdeck and IA2
     compiles #workdeck Presenter, IA2 Presenter, #workdeck During-course,

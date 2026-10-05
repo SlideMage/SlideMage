@@ -437,8 +437,8 @@ installation (see the module's own docstring for how).
 ### Deck tags (`\decktags`)
 
 SlideMage's deck tables group decks under separators -- the workdeck on top,
-then "Course decks", "Research presentations", "Test decks" and "SlideMage
-manual" -- and click
+then "Course decks", "Research presentations", "SlideMage manual" and
+"Test decks" -- and click
 a heading to collapse or expand that group. Which group a deck is in is
 decided by its own tag, never by its filename:
 
@@ -456,7 +456,7 @@ hand: the **Tags** button on a deck row, or the group choice in the
 
 The SlideMage manual (`decks/slidemage-manual.tex`) carries a fifth group
 tag, `manual` (since v5.18.0): it always sits in its own "SlideMage manual"
-section at the bottom, wins over any other group tag, is never offered in
+section (above the test decks), wins over any other group tag, is never offered in
 the Tags or Duplicate dialogs, and the manual's own **Tags** button is
 disabled -- the manual can't be moved into another group by accident. A copy
 made with **Duplicate** starts out as a course deck.

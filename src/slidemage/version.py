@@ -1849,6 +1849,8 @@ v5.17.0 (2026-10-05, direct instruction): readable code panels. \\SMCodeFile's t
 v5.18.0 (2026-10-05, direct instruction): the SlideMage manual has a deck group of its own. Tag `manual` (decks/slidemage-manual.tex now carries \\decktags{manual}, was test): a "SlideMage manual" section at the bottom of the deck table; it wins over any other group tag; it is never offered in the Tags or Duplicate dialogs (a copy of the manual starts out as a course deck), and the manual's Tags button is disabled, so it always stays in its section. Unlike a test deck, its name is a link to the deck editor again. Compile runs take it after the test decks.
 
 v5.19.0 (2026-10-05, direct instruction): a project's copies of the framework and of the SlideMage manual follow app updates. A new project records a hash of every file it got from SlideMage (.slidemage/bundled_copies.json -- commit it). On start, when this SlideMage carries newer versions, an info dialog offers the update (Update / Not now / Don't ask again for this version); it then replaces the files changed only upstream, adds new ones, removes the ones no longer shipped, backing up everything it replaces or removes in .slidemage/backups/<time>/ first. Files changed in the project are kept and listed; files deleted there stay deleted; the manual's new slide ids go into slide_ids.csv, its image descriptions into media/alt-text.json (unreviewed descriptions of replaced images are refreshed). Older projects: a sibling latex/ that isn't part of a git checkout is adopted (every file that differs from this version is replaced, after the backup); a git checkout is never touched. A project without the manual is offered to add it -- only missing files are added. (bundled_copies.py; project.init_project() writes the baseline.)
+
+v5.19.1 (2026-10-05, direct instruction): the "Test decks" section sorts below the "SlideMage manual" section in the deck table (work, course, research, manual, test), and compile runs follow the same order.
 """
 from __future__ import annotations
 
@@ -1858,7 +1860,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.19.0"
+VERSION_NUMBER = "v5.19.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
