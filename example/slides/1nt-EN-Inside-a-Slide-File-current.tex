@@ -37,6 +37,7 @@
 			lbl/.style={gotham arrow, c_primary_highlight}]
 		\coordinate (o) at (current page.south west);
 		\draw[lbl] ($(o)+(32,44)$) node[above right=0pt and -10pt] {the deck's \SMCmd{FooterText}} -- ($(o)+(32,9)$);
+		\draw[lbl] ($(o)+(122,26)$) node[above right=0pt and -10pt] {navigation links (\SMCmd{SMNavigationBar})} -- ($(o)+(122,9)$);
 		\ifSMShowCompileTimestamp
 		% the labels staggered in height, reaching right of their arrows
 		\draw[lbl] ($(o)+(348,66)$) node[above] {slide ID} -- ($(o)+(348,9)$);
