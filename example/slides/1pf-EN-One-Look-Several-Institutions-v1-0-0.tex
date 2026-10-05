@@ -1,0 +1,43 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "The big picture": templates. The four crops are
+% the same slide (1wa) compiled under each template (the MCI and Innsbruck
+% templates are not part of SlideMage; the crops were made once in a project
+% that has them). The color strip is live: it shows the palette of the
+% template this deck uses.
+\providecommand{\templatecrop}[2]{% image, caption
+	\begin{tabular}[t]{@{}c@{}}
+		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
+		\fcolorbox{c_primary_gray}{white}{#1}}\\[-1pt]
+		{\scriptsize #2}
+	\end{tabular}}
+\begin{standardframe}{One look, several institutions}
+	\small
+	How a slide looks -- colors, logo, title bar, footer -- is set by a
+	\emph{template}, not by the slide. A deck names its template once, so one slide
+	appears in a different design in each deck -- below, one slide of this manual
+	under four templates.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.53\linewidth}
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage} \hspace{2pt}
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-uni-graz.png}}{University of Graz}\\[3pt]
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-mci.png}}{MCI} \hspace{2pt}
+			\templatecrop{\includegraphics[width=92pt]{media/screenshot-slide-template-uni-ibk.png}}{University of Innsbruck}
+		\end{column}
+		\begin{column}{0.44\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item A template is one small file, \SMCode{Slidemaster\_preamble\_<name>.tex}
+				\item SlideMage brings its own; for your institution, copy it and change colors and logo
+				\item Slides name colors, \SMCode{c\_<tier>\_<hue>}; the template fills them in. Here:
+			\end{itemize}
+			\smallskip
+			\begin{tikzpicture}[x=9.5pt, y=9.5pt]
+				\foreach \c [count=\i from 0] in {c_primary_dark, c_primary_highlight, c_primary_gray, c_primary_white, c_secondary_violet, c_tertiary_violet, c_secondary_blue, c_tertiary_blue, c_secondary_green, c_tertiary_green, c_secondary_red, c_tertiary_red, c_secondary_orange, c_tertiary_orange, c_secondary_yellow, c_tertiary_yellow, c_tertiary_gray, c_custom_gray, c_custom_red, c_custom_green, c_custom_brown}%
+					\fill[\c, draw=c_primary_gray, line width=0.2pt] ({mod(\i,11)},{-floor(\i/11)}) rectangle ++(0.85,0.85);
+			\end{tikzpicture}
+		\end{column}
+	\end{columns}
+\end{standardframe}

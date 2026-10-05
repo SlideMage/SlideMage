@@ -1,0 +1,28 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the overview of what to
+% install. The next slides cover each program.
+\begin{standardframe}{What you need}
+	\small
+	SlideMage is the program you work in. The PDFs themselves are typeset by
+	LaTeX, which SlideMage calls for you, and an optional local AI model drafts
+	image descriptions and translations. The first three programs are
+	required; the following slides say where each one comes from and which
+	choices matter during installation.
+	\par\medskip
+	{\footnotesize
+	\begin{gothamtable}[gap=12pt]{lll}
+		\toprule
+		Program & What it is for & Where to get it \\
+		\midrule
+		MiKTeX or TeX Live & typesetting: LuaLaTeX, biber, latexmk & \SMCode{miktex.org}, \SMCode{tug.org/texlive} \\
+		Perl (with MiKTeX only) & runs latexmk & Git for Windows, \SMCode{git-scm.com} \\
+		SlideMage & the app & its releases on GitHub \\
+		\midrule
+		\emph{Optional:} Ollama and models & image descriptions, translation, AI & \SMCode{ollama.com} \\
+		\emph{Optional:} viewer, pympress, \ldots & reading, presenting, editing & see \emph{Optional helpers} \\
+		\emph{Optional:} Python 3.11+ & running SlideMage from source & \SMCode{python.org} \\
+		\bottomrule
+	\end{gothamtable}\par}
+\end{standardframe}
