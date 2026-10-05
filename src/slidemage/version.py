@@ -1853,6 +1853,8 @@ v5.19.0 (2026-10-05, direct instruction): a project's copies of the framework an
 v5.19.1 (2026-10-05, direct instruction): the "Test decks" section sorts below the "SlideMage manual" section in the deck table (work, course, research, manual, test), and compile runs follow the same order.
 
 v5.20.0 (2026-10-05, direct instructions): compile pass counts. (1) A compile that needs more passes than expected raises the count in the progress label -- "pass 5/5" -- instead of "pass 4/4 (extra pass 5)"; the bar never moves backwards. (2) A deck's presenter and instructor compiles share their remembered count (they need the same passes: same content, the presenter layout only adds the notes panel -- measured equal on every SlideMaster deck), so a presenter compile shows the right count after an instructor compile and vice versa, without "(estimated)". A student version without a count of its own borrows the nearest one -- the other student version, else instructor/presenter -- and a per-chapter compile its version's whole-deck count, both still marked "(estimated)" (a student version can need a pass more or less: fewer slides, "final state only" slides). (compile_passes.predict().)
+
+v5.20.1 (2026-10-05, found when the user's update dialog listed them): the manual's copy carried a developer's slides/.backups (the slide editor's undo history) into users' projects. The exe now bundles the example project file by file without slides/.backups, build output (.build, .previews, pdf, compiled decks) and machine-local settings (.slidemage/app_settings.json, project.json, compile_passes.json, bundled_copies.json); the copy and the update check skip every hidden folder; a new project never gets .backups. A project that already received them gets them removed by the next manual update (backed up first, as always).
 """
 from __future__ import annotations
 
@@ -1862,7 +1864,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.20.0"
+VERSION_NUMBER = "v5.20.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

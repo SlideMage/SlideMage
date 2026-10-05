@@ -64,7 +64,13 @@ PART_LABELS = {FRAMEWORK: "LaTeX framework", MANUAL: "SlideMage manual"}
 MANUAL_DECK = Path("decks") / "slidemage-manual.tex"
 MANUAL_DIRS = ("slides", "snippets", "media")
 ALT_TEXT_FILES = {"media/alt-text.json", "media/alt-text.csv"}
-_SKIP_DIRS = {"__pycache__", ".build", ".previews"}
+# Never part of a copy: build output, caches, and hidden folders such as
+# slides/.backups (the slide editor's own undo history of a project).
+_SKIP_DIRS = {"__pycache__", "pdf"}
+
+
+def _skipped(rel: Path) -> bool:
+    return any(part in _SKIP_DIRS or part.startswith(".") for part in rel.parts)
 
 
 def file_hash(path: Path) -> str:
@@ -80,7 +86,7 @@ def framework_files(latex_dir: Path) -> list[str]:
     out = []
     for path in sorted(latex_dir.rglob("*")):
         rel = path.relative_to(latex_dir)
-        if path.is_file() and not _SKIP_DIRS.intersection(rel.parts):
+        if path.is_file() and not _skipped(rel):
             out.append(rel.as_posix())
     return out
 
@@ -94,7 +100,7 @@ def manual_files(example_dir: Path) -> list[str]:
             continue
         for path in sorted(folder.rglob("*")):
             rel = path.relative_to(example_dir)
-            if (path.is_file() and not _SKIP_DIRS.intersection(rel.parts)
+            if (path.is_file() and not _skipped(rel)
                     and rel.as_posix() not in ALT_TEXT_FILES):
                 out.append(rel.as_posix())
     return out

@@ -14,14 +14,35 @@ ASSETS = ROOT / "src" / "slidemage" / "assets"
 # Bundled so a project created via "Open Project..."'s "not a project
 # yet -- create one?" offer (project.py's init_project()) can be seeded
 # with real, working demo content even when SlideMage was only ever
-# downloaded as this one exe, never cloned from the repo. Whole
-# directories, .build/.previews/pdf build output included -- simpler
-# than pre-filtering here, and project.py's own copytree(ignore=...)
-# already strips that output back out at the point a new project is
-# actually created from it, so nothing that matters ships in a new
-# project either way; this only costs a few extra MB in the exe itself.
+# downloaded as this one exe, never cloned from the repo. Also the source of
+# the manual updates (bundled_copies.py).
+#
+# The example project is filtered file by file (v5.20.1): bundling the whole
+# folder also shipped a developer's slides/.backups (the slide editor's undo
+# history), their .slidemage/app_settings.json and compile output -- and the
+# backups reached users' projects through the manual's copy.
+_EXAMPLE_SKIP_DIRS = {".build", ".previews", ".backups", "pdf", "__pycache__"}
+_EXAMPLE_SKIP_FILES = {
+    ".slidemage/app_settings.json", ".slidemage/project.json",
+    ".slidemage/compile_passes.json", ".slidemage/bundled_copies.json",
+}
+
+
+def _example_datas():
+    example = ROOT / "example"
+    datas = []
+    for path in sorted(example.rglob("*")):
+        rel = path.relative_to(example)
+        if (not path.is_file() or _EXAMPLE_SKIP_DIRS.intersection(rel.parts)
+                or rel.as_posix() in _EXAMPLE_SKIP_FILES
+                or (rel.parts[0] == "decks" and path.name.endswith((".pdf", ".synctex.gz")))):
+            continue
+        datas.append((str(path), str(Path("slidemage_template/example") / rel.parent)))
+    return datas
+
+
 TEMPLATE_DATAS = [
-    (str(ROOT / "example"), "slidemage_template/example"),
+    *_example_datas(),
     (str(ROOT / "latex"), "slidemage_template/latex"),
 ]
 

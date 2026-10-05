@@ -251,3 +251,11 @@ def test_dialog_dont_ask_again(tmp_path, bundle, monkeypatch):
     assert (root / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v1\n"
     from slidemage import version
     assert bundled_copies.is_dismissed(root, version.VERSION_NUMBER)
+
+
+def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):
+    _, example = bundle
+    write(example / "slides" / ".backups" / "abc-EN-Test-current.tex" / "20261005-0800.tex", "history")
+    write(example / ".build" / "x.aux", "aux")
+    files = bundled_copies.manual_files(example)
+    assert not any(part.startswith(".") for f in files for part in Path(f).parts)

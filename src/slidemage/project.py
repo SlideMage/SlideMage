@@ -37,7 +37,7 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     blanket "*.pdf" skip: schemes/scheme_uni_graz/*.pdf is a real,
     tracked logo asset the preamble \\includegraphics's, needed for the
     copy to actually compile."""
-    skip = {".build", ".previews", "pdf", "__pycache__"}
+    skip = {".build", ".previews", ".backups", "pdf", "__pycache__"}
     if os.path.basename(directory) == "decks":
         skip |= {n for n in names if n.endswith((".pdf", ".synctex.gz"))}
     return {n for n in names if n in skip}
