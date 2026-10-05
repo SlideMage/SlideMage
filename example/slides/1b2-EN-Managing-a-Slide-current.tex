@@ -1,0 +1,38 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": the slide-level buttons of
+% the slide editor (top row) and its two AI buttons. The strip is a crop of the
+% editor's two button rows (tools/manual/make_screenshots.py).
+\begin{standardframe}{Managing a slide in the editor}
+	\small
+	These buttons act on the slide as a whole, not on the text you are editing;
+	several of them update every deck that uses the slide.
+	\par\smallskip
+	\centering
+	{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.58\linewidth-0.8pt\relax]{media/screenshot-slidemage-slide-editor-buttons.png}}}
+	\par\smallskip
+	\raggedright
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\textbf{The slide}
+			\shrinklists{2}
+			\begin{itemize}
+				\item \emph{Save}: writes the file, asking how big the change is (see \emph{Slide versions})
+				\item Versions list: opens an earlier version, read-only
+				\item \emph{Duplicate slide}: a copy of this slide, or a linked translation
+				\item \emph{Rename slide}: a new slug; the ID stays, the decks follow
+				\item \emph{Language}, \emph{Set}: the slide's language; decks follow
+				\item \emph{Delete slide}: removes the file and its versions, after checking which decks use it
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.41\linewidth}
+			\textbf{With a local AI model}
+			\shrinklists{2}
+			\begin{itemize}
+				\item \emph{Check syntax}: the model looks for typical LaTeX mistakes, such as unbalanced braces, sometimes with a fix to click; only a guess
+				\item \emph{AI draft}: you describe a change in words and the model proposes a revised slide as a diff; nothing changes until you press \emph{Accept}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

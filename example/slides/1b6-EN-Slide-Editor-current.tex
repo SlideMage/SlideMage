@@ -2,25 +2,26 @@
 %%
 
 % SlideMage manual, chapter "Working in SlideMage": the slide editor, on the
-% standardframe demo slide (tools/manual/make_screenshots.py).
+% standardframe demo slide (tools/manual/make_screenshots.py). Writing and
+% seeing the result here; slide 1b2 explains the slide-level buttons and the
+% AI buttons.
 \begin{standardframe}{The slide editor}
 	\small
 	A slide's source opens in the slide editor, from the deck editor or from
-	\emph{Find slide}. You edit the LaTeX directly, with syntax colors and a
-	toolbar for the commands you need most, and see the result without
-	compiling the whole deck.
-	\par\medskip
+	\emph{Find slide} in the main window. You write the LaTeX directly: the
+	source is colored, and the buttons above it insert what you need most
+	often. To see the result you do not have to compile the whole deck.
+	\par\smallskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.56\linewidth}
+		\begin{column}{0.42\linewidth}
 			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-slide-editor.png}}}
 		\end{column}
-		\begin{column}{0.41\linewidth}
-			\shrinklists{1}
+		\begin{column}{0.55\linewidth}
+			\shrinklists{2}
 			\begin{itemize}
-				\item \emph{Render to PDF} compiles the editor's text, saved or not
-				\item \emph{Save} asks for the version (see \emph{Slide versions})
-				\item Duplicate, rename, delete; language; transcript summary
-				\item With a local AI model: \emph{Check syntax}, \emph{AI draft}, shown as a diff you accept or reject
+				\item \textbf{Writing.} The tinted buttons above the source insert styles, footnotes, colors, lists, blocks, commands and citations; \emph{Find}, \emph{Reindent} and \emph{Revert} search and replace, tidy the indentation, and drop all changes since the last save.
+				\item \textbf{Seeing the result.} \emph{Render to PDF} compiles the text in the editor, saved or not. \emph{Preview} shows the picture from the last compile of the saved slide (instant, maybe outdated). \emph{Render transcript} shows its transcript entry.
+				\item \textbf{Transcript summary.} An optional sentence at the head of the slide's transcript entry.
 			\end{itemize}
 		\end{column}
 	\end{columns}
