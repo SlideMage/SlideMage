@@ -11,14 +11,18 @@
 			\begin{tikzpicture}
 				\node[anchor=south west, inner sep=0pt] (shot) at (0,0) {\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-main-window.png}}};
 				\begin{scope}[x={(shot.south east)}, y={(shot.north west)}]
-					\callout{0.155,0.985}{1}
-					\callout{0.045,0.905}{2}
-					\callout{0.155,0.835}{3}
-					\callout{0.625,0.70}{4}
-					\callout{0.035,0.48}{5}
-					\callout{0.33,0.325}{6}
-					\callout{0.5,0.19}{7}
-					\callout{0.66,0.905}{8}
+					% beside each element (tools/manual/make_screenshots.py prints
+					% the elements' centres; screenshot 1340 x 720 px, 2026-10-05)
+					% (a callout must stay inside the picture: one past its edge
+					% widens the column -- overfull box)
+					\callout{0.190,0.986}{1}
+					\callout{0.090,0.939}{2}
+					\callout{0.080,0.879}{3}
+					\callout{0.845,0.749}{4}
+					\callout{0.048,0.452}{5}
+					\callout{0.400,0.354}{6}
+					\callout{0.500,0.151}{7}
+					\callout{0.645,0.940}{8}
 				\end{scope}
 			\end{tikzpicture}
 		\end{column}
@@ -31,7 +35,7 @@
 				\item Menus: settings, project, housekeeping
 				\item Tabs; editors open here
 				\item A checkbox per deck version
-				\item PDF, source, copy, tags, PowerPoint, archive
+				\item PDF, course link, source, copy, tags, PowerPoint, archive
 				\item \emph{Create PDF}: compile what is ticked
 				\item Footer timestamp; appendix
 				\item The compile log
