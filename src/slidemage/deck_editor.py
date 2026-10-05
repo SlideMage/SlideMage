@@ -351,29 +351,33 @@ def normalize_course_url(url: str) -> str:
     return clean
 
 
+def course_url_text(text: str, url: str, deck_name: str) -> str:
+    """`text` with its course-URL comment set to `url` (removed when empty)."""
+    clean = normalize_course_url(url) if url.strip() else ""
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    if begin is None and clean:
+        raise ValueError(f"{deck_name} has no \\begin{{document}} to place the course link before.")
+    preamble_end = begin.start() if begin else len(text)
+    for match in reversed(list(COURSE_URL_RE.finditer(text, 0, preamble_end))):
+        line_start, line_end = _line_span(text, match.start(), match.end())
+        text = text[:line_start] + text[line_end:]
+    if not clean:
+        return text
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    return (
+        text[:begin.start()]
+        + f"%% SlideMage course URL: {clean}{newline}"
+        + text[begin.start():]
+    )
+
+
 def set_course_url(deck_path: Path, expected_text: str, url: str) -> str:
     """Store or remove a course URL as a comment in the deck preamble."""
-    clean = normalize_course_url(url) if url.strip() else ""
+    if url.strip():
+        normalize_course_url(url)  # a bad URL is refused before anything is read
 
-    def mutate(text: str) -> str:
-        begin = DOCUMENT_BEGIN_LINE_RE.search(text)
-        if begin is None and clean:
-            raise ValueError(f"{deck_path.name} has no \\begin{{document}} to place the course link before.")
-        preamble_end = begin.start() if begin else len(text)
-        for match in reversed(list(COURSE_URL_RE.finditer(text, 0, preamble_end))):
-            line_start, line_end = _line_span(text, match.start(), match.end())
-            text = text[:line_start] + text[line_end:]
-        if not clean:
-            return text
-        begin = DOCUMENT_BEGIN_LINE_RE.search(text)
-        newline = "\r\n" if "\r\n" in text else "\n"
-        return (
-            text[:begin.start()]
-            + f"%% SlideMage course URL: {clean}{newline}"
-            + text[begin.start():]
-        )
-
-    return _apply(deck_path, expected_text, mutate)
+    return _apply(deck_path, expected_text, lambda text: course_url_text(text, url, deck_path.name))
 
 
 def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:

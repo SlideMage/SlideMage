@@ -94,6 +94,13 @@ TEMPLATES = {
     "mci": "Mci",
     "slidemage": "SlideMage",
 }
+# How the deck settings dialog names the templates (a key not listed shows as is).
+TEMPLATE_LABELS = {
+    "slidemage": "SlideMage",
+    "uni-graz": "University of Graz",
+    "uni-ibk": "University of Innsbruck",
+    "mci": "MCI",
+}
 DEFAULT_TEMPLATE = "uni-graz"
 
 

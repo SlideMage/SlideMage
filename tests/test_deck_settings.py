@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+import pytest
+
+from slidemage import deck_editor, deck_settings
+from slidemage.deck_settings import DeckSettings
+
+DECK = r"""% !TeX program = lualatex
+\documentclass[aspectratio=169]{beamer}
+\usetheme{gotham}
+\input{Slidemaster_preamble_uni-graz}
+
+\deckoutputfolder{D:/Teaching/FM2/current} % all versions
+%\deckoutputfolder[instructor]{D:/old/Instructor}
+\deckoutputfolder[presenter]{D:/Teaching/FM2/current/presenter.pdf}
+
+\newcommand{\FooterText}{PS Financial Management 2 | 2027s}
+\ifdefined\decklanguageoverride
+	\decklanguage[\decklanguageoverride]
+\else
+	\decklanguage[en]           % options: en, de
+\fi
+\decktags{course}
+\begin{document}
+	\slide{abc-EN-X}
+\end{document}
+"""
+
+
+def read(text: str) -> DeckSettings:
+    return deck_settings.read_settings(text)
+
+
+def test_read_settings_ignores_commented_lines_and_the_override_branch():
+    s = read(DECK)
+    assert s.template == "uni-graz"
+    assert s.language == "en"
+    assert s.footer_text == "PS Financial Management 2 | 2027s"
+    assert s.output_folders == {
+        None: "D:/Teaching/FM2/current", "presenter": "D:/Teaching/FM2/current/presenter.pdf"}
+    assert s.course_url == ""
+    assert not s.appendix_toc
+
+
+def test_set_template_changes_only_the_name():
+    new = deck_settings.set_template(DECK, "mci")
+    assert "\\input{Slidemaster_preamble_mci}" in new
+    assert new.replace("mci", "uni-graz", 1) == DECK
+
+
+def test_set_language_rewrites_the_literal_branch_only():
+    new = deck_settings.set_language(DECK, "de")
+    assert "\\decklanguage[de]           % options: en, de" in new
+    assert "\\decklanguage[\\decklanguageoverride]" in new
+    assert read(new).language == "de"
+
+
+def test_set_language_adds_a_line_when_the_deck_has_none():
+    text = DECK.replace("\\decklanguage[en]", "").replace("\\decklanguage[\\decklanguageoverride]", "")
+    new = deck_settings.set_language(text, "de")
+    assert read(new).language == "de"
+    assert new.index("\\decklanguage[de]") < new.index("\\begin{document}")
+
+
+def test_set_language_refuses_a_non_code():
+    with pytest.raises(ValueError):
+        deck_settings.set_language(DECK, "english")
+
+
+def test_footer_text_is_replaced_in_place_even_with_braces_inside():
+    new = deck_settings.set_footer_text(DECK, r"PS \textbf{FM2} | 2028s")
+    assert read(new).footer_text == r"PS \textbf{FM2} | 2028s"
+    assert new.count("\\FooterText") == 1
+
+
+def test_footer_text_is_added_when_missing_and_not_for_an_empty_value():
+    text = DECK.replace("\\newcommand{\\FooterText}{PS Financial Management 2 | 2027s}\n", "")
+    assert deck_settings.set_footer_text(text, "") == text
+    new = deck_settings.set_footer_text(text, "Talk")
+    assert "\\newcommand{\\FooterText}{Talk}\n\\begin{document}" in new
+
+
+def test_output_folder_changes_the_live_line_and_keeps_its_comment():
+    new = deck_settings.set_output_folder(DECK, None, "E:\\New Folder")
+    assert "\\deckoutputfolder{E:/New Folder} % all versions" in new
+    assert "%\\deckoutputfolder[instructor]{D:/old/Instructor}" in new  # untouched
+
+
+def test_output_folder_added_after_the_last_one_and_removed_again():
+    added = deck_settings.set_output_folder(DECK, "after-course", "D:/Out")
+    lines = added.splitlines()
+    i = lines.index("\\deckoutputfolder[after-course]{D:/Out}")
+    assert lines[i - 1].startswith("\\deckoutputfolder[presenter]")
+    assert read(added).output_folders["after-course"] == "D:/Out"
+    assert deck_settings.set_output_folder(added, "after-course", "") == DECK
+
+
+def test_output_folder_added_after_the_template_input_when_there_is_none():
+    text = DECK.replace(
+        "\\deckoutputfolder{D:/Teaching/FM2/current} % all versions\n", "").replace(
+        "\\deckoutputfolder[presenter]{D:/Teaching/FM2/current/presenter.pdf}\n", "")
+    new = deck_settings.set_output_folder(text, None, "D:/Out")
+    lines = new.splitlines()
+    assert lines[lines.index("\\input{Slidemaster_preamble_uni-graz}") + 1] == "\\deckoutputfolder{D:/Out}"
+
+
+def test_output_folder_refuses_tex_special_characters():
+    with pytest.raises(ValueError):
+        deck_settings.set_output_folder(DECK, None, "D:/50%/x")
+
+
+def test_appendix_toc_on_and_off():
+    on = deck_settings.set_appendix_toc(DECK, True)
+    assert read(on).appendix_toc
+    assert deck_settings.set_appendix_toc(on, True) == on
+    assert deck_settings.set_appendix_toc(on, False) == DECK
+
+
+def test_apply_settings_writes_only_what_changed_and_keeps_crlf():
+    text = DECK.replace("\n", "\r\n")
+    old = read(text)
+    new = read(text)
+    new.template = "slidemage"
+    new.course_url = "https://example.org/course"
+    new.output_folders[None] = ""
+    out = deck_settings.apply_settings(text, old, new, "t.tex")
+    assert "\n" not in out.replace("\r\n", "")
+    result = read(out)
+    assert result.template == "slidemage"
+    assert result.course_url == "https://example.org/course"
+    assert None not in result.output_folders
+    assert result.language == old.language and result.footer_text == old.footer_text
+    # nothing changed -> text identical
+    assert deck_settings.apply_settings(text, old, read(text)) == text
+
+
+def test_save_settings_refuses_a_deck_changed_on_disk(tmp_path):
+    path = tmp_path / "d.tex"
+    path.write_text(DECK, encoding="utf-8", newline="")
+    old = read(DECK)
+    new = read(DECK)
+    new.template = "mci"
+    with pytest.raises(deck_editor.StaleFileError):
+        deck_settings.save_settings(path, DECK + "% edited elsewhere\n", old, new)
+    assert path.read_text(encoding="utf-8") == DECK
+    saved = deck_settings.save_settings(path, DECK, old, new)
+    assert path.read_text(encoding="utf-8", errors="replace") == saved
+    assert read(saved).template == "mci"

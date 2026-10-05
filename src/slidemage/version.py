@@ -1861,6 +1861,8 @@ v5.23.0 (2026-10-05, direct instruction): saving a new version of a slide that i
 v5.24.0 (2026-10-05, direct instruction): \multilingualtext has a keyed form for any number of languages: \multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}} typesets the pair whose key is the deck's \decklanguage code (upper or lower case); a deck in a language the list lacks gets the EN text, else the first. The two-argument form \multilingualtext{EN}{DE} is unchanged (and no longer a plain \newcommand but an expl3 NewDocumentCommand with the same behavior). \decklanguage[fr] (any code) now also sets the PDF /Lang to that code instead of en-US. Not yet language-aware beyond en/de: \ifSMGerman and the "Image source(s)" label.
 
 v5.25.0 (2026-10-05, direct instruction): the project SlideMage opens by itself is now also remembered beside the exe (file "last_project" in the exe's folder, written whenever a project is opened). The pointer in %APPDATA% belongs to one computer, so a second PC running the same cloud-synced exe asked for the project again; it now finds it from the copy beside the exe. When the remembered project no longer exists the folder picker starts in its nearest existing parent folder instead of the program folder.
+
+v5.26.0 (2026-10-05, direct instruction): the "Course link..." button of the deck table is now "Settings" (on every deck row, also for work, research and test decks; disabled for the SlideMage manual) and opens a dialog with the deck-wide settings that live in the deck file: template, language, footer text, course link (with Open), where the PDFs go (all outputs, each version, presenter, transcript, with Browse) and the always-add-appendix flag. All changes are written in one stale-checked write; only what was changed is touched, comments and line endings stay. New modules deck_settings.py (text in, text out) and qt_deck_settings_dialog.py replace qt_course_link_dialog.py; deck_editor.course_url_text() is the text part of set_course_url().
 """
 from __future__ import annotations
 
@@ -1870,7 +1872,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.25.0"
+VERSION_NUMBER = "v5.26.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

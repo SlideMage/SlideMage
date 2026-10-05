@@ -461,15 +461,30 @@ the Tags or Duplicate dialogs, and the manual's own **Tags** button is
 disabled -- the manual can't be moved into another group by accident. A copy
 made with **Duplicate** starts out as a course deck.
 
-### Course links
+### Deck settings and course links
 
-Each deck can keep a link to its course page. Click **Course link...** in
-the Active or Archived decks table, paste a full HTTP or HTTPS URL,
-then choose **Save** or **Open**. Open saves any changed URL before opening
-the page in your default browser. Clear the field and Save to remove it.
+The **Settings** button on a deck row (Active or Archived decks table) opens
+a dialog with the deck-wide settings. They are written into the deck's own
+.tex file, all in one go when you press OK, so they stay with the deck when
+it is moved, copied or archived:
 
-SlideMage stores the URL in the deck's own .tex file, just before
-\begin{document}, as a LaTeX comment:
+- **Template**: the institution template the deck loads
+  (`\input{Slidemaster_preamble_<name>}`), chosen from the templates the
+  project can find.
+- **Language**: `\decklanguage[en]` or `[de]`.
+- **Footer text**: `\FooterText`, the left part of the footer.
+- **Course link**: a full HTTP or HTTPS URL; **Open** saves the settings and
+  opens the page in your default browser. Clear the field to remove the link.
+- **Where the PDFs go**: the `\deckoutputfolder` of all outputs and of each
+  version, the presenter PDF and the transcript (**Browse...** picks a folder; a
+  name ending in `.pdf` fixes the file name).
+- **Always add the slide-preview appendix**: `\deckappendixtoc`.
+
+The group is still chosen with the **Tags** button. The SlideMage manual's
+own Settings button is disabled: app updates replace the manual.
+
+SlideMage stores the course URL just before \begin{document}, as a LaTeX
+comment:
 
     %% SlideMage course URL: https://online.uni-graz.at/kfu_online/...
 

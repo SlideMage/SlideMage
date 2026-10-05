@@ -52,6 +52,7 @@ from . import compiler
 from . import deck_duplicate
 from . import deck_editor
 from . import deck_headers
+from . import deck_settings
 from . import latex_lint
 from . import open_path
 from . import pptx_export
@@ -79,7 +80,7 @@ from .compiler import (
 from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, TAG_MANUAL, Deck, scan_decks
 from .qt_add_slide_dialog import AddSlideDialog
 from .qt_closable_tab_bar import ClosableTabBar
-from .qt_course_link_dialog import CourseLinkDialog
+from .qt_deck_settings_dialog import DeckSettingsDialog
 from .qt_deck_editor_tab import DeckEditorTab
 from .qt_deck_group_dialog import ask_deck_details
 from .qt_import_dialog import ImportPresentationDialog
@@ -228,7 +229,7 @@ class SlideMageWindow(QMainWindow):
             on_refresh=self._on_refresh_decks_clicked,
             on_tags=self._on_edit_deck_tags,
             on_open_pdf=self._on_open_latest_pdf,
-            on_course_link=self._on_course_link,
+            on_settings=self._on_deck_settings,
         )
         self.archived_table = DeckTable(
             theme, archivable=False,
@@ -241,7 +242,7 @@ class SlideMageWindow(QMainWindow):
             on_stop_compilation=self._stop_compilation,
             on_create_transcript=self._on_create_transcript_toplevel,
             on_refresh=self._on_refresh_decks_clicked,
-            on_course_link=self._on_course_link,
+            on_settings=self._on_deck_settings,
         )
         self.tabs.addTab(self.active_table, "Active decks")
         # Archived decks / Images start CLOSED (2026-08-25, direct
@@ -1627,31 +1628,39 @@ class SlideMageWindow(QMainWindow):
         except OSError as exc:
             self._log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
-    def _on_course_link(self, deck: Deck) -> None:
-        dialog = CourseLinkDialog(self, deck.name, deck.course_url)
-        if not dialog.exec() or dialog.action is None:
+    def _on_deck_settings(self, deck: Deck) -> None:
+        """A deck row's "Settings" button: the deck-wide settings that live in
+        the deck's own file (deck_settings.py), all written in one go."""
+        if deck.path in self._slide_source_tabs:
+            QMessageBox.information(
+                self, "Deck settings",
+                f"{deck.name}.tex is open in a source editor tab -- close it "
+                "first, so this change and that editor can't overwrite each other.",
+            )
             return
-        url = dialog.url
-        if url != (deck.course_url or ""):
-            if deck.path in self._slide_source_tabs:
-                QMessageBox.information(
-                    self, "Course link",
-                    f"{deck.name}.tex is open in a source editor tab -- close it "
-                    "first, so this change and that editor can't overwrite each other.",
-                )
-                return
+        old = deck_settings.read_settings(deck.text)
+        dialog = DeckSettingsDialog(self, deck.name, old, deck_settings.template_choices())
+        if not dialog.exec():
+            return
+        new = dialog.result_settings()
+        if new != old:
             try:
-                deck_editor.set_course_url(deck.path, deck.text, url)
+                deck_settings.save_settings(deck.path, deck.text, old, new)
             except (deck_editor.StaleFileError, ValueError, OSError) as exc:
-                QMessageBox.critical(self, "Course link failed", str(exc))
+                QMessageBox.critical(self, "Deck settings failed", str(exc))
                 return
-            self._log(f"Updated course link for {deck.name}")
+            changed = [name for name in ("template", "language", "footer_text", "course_url",
+                                         "output_folders", "appendix_toc")
+                       if getattr(new, name) != getattr(old, name)]
+            self._log(f"Updated settings of {deck.name}: " + ", ".join(
+                name.replace("_", " ") for name in changed))
             self.refresh_open_deck_editors()
-        if dialog.action == "open":
+            self.reload_decks()
+        if dialog.open_link_requested and new.course_url:
             try:
-                open_path.open_in_default_app(url)
+                open_path.open_in_default_app(new.course_url)
             except OSError as exc:
-                QMessageBox.warning(self, "Course link", f"Could not open {url}: {exc}")
+                QMessageBox.warning(self, "Course link", f"Could not open {new.course_url}: {exc}")
                 self._log(f"*** couldn't open course link for {deck.name}: {exc} ***")
 
     def _on_edit_deck_tags(self, deck: Deck) -> None:

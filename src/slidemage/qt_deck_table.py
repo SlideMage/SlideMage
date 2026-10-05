@@ -113,7 +113,7 @@ class DeckRow:
         on_export_pptx: Optional[Callable[[Deck], None]] = None,
         on_tags: Optional[Callable[[Deck], None]] = None,
         on_open_pdf: Optional[Callable[[Deck], None]] = None,
-        on_course_link: Optional[Callable[[Deck], None]] = None,
+        on_settings: Optional[Callable[[Deck], None]] = None,
     ):
         self.deck = deck
         self.theme = theme
@@ -197,7 +197,7 @@ class DeckRow:
         grid.addWidget(presenter_cell, row_index, col)
         col += 1
 
-        # Button order: Open pdf, Course link, Source,
+        # Button order: Open pdf, Settings, Source,
         # Duplicate, Tags, Export PPTX, Archive -- DeckTable.rebuild()'s
         # header list carries one blank cell per button in this same order.
         if on_open_pdf is not None:
@@ -209,12 +209,17 @@ class DeckRow:
             grid.addWidget(open_pdf_button, row_index, col)
             col += 1
 
-        if on_course_link is not None:
-            if deck.group == TAG_COURSE:
-                course_button = QPushButton("Course link...")
-                course_button.setToolTip("Set or open this deck's course page.")
-                course_button.clicked.connect(lambda: on_course_link(deck))
-                grid.addWidget(course_button, row_index, col)
+        if on_settings is not None:
+            settings_button = QPushButton("Settings")
+            settings_button.setToolTip(
+                "Deck-wide settings: template, language, footer text, course link, "
+                "where the PDFs go. Stored in the deck's own file.")
+            settings_button.clicked.connect(lambda: on_settings(deck))
+            if deck.group == TAG_MANUAL:
+                # The manual is replaced by app updates; its settings stay as shipped.
+                settings_button.setEnabled(False)
+                settings_button.setToolTip("The SlideMage manual's settings stay as shipped.")
+            grid.addWidget(settings_button, row_index, col)
             col += 1
 
         if on_edit is not None:
@@ -363,14 +368,14 @@ class DeckTable(QWidget):
         on_refresh: Callable[[], None],
         on_tags: Optional[Callable[[Deck], None]] = None,
         on_open_pdf: Optional[Callable[[Deck], None]] = None,
-        on_course_link: Optional[Callable[[Deck], None]] = None,
+        on_settings: Optional[Callable[[Deck], None]] = None,
     ) -> None:
         super().__init__()
         self.theme = theme
         self.archivable = archivable
         self.on_tags = on_tags
         self.on_open_pdf = on_open_pdf
-        self.on_course_link = on_course_link
+        self.on_settings = on_settings
         # Which groups the user has collapsed, by group tag -- persisted
         # per table (app_settings.py) and kept across rebuild(), which
         # re-applies it without touching any row's checkboxes.
@@ -622,8 +627,8 @@ class DeckTable(QWidget):
         ]
         if self.archivable:
             header.append("")  # Open pdf
-        if self.on_course_link is not None:
-            header.append("")  # Course link
+        if self.on_settings is not None:
+            header.append("")  # Settings
         if self.archivable:
             header.append("")  # Source
             header.append("")  # Duplicate
@@ -672,7 +677,7 @@ class DeckTable(QWidget):
                         on_export_pptx=self.on_export_pptx if self.archivable else None,
                         on_tags=self.on_tags if self.archivable else None,
                         on_open_pdf=self.on_open_pdf if self.archivable else None,
-                        on_course_link=self.on_course_link,
+                        on_settings=self.on_settings,
                     )
                 )
                 grid_row += 1
