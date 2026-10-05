@@ -121,6 +121,26 @@ with the machine's own LuaLaTeX/biber, against the framework in this
 repository's `latex/` folder (see "Quick start" above) -- keep that
 checkout updated alongside the executable.
 
+**The project's copies of the framework and the manual** (since v5.19.0,
+`src/slidemage/bundled_copies.py`). A project created by SlideMage gets
+copies of the framework (the `latex/` folder beside it) and of the example
+project, i.e. the SlideMage manual; `.slidemage/bundled_copies.json` records
+a hash of every copied file (commit it with the project). When a later
+SlideMage carries newer versions, it asks on start -- *Update*, *Not now* or
+*Don't ask again for this version* -- and then updates the files changed
+only upstream, adds new ones and removes the ones it no longer ships, after
+copying everything it replaces or removes to
+`.slidemage/backups/<time>/`. Files changed in the project are kept (and
+listed), files deleted in the project stay deleted; new slide ids go into
+`slide_ids.csv`, image descriptions the project doesn't have yet into its
+`media/alt-text.json` (unreviewed ones of replaced images are refreshed). A
+project made before v5.19.0: a sibling `latex/` that is not part of a git
+checkout is adopted (whatever differs from this version is replaced, backed
+up first); a git checkout -- a developer's `SlideMage/latex` -- is never
+touched. A project without the manual is offered to add it (only missing
+files are added, nothing is overwritten): the way to get the manual into a
+project of your own.
+
 ## Directory layout
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham

@@ -115,6 +115,9 @@ TEMP_DIR = PROJECT_ROOT / ".temp"
 
 SPINNER_INTERVAL_MS = 400
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
+# The framework/manual copy check (bundled_copies.py) runs once, shortly after
+# the window is up -- a local comparison, no network.
+BUNDLED_COPIES_CHECK_DELAY_MS = 1500
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "icon.ico"
 
 
@@ -639,6 +642,74 @@ class SlideMageWindow(QMainWindow):
             )
             return
         self._offer_update(plan, updater.get_update_mode(), manual=True)
+
+    # -- the project's copies of the framework and the manual (v5.19.0) --------
+    #
+    # bundled_copies.py: when this SlideMage carries a newer framework or
+    # manual than the project's copies, an info dialog offers the update
+    # (backup first; files changed in the project are kept). Not a popup for
+    # a project whose copies are current, nor again in this app version once
+    # "Don't ask again" was chosen.
+
+    def schedule_bundled_copies_check(self) -> None:
+        QTimer.singleShot(BUNDLED_COPIES_CHECK_DELAY_MS, self.check_bundled_copies)
+
+    def check_bundled_copies(self) -> None:
+        from . import bundled_copies
+        from . import project as project_mod
+
+        app_version = version_mod.VERSION_NUMBER
+        if bundled_copies.is_dismissed(PROJECT_ROOT, app_version):
+            return
+        try:
+            parts = bundled_copies.plan_updates(
+                PROJECT_ROOT, latex_source=project_mod._template_dir("latex"),
+                example_source=project_mod._template_dir("example"))
+        except OSError as exc:
+            self.log(f"Couldn't compare the project's framework/manual copies: {exc}")
+            return
+        if not parts:
+            return
+        lines = [line for part in parts for line in bundled_copies.summary_lines(part)]
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Newer framework / manual")
+        if all(part.new_install for part in parts):
+            box.setText("SlideMage comes with its own manual, a deck that explains "
+                        "and demonstrates everything. Add it to this project?")
+        else:
+            box.setText(f"SlideMage {app_version} comes with newer files than this "
+                        "project's copies. Update them?")
+        box.setInformativeText(
+            "\n".join(lines) + "\n\nEvery file that is replaced or removed is backed up "
+            "first, to .slidemage/backups/. Files changed in this project are kept.")
+        update_button = box.addButton("Update", QMessageBox.ButtonRole.AcceptRole)
+        if all(part.new_install for part in parts):
+            update_button.setText("Add the manual")
+        box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        never_button = box.addButton(
+            "Don't ask again for this version", QMessageBox.ButtonRole.DestructiveRole)
+        box.setDefaultButton(update_button)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is never_button:
+            bundled_copies.dismiss(PROJECT_ROOT, app_version)
+            self.log(f"Framework/manual update for {app_version} declined; "
+                     "not asking again until the next SlideMage version.")
+            return
+        if clicked is not update_button:
+            return
+        for part in parts:
+            try:
+                backup = bundled_copies.apply_update(PROJECT_ROOT, part, app_version)
+            except OSError as exc:
+                QMessageBox.critical(self, "Update failed", f"{part.label}: {exc}")
+                continue
+            for line in bundled_copies.summary_lines(part):
+                self.log(f"Updated -- {line}")
+            if part.update or part.remove:
+                self.log(f"  backup: {backup}")
+        self.reload_decks()
 
     # -- update check on start (v4.1.0, direct instruction) --------------------
     #
@@ -2129,6 +2200,7 @@ def main() -> None:
     window.show()
     splash.close()
     window.schedule_startup_update_check()
+    window.schedule_bundled_copies_check()
     sys.exit(app.exec())
 
 

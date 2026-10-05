@@ -228,8 +228,18 @@ def init_project(path: Path, copy_example: bool = True) -> None:
         )
         latex_dir = _template_dir("latex")
         sibling_latex = path.parent / "latex"
-        if latex_dir is not None and not os.path.lexists(sibling_latex):
+        copied_latex = latex_dir is not None and not os.path.lexists(sibling_latex)
+        if copied_latex:
             shutil.copytree(latex_dir, sibling_latex)
+        # The baseline for later updates of these copies (bundled_copies.py):
+        # the manual always, the framework only if this call copied it.
+        from . import bundled_copies
+        from .version import VERSION_NUMBER
+        bundled_copies.record_copies(
+            path, VERSION_NUMBER,
+            framework_dir=sibling_latex if copied_latex else None,
+            framework_source=latex_dir if copied_latex else None,
+            example_source=example_dir)
         return
 
     conflicts = _scaffold_conflicts(path)
