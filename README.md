@@ -1243,7 +1243,11 @@ pixel-identical; everything below is what new slides should use.
 - **`\begin{besidefigure}[height=5cm, border]{media/chart-x.png} ... \end{besidefigure}`**
   -- text next to a corner figure (same keys as `\cornerfigure`, plus
   `gap=`, default 12pt); the text column is exactly as wide as the room left
-  of the figure, measured from the figure itself.
+  of the figure, measured from the figure itself. Since v5.27.0 the figure's
+  top edge is lowered by `\SMBesideFigureTopGap` (0.2em) so that it meets the top of the
+  first line's *letters* instead of that line's box (which sits on the Top
+  Margin and starts about 0.2em above the letters); `yshift=0pt` among the keys
+  puts the figure on the margin again.
 - **`\fitfigure[top=here|margin, gap=6pt, valign=, halign=, bottom=, node=]{file}`**
   -- an image as large as it fits (aspect ratio kept) between the current
   position (or the Top Margin) and the Bottom Margin, Left to Right Margin.
@@ -2056,6 +2060,11 @@ pattern:
 % On the excursus slide itself (slides/nai-...-current.tex):
 \hyperlink{2fw}{\beamerreturnbutton{Back}}
 ```
+
+**Link text in running text**: `\SMLink{<slide id>}{text}` (since v5.27.0) is a
+`\hyperlink` whose text is underlined like an `\href`, so readers can see it is a
+link; a bare `\hyperlink` has no underline (it is meant for buttons). One line only,
+so keep the link text short.
 
 There's no "back" stack — a slide reachable from multiple places needs its
 own judgment call (or multiple return buttons) about where "back" means.

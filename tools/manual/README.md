@@ -33,3 +33,13 @@ UI change, place each `\callout` just beside its element (never past the
 picture's edge -- that widens the column). Most footer numbers in the crops
 are page numbers of the manual: when slides are added or removed earlier in
 the deck, rerun the crops too.
+
+## Edits made in a project's copy of the manual
+
+Projects get a copy of the manual (`bundled_copies.py`), and a user may edit
+slides there. `python tools/manual/adopt_user_edits.py --project <project>`
+lists the changes that exist only in the project's copy (compared with the
+baseline in its `.slidemage/bundled_copies.json`) and, with `--apply`, copies
+them -- and the project's frozen versions of those slides -- into `example/`,
+so the next SlideMage version carries them. Slides changed on both sides are
+listed as conflicts and merged by hand. Run it before every release.

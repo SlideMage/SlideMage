@@ -112,6 +112,42 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert plan(root, bundle) == {}
 
 
+def test_only_the_included_in_decks_line_is_not_a_user_edit(tmp_path, bundle):
+    """SlideMage itself rewrites each slide's '%% Included in decks:' line (a
+    project with its own deck lists it too); that must not make an otherwise
+    untouched slide count as changed by the user."""
+    latex, example = bundle
+    one = "1aa-EN-One-current.tex"
+    write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v1\n")
+    root = make_project(tmp_path, bundle)
+    write(root / "slides" / one,
+          "%% Included in decks: slidemage-manual, my-course-deck\n%%\n\nslide one v1\n")
+    assert plan(root, bundle) == {}                       # nothing differs but the header
+
+    write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v2\n")
+    manual = plan(root, bundle)[MANUAL]
+    assert manual.update == [f"slides/{one}"] and manual.kept == []
+
+    bundled_copies.apply_update(root, manual, "v5.26.1", now=NOW)
+    text = (root / "slides" / one).read_text()
+    assert "slide one v2" in text
+    assert text.startswith("%% Included in decks: slidemage-manual, my-course-deck\n")  # own line kept
+    assert plan(root, bundle) == {}
+
+
+def test_a_real_edit_next_to_a_header_change_is_still_kept(tmp_path, bundle):
+    latex, example = bundle
+    one = "1aa-EN-One-current.tex"
+    write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v1\n")
+    root = make_project(tmp_path, bundle)
+    write(root / "slides" / one,
+          "%% Included in decks: slidemage-manual, my-course-deck\n%%\n\nmy own wording\n")
+    write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v2\n")
+    write(example / "slides" / "1bb-EN-Two-current.tex", "slide two v2\n")  # keeps the part pending
+    manual = plan(root, bundle)[MANUAL]
+    assert manual.kept == [f"slides/{one}"] and manual.update == ["slides/1bb-EN-Two-current.tex"]
+
+
 def test_a_file_the_user_deleted_stays_deleted(tmp_path, bundle):
     _, example = bundle
     root = make_project(tmp_path, bundle)

@@ -1863,6 +1863,8 @@ v5.24.0 (2026-10-05, direct instruction): \multilingualtext has a keyed form for
 v5.25.0 (2026-10-05, direct instruction): the project SlideMage opens by itself is now also remembered beside the exe (file "last_project" in the exe's folder, written whenever a project is opened). The pointer in %APPDATA% belongs to one computer, so a second PC running the same cloud-synced exe asked for the project again; it now finds it from the copy beside the exe. When the remembered project no longer exists the folder picker starts in its nearest existing parent folder instead of the program folder.
 
 v5.26.0 (2026-10-05, direct instruction): the "Course link..." button of the deck table is now "Settings" (on every deck row, also for work, research and test decks; disabled for the SlideMage manual) and opens a dialog with the deck-wide settings that live in the deck file: template, language, footer text, course link (with Open), where the PDFs go (all outputs, each version, presenter, transcript, with Browse) and the always-add-appendix flag. All changes are written in one stale-checked write; only what was changed is touched, comments and line endings stay. New modules deck_settings.py (text in, text out) and qt_deck_settings_dialog.py replace qt_course_link_dialog.py; deck_editor.course_url_text() is the text part of set_course_url().
+
+v5.27.0 (2026-10-05, direct instructions): (1) New \\SMLink{target}{text}: a link in running text, underlined like an \\href (a bare \\hyperlink has no underline); the manual's text links use it. (2) besidefigure lowers its figure by \\SMBesideFigureTopGap (0.2em) so its top edge meets the top of the first line's letters instead of the line box; this moves every besidefigure figure down by about 2 pt (yshift=0pt restores the old position). (3) Fix: the manual and framework update (bundled_copies.py) no longer treats SlideMage's own '%% Included in decks:' line as a user edit -- 38 of 56 manual slides of a real project were 'kept' only because of it and could never be updated; an update keeps the project's own line. (4) tools/manual/adopt_user_edits.py brings edits made in a project's copy of the manual back into example/. (5) The manual: slides 1b6, 1kg, 1ih rewritten and split (new 1b2, 1vd, 1be), the user's edits of the project copy adopted.
 """
 from __future__ import annotations
 
@@ -1872,7 +1874,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.26.0"
+VERSION_NUMBER = "v5.27.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

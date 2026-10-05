@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -75,6 +76,29 @@ def _skipped(rel: Path) -> bool:
 
 def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+# SlideMage itself keeps the "%% Included in decks: ..." line of every slide
+# file (deck_headers.py), so it differs from project to project -- a project
+# with a deck of its own that uses the manual's slides lists that deck too.
+# That line is not the user's edit; ignoring it is what lets an untouched
+# manual slide be updated (v5.26.1: 38 of 56 slides of a real project were
+# "kept" only because of it).
+_HEADER_RE = re.compile(rb"^%% Included in decks:[^\r\n]*", re.MULTILINE)
+
+
+def _is_slide_file(rel: str) -> bool:
+    return rel.startswith("slides/") and rel.endswith(".tex")
+
+
+def _hash_with_header_of(path: Path, source: Path) -> str:
+    """The hash `path` would have if its "Included in decks" line were the one
+    of `source` (the bundled file)."""
+    data = path.read_bytes()
+    header = _HEADER_RE.search(source.read_bytes())
+    if header:
+        data = _HEADER_RE.sub(lambda _m: header.group(0), data, count=1)
+    return hashlib.sha256(data).hexdigest()
 
 
 def _hashes(root: Path, relpaths: list[str]) -> dict[str, str]:
@@ -207,7 +231,10 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
         current = file_hash(on_disk)
         if current == bundled:
             continue
-        if known is not None and current == known:
+        as_bundled = _hash_with_header_of(on_disk, source / rel) if _is_slide_file(rel) else None
+        if as_bundled == bundled:
+            continue                            # only SlideMage's own header line differs
+        if known is not None and (current == known or as_bundled == known):
             part.update.append(rel)             # changed upstream only
         else:
             part.kept.append(rel)               # changed by the user (or unknown)
@@ -277,7 +304,14 @@ def apply_update(project_root: Path, part: Part, app_version: str,
     for rel in part.add + part.update:
         dest = part.target / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
+        own_header = None
+        if rel in part.update and _is_slide_file(rel):
+            own_header = _HEADER_RE.search(dest.read_bytes())
         shutil.copy2(part.source / rel, dest)
+        if own_header:
+            # keep the project's own "Included in decks" line; SlideMage keeps it
+            dest.write_bytes(_HEADER_RE.sub(
+                lambda _m: own_header.group(0), dest.read_bytes(), count=1))
     for rel in part.remove:
         (part.target / rel).unlink()
 

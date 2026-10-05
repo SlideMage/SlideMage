@@ -5587,13 +5587,21 @@
 %   \begin{besidefigure}[height=5.6cm, border]{media/chart-x.png}
 %   	\begin{itemize} ... \end{itemize}
 %   \end{besidefigure}
+% Optical top alignment (v5.27.0): the text column's first line sits on the Top
+% Margin by its line box (the ascender height, 0.935em), so its visible letters
+% start about 0.2em lower; a figure placed on the margin itself looked that
+% much too high next to it. besidefigure therefore lowers its figure by this
+% much (\SMBesideFigureTopGap, default 0.2em of the surrounding text), so the
+% figure's top edge meets the top of the first line's letters. Give
+% yshift=0pt among the keys to put the figure on the margin again.
+\newcommand*{\SMBesideFigureTopGap}{0.2em}
 \newlength{\SM@bf@width}
 \NewDocumentEnvironment{besidefigure}{O{} +m}{%
 	\SM@cf@setkeys{#1}%
 	\SM@cf@makecontent{#2}%
 	\settowidth{\SM@bf@width}{\SM@cf@content}%
 	\ifSM@cf@border\addtolength{\SM@bf@width}{\SMImageBorderWidth}\fi
-	\cornerfigure[#1]{#2}%
+	\cornerfigure[yshift=-\SMBesideFigureTopGap,#1]{#2}%
 	% text column: from the text's left edge to the figure's left edge minus gap
 	\setlength{\SM@bf@width}{\dimexpr\linewidth+\beamer@rightmargin-\gothamFrametitleRightpading-\SM@bf@width-\SM@bf@gap\relax}%
 	\begin{minipage}[t]{\SM@bf@width}%
@@ -6870,6 +6878,12 @@
 	\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
 }
 \newcommand{\SM@nav@link}[2]{{\hypersetup{linkcolor=\SMFooterTextColor}\hyperlink{#1}{\SMLinkUnderline{#2}}}}
+% \SMLink{target}{text} -- a link to a slide (or any \hypertarget) in running
+% text, underlined like an \href so a reader sees it is a link: a bare
+% \hyperlink{target}{text} has no underline. One line only, like \href's
+% underline: keep the link text short. Buttons still use \hyperlink with
+% \beamergotobutton / \beamerreturnbutton.
+\newcommand{\SMLink}[2]{\hyperlink{#1}{\SMLinkUnderline{#2}}}
 \newcommand{\SM@nav@sep}{\ \textperiodcentered\ }
 \newcommand{\SMNavigationLinks}{%
 	\def\SM@nav@chapter{}%
