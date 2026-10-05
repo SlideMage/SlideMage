@@ -119,3 +119,21 @@ def remember(job, passes: int) -> None:
                 json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         except OSError:
             pass                    # a prediction only: never fail a compile over it
+
+
+def copy_counts(source_name: str, new_name: str) -> None:
+    """A duplicated deck starts with the remembered counts of its original
+    (v5.21.0, direct instruction): the copy has the same content, so it needs
+    the same passes. Nothing happens if the original was never compiled."""
+    with _lock:
+        data = _load()
+        counts = data.get(source_name)
+        if not isinstance(counts, dict) or not counts:
+            return
+        data[new_name] = dict(counts)
+        try:
+            STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            STORE_PATH.write_text(
+                json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        except OSError:
+            pass

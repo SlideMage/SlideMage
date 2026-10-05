@@ -93,3 +93,23 @@ def test_label_raises_the_count_instead_of_an_extra_pass(tmp_path, monkeypatch):
         fractions.append(progress._current_fraction())
     assert progress.text == "pass 5/5"
     assert fractions == sorted(fractions)          # the bar never moves backwards
+
+
+def test_duplicated_deck_inherits_the_original_counts(tmp_path, monkeypatch):
+    from slidemage import deck_duplicate
+    monkeypatch.setattr(compile_passes, "STORE_PATH", tmp_path / "compile_passes.json")
+    original = tmp_path / "talk.tex"
+    original.write_text("x", encoding="utf-8")
+    deck = SimpleNamespace(name="talk", path=original)
+    compile_passes.remember(_job(name="talk"), 6)
+    compile_passes.remember(_job(name="talk", presenter=True), 7)
+
+    deck_duplicate.duplicate_deck(deck, "talk-copy")
+    assert compile_passes.expected(_job(name="talk-copy")) == 6
+    assert compile_passes.expected(_job(name="talk-copy", presenter=True)) == 7
+
+    # an original that was never compiled: nothing to inherit, nothing written
+    other = SimpleNamespace(name="never", path=tmp_path / "never.tex")
+    other.path.write_text("y", encoding="utf-8")
+    deck_duplicate.duplicate_deck(other, "never-copy")
+    assert compile_passes.expected(_job(name="never-copy")) is None
