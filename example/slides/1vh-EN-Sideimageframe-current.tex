@@ -12,10 +12,15 @@
 		\par\smallskip
 		\shrinklists{1}
 		\begin{itemize}
-			\item Footnotes and sources move into a rotated strip beside the picture\footnote{Like this one.}
+			\item Footnotes and sources move into a rotated strip beside the picture\footnote{Like this one: small print that runs from bottom to top, left of the picture.}
 			\item \SMCmd{sidefootnotes} does the same for any other frame
 		\end{itemize}
 		\medskip
 		\SMCodeFile{snippets/1vh-1.tex}
 	\end{minipage}
+	% points at the footnote strip, which is set too small to notice at this size
+	\begin{tikzpicture}[remember picture, overlay]
+		\node[anchor=east, font=\tiny, inner sep=0pt] at ($(current page.north west)+(290pt,-240pt)$)
+			{the rotated footnotes: small print $\rightarrow$};
+	\end{tikzpicture}%
 \end{sideimageframe}

@@ -331,6 +331,18 @@
         "1d8": {}
       }
     },
+    "media/screenshot-slidemage-images-tab-toolbar.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The drafting buttons of SlideMage's Images tab.",
+      "long": "A strip of the Images tab's toolbar: the label Model: with a dropdown set to gemma4:12b, and the buttons Draft descriptions, Draft all..., Tune prompt... and Clear draft.",
+      "source": "Screenshot of SlideMage 5.27.",
+      "takeaway_default": "The model picker and the four drafting buttons sit side by side in the toolbar.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1be": {}
+      }
+    },
     "media/screenshot-slidemage-images-tab.png": {
       "role": "informative",
       "status": "auto",

@@ -6,31 +6,33 @@
 	{\small A deck lists its slides with one command each. Mostly that is
 	\SMCmd{slide}; the others give a deck an old version of a slide, a slide fully
 	revealed, or a slide in some deck versions only.\par}
-	\medskip
+	\smallskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.56\linewidth}
+		\begin{column}{0.6\linewidth}
 			\footnotesize
-			\begin{gothamtable}[gap=8pt]{l>{\raggedright\arraybackslash}p{0.56\linewidth}}
+			\renewcommand{\arraystretch}{0.9}
+			\begin{gothamtable}[gap=8pt]{ll}
 				\toprule
 				Call & What the deck gets \\
 				\midrule
 				\SMCmd{slide} & the live \SMCode{current.tex} \\
 				\SMCmd{slideversion} & a frozen version, pinned \\
 				\SMCmd{slidefinal} & fully revealed, in every version \\
-				\SMCmd{conditionalslide} & only in the listed deck versions; the slide numbers still agree \\
-				\SMCmd{slidestep} & the listed versions see the listed reveal steps \\
-				\SMCmd{omitslide} & left out by \SMCmd{studentversion} (the older two-way system) \\
+				\SMCmd{conditionalslide} & only in the listed versions \\
+				\SMCmd{slidestep} & reveal steps chosen per version \\
+				\SMCmd{omitslide} & the older way (\SMCmd{studentversion}) \\
 				\bottomrule
 			\end{gothamtable}
 		\end{column}
-		\begin{column}{0.41\linewidth}
+		\begin{column}{0.37\linewidth}
 			\SMCodeFile[basicstyle=\SMCodeFont\fontsize{6.2}{7.8}\selectfont]{snippets/1u4-1.tex}
 			\smallskip
 			{\small The deck editor writes them for you.\par}
-			\smallskip
-			\begin{alertblock}{Dated slides are pinned}
-				A slide with a course date goes into every deck as \SMCmd{slideversion}
-			\end{alertblock}
 		\end{column}
 	\end{columns}
+	\smallskip
+	{\small
+	\begin{alertblock}{Slides with a course date}
+		Each deck pins its own edition with \SMCmd{slideversion}; a plain \SMCmd{slide} would let one course's edit change all.
+	\end{alertblock}}
 \end{standardframe}

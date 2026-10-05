@@ -245,6 +245,11 @@ def screenshots(app: QApplication, theme) -> int:
     def grab_instead_of_exec(box: QMessageBox) -> int:
         box.show()
         settle(app)
+        # at a device pixel ratio of 2 the box comes out too narrow for its
+        # four buttons (labels cut off); give it the width it has at ratio 1
+        box.setFixedSize(600, box.height())
+        box.layout().activate()
+        settle(app)
         save(box, "save-dialog")
         box.close()
         return 0
@@ -259,6 +264,18 @@ def screenshots(app: QApplication, theme) -> int:
     window.open_images_for_slide("1rb-EN-Figureframe")
     settle(app, 12)
     save(window, "images-tab", down_to=window.tabs)
+    # ... and just the drafting end of its toolbar, from "Model:" to Clear
+    # draft (slide 1be explains those buttons and wants them readable)
+    from PySide6.QtWidgets import QLabel
+    images_tab = window.transcript_tab
+    model_label = next(w for w in images_tab.findChildren(QLabel) if w.text() == "Model:")
+    clear = next(b for b in images_tab.findChildren(QPushButton) if b.text() == "Clear draft")
+    left = model_label.mapTo(window, QPoint(0, 0))
+    right = clear.mapTo(window, QPoint(clear.width(), 0)).x()
+    bottom = clear.mapTo(window, QPoint(0, clear.height())).y()
+    strip = window.grab(QRect(left.x() - 6, left.y() - 6, right - left.x() + 12, bottom - left.y() + 12))
+    strip.save(str(MEDIA / "screenshot-slidemage-images-tab-toolbar.png"))
+    print("screenshot-slidemage-images-tab-toolbar.png", strip.width(), "x", strip.height())
 
     # 7. a transcript of this manual, as SlideMage shows it
     result = transcript.generate(deck.path, "during-course")

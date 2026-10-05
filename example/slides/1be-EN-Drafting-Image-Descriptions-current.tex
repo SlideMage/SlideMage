@@ -1,0 +1,38 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Accessibility": drafting image descriptions with
+% a local model, and reviewing them. The strip is a crop of the Images tab's
+% toolbar (tools/manual/make_screenshots.py). What the tab holds: slide 1ih.
+\begin{standardframe}{Drafting and reviewing descriptions}
+	\small
+	Describing every image by hand is slow, so a local vision model can write
+	a first version. You then check and correct each one: a draft is only a
+	starting point.
+	\par\smallskip
+	\centering
+	{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.6\linewidth-0.8pt\relax]{media/screenshot-slidemage-images-tab-toolbar.png}}}
+	\par\smallskip
+	\raggedright
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.52\linewidth}
+			\textbf{Drafting}
+			\shrinklists{2}
+			\begin{itemize}
+				\item \emph{Draft descriptions}: the images of the selected slide
+				\item \emph{Draft all\ldots}: every image that has no description yet, unattended; each image is saved as it finishes, so you can stop and continue later
+				\item \emph{Tune prompt\ldots}: redo one image with a prompt and a hint you edit; nothing is saved until you accept
+				\item \emph{Clear draft}: throws away drafts not yet reviewed, never a reviewed description
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.45\linewidth}
+			\textbf{Reviewing}
+			\shrinklists{2}
+			\begin{itemize}
+				\item \textbf{Check every draft against the image,} which the tab shows at full size; on faint charts the models invent numbers
+				\item \emph{Save and mark reviewed} confirms the description and this slide's takeaway; editing the description later withdraws the review
+				\item \emph{Translate all\ldots} drafts the German texts, \emph{Translate now} one image's
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

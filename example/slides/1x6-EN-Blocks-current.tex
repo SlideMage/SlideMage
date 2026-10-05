@@ -6,8 +6,9 @@
 \begin{standardframe}{Blocks}
 	{\small A block sets a short piece apart and says what it is: each type has
 	its own color and icon, so readers see its role at a glance. Each block below
-	is named after its environment (\SMCode{\textbackslash begin\{infoblock\}\{Title\}}). Narrow
-	variants for placing anywhere: \SMCode{gothamfloatingblock} and others.\par}
+	is named after its environment and fills the width of its column. To give a
+	block a width of your own, for instance to put it beside a table, use its floating
+	variant: \SMCode{\textbackslash begin\{gothamfloatingblock\}\{5cm\}\{Title\}} (the first argument is the width; also \SMCode{gothamfloatingexampleblock}, \SMCode{gothamfloatinginfoblock}).\par}
 	\medskip
 	\begin{columns}[t,onlytextwidth]
 		\begin{column}{0.31\linewidth}

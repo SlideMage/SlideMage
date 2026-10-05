@@ -30,6 +30,11 @@
 \IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
 \let\input@path\SMSavedInputPath
 \makeatother
+% The look of a \fullcite reference is the deck's own choice, not the
+% template's: biblatex's authoryear style, with the author's family name
+% first and the title in the normal weight (the Gotham theme sets it bold).
+\DeclareNameAlias{author}{family-given}
+\setbeamerfont{bibliography entry title}{series=\normalfont}
 
 \newcommand{\FooterText}{SlideMage Manual}
 
@@ -99,6 +104,7 @@
 	\section{Accessibility}
 	\slide{1wj-EN-Chapter-Accessibility}
 	\slide{1ih-EN-Describing-Images}
+	\slide{1be-EN-Drafting-Image-Descriptions}
 	\slide{1pn-EN-Describing-Diagrams}
 	\slide{1az-EN-Accessible-Transcripts}
 
