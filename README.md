@@ -957,6 +957,16 @@ A slide whose only per-language difference is a short title or caption
 language the *deck* is compiling as. Pick **Multilingual** in the Add
 slide dialog's language radio to create one directly.
 
+For more than two languages, or just for readability, use the keyed form:
+`\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}`. One `key={text}`
+pair per language, the key being the deck's `\decklanguage` code (`EN` and
+`en` are the same); the pair whose key is the deck's language is typeset. A
+deck in a language the list lacks gets the `EN` text, or the first one if
+there is no `EN`. Text with a comma or `=` in it needs its braces, as shown.
+A deck in another language than English or German just says
+`\decklanguage[fr]`; its PDF's language is then `fr`. (The two-argument form
+is unchanged: English, then German.)
+
 ### Translating image descriptions/citations
 
 The Images tab's per-image editor has a **German** section (short/long

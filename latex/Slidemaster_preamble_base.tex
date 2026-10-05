@@ -1574,7 +1574,10 @@
 	% \decklanguage[de]). \deckversion's own \do@deckversions above sidesteps
 	% this by building the comparison inside an \edef first, so \ifstrequal
 	% only ever sees an already-expanded literal string -- same fix here.
-	\def\do@decklanguage##1{\ifstrequal{##1}{de}{\global\SMGermantrue}{}}%
+	\def\do@decklanguage##1{%
+		\gdef\SMPDFLanguage{##1}% any other language: its own code (fr, es, ...)
+		\ifstrequal{##1}{en}{\gdef\SMPDFLanguage{en-US}}{}%
+		\ifstrequal{##1}{de}{\global\SMGermantrue\gdef\SMPDFLanguage{de-DE}}{}}%
 	\edef\SM@decklanguage@call{\noexpand\do@decklanguage{\SMDeckLanguage}}%
 	\SM@decklanguage@call
 	% Document-level PDF /Lang, independent of (and not blocked by) the
@@ -1582,7 +1585,7 @@
 	% \SMArtifactBegin's own comment above for why full tagging is out;
 	% a screen reader still uses this Catalog-level entry to pick
 	% pronunciation for the whole document.
-	\hypersetup{pdflang=\ifSMGerman de-DE\else en-US\fi}%
+	\hypersetup{pdflang=\SMPDFLanguage}%
 }
 \makeatother
 
@@ -1590,11 +1593,57 @@
 % image-only/title-only slides (id-slug's own language segment "mult",
 % see \setSlideLanguageFromSlug above) that hold both languages in one
 % file rather than being split into two separate slide IDs, switching on
-% whichever language the *deck* is compiling as. Two arguments for now,
-% matching the current EN/DE-only scope -- a third language later would
-% grow this macro's own arity (or move to a keyed variant), not require
-% renaming anything else in this system.
-\newcommand{\multilingualtext}[2]{\ifSMGerman #2\else #1\fi}
+% whichever language the *deck* is compiling as. The two-argument form is
+% EN then DE, as it always was.
+%
+% \multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}} -- the keyed form
+% (2026-10-05, direct instruction), for any number of languages: one
+% key=value pair per language, the key being the deck's \decklanguage code
+% (upper or lower case: EN = en). The value is picked whose key is the
+% deck's language; a deck in a language the list does not have gets the EN
+% value, or the first one if there is no EN. Commas and equals signs inside a
+% value need the braces shown. A deck in another language than en/de just says
+% \decklanguage[fr] (fr, es, ...): \ifSMGerman stays false for it, and the
+% PDF's /Lang is the code itself.
+\ExplSyntaxOn
+\tl_new:N \l__sm_mlt_pick_tl
+\tl_new:N \l__sm_mlt_en_tl
+\tl_new:N \l__sm_mlt_first_tl
+\bool_new:N \l__sm_mlt_pick_bool
+\bool_new:N \l__sm_mlt_en_bool
+\bool_new:N \l__sm_mlt_first_bool
+\cs_new:Npn \__sm_mlt_pair:nn #1#2 { \ifSMGerman #2 \else #1 \fi }
+\cs_new_protected:Npn \__sm_mlt_item:nn #1#2
+  {
+    \bool_if:NF \l__sm_mlt_first_bool
+      { \tl_set:Nn \l__sm_mlt_first_tl {#2} \bool_set_true:N \l__sm_mlt_first_bool }
+    \str_if_eq:eeT { \str_casefold:n {#1} } { en }
+      { \tl_set:Nn \l__sm_mlt_en_tl {#2} \bool_set_true:N \l__sm_mlt_en_bool }
+    \str_if_eq:eeT { \str_casefold:n {#1} } { \str_casefold:V \SMDeckLanguage }
+      { \tl_set:Nn \l__sm_mlt_pick_tl {#2} \bool_set_true:N \l__sm_mlt_pick_bool }
+  }
+\cs_new_protected:Npn \__sm_mlt_item_bad:n #1
+  { \msg_warning:nnn { slidemage } { multilingual-key-without-value } {#1} }
+\msg_new:nnn { slidemage } { multilingual-key-without-value }
+  { \string\multilingualtext*:~"#1"~has~no~=~value;~ignored. }
+\cs_new_protected:Npn \__sm_mlt_keyed:n #1
+  {
+    \group_begin:
+      \bool_set_false:N \l__sm_mlt_pick_bool
+      \bool_set_false:N \l__sm_mlt_en_bool
+      \bool_set_false:N \l__sm_mlt_first_bool
+      \keyval_parse:NNn \__sm_mlt_item_bad:n \__sm_mlt_item:nn {#1}
+      \bool_if:NTF \l__sm_mlt_pick_bool
+        { \exp_last_unbraced:NV \group_end: \l__sm_mlt_pick_tl }
+        {
+          \bool_if:NTF \l__sm_mlt_en_bool
+            { \exp_last_unbraced:NV \group_end: \l__sm_mlt_en_tl }
+            { \exp_last_unbraced:NV \group_end: \l__sm_mlt_first_tl }
+        }
+  }
+\NewDocumentCommand{\multilingualtext}{s m}
+  { \IfBooleanTF {#1} { \__sm_mlt_keyed:n {#2} } { \__sm_mlt_pair:nn {#2} } }
+\ExplSyntaxOff
 
 \newif\ifSMOmittedSlide
 \newcommand{\SMOmittedSlideMarker}{ | omitted from student deck}
