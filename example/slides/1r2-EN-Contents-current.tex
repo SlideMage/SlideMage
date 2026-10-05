@@ -7,6 +7,7 @@
 % enumerate set-up as any agenda slide (see the comment on
 % \beamer@sectionintoc in Slidemaster_preamble_base.tex); the \ifnum lines
 % keep each enumerate legal on the very first pass, before the .toc exists.
+\setSlideVersion{1-0-1}
 \setbeamertemplate{section in toc}[gotham plain enumerate]
 \begin{standardframe}{Contents}
 	\small
@@ -15,7 +16,7 @@
 	\begin{columns}[t,onlytextwidth]
 		\begin{column}{0.48\linewidth}
 			\textcolor{c_primary_highlight}{\textbf{Part A: How SlideMage works}}\par\smallskip
-			Explains how SlideMage works and how to set it up.
+			Explains how SlideMage works and how to set it up.\par\smallskip
 			\begin{enumerate}
 				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
 				\tableofcontents[sections={1-6},hideallsubsections]
@@ -24,7 +25,7 @@
 		\end{column}
 		\begin{column}{0.48\linewidth}
 			\textcolor{c_primary_highlight}{\textbf{Part B: Showcase}}\par\smallskip
-			Shows what a slide can contain: almost every slide is its own example, with its source code beside it.
+			Shows what a slide can contain: almost every slide is its own example, with its source code beside it.\par\smallskip
 			\begin{enumerate}
 				\setcounter{enumi}{6}
 				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}

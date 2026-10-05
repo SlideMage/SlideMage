@@ -3,25 +3,25 @@
 
 % SlideMage manual, appendix: the tools not covered in the chapters
 % (installation has its own chapter, "Installing SlideMage").
+\setSlideVersion{1-1-0}
 \begin{standardframe}{More tools}
 	\small
-	Tools you need now and then, all in SlideMage's menus.
+	Tools you need now and then, all in SlideMage's \textcolor{c_primary_highlight}{menus}.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.48\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item \textbf{Import PPTX/ODP} (System menu) turns the slides of a presentation into new slides of a deck, for you to finish by hand
+				\item \textbf{Import PPTX/ODP} (System menu) turns the slides of an existing presentation into a SlideMage deck, for you to finish by hand
 				\item \textbf{Housekeeping}: archive unused content, update slide previews, sync translation links, empty the \SMCode{pdf} folder, remove temporary files
-				\item \textbf{Find slide} and \textbf{Search all slide texts} in the main window find any slide by ID or by its text
+				\item \textbf{Find slide} and \textbf{Search all slide texts} in the main window find any slide by ID or by its full text
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.48\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
 				\item \textbf{Preferences} (System menu): dark mode, the default template for single-slide renders, AI models and prompts, updates
-				\item \textbf{Projects}: \SMCode{.slidemage/project.json} records which SlideMage last opened a project; keep it with the project
-				\item \textbf{Older projects}: \SMCode{python -m slidemage.sm\_rename <project>} renames \SMCode{\textbackslash gotham...} commands to \SMCode{\textbackslash SM...}
+				\item \textbf{Projects}: \SMCode{.slidemage/project.json} records which project SlideMage last opened; keep it with the project
 			\end{itemize}
 		\end{column}
 	\end{columns}

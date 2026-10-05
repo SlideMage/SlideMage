@@ -1,0 +1,25 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Assembling decks": links and navigation. The
+% button jumps to the gallery (slide 1td), whose return button comes back
+% here; the footer of this deck is the navigation bar it explains.
+\begin{standardframe}{Linking and navigating}
+	\small
+	A PDF of eighty slides needs ways to move around in it. Every slide can be
+	the target of a link, and a deck can have a navigation bar in its footer,
+	chapter agendas and an appendix of clickable previews -- this manual uses
+	all of them.
+	\par\medskip
+	\shrinklists{1}
+	\begin{itemize}
+		\item Every slide is a link target named by its ID: \SMCmd{hyperlink}\SMCode{\{1td\}\{...\}} \hyperlink{1td}{\beamergotobutton{Gallery}} -- the gallery's own back button returns here
+		\begin{itemize}
+			\item There is no back stack: a return button names its target, too
+		\end{itemize}
+		\item This deck's footer is a navigation bar: \SMCmd{SMNavigationBar}\SMCode{[...]} in the deck, \SMCmd{SMDeckAgenda} on the contents slide
+		\item Every chapter divider here is a chapter agenda: \SMCmd{SMChapterAgenda}
+		\item \emph{Slide previews}: the appendix SlideMage adds -- an agenda and a thumbnail grid per chapter, every thumbnail a link (\SMCmd{deckappendixtoc} in the deck, or the toolbar checkbox)
+		\item Decks without the bar: the institute logo links to that appendix
+	\end{itemize}
+\end{standardframe}
