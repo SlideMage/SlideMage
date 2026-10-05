@@ -150,3 +150,62 @@ def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional
         return None
     shutil.copy2(str(current_path), str(dest))
     return dest
+
+
+_FROZEN_RE = re.compile(r"-v(\d+)-(\d+)-(\d+)\.tex$")
+
+
+class RestoreError(ValueError):
+    """restore_version() cannot do it; the message says why."""
+
+
+def restore_version(current_path: Path, id_slug: str, version_path: Path) -> tuple[Optional[Path], Version]:
+    """Make a frozen version's content the slide's current content (v5.22.0,
+    direct instruction), archiving what is current now.
+
+    1. The outgoing current.tex is frozen under its own tracked version
+       (1.0.0 if it was never tracked), exactly as a Save would -- nothing is
+       lost, and a deck can still pin it. Skipped (returns None) when that
+       version file already holds the same content.
+    2. current.tex gets the frozen file's content, keeping its own
+       "%% Included in decks" header, and a new version: the highest version
+       known (current or frozen) with the minor number bumped -- a version
+       number is never reused, so the restored 1.0.0 content becomes e.g.
+       1.2.0 while 1.1.0 stays archived.
+    Returns (archived file or None, the new version). Raises RestoreError if
+    the slide already has that content or the archive name is taken by
+    different content."""
+    from . import slide_source
+    from .deck_headers import HEADER_RE
+
+    cur_text, eol = slide_source.read_slide_source(current_path)
+    old_text, _ = slide_source.read_slide_source(version_path)
+    if strip_marker(cur_text).strip() == strip_marker(old_text).strip():
+        raise RestoreError(f"{current_path.name} already has the content of {version_path.name}.")
+    cur_version = parse_version(cur_text) or DEFAULT_BASELINE
+    known = [cur_version]
+    for path in current_path.parent.glob(f"{id_slug}-v*.tex"):
+        m = _FROZEN_RE.search(path.name)
+        if m:
+            known.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    new_version = bump(max(known), "minor")
+
+    archive = current_path.parent / f"{id_slug}-v{format_hyphen(cur_version)}.tex"
+    archived: Optional[Path] = None
+    if archive.exists():
+        frozen_text, _ = slide_source.read_slide_source(archive)
+        if strip_marker(frozen_text).strip() != strip_marker(cur_text).strip():
+            raise RestoreError(
+                f"{archive.name} already exists with different content, so the current "
+                f"version cannot be archived under that name.")
+    else:
+        archived = freeze_slide(current_path, id_slug, cur_version)
+
+    new_text = strip_marker(old_text)
+    header = HEADER_RE.search(cur_text)
+    if header:
+        new_text = HEADER_RE.sub(lambda _m: header.group(0), new_text, count=1) \
+            if HEADER_RE.search(new_text) else header.group(0) + new_text
+    new_text = set_marker(new_text, new_version)
+    slide_source.save_slide_source(current_path, new_text, eol, expected_text=cur_text)
+    return archived, new_version

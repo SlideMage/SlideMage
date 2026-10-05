@@ -1211,6 +1211,13 @@ class SlideSourceTab(QWidget):
             )
             self.unlock_button.clicked.connect(self._on_unlock_frozen)
             frozen_bar.addWidget(self.unlock_button)
+            self.restore_button = QPushButton("Make this the current version")
+            self.restore_button.setToolTip(
+                "Replace the slide's current content with this version. The current "
+                "content is archived first, as a version of its own."
+            )
+            self.restore_button.clicked.connect(self._on_restore_version)
+            frozen_bar.addWidget(self.restore_button)
             frozen_bar.addStretch()
             outer.addLayout(frozen_bar)
         outer.addWidget(self.widget)
@@ -1222,6 +1229,42 @@ class SlideSourceTab(QWidget):
     def _on_unlock_frozen(self) -> None:
         self.widget.setReadOnly(False)
         self.unlock_button.setEnabled(False)
+
+    def _on_restore_version(self) -> None:
+        """"Make this the current version": slide_versioning.restore_version()."""
+        m = slide_versioning._FROZEN_RE.search(self.path.name)
+        id_slug = self.path.name[: m.start()] if m else ""
+        current = self.path.parent / f"{id_slug}-current.tex"
+        if not m or not current.is_file():
+            QMessageBox.warning(self, "Cannot restore", "The slide's current file was not found.")
+            return
+        tab = self.app._slide_source_tabs.get(current)
+        if tab is not None and tab._dirty:
+            QMessageBox.warning(
+                self, "Unsaved changes",
+                f"{current.name} has unsaved changes. Save or revert them first.")
+            return
+        reply = QMessageBox.question(
+            self, "Make this the current version",
+            f"Replace the content of {current.name} with this version?\n\n"
+            "What is current now is archived first as a version of its own, "
+            "and the restored content gets a new, higher version number.",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            archived, version = slide_versioning.restore_version(current, id_slug, self.path)
+        except slide_versioning.RestoreError as exc:
+            QMessageBox.warning(self, "Cannot restore", str(exc))
+            return
+        self.app.log(
+            f"Restored {self.path.name} as the current version of {id_slug}: now "
+            f"v{slide_versioning.format_dot(version)}"
+            + (f"; the previous content is archived as {archived.name}" if archived else ""))
+        if tab is not None:
+            tab.reload_from_disk()
+            tab._refresh_versions_combo()
+        self.app.open_slide_editor(current, return_to=self.return_to)
 
     def previous_version_paths(self) -> list[tuple[str, Path]]:
         """This slide's frozen versions, newest first, as ("v1.2.0", path)."""

@@ -1856,6 +1856,7 @@ v5.20.0 (2026-10-05, direct instructions): compile pass counts. (1) A compile th
 
 v5.20.1 (2026-10-05, found when the user's update dialog listed them): the manual's copy carried a developer's slides/.backups (the slide editor's undo history) into users' projects. The exe now bundles the example project file by file without slides/.backups, build output (.build, .previews, pdf, compiled decks) and machine-local settings (.slidemage/app_settings.json, project.json, compile_passes.json, bundled_copies.json); the copy and the update check skip every hidden folder; a new project never gets .backups. A project that already received them gets them removed by the next manual update (backed up first, as always).
 v5.21.0 (2026-10-05, direct instructions): (1) A duplicated deck starts with the remembered compile pass counts of its original (compile_passes.copy_counts), so its first compile already shows "pass 3/5"; an original never compiled passes nothing on. (2) Manual: the installation slides are back in chapter 2 (the divider, 1f8, lists them; Appendix A and its divider are gone, the reference appendix is just "Appendix: Reference"). (3) Manual: the footer labels on slide 1nt ("Inside a slide file, and its footer") follow the footer when the compile timestamp is off -- the arrows move with the id block, the "compiled" arrow is dropped, the labels end at their arrows --; the "navigation links" arrow is gone from that slide (any deck can have them: \SMNavigationBar in its preamble, not a manual-only feature).
+v5.22.0 (2026-10-05, direct instruction): a frozen version opened from "Previous versions" has a button "Make this the current version" (slide_versioning.restore_version): the slide's current content is archived first as a frozen version of its own (under its own tracked version, as a Save would), the frozen content becomes current with a new version number -- the highest known one with the minor number bumped, never reused -- and the current header ("Included in decks") is kept. Refused if the slide already has that content, or if the archive name is taken by different content, or if the current slide's tab has unsaved changes. Manual slide 1nt points at the navigation links again (any deck can have them).
 """
 from __future__ import annotations
 
@@ -1865,7 +1866,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.21.0"
+VERSION_NUMBER = "v5.22.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
