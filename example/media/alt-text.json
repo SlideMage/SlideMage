@@ -299,7 +299,7 @@
       "status": "auto",
       "short": "The deck editor in Grid view: previews of this manual's slides, grouped by chapter.",
       "long": "SlideMage's deck editor in Grid view: cards with a picture of each slide and its number and id-slug, such as \"1. 1jh-EN-Title-Slide\" and \"2. 1r2-EN-Contents\", under the heading \"(before first chapter)\", followed by the chapter heading \"The big picture\" and the first slides of that chapter.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "The Grid view shows the slides' previews.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -311,7 +311,7 @@
       "status": "auto",
       "short": "The deck editor in List view, showing this manual's slides and chapters.",
       "long": "SlideMage's deck editor for slidemage-manual. A toolbar with Refresh, Source, Transcript, Add section, Undo, Select all, a Quick navigation dropdown, a Find slide in deck field, Close, and the view choice List, Thumbnail, Grid. Below, one row per slide -- a checkbox, the slide's number, arrow buttons, the id-slug such as 1jh-EN-Title-Slide, a dropdown reading \"\\slide (current)\" and the buttons + before, + section, + after, Remove and Preview -- and a row per chapter, such as \"Section: The big picture\", with Rename, + section before, + slide here and Remove.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "The deck editor lists a deck's slides and chapters for editing.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -322,8 +322,8 @@
       "role": "informative",
       "status": "auto",
       "short": "SlideMage's deck table, with one deck in each group.",
-      "long": "The deck table of SlideMage's main window: column headings Deck, Instructor, During-course, After-course, After-course per chapter and Presenter. #workdeck sits on top without a heading; below it the open groups \"Course decks (1)\" with course-example-2027s, \"Research presentations (1)\" with talk-example-seminar and \"SlideMage manual (1)\" with slidemage-manual, each row with its checkboxes and the buttons Open pdf, Source, Duplicate, Tags, Export PPTX and Archive (the course deck also Course link...).",
-      "source": "Screenshot of SlideMage 5.17.",
+      "long": "The deck table of SlideMage's main window: column headings Deck, Instructor, During-course, After-course, After-course per chapter and Presenter. #workdeck sits on top without a heading; below it the open groups \"Course decks (1)\" with course-example-2027s, \"Research presentations (1)\" with talk-example-seminar and \"SlideMage manual (1)\" with slidemage-manual, each row with its checkboxes and the buttons Open pdf, Settings, Source, Duplicate, Tags, Export PPTX and Archive (in the manual's row Settings and Tags are greyed out).",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "Decks appear under the group their tag names.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -335,7 +335,7 @@
       "status": "auto",
       "short": "The Images tab with the figure slide's correlation chart selected.",
       "long": "SlideMage's Images tab. A toolbar with the drafting model, Draft descriptions, Draft all, Tune prompt, Clear draft, the translation model, Translate all, the transcript version and Generate transcript. On the left a list of slides with images, such as \"1rb -- Figure only: figureframe\"; on the right that slide's image media/correlation-matrix-example.png with the role choice informative or decorative, the buttons Replace image, Save draft and Save and mark reviewed, and the image itself at full size.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "Images are described in the Images tab.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -346,8 +346,8 @@
       "role": "informative",
       "status": "auto",
       "short": "SlideMage's main window with the Active decks table.",
-      "long": "SlideMage's main window. At the top the menus System, Tabs, Housekeeping and Info, and on the right a Find slide field and a \"Search all slide texts\" button. The Active decks tab lists four decks in their groups: #workdeck on top, then \"Course decks (1)\" with course-example-2027s, \"Research presentations (1)\" with talk-example-seminar and \"SlideMage manual (1)\" with slidemage-manual. Each row has checkboxes for Instructor, During-course, After-course, After-course per chapter (only where the deck has chapters) and Presenter, and the buttons Open pdf, Source, Duplicate, Tags, Export PPTX and Archive; the course deck also has Course link. Below the table the buttons Create PDF, Create Transcript, ?, Clear selection and Refresh decks; under them the checkboxes Include footer timestamp, Generate appendix TOC and Auto-open generated PDFs (ticked), and at the bottom the empty Log pane with Copy log and Clear log.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "long": "SlideMage's main window. At the top the menus System, Tabs, Housekeeping and Info, and on the right a Find slide field and a \"Search all slide texts\" button. The Active decks tab lists four decks in their groups: #workdeck on top, then \"Course decks (1)\" with course-example-2027s, \"Research presentations (1)\" with talk-example-seminar and \"SlideMage manual (1)\" with slidemage-manual. Each row has checkboxes for Instructor, During-course, After-course, After-course per chapter (only where the deck has chapters) and Presenter, and the buttons Open pdf, Settings, Source, Duplicate, Tags, Export PPTX and Archive; in the manual's row Settings and Tags are greyed out. Below the table the buttons Create PDF, Create Transcript, ?, Clear selection and Refresh decks; under them the checkboxes Include footer timestamp, Generate appendix TOC and Auto-open generated PDFs (ticked), and at the bottom the empty Log pane with Copy log and Clear log.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "The main window lists the decks and compiles them.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -359,7 +359,7 @@
       "status": "auto",
       "short": "The Save slide dialog asking how significant the change is.",
       "long": "A dialog reading \"Current version: untracked -- How significant is this change?\" with the buttons Major (to 2.0.0), Minor (to 1.1.0), Patch (to 1.0.1), Overwrite (no version tracked) and Cancel.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "Saving a slide asks for the size of the change and versions it.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -371,7 +371,7 @@
       "status": "auto",
       "short": "The slide editor with the source of the standardframe demo slide.",
       "long": "SlideMage's slide editor for 1y8-EN-Standardframe-current.tex. Two toolbar rows: Save, Revert, Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide, Delete slide, a versions dropdown, the language EN with a Set button, Close and Close and save; then Preview, a Render version dropdown, Render to PDF and Render transcript. Below, a Transcript summary field, a formatting toolbar (italic, bold, underline, monospace, Source, Footnote, Text color, Insert list, Insert block, Insert command, Add reference to .bib, Insert citation), and the LaTeX source with line numbers and syntax coloring.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "The slide editor edits, renders and versions one slide.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -383,7 +383,7 @@
       "status": "auto",
       "short": "The Tags dialog: four choices for a deck's group.",
       "long": "A small dialog: \"Group (the tag decides which section of the deck table it appears in):\" with four radio buttons -- Workdeck (pinned to the top of the table), Course deck, Research presentation, and the selected Test deck -- and the note \"Stored in the deck's own file as \\decktags{...}, so it stays with the deck.\", with OK and Cancel buttons.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "A deck's group is chosen in the Tags dialog.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
@@ -395,7 +395,7 @@
       "status": "auto",
       "short": "The start of this manual's accessible transcript, as SlideMage shows it.",
       "long": "SlideMage's transcript view: the heading \"slidemage-manual -- accessible transcript\", the deck and version (during-course), the number of slides, an introduction saying that the transcript reproduces the text of every slide with a description of every image, a warning about images not described yet, and the beginning of the entries \"Slide 1 -- SlideMage\" and \"Slide 2 -- Contents\", each with its slide ID.",
-      "source": "Screenshot of SlideMage 5.17.",
+      "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "A transcript is the deck's text and image descriptions for screen readers.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {

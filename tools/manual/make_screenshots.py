@@ -5,8 +5,11 @@ offscreen against the example project: example/media/screenshot-slidemage-*.png.
 
 Builds the real widgets (no mock-ups), in the light theme at a fixed window
 size, and saves QWidget.grab(). Modal dialogs are never exec()'d (that would
-block forever offscreen): they are shown, grabbed and closed. Rerun after UI
-changes. Before running, compile the manual (instructor version) and refresh
+block forever offscreen): they are shown, grabbed and closed. The windows keep
+their logical size (SIZE) but are rendered at SCALE times the pixels (a device
+pixel ratio of 2: crisp text instead of a stretched 1340 px picture), so every
+PNG is SCALE times as large; the slides place them by width, so nothing else
+changes. Rerun after UI changes. Before running, compile the manual (instructor version) and refresh
 its previews -- this script does that from the compiled PDF:
 example/decks/slidemage-manual.pdf -> .previews (slide_snapshot.capture_deck).
 """
@@ -19,6 +22,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 EXAMPLE = REPO / "example"
 os.environ["SLIDEMASTER_PROJECT"] = str(EXAMPLE)
+SCALE = 2  # device pixel ratio of every screenshot; set before QApplication exists
+os.environ.setdefault("QT_SCALE_FACTOR", str(SCALE))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if sys.platform == "win32":
     os.environ.setdefault("QT_QPA_FONTDIR", str(Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"))
@@ -64,15 +69,31 @@ def write_placeholder_decks() -> list[Path]:
     return paths
 
 
-def callout_positions(window: QWidget, widgets: dict[str, QWidget]) -> None:
+def callout_positions(window: QWidget, widgets: dict[str, "QWidget | QPoint"]) -> None:
     """Print each widget's centre as a fraction of the window -- x from the
     left, y from the bottom -- the coordinates slide 1ub's \\callout{x,y}{n}
     takes, since its picture is the whole window. Copy them into 1ub."""
     w, h = window.width(), window.height()
     print("callouts for slide 1ub (x,y as fractions, y from the bottom):")
     for label, widget in widgets.items():
-        centre = widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2))
+        if isinstance(widget, QPoint):  # already in the window's coordinates
+            centre = widget
+        else:
+            centre = widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2))
         print(f"  {label}: {centre.x() / w:.3f},{1 - centre.y() / h:.3f}")
+
+
+def checkbox_block_middle(window: QWidget, table, row) -> QPoint:
+    """The middle of the version checkboxes, in window coordinates: halfway
+    between the Instructor and the Presenter checkbox, on the course group's
+    heading line just above the rows (the badge sits in the empty strip there
+    instead of covering a checkbox)."""
+    first, last = row.vars["instructor"], row.presenter_var
+    left = first.mapTo(window, QPoint(0, 0)).x()
+    right = last.mapTo(window, QPoint(last.width(), 0)).x()
+    heading = table._group_headers["course"][0]  # the group heading is a button
+    y = heading.mapTo(window, QPoint(0, heading.height() // 2)).y()
+    return QPoint((left + right) // 2, y)
 
 
 def row_button(table, row, text: str) -> QWidget:
@@ -151,7 +172,7 @@ def screenshots(app: QApplication, theme) -> int:
     callout_positions(window, {
         "1 menus": window.menuBar(),
         "2 tabs": window.tabs.tabBar(),
-        "3 version checkbox": course_row.vars["instructor"],
+        "3 version checkboxes": checkbox_block_middle(window, table, course_row),
         "4 row buttons (Duplicate)": row_button(table, course_row, "Duplicate"),
         "5 Create PDF": table.compile_button,
         "6 footer timestamp": window.footer_timestamp_checkbox,
