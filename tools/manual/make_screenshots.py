@@ -184,6 +184,16 @@ def screenshots(app: QApplication, theme) -> int:
     window.open_deck_editor(deck)
     settle(app)
     editor = window.tabs.currentWidget()
+    # The List view's rows are wider than the main window: widen the window
+    # until the editor's scroll area needs no horizontal scrollbar, so the
+    # rows' right-hand buttons (Remove, Preview, Images) are in the shot.
+    from PySide6.QtWidgets import QScrollArea
+    for area in editor.findChildren(QScrollArea):
+        bar = area.horizontalScrollBar()
+        if area.isVisible() and bar.maximum() > 0:
+            window.resize(window.width() + bar.maximum() + 8, window.height())
+            settle(app)
+    print("window for the deck editor:", window.width(), "x", window.height())
     save(window, "deck-editor-list", down_to=window.tabs)
     editor.grid_view_radio.setChecked(True)
     settle(app, 12)
