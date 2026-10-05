@@ -32,7 +32,60 @@ from slidemage import deck_scan, qt_gui, slide_snapshot, transcript  # noqa: E40
 
 MEDIA = EXAMPLE / "media"
 MANUAL = "slidemage-manual"
-SIZE = QSize(1100, 720)
+# Wide enough for a deck row with all its buttons (at 1100 px the row was cut
+# off and the table scrolled sideways; the deck editor widens the window to
+# about 1320 px anyway).
+SIZE = QSize(1340, 720)
+
+# Placeholder decks, one per deck group, so the deck table shows the grouping
+# (slide 1d8) and full rows with all their buttons (slide 1ub) -- the example
+# project itself has only the manual. Made from the manual's preamble with
+# another \decktags and an empty body; deleted again at the end, also when the
+# script fails.
+PLACEHOLDER_DECKS = {
+    "#workdeck": "work",
+    "course-example-2027s": "course",
+    "talk-example-seminar": "research",
+}
+
+
+def write_placeholder_decks() -> list[Path]:
+    manual = (EXAMPLE / "decks" / f"{MANUAL}.tex").read_text(encoding="utf-8")
+    preamble = manual.split("\\begin{document}")[0]
+    paths = []
+    for name, tag in PLACEHOLDER_DECKS.items():
+        path = EXAMPLE / "decks" / f"{name}.tex"
+        if path.exists():
+            raise SystemExit(f"{path} exists -- not overwriting a real deck")
+        text = preamble.replace("\\decktags{test}", f"\\decktags{{{tag}}}")
+        path.write_text("% TEMPORARY placeholder deck (tools/manual/make_screenshots.py)\n"
+                        + text + "\\begin{document}\n\\end{document}\n", encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
+def callout_positions(window: QWidget, widgets: dict[str, QWidget]) -> None:
+    """Print each widget's centre as a fraction of the window -- x from the
+    left, y from the bottom -- the coordinates slide 1ub's \\callout{x,y}{n}
+    takes, since its picture is the whole window. Copy them into 1ub."""
+    w, h = window.width(), window.height()
+    print("callouts for slide 1ub (x,y as fractions, y from the bottom):")
+    for label, widget in widgets.items():
+        centre = widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2))
+        print(f"  {label}: {centre.x() / w:.3f},{1 - centre.y() / h:.3f}")
+
+
+def row_button(table, row, text: str) -> QWidget:
+    """The button labelled `text` in deck-table row `row` (rows keep no
+    reference to their buttons; the one on the same line as the row's
+    Instructor checkbox)."""
+    from PySide6.QtWidgets import QPushButton
+    row_y = row.vars["instructor"].mapTo(table, QPoint(0, row.vars["instructor"].height() // 2)).y()
+    for button in table.findChildren(QPushButton):
+        top = button.mapTo(table, QPoint(0, 0)).y()
+        if button.text() == text and top <= row_y <= top + button.height():
+            return button
+    raise LookupError(text)
 
 
 def settle(app: QApplication, rounds: int = 6) -> None:
@@ -68,7 +121,25 @@ def main() -> int:
         n = slide_snapshot.capture_deck(pdf, "slidemage")
         print(f"previews refreshed for {n} slides")
 
-    window = qt_gui.SlideMageWindow(theme)
+    placeholders = write_placeholder_decks()
+    try:
+        return screenshots(app, theme)
+    finally:
+        for path in placeholders:
+            path.unlink(missing_ok=True)
+
+
+def screenshots(app: QApplication, theme) -> int:
+    # Every deck group unfolded, whatever the example project remembers
+    # (collapsed_deck_groups_* in its app_settings.json, left untouched).
+    from slidemage import app_settings
+    original_get = app_settings.get
+    app_settings.get = lambda key, default=None: (
+        [] if key.startswith("collapsed_deck_groups") else original_get(key, default))
+    try:
+        window = qt_gui.SlideMageWindow(theme)
+    finally:
+        app_settings.get = original_get
     window.resize(SIZE)
     window.show()
     settle(app)
@@ -76,6 +147,17 @@ def main() -> int:
     # 1. the main window, Active decks tab, and its deck table alone
     save(window, "main-window")
     table = window.active_table
+    course_row = next(row for row in table.rows if row.deck.name == "course-example-2027s")
+    callout_positions(window, {
+        "1 menus": window.menuBar(),
+        "2 tabs": window.tabs.tabBar(),
+        "3 version checkbox": course_row.vars["instructor"],
+        "4 row buttons (Duplicate)": row_button(table, course_row, "Duplicate"),
+        "5 Create PDF": table.compile_button,
+        "6 footer timestamp": window.footer_timestamp_checkbox,
+        "7 log": window.log_text,
+        "8 Find slide": window.slide_search_entry,
+    })
     table_rows = table.grab(QRect(0, 0, table.width(), min(table.height(), 330)))
     table_rows.save(str(MEDIA / "screenshot-slidemage-deck-table.png"))
     print("screenshot-slidemage-deck-table.png", table_rows.width(), "x", table_rows.height())

@@ -22,3 +22,14 @@ screen readers would pick that up.
 
 Compile the manual twice after its slides change (`latexmk` does): the chapter
 agendas and the footer navigation are built from the previous pass's `.aux`.
+
+`make_screenshots.py` adds three placeholder decks for its run (`#workdeck`,
+`course-example-2027s`, `talk-example-seminar`, one per deck group) so the
+deck table shows the grouping (slide `1d8`) and full rows (slide `1ub`), and
+deletes them again; it unfolds every deck group for the run without touching
+the project's settings. It also prints the centres of the elements slide
+`1ub`'s numbered callouts point at, as fractions of the screenshot: after a
+UI change, place each `\callout` just beside its element (never past the
+picture's edge -- that widens the column). Most footer numbers in the crops
+are page numbers of the manual: when slides are added or removed earlier in
+the deck, rerun the crops too.
