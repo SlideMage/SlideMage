@@ -456,7 +456,8 @@ What matters when touching *this code*:
   the pass from the `(…/slides/<id>-…` lines LaTeX prints when it starts reading
   a slide file. `fraction = ((pass-1) + slides_seen/slides_total) / passes`, with
   4 passes for a deck that uses biblatex and 3 without; held at 99% until the job
-  really finishes (an extra pass just keeps it there). Slide totals use the same
+  really finishes. A pass beyond the expected count raises the count (since v5.20.0
+  the label reads "pass 5/5", not "(extra pass 5)"); the bar never moves backwards. Slide totals use the same
   scoping as the syntax check (version/chapter filters, `\input` fragments). A
   queue is one bar, each job weighted by passes × slides. It also covers
   single-slide renders (3 passes, 1 slide; a buffer render has no slide file to

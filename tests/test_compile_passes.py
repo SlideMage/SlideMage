@@ -65,3 +65,31 @@ def test_label_says_estimated_until_the_deck_was_compiled_once(tmp_path, monkeyp
     assert label_after_first_pass() == "pass 1/4 (estimated)"
     compile_passes.remember(job, 6)
     assert label_after_first_pass() == "pass 1/6"
+
+
+def test_presenter_and_instructor_share_their_count(tmp_path, monkeypatch):
+    monkeypatch.setattr(compile_passes, "STORE_PATH", tmp_path / "compile_passes.json")
+    compile_passes.remember(_job(presenter=True), 5)
+    assert compile_passes.predict(_job()) == (5, True)                  # instructor: known
+    assert compile_passes.predict(_job(version="during-course")) == (5, False)   # a guess
+    assert compile_passes.predict(_job(version="after-course", chapter=object())) == (5, False)
+    compile_passes.remember(_job(version="after-course"), 6)
+    assert compile_passes.predict(_job(version="during-course")) == (6, False)   # nearest kin
+    assert compile_passes.predict(_job(version="after-course", chapter=object())) == (6, False)
+    assert compile_passes.predict(_job(name="other")) == (None, False)
+
+
+def test_label_raises_the_count_instead_of_an_extra_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr(compile_passes, "STORE_PATH", tmp_path / "compile_passes.json")
+    job = _job()
+    job.jobname = "deck-instructor"
+    compile_passes.remember(job, 4)
+    progress = compile_progress.BatchProgress()
+    progress.reset({job.jobname: compile_progress.spec_for_job(job)})
+    progress.feed(f"==== Compiling deck -> {job.jobname} ====")
+    fractions = []
+    for n in range(1, 6):
+        progress.feed(f"Run number {n} of rule 'lualatex'")
+        fractions.append(progress._current_fraction())
+    assert progress.text == "pass 5/5"
+    assert fractions == sorted(fractions)          # the bar never moves backwards

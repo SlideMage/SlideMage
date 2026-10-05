@@ -94,10 +94,10 @@ def count_job_slides(deck, version: Optional[str], chapter) -> int:
 def spec_for_job(job) -> JobSpec:
     """JobSpec of a compiler.CompileJob: the passes this deck needed last
     time (compile_passes), else the 4/3 guess."""
-    remembered = compile_passes.expected(job)
+    remembered, known = compile_passes.predict(job)
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
                    count_job_slides(job.deck, job.version, job.chapter),
-                   estimated=remembered is None)
+                   estimated=not known)
 
 
 class BatchProgress:
@@ -117,6 +117,7 @@ class BatchProgress:
         self._current: Optional[str] = None
         self._pass = 0
         self._seen = 0
+        self._peak = 0.0
         self._announced = False
 
     @property
@@ -130,10 +131,19 @@ class BatchProgress:
         if self._pass <= 0:
             return 0.0
         inside = min(self._seen / spec.slides, 1.0) if spec.slides else 0.0
-        fraction = ((min(self._pass, spec.passes) - 1) + inside) / spec.passes
-        if self._pass > spec.passes:
-            fraction = 1.0
-        return min(fraction, _HOLD_BELOW_DONE)
+        passes = self._expected_passes(spec)
+        fraction = min(((self._pass - 1) + inside) / passes, _HOLD_BELOW_DONE)
+        # a raised pass count must not move the bar backwards: it waits
+        # until the longer compile catches up with where it already was
+        self._peak = max(self._peak, fraction)
+        return self._peak
+
+    def _expected_passes(self, spec: JobSpec) -> int:
+        """The job's pass count as far as known: the prediction, raised to
+        the current pass once a compile runs past it (v5.20.0, direct
+        instruction: "update the estimate to 'pass 4/5'" rather than
+        announcing an extra pass)."""
+        return max(spec.passes, self._pass)
 
     @property
     def fraction(self) -> Optional[float]:
@@ -154,11 +164,9 @@ class BatchProgress:
         spec = self._specs[self._current]
         if self._pass <= 0:
             return "starting"
-        shown = min(self._pass, spec.passes)
-        extra = f" (extra pass {self._pass})" if self._pass > spec.passes else ""
         where = f", slide {min(self._seen, spec.slides)}/{spec.slides}" if spec.slides else ""
         guess = " (estimated)" if spec.estimated else ""
-        return f"pass {shown}/{spec.passes}{guess}{where}{extra}"
+        return f"pass {self._pass}/{self._expected_passes(spec)}{guess}{where}"
 
     # -- input ------------------------------------------------------------------
 
@@ -227,3 +235,4 @@ class BatchProgress:
             self._total_units += fallback.units
             self._announced = False
         self._current, self._pass, self._seen = jobname, 0, 0
+        self._peak = 0.0

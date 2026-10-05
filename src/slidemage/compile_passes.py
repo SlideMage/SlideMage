@@ -46,6 +46,53 @@ def _load() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+# Job kinds that need the same passes (v5.20.0, direct instruction: "when a
+# presenter compile has finished, an instructor compile of the same deck could
+# already show the correct number of necessary passes (and vice versa?)").
+# The passes are what the .aux-driven parts need to settle -- bibliography,
+# chapter agendas, remembered TikZ positions (logo patch, overlays), the
+# automatic Top Margin -- and a presenter compile has exactly the instructor
+# content (only the page layout adds a notes panel). Measured equal on every
+# SlideMaster deck compiled both ways.
+_SAME_PASSES = {"instructor": ("presenter", "deck"), "presenter": ("instructor", "deck"),
+                "deck": ("instructor", "presenter")}
+# Kinds whose count is a fair guess for another kind (shown as "(estimated)"):
+# a student version has fewer slides, and "final state only" slides need one
+# settling round more, so its count may differ from the instructor's.
+_SIMILAR = {
+    "during-course": ("after-course", "instructor", "presenter", "deck"),
+    "after-course": ("during-course", "instructor", "presenter", "deck"),
+}
+
+
+def predict(job) -> tuple[Optional[int], bool]:
+    """(passes, known): the count this job's deck needed last time for the
+    same kind of job -- or for a kind that needs the same passes (presenter /
+    instructor) -- with known=True; else a related kind's count as an
+    estimate (another student version, the whole deck for a chapter job),
+    known=False; else (None, False)."""
+    kind = job_kind(job)
+    with _lock:
+        counts = _load().get(job.deck.name, {})
+    if not isinstance(counts, dict):
+        return None, False
+
+    def count(k: str) -> Optional[int]:
+        value = counts.get(k)
+        return value if isinstance(value, int) and value > 0 else None
+
+    for k in (kind, *_SAME_PASSES.get(kind, ())):
+        if count(k):
+            return count(k), True
+    base = kind[: -len("-chapter")] if kind.endswith("-chapter") else None
+    candidates = ((base, *_SAME_PASSES.get(base, ()), *_SIMILAR.get(base, ()))
+                  if base else _SIMILAR.get(kind, ()))
+    for k in candidates:
+        if count(k):
+            return count(k), False
+    return None, False
+
+
 def expected(job) -> Optional[int]:
     """The passes this job's deck needed last time, or None if unknown."""
     with _lock:
