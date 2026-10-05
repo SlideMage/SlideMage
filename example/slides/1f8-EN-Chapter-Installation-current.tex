@@ -1,30 +1,12 @@
 %% Included in decks: slidemage-manual
 %%
 
-% SlideMage manual: chapter 2 in one slide (2026-10-05, direct instruction:
-% "make the installation slide just one slide summarizing the requirements
-% and pointing to an appendix section for the full 5 slides"). A chapter
-% divider like the others, but its body is the summary; the five detailed
-% slides are in Appendix A (divider 1ba). \SMChapterAgenda stays: with no
-% other slide in this chapter it prints nothing, but it sets the target of
-% the footer's "Chapter contents" link.
+% SlideMage manual: chapter 2's divider; the slides after it (listed by
+% \SMChapterAgenda) say what to install.
 \setSlideVersion{1-1-0}
 \begin{sectionframe}{Installing SlideMage}
 	\SMChapterAgenda
 	\begin{minipage}{0.92\linewidth}\small
-		SlideMage needs LaTeX to typeset the PDFs; it calls LaTeX itself, so you install it once and then work only in SlideMage. A local AI model is optional. Step-by-step notes for setting up each program to work with SlideMage are in Appendix A.
-	\end{minipage}\par\medskip
-	{\footnotesize
-	\begin{gothamtable}[gap=12pt]{lll}
-		\toprule
-		Program & What it is for & Where to get it \\
-		\midrule
-		MiKTeX or TeX Live & typesetting: LuaLaTeX, biber, latexmk & \SMCode{miktex.org}, \SMCode{tug.org/texlive} \\
-		Git for Windows (with MiKTeX) & the Perl that latexmk needs & \SMCode{git-scm.com} \\
-		SlideMage & the app & its releases on GitHub \\
-		\emph{Optional:} Ollama & image descriptions, translation, AI & \SMCode{ollama.com} \\
-		\bottomrule
-	\end{gothamtable}\par}
-	\medskip
-	\hyperlink{1ba}{\beamergotobutton{Appendix A: Installing SlideMage}}
+		SlideMage needs LaTeX to typeset the PDFs; it calls LaTeX itself, so you install it once and then work only in SlideMage. A local AI model is optional. Step-by-step notes for setting up each program to work with SlideMage follow on the next slides.
+	\end{minipage}
 \end{sectionframe}
