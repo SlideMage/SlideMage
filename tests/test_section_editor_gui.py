@@ -77,8 +77,8 @@ def test_sections_are_rows_and_can_be_added_and_reordered(tmp_path, monkeypatch,
     assert up.isEnabled()
     up.click()
     updated = _read(path)
-    assert updated.index("\\section{Two}") < updated.index("\\section{New}")
-    assert updated.index("\\section{New}") < updated.index("\\slide{ccc-Two}")
+    assert updated.index("\\section{New}") < updated.index("\\section{Two}")
+    assert updated.index("\\section{Two}") < updated.index("\\slide{ccc-Two}")
 
     new_heading = next(
         label for label in tab._chapter_headers.values()
@@ -95,8 +95,9 @@ def test_sections_are_rows_and_can_be_added_and_reordered(tmp_path, monkeypatch,
     )
     up.click()
     updated = _read(path)
-    assert updated.index("\\section{New}") < updated.index("\\slide{ccc-Two}")
-    assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{Two}")
+    assert updated.index("\\section{New}") < updated.index("\\section{Empty}")
+    assert updated.index("\\section{Empty}") < updated.index("\\section{Two}")
+    assert updated.index("\\section{Two}") < updated.index("\\slide{ccc-Two}")
 
     slide_label = next(
         label for label in tab._id_labels.values() if label.text() == "ccc-Two"
@@ -112,14 +113,15 @@ def test_sections_are_rows_and_can_be_added_and_reordered(tmp_path, monkeypatch,
     )
     up.click()
     updated = _read(path)
-    assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{New}")
-    assert updated.index("\\section{New}") < updated.index("\\section{Two}")
+    assert updated.index("\\section{New}") < updated.index("\\section{Empty}")
+    assert updated.index("\\section{Empty}") < updated.index("\\slide{ccc-Two}")
+    assert updated.index("\\slide{ccc-Two}") < updated.index("\\section{Two}")
 
 
-def test_section_up_crosses_legacy_block_comments(tmp_path, qapp):
+def test_section_up_moves_whole_legacy_block(tmp_path, qapp):
     text = (
         "\\documentclass{beamer}\n\\begin{document}\n"
-        "%% Block: legacy\n%%\n"
+        "\\section{Before}\n%% Block: legacy\n%%\n"
         "\\slide{aaa-First}\n\\slide{bbb-Second}\n"
         "%% End block: legacy\n%%\n"
         "\\section{After}\n\\end{document}\n"
@@ -150,8 +152,54 @@ def test_section_up_crosses_legacy_block_comments(tmp_path, qapp):
     assert up.isEnabled()
     up.click()
     updated = _read(path)
-    assert updated.index("\\slide{aaa-First}") < updated.index("\\section{After}")
-    assert updated.index("\\section{After}") < updated.index("\\slide{bbb-Second}")
+    assert updated == text.replace("\\section{After}\n", "").replace(
+        "\\section{Before}", "\\section{After}\n\\section{Before}")
+
+
+@pytest.mark.parametrize("direction, arrow", [("up", "↑"), ("down", "↓")])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_section_arrows_move_all_slides_past_neighbor(tmp_path, qapp, direction, arrow, newline):
+    prefix = "\\documentclass{beamer}\n\\begin{document}\n\\slide{zzz-Front}\n"
+    one = "\\section{One}\n\\slide{aaa-First}\n\\slide{bbb-Second}\n"
+    two = "\\section{Two}\n% Section note\n\\slide{ccc-Third}\n\\slide{ddd-Fourth}\n"
+    three = "\\section{Three}\n\\slide{eee-Fifth}\n\\slide{fff-Sixth}\n"
+    suffix = "\\end{document}\n% trailer\n"
+    text = (prefix + one + two + three + suffix).replace("\n", newline)
+    path = tmp_path / "course.tex"
+    path.write_bytes(text.encode("utf-8"))
+    deck = Deck(
+        name="course", path=path, archived=False, text=text,
+        supports_version=False, uses_biblatex=False,
+        preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
+        chapters=_parse_chapters(text), output_folders={},
+    )
+    tab = None
+
+    def after_deck_edit(_path, _summary, previous_text):
+        assert previous_text == tab.deck.text
+        updated = _read(path)
+        tab.reload(replace(tab.deck, text=updated, chapters=_parse_chapters(updated)))
+
+    tab = DeckEditorTab(SimpleNamespace(after_deck_edit=after_deck_edit), deck)
+
+    def section_arrow(title, symbol):
+        heading = next(label for label in tab._chapter_headers.values()
+                       if label.text() == f"Section: {title}")
+        row = next(tab.grid.getItemPosition(i)[0] for i in range(tab.grid.count())
+                   if tab.grid.itemAt(i).widget() is heading)
+        controls = tab.grid.itemAtPosition(row, 0).widget()
+        return next(button for button in controls.findChildren(QPushButton)
+                    if button.text() == symbol)
+
+    assert not section_arrow("One", "↑").isEnabled()
+    assert not section_arrow("Three", "↓").isEnabled()
+    button = section_arrow("Two", arrow)
+    assert button.isEnabled()
+    button.click()
+    blocks = two + one + three if direction == "up" else one + three + two
+    expected = (prefix + blocks + suffix).replace("\n", newline)
+    assert _read(path) == expected
+    assert path.read_bytes() == expected.encode("utf-8")
 
 
 def test_typing_a_slide_number_moves_the_slide(tmp_path, qapp):
