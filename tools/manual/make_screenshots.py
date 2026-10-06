@@ -96,6 +96,52 @@ def checkbox_block_middle(window: QWidget, table, row) -> QPoint:
     return QPoint((left + right) // 2, y)
 
 
+def deck_editor_callouts(window: QWidget, editor, bottom: int) -> None:
+    """Print the centres of the deck editor elements slide 1ti's numbered
+    callouts point at, as fractions of the screenshot (x from the left, y from
+    the bottom; the picture is the window down to `bottom`)."""
+    from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QPushButton
+
+    w = window.width()
+
+    def centre(widget) -> str:
+        c = widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2))
+        return f"{c.x() / w:.3f},{1 - c.y() / bottom:.3f}"
+
+    link = editor._id_labels["1jh-EN-Title-Slide"]
+    row = editor.grid.getItemPosition(editor.grid.indexOf(link))[0]
+
+    def cell(col):
+        item = editor.grid.itemAtPosition(row, col)
+        return item.widget() if item else None
+
+    number_cell = cell(0)
+    buttons = {b.text(): b for b in editor.findChildren(QPushButton)}
+    section = next(l for l in editor._chapter_headers.values() if l.text().startswith("Section: The big"))
+    srow = editor.grid.getItemPosition(editor.grid.indexOf(section))[0]
+    rename = next(editor.grid.itemAtPosition(srow, c).widget() for c in range(10)
+                  if editor.grid.itemAtPosition(srow, c)
+                  and isinstance(editor.grid.itemAtPosition(srow, c).widget(), QPushButton)
+                  and editor.grid.itemAtPosition(srow, c).widget().text() == "Rename")
+    print("callouts for slide 1ti (x,y as fractions, y from the bottom):")
+    for label, widget in {
+        "1 toolbar (Add section)": buttons["Add section…"],
+        "2 Quick navigation": editor.chapter_combo,
+        "3 views (List)": editor.list_view_radio,
+        "4 row checkbox": number_cell.findChildren(QCheckBox)[0],
+        "5 number": number_cell.findChildren(QLineEdit)[0],
+        "6 slide id": link,
+        "7 dropdown": cell(2) if isinstance(cell(2), QComboBox) else cell(2),
+        "8 + before": cell(5),
+        "9 Remove": next(editor.grid.itemAtPosition(row, c).widget() for c in range(10)
+                         if editor.grid.itemAtPosition(row, c)
+                         and isinstance(editor.grid.itemAtPosition(row, c).widget(), QPushButton)
+                         and editor.grid.itemAtPosition(row, c).widget().text() == "Remove"),
+        "10 section Rename": rename,
+    }.items():
+        print(f"  {label}: {centre(widget)}")
+
+
 def row_button(table, row, text: str) -> QWidget:
     """The button labelled `text` in deck-table row `row` (rows keep no
     reference to their buttons; the one on the same line as the row's
@@ -216,7 +262,14 @@ def screenshots(app: QApplication, theme) -> int:
             window.resize(window.width() + bar.maximum() + 8, window.height())
             settle(app)
     print("window for the deck editor:", window.width(), "x", window.height())
-    save(window, "deck-editor-list", down_to=window.tabs)
+    # Slide 1ti shows only the top of the list -- the toolbar, two slide rows,
+    # a section row and one more slide row -- so its numbered callouts fit.
+    third = editor._id_labels["1y9-EN-Chapter-The-Big-Picture"]
+    crop_bottom = third.mapTo(window, QPoint(0, third.height())).y() + 3
+    image = window.grab(QRect(0, 0, window.width(), crop_bottom))
+    image.save(str(MEDIA / "screenshot-slidemage-deck-editor-list.png"))
+    print("screenshot-slidemage-deck-editor-list.png", image.width(), "x", image.height())
+    deck_editor_callouts(window, editor, crop_bottom)
     editor.grid_view_radio.setChecked(True)
     settle(app, 12)
     save(window, "deck-editor-grid", down_to=window.tabs)
@@ -234,7 +287,9 @@ def screenshots(app: QApplication, theme) -> int:
     from PySide6.QtWidgets import QPushButton
     buttons = {b.text(): b for b in source_tab.findChildren(QPushButton)}
     top_left = buttons["Save"].mapTo(window, QPoint(0, 0))
-    right = buttons["Delete slide"].mapTo(window, QPoint(buttons["Delete slide"].width(), 0)).x()
+    # up to and including the language "Set" button, so the versions list and
+    # the language controls (slide 1b2 explains them) are in the strip too
+    right = buttons["Set"].mapTo(window, QPoint(buttons["Set"].width(), 0)).x()
     last = buttons["Render transcript"]
     bottom = last.mapTo(window, QPoint(0, last.height())).y()
     strip = window.grab(QRect(top_left.x() - 6, top_left.y() - 6,

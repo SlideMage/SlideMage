@@ -1881,6 +1881,8 @@ v5.29.0 (2026-10-06, direct instruction): project compatibility. compat.py keeps
 v5.29.1 (2026-10-06, direct instruction): the manual carries the user's evening edits of 1an, 1bb, 1hi, 1pf, 1r2, 1v5, 1vn and 1ym (adopted from the project copy; their earlier versions are frozen next to them). Content only.
 
 v5.29.2 (2026-10-06, direct instruction): the main window's search row says what it does: "Find slide:" is now "Slide name search:" (an ID/name lookup) and the button "Search all slide texts..." is now "Project-wide full-text search..." (and no longer loses the hook of the j: its descender was clipped by the 20 px the tab bar corner leaves it). The manual's slide 1ub names both (callouts 8 and 9), 1b6, 1cx and 1r8 use the new names, and the user's further evening edits of 1d8, 1kp, 1ti, 1ub, 1vn and 1y5 are adopted.
+
+v5.29.3 (2026-10-06, direct instruction): manual content: slide 1ti has numbered callouts (1-10) on a cropped deck-editor screenshot with a matching numbered list, slide 1b2's screenshot strip now includes the versions list and the language controls, the user's edits of 1gu, 1kg and 1vd are adopted. Screenshots regenerated (tools/manual/make_screenshots.py prints the 1ti callout anchors).
 """
 from __future__ import annotations
 
@@ -1890,7 +1892,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.29.2"
+VERSION_NUMBER = "v5.29.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
