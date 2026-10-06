@@ -41,6 +41,8 @@ MANUAL = "slidemage-manual"
 # off and the table scrolled sideways; the deck editor widens the window to
 # about 1320 px anyway).
 SIZE = QSize(1340, 720)
+# The Images tab screenshot (slide 1ih) is taller than the other windows.
+IMAGES_TAB_HEIGHT = 1080
 
 # Placeholder decks, one per deck group, so the deck table shows the grouping
 # (slide 1d8) and full rows with all their buttons (slide 1ub) -- the example
@@ -318,6 +320,9 @@ def screenshots(app: QApplication, theme) -> int:
 
     # 6. the Images tab, on the figure slide
     window.open_images_for_slide("1rb-EN-Figureframe")
+    # a taller window for this one: slide 1ih gives the picture room for it
+    normal_height = window.height()
+    window.resize(window.width(), IMAGES_TAB_HEIGHT)
     settle(app, 12)
     save(window, "images-tab", down_to=window.tabs)
     # ... and just the drafting end of its toolbar, from "Model:" to Clear
@@ -332,6 +337,8 @@ def screenshots(app: QApplication, theme) -> int:
     strip = window.grab(QRect(left.x() - 6, left.y() - 6, right - left.x() + 12, bottom - left.y() + 12))
     strip.save(str(MEDIA / "screenshot-slidemage-images-tab-toolbar.png"))
     print("screenshot-slidemage-images-tab-toolbar.png", strip.width(), "x", strip.height())
+    window.resize(window.width(), normal_height)
+    settle(app)
 
     # 7. a transcript of this manual, as SlideMage shows it
     result = transcript.generate(deck.path, "during-course")
