@@ -3,13 +3,15 @@
 
 % SlideMage manual: chapter divider; its body is the chapter agenda, next to
 % a \sectionfigure (the demo for both; source on slide 1y3).
+% The figure call comes last: it starts a paragraph line of its own, which above the
+% text would push the text down by one line.
 %% layout-check: skip right, bottom -- the \sectionfigure fills the strip beside the agenda by design
 \setSlideVersion{1-0-0}
 \begin{sectionframe}{The big picture}
-	\sectionfigure{media/illustration-slide-stack-portrait.pdf}
-	\begin{minipage}{0.72\linewidth}\small
+	\begin{minipage}[t]{0.72\linewidth}\small
 		What SlideMage is made of, what a project contains, and how one set of
 		slides serves several institutions.
 	\end{minipage}\par\medskip
 	\SMChapterAgenda[0.72\linewidth]
+	\sectionfigure{media/illustration-slide-stack-portrait.pdf}
 \end{sectionframe}
