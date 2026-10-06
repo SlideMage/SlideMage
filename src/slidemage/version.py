@@ -1879,6 +1879,8 @@ v5.28.1 (2026-10-06, direct instruction): the ticked rows of a deck tab stay tic
 v5.29.0 (2026-10-06, direct instruction): project compatibility. compat.py keeps a registry of the changes that are not backwards compatible (nothing registered yet: from now on a BREAKING: release must add its entry). When a project is opened with a newer SlideMage that has such changes the project does not have yet, a dialog offers Update project (automatic fixes, every changed file backed up first, #workdeck included), Show report, Not now (the dialog returns on the next open) and Don't ask again (per change). Appearance-only changes stay quiet: Info -> Project compatibility lists them. A project last used by a newer SlideMage gets a notice. The report (.slidemage/compat-report.md/.json) has file and line for every finding and a prompt for an AI tool; slidemage --check-project [--fix] [--json] does the same without a window. project.json keeps its other keys, highest_app_version never goes down.
 
 v5.29.1 (2026-10-06, direct instruction): the manual carries the user's evening edits of 1an, 1bb, 1hi, 1pf, 1r2, 1v5, 1vn and 1ym (adopted from the project copy; their earlier versions are frozen next to them). Content only.
+
+v5.29.2 (2026-10-06, direct instruction): the main window's search row says what it does: "Find slide:" is now "Slide name search:" (an ID/name lookup) and the button "Search all slide texts..." is now "Project-wide full-text search..." (and no longer loses the hook of the j: its descender was clipped by the 20 px the tab bar corner leaves it). The manual's slide 1ub names both (callouts 8 and 9), 1b6, 1cx and 1r8 use the new names, and the user's further evening edits of 1d8, 1kp, 1ti, 1ub, 1vn and 1y5 are adopted.
 """
 from __future__ import annotations
 
@@ -1888,7 +1890,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.29.1"
+VERSION_NUMBER = "v5.29.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

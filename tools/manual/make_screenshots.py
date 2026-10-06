@@ -177,7 +177,8 @@ def screenshots(app: QApplication, theme) -> int:
         "5 Create PDF": table.compile_button,
         "6 footer timestamp": window.footer_timestamp_checkbox,
         "7 log": window.log_text,
-        "8 Find slide": window.slide_search_entry,
+        "8 Slide name search": window.slide_search_entry,
+        "9 Full-text search": window.slide_text_search_button,
     })
     table_rows = table.grab(QRect(0, 0, table.width(), min(table.height(), 330)))
     table_rows.save(str(MEDIA / "screenshot-slidemage-deck-table.png"))

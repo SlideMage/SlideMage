@@ -433,7 +433,7 @@ class SlideMageWindow(QMainWindow):
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.addWidget(QLabel("Find slide:"))
+        layout.addWidget(QLabel("Slide name search:"))
 
         self.slide_search_entry = QLineEdit()
         self.slide_search_entry.setFixedWidth(220)
@@ -446,11 +446,16 @@ class SlideMageWindow(QMainWindow):
         self.slide_search_entry.setCompleter(completer)
 
         # Searches every slide's own *body text* (slide_search.py), unlike
-        # "Find slide:" above, which only autocompletes on a slide's own
-        # id/slug (2026-08-26, direct instruction). Ctrl+Shift+F is the
+        # "Slide name search:" above (until v5.29.2 "Find slide:"), which only
+        # autocompletes on a slide's own id/slug (2026-08-26, direct instruction). Ctrl+Shift+F is the
         # same shortcut regardless of which tab/widget has focus, since
         # this is a project-wide search, not scoped to whatever's open.
-        search_text_button = QPushButton("Search all slide texts…")
+        search_text_button = QPushButton("Project-wide full-text search…")
+        self.slide_text_search_button = search_text_button
+        # The tab bar's corner leaves this button only ~20 px, which the theme's
+        # 4 px padding turns into a text area too short for a descender: the
+        # j of "Project" lost its hook. Less vertical padding keeps the text whole.
+        search_text_button.setStyleSheet("padding-top: 1px; padding-bottom: 1px;")
         search_text_button.setToolTip("Search every slide's text (Ctrl+Shift+F)")
         search_text_button.clicked.connect(self._on_open_slide_search)
         layout.addWidget(search_text_button)
