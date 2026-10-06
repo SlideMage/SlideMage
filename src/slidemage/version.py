@@ -1891,6 +1891,8 @@ v5.29.5 (2026-10-06, direct instruction): manual slides 1ti, 1b2 and 1ih were ch
 v5.30.0 (2026-10-06, direct instruction): new \shrinklists{3}: all list levels at \scriptsize, one step below \shrinklists{2} (which gives \footnotesize/\scriptsize/\scriptsize). Until now every value of 2 or more meant 2, so a slide that wrote \shrinklists{3} silently got the same size as {2}; it now gets the smaller one.
 
 v5.30.1 (2026-10-06, direct instruction): manual slide 1ih has the Images-tab screenshot on the right, the text on the left (as on the other picture slides). The user's edits of 1b2, 1b6, 1rv, 1ti and 1ub (and the frozen versions of those slides) are adopted, so the bundled manual and the Slidemaster copy are identical again.
+
+v5.30.2 (2026-10-06, direct instruction): manual slide 1pn keeps "(slide ID 1ym)" together on one line.
 """
 from __future__ import annotations
 
@@ -1900,7 +1902,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.30.1"
+VERSION_NUMBER = "v5.30.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
