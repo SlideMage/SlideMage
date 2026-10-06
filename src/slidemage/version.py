@@ -1869,6 +1869,8 @@ v5.27.0 (2026-10-05, direct instructions): (1) New \\SMLink{target}{text}: a lin
 v5.27.1 (2026-10-06, direct instruction): every slide of the SlideMage manual carries \\setSlideVersion{1-0-0}, so its footer shows a version (51 slides had none: they were written as files and never saved through the slide editor's version dialog). The project's copy was stamped the same way and its update baseline moved with it, so nothing becomes a user change.
 
 v5.28.0 (2026-10-06, direct instruction): \\sectionframe: every title bar is now the same height. Before, the bar depended on the title: one without descenders ("Slides", "Decks and deck versions") was 4.15 pt taller than one with them, and the height of the tallest letter shifted it further (the manual's dividers measured 85.04, 85.66, 86.92 and 89.19 bp). The title measurement gets a \\strut, the toppading formula a fixed reference depth (\\SMSectionframeRefDepth), \\SMSectionframeHeightCorrection is recalibrated, and \\sectionfigure starts 0.1 bp under the bar. VISIBLE CHANGE in course decks: section slides with a title without descenders (e.g. neb, u97, dvh) get a 4 pt shorter bar, and the body text of every section slide starts 1.5 pt lower than the new bar edge (it used to sit 7.4 pt under it). Manual: dividers 1y9 and 1f8 fixed (1y9 had an empty line above its text, 1f8 listed the agenda before its intro), all intros top-aligned.
+
+v5.28.1 (2026-10-06, direct instruction): the ticked rows of a deck tab stay ticked when the tab is rebuilt -- saving a slide's source, any deck edit, a refresh, a trip through the Grid view. The selection is remembered by what each call is (command, slide, version, conditions, steps and which occurrence of it), not by its position in the file, so it also follows slides that move; rows whose slide was removed drop out.
 """
 from __future__ import annotations
 
@@ -1878,7 +1880,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.28.0"
+VERSION_NUMBER = "v5.28.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

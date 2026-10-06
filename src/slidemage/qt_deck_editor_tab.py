@@ -134,9 +134,14 @@ class DeckEditorTab(QWidget):
         self._deck_id_slugs: list[str] = []
         # One (checkbox, call) per row of the List/Thumbnail view, rebuilt
         # with the rows -- what the toolbar's bulk "Remove selected" button
-        # reads. Selection deliberately doesn't survive a rebuild: after any
-        # edit the calls' offsets and positions have all moved.
+        # reads. A rebuild throws the widgets away, so the selection is also
+        # kept as _selected_keys, by what a call *is* (see _call_key), not by
+        # its offsets: editing a slide's source (which reloads the tab) or
+        # any other deck edit leaves the ticked rows ticked.
         self._row_checkboxes: list[tuple[QCheckBox, SlideCall]] = []
+        self._row_checkbox_keys: list[tuple] = []
+        self._selected_keys: set[tuple] = set()
+        self._key_counts: dict[tuple, int] = {}
         # Chapter-header widgets, keyed by that header's occurrence index
         # (0, 1, 2, ... in encounter order) rather than its title text --
         # two chapters that happen to share an exact title would otherwise
@@ -540,7 +545,16 @@ class DeckEditorTab(QWidget):
                 widget.deleteLater()
         self._id_labels = {}
         self._chapter_headers = {}
+        # Remember what is ticked before the rows (and checkboxes) go. The
+        # Grid view has no checkboxes: then the remembered selection stays
+        # as it was, for when the List view comes back.
+        if self._row_checkboxes:
+            self._selected_keys = {
+                key for (box, _call), key in zip(self._row_checkboxes, self._row_checkbox_keys)
+                if box.isChecked()}
         self._row_checkboxes = []
+        self._row_checkbox_keys = []
+        self._key_counts = {}
         self._update_bulk_remove_button()
 
         # QGridLayout's row-stretch factors are layout state, not tied to
@@ -696,8 +710,11 @@ class DeckEditorTab(QWidget):
         select_box = QCheckBox()
         if call.editable:
             select_box.setToolTip("Select for bulk removal")
+            key = self._call_key(call)
+            select_box.setChecked(key in self._selected_keys)
             select_box.toggled.connect(self._update_bulk_remove_button)
             self._row_checkboxes.append((select_box, call))
+            self._row_checkbox_keys.append(key)
         else:
             select_box.setEnabled(False)
             select_box.setToolTip(f"Can't be removed here -- {call.readonly_reason}")
@@ -1087,6 +1104,16 @@ class DeckEditorTab(QWidget):
             f"Removed \\{call.macro}{{{call.id_slug}}} from {self.deck.name}",
             previous_text=previous_text,
         )
+
+    def _call_key(self, call: SlideCall) -> tuple:
+        """What identifies a slide call across rebuilds: its command, slide,
+        version, conditions and steps, plus which occurrence of that exact
+        call it is (a slide can be in a deck twice, as with \\slidestep)."""
+        base = (call.macro, call.id_slug, call.version,
+                tuple(call.conditions) if call.conditions else None, call.steps)
+        nth = self._key_counts.get(base, 0)
+        self._key_counts[base] = nth + 1
+        return base + (nth,)
 
     def _selected_calls(self) -> list[SlideCall]:
         return [call for box, call in self._row_checkboxes if box.isChecked()]
