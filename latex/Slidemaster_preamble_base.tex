@@ -3144,6 +3144,11 @@
 % frame re-executes the body and re-collects its footnotes from scratch, so
 % whatever this slide's footline draws must not leak into the next slide.
 %
+% The strip is drawn from the footline, whose text colour is the footer's
+% (white on the SlideMage template's dark footer): the box is therefore set in the
+% footnote colour explicitly, as the bottom footnotes are -- before (until
+% v5.30.5) a rotated footnote came out white on white where the footer text is white.
+%
 % Node geometry: tikz pins the node's *unrotated* anchor corner at the given
 % coordinate and rotates the box counter-clockwise around it, so anchor=south
 % east (the end of the collected block's last line) ends up as the strip's
@@ -3169,7 +3174,7 @@
 		\begin{tikzpicture}[remember picture, overlay]
 			\node[rotate=90, anchor=south east, inner sep=0pt]
 				at ($(SMTitleBottom -| current page.east)+(-\SMSideFootnoteRightInset,-\SMSideFootnoteTopSep)$)
-				{\box\SMSideFootnotesBox};
+				{\usebeamercolor[fg]{footnote}\color{footnote.fg}\box\SMSideFootnotesBox};
 		\end{tikzpicture}%
 		}%
 		\fi
@@ -6062,6 +6067,11 @@
 % -- resets on its own once \begin{frame}...\end{frame}'s own TeX group
 % closes, with no explicit reset needed.
 %
+% v5.30.5: 3.1pt became 2.1pt. Measured on a rendered slide whose rotated footnote
+% text was finally visible (see the colour note at the strip's drawing code), 3.1pt
+% left 3.9pt between the ink of the line nearest the image and the image -- the
+% text's own depth strut adds ~0.8pt -- against the 2.93pt this was meant to match.
+%
 % The extra gap added on top of the image's own measured width (2026-07-06,
 % direct instruction: "replicate ... the precise margin we have on regular
 % slides between footnote and footer box") was originally an unmeasured
@@ -6078,7 +6088,7 @@
 	\setlength{\SMSideImageFrameHeight}{\dimexpr\paperheight-\SMTitleBarBottomAlign-\SMFooterBoxHeight\relax}%
 	\settowidth{\SMSideImageFrameWidth}{\includegraphics[height=\SMSideImageFrameHeight, keepaspectratio]{#3}}%
 	\sidefootnotes
-	\setlength{\SMSideFootnoteRightInset}{\dimexpr\SMSideImageFrameWidth+3.1pt\relax}%
+	\setlength{\SMSideFootnoteRightInset}{\dimexpr\SMSideImageFrameWidth+2.1pt\relax}%
 	\begin{standardframe}[#1]{#2}%
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
@@ -6612,6 +6622,23 @@
 }
 
 
+% The strip is an overlay (a zero-size box: the Top Margin measurement does not see it), so
+% the body below it starts where the title bar's body would -- under the strip. The frame's
+% own target line is therefore the Top Margin plus the strip's height
+% \SMProgressStripHeight (the strip's bottom edge minus the title bar's: measured 11.08pt in
+% the PDF; the node is 11.19pt minimum height): the first line sits as far below the strip
+% as it sits below the title bar on any other frame, whatever the body starts with (v5.30.5; the
+% frame used to be exempt from the measurement, with a fixed -3pt, which left a paragraph
+% 10pt and a list 14pt below the strip against the usual 16pt -- direct instruction, slide 1j2).
+\newlength{\SMProgressStripHeight}
+\setlength{\SMProgressStripHeight}{11.08pt}
+\makeatletter
+\newcommand{\SM@topstrip}{%
+	\ifluatex\ifSMAutoTopMargin\ifSM@topmanual\else
+		\directlua{gotham_layout.top_extra(\SM@topthis, \strip@pt\dimexpr\SMProgressStripHeight\relax)}%
+	\fi\fi\fi
+}
+\makeatother
 % \progressstrip{Step 1,Step 2,Step 3}{k} -- a full-width strip in the
 % institution's tertiary yellow, flush below the title bar, that lists a
 % short chain of steps joined by arrows and underlines the k-th one to mark
@@ -6625,7 +6652,7 @@
 % cannot); the \vspace after it reserves its height so the body starts just
 % below it.
 \newcommand{\progressstrip}[2]{%
-	\csname SM@topstop\endcsname% the text below the strip is placed by the strip, not by the Top Margin
+	\csname SM@topstrip\endcsname% the text below the strip: Top Margin + the strip's height (measured, like any frame)
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
 		\node[fill=c_tertiary_yellow, anchor=north west, outer sep=0pt,

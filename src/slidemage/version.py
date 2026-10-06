@@ -1897,6 +1897,8 @@ v5.30.2 (2026-10-06, direct instruction): manual slide 1pn keeps "(slide ID 1ym)
 v5.30.3 (2026-10-06, direct instruction): the slide editor screenshot of manual slide 1b6 is taken in a narrower window (cut off just right of the "Close and save" button, so the buttons are larger on the slide) and a taller one (fills the picture column); tools/manual/make_screenshots.py has SLIDE_EDITOR_HEIGHT and SLIDE_EDITOR_RIGHT_MARGIN for it. 1b6 no longer overflows.
 
 v5.30.4 (2026-10-06, direct instruction): manual slide 1td labels every frame in its full LaTeX form: \\titleframe{...}, \\quoteframe{...}, \\fullbleedframe{...} (commands) and \\begin{sectionframe}, \\begin{standardframe}, ... \\begin{frame}[standout] (environments), instead of a mix of backslash, bare name and brackets.
+
+v5.31.0 (2026-10-06, direct instruction): (1) Rotated footnotes (\\sidefootnotes, every sideimageframe) are set in the footnote colour: on the SlideMage template, where the footer text is white, they came out white on white and only the footnote mark showed. (2) The rotated footnote beside a sideimageframe picture sits 1pt closer (2.1pt instead of 3.1pt from the picture; the ink of the nearest line is now 2.9pt away, as the bottom footnotes are from the footer). (3) A frame with a \\progressstrip is placed by the automatic Top Margin like any other, with the strip's height added: its first line now sits the usual 16pt below the strip, whatever the body starts with (a paragraph was 10pt below, a list 14pt). Slides with a strip move down 0-6pt; the new length \\SMProgressStripHeight is the strip's height (Slidemaster_layout.lua: gotham_layout.top_extra). Manual: slide 1sv is split in two, the new slide 1w4 shows numbered and lettered lists; 1vh, 1j2 and 1b6 are adjusted; the user's edits of 1b6, 1gr, 1ih, 1j2, 1wa, 1x6 and 1y3 are adopted.
 """
 from __future__ import annotations
 
@@ -1906,7 +1908,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.30.4"
+VERSION_NUMBER = "v5.31.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

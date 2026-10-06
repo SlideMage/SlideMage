@@ -4,7 +4,7 @@
 % SlideMage manual, chapter "Content and layout": the layout grid. The
 % diagram is a scaled-down slide drawn from the framework's own lengths, so it
 % stays right if a template changes them.
-\setSlideVersion{1-0-0}
+\setSlideVersion{1-0-1}
 \begin{standardframe}{Let the framework do the spacing}
 	\begin{minipage}[t]{0.5\linewidth}\vspace{0pt}
 		\begin{tikzillustration}[scale=0.47, every node/.style={font=\SMCodeFont\fontsize{5.6}{6.5}\selectfont}]{1gr-tikz}
@@ -40,7 +40,7 @@
 		\medskip
 		\shrinklists{1}
 		\begin{itemize}
-			\item \SMCmd{SMManualTopMargin} before a frame keeps your own position; \SMCmd{SMAutoTopMarginfalse} switches it off for a deck
+			\item \SMCmd{SMManualTopMargin} before a frame keeps the default position; \SMCmd{SMAutoTopMarginfalse} switches it off for a deck
 			\item More lengths: \SMCmd{SMSideImageFrameWidth}, \SMCmd{SMImageBorderWidth}, \SMCmd{SMItemStep}
 			\item \SMCode{tools/check\_layout.py} measures a compiled PDF
 		\end{itemize}

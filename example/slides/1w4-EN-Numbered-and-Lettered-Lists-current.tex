@@ -1,0 +1,38 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": numbered and lettered lists
+% and the smaller-list command (the bullet lists and \tallitem are on slide
+% 1sv). The left column is the live result of the code on the right
+% (snippets/1w4-1.tex).
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Numbered and lettered lists}
+	{\small Besides bullets, the framework sets numbered and lettered lists in the same style:
+	\SMCode{1)} or \SMCode{1.} for numbers, \SMCode{a)} or \SMCode{a.} for letters; a plain
+	\SMCode{enumerate} works too. On a crowded slide, \SMCmd{shrinklists}\SMCode{\{n\}} sets every
+	list level \emph{n} font sizes smaller; 3 is the smallest.\par}
+	\vspace{-2pt}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.44\linewidth}
+			\begin{gothamnumitemize}
+				\item Numbered: 1) 2) \ldots
+				\item Second
+			\end{gothamnumitemize}
+			\begin{gothamnumperioditemize}
+				\item Numbered: 1. 2. \ldots
+				\item Second
+			\end{gothamnumperioditemize}
+			\begin{gothamalphaitemize}
+				\item Lettered: a) b) \ldots
+				\item Second
+			\end{gothamalphaitemize}
+			\begin{gothamalphaperioditemize}
+				\item Lettered: a. b. \ldots
+				\item Second
+			\end{gothamalphaperioditemize}
+		\end{column}
+		\begin{column}{0.53\linewidth}
+			\SMCodeFile{snippets/1w4-1.tex}
+		\end{column}
+	\end{columns}
+\end{standardframe}

@@ -224,6 +224,7 @@ local MIN_SIZE = SP_PER_PT // 2
 gotham_layout.top_applied = gotham_layout.top_applied or {}
 gotham_layout.top_measured = gotham_layout.top_measured or {}
 gotham_layout.top_debug = false
+gotham_layout.top_extra_pt = gotham_layout.top_extra_pt or {}
 
 -- TeX side: this frame (index) got `applied_pt` of automatic correction
 function gotham_layout.top_begin(index, applied_pt)
@@ -233,6 +234,12 @@ function gotham_layout.top_begin(index, applied_pt)
   n.type = 100          -- integer
   n.value = index
   node.write(n)
+end
+
+-- TeX side: this frame's target line is the Top Margin plus `pt` (a frame with a
+-- strip below the title bar)
+function gotham_layout.top_extra(index, pt)
+  gotham_layout.top_extra_pt[index] = pt
 end
 
 function gotham_layout.top_end(index)
@@ -611,7 +618,8 @@ function gotham_layout.top_emit()
     local measured = gotham_layout.top_measured[index]
     local value = applied
     if measured then
-      local delta_pt = (measured.top - TOP_MARGIN_BP) / BP_PER_PT
+      local target = TOP_MARGIN_BP + (gotham_layout.top_extra_pt[index] or 0) * BP_PER_PT
+      local delta_pt = (measured.top - target) / BP_PER_PT
       -- delta < 0: content too high, it moves down -- but never by more
       -- than the room left above the footnotes/footer (minus MIN_ROOM): a
       -- full slide stays where it fits instead of running into the footer

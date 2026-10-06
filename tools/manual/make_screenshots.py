@@ -47,7 +47,7 @@ IMAGES_TAB_HEIGHT = 1500
 # and save" button (SLIDE_EDITOR_RIGHT_MARGIN px beyond it) -- less white space
 # beside the buttons, more pixels per button in the narrow column -- and is
 # taller than the other windows, to fill the column.
-SLIDE_EDITOR_HEIGHT = 1240
+SLIDE_EDITOR_HEIGHT = 1070
 SLIDE_EDITOR_RIGHT_MARGIN = 24
 
 # Placeholder decks, one per deck group, so the deck table shows the grouping
