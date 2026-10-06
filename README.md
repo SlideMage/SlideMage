@@ -1432,6 +1432,17 @@ behave quite like a plain measured `\vbox`, see the comment above
 automatically, pushing the whole title block up rather than changing the
 gap below it.
 
+**Since v5.28.0 every `sectionframe` bar is 85.04 bp tall, whatever the title.** The
+title measurement now starts with a `\strut` (one line height for every title, so tall
+letters like f/l/d no longer shift the bar) and the formula subtracts a fixed
+reference depth, `\SMSectionframeRefDepth` (4.42pt), instead of the title's own depth;
+`\SMSectionframeHeightCorrection` was recalibrated to 16.03pt for that. `\sectionfigure` and
+`\SMSectionframeTrueBoxBottom` use the same constant. The body text starts 1.5pt lower than
+before (`\SMSectionframeContentDrop` 11.5pt). Put the chapter intro in a top-aligned
+`minipage[t]` and call `\sectionfigure` last in the body (it starts a paragraph line of its
+own). The next paragraphs describe the behavior before v5.28.0, where this was
+title-dependent.
+
 **This toppading formula has a real, confirmed side effect: the bar's own
 visible height depends on whether the title text has any descenders (`g j p
 q y`), not just on `\SMSectionframeBoxHeight` (2026-07-25, direct

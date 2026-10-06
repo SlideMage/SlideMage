@@ -6155,7 +6155,7 @@
 % against the rendered PDF's own coordinates; re-measure and adjust if the
 % title/body font sizes change.
 \newlength{\SMSectionframeContentDrop}
-\setlength{\SMSectionframeContentDrop}{10pt}
+\setlength{\SMSectionframeContentDrop}{11.5pt}% 10pt before v5.28.0: the text sat 7.4pt under a bar that is 85pt tall
 \newlength{\SMSectionframeBoxHeight}
 \setlength{\SMSectionframeBoxHeight}{85.04pt}
 % \SMSectionframeTrueBoxBottom (2026-07-25, direct instruction: "the
@@ -6214,8 +6214,21 @@
 % text (real vector fill, not a visual guess, and not an assumption that
 % either existing constant transfers) rather than reuse this length
 % unless its own title also has zero descenders.
+% v5.28.0: the bar height no longer depends on the title (see
+% \SMSectionframeRefDepth below), so the "true" bottom is the same 85.04 for
+% every title; the old 89.19pt value only fitted titles without descenders.
 \newlength{\SMSectionframeTrueBoxBottom}
-\setlength{\SMSectionframeTrueBoxBottom}{89.19pt}
+\setlength{\SMSectionframeTrueBoxBottom}{85.04pt}
+% \SMSectionframeRefDepth (v5.28.0): the depth the toppading formula assumes for
+% the title. It used to subtract the title's own measured depth, which nothing
+% adds back, so a title without descenders ("Slides", "Decks and deck
+% versions") got a bar 4.15pt taller than one with them, and every other depth
+% (p, y, ...) a height in between. With this fixed value (the depth of "p",
+% 4.42pt) every title gets the 85.04bp bar the calibrated constants below were
+% fitted to, and \SMSectionframeBarBottom (where \sectionfigure starts) is that
+% same constant.
+\newlength{\SMSectionframeRefDepth}
+\setlength{\SMSectionframeRefDepth}{4.42pt}
 % \SMSectionframeBottomGap is the *visual* target -- one huge-font line
 % height (baselineskip, measured directly from a deliberately 2-line test
 % title: the gap between the two lines' own rendered top edges). It is NOT
@@ -6237,7 +6250,7 @@
 % and this correction closes that gap. Checked the same way as the bottom
 % one above: consistent across both the one-line and two-line test titles.
 \newlength{\SMSectionframeHeightCorrection}
-\setlength{\SMSectionframeHeightCorrection}{12.1pt}
+\setlength{\SMSectionframeHeightCorrection}{16.03pt}% 12.1pt before the title measurement got a \strut (v5.28.0)
 \newlength{\SMSectionframeTitleWidth}
 \setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\gothamFrametitleLeftpading-\SMLogoWidth-2\gothamFrametitleRightpading\relax}
 \newbox\SMSectionframeTitleBox
@@ -6262,17 +6275,14 @@
 	\setbox\SMSectionframeTitleBox=\vbox{%
 		\hsize=\SMSectionframeTitleWidth
 		\usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}%
-		\noindent #2\par
+		\noindent\strut #2\par% \strut: the same line height for every title (v5.28.0)
 	}%
 	\setlength{\gothamFrametitleBottompading}{\dimexpr\SMSectionframeBottomGap+\SMSectionframeBottomPadCorrection\relax}
-	\setlength{\gothamFrametitleToppading}{\dimexpr\SMSectionframeBoxHeight-\gothamFrametitleBottompading-\ht\SMSectionframeTitleBox-\dp\SMSectionframeTitleBox+\SMSectionframeHeightCorrection\relax}
+	\setlength{\gothamFrametitleToppading}{\dimexpr\SMSectionframeBoxHeight-\gothamFrametitleBottompading-\ht\SMSectionframeTitleBox-\SMSectionframeRefDepth+\SMSectionframeHeightCorrection\relax}
 	\global\def\SMFrametitleFullHeightYellow{1}%
 	\global\def\SMFrametitleLogoFixed{1}%
 	\setbeamertemplate{frametitle}[gotham_no_inline_logo]%
-	\setlength{\SMSectionframeBarBottom}{\dimexpr 89.44bp-\dp\SMSectionframeTitleBox\relax}% see \sectionfigure
-	\ifdim\SMSectionframeBarBottom<85.04bp
-		\setlength{\SMSectionframeBarBottom}{85.04bp}%
-	\fi
+	\setlength{\SMSectionframeBarBottom}{85.14bp}% constant since v5.28.0, see \SMSectionframeRefDepth
 	% \sectionfigure sets the side-footnote lengths \global (see there); the
 	% values from before this frame come back at \end{sectionframe}.
 	\edef\SMSectionframeRestoreSideFootnotes{%
