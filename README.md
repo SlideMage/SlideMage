@@ -1300,7 +1300,8 @@ pixel-identical; everything below is what new slides should use.
   `\deckreveal*`/`\deckrevealfinal*` keep the content's space on the earlier
   steps (nothing jumps when it appears); TikZ `visible on=<3->` does the same
   for a drawing element.
-- **Small ones:** `\shrinklists{1|2}` (all list levels one/two sizes smaller),
+- **Small ones:** `\shrinklists{1|2|3}` (all list levels one/two/three sizes smaller; 3 is
+  `\scriptsize` throughout, the floor),
   `\EUR` (euro sign in text and math), `\SMTikzmark{name}`, TikZ styles
   `gotham highlight`, `gotham dotted highlight`, `gotham arrow`.
 - **`\SMCodeFile[keys]{snippets/abc-1.tex}`** (since v5.11.0) -- LaTeX

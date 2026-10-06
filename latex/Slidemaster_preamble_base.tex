@@ -463,9 +463,10 @@
 % more text than fits (put it inside the frame, like the \setbeamerfont
 % lines it replaces; the frame's group resets it). The beamer defaults are
 % normal/\small/\footnotesize for levels 1-3; n=1 gives
-% \small/\footnotesize/\scriptsize, n=2 \footnotesize/\scriptsize/\scriptsize
-% (\scriptsize is the floor). 13 slides wrote 2-3 \setbeamerfont lines for
-% this, in five different combinations.
+% \small/\footnotesize/\scriptsize, n=2 \footnotesize/\scriptsize/\scriptsize,
+% n=3 \scriptsize on all three levels (the floor; v5.30.0 -- before, every
+% n>=2 meant n=2). 13 slides wrote 2-3 \setbeamerfont lines for this, in five
+% different combinations.
 % The item gaps shrink with the font since 2026-10-01 -- see \SMNoListParsep
 % next to the itemize code.
 \newcommand{\shrinklists}[1]{%
@@ -474,8 +475,12 @@
 		\setbeamerfont{itemize/enumerate body}{size=\small}%
 		\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}%
 		\setbeamerfont{itemize/enumerate subsubbody}{size=\scriptsize}%
-	\else
+	\or
 		\setbeamerfont{itemize/enumerate body}{size=\footnotesize}%
+		\setbeamerfont{itemize/enumerate subbody}{size=\scriptsize}%
+		\setbeamerfont{itemize/enumerate subsubbody}{size=\scriptsize}%
+	\else
+		\setbeamerfont{itemize/enumerate body}{size=\scriptsize}%
 		\setbeamerfont{itemize/enumerate subbody}{size=\scriptsize}%
 		\setbeamerfont{itemize/enumerate subsubbody}{size=\scriptsize}%
 	\fi
