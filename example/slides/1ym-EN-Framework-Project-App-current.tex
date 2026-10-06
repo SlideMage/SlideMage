@@ -4,7 +4,7 @@
 % SlideMage manual, chapter "The big picture": the three parts and the
 % workflow, as a described diagram (\tikzillustration; also the example on
 % slide 1pn, "Describing diagrams").
-\setSlideVersion{1-0-0}
+\setSlideVersion{1-1-0}
 \begin{standardframe}{Framework, project and app}
 	\small
 	SlideMage keeps every slide in a small LaTeX file of its own and builds decks
@@ -35,5 +35,5 @@
 	\end{tikzillustration}
 	\par\medskip
 	Compiling means LuaLaTeX through \SMCode{latexmk}, which SlideMage starts for
-	you; a bare \SMCode{lualatex} would skip the repeated runs and the bibliography.
+	you; a bare \SMCode{lualatex} would skip the necessary repeated runs, and the bibliography.
 \end{standardframe}

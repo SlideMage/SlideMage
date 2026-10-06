@@ -1,0 +1,22 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Slides": the language system. The greeting below
+% is live \multilingualtext: it follows the deck's \decklanguage.
+\setSlideVersion{1-0-1}
+\begin{standardframe}{Languages}
+	\small
+	A slide is written in one language, and its file name says which:
+	\SMCode{EN}, \SMCode{DE}, or \SMCode{mult} for a slide that holds both. A
+	translation is a slide of its own, with its own ID, linked to the original,
+	so an English and a German deck can share their layout but not their text.
+	Each deck has one language.
+	\par\medskip
+	\shrinklists{1}
+	\begin{itemize}
+		\item \SMCmd{decklanguage}\SMCode{[en]} or \SMCode{[de]} in the deck also sets the language of its transcript and course tables; the footer shows each slide's language after its version (\SMCode{v1.2.0EN})
+		\item To translate: \emph{Add slide} $\rightarrow$ \emph{Base on existing slide}, or \emph{Duplicate slide} in another language, optionally machine-translated by a local model
+		\item A slide with little text holds both languages: \SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}} gives \emph{\multilingualtext{Hello}{Hallo}} in this deck. For more languages: \SMCmd{multilingualtext}\SMCode{*\{EN=\{Hello\}, FR=\{Bonjour\}, \ldots\}}, here \emph{\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}}
+		\item The slide editor's \emph{Language} control renames a slide's files and updates every deck; Housekeeping $\rightarrow$ \emph{Sync translation links} repairs broken links between translations
+	\end{itemize}
+\end{standardframe}
