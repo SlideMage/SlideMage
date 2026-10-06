@@ -310,10 +310,10 @@
     "media/screenshot-slidemage-deck-editor-list.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The deck editor in List view, showing this manual's slides and chapters.",
-      "long": "SlideMage's deck editor for slidemage-manual. A toolbar with Refresh, Source, Transcript, Add section, Undo, Select all, a Quick navigation dropdown, a Find slide in deck field, Close, and the view choice List, Thumbnail, Grid. Below, one row per slide -- a checkbox, the slide's number, arrow buttons, the id-slug such as 1jh-EN-Title-Slide, a dropdown reading \"\\slide (current)\" and the buttons + before, + section, + after, Remove and Preview -- and a row per chapter, such as \"Section: The big picture\", with Rename, + section before, + slide here and Remove.",
+      "short": "The top of the deck editor's List view, with ten numbered callouts.",
+      "long": "The top of SlideMage's deck editor for slidemage-manual, showing the main window's search row, the tab strip and the editor's toolbar: Refresh, Source, Transcript, Add section, Undo, Select all, a Quick navigation dropdown, a Find slide in deck field, Close and the view choice List, Thumbnail, Grid. Below, the first rows of the list: the heading \"(before first chapter)\", two slide rows (a checkbox, the slide's number, up and down arrows, the slide's id-slug such as 1jh-EN-Title-Slide, a dropdown reading \"\\slide (current)\", and the buttons + before, + section, + after, Remove, Preview and Images), then the section row \"Section: The big picture\" with up and down arrows, Rename, + section before, + slide here and Remove, and the start of the next slide row. Numbered badges 1 to 10 point at the toolbar, Quick navigation, the view choice, a row's checkbox, number and arrows, id-slug, dropdown, + before group, Remove group and the section row.",
       "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "The deck editor lists a deck's slides and chapters for editing.",
+      "takeaway_default": "Ten numbered elements of the deck editor: toolbar, navigation, views and the parts of a slide row and a section row.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1ti": {}
@@ -382,8 +382,8 @@
     "media/screenshot-slidemage-slide-editor-buttons.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The two button rows at the top of SlideMage's slide editor.",
-      "long": "A strip with two rows of buttons. The first row: Save, Revert (greyed out), Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide and Delete slide. The second row: Preview, the label Render version: with a dropdown set to Instructor, and the buttons Render to PDF and Render transcript.",
+      "short": "The two rows of controls at the top of SlideMage's slide editor, including versions list and language.",
+      "long": "A strip with two rows of controls. The first row: the buttons Save, Revert (greyed out), Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide and Delete slide, a versions dropdown reading \"No previous versions\", the language badge [EN], the label Language: with a dropdown set to EN, and the button Set. The second row: Preview, the label Render version: with a dropdown set to Instructor, and the buttons Render to PDF and Render transcript.",
       "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "The first row manages the slide as a whole; the second row renders it.",
       "drafted_by": "claude-sonnet-5.5 (manual build)",
