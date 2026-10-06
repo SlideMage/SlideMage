@@ -1877,6 +1877,8 @@ v5.28.0 (2026-10-06, direct instruction): \\sectionframe: every title bar is now
 v5.28.1 (2026-10-06, direct instruction): the ticked rows of a deck tab stay ticked when the tab is rebuilt -- saving a slide's source, any deck edit, a refresh, a trip through the Grid view. The selection is remembered by what each call is (command, slide, version, conditions, steps and which occurrence of it), not by its position in the file, so it also follows slides that move; rows whose slide was removed drop out.
 
 v5.29.0 (2026-10-06, direct instruction): project compatibility. compat.py keeps a registry of the changes that are not backwards compatible (nothing registered yet: from now on a BREAKING: release must add its entry). When a project is opened with a newer SlideMage that has such changes the project does not have yet, a dialog offers Update project (automatic fixes, every changed file backed up first, #workdeck included), Show report, Not now (the dialog returns on the next open) and Don't ask again (per change). Appearance-only changes stay quiet: Info -> Project compatibility lists them. A project last used by a newer SlideMage gets a notice. The report (.slidemage/compat-report.md/.json) has file and line for every finding and a prompt for an AI tool; slidemage --check-project [--fix] [--json] does the same without a window. project.json keeps its other keys, highest_app_version never goes down.
+
+v5.29.1 (2026-10-06, direct instruction): the manual carries the user's evening edits of 1an, 1bb, 1hi, 1pf, 1r2, 1v5, 1vn and 1ym (adopted from the project copy; their earlier versions are frozen next to them). Content only.
 """
 from __future__ import annotations
 
@@ -1886,7 +1888,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.29.0"
+VERSION_NUMBER = "v5.29.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
