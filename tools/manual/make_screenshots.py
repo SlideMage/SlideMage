@@ -42,7 +42,7 @@ MANUAL = "slidemage-manual"
 # about 1320 px anyway).
 SIZE = QSize(1340, 720)
 # The Images tab screenshot (slide 1ih) is taller than the other windows.
-IMAGES_TAB_HEIGHT = 1080
+IMAGES_TAB_HEIGHT = 1500
 
 # Placeholder decks, one per deck group, so the deck table shows the grouping
 # (slide 1d8) and full rows with all their buttons (slide 1ub) -- the example

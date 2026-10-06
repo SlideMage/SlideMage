@@ -1885,6 +1885,8 @@ v5.29.2 (2026-10-06, direct instruction): the main window's search row says what
 v5.29.3 (2026-10-06, direct instruction): manual content: slide 1ti has numbered callouts (1-10) on a cropped deck-editor screenshot with a matching numbered list, slide 1b2's screenshot strip now includes the versions list and the language controls, the user's edits of 1gu, 1kg and 1vd are adopted. Screenshots regenerated (tools/manual/make_screenshots.py prints the 1ti callout anchors).
 
 v5.29.4 (2026-10-06, direct instruction): manual slide 1ih shows a taller Images tab screenshot (the window for that shot is 1080 px high, so the short and long description fields are visible) in a wider picture column; the user's edit of 1ih is adopted.
+
+v5.29.5 (2026-10-06, direct instruction): manual slides 1ti, 1b2 and 1ih were checked in the context of the Slidemaster project, where the new screenshots were missing (the slide texts had been changed there but the pictures only in the bundle): now both match and nothing overflows. Slide 1ih has the Images tab as a 2828 x 2468 px picture (window 1500 px high) next to the text, running from the title bar to the footer, so the description, takeaway and source fields are readable. The user's edit of 1be is adopted.
 """
 from __future__ import annotations
 
@@ -1894,7 +1896,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.29.4"
+VERSION_NUMBER = "v5.29.5"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
