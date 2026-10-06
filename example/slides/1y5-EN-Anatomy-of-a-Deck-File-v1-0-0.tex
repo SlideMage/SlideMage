@@ -1,0 +1,26 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Decks and deck versions": a deck file, abridged
+% from this manual's own (decks/slidemage-manual.tex).
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Anatomy of a deck file}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.55\linewidth}
+			\SMCodeFile[basicstyle=\SMCodeFont\fontsize{6.4}{7.6}\selectfont]{snippets/1y5-1.tex}
+		\end{column}
+		\begin{column}{0.42\linewidth}
+			\small
+			A deck is a LaTeX file in \SMCode{decks/}: a template, a few settings,
+			then the slides in chapters. SlideMage writes most of it for you.
+			\par\medskip
+			\shrinklists{2}
+			\begin{itemize}
+				\item The first lines choose LuaLaTeX and the template
+				\item The version block lets SlideMage compile each deck version
+				\item \SMCmd{decklanguage}, \SMCmd{decktags}, \SMCmd{deckoutputfolder} (where the PDFs go) and the course link are settings SlideMage reads
+				\item Then the slides, in chapters (\SMCmd{section})
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}
