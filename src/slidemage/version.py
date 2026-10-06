@@ -1893,6 +1893,8 @@ v5.30.0 (2026-10-06, direct instruction): new \shrinklists{3}: all list levels a
 v5.30.1 (2026-10-06, direct instruction): manual slide 1ih has the Images-tab screenshot on the right, the text on the left (as on the other picture slides). The user's edits of 1b2, 1b6, 1rv, 1ti and 1ub (and the frozen versions of those slides) are adopted, so the bundled manual and the Slidemaster copy are identical again.
 
 v5.30.2 (2026-10-06, direct instruction): manual slide 1pn keeps "(slide ID 1ym)" together on one line.
+
+v5.30.3 (2026-10-06, direct instruction): the slide editor screenshot of manual slide 1b6 is taken in a narrower window (cut off just right of the "Close and save" button, so the buttons are larger on the slide) and a taller one (fills the picture column); tools/manual/make_screenshots.py has SLIDE_EDITOR_HEIGHT and SLIDE_EDITOR_RIGHT_MARGIN for it. 1b6 no longer overflows.
 """
 from __future__ import annotations
 
@@ -1902,7 +1904,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.30.2"
+VERSION_NUMBER = "v5.30.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

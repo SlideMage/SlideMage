@@ -43,6 +43,12 @@ MANUAL = "slidemage-manual"
 SIZE = QSize(1340, 720)
 # The Images tab screenshot (slide 1ih) is taller than the other windows.
 IMAGES_TAB_HEIGHT = 1500
+# The slide editor screenshot (slide 1b6) is cut off just right of the "Close
+# and save" button (SLIDE_EDITOR_RIGHT_MARGIN px beyond it) -- less white space
+# beside the buttons, more pixels per button in the narrow column -- and is
+# taller than the other windows, to fill the column.
+SLIDE_EDITOR_HEIGHT = 1240
+SLIDE_EDITOR_RIGHT_MARGIN = 24
 
 # Placeholder decks, one per deck group, so the deck table shows the grouping
 # (slide 1d8) and full rows with all their buttons (slide 1ub) -- the example
@@ -282,12 +288,19 @@ def screenshots(app: QApplication, theme) -> int:
     slide = EXAMPLE / "slides" / "1y8-EN-Standardframe-current.tex"
     window.open_slide_editor(slide)
     settle(app)
-    save(window, "slide-editor", down_to=window.tabs)
     source_tab = window.tabs.currentWidget()
-    # ... and just its two button rows, from Save to Delete slide / Render
-    # transcript (slide 1b2 explains those buttons and wants them readable)
     from PySide6.QtWidgets import QPushButton
     buttons = {b.text(): b for b in source_tab.findChildren(QPushButton)}
+    normal_size = window.size()
+    window.resize(window.width(), SLIDE_EDITOR_HEIGHT)
+    settle(app)
+    edge = buttons["Close and save"].mapTo(window, QPoint(buttons["Close and save"].width(), 0)).x()
+    window.resize(edge + SLIDE_EDITOR_RIGHT_MARGIN, SLIDE_EDITOR_HEIGHT)
+    settle(app, 12)
+    print("window for the slide editor:", window.width(), "x", window.height())
+    save(window, "slide-editor", down_to=window.tabs)
+    # ... and just its two button rows, from Save to Delete slide / Render
+    # transcript (slide 1b2 explains those buttons and wants them readable)
     top_left = buttons["Save"].mapTo(window, QPoint(0, 0))
     # up to and including the language "Set" button, so the versions list and
     # the language controls (slide 1b2 explains them) are in the strip too
@@ -298,6 +311,8 @@ def screenshots(app: QApplication, theme) -> int:
                               right - top_left.x() + 12, bottom - top_left.y() + 12))
     strip.save(str(MEDIA / "screenshot-slidemage-slide-editor-buttons.png"))
     print("screenshot-slidemage-slide-editor-buttons.png", strip.width(), "x", strip.height())
+    window.resize(normal_size)
+    settle(app)
 
     # 5. the save dialog (version choice), grabbed instead of exec()'d
     def grab_instead_of_exec(box: QMessageBox) -> int:
