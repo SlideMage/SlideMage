@@ -48,6 +48,7 @@ from . import archive as archive_mod
 from . import bibliography
 from . import compile_progress
 from . import splash
+from . import compat
 from . import compiler
 from . import deck_duplicate
 from . import deck_editor
@@ -58,6 +59,7 @@ from . import open_path
 from . import pptx_export
 from . import qt_render_check
 from . import project
+from . import qt_compat_dialog
 from . import qt_slide_source_tab
 from . import slide_ids
 from . import slide_rename
@@ -80,6 +82,7 @@ from .compiler import (
 from .deck_scan import DECKS_DIR, GROUP_TAGS, PROJECT_ROOT, TAG_MANUAL, Deck, scan_decks
 from .qt_add_slide_dialog import AddSlideDialog
 from .qt_closable_tab_bar import ClosableTabBar
+from .qt_compat_dialog import CompatDialog
 from .qt_deck_settings_dialog import DeckSettingsDialog
 from .qt_deck_editor_tab import DeckEditorTab
 from .qt_deck_group_dialog import ask_deck_details
@@ -119,6 +122,9 @@ STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 # The framework/manual copy check (bundled_copies.py) runs once, shortly after
 # the window is up -- a local comparison, no network.
 BUNDLED_COPIES_CHECK_DELAY_MS = 1500
+# The project compatibility check (compat.py): static scans of the project, a
+# local comparison -- shown before the framework/manual update offer.
+COMPAT_CHECK_DELAY_MS = 1000
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "icon.ico"
 
 
@@ -554,6 +560,9 @@ class SlideMageWindow(QMainWindow):
         version_history_action.triggered.connect(self._on_open_version_history)
         check_updates_action = info_menu.addAction("Check for updates…")
         check_updates_action.triggered.connect(self._on_check_for_updates)
+        compat_action = info_menu.addAction("Project compatibility…")
+        compat_action.setToolTip("What changed in this SlideMage that may affect the project.")
+        compat_action.triggered.connect(self._on_project_compat)
 
     def _on_open_project(self) -> None:
         """System -> "Open Project..." -- lets the user point SlideMage at
@@ -613,6 +622,99 @@ class SlideMageWindow(QMainWindow):
                 open_dialog = getattr(source_tab, name, None)
                 if open_dialog is not None:
                     open_dialog.refresh_model_preference(models)
+
+    # -- project compatibility (compat.py) ------------------------------------------
+    #
+    # On start, when a change of this SlideMage that may break the project is
+    # pending: Update project / Show report / Not now (asks again next time) /
+    # Don't ask again (per change). Appearance-only changes never pop up; they
+    # are listed under Info -> Project compatibility.
+
+    def schedule_compat_check(self) -> None:
+        QTimer.singleShot(COMPAT_CHECK_DELAY_MS, self.check_project_compat)
+
+    def check_project_compat(self) -> None:
+        app_version = version_mod.VERSION_NUMBER
+        try:
+            evaluation = compat.evaluate(PROJECT_ROOT, app_version)
+        except Exception as exc:  # noqa: BLE001 -- a broken detector must not stop the app
+            self.log(f"Couldn't check the project's compatibility: {exc}")
+            return
+        if evaluation.newer_notice:
+            self._compat_newer_notice(evaluation.newer_notice, app_version)
+        if evaluation.loud:
+            self._show_compat(evaluation, review=False)
+
+    def _compat_newer_notice(self, highest: str, app_version: str) -> None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Project from a newer SlideMage")
+        box.setText(f"This project was last used with SlideMage {highest}, which is newer "
+                    f"than this one ({app_version}).")
+        box.setInformativeText("Features of the newer version may not work here. Info → Check for "
+                               "updates… installs the newer one.")
+        box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        never = box.addButton("Don't ask again", QMessageBox.ButtonRole.DestructiveRole)
+        box.exec()
+        if box.clickedButton() is never:
+            compat.ignore_newer(PROJECT_ROOT, highest)
+
+    def _compat_report(self, evaluation) -> None:
+        path = compat.write_report(PROJECT_ROOT, evaluation, version_mod.VERSION_NUMBER)
+        self.log(f"Wrote {path.relative_to(PROJECT_ROOT).as_posix()}")
+        try:
+            open_path.open_in_default_app(path)
+        except OSError as exc:
+            self.log(f"*** couldn't open {path.name}: {exc} ***")
+
+    def _show_compat(self, evaluation, *, review: bool) -> None:
+        app_version = version_mod.VERSION_NUMBER
+        dialog = CompatDialog(self, evaluation, app_version, review=review,
+                              on_report=lambda: self._compat_report(evaluation))
+        dialog.exec()
+        choice = dialog.choice
+        if choice == qt_compat_dialog.DONT_ASK:
+            compat.dismiss(PROJECT_ROOT, [p.change.id for p in evaluation.loud])
+            self.log("Compatibility notice dismissed for these changes "
+                     "(Info → Project compatibility still lists them).")
+        elif choice == qt_compat_dialog.MARK_READ:
+            compat.dismiss(PROJECT_ROOT, [p.change.id for p in evaluation.everything])
+        elif choice == qt_compat_dialog.UPDATE:
+            self._compat_update(evaluation)
+        # NOT_NOW / CLOSE: nothing recorded, so it comes back on the next open
+
+    def _compat_update(self, evaluation) -> None:
+        app_version = version_mod.VERSION_NUMBER
+        if self._slide_source_tabs:
+            QMessageBox.information(
+                self, "Update project",
+                "Close the open slide and deck source editors first, so the update and "
+                "an editor can't overwrite each other.")
+            return
+        result = compat.run_update(PROJECT_ROOT, evaluation.loud)
+        for rel in result.changed:
+            self.log(f"Updated {rel}")
+        if result.backup:
+            self.log(f"  backup: {result.backup}")
+        for error in result.errors:
+            self.log(f"*** update failed: {error} ***")
+        self.refresh_open_deck_editors()
+        remaining = compat.evaluate(PROJECT_ROOT, app_version)
+        if remaining.loud or result.errors:
+            self._compat_report(remaining)
+            QMessageBox.warning(
+                self, "Update project",
+                f"{len(result.changed)} file(s) updated. Some changes need work by hand; the "
+                "report lists where, and has a prompt for an AI tool.")
+        else:
+            compat.acknowledge(PROJECT_ROOT, app_version)
+            QMessageBox.information(self, "Update project",
+                                    f"{len(result.changed)} file(s) updated. Backups are in "
+                                    ".slidemage/backups/.")
+
+    def _on_project_compat(self) -> None:
+        evaluation = compat.evaluate(PROJECT_ROOT, version_mod.VERSION_NUMBER)
+        self._show_compat(evaluation, review=True)
 
     def _on_open_version_history(self) -> None:
         dialog = VersionHistoryDialog(self)
@@ -2209,6 +2311,7 @@ def main() -> None:
     window.show()
     splash.close()
     window.schedule_startup_update_check()
+    window.schedule_compat_check()
     window.schedule_bundled_copies_check()
     sys.exit(app.exec())
 

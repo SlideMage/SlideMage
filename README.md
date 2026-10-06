@@ -141,6 +141,41 @@ touched. A project without the manual is offered to add it (only missing
 files are added, nothing is overwritten): the way to get the manual into a
 project of your own.
 
+## Project compatibility (since v5.29.0)
+
+A newer SlideMage can change something a project depends on: a LaTeX command
+is renamed, a file layout moves, a design is calculated differently. Every such
+change is registered in `src/slidemage/compat.py` (one `Change` per change, added in
+the same commit; a test fails a release with a `BREAKING:` paragraph in
+`version.py` and no entry). When a project is opened, SlideMage compares the
+registry with the version whose changes you have dealt with (kept in
+`.slidemage/project.json`, key `compat`, so it follows the project to other PCs):
+
+- Changes that **may stop the project compiling** or change a **file layout** open a
+  dialog: **Update project** (runs the automatic fixes, after backing up every file it
+  changes to `.slidemage/backups/<time>/compat/`; `decks/#workdeck.tex` included),
+  **Show report**, **Not now** (nothing is recorded, so the dialog is back the next time
+  the project is opened) and **Don't ask again** (remembered per change).
+- Changes that only make slides **look different** never open a dialog; they are
+  listed under Info → Project compatibility… (**Mark all as read** stops listing them).
+- A change with a detector is pending only while the detector finds something in the
+  project, so fixing it by hand makes it disappear. Where no automatic fix exists, the
+  report says what to do.
+- If the project was last used by a **newer** SlideMage than the one running (a second
+  PC with an older exe), a notice says so (**Not now** / **Don't ask again**);
+  `highest_app_version` in `project.json` never goes down.
+
+The **report** (`.slidemage/compat-report.md` and `.json`) lists every pending change
+with file and line, what changed, how to fix it, and a ready-made prompt for an AI tool.
+From the command line, without a window:
+
+    slidemage --check-project --project <folder> [--fix] [--json]
+
+prints the report, exits with 1 if something may break, and with `--fix` runs the
+automatic updates first. A migration is plain planning (`migrate(root)` returns the new
+bytes of each file to rewrite), idempotent, and written atomically, with
+line endings kept.
+
 ## Directory layout
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham

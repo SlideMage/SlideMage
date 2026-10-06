@@ -23,6 +23,10 @@ into the GitHub release notes (packaging/release_notes.py, which refuses a
 major bump without that paragraph), and the updater always asks before
 installing such a release, even when updates install automatically
 (updater.plan_update()). Raising project.PROJECT_FORMAT is always breaking.
+Since v5.29.0 such a release also registers the change in slidemage/compat.py
+(CHANGES: id, version, severity, how to fix, optionally a detector and a
+migration); a test fails a BREAKING: paragraph without an entry. See the
+README, "Project compatibility".
 
 Estimated at v2.9.0 on 2026-07-28 from this app's commit history (`git log
 --oneline -- slidemanager/`): v1.x covered the original compile/archive
@@ -1871,6 +1875,8 @@ v5.27.1 (2026-10-06, direct instruction): every slide of the SlideMage manual ca
 v5.28.0 (2026-10-06, direct instruction): \\sectionframe: every title bar is now the same height. Before, the bar depended on the title: one without descenders ("Slides", "Decks and deck versions") was 4.15 pt taller than one with them, and the height of the tallest letter shifted it further (the manual's dividers measured 85.04, 85.66, 86.92 and 89.19 bp). The title measurement gets a \\strut, the toppading formula a fixed reference depth (\\SMSectionframeRefDepth), \\SMSectionframeHeightCorrection is recalibrated, and \\sectionfigure starts 0.1 bp under the bar. VISIBLE CHANGE in course decks: section slides with a title without descenders (e.g. neb, u97, dvh) get a 4 pt shorter bar, and the body text of every section slide starts 1.5 pt lower than the new bar edge (it used to sit 7.4 pt under it). Manual: dividers 1y9 and 1f8 fixed (1y9 had an empty line above its text, 1f8 listed the agenda before its intro), all intros top-aligned.
 
 v5.28.1 (2026-10-06, direct instruction): the ticked rows of a deck tab stay ticked when the tab is rebuilt -- saving a slide's source, any deck edit, a refresh, a trip through the Grid view. The selection is remembered by what each call is (command, slide, version, conditions, steps and which occurrence of it), not by its position in the file, so it also follows slides that move; rows whose slide was removed drop out.
+
+v5.29.0 (2026-10-06, direct instruction): project compatibility. compat.py keeps a registry of the changes that are not backwards compatible (nothing registered yet: from now on a BREAKING: release must add its entry). When a project is opened with a newer SlideMage that has such changes the project does not have yet, a dialog offers Update project (automatic fixes, every changed file backed up first, #workdeck included), Show report, Not now (the dialog returns on the next open) and Don't ask again (per change). Appearance-only changes stay quiet: Info -> Project compatibility lists them. A project last used by a newer SlideMage gets a notice. The report (.slidemage/compat-report.md/.json) has file and line for every finding and a prompt for an AI tool; slidemage --check-project [--fix] [--json] does the same without a window. project.json keeps its other keys, highest_app_version never goes down.
 """
 from __future__ import annotations
 
@@ -1880,7 +1886,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.28.1"
+VERSION_NUMBER = "v5.29.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

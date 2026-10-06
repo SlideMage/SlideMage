@@ -192,17 +192,19 @@ def read_project_info(root: Path) -> dict:
     return info
 
 
-def record_project_open(root: Path, app_version: str) -> None:
-    """Write project.json after the project was opened with `app_version`.
-    A project newer than this app keeps its format and last version, so
-    the warning still names the release that changed it."""
-    info = read_project_info(root)
-    if info["format"] <= PROJECT_FORMAT:
-        # Migrations from an older format go here (none exist yet); each
-        # must back up what it rewrites first.
-        info = {"format": PROJECT_FORMAT, "last_app_version": app_version}
+def read_project_json(root: Path) -> dict:
+    """The whole of the project's project.json (every key, also those a
+    newer or other part of SlideMage wrote); {} if missing or unreadable."""
+    try:
+        data = json.loads((root / PROJECT_INFO_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_project_json(root: Path, data: dict) -> None:
     path = root / PROJECT_INFO_PATH
-    text = json.dumps(info, indent=2) + "\n"
+    text = json.dumps(data, indent=2) + "\n"
     try:
         if path.read_text(encoding="utf-8") == text:
             return  # unchanged -- don't touch a cloud-synced file for nothing
@@ -210,6 +212,46 @@ def record_project_open(root: Path, app_version: str) -> None:
         pass
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _newer_version(a: str, b: str) -> str:
+    """The newer of two "vX.Y.Z" strings (an unparsable one loses)."""
+    from .updater import parse_version
+    pa, pb = parse_version(a or ""), parse_version(b or "")
+    if pa is None:
+        return b if pb is not None else (a or b or "")
+    if pb is None:
+        return a
+    return a if pa >= pb else b
+
+
+def record_project_open(root: Path, app_version: str) -> None:
+    """Write project.json after the project was opened with `app_version`.
+    A project newer than this app keeps its format and last version, so
+    the warning still names the release that changed it. Other keys stay
+    (compat.py keeps its state in "compat"), and "highest_app_version"
+    never goes down, so opening the project on a PC with an older exe
+    doesn't erase that a newer one has used it. "compat.checked_version" --
+    the version whose changes the user has dealt with (compat.py) -- starts
+    at the version the project was last opened with, so an existing project
+    isn't told about changes made before this feature."""
+    info = read_project_info(root)
+    if info["format"] > PROJECT_FORMAT:
+        return
+    # Migrations from an older format go here (none exist yet); each
+    # must back up what it rewrites first.
+    data = read_project_json(root)
+    previous = info["last_app_version"]
+    data["format"] = PROJECT_FORMAT
+    data["last_app_version"] = app_version
+    data["highest_app_version"] = _newer_version(
+        data.get("highest_app_version", "") or previous, app_version)
+    compat = data.get("compat")
+    if not isinstance(compat, dict):
+        compat = {}
+    compat.setdefault("checked_version", previous or app_version)
+    data["compat"] = compat
+    write_project_json(root, data)
 
 
 def _template_dir(name: str) -> Path | None:

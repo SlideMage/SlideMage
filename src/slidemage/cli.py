@@ -59,7 +59,23 @@ def main(argv: list[str] | None = None) -> None:
              f"Default: ${project.ENV_VAR}, else searched upward from the current "
              "directory, else the last project opened.",
     )
+    parser.add_argument(
+        "--check-project", action="store_true",
+        help="no window: print what a newer SlideMage changed that may affect the project "
+             "(and write .slidemage/compat-report.md/.json); exit code 1 if something "
+             "may break. With --fix the automatic updates run first (backed up).")
+    parser.add_argument("--fix", action="store_true", help="with --check-project: run the automatic updates")
+    parser.add_argument("--json", action="store_true", help="with --check-project: print JSON")
     args, qt_args = parser.parse_known_args(argv)
+
+    if args.check_project:
+        from . import compat
+
+        root = args.project or project.find_upward(Path.cwd()) or project.load_last_project()
+        if root is None:
+            print("No project found; give one with --project.", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(compat.main([str(root)] + (["--fix"] if args.fix else []) + (["--json"] if args.json else [])))
 
     from PySide6.QtWidgets import QApplication, QMessageBox
 
