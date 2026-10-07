@@ -5,7 +5,7 @@
 % shows this slide twice (before and after "Linking and navigating"); the
 % slide itself only has plain overlay specifications, the deck decides which
 % steps each place and each deck version shows (snippets/1mu-1.tex).
-\setSlideVersion{1-0-2}
+\setSlideVersion{1-0-3}
 \begin{standardframe}{\SMCmd{slidestep}: one slide, two places}
 	{\small Sometimes one slide belongs in two places of a lecture: first the
 	question, later the follow-up. \SMCmd{slidestep} puts it into the deck twice
@@ -18,9 +18,12 @@
 		\item<3-> \textcolor{c_custom_red}{Step 3, instructor only, second place: a follow-up after the discussion}
 	\end{itemize}
 	\smallskip
-	\begin{minipage}{0.7\linewidth}
-		\SMCodeFile{snippets/1mu-1.tex}
-	\end{minipage}
-	\smallskip
-	{\small Each place is one frame in every version, so slide numbers agree across versions.\par}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.64\linewidth}
+			\SMCodeFile{snippets/1mu-1.tex}
+		\end{column}
+		\begin{column}{0.33\linewidth}
+			\small Each place is one frame in every version, so slide numbers agree across versions.\par
+		\end{column}
+	\end{columns}
 \end{standardframe}

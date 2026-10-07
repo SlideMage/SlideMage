@@ -22,19 +22,94 @@
 \input{Slidemaster_preamble_slidemage}
 
 % Bibliography (biblatex + biber, opt-in per deck; see README.md's "Decks
-% with a bibliography").
-\usepackage[style=authoryear, backend=biber]{biblatex}
+% with a bibliography"). The reference format -- Markowitz, H., 1952. "Portfolio
+% Selection", Journal of Finance 7(1), 77--91. -- is the one the author's
+% university courses use: biblatex's authoryear style with house drivers for
+% books, articles, online sources and reports. Copy this block into your own
+% decks to get the same look.
+\usepackage[style=authoryear, backend=biber, giveninits=true, uniquename=init, maxcitenames=3, mincitenames=1, maxbibnames=3, minbibnames=1]{biblatex}
 \makeatletter
 \let\SMSavedInputPath\input@path
 \def\input@path{}%
 \IfFileExists{Slidemaster.bib}{\addbibresource{Slidemaster.bib}}{\addbibresource{../Slidemaster.bib}}
 \let\input@path\SMSavedInputPath
 \makeatother
-% The look of a \fullcite reference is the deck's own choice, not the
-% template's: biblatex's authoryear style, with the author's family name
-% first and the title in the normal weight (the Gotham theme sets it bold).
+
 \DeclareNameAlias{author}{family-given}
-\setbeamerfont{bibliography entry title}{series=\normalfont}
+\renewcommand*{\multinamedelim}{\addcomma\space}
+\renewcommand*{\finalnamedelim}{\addcomma\space}
+% In-parenthesis citation mode (2026-07-27, direct instruction on slide
+% he9: "(Clayson, 2005)" rather than \textcite's own "Clayson (2005)").
+% \parencite already supplies the parentheses; biblatex's authoryear
+% style separates name from year with a plain space, so this turns that
+% separator into a comma. Deliberately the *default*-context declaration
+% only: biblatex.def declares its own [textcite] and [bib,biblist]
+% context variants of this same delimiter, so neither this deck's own
+% 40-odd \textcite calls nor any \fullcite/bibliography output changes.
+% Verified directly rather than assumed from reading the style files
+% (throwaway test deck, \textcite and \parencite rendered side by side
+% with and without this line: \textcite output identical either way,
+% only \parencite gained the comma).
+\DeclareDelimFormat{nameyeardelim}{\addcomma\space}
+\DeclareFieldFormat{title}{#1}
+\DeclareFieldFormat[article]{title}{#1}
+\DeclareFieldFormat{pages}{#1}
+% biblatex's own built-in isbn field format prepends a lowercase "isbn:"
+% label of its own (confirmed directly: rendered as "ISBN isbn: 978-...",
+% doubling up with the book driver's own literal "ISBN" text below) --
+% stripped to the raw value only, same pattern as title/pages above.
+\DeclareFieldFormat{isbn}{#1}
+
+\DeclareBibliographyDriver{book}{%
+	\printnames{author}\addcomma\space
+	\printfield{year}\addperiod\space
+	\textquotedbl\printfield{title}\textquotedbl\addcomma\space
+	\iffieldundef{edition}{}{\printfield{edition}\addcomma\space}%
+	\printlist{publisher}%
+	\iflistundef{location}{}{\addcomma\space\printlist{location}}%
+	\iffieldundef{isbn}{}{\addcomma\space ISBN\space\printfield{isbn}}%
+	\addperiod
+	\newunit
+	\finentry}
+
+\DeclareBibliographyDriver{article}{%
+	\printnames{author}\addcomma\space
+	\printfield{year}\addperiod\space
+	\textquotedbl\printfield{title}\textquotedbl\addcomma\space
+	\printfield{journaltitle}\space
+	\printfield{volume}%
+	\iffieldundef{number}{}{(\printfield{number})}%
+	\iffieldundef{pages}{}{\addcomma\space\printfield{pages}}%
+	\iffieldundef{doi}%
+		{\iffieldundef{url}{}{\addcomma\space\href{\thefield{url}}{\thefield{url}}}}%
+		{\addcomma\space\href{https://doi.org/\thefield{doi}}{https://doi.org/\thefield{doi}}}%
+	\addperiod
+	\newunit
+	\finentry}
+
+\DeclareBibliographyDriver{online}{%
+	\printnames{author}\addcomma\space
+	\printfield{year}\addperiod\space
+	\textquotedbl\printfield{title}\textquotedbl\addcomma\space
+	\iffieldundef{organization}{}{\printfield{organization}\addcomma\space}%
+	\iffieldundef{url}{}{\href{\thefield{url}}{\thefield{url}}}%
+	\iffieldundef{note}{}{\addcomma\space\printfield{note}}%
+	\addperiod
+	\newunit
+	\finentry}
+
+\DeclareBibliographyDriver{report}{%
+	\printnames{author}\addcomma\space
+	\printfield{year}\addperiod\space
+	\textquotedbl\printfield{title}\textquotedbl\addcomma\space
+	\iflistundef{institution}{}{\printlist{institution}\space}%
+	\iffieldundef{type}{}{\printfield{type}}%
+	\iffieldundef{doi}{}{%
+		\iffieldundef{type}{\iflistundef{institution}{}{\unskip\addcomma\space}}{\addcomma\space}%
+		\href{https://doi.org/\thefield{doi}}{https://doi.org/\thefield{doi}}}%
+	\addperiod
+	\newunit
+	\finentry}
 
 \newcommand{\FooterText}{SlideMage Manual}
 
@@ -136,6 +211,7 @@
 	\section{Reveal steps and deck versions}
 	\slide{1x8-EN-Chapter-Reveal-Steps}
 	\slide{1dk-EN-Plain-Beamer-Reveals}
+	\slide{1un-EN-Other-Beamer-Overlays}
 	\slide{1th-EN-Version-Dependent-Reveals}
 	\slide{1t2-EN-Reveals-That-Do-Not-Jump}
 	\slide{1x2-EN-Final-State-for-Students}

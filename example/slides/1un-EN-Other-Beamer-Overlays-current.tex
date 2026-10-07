@@ -1,0 +1,32 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Reveal steps": the other beamer overlay commands
+% and the two traps, split off slide 1dk on 2026-10-07 (which had been cut
+% down to a few words to make both fit on one slide).
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Other overlay commands, and two traps}
+	\small
+	Besides the commands on the previous slide, beamer has several that show or hide material by step. They differ in whether the hidden material still takes space on the page.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.46\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \SMCode{\textbackslash uncover<2->\{...\}} keeps the space free until step 2, so nothing moves when it appears; \SMCode{\textbackslash visible<2->\{...\}} does the same, but hides the text completely
+				\item \SMCode{\textbackslash only<2->\{...\}} takes no space before step 2: what follows moves down when it appears
+				\item \SMCode{\textbackslash alt<2>\{A\}\{B\}} shows A on step 2 and B on every other step
+				\item \SMCode{\textbackslash onslide<2->} switches everything after it on from step 2, up to the end of the group
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.5\linewidth}
+			\begin{alertblock}{Two traps}
+				\shrinklists{1}
+				\begin{itemize}
+					\item A reveal inside \SMCode{columns} or a \SMCode{minipage} reserves its full height from step 1 on, even while nothing in it is visible, and can push a figure beside it off the slide
+					\item A picture placed on the page \emph{after} a \SMCmd{pause} stays hidden until the last step: write \SMCmd{onslide}\SMCode{<1->}\SMCmd{relax} before it, so that it is on every step
+				\end{itemize}
+			\end{alertblock}
+		\end{column}
+	\end{columns}
+\end{standardframe}
