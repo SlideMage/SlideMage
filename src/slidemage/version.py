@@ -1899,6 +1899,7 @@ v5.30.3 (2026-10-06, direct instruction): the slide editor screenshot of manual 
 v5.30.4 (2026-10-06, direct instruction): manual slide 1td labels every frame in its full LaTeX form: \\titleframe{...}, \\quoteframe{...}, \\fullbleedframe{...} (commands) and \\begin{sectionframe}, \\begin{standardframe}, ... \\begin{frame}[standout] (environments), instead of a mix of backslash, bare name and brackets.
 
 v5.31.0 (2026-10-06, direct instruction): (1) Rotated footnotes (\\sidefootnotes, every sideimageframe) are set in the footnote colour: on the SlideMage template, where the footer text is white, they came out white on white and only the footnote mark showed. (2) The rotated footnote beside a sideimageframe picture sits 1pt closer (2.1pt instead of 3.1pt from the picture; the ink of the nearest line is now 2.9pt away, as the bottom footnotes are from the footer). (3) A frame with a \\progressstrip is placed by the automatic Top Margin like any other, with the strip's height added: its first line now sits the usual 16pt below the strip, whatever the body starts with (a paragraph was 10pt below, a list 14pt). Slides with a strip move down 0-6pt; the new length \\SMProgressStripHeight is the strip's height (Slidemaster_layout.lua: gotham_layout.top_extra). Manual: slide 1sv is split in two, the new slide 1w4 shows numbered and lettered lists; 1vh, 1j2 and 1b6 are adjusted; the user's edits of 1b6, 1gr, 1ih, 1j2, 1wa, 1x6 and 1y3 are adopted.
+v5.31.1 (2026-10-07, direct instructions; manual content only): (1) Slide 1nz's reference (a footnote with fullcite) uses the house format of the author's university decks -- Markowitz, H., 1952. "Portfolio Selection", Journal of Finance 7(1), 77-91. -- the manual deck now carries the same biblatex set-up (authoryear with the book, article, online and report drivers). (2) Slide 1dk (Plain beamer reveals) is split in two: 1dk explains the four plain commands in full sentences, the new slide 1un (Other overlay commands, and two traps) covers uncover, visible, only, alt, onslide and the two traps; 1dk is version 1.1.0, 1.0.0 frozen. (3) Slide 1mu: the closing note stays to the right of the code snippet (a two-column layout), version 1.0.3. (4) The user's edit of slide 1u4 (1.1.0) adopted. The manual has 73 slides.
 """
 from __future__ import annotations
 
@@ -1908,7 +1909,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.31.0"
+VERSION_NUMBER = "v5.31.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
