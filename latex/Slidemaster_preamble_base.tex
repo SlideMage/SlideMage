@@ -6952,3 +6952,35 @@
 	\fi
 }
 \makeatother
+
+% ---- Bibliography (biblatex + biber, opt-in per deck) ----
+% \SMUseBibliography[file.bib] -- in a deck's preamble (after the institution
+% template is \input) instead of \usepackage{biblatex} + \addbibresource: loads
+% biblatex with \SMBiblatexOptions, registers the .bib file (default
+% Slidemaster.bib), then runs \SMBibliographyStyle. The template decides the
+% citation format by redefining the two macros (2026-10-07, direct instruction:
+% the house format had been copied into every course deck); a deck that wants
+% another format redefines them before the call, or does not use the command.
+% Defaults: biblatex's stock authoryear style.
+%
+% The .bib lookup: \IfFileExists below is the biber equivalent of the
+% \input@path/\graphicspath fallback: biber runs as its own process and reads
+% the literal path recorded in the .bcf at compile time, so it cannot follow
+% \input@path -- resolving the correct relative path once, here, at LaTeX time
+% (when the real cwd is known) is what makes biber find the .bib file whether
+% compiling from the project root or from inside decks/. \input@path is
+% emptied for the check itself: \IfFileExists honors \input@path too, so
+% without this it reports the file as "found" via the ../ fallback and then
+% writes that unresolved literal path into the .bcf, which biber (a separate
+% process that never sees \input@path) then cannot find.
+\makeatletter
+\newcommand{\SMBiblatexOptions}{style=authoryear, backend=biber}
+\newcommand{\SMBibliographyStyle}{}
+\newcommand{\SMUseBibliography}[1][Slidemaster.bib]{%
+	\expandafter\usepackage\expandafter[\SMBiblatexOptions]{biblatex}% (options are not expanded otherwise)
+	\let\SM@SavedInputPath\input@path
+	\def\input@path{}%
+	\IfFileExists{#1}{\addbibresource{#1}}{\addbibresource{../#1}}%
+	\let\input@path\SM@SavedInputPath
+	\SMBibliographyStyle}
+\makeatother

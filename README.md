@@ -545,13 +545,26 @@ UNIGRAZonline lists them.
 
 ### Decks with a bibliography (`\fullcite{}`/`Slidemaster.bib`)
 
-biblatex+biber is opt-in per deck (not loaded globally), for any deck that
-`\usepackage{biblatex}`s and `\addbibresource{Slidemaster.bib}`s itself.
-`decks/slidemage-manual.tex` is this copy's own live example -- plain
-biblatex defaults (no custom citation-format drivers, unlike a real course
-deck's own house style), just enough to resolve the manual's one
-`\fullcite{markowitz1952}` (slide `1nz`) against this copy's trimmed
-`Slidemaster.bib` (a single entry -- see that file's own header comment).
+biblatex+biber is opt-in per deck (not loaded globally): a deck that wants
+references puts **`\SMUseBibliography`** in its preamble, after the template
+is `\input`. That one command loads biblatex with the template's options,
+registers `Slidemaster.bib` (or `\SMUseBibliography[other.bib]`) so that biber
+finds it whether the compile starts in the project root or in `decks/`, and
+applies the template's citation format. The format is the template's job:
+the institution template redefines `\SMBiblatexOptions` (package options) and
+`\SMBibliographyStyle` (name format, field formats, bibliography drivers) --
+`Slidemaster_preamble_uni-graz.tex` and the SlideMage template
+(`latex/Slidemaster_preamble_slidemage.tex`) carry the author's house format,
+`Markowitz, H., 1952. "Portfolio Selection", Journal of Finance 7(1), 77--91.`
+(every author as "Family, Initials.", year unparenthesized, title in quotes,
+type-specific tail for books, articles, online sources and reports). A
+template that sets nothing gets biblatex's stock authoryear style. A deck
+that wants a format of its own redefines the two macros before
+`\SMUseBibliography`, or skips the command and loads biblatex itself.
+`decks/slidemage-manual.tex` is this copy's own live example, enough to
+resolve the manual's one `\fullcite{markowitz1952}` (slide `1nz`) against this
+copy's trimmed `Slidemaster.bib` (a single entry -- see that file's own header
+comment).
 This needs one extra step beyond the usual two `lualatex` passes above —
 **`biber`, run in between them**:
 
