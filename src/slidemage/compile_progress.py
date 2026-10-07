@@ -45,6 +45,9 @@ _FAIL_RE = re.compile(r"^\*\*\* FAIL: (\S+) --")
 _RENDER_PASS_RE = re.compile(r"^==== PASS: render of (\S+) ->")
 _RENDER_FAIL_RE = re.compile(r"^\*\*\* FAIL: render of (\S+) --")
 _STOPPED_RE = re.compile(r"^==== (Stopped:|Stop requested)")
+# A job that ends without publishing a PDF (deck_snapshot's reference and
+# verification compiles) says so explicitly.
+_FINISHED_RE = re.compile(r"^==== Finished: (\S+) ====")
 
 _HOLD_BELOW_DONE = 0.99
 
@@ -202,7 +205,7 @@ class BatchProgress:
                 if m:
                     self._begin(m.group(2), JobSpec(SINGLE_RENDER_PASSES, 1, estimated=True), force=True)
                 else:
-                    m = _MOVING_RE.match(line)
+                    m = _MOVING_RE.match(line) or _FINISHED_RE.match(line)
                     if m and m.group(1) == self._current:
                         self._finish_current()
                     elif _RENDER_PASS_RE.match(line):

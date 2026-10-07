@@ -40,7 +40,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import appendix_toc, compile_passes, slide_snapshot
+from . import appendix_toc, compile_passes, project, slide_snapshot
 from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
@@ -99,13 +99,18 @@ def removable_build_entries() -> list[Path]:
 
     Per-invocation directories remain excluded while latexmk or any PDF copy
     attempt can still read them. Root-level legacy build files are included
-    for compatibility with older runs and slide previews.
+    for compatibility with older runs and slide previews. In a deck snapshot
+    the seeded footer timestamps (.build/<jobname>/<jobname>.timestamp, see
+    _seed_snapshot_timestamp) are part of the snapshot and stay.
     """
+    snapshot = project.is_snapshot(PROJECT_ROOT)
     with _BUILD_STATE_LOCK:
         if not BUILD_DIR.is_dir():
             return []
         return sorted(
-            (entry for entry in BUILD_DIR.iterdir() if entry not in _ACTIVE_BUILD_DIRS),
+            (entry for entry in BUILD_DIR.iterdir()
+             if entry not in _ACTIVE_BUILD_DIRS
+             and not (snapshot and (entry / f"{entry.name}.timestamp").is_file())),
             key=lambda entry: entry.name,
         )
 
@@ -146,6 +151,10 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     sharing one bare, unqualified \\deckoutputfolder{...}) -- see
     run_jobs()'s own collision check for what happens then; this function
     always returns the literal name as declared, uninvolved in that."""
+    if project.is_snapshot(PROJECT_ROOT):
+        # A deck snapshot's \deckoutputfolder paths belong to the project it
+        # was taken from; its PDFs stay inside the snapshot.
+        return PDF_DIR, job.jobname
     version_key = job.version or "instructor"
     if job.presenter:
         raw = (job.deck.output_folders.get("presenter")
@@ -339,7 +348,20 @@ def _build_env() -> dict:
     perl_bin = _find_git_perl_bin()
     if perl_bin is not None:
         env["PATH"] = str(perl_bin) + os.pathsep + env.get("PATH", "")
-    return env
+    # Inside a deck snapshot: its own framework copy and fixed PDF dates.
+    return project.snapshot_compile_env(PROJECT_ROOT, env)
+
+
+def _seed_snapshot_timestamp(jobname: str, build_dir: Path) -> None:
+    """In a deck snapshot, the footer shows the time the snapshot's
+    reference compile ran: its <jobname>.timestamp (deck_snapshot.py keeps it
+    in .build/<jobname>/) goes into this invocation's build folder, where the
+    preamble's \\SMCompileTimestamp reads it instead of the clock."""
+    if not project.is_snapshot(PROJECT_ROOT):
+        return
+    seed = BUILD_DIR / jobname / f"{jobname}.timestamp"
+    if seed.is_file():
+        shutil.copy2(seed, build_dir / seed.name)
 
 
 def _wrapper_text(job: CompileJob) -> str:
@@ -567,6 +589,7 @@ def run_job(
         wrapper_path.write_text(_wrapper_text(job), encoding="utf-8", newline="")
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         build_dir.mkdir(parents=True, exist_ok=False)
+        _seed_snapshot_timestamp(jobname, build_dir)
 
         rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
         isolated_output = build_dir.resolve().as_posix()

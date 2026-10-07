@@ -183,6 +183,59 @@ and the format is written into the deck's template file. It only touches decks w
 copy is the house format line for line, leaves variants alone, and waits until the
 framework next to the project has the new command.
 
+## Deck snapshots (since v5.33.0)
+
+A snapshot is a self-contained copy of a deck that compiles exactly as the deck
+compiles today, whatever later happens to the project, the framework or SlideMage.
+**Decks → Create deck snapshot…** takes one or more decks (each gets its own
+snapshot; they are made one after the other), **Folder** or **.zip file**, and whether
+to **include the LaTeX package files** and **the SlideMage app**. Archiving a deck asks
+first: **Snapshot, then archive** / **Archive only** / Cancel (the snapshot uses the
+dialog's last settings and is taken before the deck moves). Design and reasoning:
+`docs/DECK_SNAPSHOT_PLAN.md`.
+
+Snapshots go to `<project>/snapshots/`, named `<deck>_<YYYY-MM-DD>_<HH-MM>` (folder) or
+`….zip`; a deck can have any number of them. When the selected decks already have
+snapshots, SlideMage asks once per run whether to delete them: they go to the Recycle
+Bin, and only after the deck's new snapshot has been made and checked. `snapshots/` is
+added to the project's `.gitignore` (binary copies of files git already has).
+
+What a snapshot holds:
+
+    render.bat, render.sh, README.txt
+    snapshot.json        manifest: every file with its hash, the TeX and SlideMage versions
+    reference-pdf/       the PDFs compiled when the snapshot was taken
+    SlideMage/latex/     the framework, copied whole
+    <project>/           the files the deck uses, at their usual paths
+    texmf/, app/         optional (see above)
+
+Which files a deck uses is decided by compiling it: every version (and the presenter
+PDF) is compiled with latexmk's `-recorder`, and everything the compile read is copied
+-- project files and the framework; the TeX distribution's files (and the fonts the
+PDFs embed) are recorded with version and hash, and copied only with "Include LaTeX
+package files". The footer timestamps of those compiles are kept and
+`SOURCE_DATE_EPOCH` fixes the PDF dates, so rendering the snapshot later reproduces
+the reference PDFs. Then the snapshot is rendered from its own folder: every file that
+compile reads must lie inside the snapshot (or the TeX distribution), and every page
+must equal the reference PDF -- otherwise the snapshot is discarded and the log says
+why. That doubles the compile time; a large deck takes a while, on the compile slot.
+
+A snapshot's `<project>/` folder can be opened in SlideMage as a project: a line above
+the tabs says it is a snapshot, SlideMage never changes it by itself (no compatibility
+migrations, no framework or manual updates, no `project.json` bookkeeping), and compiles
+use the snapshot's framework, PDF dates and footer timestamps, with PDFs in its own
+`pdf/` (its `\deckoutputfolder` paths belong to the original project). Edits made there
+do change the snapshot. From the command line:
+
+    python -m slidemage.deck_snapshot create <deck> [<deck> ...] [--zip] [--texmf] [--with-app] [--delete-old]
+    python -m slidemage.deck_snapshot verify <snapshot folder or .zip>
+    python -m slidemage.deck_snapshot list
+
+The TeX distribution itself (engine, format, packages) is the one thing a snapshot
+cannot freeze: a much newer MiKTeX may render it differently. The reference PDFs keep
+the deck as it was in any case, `verify` lists which TeX versions differ, and the
+copied package files in `texmf/` record the exact originals.
+
 ## Directory layout
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham

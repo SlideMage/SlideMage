@@ -54,12 +54,14 @@ from . import deck_duplicate
 from . import deck_editor
 from . import deck_headers
 from . import deck_settings
+from . import deck_snapshot
 from . import latex_lint
 from . import open_path
 from . import pptx_export
 from . import qt_render_check
 from . import project
 from . import qt_compat_dialog
+from . import qt_snapshot_dialog
 from . import qt_slide_source_tab
 from . import slide_ids
 from . import slide_rename
@@ -148,6 +150,9 @@ class CompileSignals(QObject):
     # The startup update check's result (updater.UpdatePlan, or the
     # updater.UpdateError it failed with), from its background thread.
     update_check_done = Signal(object)
+    # deck_snapshot.snapshot_decks()'s list of SnapshotResult, once a
+    # snapshot run is over.
+    snapshots_done = Signal(object)
 
 
 class SlideMageWindow(QMainWindow):
@@ -205,6 +210,10 @@ class SlideMageWindow(QMainWindow):
         self.signals.enable_button.connect(lambda w: w.setEnabled(True))
         self.signals.batch_done.connect(self._on_batch_done)
         self.signals.update_check_done.connect(self._on_startup_update_check_done)
+        self.signals.snapshots_done.connect(self._on_snapshots_done)
+        # What to do with a snapshot run's results instead of showing the
+        # summary (the archive flow archives the deck), see _start_snapshots().
+        self._after_snapshots: Optional[Callable[[list], None]] = None
 
         central = QWidget()
         outer = QVBoxLayout(central)
@@ -268,6 +277,9 @@ class SlideMageWindow(QMainWindow):
         self.transcript_tab = TranscriptTab(self)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.tabs.setCornerWidget(self._build_search_box())
+        snapshot_banner = self._build_snapshot_banner()
+        if snapshot_banner is not None:
+            outer.addWidget(snapshot_banner)
         outer.addWidget(self.tabs)
         self._apply_tab_colors()
 
@@ -478,11 +490,15 @@ class SlideMageWindow(QMainWindow):
         same day (direct instruction) into what's now four top-level
         entries:
 
-        - **System** -- was "Settings" until the rename; "Preferences…"
-          (dark mode, per-model translation prompt configuration --
-          qt_settings_dialog.py) plus "Exit SlideMage" at the bottom,
-          the one place an app-lifecycle action belongs, separate from
-          Preferences above it.
+        - **System** -- was "Settings" until the rename; "Open Project…",
+          "Preferences…" (dark mode, per-model translation prompt
+          configuration -- qt_settings_dialog.py) plus "Exit SlideMage" at
+          the bottom, the one place an app-lifecycle action belongs,
+          separate from Preferences above it.
+        - **Decks** (v5.33.0, direct instruction: "add a Menu labelled
+          'Decks', positioned after 'System'") -- "Create deck snapshot…"
+          (qt_snapshot_dialog.py, deck_snapshot.py) and "Import PPTX/ODP…",
+          moved here from System the same day.
         - **Tabs** -- opens "Archived decks"/"Images"/the Slidemaster.bib
           editor, none of which are open by default any more (previously
           Archived decks/Images were two of the three permanent tabs,
@@ -506,13 +522,20 @@ class SlideMageWindow(QMainWindow):
         system_menu = self.menuBar().addMenu("System")
         open_project_action = system_menu.addAction("Open Project…")
         open_project_action.triggered.connect(self._on_open_project)
-        import_action = system_menu.addAction("Import PPTX/ODP…")
-        import_action.triggered.connect(self._on_import_presentation)
         preferences_action = system_menu.addAction("Preferences…")
         preferences_action.triggered.connect(self._on_open_settings)
         system_menu.addSeparator()
         exit_action = system_menu.addAction("Exit SlideMage")
         exit_action.triggered.connect(self.close)
+
+        decks_menu = self.menuBar().addMenu("Decks")
+        snapshot_action = decks_menu.addAction("Create deck snapshot…")
+        snapshot_action.setToolTip(
+            "A self-contained copy of one or more decks in snapshots/ that "
+            "compiles exactly as the deck does today, whatever changes later.")
+        snapshot_action.triggered.connect(self._on_create_deck_snapshot)
+        import_action = decks_menu.addAction("Import PPTX/ODP…")
+        import_action.triggered.connect(self._on_import_presentation)
 
         tabs_menu = self.menuBar().addMenu("Tabs")
         archived_action = tabs_menu.addAction("Archived decks")
@@ -639,6 +662,8 @@ class SlideMageWindow(QMainWindow):
         QTimer.singleShot(COMPAT_CHECK_DELAY_MS, self.check_project_compat)
 
     def check_project_compat(self) -> None:
+        if project.is_snapshot(PROJECT_ROOT):
+            return  # a deck snapshot is frozen: nothing to migrate
         app_version = version_mod.VERSION_NUMBER
         try:
             evaluation = compat.evaluate(PROJECT_ROOT, app_version)
@@ -1604,11 +1629,52 @@ class SlideMageWindow(QMainWindow):
     # -- actions -----------------------------------------------------------
 
     def _archive_deck(self, deck: Deck) -> None:
-        reply = QMessageBox.question(
-            self, "Archive deck", f"Move {deck.name}.tex to decks/archive/?"
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        """Archiving is when a deck stops being maintained, so it offers a
+        snapshot first (v5.33.0): "Snapshot, then archive" (default) /
+        "Archive only" / Cancel. The snapshot uses the settings last chosen
+        in Decks -> Create deck snapshot..., runs on the compile slot, and
+        must come before archive.archive_deck() rewrites the deck's path
+        lines -- the deck is archived only when it has finished (or, if it
+        failed, after a second yes)."""
+        options = qt_snapshot_dialog.saved_options()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Archive deck")
+        box.setText(f"Move {deck.name}.tex to decks/archive/?")
+        box.setInformativeText(
+            "Create a snapshot first? It keeps a self-contained copy of the deck "
+            "as it compiles today in snapshots/ "
+            f"({qt_snapshot_dialog.describe_options(options)} -- change in "
+            "Decks → Create deck snapshot…).")
+        snapshot_button = box.addButton("Snapshot, then archive",
+                                        QMessageBox.ButtonRole.AcceptRole)
+        archive_only_button = box.addButton("Archive only", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(snapshot_button)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is archive_only_button:
+            self._do_archive_deck(deck)
+        elif clicked is snapshot_button:
+            self._start_snapshots(
+                [deck], options,
+                after=lambda results: self._archive_after_snapshot(deck, results))
+
+    def _archive_after_snapshot(self, deck: Deck, results: list) -> None:
+        result = results[0] if results else None
+        if result is not None and result.ok:
+            self._do_archive_deck(deck)
             return
+        reason = result.error if result is not None else "no result"
+        reply = QMessageBox.question(
+            self, "Snapshot failed",
+            f"The snapshot of {deck.name} failed ({reason}).\n\n"
+            "Archive the deck anyway?",
+            defaultButton=QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self._do_archive_deck(deck)
+
+    def _do_archive_deck(self, deck: Deck) -> None:
         try:
             archive_mod.archive_deck(deck)
         except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
@@ -1616,6 +1682,109 @@ class SlideMageWindow(QMainWindow):
             return
         self._log(f"Archived {deck.name}.tex -> decks/archive/{deck.name}.tex")
         self.reload_decks()
+
+    # -- deck snapshots (deck_snapshot.py) ----------------------------------
+
+    def _build_snapshot_banner(self) -> Optional[QLabel]:
+        """A line above the tabs when the open project is a deck snapshot:
+        what it is, and that SlideMage leaves it as it was (no compatibility
+        migrations, no framework updates; compiles use the snapshot's own
+        framework, PDF dates and footer timestamps)."""
+        info = project.snapshot_info(PROJECT_ROOT)
+        if info is None:
+            return None
+        manifest = project.snapshot_manifest(PROJECT_ROOT)
+        made_with = manifest.get("slidemage", {}).get("version", "?")
+        when = str(info.get("created", ""))[:16].replace("T", " ")
+        label = QLabel(
+            f"Deck snapshot of {info.get('deck_name', '?')}, taken {when} with SlideMage "
+            f"{made_with}. SlideMage doesn't update it, and compiles reproduce it as it "
+            "was -- but anything you edit here changes the snapshot.")
+        label.setObjectName(WARNING_LABEL)
+        label.setWordWrap(True)
+        return label
+
+    def _on_create_deck_snapshot(self) -> None:
+        """Decks -> "Create deck snapshot...": the dialog, then one snapshot
+        per checked deck, one after the other, on the compile slot."""
+        decks = scan_decks()
+        preselected = {row.deck.name for row in self.active_rows + self.archived_rows
+                       if row.build_jobs()}
+        dialog = qt_snapshot_dialog.SnapshotDialog(self, decks, preselected, busy=self.compiling)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._start_snapshots(dialog.selected_decks(), dialog.options())
+
+    def _start_snapshots(
+        self, decks: list[Deck], options: deck_snapshot.SnapshotOptions,
+        after: Optional[Callable[[list], None]] = None,
+    ) -> bool:
+        """Ask about older snapshots, then run deck_snapshot.snapshot_decks()
+        on a worker thread. `after(results)` replaces the summary dialog (the
+        archive flow). False when nothing was started."""
+        if self.compiling:
+            QMessageBox.information(self, "Busy", "A compile run is already in progress.")
+            return False
+        existing = deck_snapshot.find_snapshots([d.name for d in decks])
+        delete_old: list = []
+        if existing:
+            answer = qt_snapshot_dialog.ask_about_old_snapshots(self, existing)
+            if answer == qt_snapshot_dialog.CANCEL_RUN:
+                return False
+            if answer == qt_snapshot_dialog.DELETE_OLD:
+                delete_old = existing
+        # Same footer/appendix choices as a compile from the toolbar.
+        options.footer_timestamp = self.footer_timestamp_checkbox.isChecked()
+        options.appendix_toc = True if self.appendix_toc_checkbox.isChecked() else None
+
+        specs: dict[str, compile_progress.JobSpec] = {}
+        texts: dict[str, str] = {}
+        for i, deck in enumerate(decks, 1):
+            for job in deck_snapshot.snapshot_jobs(deck, options):
+                spec = compile_progress.spec_for_job(job)
+                prefix = f"Snapshot {i}/{len(decks)}, {deck.name}"
+                key = deck_snapshot.progress_key(job.jobname)
+                specs[key], texts[key] = spec, f"{prefix}: compiling {job.jobname}"
+                if options.verify:
+                    key = deck_snapshot.progress_key(job.jobname, verify=True)
+                    specs[key], texts[key] = spec, f"{prefix}: checking {job.jobname}"
+        self._job_status_map = {}
+        self._job_progress_texts = texts
+        self._progress.reset(specs)
+        self._after_snapshots = after
+        self.compiling = True
+        self.cancel_token = CancelToken()
+        self.active_table.set_compiling(True)
+        self.archived_table.set_compiling(True)
+        threading.Thread(target=self._run_snapshots_thread,
+                         args=(decks, options, delete_old), daemon=True).start()
+        return True
+
+    def _run_snapshots_thread(self, decks: list[Deck], options: deck_snapshot.SnapshotOptions,
+                              delete_old: list) -> None:
+        cancel = self.cancel_token
+        try:
+            results = deck_snapshot.snapshot_decks(
+                decks, options, self.signals.log.emit, cancel=cancel, delete_old=delete_old)
+        except Exception as exc:  # noqa: BLE001 -- reported, the slot must still be freed
+            self.signals.log.emit(f"*** Deck snapshots failed: {exc} ***")
+            results = [deck_snapshot.SnapshotResult(d.name, ok=False, error=str(exc))
+                       for d in decks]
+        created = sum(1 for r in results if r.ok)
+        self.signals.log.emit(f"==== Done: {created} of {len(results)} snapshot(s) created ====")
+        self.compiling = False
+        self.cancel_token = None
+        self.signals.batch_done.emit()
+        self.signals.snapshots_done.emit(results)
+
+    def _on_snapshots_done(self, results: list) -> None:
+        self._progress.reset({})
+        self._clear_progress_if_idle()
+        after, self._after_snapshots = self._after_snapshots, None
+        if after is not None:
+            after(results)
+        else:
+            qt_snapshot_dialog.show_summary(self, results)
 
     def _compile_rows(self, rows: list[DeckRow]) -> None:
         if self.compiling:
@@ -1982,6 +2151,9 @@ class SlideMageWindow(QMainWindow):
             return
         build_entries = compiler.removable_build_entries()
         wrapper_files = list(DECKS_DIR.rglob("_slidemage_*.tex"))
+        if not project.is_snapshot(PROJECT_ROOT):
+            # left behind by an interrupted snapshot; in a snapshot they're its own
+            wrapper_files += DECKS_DIR.rglob(f"{deck_snapshot.WRAPPER_PREFIX}*.tex")
         temp_entries = list(TEMP_DIR.iterdir()) if TEMP_DIR.exists() else []
         all_files = build_entries + wrapper_files
         if not all_files and not temp_entries:

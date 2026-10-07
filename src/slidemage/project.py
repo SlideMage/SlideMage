@@ -214,6 +214,58 @@ def write_project_json(root: Path, data: dict) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+# Deck snapshots (deck_snapshot.py, v5.33.0): a snapshot's project folder is
+# an ordinary project whose project.json carries a "snapshot" key; the
+# snapshot's own manifest sits one level up, next to the framework copy.
+SNAPSHOT_MANIFEST = "snapshot.json"
+# Environment variables that could make a compile find files outside the
+# snapshot; never passed to a snapshot's compiles.
+SNAPSHOT_ISOLATING_ENV_VARS = ("TEXINPUTS", "BIBINPUTS", "LUAINPUTS", "SLIDEMASTER_LATEX")
+
+
+def snapshot_info(root: Path) -> dict | None:
+    """project.json's "snapshot" entry ({"of", "deck_name", "created",
+    "read_only"}) when `root` is a deck snapshot's project folder, else None.
+    SlideMage never changes a snapshot by itself: no format bookkeeping, no
+    compatibility migrations, no framework/manual updates."""
+    data = read_project_json(root).get("snapshot")
+    return data if isinstance(data, dict) else None
+
+
+def is_snapshot(root: Path) -> bool:
+    return snapshot_info(root) is not None
+
+
+def snapshot_manifest(root: Path) -> dict:
+    """The snapshot.json next to a snapshot's project folder ({} if none)."""
+    try:
+        data = json.loads((root.parent / SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def snapshot_compile_env(root: Path, env: dict) -> dict:
+    """`env` adjusted for compiling inside a snapshot: the snapshot's own
+    framework copy, no outside search paths, and the snapshot's fixed
+    SOURCE_DATE_EPOCH (PDF dates as when it was taken). Unchanged for an
+    ordinary project."""
+    if not is_snapshot(root):
+        return env
+    env = dict(env)
+    for name in SNAPSHOT_ISOLATING_ENV_VARS:
+        env.pop(name, None)
+    manifest = snapshot_manifest(root)
+    framework = manifest.get("framework_dir")
+    if isinstance(framework, str) and framework:
+        env["SLIDEMASTER_LATEX"] = str(root.parent / framework)
+    epoch = manifest.get("source_date_epoch")
+    if isinstance(epoch, int):
+        env["SOURCE_DATE_EPOCH"] = str(epoch)
+        env["FORCE_SOURCE_DATE"] = "1"
+    return env
+
+
 def _newer_version(a: str, b: str) -> str:
     """The newer of two "vX.Y.Z" strings (an unparsable one loses)."""
     from .updater import parse_version

@@ -41,6 +41,8 @@ def check_project_format(root: Path, app_version: str) -> bool:
         splash.close()
         if not _confirm_newer_project(root, info):
             return False
+    if project.is_snapshot(root):
+        return True  # a deck snapshot stays exactly as it was made
     try:
         project.record_project_open(root, app_version)
     except OSError:

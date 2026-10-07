@@ -187,8 +187,12 @@ def _atomic_write(path: Path, data: bytes) -> None:
 def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
                now: Optional[datetime] = None) -> UpdateResult:
     """Run the migrations of `pending`. Every file that changes is copied to
-    .slidemage/backups/<time>/compat/ first; with dry_run nothing is written."""
+    .slidemage/backups/<time>/compat/ first; with dry_run nothing is written.
+    A deck snapshot (deck_snapshot.py) is never migrated: it stays as it was."""
     result = UpdateResult()
+    if project.is_snapshot(root) and not dry_run:
+        result.errors.append("This project is a deck snapshot; snapshots are never updated.")
+        return result
     plan: dict[Path, bytes] = {}
     for item in pending:
         if item.change.migrate is None:

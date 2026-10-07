@@ -1913,6 +1913,8 @@ v5.32.1 (2026-10-07, direct instruction; the first real migration of the compati
 v5.32.2 (2026-10-07, direct question; manual content only): slide 1d7 (quick reference, deck commands) said the [v] argument takes the three deck versions everywhere. For deckoutputfolder it also takes presenter and transcript (the presenter PDF is the instructor version with notes, so slide conditions -- conditionalslide, slidestep -- need no extra value); the slide says so now. Version 1.0.1, 1.0.0 frozen.
 
 v5.32.3 (2026-10-07, direct instruction; manual content only): the user's edit of slide 1x7 (Linking and navigating, version 1.1.1; the earlier 1.1.0 frozen) adopted into the bundled manual. The release collects everything since v5.4.0.
+
+v5.33.0 (2026-10-07, direct instructions; design in docs/DECK_SNAPSHOT_PLAN.md): deck snapshots -- a self-contained copy of a deck that compiles exactly as the deck does today, whatever later changes in the project, the framework or SlideMage. New menu Decks, after System, with "Create deck snapshot..." and "Import PPTX/ODP..." (moved there from System). The dialog takes one or more decks (snapshotted one after the other on the compile slot; one failure doesn't stop the rest, Stop skips the remaining ones), folder or .zip, and whether the LaTeX package files and the SlideMage app go in; the settings are remembered. Snapshots go to <project>/snapshots/<deck>_<YYYY-MM-DD>_<HH-MM> (or .zip), any number per deck; when the selected decks already have snapshots, SlideMage asks once whether to delete them (to the Recycle Bin, each only after its deck's new snapshot was made and checked); snapshots/ is added to the project's .gitignore. Archiving a deck asks "Snapshot, then archive" / "Archive only" / Cancel -- the deck is archived once the snapshot is done, or after a second yes if it failed. How: every version of the deck and the presenter PDF are compiled with latexmk's -recorder (SOURCE_DATE_EPOCH fixed); everything they read is copied at the same relative paths (project files; the framework whole, at its position next to the project, so the project's own .latexmkrc finds it), the TeX distribution's files and the embedded fonts are recorded with version and hash (and copied into texmf/ when asked), the footer timestamps are kept, and wrappers plus render.bat/render.sh reproduce each version. Then the snapshot is rendered from its own folder: every file read must lie inside it (or the TeX distribution) and every page must equal the reference PDF, otherwise it is discarded with the reason in the log (a failed biber run fails the reference compile). A snapshot's project folder opened in SlideMage shows a banner, is never changed by the app itself (no compatibility migrations, no framework or manual updates, no project.json bookkeeping) and compiles with its own framework, dates and timestamps into its own pdf/. Command line: python -m slidemage.deck_snapshot create/verify/list. Manual: new slide 1nu (Deck snapshots); 1kp mentions the snapshot offered on archiving (1.2.0, 1.1.1 frozen); 1r8 names the Decks menu for the import (1.1.1, 1.1.0 frozen).
 """
 from __future__ import annotations
 
@@ -1922,7 +1924,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.32.3"
+VERSION_NUMBER = "v5.33.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

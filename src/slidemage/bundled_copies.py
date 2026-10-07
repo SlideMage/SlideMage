@@ -250,7 +250,12 @@ def plan_updates(project_root: Path, *, latex_source: Optional[Path],
                  example_source: Optional[Path]) -> list[Part]:
     """The parts with something to do for `project_root`, given the bundled
     framework and example folders (project._template_dir()). Never plans
-    against the bundle itself (a developer running on the repo's example/)."""
+    against the bundle itself (a developer running on the repo's example/),
+    and never against a deck snapshot, which keeps the framework and manual it
+    was made with (v5.33.0)."""
+    from .project import is_snapshot
+    if is_snapshot(project_root):
+        return []
     manifest = read_manifest(project_root)
     parts: list[Part] = []
 
