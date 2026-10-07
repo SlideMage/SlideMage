@@ -176,6 +176,13 @@ automatic updates first. A migration is plain planning (`migrate(root)` returns 
 bytes of each file to rewrite), idempotent, and written atomically, with
 line endings kept.
 
+The first registered change is not a breaking one but the worked example of a
+migration (`src/slidemage/compat_bibliography.py`, v5.32.0): course decks that carry
+their own copy of the house citation format get it replaced by `\SMUseBibliography`,
+and the format is written into the deck's template file. It only touches decks whose
+copy is the house format line for line, leaves variants alone, and waits until the
+framework next to the project has the new command.
+
 ## Directory layout
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham

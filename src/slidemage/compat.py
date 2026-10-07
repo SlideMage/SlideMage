@@ -44,12 +44,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import project
+from . import compat_bibliography, project
 from .updater import parse_version
 
-BREAKS = "breaks"
-LAYOUT = "layout"
-APPEARANCE = "appearance"
+from .compat_types import APPEARANCE, BREAKS, LAYOUT, Change, Finding  # noqa: F401  (re-exported)
 SEVERITY_LABELS = {
     BREAKS: "may stop compiling",
     LAYOUT: "file layout changed",
@@ -62,29 +60,11 @@ REPORT_JSON = Path(".slidemage") / "compat-report.json"
 BACKUP_DIR = Path(".slidemage") / "backups"
 
 
-@dataclass(frozen=True)
-class Finding:
-    file: str          # relative to the project root, forward slashes
-    line: int          # 1-based; 0 = the file as a whole
-    message: str
-
-
-@dataclass(frozen=True)
-class Change:
-    id: str
-    since: str
-    severity: str
-    title: str
-    description: str
-    fix: str = ""
-    detect: Optional[Callable[[Path], list[Finding]]] = None
-    migrate: Optional[Callable[[Path], dict[Path, bytes]]] = None
-
-
-# Newest last. Empty on purpose: entries start with v5.29.0's rule that every
-# breaking change registers itself here (the changes before that were
-# announced in version.py's BREAKING paragraphs and are not retrofitted).
-CHANGES: list[Change] = []
+# Newest last. Entries start with v5.29.0's rule that every breaking change
+# registers itself here (the changes before that were announced in
+# version.py's BREAKING paragraphs and are not retrofitted). Entries with real
+# work (detect/migrate) live in modules of their own, e.g. compat_bibliography.
+CHANGES: list[Change] = [compat_bibliography.CHANGE]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
@@ -328,6 +308,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         print(report_markdown(root, evaluation, VERSION_NUMBER))
     return 1 if evaluation.loud else 0
+
 
 
 if __name__ == "__main__":
