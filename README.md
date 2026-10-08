@@ -220,6 +220,23 @@ compile reads must lie inside the snapshot (or the TeX distribution), and every 
 must equal the reference PDF -- otherwise the snapshot is discarded and the log says
 why. That doubles the compile time; a large deck takes a while, on the compile slot.
 
+Versions that are already current aren't compiled again (since v5.34.0). After every
+successful whole-deck compile SlideMage records, in `.build/compile-records/<jobname>.json`,
+the SHA-256 of every file the compile read (latexmk's `.fls`, plus the `.bib` files from
+biber's `.blg`), of its settings (the wrapper: version, presenter, footer timestamp,
+appendix), the TeX engine version, the footer timestamp, and the published PDF's path
+and hash. A snapshot checks each version against its record: if nothing changed and the
+PDF is still the one published, that PDF is the snapshot's reference; otherwise the
+version is compiled, and the log says why ("1aa-EN-...-current.tex changed", "no compile
+on record", ...). Only the verification render then runs. A compile during which one
+of its files changed, or whose bibliography failed, is not recorded; "Remove temp files"
+keeps the records. `--recompile` ignores them.
+
+The same records spare needless compiles from the deck table: when a checked version
+hasn't changed since its last compile, and that PDF is still where this compile would
+put it, SlideMage asks first -- **Compile anyway**, **Skip unchanged** (the default) or
+Cancel.
+
 A snapshot's `<project>/` folder can be opened in SlideMage as a project: a line above
 the tabs says it is a snapshot, SlideMage never changes it by itself (no compatibility
 migrations, no framework or manual updates, no `project.json` bookkeeping), and compiles
@@ -455,6 +472,41 @@ from those retired scripts, which hit the same two problems first):
   problem from this deck's normal cosmetic warnings, but scanning the log
   for an actual `!`-prefixed error can, and is confirmed to read clean on
   this same compile.
+
+### Compiling only some pages (since v5.34.0)
+
+A deck row's **Pages** field takes the numbers printed in the slide footers, e.g.
+`4, 5, 7-10, 15`; empty means the whole deck. The checked versions (and the presenter
+PDF) then compile only the slides with those numbers, each slide whole with all its
+reveal steps, numbered exactly as in the whole deck. It builds on the version's last
+whole-deck compile (`src/slidemage/partial_compile.py`):
+
+- that compile's PDF says which slide each number is, and its auxiliary files (kept in
+  `.build/compile-records/<jobname>/`, see "Deck snapshots") supply the contents slide,
+  chapter agendas, citations and links of the whole deck;
+- the deck is compiled without the other slide calls, with the frame and page counters
+  set before each kept slide, in two single passes;
+- with **Pages replace theirs in the full PDF** (toolbar, on by default) the new pages
+  are drawn onto the old ones in that PDF -- bookmarks and links into them keep working,
+  links on them are re-targeted. Otherwise they go to `<pdf>-pages-<numbers>.pdf`.
+
+A slide whose number of pages changed (an added `\pause`) can't be swapped in place: its
+pages go to the separate file, and the log says to compile the whole deck. A page compile
+is refused when there is no whole-deck compile on record (compile the whole deck once
+with v5.34.0 or later), when the deck file changed since (a slide added, moved or removed
+shifts the numbers after it), or when the PDF was changed. It doesn't update other pages
+that show something of the changed slides (a new title in the contents slide, an
+appendix thumbnail); the log lists slides that changed but weren't asked for.
+
+Before an ordinary compile, SlideMage asks when a checked version hasn't changed since its
+last compile (see "Deck snapshots").
+
+Every PDF of one click on **Create PDF** carries the moment of that click in its PDF info
+dictionary (`/SlideMageRun`; a page compile that swaps pages in stamps its own). **Open
+pdf** opens the deck's usual PDF -- the instructor version, or another one chosen in the
+deck's **Settings** ("Open pdf opens", stored as `%% SlideMage open PDF: <version>` in the
+preamble) -- unless a newer PDF of the deck comes from a later click (or carries no stamp,
+i.e. predates v5.34.0); then it asks which one to open.
 
 ### Custom output folder (`\deckoutputfolder`)
 

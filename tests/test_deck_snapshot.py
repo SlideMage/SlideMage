@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -261,11 +262,106 @@ def test_latex_package_files_are_copied_on_request(tree):
     assert result.counts["texmf"] == 2
 
 
+def test_wrapper_paths_into_the_project_become_relative(tmp_path):
+    root = tmp_path / "Proj"
+    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.previews/slide_previews/x.png}}\n"
+            "\\input{t-Deck.tex}\n")
+    assert deck_snapshot.relative_wrapper(text, root) == (
+        "\\includegraphics[width=1cm]{.previews/slide_previews/x.png}\n\\input{t-Deck.tex}\n")
+
+
+def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
+    """The instructor compile reads the previews from before its own refresh,
+    the versions compiled after it the refreshed ones: one snapshot holds both."""
+    root, target = tmp_path / "Proj", tmp_path / "snap" / "Proj"
+    preview = write(root / ".previews" / "slide_previews" / "1aa-304-171.png", b"refreshed")
+    kept = write(tmp_path / "kept" / "0-1aa-304-171.png", b"as the instructor compile read it")
+
+    def out(copies):
+        return deck_snapshot._JobOutput("j", Path("x.pdf"), [preview], "", [], None,
+                                        copies=copies)
+
+    assert deck_snapshot.copy_job_previews(
+        out({deck_snapshot._norm(preview): kept}), "t-instructor", root, target) == 1
+    assert deck_snapshot.copy_job_previews(out({}), "t-after-course", root, target) == 1
+    base = target / ".previews"
+    assert (base / "t-instructor" / "slide_previews" / "1aa-304-171.png").read_bytes() \
+        == b"as the instructor compile read it"
+    assert (base / "t-after-course" / "slide_previews" / "1aa-304-171.png").read_bytes() \
+        == b"refreshed"
+    wrapper = f"\\includegraphics{{{root.as_posix()}/.previews/slide_previews/1aa-304-171.png}}"
+    assert deck_snapshot.relative_wrapper(wrapper, root, "t-instructor") == (
+        "\\includegraphics{.previews/t-instructor/slide_previews/1aa-304-171.png}")
+
+
 def test_root_of_prefers_the_deepest_root(tmp_path):
     outer, inner = tmp_path / "texlive" / "2026", tmp_path / "texlive" / "2026" / "texmf-dist"
     path = inner / "tex" / "latex" / "x.sty"
     assert deck_snapshot.root_of(path, [outer, inner]) == inner
     assert deck_snapshot.root_of(tmp_path / "elsewhere", [outer, inner]) is None
+
+
+def record_compile(root: Path, texroot: Path, jobname: str, started: float) -> Path:
+    """What compiler.py records after compiling `jobname` of t-Deck: the same
+    inputs the fake compile reads, the PDF published to pdf/."""
+    from slidemage import compile_records
+
+    fw = root.parent / "SlideMage" / "latex"
+    inv = root / ".build" / f"{jobname}-x"
+    write(inv / f"{jobname}.fls", "\n".join(f"INPUT {p}" for p in (
+        root / "decks" / "t-Deck.tex", root / "Slidemaster_preamble_uni-graz.tex",
+        root / "slides" / "1aa-EN-One-current.tex", root / "media" / "used.png",
+        fw / "Slidemaster_preamble_base.tex", fw / "beamerthemegotham.sty",
+        texroot / "tex" / "latex" / "beamer" / "beamer.cls")) + "\n")
+    write(inv / f"{jobname}.log", "Package: beamer 2025/06/02 v3.75\n")
+    write(inv / f"{jobname}.timestamp", "\\gdef\\SMCompileTimestampValue{2026-10-06 08:00}\n")
+    write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'Slidemaster.bib'}'\n")
+    pdf = write(root / "pdf" / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
+    assert compile_records.write_record(root / ".build", jobname, inv, root / "decks" / "_w.tex",
+                                        compiler._wrapper_text(compiler.CompileJob(
+                                            next(d for d in deck_scan._scan_dir(root / "decks", False)
+                                                 if d.name == "t-Deck"),
+                                            None, None)), pdf, started)
+    return pdf
+
+
+def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
+    from slidemage import compile_records
+
+    root, _, decks, calls, _ = tree
+    monkeypatch.setattr(compile_records, "engine_version", lambda: "LuaHBTeX 1.22.0")
+    texroot = deck_snapshot.tex_roots()[0]
+    started = time.time() + 1
+    pdf = record_compile(root, texroot, "t-Deck", started)
+    lines: list[str] = []
+    result = deck_snapshot.create_snapshot(decks["t-Deck"], options(verify=True), lines.append,
+                                           when=WHEN, project_root=root)
+    assert result.ok, result.error
+    # t-Deck reused (only its verification render), the presenter compiled
+    assert [c[0] for c in calls] == ["t-Deck-presenter", "t-Deck", "t-Deck-presenter"], [
+        line for line in lines if "is compiled" in line]
+    assert result.counts["reused"] == 1
+    assert any("nothing it uses changed since its compile" in line for line in lines)
+    manifest = deck_snapshot.read_manifest(result.path)
+    job = manifest["jobs"][0]
+    assert job["reused_compile"] and job["source_date_epoch"] == int(started)
+    assert job["timestamp"] == "2026-10-06 08:00"
+    assert manifest["jobs"][1]["reused_compile"] == ""
+    assert (result.path / "reference-pdf" / "t-Deck.pdf").read_bytes() == pdf.read_bytes()
+    assert f"{int(started)}" in (result.path / "render.bat").read_text(encoding="utf-8")
+    # a slide edit makes it compile again
+    calls.clear()
+    write(root / "slides" / "1aa-EN-One-current.tex", "slide one, edited\n")
+    result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), lines.append,
+                                           when=WHEN, project_root=root)
+    assert result.ok and [c[0] for c in calls] == ["t-Deck", "t-Deck-presenter"]
+    assert any("t-Deck is compiled: 1aa-EN-One-current.tex changed" in line for line in lines)
+    # and --recompile ignores the record
+    record_compile(root, texroot, "t-Deck", time.time() + 1)
+    calls.clear()
+    deck_snapshot.create_snapshot(decks["t-Deck"], options(reuse=False), print, when=WHEN,
+                                  project_root=root)
+    assert [c[0] for c in calls] == ["t-Deck", "t-Deck-presenter"]
 
 
 def test_snapshot_of_versioned_deck_compiles_every_version(tree):

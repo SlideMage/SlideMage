@@ -17,6 +17,7 @@ import sys
 import tempfile
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -75,8 +76,9 @@ from .compiler import (
     PDF_MOVE_RETRY_TOTAL_SECONDS,
     CancelToken,
     CompileJob,
-    latest_pdf_for_deck,
+    deck_pdfs,
     order_jobs,
+    pdf_to_open,
     resolve_output_location,
     run_job,
     run_jobs,
@@ -89,6 +91,7 @@ from .qt_deck_settings_dialog import DeckSettingsDialog
 from .qt_deck_editor_tab import DeckEditorTab
 from .qt_deck_group_dialog import ask_deck_details
 from .qt_import_dialog import ImportPresentationDialog
+from .partial_compile import PartialError
 from .qt_settings_dialog import SettingsDialog
 from .qt_slide_search_dialog import SlideSearchDialog
 from .qt_slide_source_tab import SlideSourceTab
@@ -1098,6 +1101,19 @@ class SlideMageWindow(QMainWindow):
         )
         toolbar.addWidget(self.appendix_toc_checkbox)
 
+        # Page compiles (a deck row's Pages field, partial_compile.py, v5.35.0):
+        # swap the new pages into the version's whole-deck PDF, or write them
+        # to a separate "<pdf>-pages-....pdf". Remembered.
+        self.replace_pages_checkbox = QCheckBox("Pages replace theirs in the full PDF")
+        self.replace_pages_checkbox.setToolTip(
+            "With a Pages entry in a deck row: put the newly compiled pages into that "
+            "version's whole-deck PDF in place of the old ones. Off: write them to a "
+            "separate PDF next to it.")
+        self.replace_pages_checkbox.setChecked(bool(app_settings.get("replace_pages", True)))
+        self.replace_pages_checkbox.toggled.connect(
+            lambda checked: app_settings.set("replace_pages", checked))
+        toolbar.addWidget(self.replace_pages_checkbox)
+
         self.auto_open_checkbox = QCheckBox("Auto-open generated PDFs")
         self.auto_open_checkbox.setChecked(True)
         toolbar.addWidget(self.auto_open_checkbox)
@@ -1794,12 +1810,22 @@ class SlideMageWindow(QMainWindow):
         job_status_map: dict[str, tuple[DeckRow, str]] = {}
         footer_timestamp = self.footer_timestamp_checkbox.isChecked()
         appendix_toc = self.appendix_toc_checkbox.isChecked()
+        replace_pages = self.replace_pages_checkbox.isChecked()
+        # One id for everything this click compiles (PDF info /SlideMageRun).
+        run_id = datetime.now().isoformat(timespec="seconds")
         for row in rows:
             row.reset_status()
-            for job in row.build_jobs():
+            try:
+                row_jobs = row.build_jobs()
+            except PartialError as exc:
+                QMessageBox.warning(self, "Pages", f"{row.deck.name}: {exc}")
+                return
+            for job in row_jobs:
                 job.footer_timestamp = footer_timestamp
                 # \deckappendixtoc in the deck: always, checkbox or not
                 job.appendix_toc = appendix_toc or job.deck.appendix_toc
+                job.replace_pages = replace_pages
+                job.run_id = run_id
                 job_status_map[job.jobname] = (row, job_column_key(job))
                 output_dir, output_stem = resolve_output_location(job)
                 self._job_output_paths[job.jobname] = output_dir / f"{output_stem}.pdf"
@@ -1825,6 +1851,9 @@ class SlideMageWindow(QMainWindow):
                 + "\n".join(f"  • {d}" for d in empty_descriptions)
                 + "\n\nCompiling the rest.",
             )
+        jobs = self._confirm_unchanged_jobs(jobs, job_status_map)
+        if not jobs:
+            return
         # Pre-render syntax check (2026-09-26), scoped to exactly what these
         # jobs read: the deck files plus the slides their versions/chapters
         # actually include.
@@ -1834,6 +1863,47 @@ class SlideMageWindow(QMainWindow):
                 show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
             return
         self._start_jobs(jobs, job_status_map)
+
+    def _confirm_unchanged_jobs(
+        self, jobs: list[CompileJob], job_status_map: dict[str, tuple[DeckRow, str]]
+    ) -> list[CompileJob]:
+        """Versions that haven't changed since their last compile
+        (compiler.unchanged_jobs) are only compiled again after asking
+        (2026-10-08, direct instruction): Compile anyway / Skip unchanged /
+        Cancel. Returns the jobs to compile ([] = nothing)."""
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            unchanged = compiler.unchanged_jobs(jobs, self._job_output_paths)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not unchanged:
+            return jobs
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Nothing changed")
+        lines = [f"  • {job.jobname} (compiled {created[:16].replace('T', ' ')})"
+                 for job, created in unchanged]
+        box.setText("Nothing these PDFs are made from has changed since they were last "
+                    "compiled:\n\n" + "\n".join(lines) + "\n\nCompile them anyway?")
+        box.setInformativeText("SlideMage compares every file the last compile read "
+                               "(slides, media, template, framework, packages) and the PDF itself.")
+        anyway = box.addButton("Compile anyway", QMessageBox.ButtonRole.AcceptRole)
+        skip = box.addButton("Skip unchanged", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(skip)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is anyway:
+            return jobs
+        if clicked is not skip:
+            return []
+        skipped = {job.jobname for job, _created in unchanged}
+        for name in skipped:
+            job_status_map.pop(name, None)
+        remaining = [job for job in jobs if job.jobname not in skipped]
+        if not remaining:
+            self._log(f"Nothing compiled: {', '.join(sorted(skipped))} unchanged.")
+        return remaining
 
     def _drop_empty_jobs(
         self, jobs: list[CompileJob], job_status_map: dict[str, tuple[DeckRow, str]]
@@ -1891,14 +1961,29 @@ class SlideMageWindow(QMainWindow):
         return [group] + [t for t in deck_tags if t not in GROUP_TAGS]
 
     def _on_open_latest_pdf(self, deck: Deck) -> None:
-        """Active decks table's own "Open pdf" button (2026-09-21) -- opens
-        the most recently created PDF of this deck, whichever version or
-        output folder it landed in (compiler.latest_pdf_for_deck())."""
-        pdf_path = latest_pdf_for_deck(deck)
-        if pdf_path is None:
+        """Active decks table's own "Open pdf" button (2026-09-21): opens the
+        deck's preferred PDF (Settings -> "Open pdf opens", else the
+        instructor PDF), unless a newer PDF of the deck comes from another
+        compile run -- then it asks which one, newest first (2026-10-08,
+        direct instructions; compiler.pdf_to_open())."""
+        pdfs = deck_pdfs(deck)
+        if not pdfs:
             QMessageBox.information(
                 self, "No PDF yet", f"No PDF has been created for {deck.name} yet.")
             return
+        chosen = pdf_to_open(pdfs)
+        if chosen is None:
+            labels = [f"{pdf.label} -- {datetime.fromtimestamp(pdf.mtime):%Y-%m-%d %H:%M}"
+                      for pdf in pdfs]
+            default = next((i for i, pdf in enumerate(pdfs) if pdf.preferred), 0)
+            label, ok = QInputDialog.getItem(
+                self, "Open pdf",
+                f"{deck.name} has PDFs from a later compile run than the one it usually opens.\n"
+                "Which one should open?", labels, default, False)
+            if not ok:
+                return
+            chosen = pdfs[labels.index(label)]
+        pdf_path = chosen.path
         try:
             open_path.open_in_default_app(pdf_path)
         except OSError as exc:

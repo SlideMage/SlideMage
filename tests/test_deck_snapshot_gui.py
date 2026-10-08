@@ -75,6 +75,37 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
     assert banner(None) is None
 
 
+@pytest.mark.parametrize("button, expected", [
+    ("Compile anyway", ["t-A-instructor", "t-A-during-course"]),
+    ("Skip unchanged", ["t-A-during-course"]),
+    ("Cancel", []),
+])
+def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, button, expected):
+    jobs = [SimpleNamespace(jobname="t-A-instructor"), SimpleNamespace(jobname="t-A-during-course")]
+    monkeypatch.setattr(qt_gui.compiler, "unchanged_jobs",
+                        lambda jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")])
+    seen: list = []
+    press_on_exec(monkeypatch, button, seen)
+    win = QWidget()
+    win._job_output_paths = {}
+    win._log = lambda line: None
+    status = {"t-A-instructor": 1, "t-A-during-course": 2}
+    result = qt_gui.SlideMageWindow._confirm_unchanged_jobs(win, jobs, status)
+    assert [j.jobname for j in result] == expected
+    assert "t-A-instructor (compiled 2026-10-08 07:51)" in seen[0][0]
+    if button == "Skip unchanged":
+        assert status == {"t-A-during-course": 2}
+
+
+def test_nothing_unchanged_no_question(qapp, monkeypatch):
+    jobs = [SimpleNamespace(jobname="t-A-instructor")]
+    monkeypatch.setattr(qt_gui.compiler, "unchanged_jobs", lambda jobs, dests: [])
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked"))
+    win = QWidget()
+    win._job_output_paths = {}
+    assert qt_gui.SlideMageWindow._confirm_unchanged_jobs(win, jobs, {}) == jobs
+
+
 # ---------------------------------------------------------------- dialog
 
 def test_dialog_lists_decks_preselects_and_remembers_settings(qapp, settings):

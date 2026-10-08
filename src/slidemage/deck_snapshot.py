@@ -39,7 +39,6 @@ Command line::
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -55,8 +54,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import compiler, project
+from . import compile_records, compiler, project
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
+from .compile_records import (
+    BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
+    LOG_FILE_LINE_RE as _LOG_FILE_LINE_RE,
+    LOG_FORMAT_RE as _LOG_FORMAT_RE,
+    is_within,
+    norm as _norm,
+    parse_blg_sources,
+    parse_fls,
+    sha256 as _sha256,
+)
 from .deck_scan import PROJECT_ROOT, Deck
 
 SNAPSHOTS_DIRNAME = "snapshots"
@@ -79,18 +88,15 @@ ALWAYS_PROJECT_FILES = (
 )
 # Project folders whose files never belong in a snapshot even if a compile
 # reads them (build output, caches, other snapshots).
+# (.previews: the slide previews a generated appendix shows are copied per
+# version instead, see copy_job_previews().)
 EXCLUDED_PROJECT_DIRS = (".build", ".previews", ".git", SNAPSHOTS_DIRNAME, ".slidemage")
+PREVIEWS_DIRNAME = ".previews"
 ISOLATING_ENV_VARS = project.SNAPSHOT_ISOLATING_ENV_VARS
 
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[[str], None]
 
-# Matches the .log's "Package: beamer 2025/06/02 v3.75 ..." family of lines.
-_LOG_FILE_LINE_RE = re.compile(
-    r"^(?:Package|Document Class|File): (\S+) (\d{4}[/-]\d\d[/-]\d\d)\s*(.*)$", re.MULTILINE)
-_LOG_FORMAT_RE = re.compile(r"^(LaTeX2e <[^>]+>.*|L3 programming layer <[^>]+>.*)$", re.MULTILINE)
-_BLG_SOURCE_RE = re.compile(r"Found BibTeX data source '([^']+)'")
-_BIBER_NEEDED_RE = re.compile(r"Package biblatex Warning: Please \(re\)run Biber")
 
 
 class SnapshotError(Exception):
@@ -100,8 +106,8 @@ class SnapshotError(Exception):
 @dataclass
 class SnapshotOptions:
     zip: bool = False
-    # Copy the TeX distribution's package files into texmf/ (tier 2; see the
-    # plan -- recorded-only until the spike settles whether they're used).
+    # Copy the TeX distribution's package files and fonts into texmf/ (a
+    # record; renders don't use them -- texmf/README.txt says how to).
     texmf: bool = False
     include_app: bool = False
     reference_pdfs: bool = True
@@ -110,6 +116,9 @@ class SnapshotOptions:
     # None: the deck's own \deckappendixtoc decides.
     appendix_toc: Optional[bool] = None
     presenter: bool = True
+    # Use a version's last compile instead of compiling it again when nothing
+    # it read has changed since (compile_records.py).
+    reuse: bool = True
 
 
 @dataclass
@@ -156,6 +165,14 @@ class _JobOutput:
     log_text: str
     bib_sources: list[Path]
     timestamp: Optional[str]   # contents of <jobname>.timestamp
+    # The SOURCE_DATE_EPOCH this PDF corresponds to: the snapshot's own for a
+    # compile made for it, the compile's start for a reused one (None: the
+    # snapshot's); renders of the snapshot use it, so \today matches.
+    epoch: Optional[int] = None
+    reused_from: str = ""      # "" or the ISO time of the reused compile
+    # norm(path) -> the file to copy instead (a reused compile's kept slide
+    # previews: the current ones may have been refreshed since)
+    copies: dict[str, Path] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------
@@ -170,28 +187,9 @@ def format_size(size: int) -> str:
     return f"{size} B"
 
 
-def _norm(path: Path | str) -> str:
-    return os.path.normcase(os.path.normpath(str(path)))
-
-
-def is_within(path: Path | str, root: Path | str) -> bool:
-    """`path` is `root` or below it, compared the way the OS does (case-
-    insensitive on Windows, where .fls paths also mix "d:" and "D:")."""
-    p, r = _norm(path), _norm(root)
-    return p == r or p.startswith(r.rstrip("\\/") + os.sep)
-
-
 def _rel(path: Path, root: Path) -> str:
     """`path` relative to `root`, with forward slashes."""
     return Path(os.path.relpath(str(path), str(root))).as_posix()
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _dir_size(path: Path) -> int:
@@ -378,33 +376,6 @@ def wrapper_name(jobname: str) -> str:
     return f"{WRAPPER_PREFIX}{jobname}.tex"
 
 
-def parse_fls(fls: Path) -> list[Path]:
-    """Every file a compile read (INPUT lines of latexmk's -recorder .fls),
-    absolute and normalized, in first-read order, without duplicates.
-    Relative entries are relative to the .fls's own PWD line."""
-    pwd: Optional[Path] = None
-    seen: dict[str, Path] = {}
-    for line in fls.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("PWD "):
-            pwd = Path(line[4:].strip())
-        elif line.startswith("INPUT "):
-            raw = Path(line[6:].strip())
-            if not raw.is_absolute():
-                raw = (pwd or fls.parent) / raw
-            path = Path(os.path.normpath(str(raw)))
-            seen.setdefault(_norm(path), path)
-    return list(seen.values())
-
-
-def parse_blg_sources(blg: Path) -> list[Path]:
-    """The .bib files biber read (its .blg log names them)."""
-    try:
-        text = blg.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    return [Path(os.path.normpath(m.group(1))) for m in _BLG_SOURCE_RE.finditer(text)]
-
-
 def tex_roots() -> list[Path]:
     """The TeX distribution's trees (MiKTeX roots, TeX Live's texmf-dist/var/
     cache...), from kpsewhich. Files below them are "the TeX distribution"."""
@@ -529,7 +500,7 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
     all_inputs = [p for out in outputs for p in out.inputs]
     framework_dir = find_framework_dir(all_inputs)
     wrapper_keys = {_norm(w) for w in wrappers}
-    project_files: dict[str, Path] = {}
+    project_files: dict[str, tuple[str, Path]] = {}   # lowercased rel -> (rel, source)
     tex_files: dict[str, Path] = {}
     external: dict[str, Path] = {}
     warnings: list[str] = []
@@ -542,7 +513,7 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
             return
         if rel.split("/", 1)[0] in EXCLUDED_PROJECT_DIRS:
             return
-        project_files.setdefault(rel.lower(), path.resolve())
+        project_files.setdefault(rel.lower(), (rel, path.resolve()))
 
     for path in all_inputs:
         kind = classify_input(path, project_root=project_root, framework_dir=framework_dir,
@@ -570,10 +541,52 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
     for path in external.values():
         warnings.append(f"Uses a file outside the project, the framework and the TeX "
                         f"distribution, which a snapshot can't hold: {path}")
-    return _Collected(project_files={_rel(p, project_root.resolve()): p
-                                     for p in project_files.values()},
+    return _Collected(project_files=dict(project_files.values()),
                       framework_dir=framework_dir, tex_files=tex_files,
                       external=list(external.values()), warnings=warnings)
+
+
+def relative_wrapper(text: str, project_root: Path, jobname: Optional[str] = None) -> str:
+    """A wrapper's text as stored in a snapshot: absolute paths into the
+    project (a generated appendix's slide previews) made project-relative,
+    so the snapshot reads its own copies (the decks' graphicspath has ../);
+    with `jobname`, the previews point into that version's own folder
+    (job_previews_rel())."""
+    for root in {project_root.as_posix(), project_root.resolve().as_posix()}:
+        text = text.replace(root.rstrip("/") + "/", "")
+    if jobname:
+        text = text.replace(f"{PREVIEWS_DIRNAME}/", f"{PREVIEWS_DIRNAME}/{jobname}/")
+    return text
+
+
+def job_previews_rel(rel: str, jobname: str) -> str:
+    """".previews/slide_previews/x.png" -> ".previews/<jobname>/slide_previews/x.png":
+    each version of a snapshot keeps the previews its own compile read -- they
+    differ between versions compiled before and after an instructor compile
+    refreshed them."""
+    return f"{PREVIEWS_DIRNAME}/{jobname}/{rel[len(PREVIEWS_DIRNAME) + 1:]}"
+
+
+def copy_job_previews(out: "_JobOutput", jobname: str, project_root: Path,
+                      target_project: Path) -> int:
+    """Copy the slide previews `out`'s compile read (a reused compile's kept
+    copies, else the current files) into the snapshot's per-version folder.
+    Returns how many."""
+    copied = 0
+    for path in out.inputs:
+        if not is_within(path, project_root):
+            continue
+        rel = _rel(path.resolve(), project_root.resolve())
+        if not rel.startswith(f"{PREVIEWS_DIRNAME}/"):
+            continue
+        source = out.copies.get(_norm(path), path)
+        if not source.is_file():
+            continue
+        dest = target_project / job_previews_rel(rel, jobname)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
+        copied += 1
+    return copied
 
 
 def framework_relpath(project_root: Path, framework_dir: Path) -> str:
@@ -789,7 +802,8 @@ def _copy_app(dest: Path, log: LogCallback) -> Optional[str]:
     return note
 
 
-def _render_bat(project_dir: str, framework_rel: str, epoch: int, jobs: list[tuple[str, str]]) -> str:
+def _render_bat(project_dir: str, framework_rel: str, jobs: list[tuple[str, str, int]]) -> str:
+    """render.bat; `jobs` = (jobname, wrapper, SOURCE_DATE_EPOCH) per version."""
     fw = framework_rel.replace("/", "\\")
     lines = [
         "@echo off",
@@ -802,7 +816,6 @@ def _render_bat(project_dir: str, framework_rel: str, epoch: int, jobs: list[tup
         "set TEXINPUTS=",
         "set BIBINPUTS=",
         "set LUAINPUTS=",
-        f"set SOURCE_DATE_EPOCH={epoch}",
         "set FORCE_SOURCE_DATE=1",
         "where perl >nul 2>nul",
         "if errorlevel 1 (",
@@ -812,14 +825,15 @@ def _render_bat(project_dir: str, framework_rel: str, epoch: int, jobs: list[tup
         'if not exist pdf mkdir pdf',
         "set FAILED=0",
     ]
-    for jobname, wrapper in jobs:
-        lines.append(f'call :job "{jobname}" "{wrapper}"')
+    for jobname, wrapper, epoch in jobs:
+        lines.append(f'call :job "{jobname}" "{wrapper}" {epoch}')
     lines += [
         'if "%FAILED%"=="1" (echo One or more versions failed -- see the .log files in .build\\. & exit /b 1)',
         "echo Done. The PDFs are in %CD%\\pdf\\",
         "exit /b 0",
         "",
         ":job",
+        "set SOURCE_DATE_EPOCH=%~3",
         'latexmk -f -jobname=%~1 -auxdir="%CD%\\.build\\%~1" -outdir="%CD%\\.build\\%~1" %2',
         'if exist ".build\\%~1\\%~1.pdf" (copy /y ".build\\%~1\\%~1.pdf" "pdf\\%~1.pdf" >nul) else (set FAILED=1)',
         "exit /b 0",
@@ -828,7 +842,7 @@ def _render_bat(project_dir: str, framework_rel: str, epoch: int, jobs: list[tup
     return "\r\n".join(lines)
 
 
-def _render_sh(project_dir: str, framework_rel: str, epoch: int, jobs: list[tuple[str, str]]) -> str:
+def _render_sh(project_dir: str, framework_rel: str, jobs: list[tuple[str, str, int]]) -> str:
     lines = [
         "#!/bin/sh",
         "# Renders this deck snapshot exactly as it compiled when the snapshot was taken.",
@@ -837,17 +851,17 @@ def _render_sh(project_dir: str, framework_rel: str, epoch: int, jobs: list[tupl
         f'cd "$here/{project_dir}" || exit 1',
         f'SLIDEMASTER_LATEX="$here/{framework_rel}"; export SLIDEMASTER_LATEX',
         "unset TEXINPUTS BIBINPUTS LUAINPUTS",
-        f"SOURCE_DATE_EPOCH={epoch}; export SOURCE_DATE_EPOCH",
         "FORCE_SOURCE_DATE=1; export FORCE_SOURCE_DATE",
         "mkdir -p pdf",
         "failed=0",
         "job() {",
+        '  SOURCE_DATE_EPOCH="$3"; export SOURCE_DATE_EPOCH',
         '  latexmk -f -jobname="$1" -auxdir="$PWD/.build/$1" -outdir="$PWD/.build/$1" "$2"',
         '  if [ -f ".build/$1/$1.pdf" ]; then cp ".build/$1/$1.pdf" "pdf/$1.pdf"; else failed=1; fi',
         "}",
     ]
-    for jobname, wrapper in jobs:
-        lines.append(f"job '{jobname}' '{wrapper}'")
+    for jobname, wrapper, epoch in jobs:
+        lines.append(f"job '{jobname}' '{wrapper}' {epoch}")
     lines += [
         'if [ "$failed" = 1 ]; then echo "One or more versions failed -- see the .log files in .build/."; exit 1; fi',
         'echo "Done. The PDFs are in $PWD/pdf/"',
@@ -995,7 +1009,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
     project_dir = snapshot_root / manifest["project_dir"]
     framework = snapshot_root / manifest["framework_dir"]
     roots = tex_roots()
-    env = _isolated_env(int(manifest["source_date_epoch"]), framework)
+    default_epoch = int(manifest["source_date_epoch"])
     outputs: list[_JobOutput] = []
     # Build output in the project's .build/, not the system temp folder: Git
     # for Windows' perl (which runs latexmk) maps %TEMP% to /tmp, a path the
@@ -1015,6 +1029,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
             key = progress_key(jobname, verify=True)
             log(f"==== Compiling {manifest.get('deck_name', '?')} -> {key} ====")
             log("    (verifying: rendering from the snapshot itself)")
+            env = _isolated_env(int(job.get("source_date_epoch", default_epoch)), framework)
             try:
                 out = run_recorded_compile(project_dir, project_dir / job["wrapper"], jobname,
                                            build, env, log, cancel)
@@ -1097,19 +1112,40 @@ def create_snapshot(
     jobs = snapshot_jobs(deck, options)
     wrappers: list[Path] = []
     try:
-        # 1. Reference compiles, recorded.
+        # 1. Reference compiles, recorded -- or a version's last compile when
+        # nothing it read has changed since (compile_records.py).
         outputs: list[_JobOutput] = []
+        wrapper_texts: list[str] = []
         env = _isolated_env(epoch)
         if os.environ.get("SLIDEMASTER_LATEX"):
             env["SLIDEMASTER_LATEX"] = os.environ["SLIDEMASTER_LATEX"]
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
-            progress(f"compiling {job.jobname} ({i} of {len(jobs)})")
             key = progress_key(job.jobname)
+            wrapper_text = compiler._wrapper_text(job)
+            wrapper_texts.append(wrapper_text)
+            if options.reuse:
+                fresh, why = compile_records.fresh_output(compiler.BUILD_DIR, job.jobname,
+                                                          wrapper_text)
+                if fresh is not None:
+                    progress(f"{job.jobname} unchanged ({i} of {len(jobs)})")
+                    log(f"==== Compiling {deck.name} -> {key} ====")
+                    log(f"    ({job.jobname}: nothing it uses changed since its compile of "
+                        f"{fresh.created[:16].replace('T', ' ')} -- using "
+                        f"{fresh.pdf} instead of compiling it again)")
+                    log(f"==== Finished: {key} ====")
+                    outputs.append(_JobOutput(
+                        job_name=job.jobname, pdf=fresh.pdf, inputs=fresh.inputs,
+                        log_text=fresh.log_text, bib_sources=fresh.bib_sources,
+                        timestamp=fresh.timestamp, epoch=fresh.started,
+                        reused_from=fresh.created, copies=fresh.copies))
+                    continue
+                log(f"    ({job.jobname} is compiled: {why})")
+            progress(f"compiling {job.jobname} ({i} of {len(jobs)})")
             log(f"==== Compiling {deck.name} -> {key} ====")
             wrapper = deck.path.parent / wrapper_name(job.jobname)
             wrappers.append(wrapper)
-            wrapper.write_text(compiler._wrapper_text(job), encoding="utf-8", newline="")
+            wrapper.write_text(wrapper_text, encoding="utf-8", newline="")
             try:
                 outputs.append(run_recorded_compile(
                     project_root, wrapper, job.jobname, build_root / job.jobname, env, log, cancel))
@@ -1142,9 +1178,11 @@ def create_snapshot(
                         ignore=shutil.ignore_patterns("__pycache__", ".git"))
         job_entries = []
         deck_rel_dir = _rel(deck.path.parent.resolve(), project_root.resolve())
-        for job, out in zip(jobs, outputs):
+        for job, out, wrapper_text in zip(jobs, outputs, wrapper_texts):
             wrapper_rel = f"{deck_rel_dir}/{wrapper_name(job.jobname)}"
-            _write_text(target_project / wrapper_rel, compiler._wrapper_text(job))
+            _write_text(target_project / wrapper_rel,
+                        relative_wrapper(wrapper_text, project_root, job.jobname))
+            copy_job_previews(out, job.jobname, project_root, target_project)
             if out.timestamp is not None:
                 _write_text(target_project / ".build" / job.jobname / f"{job.jobname}.timestamp",
                             out.timestamp)
@@ -1156,6 +1194,8 @@ def create_snapshot(
                 "version": job.version, "presenter": job.presenter,
                 "appendix_toc": job._appendix_applies, "footer_timestamp": job.footer_timestamp,
                 "timestamp": timestamp_value(out.timestamp),
+                "source_date_epoch": out.epoch if out.epoch is not None else epoch,
+                "reused_compile": out.reused_from,
             })
         app = _app_info()
         app_note = _copy_app(partial / "app", log) if options.include_app else None
@@ -1174,9 +1214,9 @@ def create_snapshot(
                          "deck_name": deck.name, "created": created, "read_only": True},
         }
         _write_text(target_project / project.PROJECT_INFO_PATH, json.dumps(project_json, indent=2) + "\n")
-        render_jobs = [(e["jobname"], e["wrapper"]) for e in job_entries]
-        _write_text(partial / "render.bat", _render_bat(project_dir, fw_rel, epoch, render_jobs), "\r\n")
-        _write_text(partial / "render.sh", _render_sh(project_dir, fw_rel, epoch, render_jobs))
+        render_jobs = [(e["jobname"], e["wrapper"], e["source_date_epoch"]) for e in job_entries]
+        _write_text(partial / "render.bat", _render_bat(project_dir, fw_rel, render_jobs), "\r\n")
+        _write_text(partial / "render.sh", _render_sh(project_dir, fw_rel, render_jobs))
         manifest = {
             "snapshot_format": SNAPSHOT_FORMAT,
             "name": name,
@@ -1202,7 +1242,8 @@ def create_snapshot(
         result.counts.update({"project": len(collected.project_files),
                          "framework": sum(1 for p in (partial / fw_rel).rglob("*") if p.is_file()),
                          "tex (recorded)": len(collected.tex_files),
-                         "jobs": len(jobs)})
+                         "jobs": len(jobs),
+                         "reused": sum(1 for out in outputs if out.reused_from)})
 
         # 4. Verify from the snapshot itself.
         _check_cancel(cancel)
@@ -1316,6 +1357,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     create.add_argument("--no-reference-pdfs", action="store_true")
     create.add_argument("--no-presenter", action="store_true")
     create.add_argument("--no-verify", action="store_true")
+    create.add_argument("--recompile", action="store_true",
+                        help="compile every version, even those unchanged since their last compile")
     verify = sub.add_parser("verify", help="check a snapshot renders from itself, as recorded")
     verify.add_argument("path")
     sub.add_parser("list", help="list the project's snapshots")
@@ -1339,7 +1382,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     decks = _find_decks(args.decks)
     options = SnapshotOptions(zip=args.zip, texmf=args.texmf, include_app=args.with_app,
                               reference_pdfs=not args.no_reference_pdfs,
-                              verify=not args.no_verify, presenter=not args.no_presenter)
+                              verify=not args.no_verify, presenter=not args.no_presenter,
+                              reuse=not args.recompile)
     old = find_snapshots([d.name for d in decks]) if args.delete_old else []
     started = time.monotonic()
     results = snapshot_decks(decks, options, log, delete_old=old)

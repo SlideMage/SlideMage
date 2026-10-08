@@ -20,8 +20,10 @@ from .deck_scan import (
     DOCUMENT_BEGIN_LINE_RE,
     OUTPUT_FOLDER_RE,
     DECKAPPENDIXTOC_RE,
+    OPEN_PDF_RE,
     is_commented,
     parse_course_url,
+    parse_open_pdf,
 )
 
 # \input{Slidemaster_preamble_<template>} -- which template the deck uses.
@@ -46,6 +48,23 @@ class DeckSettings:
     course_url: str = ""
     output_folders: dict[str | None, str] = field(default_factory=dict)
     appendix_toc: bool = False
+    # which PDF the deck table's "Open pdf" opens by default (deck_scan.OPEN_PDF_RE)
+    open_pdf: str = "instructor"
+
+
+def set_open_pdf(text: str, choice: str) -> str:
+    """`text` with its "%% SlideMage open PDF: ..." line set to `choice`;
+    none for the default (instructor). Placed just before \\begin{document},
+    like the course link."""
+    end = _preamble_end(text)
+    for match in reversed(list(OPEN_PDF_RE.finditer(text, 0, end))):
+        line_start, line_end = deck_editor._line_span(text, match.start(), match.end())
+        text = text[:line_start] + text[line_end:]
+    if choice in ("", "instructor"):
+        return text
+    end = _preamble_end(text)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    return text[:end] + f"%% SlideMage open PDF: {choice}{newline}" + text[end:]
 
 
 def _preamble_end(text: str) -> int:
@@ -131,6 +150,7 @@ def read_settings(text: str) -> DeckSettings:
     begin = DOCUMENT_BEGIN_LINE_RE.search(text)
     preamble = text[:begin.start()] if begin else text
     settings.course_url = parse_course_url(text) or ""
+    settings.open_pdf = parse_open_pdf(text) or "instructor"
     for match in _live(text, OUTPUT_FOLDER_RE):
         key = (match.group(1) or "").strip() or None
         settings.output_folders[key] = match.group(2).strip()
@@ -221,6 +241,8 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
             text = set_output_folder(text, key, after)
     if new.appendix_toc != old.appendix_toc:
         text = set_appendix_toc(text, new.appendix_toc)
+    if new.open_pdf != old.open_pdf:
+        text = set_open_pdf(text, new.open_pdf)
     return text
 
 

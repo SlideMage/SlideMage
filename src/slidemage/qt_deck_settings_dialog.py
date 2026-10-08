@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import deck_editor, deck_settings
+from .deck_scan import OPEN_PDF_CHOICES
 from .deck_settings import DeckSettings
 from .qt_theme import MUTED_LABEL
 
@@ -111,6 +112,17 @@ class DeckSettingsDialog(QDialog):
         link_row.addWidget(self.open_button)
         form.addRow("Course link:", link_row)
 
+        # v5.34.0 (direct instruction): the deck table's "Open pdf" default.
+        self.open_pdf_combo = QComboBox()
+        for key in OPEN_PDF_CHOICES:
+            self.open_pdf_combo.addItem(OUTPUT_LABELS[key], key)
+        self.open_pdf_combo.setCurrentIndex(max(0, OPEN_PDF_CHOICES.index(settings.open_pdf)
+                                                if settings.open_pdf in OPEN_PDF_CHOICES else 0))
+        self.open_pdf_combo.setToolTip(
+            "The PDF the deck table's \"Open pdf\" button opens -- unless a newer PDF of "
+            "the deck comes from a later compile run; then it asks.")
+        form.addRow("Open pdf opens:", self.open_pdf_combo)
+
         outputs = QGroupBox("Where the PDFs go")
         out_form = QFormLayout(outputs)
         self.output_edits: dict[str | None, QLineEdit] = {}
@@ -186,6 +198,7 @@ class DeckSettingsDialog(QDialog):
             course_url=url,
             output_folders=folders,
             appendix_toc=self.appendix_check.isChecked(),
+            open_pdf=self.open_pdf_combo.currentData() or "instructor",
         )
 
     def result_settings(self) -> DeckSettings:

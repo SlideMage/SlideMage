@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -197,13 +198,28 @@ class DeckRow:
         grid.addWidget(presenter_cell, row_index, col)
         col += 1
 
+        # Pages (v5.35.0, direct instruction): "4, 5, 7-10, 15" compiles just
+        # those slides of the checked versions, numbered as in the whole deck
+        # (partial_compile.py); empty = the whole deck.
+        self.pages_edit = QLineEdit()
+        self.pages_edit.setPlaceholderText("all")
+        self.pages_edit.setFixedWidth(90)
+        self.pages_edit.setToolTip(
+            "Compile only these slides of the checked versions, e.g. 4, 5, 7-10, 15 -- the "
+            "numbers in the slide footers. Needs one earlier whole-deck compile of each "
+            "version; the new pages can replace theirs in that PDF (toolbar). Empty: the "
+            "whole deck.")
+        grid.addWidget(self.pages_edit, row_index, col)
+        col += 1
+
         # Button order: Open pdf, Settings, Source,
         # Duplicate, Tags, Export PPTX, Archive -- DeckTable.rebuild()'s
         # header list carries one blank cell per button in this same order.
         if on_open_pdf is not None:
             open_pdf_button = QPushButton("Open pdf")
             open_pdf_button.setToolTip(
-                "Open the most recently created PDF of this deck (any version)."
+                "Open the instructor PDF of this deck -- or, when a newer PDF comes from "
+                "another compile run, choose which one."
             )
             open_pdf_button.clicked.connect(lambda: on_open_pdf(deck))
             grid.addWidget(open_pdf_button, row_index, col)
@@ -280,6 +296,7 @@ class DeckRow:
             checkbox.setChecked(False)
         self.chapter_var.setChecked(False)
         self.presenter_var.setChecked(False)
+        self.pages_edit.clear()
         if clear_status:
             self.reset_status()
 
@@ -288,9 +305,23 @@ class DeckRow:
             return [None] if self.vars["instructor"].isChecked() else []
         return [v for v in VERSIONS if self.vars[v].isChecked()]
 
+    def page_numbers(self) -> Optional[list[int]]:
+        """The Pages field, parsed (None when empty). Raises
+        partial_compile.PartialError for a malformed spec."""
+        text = self.pages_edit.text().strip()
+        if not text:
+            return None
+        from .partial_compile import parse_page_spec
+        return parse_page_spec(text)
+
     def build_jobs(self) -> list[CompileJob]:
+        """The checked compiles. With a Pages spec, the versions and the
+        presenter PDF compile only those pages (job.pages); the per-chapter
+        PDFs are always whole."""
+        pages = self.page_numbers()
         jobs: list[CompileJob] = [
-            CompileJob(self.deck, version, None) for version in self.selected_versions()
+            CompileJob(self.deck, version, None, pages=pages)
+            for version in self.selected_versions()
         ]
         if self.chapter_var.isChecked() and self.deck.has_chapters:
             chapter_version = "after-course" if self.deck.supports_version else None
@@ -302,7 +333,8 @@ class DeckRow:
             # presenter mode always wants the fullest content (all \pause
             # reveals, every \note{}), never a restricted student version.
             presenter_version = "instructor" if self.deck.supports_version else None
-            jobs.append(CompileJob(self.deck, presenter_version, None, presenter=True))
+            jobs.append(CompileJob(self.deck, presenter_version, None, presenter=True,
+                                   pages=pages))
         return jobs
 
     def reset_status(self) -> None:
@@ -623,7 +655,7 @@ class DeckTable(QWidget):
 
         header = [
             "Deck", "Instructor", "During-course", "After-course",
-            "After-course, per chapter", "Presenter",
+            "After-course, per chapter", "Presenter", "Pages",
         ]
         if self.archivable:
             header.append("")  # Open pdf

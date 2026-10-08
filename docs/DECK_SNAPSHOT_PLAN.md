@@ -49,6 +49,14 @@ Where it differs:
   Windows' perl, which runs latexmk, maps `%TEMP%` to `/tmp`, a path the native
   TeX engine can't resolve.
 
+Added in v5.34.0 (2026-10-08): a snapshot reuses a version's last PDF when nothing
+that compile read has changed (`compile_records.py`: hashes of every file in the
+compile's `.fls` and `.blg`, of the wrapper, the engine version and the published
+PDF, kept in `.build/compile-records/`). Only the verification render runs for
+such a version. Each version has its own `SOURCE_DATE_EPOCH` (a reused PDF's is its
+compile's start), in `snapshot.json` and the render scripts. "Remove temp files" keeps
+the records, and the deck table asks before compiling a version that hasn't changed.
+
 Tested end to end on the SlideMage manual (all three versions and the
 presenter PDF, about 30 minutes): the snapshot rendered from its own folder
 matches the reference PDFs.

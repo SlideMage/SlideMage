@@ -40,7 +40,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import appendix_toc, compile_passes, project, slide_snapshot
+from . import appendix_toc, compile_passes, compile_records, project, slide_snapshot
 from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
@@ -101,7 +101,10 @@ def removable_build_entries() -> list[Path]:
     attempt can still read them. Root-level legacy build files are included
     for compatibility with older runs and slide previews. In a deck snapshot
     the seeded footer timestamps (.build/<jobname>/<jobname>.timestamp, see
-    _seed_snapshot_timestamp) are part of the snapshot and stay.
+    _seed_snapshot_timestamp) are part of the snapshot and stay. The compile
+    records (.build/compile-records/, compile_records.py) always stay
+    (2026-10-08, direct instruction: "They are small and would be good to
+    keep even if the user generally wants to clean up").
     """
     snapshot = project.is_snapshot(PROJECT_ROOT)
     with _BUILD_STATE_LOCK:
@@ -110,6 +113,7 @@ def removable_build_entries() -> list[Path]:
         return sorted(
             (entry for entry in BUILD_DIR.iterdir()
              if entry not in _ACTIVE_BUILD_DIRS
+             and entry.name != compile_records.RECORDS_DIRNAME
              and not (snapshot and (entry / f"{entry.name}.timestamp").is_file())),
             key=lambda entry: entry.name,
         )
@@ -171,14 +175,49 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     return resolved, job.jobname
 
 
-def latest_pdf_for_deck(deck: Deck) -> Optional[Path]:
-    """The most recently written PDF SlideMage has produced for `deck`, or
-    None if there is none on disk. Checks every output this deck could have
-    (each version, presenter and per-chapter variant) at both the
-    destination its current \\deckoutputfolder declarations resolve to and the
-    default pdf/ folder -- so a PDF compiled before an output folder was
-    declared (or after it was changed) still counts. "Latest" is by file
-    modification time."""
+@dataclass
+class DeckPdf:
+    """One PDF of a deck on disk (deck_pdfs())."""
+    label: str              # "Instructor", "Presenter", "After-course, 2: Title", ...
+    path: Path
+    mtime: float
+    # the PDF "Open pdf" opens by default: the deck's own choice
+    # (deck.open_pdf, "%% SlideMage open PDF: ..."), else the instructor PDF
+    preferred: bool
+    run_id: Optional[str] = None   # its /SlideMageRun (see CompileJob.run_id)
+
+
+def _job_label(job: CompileJob) -> str:
+    if job.presenter:
+        return "Presenter"
+    label = {"during-course": "During-course", "after-course": "After-course"}.get(
+        job.version or "", "Instructor")
+    if job.chapter is not None:
+        label += f", chapter {job.chapter.order}: {job.chapter.title}"
+    return label
+
+
+def _is_preferred(job: CompileJob) -> bool:
+    """Whether `job` makes the PDF its deck's "Open pdf" opens by default."""
+    if job.chapter is not None:
+        return False
+    choice = job.deck.open_pdf or "instructor"
+    if choice == "presenter":
+        return job.presenter
+    if job.presenter:
+        return False
+    if choice in ("during-course", "after-course") and job.deck.supports_version:
+        return job.version == choice
+    return job.version in (None, "instructor")
+
+
+def deck_pdfs(deck: Deck) -> list[DeckPdf]:
+    """Every PDF SlideMage has produced for `deck` that is on disk, newest
+    first. Checks every output this deck could have (each version, presenter
+    and per-chapter variant) at both the destination its current
+    \\deckoutputfolder declarations resolve to and the default pdf/ folder --
+    so a PDF compiled before an output folder was declared (or after it was
+    changed) still counts. Newest is by file modification time."""
     versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
     jobs: list[CompileJob] = []
     for version in versions:
@@ -189,13 +228,43 @@ def latest_pdf_for_deck(deck: Deck) -> Optional[Path]:
     for chapter in deck.chapters:
         jobs.append(CompileJob(deck, chapter_version, chapter))
 
-    candidates: set[Path] = set()
+    found: dict[str, DeckPdf] = {}
     for job in jobs:
         output_dir, output_stem = resolve_output_location(job)
-        candidates.add(output_dir / f"{output_stem}.pdf")
-        candidates.add(PDF_DIR / f"{job.jobname}.pdf")
-    existing = [p for p in candidates if p.is_file()]
-    return max(existing, key=lambda p: p.stat().st_mtime) if existing else None
+        for candidate in (output_dir / f"{output_stem}.pdf", PDF_DIR / f"{job.jobname}.pdf"):
+            key = _destination_key(candidate)
+            if key in found or not candidate.is_file():
+                continue
+            found[key] = DeckPdf(
+                _job_label(job), candidate, candidate.stat().st_mtime,
+                preferred=_is_preferred(job),
+                run_id=compile_records.read_run_id(candidate))
+    return sorted(found.values(), key=lambda pdf: pdf.mtime, reverse=True)
+
+
+def latest_pdf_for_deck(deck: Deck) -> Optional[Path]:
+    """The most recently written PDF SlideMage has produced for `deck`, or
+    None if there is none on disk (see deck_pdfs())."""
+    pdfs = deck_pdfs(deck)
+    return pdfs[0].path if pdfs else None
+
+
+def pdf_to_open(pdfs: list[DeckPdf]) -> Optional[DeckPdf]:
+    """Which of a deck's PDFs (deck_pdfs()) "Open pdf" opens without asking
+    (2026-10-08, direct instructions): the deck's preferred PDF (its setting,
+    else the instructor PDF), unless a newer PDF comes from another compile
+    run (another /SlideMageRun, or none -- a PDF from before v5.34.0); the
+    only PDF there is. None: ask which one."""
+    if len(pdfs) == 1:
+        return pdfs[0]
+    preferred = next((pdf for pdf in pdfs if pdf.preferred), None)
+    if preferred is None:
+        return None
+    for pdf in pdfs:
+        if pdf is not preferred and pdf.mtime > preferred.mtime and (
+                pdf.run_id is None or pdf.run_id != preferred.run_id):
+            return None
+    return preferred
 
 
 def _display_path(path: Path) -> str:
@@ -300,6 +369,17 @@ class CompileJob:
     # appendix of the whole deck's slides would link to slides that aren't
     # in it.
     appendix_toc: bool = False
+    # A page compile (partial_compile.py, v5.35.0): only these frame numbers
+    # (the slide footers' numbers) of a whole-deck version, on top of its
+    # last whole-deck compile; None = the whole deck. replace_pages: put the
+    # new pages into that compile's PDF (else into a "<pdf>-pages-..." file).
+    pages: Optional[list[int]] = None
+    replace_pages: bool = True
+    # The click that started this compile (2026-10-08, direct instruction):
+    # every PDF of one compile run carries it in its info dictionary
+    # (/SlideMageRun), so "Open pdf" can tell PDFs of the same run, with no
+    # change in between, from later ones. None: not stamped.
+    run_id: Optional[str] = None
 
     @property
     def _appendix_applies(self) -> bool:
@@ -374,6 +454,8 @@ def _wrapper_text(job: CompileJob) -> str:
         lines.append("\\def\\SMPresenterModeOverride{1}")
     if job._appendix_applies:
         lines.append("\\def\\SMAppendixTocOverride{1}")
+    if job.run_id:
+        lines.append(compile_records.run_id_line(job.run_id))
 
     if job.chapter is not None:
         lines.append(job.deck.preamble_text)
@@ -452,8 +534,11 @@ def _relocate_pdf_and_finish(
     log: LogCallback, cancel: Optional["CancelToken"] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
     *, build_dir: Path, destination_key: str, generation: int,
+    record: Optional[tuple[Path, str, float]] = None,
 ) -> None:
-    """Retry publication of one immutable invocation PDF in the background."""
+    """Retry publication of one immutable invocation PDF in the background.
+    `record` (wrapper path, wrapper text, compile start time): once published,
+    the compile is recorded for deck snapshots (compile_records.py)."""
     started = time.monotonic()
     done = threading.Event()
     succeeded = threading.Event()
@@ -537,6 +622,14 @@ def _relocate_pdf_and_finish(
         _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
         return
 
+    # Recorded before the preview refresh below: a generated appendix shows
+    # the cached previews, and the record must describe what this compile
+    # read -- a refreshed thumbnail then (rightly) counts as a change.
+    if record is not None and _is_latest_output_success(destination_key, generation):
+        wrapper_path, wrapper_text, compile_started = record
+        compile_records.write_record(BUILD_DIR, jobname, build_dir, wrapper_path, wrapper_text,
+                                     dest_pdf, compile_started, log)
+
     # Refresh slide snapshots only from this invocation's immutable source,
     # and only if no newer successful compile has replaced it as current.
     if (job.version in (None, "instructor") and not job.presenter
@@ -568,7 +661,11 @@ def run_job(
     Job names and callbacks stay stable for the GUI. Each invocation gets a
     private wrapper and latexmk output directory so a retry worker from an
     older run can never read or clean files created by a newer one.
+    A page compile (job.pages) goes to partial_compile.run_page_job().
     """
+    if job.pages and job.chapter is None:
+        from . import partial_compile   # imports this module
+        return partial_compile.run_page_job(job, log, cancel)
     deck_dir = job.deck.path.parent
     jobname = job.jobname
     invocation_id = uuid.uuid4().hex
@@ -586,18 +683,22 @@ def run_job(
     try:
         # Preserve the deck's literal line endings when its preamble or body
         # is spliced into a chapter/appendix wrapper.
-        wrapper_path.write_text(_wrapper_text(job), encoding="utf-8", newline="")
+        wrapper_text = _wrapper_text(job)
+        wrapper_path.write_text(wrapper_text, encoding="utf-8", newline="")
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         build_dir.mkdir(parents=True, exist_ok=False)
         _seed_snapshot_timestamp(jobname, build_dir)
 
         rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
         isolated_output = build_dir.resolve().as_posix()
+        # -recorder (latexmk's default, made explicit): the .fls list of every
+        # file read, which compile_records keeps for deck snapshots.
         cmd = [
-            "latexmk", "-f", f"-jobname={jobname}",
+            "latexmk", "-f", "-recorder", f"-jobname={jobname}",
             f"-auxdir={isolated_output}", f"-outdir={isolated_output}",
             str(rel_wrapper),
         ]
+        compile_started = time.time()
         env = _build_env()
         popen_kwargs: dict = {}
         if os.name == "nt":
@@ -675,6 +776,9 @@ def run_job(
                 "build_dir": build_dir,
                 "destination_key": destination_key,
                 "generation": generation,
+                # whole-deck compiles only: those are what a snapshot reuses
+                "record": ((wrapper_path, wrapper_text, compile_started)
+                           if job.chapter is None else None),
             },
             daemon=True,
         )
@@ -719,6 +823,26 @@ def _disambiguated_destinations(
         for job in colliding:
             dests[id(job)] = (output_dir, job.jobname)
     return dests
+
+
+def unchanged_jobs(
+    jobs: list[CompileJob], destinations: dict[str, Path]
+) -> list[tuple[CompileJob, str]]:
+    """The whole-deck jobs whose last compile is still current
+    (compile_records.py: nothing it read changed, same settings, the PDF
+    unchanged) and was published where this compile would put its PDF
+    (`destinations`: jobname -> PDF path), with that compile's ISO time.
+    The GUI asks before compiling them again (2026-10-08, direct
+    instruction)."""
+    unchanged = []
+    for job in jobs:
+        if job.chapter is not None or job.pages or job.jobname not in destinations:
+            continue
+        fresh, _why = compile_records.fresh_output(BUILD_DIR, job.jobname, _wrapper_text(job))
+        if fresh is not None and (compile_records.norm(fresh.pdf)
+                                  == compile_records.norm(destinations[job.jobname])):
+            unchanged.append((job, fresh.created))
+    return unchanged
 
 
 def job_stage(job: CompileJob) -> int:

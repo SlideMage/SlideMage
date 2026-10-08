@@ -95,3 +95,25 @@ def test_clear_selection_during_a_run_keeps_dots_and_results_until_clicked_again
     assert row.status_labels["instructor"].text() == "✓"
     table._on_clear_selection()
     assert all(label.text() == "" for label in row.status_labels.values())
+
+
+def test_pages_field_makes_page_jobs_for_versions_and_presenter_only(qapp):
+    from slidemage.deck_scan import Chapter
+    from slidemage.partial_compile import PartialError
+
+    chapter = Chapter(order=1, title="One", slug="One", start=0, end=0)
+    table = make_table([make_deck(chapters=[chapter])])
+    row = table.rows[0]
+    row.vars["instructor"].setChecked(True)
+    row.chapter_var.setChecked(True)
+    row.presenter_var.setChecked(True)
+    assert [job.pages for job in row.build_jobs()] == [None, None, None]
+    row.pages_edit.setText("4, 7-9")
+    jobs = row.build_jobs()
+    assert [(job.chapter is not None, job.presenter, job.pages) for job in jobs] == [
+        (False, False, [4, 7, 8, 9]), (True, False, None), (False, True, [4, 7, 8, 9])]
+    row.pages_edit.setText("4, x")
+    with pytest.raises(PartialError):
+        row.build_jobs()
+    table._on_clear_selection()
+    assert row.pages_edit.text() == ""

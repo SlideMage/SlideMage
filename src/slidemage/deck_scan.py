@@ -114,6 +114,8 @@ class Deck:
     course_url: str | None = None
     # \deckappendixtoc in the preamble (parse_appendix_toc())
     appendix_toc: bool = False
+    # which PDF "Open pdf" opens by default (parse_open_pdf(); None = instructor)
+    open_pdf: str | None = None
 
     @property
     def group(self) -> str:
@@ -264,6 +266,23 @@ def parse_course_url(text: str) -> str | None:
     return match.group(1).strip() or None if match else None
 
 
+# "%% SlideMage open PDF: during-course" in the preamble (v5.34.0, direct
+# instruction): which PDF the deck table's "Open pdf" opens by default.
+# Missing = the instructor PDF. A comment, like the course URL, so a deck
+# with it still compiles against an older framework.
+OPEN_PDF_CHOICES = ("instructor", "during-course", "after-course", "presenter")
+OPEN_PDF_RE = re.compile(r"^[ \t]*%% SlideMage open PDF:[ \t]*([^\r\n]*)\r?$", re.MULTILINE)
+
+
+def parse_open_pdf(text: str) -> str | None:
+    """The deck's "Open pdf" default (one of OPEN_PDF_CHOICES), or None."""
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    match = OPEN_PDF_RE.search(preamble)
+    value = match.group(1).strip().lower() if match else ""
+    return value if value in OPEN_PDF_CHOICES else None
+
+
 def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
     decks: list[Deck] = []
     if not directory.is_dir():
@@ -299,6 +318,7 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
                 tags=parse_tags(text),
                 course_url=parse_course_url(text),
                 appendix_toc=parse_appendix_toc(text),
+                open_pdf=parse_open_pdf(text),
             )
         )
     return decks

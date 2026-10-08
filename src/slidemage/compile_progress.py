@@ -97,6 +97,9 @@ def count_job_slides(deck, version: Optional[str], chapter) -> int:
 def spec_for_job(job) -> JobSpec:
     """JobSpec of a compiler.CompileJob: the passes this deck needed last
     time (compile_passes), else the 4/3 guess."""
+    if getattr(job, "pages", None):
+        # a page compile: two short single-pass runs, size unknown (busy bar)
+        return JobSpec(1, 0, estimated=True)
     remembered, known = compile_passes.predict(job)
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
                    count_job_slides(job.deck, job.version, job.chapter),
