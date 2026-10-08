@@ -50,6 +50,7 @@ from typing import Callable, Optional
 RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
 # The auxiliary files kept with a record (aux_dir()).
+DECK_COPY_NAME = "deck.tex"
 AUX_EXTENSIONS = (".aux", ".nav", ".toc", ".snm", ".out", ".bbl", ".top", ".ovl", ".timestamp")
 
 # Matches the .log's "Package: beamer 2025/06/02 v3.75 ..." family of lines.
@@ -237,6 +238,7 @@ def aux_dir(build_dir: Path, jobname: str) -> Path:
 def write_record(
     build_dir: Path, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
     pdf: Path, started: float, log: Optional[Callable[[str], None]] = None,
+    deck_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Record a successful compile whose output sits in `invocation_dir` and
     whose PDF was published as `pdf`. Returns the record's path, or None when
@@ -301,6 +303,10 @@ def write_record(
             src = invocation_dir / f"{jobname}{ext}"
             if src.is_file():
                 shutil.copy2(src, aux / src.name)
+        # the deck file as compiled: a page compile may go ahead when the deck
+        # changed only after the slides it compiles (partial_compile.plan)
+        if deck_path is not None and deck_path.is_file():
+            shutil.copy2(deck_path, aux / DECK_COPY_NAME)
         tmp = target.with_name(target.name + ".tmp")
         tmp.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
         os.replace(tmp, target)

@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, compiler, latex_lint
+from . import compile_records, compiler, deck_scan, latex_lint
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .deck_editor import SlideCall
 
@@ -200,6 +200,12 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
     if job.chapter is not None:
         raise PartialError("Page compiles work on whole-deck versions, not per-chapter PDFs.")
     requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
+    # The deck as it is on disk now (the deck table's copy may be older).
+    fresh = next((d for d in deck_scan._scan_dir(job.deck.path.parent, job.deck.archived)
+                  if compile_records.norm(d.path) == compile_records.norm(job.deck.path)), None)
+    if fresh is None:
+        raise PartialError(f"{job.deck.path.name} is no longer a deck file.")
+    job.deck = fresh
     record = compile_records.read_record(build_dir, job.jobname)
     aux = compile_records.aux_dir(build_dir, job.jobname)
     if record is None or not (aux / f"{job.jobname}.aux").is_file():
@@ -212,12 +218,11 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
         raise PartialError(f"{full_pdf.name} was changed since it was compiled -- compile "
                            "the whole deck.")
     deck_key = compile_records.norm(job.deck.path)
+    deck_changed_at: Optional[int] = None   # first changed character, if the deck changed
     for entry in record.get("inputs", []):
         if compile_records.norm(entry["path"]) == deck_key:
             if compile_records.sha256(job.deck.path) != entry["sha256"]:
-                raise PartialError(f"{job.deck.path.name} changed since its last whole-deck "
-                                   "compile (a slide added, moved or removed changes the "
-                                   "numbers after it) -- compile the whole deck.")
+                deck_changed_at = _first_change(aux, job)
             break
 
     groups = frame_groups(page_infos(full_pdf))
@@ -247,6 +252,16 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
                 seen.add(id(group))
                 kept.append(KeptSlide(call, group))
     kept.sort(key=lambda k: k.first_frame)
+    if deck_changed_at is not None:
+        # a change after the last kept slide moves no number before it
+        # (2026-10-08, direct instruction); anything earlier may.
+        late = [k for k in kept if k.call.line_end > deck_changed_at]
+        if deck_changed_at < (job.deck.preamble_end or 0) or late:
+            where = ("in its preamble" if deck_changed_at < (job.deck.preamble_end or 0)
+                     else f"before or at page {late[0].first_frame}")
+            raise PartialError(f"{job.deck.path.name} changed {where} since its last "
+                               "whole-deck compile (slides added, moved or removed there change "
+                               "the numbers after them) -- compile the whole deck.")
     missing = [n for n in requested if n not in by_frame]
     if not kept:
         raise PartialError(f"No slide of {job.jobname} has the page number(s) "
@@ -267,6 +282,24 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
             changed.append(slide_id)
     result.other_changed = sorted(set(changed))
     return result
+
+
+def _first_change(aux: Path, job: CompileJob) -> int:
+    """Where the deck file first differs from the copy kept with its last
+    whole-deck compile (character offset; 0 when there is no copy -- a
+    record from before v5.35.0 -- so any change counts as early)."""
+    copy = aux / compile_records.DECK_COPY_NAME
+    try:
+        with open(copy, encoding="utf-8", errors="replace", newline="") as f:
+            old = f.read()
+    except OSError:
+        return 0
+    new = job.deck.text
+    limit = min(len(old), len(new))
+    i = 0
+    while i < limit and old[i] == new[i]:
+        i += 1
+    return i
 
 
 # --------------------------------------------------------------------------

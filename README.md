@@ -493,8 +493,11 @@ whole-deck compile (`src/slidemage/partial_compile.py`):
 A slide whose number of pages changed (an added `\pause`) can't be swapped in place: its
 pages go to the separate file, and the log says to compile the whole deck. A page compile
 is refused when there is no whole-deck compile on record (compile the whole deck once
-with v5.34.0 or later), when the deck file changed since (a slide added, moved or removed
-shifts the numbers after it), or when the PDF was changed. It doesn't update other pages
+with v5.34.0 or later), when the deck file changed in its preamble or before the end of the
+last slide asked for since that compile (a slide added, moved or removed there shifts the
+numbers after it; changes further down are fine -- the record keeps a copy of the deck file
+as compiled, since v5.35.0), or when the PDF was changed. Each version gets the slides with
+its own reveal steps. It doesn't update other pages
 that show something of the changed slides (a new title in the contents slide, an
 appendix thumbnail); the log lists slides that changed but weren't asked for.
 

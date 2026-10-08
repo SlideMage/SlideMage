@@ -5,12 +5,11 @@
 % a deck row produce, and where the PDFs go. The crop is a page of this
 % manual: a presenter page (of slide 1y3, which has a note;
 % tools/manual/make_crops.py). Options and other formats: slide 1vd.
-\setSlideVersion{1-1-0}
+\setSlideVersion{1-2-0}
 \begin{standardframe}{Getting slides out}
 	\small
-	On SlideMage's main screen, each row of the deck table has five checkboxes.
-	Every one you tick makes a PDF of its own when you press \emph{Create PDF}.
-	The first three are the deck versions; the other two are variants of them.
+	Each row of the deck table has five checkboxes; each one you tick makes a PDF of its own
+	when you press \emph{Create PDF}: three deck versions and two variants.
 	\par\medskip
 	{\footnotesize
 	\begin{gothamtable}[gap=10pt]{ll}
@@ -25,13 +24,13 @@
 		& for a presenter app \\
 		\bottomrule
 	\end{gothamtable}\par}
-	\vspace{10pt}
+	\vspace{6pt}
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.66\linewidth}
 			\shrinklists{2}
 			\begin{itemize}
 				\item The PDFs go to the \SMCode{pdf/} folder, or where the deck's \emph{Settings} say under \emph{Where the PDFs go}
-				\item \emph{Open pdf} in the row opens the latest PDF
+				\item \emph{Open pdf}: the deck's usual PDF (instructor, or as its \emph{Settings} say); you choose if a later run made others
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.31\linewidth}

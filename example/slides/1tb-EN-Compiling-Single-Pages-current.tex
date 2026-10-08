@@ -1,0 +1,20 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": page compiles (v5.34.0) --
+% the Pages field of a deck row, partial_compile.py.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Compiling single pages}
+	\small
+	Changed one slide of a long deck? Compile just that slide, numbered as in the whole deck -- in seconds.
+	\par\medskip
+	\shrinklists{1}
+	\begin{itemize}
+		\item \textbf{Pages} in the deck's row: the numbers from the slide footers, e.g.\ \SMCode{4, 5, 7-10, 15}; tick the versions, press \emph{Create PDF}. Empty: the whole deck
+		\item Each version gets the slides with \textbf{its own} reveal steps, always all of them
+		\item \textbf{Pages replace theirs in the full PDF} (toolbar): the new pages go into that version's PDF, links included; unticked, into a PDF of their own
+		\item \textbf{Needs} a whole-deck compile of the version first. Deck changes after these slides are fine; slides added, moved or removed before them need a whole-deck compile
+		\item \textbf{Not updated}: other pages showing the slide (contents, appendix thumbnails). A slide with a new number of reveal steps goes to a PDF of its own
+		\item A version unchanged since its last compile? \emph{Create PDF} asks first
+	\end{itemize}
+\end{standardframe}

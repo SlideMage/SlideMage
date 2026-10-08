@@ -628,7 +628,7 @@ def _relocate_pdf_and_finish(
     if record is not None and _is_latest_output_success(destination_key, generation):
         wrapper_path, wrapper_text, compile_started = record
         compile_records.write_record(BUILD_DIR, jobname, build_dir, wrapper_path, wrapper_text,
-                                     dest_pdf, compile_started, log)
+                                     dest_pdf, compile_started, log, deck_path=job.deck.path)
 
     # Refresh slide snapshots only from this invocation's immutable source,
     # and only if no newer successful compile has replaced it as current.

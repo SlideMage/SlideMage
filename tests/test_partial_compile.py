@@ -64,7 +64,8 @@ def deck_on_record(tmp_path, monkeypatch):
     (inv / "t-D.aux").write_text("\\relax\n", encoding="utf-8")
     pdf = make_pdf(root / "pdf" / "t-D.pdf", full_pages())
     assert compile_records.write_record(build, "t-D", inv, deck_file / "_w.tex",
-                                        compiler._wrapper_text(job), pdf, time.time() + 1)
+                                        compiler._wrapper_text(job), pdf, time.time() + 1,
+                                        deck_path=deck_file)
     return root, job, pdf
 
 
@@ -94,9 +95,32 @@ def test_plan_lists_other_changed_slides(deck_on_record):
     assert partial_compile.plan(job, "2").other_changed == ["1cc"]
 
 
+def set_deck(root: Path, text: str) -> None:
+    (root / "decks" / "t-D.tex").write_text(text, encoding="utf-8", newline="")
+
+
+def test_deck_changes_after_the_asked_for_slides_are_fine(deck_on_record):
+    root, job, _pdf = deck_on_record
+    set_deck(root, DECK.replace("\\slide{1cc-EN-C}\n", "\\slide{1cc-EN-C}\n\\slide{1dd-EN-D}\n"))
+    plan = partial_compile.plan(job, "2")
+    assert [k.call.id for k in plan.kept] == ["1bb"]
+    # ... the slide after the change can't be compiled alone, though
+    set_deck(root, DECK.replace("\\slide{1aa-EN-A}\n", "\\slide{1aa-EN-A}\n\\slide{1zz-EN-Z}\n"))
+    with pytest.raises(PartialError, match="changed before or at page 2"):
+        partial_compile.plan(job, "2")
+
+
+def test_no_deck_copy_on_record_means_any_change_counts(deck_on_record):
+    root, job, _pdf = deck_on_record
+    (root / ".build" / "compile-records" / "t-D" / "deck.tex").unlink()
+    set_deck(root, DECK + "% a comment at the end\n")
+    with pytest.raises(PartialError, match="changed in its preamble"):
+        partial_compile.plan(job, "2")
+
+
 @pytest.mark.parametrize("change, message", [
-    (lambda root, pdf: (root / "decks" / "t-D.tex").write_text(DECK.replace("1cc", "1dd")),
-     "t-D.tex changed since its last whole-deck compile"),
+    (lambda root, pdf: set_deck(root, DECK.replace("\\begin{document}", "% x\n\\begin{document}")),
+     "t-D.tex changed in its preamble"),
     (lambda root, pdf: pdf.write_bytes(pdf.read_bytes() + b"\n%x"), "t-D.pdf was changed"),
     (lambda root, pdf: (root / ".build" / "compile-records" / "t-D.json").unlink(),
      "has no whole-deck compile on record"),
