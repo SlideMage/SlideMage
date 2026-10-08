@@ -189,3 +189,21 @@ def test_slide_with_a_new_page_count_is_not_swapped(deck_on_record, tmp_path):
     assert pdf.read_bytes() == before
     with fitz.open(result.separate_pdf) as doc:
         assert doc.page_count == 3
+
+
+def test_progress_bar_stops_after_a_page_compile():
+    """A page compile logs no "MOVING" line, only PASS (v5.35.1: the busy bar
+    kept running after it)."""
+    from slidemage import compile_progress
+
+    progress = compile_progress.BatchProgress()
+    job = compiler.CompileJob(deck_scan.Deck(
+        name="t-D", path=Path("t-D.tex"), archived=False, text="", supports_version=True,
+        uses_biblatex=False, preamble_end=None, chapters=[], output_folders={}),
+        "instructor", None, pages=[4])
+    progress.reset({job.jobname: compile_progress.spec_for_job(job)})
+    progress.feed("==== Compiling t-D -> t-D-instructor ====")
+    progress.feed("Run number 1 of rule 'lualatex'")
+    assert progress.active and progress.fraction is None          # busy bar
+    update = progress.feed("==== PASS: t-D-instructor -> pdf/t-D-instructor.pdf ====")
+    assert not progress.active and update[2] is True              # batch finished
