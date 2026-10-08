@@ -50,6 +50,7 @@ TOP_MARGIN = 41.58       # top of a plain first body line's line box
 LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75)
 FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it
 FOOTER_GAP = 1.0         # minimum clearance above footnotes / footer box
+FOOTER_TEXT_MIN_SIZE = 3.6  # footer text is 3.99 pt and up; footnote/source lines 3.19 pt
 FIRA_ASCENDER = 0.935    # Fira Sans ascender / em: a text line's top is baseline - this x size
 
 ID_RE = re.compile(r"slide id: (\w+)")
@@ -182,7 +183,11 @@ class Page:
                     self.baselines.append((r, max(s["origin"][1] for s in spans),
                                            max(s["size"] for s in spans), line["bbox"][1],
                                            any("Fira" in s["font"] for s in spans)))
-                if (max(s["size"] for s in spans) < 4.6 and r.y0 > 150 and r.y1 <= self.footer_top + 0.5
+                # a footnote line an overfull frame pushed into (or under) the footer
+                # box still counts -- it is smaller than any footer text
+                size = max(s["size"] for s in spans)
+                if (size < 4.6 and r.y0 > 150
+                        and (r.y1 <= self.footer_top + 0.5 or size < FOOTER_TEXT_MIN_SIZE)
                         and abs(line["dir"][1]) < 0.01):
                     small.append((r, label))
                 elif area.contains(fitz.Point(r.x0 + 0.1, (r.y0 + r.y1) / 2)):

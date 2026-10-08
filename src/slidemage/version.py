@@ -1921,6 +1921,8 @@ v5.34.0 (2026-10-08, direct instruction: avoid re-creating PDFs that are already
 v5.35.0 (2026-10-08, direct instructions): page compiles accept a deck file that changed after the slides they compile ("If a deck only contains changes after the slide that is to be inserted, it could still compile and replace"): the compile record keeps a copy of the deck file as compiled, and a page compile is refused only when the deck changed in its preamble or before the end of the last slide it compiles (a slide added, moved or removed there shifts the numbers); a record from before this version has no copy, so there any change still counts. A page compile also reads the deck file afresh from disk instead of the deck table's possibly older copy. Confirmed with a real compile of the manual (question: "the instructor deck should receive slide 7 in the instructor version and the during-course deck ... in the during-course version"): footer number 65, the \\slidestep demo, compiled for both versions in one run, put two pages (both reveal steps) into the instructor PDF and one page into the during-course PDF. Manual: new slide 1tb (Compiling single pages, after 1kg; also mentions the question before compiling an unchanged version); 1kg 1.2.0 (Open pdf follows the deck's setting and asks after a later run; 1.1.0 frozen); 1ub 1.3.0 (the deck table's Pages column, callouts moved; 1.2.0 frozen); all SlideMage screenshots retaken (tools/manual/make_screenshots.py). The manual has 75 slides.
 
 v5.35.1 (2026-10-08, direct report: "After a single-slide compile has finished, the blue progress bar continues to move left to right in 'starting' mode"): the progress bar ends a job on its "MOVING" line, which a page compile never logs (it patches the PDF itself); a job's PASS line now ends it as well, so the bar fills and clears after a page compile like after any other.
+
+v5.35.2 (2026-10-08, direct report: "On 1ub, the image source footnote is moved partially below the footer"): tools/check_layout.py now sees a footnote or image-source line that an overfull frame pushed into or under the footer box (it skipped every small line reaching into the footer, so it could not report it); such a line is told apart from the footer's own text by its size (3.19 pt; footer text is 3.99 pt and up in every template). Manual: 1ub 1.3.1 (item 4 names the deck buttons in two lines instead of three; 1.3.0 frozen) and 1rv 1.2.2 (smaller version crops; its source line was hidden under the footer since v5.30.1; 1.2.1 frozen).
 """
 from __future__ import annotations
 
@@ -1930,7 +1932,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.1"
+VERSION_NUMBER = "v5.35.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
