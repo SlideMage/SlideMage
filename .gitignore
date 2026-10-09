@@ -388,3 +388,6 @@ alt-text-bakeoff.md
 # Written by SlideMage on opening the demo project (project format guard,
 # v4.1.0); a new project gets its own on first open.
 example/.slidemage/project.json
+
+# Reusable single-slide preview wrappers (safe to remove with build output).
+**/decks/_slidemage_preview-*.tex

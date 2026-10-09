@@ -13,6 +13,7 @@ duplicating them.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 import re
 import shutil
 import subprocess
@@ -241,13 +242,17 @@ def _presenter_mode_line(presenter: bool) -> str:
 
 
 def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
-                         snapshot_template: Optional[str] = None) -> Path:
+                         snapshot_template: Optional[str] = None,
+                         reuse_build: bool = True) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
     render_slide_text_to_pdf(): write the wrapper, run latexmk, check the
     log for a real fatal error, move the finished PDF to its own fresh
     temp directory, and clean up every trace of the compile from both
     decks/ and .build/. Raises RuntimeError (with the log's own tail) on
     failure.
+
+    With reuse_build=True, keep latexmk state in an isolated, locked cache;
+    reuse_build=False retains the original fresh-job behavior for comparison.
 
     `snapshot_template` (only ever passed by render_slide_to_pdf(), and
     only when it compiled the instructor version -- see there), when not
@@ -257,6 +262,20 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     image is a much smaller problem than losing a PDF the user actually
     asked to see.
     """
+    if reuse_build:
+        from .preview_build import compile_cached
+        dest_pdf = compile_cached(
+            wrapper_text, id_slug, log, project_root=PROJECT_ROOT,
+            build_dir=BUILD_DIR, env=_build_env(), fatal_error_re=FATAL_ERROR_RE)
+        if snapshot_template is not None:
+            try:
+                slide_snapshot.capture_single_slide(
+                    dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
+            except Exception as exc:
+                log(f"    (preview snapshot not updated: {exc})")
+        log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
+        return dest_pdf
+
     DECKS_DIR.mkdir(parents=True, exist_ok=True)
     # "_slidemage_" prefix matches compiler.py's own wrapper naming, so
     # gui.py's existing "Remove temp files" sweep already covers a wrapper
@@ -400,6 +419,8 @@ def render_slide_to_pdf(
     frame_number: Optional[int] = None,
     log: Optional[LogCallback] = None,
     steps: Optional[str] = None,
+    reuse_build: bool = True,
+    overlay: Optional[int] = None,
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -418,6 +439,10 @@ def render_slide_to_pdf(
     deck's \\slide{}-family calls -- see qt_deck_editor_tab.py's own
     per-row Render button), makes the footer show that same page number
     instead of always "1" (see _frame_number_line).
+
+    reuse_build retains dependency-checked auxiliary state between requests.
+    overlay selects a positive reveal number per frame; None keeps all pages.
+    Explicit overlay selections do not update canonical snapshots.
 
     `footer_timestamp` (2026-08-30, direct report) mirrors the main
     toolbar's own "Include footer timestamp" checkbox, the same
@@ -450,15 +475,17 @@ def render_slide_to_pdf(
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"{_frame_number_line(frame_number)}"
+        f"{_preview_timestamp_line(footer_timestamp)}"
+        f"{_frame_number_line(frame_number)}{_overlay_line(overlay)}"
         f"\t{call}\n\\end{{document}}\n"
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
-        if deck_version in (None, "instructor") else None
+        if deck_version in (None, "instructor") and overlay is None else None
     )
     return _compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        reuse_build=reuse_build,
     )
 
 
@@ -471,6 +498,10 @@ def render_slide_text_to_pdf(
     presenter: bool = False,
     preamble_text: Optional[str] = None,
     log: Optional[LogCallback] = None,
+    reuse_build: bool = True,
+    preview_mode: str = "slide",
+    overlay: Optional[int] = None,
+    frame_number: Optional[int] = None,
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -528,20 +559,101 @@ def render_slide_text_to_pdf(
     way would corrupt the snapshot cache)."""
     log = log or (lambda line: None)
     preamble = default_preamble() if preamble_text is None else preamble_text
+    if overlay is not None and preview_mode == "element":
+        raise ValueError("Element previews do not have frame overlays")
+    if presenter and preview_mode == "element":
+        raise ValueError("Use Instructor instead of Presenter for an element preview")
+    preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{_presenter_mode_line(presenter)}{preamble}"
+        f"{_frame_number_line(frame_number)}{_overlay_line(overlay)}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
+        f"{_preview_timestamp_line(footer_timestamp)}"
         f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n"
         f"{slide_body}\n\\end{{document}}\n"
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
-        if deck_version in (None, "instructor") and not presenter else None
+        if deck_version in (None, "instructor") and not presenter
+        and preview_mode == "slide" and overlay is None else None
     )
     return _compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        reuse_build=reuse_build,
     )
 
 
 def open_pdf(pdf_path: Path) -> None:
     open_path.open_in_default_app(pdf_path)
+
+
+
+def _overlay_line(overlay: Optional[int]) -> str:
+    """Apply a frame-level restriction, including to raw Beamer frames.
+
+    Default action specifications affect item visibility, not which PDF pages
+    are produced. Patch the frame loop instead and fail explicitly on changes
+    to Beamer's interface. An explicit selection overrides a slidestep filter.
+    """
+    if overlay is None:
+        return ""
+    if isinstance(overlay, bool) or not isinstance(overlay, int) or overlay < 1:
+        raise ValueError("Overlay must be a positive integer")
+    return (
+        "\\makeatletter\n"
+        "\\pretocmd{\\beamer@doseveralframes}"
+        f"{{\\gdef\\beamer@whichframes{{{overlay}}}}}"
+        "{}{\\PackageError{SlideMage}{Cannot select preview overlay}{}}\n"
+        "\\pretocmd{\\beamer@autobreakframe}"
+        "{\\PackageError{SlideMage}{Overlay preview does not support allowframebreaks}{Use all overlays}}"
+        "{}{\\PackageError{SlideMage}{Cannot validate preview overlay}{}}\n"
+        "\\makeatother\n"
+    )
+
+
+def _region_source(preamble: str, body: str, mode: str) -> tuple[str, str]:
+    """Build AUCTeX-style region or preview-latex element wrappers.
+
+    A region must be a complete frame or a self-contained fragment; arbitrary
+    unbalanced selections are deliberately left to TeX's normal diagnostics.
+    Element previews have their own crop and never refresh full-slide snapshots.
+    """
+    if mode == "slide":
+        return preamble, body
+    if mode not in ("region", "element"):
+        raise ValueError(f"Unknown preview mode: {mode}")
+    if not body.strip():
+        raise ValueError("Select some LaTeX to preview first")
+    has_frame = re.search(r"\\begin\{\w*frame\}|\\(?:title|section|quote|figure|fullbleed|standout)frame\b", re.sub(r"(?<!\\)%[^\n]*", "", body))
+    if mode == "region":
+        return preamble, body if has_frame else "\\begin{frame}\n" + body + "\n\\end{frame}"
+    if has_frame:
+        raise ValueError("Element preview needs a formula, graphic or text fragment; use Region for complete frames")
+    marker = r"\begin{document}"
+    if marker not in preamble:
+        raise ValueError("The preview preamble must include \\begin{document}")
+    # Beamer normally initializes this list-spacing hook when opening a
+    # frame. Isolated preview elements never open one; use its normal default.
+    setup = ("\\usepackage[active,tightpage]{preview}\n"
+             "\\setlength{\\PreviewBorder}{6pt}\n"
+             "\\makeatletter\\providecommand{\\beamer@cramped}{}\\makeatother\n")
+    preamble = preamble.replace(marker, setup + marker, 1)
+    return preamble, "\\begin{preview}\n" + body + "\n\\end{preview}"
+
+
+def _preview_timestamp_line(enabled: bool, stamp: Optional[str] = None) -> str:
+    """Refresh the timestamp file, preserving the framework's normal input path.
+
+    The literal value is stable across latexmk passes but changes on the next
+    request in a new minute. Loading this file also preserves TeX whitespace
+    in examples that measure the timestamp without displaying it.
+    """
+    if not enabled:
+        return ""
+    stamp = stamp or datetime.now().strftime("%Y-%m-%d %H:%M")
+    return (
+        "\\immediate\\openout\\SMCompileTimestampFile=\\jobname.timestamp\\relax\n"
+        "\\immediate\\write\\SMCompileTimestampFile{"
+        f"\\string\\gdef\\string\\SMCompileTimestampValue{{{stamp}}}" + "}\n"
+        "\\immediate\\closeout\\SMCompileTimestampFile\n"
+    )

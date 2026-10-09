@@ -2796,3 +2796,38 @@ reads it, so the first run of a fresh job still shows all pages and latexmk's re
 A `\slidestep` call keeps priority over the flag. Finding candidates: compile the deck in a student version and
 list slides with consecutive pages of the same id (`decks/zz-student.tex` = `\def\deckversionoverride{after-course}`
 + `\input` of the deck was used for that).
+
+### Interactive preview builds
+
+Single-slide previews retain a separate latexmk dependency graph and auxiliary
+files under `.build/preview-cache/`, so subsequent edits can reuse resolved
+references and bibliography work. Concurrent requests for the same slide and
+preamble are serialized; each caller gets its own temporary PDF. Failed edits
+never return a previously successful PDF. “Remove temp files” clears these
+builds and their `_slidemage_preview-*` wrappers.
+
+The slide editor's render controls also offer **Selection as frame** (a complete
+frame, or self-contained text wrapped in a frame) and **Selection as element**
+(a cropped formula, graphic or text fragment using `preview.sty`). Select the
+source before rendering. An overlay value of zero renders all overlays; a
+positive value requests that overlay of each frame. Element and partial-frame
+previews do not replace the full-slide snapshot.
+
+For a saved source with automatic rebuilds:
+
+```sh
+SLIDEMASTER_PROJECT=/path/to/project python -m slidemage.preview_cli \
+  /path/to/project/slides/abc-EN-Example-current.tex \
+  --deck my-deck --watch --open
+```
+
+Use `--lines 12:30 --mode region` for a source region, `--mode element` for a
+self-contained fragment, `--overlay 2` for one reveal state, or `--no-cache` to
+use fresh build files. Watch mode follows changes to the selected source file.
+See `tools/preview_benchmark/README.md` for the reproducible manual benchmark.
+
+The [measured manual benchmark](docs/preview-benchmark-2026-10-09.md) covers all
+77 manual preview calls and the compatible combinations. Reusable builds plus
+in-memory source rendering are the default editor path; choose an overlay when
+only one reveal state is needed. The `.fmt` preamble-cache probes failed with
+the tested LuaLaTeX installation, so no `.fmt` cache is enabled.

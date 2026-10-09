@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
+    QSpinBox,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
@@ -894,11 +895,29 @@ class SlideSourceTab(QWidget):
             self.render_language_label.setVisible(self._slide_has_multilingual_text)
             self.render_language_combo.setVisible(self._slide_has_multilingual_text)
 
+            preview_options = QHBoxLayout()
+            preview_options.addWidget(QLabel("PDF preview:"))
+            self.render_mode_combo = QComboBox()
+            self.render_mode_combo.addItem("Whole slide", "slide")
+            self.render_mode_combo.addItem("Selection as frame", "region")
+            self.render_mode_combo.addItem("Selection as element", "element")
+            self.render_mode_combo.setToolTip(
+                "Preview the whole buffer, a complete frame/text selection, "
+                "or a cropped formula/graphic/text selection.")
+            preview_options.addWidget(self.render_mode_combo)
+            self.render_overlay = QSpinBox()
+            self.render_overlay.setRange(0, 9999)
+            self.render_overlay.setSpecialValueText("All overlays")
+            self.render_overlay.setToolTip("0: all overlays; a positive number: only that overlay in each frame")
+            preview_options.addWidget(self.render_overlay)
+            self.render_mode_combo.currentIndexChanged.connect(
+                lambda: self.render_overlay.setEnabled(
+                    self.render_mode_combo.currentData() != "element"))
+
             self.render_button = QPushButton("Render to PDF")
             self.render_button.setToolTip(
                 "Compile this editor's current buffer, unsaved changes "
-                "included -- opens the real PDF. Does not update the "
-                "cached Preview (that only reflects the saved file)."
+                "included -- opens the PDF with the scope and overlay selected below."
             )
             self.render_button.clicked.connect(self._on_render)
             render_bar.addWidget(self.render_button)
@@ -917,6 +936,8 @@ class SlideSourceTab(QWidget):
 
             render_bar.addStretch()
             outer.addLayout(render_bar)
+            preview_options.addStretch()
+            outer.addLayout(preview_options)
 
         # Free text for this slide's *transcript* entry -- not tied to any
         # image, so it doesn't belong in the Images tab's per-image cards.
@@ -2245,6 +2266,16 @@ class SlideSourceTab(QWidget):
             return
 
         slide_body = self.widget.toPlainText()
+        preview_mode = self.render_mode_combo.currentData()
+        overlay = self.render_overlay.value() or None
+        if preview_mode != "slide":
+            slide_body = self.widget.textCursor().selectedText().replace("\u2029", "\n")
+            if not slide_body.strip():
+                QMessageBox.information(self, "Preview selection", "Select some LaTeX to preview first.")
+                return
+        if preview_mode == "element":
+            overlay = None
+
         # Pre-render syntax check of exactly this buffer (2026-09-26).
         if not qt_render_check.confirm_render(
                 self, self.app,
@@ -2270,13 +2301,14 @@ class SlideSourceTab(QWidget):
         self.render_button.setEnabled(False)
         threading.Thread(
             target=self._render_bg,
-            args=(id_slug, slide_body, deck_version, deck_language, footer_timestamp, presenter),
+            args=(id_slug, slide_body, deck_version, deck_language, footer_timestamp, presenter, preview_mode, overlay),
             daemon=True,
         ).start()
 
     def _render_bg(
         self, id_slug: str, slide_body: str, deck_version: str, deck_language: str,
         footer_timestamp: bool, presenter: bool = False,
+        preview_mode: str = "slide", overlay: Optional[int] = None,
     ) -> None:
         log = self.app.signals.log.emit
         try:
@@ -2284,8 +2316,9 @@ class SlideSourceTab(QWidget):
                 id_slug, slide_body,
                 deck_version=deck_version, deck_language=deck_language,
                 footer_timestamp=footer_timestamp, presenter=presenter, log=log,
+                preview_mode=preview_mode, overlay=overlay,
             )
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             log(f"*** Render failed: {exc} ***")
         else:
             slide_preview.open_pdf(pdf_path)
