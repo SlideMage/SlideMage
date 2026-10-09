@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–6 done (see
+Status: in progress on branch `ui-redesign`. Steps 1–6 done, step 7 in progress (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -59,7 +59,8 @@ Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
 | 5b. Lint, AI fix, Insert/Cite | `15a30ed` | done |
 | 6a. Panel host, Used in decks, Slide versions, Visibility | (see git log) | done |
 | 6b. Citations, Language, Images, Transcript, Notes panels | (see git log) | done |
-| 7–11 | | not started |
+| 7. Compile flow | | in progress (one agent, started 2026-10-09 evening) |
+| 8–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -158,6 +159,8 @@ Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
   Source buffer unsaved; Transcript entry has no per-step text.
 
 ### How the work is run (to resume)
+- The user wants a pause after each committed step (sub-steps such as
+  6a/6b count): commit, update this section, then wait for "continue".
 - Orchestrator: the main session briefs one agent per step, reviews the
   result (diff, tests, screenshots in the scratchpad), sends corrections,
   then commits on `ui-redesign` with only that step's files. The user asked
