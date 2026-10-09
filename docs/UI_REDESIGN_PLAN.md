@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–5 done (see
+Status: in progress on branch `ui-redesign`. Steps 1–5 and 6a done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 5: 815 passed, 4 skipped, about
-6 s; ruff clean.
+Last updated 2026-10-09. Suite after step 6a: 837 passed, 4 skipped, about
+6.5 s; ruff clean.
 
 | Step | Commit | State |
 |---|---|---|
@@ -57,7 +57,8 @@ Last updated 2026-10-09. Suite after step 5: 815 passed, 4 skipped, about
 | (user's preview work) | `776267e` | committed before step 5 |
 | 5a. Centre views | `d543147` | done |
 | 5b. Lint, AI fix, Insert/Cite | `15a30ed` | done |
-| 6–11 | | not started |
+| 6a. Panel host, Used in decks, Slide versions, Visibility | (see git log) | done |
+| 6b–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -100,11 +101,16 @@ Last updated 2026-10-09. Suite after step 5: 815 passed, 4 skipped, about
 - Centre stack in `window.py`: `TranscriptPreviewTab` / `TranscriptTab`
   for Images (until step 9).
 - Log panel under the columns (until step 7's Log drawer).
-- Right column empty (steps 6 and 10).
-- Details view hosts versions (open / make current), read-only
-  visibility, the transcript summary editor, and Duplicate / Rename /
-  Delete slide; the versions, visibility and summary parts move to step 6
-  panels (`CentreColumn.restore_version` is reusable).
+- Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
+  in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
+  `visibility.py`; add 6b panels to `PANELS` in `panels/__init__.py`).
+- Details view hosts the transcript summary editor (moves to the 6b
+  Transcript entry panel; `flush_summary`/`summary_dirty` and the close
+  prompt depend on `DetailsPane`) plus slug/frame/language and
+  Duplicate / Rename / Delete slide.
+- `qt_version_history_dialog.py` is the app's Info dialog (release
+  history, license), not a slide-version viewer; step 6 left it. Decide
+  its home in step 9.
 - "Add reference to .bib…" (Cite ▾ footer) still opens
   `qt_citation_dialog` (until step 6 Citations).
 - `qt_deck_group_dialog.py` kept for ⋮ "Tags…" and "Duplicate deck…"
@@ -298,7 +304,8 @@ before any chat UI exists.
 Panel picker (▾). Order follows how much backend work each panel needs:
 1. **Used in decks**: `slide_usage`. Replaces `qt_slide_usage_dialog.py`.
 2. **Slide versions**: `slide_versioning`, "Make this the current version",
-   pin options, version bumps. Replaces `qt_version_history_dialog.py`.
+   pin options, version bumps. (Done in 6a; `qt_version_history_dialog.py`
+   turned out to be the app Info dialog and stays.)
 3. **Visibility**: the I/D/A × slide/step matrix writing
    `\conditionalslide`/`\slidestep` through `deck_editor`.
 4. **Citations**: `bibliography`; marks missing keys; "Add to .bib with
