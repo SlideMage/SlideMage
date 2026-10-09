@@ -100,6 +100,8 @@ def build_more_menu(parent: QWidget, deck: Optional[Deck]) -> PopoverMenu:
     menu.add_header("This deck")
     menu.add_item("open_pdf", "Open latest PDF", enabled=active)
     menu.add_item("deck_settings", "Deck settings…", enabled=has_deck and not keeps_group)
+    menu.add_item("admin_slides", "Admin slides…", meta="course page",
+                  enabled=active and deck.group == TAG_COURSE and bool(deck.course_url))
     menu.add_item("deck_source", "Edit deck source", enabled=active)
     menu.add_item("deck_tags", "Tags…", enabled=active and not keeps_group)
     menu.add_item("duplicate_deck", "Duplicate deck…", enabled=active)

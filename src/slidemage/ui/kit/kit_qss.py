@@ -49,6 +49,12 @@ TOPBAR_STRIP = "kitTopbarStrip"
 TOPBAR_DECK = "kitTopbarDeck"
 TOPBAR_LABEL = "kitTopbarLabel"
 TOPBAR_SAVE = "kitTopbarSave"
+# Slide list (ui/workspace/slide_list.py, slide_tree.py).
+SLIDES_FIND = "kitSlidesFind"
+SLIDES_TREE = "kitSlidesTree"
+SLIDES_RENAME = "kitSlidesRename"
+SLIDES_NOTE = "kitSlidesNote"
+SLIDES_BULK_LABEL = "kitSlidesBulkLabel"
 
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
@@ -367,5 +373,59 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 11.5px;
             color: {t.text_3};
+        }}
+
+        /* Slide list: the find box is a white field on the grey page, the
+           tree draws its own rows (slide_tree.py). */
+        QLineEdit#{SLIDES_FIND} {{
+            {font}
+            font-size: 14px;
+            background-color: {t.surface};
+            color: {t.text};
+            border: none;
+            border-radius: {RADIUS_SM}px;
+            padding: 0 12px;
+            min-height: 40px;
+        }}
+        QLineEdit#{SLIDES_RENAME} {{
+            {font}
+            font-size: 12px;
+            font-weight: 600;
+            background-color: {t.surface};
+            color: {t.text};
+            border: 1.5px solid {t.info};
+            border-radius: {RADIUS_SM}px;
+            padding: 0 8px;
+        }}
+        QTreeWidget#{SLIDES_TREE} {{
+            background-color: transparent;
+            border: none;
+            outline: none;
+        }}
+        QTreeWidget#{SLIDES_TREE} QScrollBar:vertical {{
+            background: transparent;
+            width: 8px;
+            margin: 0;
+        }}
+        QTreeWidget#{SLIDES_TREE} QScrollBar::handle:vertical {{
+            background: {t.text_4};
+            border-radius: 4px;
+            min-height: 24px;
+        }}
+        QTreeWidget#{SLIDES_TREE} QScrollBar::add-line:vertical,
+        QTreeWidget#{SLIDES_TREE} QScrollBar::sub-line:vertical {{
+            height: 0;
+        }}
+        QLabel#{SLIDES_NOTE} {{
+            {font}
+            font-size: 12.5px;
+            color: {t.text_3};
+            padding: 16px 8px;
+        }}
+        QLabel#{SLIDES_BULK_LABEL} {{
+            {font}
+            font-size: 13px;
+            font-weight: 500;
+            color: {t.text};
         }}
     """

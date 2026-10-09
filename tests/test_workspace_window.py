@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication, QInputDialog, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
 from slidemage import app_settings
 from slidemage.compiler import CompileJob, order_jobs
@@ -95,29 +95,18 @@ def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     assert window.stack.currentWidget() is window.placeholder
 
 
-class FakeEditor(QLabel):
-    """Stands in for the deck editor tab, which builds a row for every slide."""
-
-    def __init__(self, _app, deck):
-        super().__init__(deck.name)
-
-    def reload(self, deck):
-        pass
-
-
-def test_deck_editor_pages_are_kept_per_deck_and_dropped_with_the_deck(qapp, monkeypatch):
+def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, monkeypatch):
     decks = [WORK, COURSE]
     monkeypatch.setattr(window_module, "scan_decks", lambda: decks)
-    monkeypatch.setattr(window_module, "DeckEditorTab", FakeEditor)
-    window = build_window(monkeypatch, with_deck_editor=True)
-    first = window._deck_editor_tabs[WORK.path]
+    window = build_window(monkeypatch)
+    assert window.slide_list.deck is WORK
+    assert window.stack.currentWidget() is window.placeholder
+    assert "Double-click" in window.placeholder.text()
     window.state.set_deck(COURSE)
-    assert window.stack.currentWidget() is window._deck_editor_tabs[COURSE.path]
-    window.state.set_deck(WORK)
-    assert window.stack.currentWidget() is first                    # not rebuilt
+    assert window.slide_list.deck is COURSE
     decks[:] = [WORK]                                               # course archived or removed
     window.reload_decks()
-    assert list(window._deck_editor_tabs) == [WORK.path]
+    assert window.slide_list.deck is WORK
 
 
 def test_reload_follows_an_archived_deck_and_falls_back_when_it_is_gone(window, monkeypatch):
@@ -290,7 +279,7 @@ def test_a_slide_editor_opens_in_the_centre_and_closing_returns_to_the_deck(wind
     tab._set_dirty(False)
     tab.widget.document().setModified(False)
     window.close_slide_editor_tab(tab)
-    assert window.stack.currentWidget() is window._home()
+    assert window.stack.currentWidget() is window.placeholder
     assert path not in window._slide_source_tabs and window.topbar._save.text() == "Saved"
 
 
@@ -301,6 +290,86 @@ def test_opening_a_slide_focuses_it(window, monkeypatch):
     slide = next(iter(slide_ids.SLIDES_DIR.glob("*-current.tex")))
     window.open_slide_editor(slide)
     assert window.state.focused_slide == slide.name.split("-", 1)[0]
+
+
+# -- the slide list in the window ----------------------------------------------------
+
+def test_an_edit_rescans_and_the_slide_list_keeps_what_it_takes_to_undo_it(window, monkeypatch):
+    rescans = []
+    monkeypatch.setattr(window, "_regenerate_headers_bg", lambda: None)
+    monkeypatch.setattr(window, "resync_deck", rescans.append)
+    window.after_deck_edit(WORK.path, "Removed x", previous_text="the text before")
+    assert rescans == [WORK.path]
+    assert window.slide_list._undo[WORK.path] == ["the text before"]
+    assert not window.slide_list.toast.isHidden()
+    window.after_deck_edit(WORK.path, "Undid last change")        # an undo has nothing to undo itself
+    assert window.slide_list._undo[WORK.path] == ["the text before"]
+
+
+def test_the_slide_list_redraws_when_a_slide_source_is_saved(window, monkeypatch, tmp_path):
+    redraws = []
+    monkeypatch.setattr(window.slide_list, "rebuild", lambda: redraws.append(True))
+    path = tmp_path / "abc-EN-Test-current.tex"
+    path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
+    window.open_slide_editor(path)
+    tab = window._slide_source_tabs[path]
+    tab.widget.insertPlainText("x")
+    assert redraws == []                                          # still being edited
+    tab._set_dirty(False)
+    tab.widget.document().setModified(False)                      # saved
+    assert redraws
+
+
+def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(window, monkeypatch):
+    seen, warned = [], []
+    monkeypatch.setattr(window, "_compile_current", lambda kind, pages=None: seen.append((kind, pages)))
+    monkeypatch.setattr(window_module.QMessageBox, "warning", lambda *a: warned.append(a[2]))
+    monkeypatch.setattr(window_module.QMessageBox, "information", lambda *a: warned.append(a[2]))
+    asked = []
+    from slidemage import partial_compile
+    monkeypatch.setattr(partial_compile, "frames_for_slides",
+                        lambda job, ids: asked.append(ids) or [4, 7])
+    window.state.set_view("during-course")
+    window.slide_list.compile_pages.emit(["1ab", "1cd"])
+    assert asked == [["1ab", "1cd"]] and seen == [("during-course", [4, 7])]
+    monkeypatch.setattr(partial_compile, "frames_for_slides", lambda job, ids: [])
+    window.slide_list.compile_pages.emit(["1ab"])
+    assert "None of these slides" in warned[-1] and len(seen) == 1
+    def refuse(job, ids):
+        raise partial_compile.PartialError("compile the whole deck once")
+    monkeypatch.setattr(partial_compile, "frames_for_slides", refuse)
+    window.slide_list.compile_pages.emit(["1ab"])
+    assert warned[-1] == "compile the whole deck once" and len(seen) == 1
+
+
+def test_admin_slides_are_inserted_through_the_dialog_and_the_first_one_opens(window, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QDialog
+
+    from slidemage import qt_admin_slides_dialog
+
+    inserted, edits, opened = [], [], []
+
+    class FakeDialog:
+        DialogCode = QDialog.DialogCode
+        slide_specs = [("Course-Sessions", "source")]
+        position, language = "position", "de"
+
+        def __init__(self, parent, deck):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(qt_admin_slides_dialog, "AdminSlidesDialog", FakeDialog)
+    monkeypatch.setattr(qt_admin_slides_dialog, "insert_admin_slides",
+                        lambda *args: inserted.append(args) or [tmp_path / "new-current.tex"])
+    monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
+    monkeypatch.setattr(window, "open_slide_editor", opened.append)
+    window.state.set_deck(COURSE)
+    window._commands["admin_slides"]()
+    assert inserted == [(COURSE, "position", FakeDialog.slide_specs, "de")]
+    assert edits == [((COURSE.path, "Inserted admin slides into course"), {"previous_text": COURSE.text})]
+    assert opened == [tmp_path / "new-current.tex"]
 
 
 # -- the ⋮ menu: nothing of the old deck table and menu bar is lost --------------------

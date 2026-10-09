@@ -21,6 +21,24 @@ from ...qt_deck_settings_dialog import DeckSettingsDialog
 
 
 class DeckActionsMixin:
+    def _on_admin_slides(self, deck: Deck) -> None:
+        """⋮ -> "Admin slides…": insert a title slide and/or a course-sessions
+        table generated from the deck's linked Uni Graz course."""
+        from ...qt_admin_slides_dialog import AdminSlidesDialog, insert_admin_slides
+
+        dialog = AdminSlidesDialog(self, deck)
+        if dialog.exec() != AdminSlidesDialog.DialogCode.Accepted or not dialog.slide_specs:
+            return
+        try:
+            slide_paths = insert_admin_slides(
+                deck, dialog.position, dialog.slide_specs, dialog.language)
+        except (OSError, ValueError, deck_editor.StaleFileError) as exc:
+            QMessageBox.critical(self, "Admin slides failed", str(exc))
+            return
+        self.after_deck_edit(
+            deck.path, f"Inserted admin slides into {deck.name}", previous_text=deck.text)
+        self.open_slide_editor(slide_paths[0])
+
     def _archive_deck(self, deck: Deck) -> None:
         """Archiving is when a deck stops being maintained, so it offers a
         snapshot first (v5.33.0): "Snapshot, then archive" (default) /
@@ -255,18 +273,3 @@ class DeckActionsMixin:
                    f"image; those are flagged in place." if result.undescribed else ""),
             )
         return True
-
-    def prompt_deck_transcript_version(self, deck: Deck) -> None:
-        """Asks only for version -- used where the deck is already known
-        (the deck-editor tab's own "Transcript" button, called cross-tab
-        as self.app.prompt_deck_transcript_version(self.deck), same
-        no-leading-underscore convention as open_deck_editor/
-        open_slide_editor for anything another tab needs to call)."""
-        version, ok = QInputDialog.getItem(
-            self, "Generate transcript", "Version:",
-            list(transcript.STUDENT_VERSIONS), 0, False,
-        )
-        if not ok:
-            return
-        self.generate_deck_transcript(deck, version)
-

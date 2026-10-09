@@ -1,5 +1,5 @@
 """The small dialog for choosing a deck's group tag (2026-09-19): shown from
-a deck row's "Tags" button, and from the Duplicate dialog (which also asks
+the ⋮ menu's "Tags…", and from the Duplicate dialog (which also asks
 for the copy's name). The choice is stored in the deck's own file as
 \\decktags{...} -- see deck_editor.set_deck_tags().
 """

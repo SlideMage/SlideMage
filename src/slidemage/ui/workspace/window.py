@@ -5,11 +5,11 @@ with the compile log underneath. The shared WorkspaceState (state.py) holds
 the current deck, view and language; the top bar and the columns read and
 write it instead of each other.
 
-The window replaces qt_gui.py's tabbed window. Steps 4 to 9 replace the old
-tab widgets it still hosts, each marked "replaced in step N" below; until
-then the centre column is a stack holding the deck editor of the current
-deck, the slide and deck source editors, the Images page and transcript
-previews. The window's other duties live in mixins next to it: compile
+The window replaces qt_gui.py's tabbed window. The left column is the slide
+list (slide_list.py). Steps 5 to 9 replace the old tab widgets the centre
+still hosts, each marked "replaced in step N" below; until then the centre
+column is a stack holding the slide and deck source editors, the Images page
+and transcript previews. The window's other duties live in mixins next to it: compile
 orchestration (compile_jobs.py), deck actions (deck_actions.py) and project
 maintenance (maintenance.py).
 """
@@ -40,14 +40,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, bibliography, compile_progress, deck_headers, project, qt_slide_source_tab
-from ... import slide_ids, updater
+from ... import app_settings, bibliography, compile_progress, deck_headers, latex_lint, project
+from ... import qt_render_check, qt_slide_source_tab, slide_ids, slide_preview, slide_snapshot, updater
 from ... import version as version_mod
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
 from ...qt_add_slide_dialog import AddSlideDialog
-from ...qt_deck_editor_tab import DeckEditorTab
 from ...qt_import_dialog import ImportPresentationDialog
 from ...qt_settings_dialog import SettingsDialog
+from ...qt_slide_preview_popup import SlidePreviewPopup
 from ...qt_slide_search_dialog import SlideSearchDialog
 from ...qt_slide_source_tab import SlideSourceTab
 from ...qt_transcript_preview_tab import TranscriptPreviewTab
@@ -55,9 +55,11 @@ from ...qt_transcript_tab import TranscriptTab
 from ...slide_ids import SLIDES_DIR
 from ...slide_language import bare_id
 from ..kit.theme import WARNING_LABEL, ThemeManager
+from ..kit.widgets import Toast
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin, CompileSignals
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
+from .slide_list import SlideList
 from .state import WorkspaceState
 from .topbar import TopBar
 
@@ -92,8 +94,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self._dirty_edits_resolved_for_close = False
         self.decks: list[Deck] = []
         # Keyed by path, deduping already-open pages -- reselecting an
-        # already-open deck/slide editor instead of reopening it.
-        self._deck_editor_tabs: dict[Path, DeckEditorTab] = {}
+        # already-open slide editor instead of reopening it.
         self._slide_source_tabs: dict[Path, SlideSourceTab] = {}
         # Keyed by slide bare id, not path -- a transcript preview has no
         # file of its own to dedupe on, and re-clicking "Render transcript"
@@ -122,7 +123,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
         self.state = WorkspaceState(self)
         self.build_options = BuildOptionsDialog(self)
-        # Read by the slide editor and deck editor tabs (replaced in steps 4 and 5).
+        # Read by the slide editor tab (replaced in step 5).
         self.footer_timestamp_checkbox = self.build_options.footer_timestamp_checkbox
 
         central = QWidget()
@@ -135,14 +136,16 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if snapshot_banner is not None:
             outer.addWidget(snapshot_banner)
 
-        # Left: the slide list (step 4), right: side panels and chat (steps 6
-        # and 10). Collapsed until those exist.
+        # Left: the slide list, right: side panels and chat (steps 6 and 10),
+        # collapsed until those exist.
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
-        self.slide_list_column = QWidget()
+        self.slide_list = SlideList(self, self.state, theme, Toast(central))
+        self.slide_list.compile_pages.connect(
+            self._compile_slides)
         self.side_column = QWidget()
-        # Centre: a stack of the pages below -- replaced in steps 4 and 5 (deck
-        # editor, source editor), step 9 (Images page).
+        # Centre: a stack of the pages below -- replaced in step 5 (source
+        # editor), step 9 (Images page).
         self.stack = QStackedWidget()
         self.placeholder = QLabel()
         self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -156,9 +159,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.transcript_tab = TranscriptTab(self)
         self.stack.addWidget(self.transcript_tab)
         self.stack.currentChanged.connect(self._on_page_changed)
-        for column in (self.slide_list_column, self.stack, self.side_column):
+        for column in (self.slide_list, self.stack, self.side_column):
             self.splitter.addWidget(column)
-        self.splitter.setSizes([0, 1, 0])
+        self.splitter.setStretchFactor(1, 1)
         body = QWidget()
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(12, 12, 12, 12)
@@ -175,7 +178,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             "compile:several": self._compile_several,
             "open_pdf": self._for_deck(self._on_open_latest_pdf),
             "deck_settings": self._for_deck(self._on_deck_settings),
-            "deck_source": lambda: self.open_deck_source_editor(self.state.deck, self._home()),
+            "admin_slides": self._for_deck(self._on_admin_slides),
+            "deck_source": lambda: self.open_deck_source_editor(self.state.deck, self.placeholder),
             "deck_tags": self._for_deck(self._on_edit_deck_tags),
             "duplicate_deck": self._for_deck(self._on_duplicate_deck),
             "export_pptx": self._for_deck(self._on_export_pptx),
@@ -284,9 +288,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         that was open last time, else the first active deck."""
         self.decks = scan_decks()
         self.topbar.set_decks(self.decks)
-        paths = {deck.path for deck in self.decks}
-        for path in [p for p in self._deck_editor_tabs if p not in paths]:
-            self._discard(self._deck_editor_tabs.pop(path))
         current = self.state.deck
         remembered = app_settings.get(LAST_DECK_KEY)
         by_path = next((d for d in self.decks if current and d.path == current.path), None)
@@ -294,20 +295,22 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         last = next((d for d in self.decks if d.name == remembered), None)
         first_active = next((d for d in self.decks if not d.archived), None)
         self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
+        self.slide_list.rebuild()   # a fresh scan of the open deck is no switch (state.set_deck)
 
     def _show_deck(self, deck: Optional[Deck]) -> None:
-        """The current deck changed: show its slide list. A test deck has none
-        (its slides come from a shared fragment); compile it from the top bar."""
+        """The current deck changed: the slide list shows its slides itself; the
+        centre says what to do (replaced by the preview in step 5). A test deck has
+        no slide list (its slides come from a shared fragment); compile it from the top bar."""
         if deck is None:
             self.placeholder.setText("This project has no decks yet.")
-        else:
+        elif deck.is_test_deck:
             app_settings.set(LAST_DECK_KEY, deck.name)
-            if not deck.is_test_deck:
-                self.open_deck_editor(deck)
-                return
             self.placeholder.setText(
                 f"{deck.name} is a test deck: it has no slide list. Compile it from "
                 "the top bar, or edit its source from the ⋮ menu.")
+        else:
+            app_settings.set(LAST_DECK_KEY, deck.name)
+            self.placeholder.setText("Double-click a slide in the list to open its source.")
         self.stack.setCurrentWidget(self.placeholder)
 
     def _on_refresh_decks_clicked(self) -> None:
@@ -326,11 +329,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     # -- the centre column's pages ---------------------------------------------
 
-    def _home(self) -> QWidget:
-        """The page showing the current deck: what closing an editor returns to."""
-        deck = self.state.deck
-        return self._deck_editor_tabs.get(deck.path, self.placeholder) if deck else self.placeholder
-
     def _discard(self, page: QWidget) -> None:
         self.stack.removeWidget(page)
         page.deleteLater()
@@ -345,28 +343,35 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(
-            self._home() if self.stack.currentWidget() is self.transcript_tab else self.transcript_tab)
+            self.placeholder if self.stack.currentWidget() is self.transcript_tab else self.transcript_tab)
 
     def open_images_for_slide(self, id_slug: str) -> None:
-        """A deck editor row's "Images" button (2026-09-19, direct
-        instruction): opens (or reveals) the Images page and lands on that
-        slide's images. ensure_loaded() first because the page's first scan
+        """The slide list's "Images" entry (2026-09-19, direct instruction):
+        opens (or reveals) the Images page and lands on that slide's images. ensure_loaded() first because the page's first scan
         is deferred until it's shown -- _find_and_show_slide() only searches
         rows a scan has already produced."""
         self.stack.setCurrentWidget(self.transcript_tab)
         self.transcript_tab.ensure_loaded()
         self.transcript_tab._find_and_show_slide(id_slug)
 
-    def open_deck_editor(self, deck: Deck) -> None:
-        existing = self._deck_editor_tabs.get(deck.path)
-        if existing is not None:
-            existing.reload(deck)
-            self.stack.setCurrentWidget(existing)
-            return
-        tab = DeckEditorTab(self, deck)
-        self._deck_editor_tabs[deck.path] = tab
-        self.stack.addWidget(tab)
-        self.stack.setCurrentWidget(tab)
+    def show_slide_preview(self, deck: Deck, call, position: int) -> None:
+        """The slide list's "Preview" entry: the slide's cached snapshot in a popup,
+        with "Render now" (replaced by the Preview tab in step 5)."""
+        path = SLIDES_DIR / call.source_filename
+        popup = SlidePreviewPopup(
+            self, call.id, path,
+            render_fn=lambda: slide_preview.render_slide_to_pdf(
+                call.macro, call.id_slug, call.version, call.conditions,
+                footer_timestamp=self.footer_timestamp_checkbox.isChecked(),
+                preamble_text=deck.preamble_text, frame_number=position,
+                log=self.signals.log.emit, steps=call.steps),
+            template=slide_snapshot.detect_template(deck.preamble_text),
+            precheck_fn=lambda: qt_render_check.confirm_render(
+                self, self, latex_lint.check_slide_files([path]), path.name,
+                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)),
+        )
+        popup.exec()
+        self.slide_list.rebuild()   # "Render now" may have captured the slide's first thumbnail
 
     def open_slide_editor(
         self,
@@ -401,9 +406,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def close_slide_editor_tab(self, tab: SlideSourceTab) -> None:
         # Return to whichever page this slide was (most recently) opened
-        # from, if it's still there; else to the current deck.
+        # from, if it's still there; else to the centre's start page.
         target = tab.return_to if tab.return_to is not None and self.stack.indexOf(tab.return_to) != -1 \
-            else self._home()
+            else self.placeholder
         self._slide_source_tabs.pop(tab.path, None)
         self.stack.setCurrentWidget(target)
         self._discard(tab)
@@ -436,12 +441,14 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         for key, existing in list(self._transcript_preview_tabs.items()):
             if existing is tab:
                 del self._transcript_preview_tabs[key]
-        self.stack.setCurrentWidget(self._home())
+        self.stack.setCurrentWidget(self.placeholder)
         self._discard(tab)
 
     def _update_save_status(self, *_args) -> None:
         dirty = any(tab._dirty for tab in self._slide_source_tabs.values())
         self.topbar.set_save_status("Unsaved changes" if dirty else "Saved")
+        if not dirty:
+            self.slide_list.rebuild()   # a save changes lint errors and stale previews
 
     # -- finding slides --------------------------------------------------------
 
@@ -474,8 +481,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def resync_deck(self, deck_path: Path) -> Optional[Deck]:
         """Re-scans every deck (like Refresh decks) and returns this one's
-        fresh Deck snapshot -- called after any edit made through the deck
-        slide-list editor, so the current deck never goes stale."""
+        fresh Deck snapshot -- called after any edit made through the slide
+        list, so the current deck never goes stale."""
         self.reload_decks()
         return next((deck for deck in self.decks if deck.path == deck_path), None)
 
@@ -629,39 +636,26 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
     def after_deck_edit(
         self, deck_path: Path, summary: str, previous_text: Optional[str] = None
     ) -> None:
-        """Shared post-edit sequence for every deck slide-list editor
-        action -- header-sync in the background, resync + rebuild the open
-        tab, then log a summary line. See gui.py's own after_deck_edit for
-        the full rationale (ported unchanged)."""
+        """Shared post-edit sequence for every deck edit through the slide list
+        or a dialog -- header-sync in the background, rescan (which redraws the
+        list), then log a summary line and tell the list, which keeps
+        `previous_text` for its Undo."""
         threading.Thread(target=self._regenerate_headers_bg, daemon=True).start()
-        fresh_deck = self.resync_deck(deck_path)
-        tab = self._deck_editor_tabs.get(deck_path)
-        if tab is not None:
-            if previous_text is not None:
-                tab.record_undo_snapshot(previous_text)
-            if fresh_deck is not None:
-                tab.reload(fresh_deck)
+        self.resync_deck(deck_path)
+        self.slide_list.deck_edited(deck_path, summary, previous_text)
         self._log(summary)
 
     def refresh_open_deck_editors(self) -> None:
-        """Refreshes the main Active/Archived tables and every currently
-        open deck-editor tab from current disk state (2026-08-25) -- for
-        an edit that can touch more than one deck at once and has no
-        single deck_path to hand after_deck_edit()
+        """Re-scans the decks and redraws the slide list from current disk state
+        (2026-08-25) -- for an edit that can touch more than one deck at once and
+        has no single deck_path to hand after_deck_edit()
         (slide_rename.set_slide_language() rewrites every deck reference
         to a renamed slide, across however many decks reference it).
-        Without this, an open deck-editor tab kept showing a slide under
-        its old id-slug after a rename -- clicking it tried to open a
-        file that no longer existed. Doesn't re-run
-        deck_headers.regenerate_headers() itself -- a caller that needs
-        that has already run it (set_slide_language() always does, as its
-        own last step)."""
+        Without this, the list kept showing a slide under its old id-slug
+        after a rename. Doesn't re-run deck_headers.regenerate_headers() itself
+        -- a caller that needs that has already run it (set_slide_language()
+        always does, as its own last step)."""
         self.reload_decks()
-        fresh_by_path = {deck.path: deck for deck in self.decks}
-        for deck_path, tab in self._deck_editor_tabs.items():
-            fresh_deck = fresh_by_path.get(deck_path)
-            if fresh_deck is not None:
-                tab.reload(fresh_deck)
 
     def try_start_ollama_task(self, label: str) -> bool:
         """Reserves the single app-wide Ollama slot for `label` (a short
@@ -702,12 +696,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         )
 
     def open_deck_source_editor(self, deck: Deck, return_to: Optional[QWidget] = None) -> None:
-        """The deck slide-list editor's own "Source" button -- opens the
-        deck's raw .tex file in the same editor used for a slide's own
-        source. A save is routed through the same after_deck_edit()
-        pipeline every row action already uses, so a hand-edit gets
-        header-sync, the open deck-editor tab refreshed, and an Undo-stack
-        entry exactly like any other deck edit."""
+        """⋮ -> "Edit deck source" -- opens the deck's raw .tex file in the same
+        editor used for a slide's own source. A save is routed through the same
+        after_deck_edit() pipeline every list action already uses, so a hand-edit
+        gets header-sync, the slide list redrawn, and an Undo entry exactly like
+        any other deck edit."""
         self.open_slide_editor(
             deck.path,
             on_saved=lambda previous_text: self.after_deck_edit(

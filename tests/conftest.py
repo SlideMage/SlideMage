@@ -33,17 +33,48 @@ def _isolated_app_settings(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(app_settings, "STORE_PATH", store)
 
 
-def build_window(monkeypatch, with_deck_editor: bool = False):
-    """The main window on the example project. Its deck editor (a row for
-    every slide of the manual, most of a second) is not built unless
-    `with_deck_editor` is passed: only a few tests look at it."""
+_windows = []
+
+
+def build_window(monkeypatch):
+    """The main window on the example project. Every window built is freed
+    after its test (_free_windows), not whenever the garbage collector gets to
+    it: a late teardown of its widget tree crashed the interpreter at exit."""
     from PySide6.QtWidgets import QApplication
 
     from slidemage.ui.kit.theme import ThemeManager
     from slidemage.ui.workspace.window import WorkspaceWindow
 
     QApplication.instance() or QApplication([])
-    if not with_deck_editor:
-        monkeypatch.setattr(WorkspaceWindow, "open_deck_editor",
-                            lambda self, deck: self.stack.setCurrentWidget(self.placeholder))
-    return WorkspaceWindow(ThemeManager())
+    window = WorkspaceWindow(ThemeManager())
+    _windows.append(window)
+    return window
+
+
+@pytest.fixture(autouse=True)
+def _free_windows():
+    yield
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    while _windows:
+        window = _windows.pop()
+        window.hide()   # not close(): that asks about unsaved edits
+        window.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def pytest_sessionfinish(session):
+    """Delete the widgets the tests left behind (dialogs, menus, tabs) while
+    their Python wrappers are still alive. Left to the interpreter's exit,
+    PySide destroys them in no particular order and the process sometimes
+    aborts with "pure virtual method called"."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()

@@ -3,10 +3,9 @@ placement, and slide creation."""
 from __future__ import annotations
 
 from dataclasses import replace
-from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication
 
 from slidemage import deck_editor, slide_ids
 from slidemage.course_schedule import (
@@ -23,7 +22,7 @@ from slidemage.qt_admin_slides_dialog import (
     build_title_slide_source,
     insert_admin_slides,
 )
-from slidemage.qt_deck_editor_tab import DeckEditorTab
+from slidemage.ui.workspace.menus import build_more_menu
 
 
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
@@ -62,25 +61,16 @@ def make_dialog(tmp_path, monkeypatch, language="de"):
     return AdminSlidesDialog(None, make_deck(tmp_path, language=language))
 
 
-def test_editor_admin_slides_button_requires_link_and_course_deck(tmp_path, qapp):
-    tab = DeckEditorTab(SimpleNamespace(), make_deck(tmp_path))
-    toolbar = tab.layout().itemAt(0).layout()
-    labels = [toolbar.itemAt(i).widget().text()
-              for i in range(toolbar.count())
-              if isinstance(toolbar.itemAt(i).widget(), QPushButton)]
-    assert "Admin slides…" in labels
-    assert "Insert block…" not in labels
-    assert tab.admin_slides_button.isEnabled()
+def test_more_menu_offers_admin_slides_only_for_a_linked_course_deck(tmp_path, qapp):
+    def entry(deck):
+        return next(e for e in build_more_menu(None, deck)._entries
+                    if e[0] == "item" and e[1] == "admin_slides")
 
-    tab.reload(replace(tab.deck, course_url=None))
-    assert not tab.admin_slides_button.isEnabled()
-
-    tab.reload(replace(tab.deck, tags=["research"], course_url=COURSE_URL))
-    assert tab.admin_slides_button.isHidden()
-
-    tab.reload(replace(tab.deck, tags=[]))
-    assert not tab.admin_slides_button.isHidden()
-    assert tab.admin_slides_button.isEnabled()
+    deck = make_deck(tmp_path)
+    assert entry(deck)[6]                                           # enabled
+    assert not entry(replace(deck, course_url=None))[6]             # no linked course page
+    assert not entry(replace(deck, tags=["research"]))[6]           # not a course deck
+    assert entry(replace(deck, tags=[]))[6]
 
 
 def test_schedule_positions_follow_regular_slide_calls(tmp_path):

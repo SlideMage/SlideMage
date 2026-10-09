@@ -1,5 +1,5 @@
 """Multi-language parsing primitives shared by the SlideMage GUI's
-language badges (qt_deck_editor_tab.py, qt_add_slide_dialog.py,
+language badges (deck_outline.py, qt_add_slide_dialog.py,
 qt_slide_source_tab.py) and slide_rename.py's translation-link repair
 pass. See LANGUAGE_NOTES.md for the whole design.
 
@@ -107,7 +107,7 @@ def cross_referenced_language(id_slug: str, path: Optional[Path] = None) -> Opti
 @dataclass
 class LanguageBadge:
     """What a GUI list row should show for one slide -- built once per
-    row so every caller (qt_deck_editor_tab.py, qt_add_slide_dialog.py,
+    row so every caller (deck_outline.py, qt_add_slide_dialog.py,
     qt_slide_source_tab.py) renders the same underlying facts, even
     though each one displays them slightly differently (rich-text HTML,
     plain text + bold font, a QLabel)."""

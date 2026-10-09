@@ -64,7 +64,7 @@ def window(root, monkeypatch, changes, choice, logged):
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     win = SimpleNamespace(
-        log=logged.append, _slide_source_tabs={}, _deck_editor_tabs={},
+        log=logged.append, _slide_source_tabs={},
         refresh_open_deck_editors=lambda: None)
     for name in ("check_project_compat", "_show_compat", "_compat_update", "_compat_report",
                  "_compat_newer_notice"):

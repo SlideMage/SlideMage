@@ -195,11 +195,21 @@ def _deck_calls(job: CompileJob) -> list[SlideCall]:
     return list(latex_lint._calls_in(job.deck.text, job.deck.chapters))
 
 
-def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = None) -> PartialPlan:
-    build_dir = build_dir or compiler.BUILD_DIR
+@dataclass
+class _FullCompile:
+    """What the last whole-deck compile of a job left: its record and PDF, and
+    which of the deck's slide calls produced which frames."""
+    record: dict
+    aux: Path
+    pdf: Path
+    deck_changed_at: Optional[int]   # first changed character, if the deck changed since
+    matched: list[tuple[FrameGroup, SlideCall]]
+    unmatched: list[FrameGroup]      # frames not from a slide call (the generated appendix)
+
+
+def _full_compile(job: CompileJob, build_dir: Path) -> _FullCompile:
     if job.chapter is not None:
         raise PartialError("Page compiles work on whole-deck versions, not per-chapter PDFs.")
-    requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
     # The deck as it is on disk now (the deck table's copy may be older).
     fresh = next((d for d in deck_scan._scan_dir(job.deck.path.parent, job.deck.archived)
                   if compile_records.norm(d.path) == compile_records.norm(job.deck.path)), None)
@@ -218,7 +228,7 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
         raise PartialError(f"{full_pdf.name} was changed since it was compiled -- compile "
                            "the whole deck.")
     deck_key = compile_records.norm(job.deck.path)
-    deck_changed_at: Optional[int] = None   # first changed character, if the deck changed
+    deck_changed_at: Optional[int] = None
     for entry in record.get("inputs", []):
         if compile_records.norm(entry["path"]) == deck_key:
             if compile_records.sha256(job.deck.path) != entry["sha256"]:
@@ -228,7 +238,7 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
     groups = frame_groups(page_infos(full_pdf))
     calls = [c for c in _deck_calls(job) if latex_lint._slide_included(c, job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
-    unmatched: list[FrameGroup] = []   # frames not from a slide call (the generated appendix)
+    unmatched: list[FrameGroup] = []
     ptr = 0
     for group in groups:
         found = next((i for i in range(ptr, len(calls))
@@ -238,6 +248,25 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
             continue
         matched.append((group, calls[found]))
         ptr = found + 1
+    return _FullCompile(record, aux, full_pdf, deck_changed_at, matched, unmatched)
+
+
+def frames_for_slides(job: CompileJob, slide_ids: list[str], build_dir: Optional[Path] = None) -> list[int]:
+    """The footer frame numbers that the slides with these ids have in the
+    job's last whole-deck PDF (what plan() takes as pages). Raises PartialError
+    when there is no usable whole-deck compile to read them from. A slide that
+    is not in that PDF (not typeset in the version) has no frames."""
+    wanted = {i.lower() for i in slide_ids}
+    full = _full_compile(job, build_dir or compiler.BUILD_DIR)
+    return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
+
+
+def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = None) -> PartialPlan:
+    build_dir = build_dir or compiler.BUILD_DIR
+    requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
+    full = _full_compile(job, build_dir)
+    record, aux, full_pdf, deck_changed_at = full.record, full.aux, full.pdf, full.deck_changed_at
+    matched, unmatched = full.matched, full.unmatched
     by_frame = {f: (g, c) for g, c in matched for f in g.frames}
     not_slides = sorted(f for g in unmatched for f in g.frames if f in requested)
     if not_slides:

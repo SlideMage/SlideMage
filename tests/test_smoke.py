@@ -39,19 +39,16 @@ def test_module_imports(name):
 
 
 def test_main_window_builds(monkeypatch):
-    from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
-    window = build_window(monkeypatch, with_deck_editor=True)
+    window = build_window(monkeypatch)
     window.show()
     app.processEvents()
     window._log("line one")
     window.clear_log_button.click()
     assert window.log_text.toPlainText() == ""
     window.close()
-    window.deleteLater()   # its deck editor has a row for every slide: free that now
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_preferences_dialog_has_a_sensible_width(monkeypatch):

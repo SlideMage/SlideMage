@@ -30,10 +30,15 @@ from PySide6.QtWidgets import (
 
 from . import deck_editor, slide_ids, slide_language, slide_rename
 from .deck_scan import Deck
-from .qt_deck_editor_tab import VERSIONS, VERSION_LABELS
 from .ui.kit.theme import MUTED_LABEL
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$")
+VERSIONS = deck_editor.DEFAULT_CONDITIONS
+VERSION_LABELS = {
+    "instructor": "Instructor",
+    "during-course": "During-course",
+    "after-course": "After-course",
+}
 
 
 class AddSlideDialog(QDialog):
@@ -46,7 +51,7 @@ class AddSlideDialog(QDialog):
         self.deck = deck
         self.insert_at = insert_at
         self.indent = indent
-        # The deck-editor tab this dialog was opened from -- passed straight
+        # The page this dialog was opened from -- passed straight
         # through to open_slide_editor() as its own return_to (2026-09-22,
         # direct instruction: a "Create new slide" should open its source
         # editor immediately), so closing that new editor tab lands back

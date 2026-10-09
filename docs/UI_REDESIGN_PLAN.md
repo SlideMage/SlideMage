@@ -145,8 +145,10 @@ before any chat UI exists.
   slides within and between sections. Shift- or Ctrl-click selects several
   slides and shows a bulk bar (show/hide in a view, remove, compile pages).
   Arrow keys move the focus.
-- Remove `qt_deck_editor_tab.py` and `qt_deck_group_dialog.py` once their
-  tests are ported.
+- Remove `qt_deck_editor_tab.py` once its tests are ported. (done: the list
+  is `ui/workspace/slide_list.py`, `slide_tree.py` and the backend
+  `deck_outline.py`.) `qt_deck_group_dialog.py` stays until step 9: the ⋮
+  menu's "Tags…" and "Duplicate deck…" use it.
 
 ### 5. Centre: Preview, Source, Split, Details
 - **Preview**: the rendered page in the current view and language from

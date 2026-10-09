@@ -285,14 +285,14 @@ def _own_language_for_bare_id(bare_id_: str) -> str | None:
 
 
 def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
-                  size: tuple[int, int] = FULL_SIZE) -> Path:
+                  size: tuple[int, int] = FULL_SIZE, id_slug: str | None = None) -> Path:
     """Filename gains a <Lang> segment (2026-08-24, right after the bare
     id, matching the id-slug's own segment order) when `slide_id` resolves
     to a migrated slide -- omitted entirely for a legacy slide, so the
     already-cached files for the other ~665 slides never need
     mass-regenerating on rollout day. Resolved internally from disk
     (slide_language.current_id_slug_for_bare_id) rather than taken as a
-    parameter, so every existing caller (qt_deck_editor_tab.py,
+    parameter, so every existing caller (slide_list.py,
     qt_slide_preview_popup.py, ...) gets the right cache key with no
     call-site changes needed.
 
@@ -306,7 +306,10 @@ def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
     guaranteed-fresh" disclaimer above."""
     safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", slide_id)
     width, height = size
-    language = _own_language_for_bare_id(slide_id)
+    # `id_slug` (a deck call's own) saves looking the slide up on disk: a
+    # whole slide list asks for hundreds of these at once.
+    language = (slide_language.own_language(id_slug) if id_slug
+                else _own_language_for_bare_id(slide_id))
     lang_segment = f"-{language}" if language else ""
     return SNAPSHOT_DIR / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
 

@@ -31,7 +31,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, compile_progress, compiler, deck_snapshot, latex_lint, open_path, pptx_export
+from ... import app_settings, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
+from ... import pptx_export
 from ... import qt_render_check, qt_snapshot_dialog, slide_ids, slide_snapshot, update_all_previews
 from ...compiler import (
     PDF_DIR,
@@ -69,7 +70,7 @@ class CompileSignals(QObject):
 
     log = Signal(str)
     batch_done = Signal()
-    # For a background thread (e.g. DeckEditorTab's own per-row Render)
+    # For a background thread (e.g. the slide preview's Render now)
     # that needs to re-enable a button once it's done -- setEnabled() is a
     # widget mutation, so it has to run on the GUI thread same as
     # everything else here. Signal(object) rather than Signal(QPushButton)
@@ -250,6 +251,26 @@ class CompileJobsMixin:
             pages = parse_page_spec(text)
         except PartialError as exc:
             QMessageBox.warning(self, "Pages", str(exc))
+            return
+        self._compile_current(self.state.view, pages)
+
+    def _compile_slides(self, slide_ids: list[str]) -> None:
+        """The slide list's "Compile these pages": the frames the slides have in
+        the current view's last whole-deck PDF, then the same path as Selected pages."""
+        deck = self.state.deck
+        if deck is None:
+            return
+        job = compiler.build_jobs(deck, self.state.view)[0]
+        try:
+            pages = partial_compile.frames_for_slides(job, slide_ids)
+        except PartialError as exc:
+            QMessageBox.warning(self, "Compile pages", str(exc))
+            return
+        if not pages:
+            QMessageBox.information(
+                self, "Compile pages",
+                "None of these slides is in the last whole-deck PDF of this view "
+                "(not typeset there, or added since). Compile the whole deck first.")
             return
         self._compile_current(self.state.view, pages)
 

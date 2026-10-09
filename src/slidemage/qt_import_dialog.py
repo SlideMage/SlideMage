@@ -1,5 +1,5 @@
 """Decks -> "Import PPTX/ODP..." (System menu until v5.33.0) -- a standalone dialog (not opened from
-any one deck-editor tab) that runs slide_import.import_presentation()
+any one deck) that runs slide_import.import_presentation()
 against a chosen .pptx/.odp file and a chosen target deck. Direct
 instruction, 2026-09-23.
 """

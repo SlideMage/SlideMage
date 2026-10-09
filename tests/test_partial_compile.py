@@ -88,6 +88,21 @@ def test_plan_maps_footer_numbers_to_slides(deck_on_record):
     assert plan.kept[0].call.id == "1cc" and plan.kept[0].first_page == 4
 
 
+def test_frames_for_slides_reads_the_footers_of_the_last_full_pdf(deck_on_record):
+    _root, job, _pdf = deck_on_record
+    assert partial_compile.frames_for_slides(job, ["1cc", "1bb"]) == [2, 3]
+    assert partial_compile.frames_for_slides(job, ["1AA"]) == [1]
+    assert partial_compile.frames_for_slides(job, ["1zz"]) == []     # not in that PDF
+    assert partial_compile.plan(job, partial_compile.frames_for_slides(job, ["1bb"])).kept[0].call.id == "1bb"
+
+
+def test_frames_for_slides_needs_a_whole_deck_compile_on_record(deck_on_record):
+    root, job, _pdf = deck_on_record
+    (root / ".build" / "compile-records" / "t-D.json").unlink()
+    with pytest.raises(PartialError, match="compile the whole deck once"):
+        partial_compile.frames_for_slides(job, ["1bb"])
+
+
 def test_plan_lists_other_changed_slides(deck_on_record):
     root, job, _pdf = deck_on_record
     (root / "slides" / "1cc-EN-C-current.tex").write_text("edited\n", encoding="utf-8")

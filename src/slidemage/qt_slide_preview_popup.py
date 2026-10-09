@@ -1,7 +1,7 @@
 """A small in-app popup showing a slide's cached compile-time PNG snapshot
 (slide_snapshot.py) -- the whole point of that cache: look at how a slide
 last compiled without paying a LaTeX compile to find out. Shared by
-qt_deck_editor_tab.py (its per-row "Preview" button) and
+the slide list (its "Preview" entry) and
 qt_slide_source_tab.py (its "Preview" button next to "Render to PDF").
 
 Deliberately dumb about *how* to render: the caller supplies `render_fn`,
