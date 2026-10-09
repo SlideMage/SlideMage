@@ -768,28 +768,35 @@ def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
         return False, str(exc)
 
 
-# Custom models this machine builds via `ollama create <name> -f
-# <modelfile>` -- FROM some pulled base model plus PARAMETER num_ctx/
-# temperature overrides (see d:\dokumente\ai\modelfile_*.txt). Once created,
-# Ollama's own /api/show only ever returns the resolved *local blob path*
-# for a model's FROM line, never the original base tag it was built from --
-# confirmed directly, 2026-09-18 -- so there is no way to rediscover this
-# relationship from the Ollama server itself. This mapping is this app's own
-# record of it, kept by hand; update_model() below uses it so "Update
-# selected…" pulls and relinks to the real underlying base model instead of
-# trying (and failing) to pull a tag that was never in any registry.
-# Extend this whenever a new custom model is created this way.
-DERIVED_MODEL_BASES: dict[str, str] = {
-    "Claude_Gemma4_32k:latest": "gemma4",
-    "gemma4:64k": "gemma4",
-    "gemma4_12b_32k:latest": "gemma4:12b",
-    "gemma4:_26b_32k": "gemma4:26b",
-    "Claude-qwen3-coder-next:64k": "qwen3-coder-next",
-    "qwen3-coder-next:32k": "qwen3-coder-next",
-    "qwen3-coder-next:128k": "qwen3-coder-next",
-    "qwen3.6:64k": "qwen3.6",
-    "qwen3.6:jbef": "qwen3.6:35b",
-}
+# Custom models built with `ollama create <name> -f <modelfile>` -- FROM some
+# pulled base model plus PARAMETER num_ctx/temperature overrides -- have no
+# registry entry of their own, so pulling them fails ("pull model manifest:
+# file does not exist"). Ollama records the base they were built from in
+# /api/show's details.parent_model, so update_model() below finds the base
+# there (v5.35.3, direct report: four custom models failed to update; this
+# replaces a hand-kept name -> base table that listed only some of them,
+# partly under misspelt names). parent_model is not proof of a custom model
+# on its own: some registry models carry one too (gemma4:latest names its
+# upstream build), so it is only consulted after the registry has said the
+# model does not exist.
+_NOT_IN_REGISTRY_RE = re.compile(r"does not exist|not found|manifest unknown", re.IGNORECASE)
+_WEIGHTS_BLOB_RE = re.compile(r"^FROM\s+.*?(sha256[-:][0-9a-f]{64})", re.MULTILINE)
+
+
+def parent_model(model: str, host: Optional[str] = None) -> str | None:
+    """The model `model` was built from (/api/show details.parent_model),
+    or None if Ollama records none or can't be reached."""
+    show = _get_model_show(model, host=host)
+    details = show.get("details") if show is not None else None
+    parent = details.get("parent_model") if isinstance(details, dict) else None
+    return parent if isinstance(parent, str) and parent.strip() else None
+
+
+def _weights_blob(model: str, host: Optional[str] = None) -> str | None:
+    """The digest of `model`'s weights -- the blob its Modelfile's first
+    FROM line points to -- or None if unknown."""
+    m = _WEIGHTS_BLOB_RE.search(get_modelfile(model, host=host) or "")
+    return m.group(1).replace(":", "-") if m else None
 
 
 def pull_model(model: str, host: Optional[str] = None,
@@ -963,7 +970,7 @@ def _strip_modelfile_comments(modelfile: str) -> list[str]:
 
 
 def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> tuple[bool, str]:
-    """Re-creates `model` (one of DERIVED_MODEL_BASES) against `base`'s
+    """Re-creates custom `model` (built from `base`) against `base`'s
     current weights. Reads Ollama's structured `/api/show` response and
     sends the supported `/api/create` fields, replacing only `from` while
     preserving the model's template, prompts, license, parameters, and
@@ -1027,19 +1034,28 @@ def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> t
 def update_model(model: str, host: Optional[str] = None,
                   on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
     """"Update" for the Settings dialog's "Update selected…" button: pulls
-    `model` itself if it's a plain/base model, or -- if it's one of this
-    project's own custom models (DERIVED_MODEL_BASES) -- pulls its base
-    instead and relinks `model` to those refreshed weights
-    (relink_derived_model() above), since a custom model has no registry
-    entry of its own to pull directly. `host=None` is passed straight
-    through to pull_model()/relink_derived_model() below, which each
-    resolve it themselves -- no need to resolve it twice here."""
-    base = DERIVED_MODEL_BASES.get(model)
-    if base is None:
-        return pull_model(model, host=host, on_progress=on_progress)
-    ok, error = pull_model(base, host=host, on_progress=on_progress)
+    `model` itself; if the registry has no such model, it is a custom model
+    (see _NOT_IN_REGISTRY_RE above), so its base (parent_model()) is pulled
+    instead and `model` relinked to those refreshed weights
+    (relink_derived_model() above) -- unless it already uses them, which
+    needs no relink. `host=None` is passed straight through; each helper
+    resolves it itself."""
+    ok, error = pull_model(model, host=host, on_progress=on_progress)
+    if ok or not _NOT_IN_REGISTRY_RE.search(error):
+        return ok, error
+    base = parent_model(model, host=host)
+    if base is None or base == model:
+        return False, f"{error} (a custom model, but Ollama does not record the model it was built from)"
+    if on_progress:
+        on_progress(f"{model}: a custom model built from {base}; updating {base}")
+    ok, base_error = pull_model(base, host=host, on_progress=on_progress)
     if not ok:
-        return False, f"Pulling base {base} failed: {error}"
+        return False, f"Pulling base {base} failed: {base_error}"
+    current = _weights_blob(model, host=host)
+    if current is not None and current == _weights_blob(base, host=host):
+        if on_progress:
+            on_progress(f"{model}: already uses the current {base}")
+        return True, ""
     if on_progress:
         on_progress(f"{model}: relinking to updated {base}")
     return relink_derived_model(model, base, host=host)

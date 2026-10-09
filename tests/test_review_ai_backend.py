@@ -218,3 +218,124 @@ def test_relink_surfaces_create_api_error(monkeypatch):
     assert error == "base model not found"
     assert len(requests) == 2
     assert requests[1][0].full_url.endswith("/api/create")
+
+
+def _install_ollama_models(monkeypatch, models, *, registry):
+    """A fake Ollama server for update_model(): `models` maps a local model
+    name to (parent_model, weights blob digest); `registry` names the
+    models a pull finds. Records (endpoint, model) per request."""
+    from slidemage import alt_draft
+
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, lines):
+            self.lines = [json.dumps(line).encode("utf-8") + b"\n" for line in lines]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(self.lines)
+
+        def read(self):
+            return b"".join(self.lines)
+
+    def fake_urlopen(request, timeout):
+        endpoint = request.full_url.rsplit("/", 1)[-1]
+        model = json.loads(request.data)["model"]
+        calls.append((endpoint, model))
+        if endpoint == "pull":
+            if model in registry:
+                return FakeResponse([{"status": "pulling manifest"}, {"status": "success"}])
+            return FakeResponse([{"error": "pull model manifest: file does not exist"}])
+        if endpoint == "show":
+            parent, blob = models[model]
+            return FakeResponse([{
+                "modelfile": f"# FROM {model}\nFROM D:\\models\\blobs\\{blob}\nPARAMETER num_ctx 16384\n",
+                "parameters": "num_ctx 16384",
+                "details": {"parent_model": parent},
+            }])
+        if endpoint == "create":
+            return FakeResponse([{"status": "success"}])
+        raise AssertionError(f"unexpected Ollama endpoint: {request.full_url}")
+
+    monkeypatch.setattr(alt_draft.urllib.request, "urlopen", fake_urlopen)
+    return calls
+
+
+def test_update_pulls_a_registry_model_directly(monkeypatch):
+    from slidemage import alt_draft
+
+    calls = _install_ollama_models(monkeypatch, {}, registry={"gemma4:latest"})
+
+    assert alt_draft.update_model("gemma4:latest", host="http://ollama.test") == (True, "")
+    assert calls == [("pull", "gemma4:latest")]
+
+
+def test_update_rebuilds_a_custom_model_on_its_updated_base(monkeypatch):
+    # v5.35.3: a custom model (not in the registry) is found to be one by the
+    # failed pull; its base comes from Ollama's parent_model, not a name table
+    from slidemage import alt_draft
+
+    calls = _install_ollama_models(monkeypatch, {
+        "Claude_Gemma4_16k:latest": ("gemma4:latest", "sha256-" + "a" * 64),
+        "gemma4:latest": ("", "sha256-" + "b" * 64),
+    }, registry={"gemma4:latest"})
+    progress = []
+
+    ok, error = alt_draft.update_model("Claude_Gemma4_16k:latest", host="http://ollama.test",
+                                       on_progress=progress.append)
+
+    assert (ok, error) == (True, "")
+    assert ("pull", "gemma4:latest") in calls
+    assert calls[-1] == ("create", "Claude_Gemma4_16k:latest")
+    assert any("built from gemma4:latest" in line for line in progress)
+
+
+def test_update_leaves_a_custom_model_alone_that_already_uses_the_current_base(monkeypatch):
+    from slidemage import alt_draft
+
+    same = "sha256-" + "c" * 64
+    calls = _install_ollama_models(monkeypatch, {
+        "Claude_Llama31_8b_16k:latest": ("llama3.1:8b", same),
+        "llama3.1:8b": ("", same),
+    }, registry={"llama3.1:8b"})
+    progress = []
+
+    ok, error = alt_draft.update_model("Claude_Llama31_8b_16k:latest", host="http://ollama.test",
+                                       on_progress=progress.append)
+
+    assert (ok, error) == (True, "")
+    assert ("create", "Claude_Llama31_8b_16k:latest") not in calls
+    assert progress[-1] == "Claude_Llama31_8b_16k:latest: already uses the current llama3.1:8b"
+
+
+def test_update_reports_a_custom_model_without_a_recorded_base(monkeypatch):
+    from slidemage import alt_draft
+
+    calls = _install_ollama_models(monkeypatch, {
+        "mystery:latest": ("", "sha256-" + "d" * 64),
+    }, registry=set())
+
+    ok, error = alt_draft.update_model("mystery:latest", host="http://ollama.test")
+
+    assert ok is False
+    assert "file does not exist" in error and "does not record the model it was built from" in error
+    assert [endpoint for endpoint, _model in calls] == ["pull", "show"]
+
+
+def test_update_does_not_look_for_a_base_after_other_pull_errors(monkeypatch):
+    from slidemage import alt_draft
+
+    def offline(request, timeout):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(alt_draft.urllib.request, "urlopen", offline)
+
+    ok, error = alt_draft.update_model("gemma4:latest", host="http://ollama.test")
+
+    assert ok is False and "connection refused" in error

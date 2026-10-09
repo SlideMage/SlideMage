@@ -555,17 +555,11 @@ class SettingsDialog(QDialog):
         if not models:
             return
 
-        derived = [m for m in models if m in alt_draft.DERIVED_MODEL_BASES]
-        note = ""
-        if derived:
-            plural = len(derived) > 1
-            note = (
-                "\n\nNote: " + ", ".join(derived) + (" are" if plural else " is") +
-                " custom model(s) built on top of another base model -- "
-                "updating " + ("them" if plural else "it") + " pulls and "
-                "relinks to that base instead of pulling " +
-                ("themselves" if plural else "itself") + " directly."
-            )
+        # which models are custom shows only when the registry is asked
+        # (alt_draft.update_model), so the note covers the case in general
+        note = ("\n\nA custom model you built from another one (ollama create) "
+                "is updated by updating the model it was built from and "
+                "rebuilding it on top.")
         detail = (f'"{models[0]}"' if len(models) == 1 else
                    "these {} models:\n\n{}".format(
                        len(models), "\n".join(f"  • {m}" for m in models)))

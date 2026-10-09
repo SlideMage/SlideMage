@@ -1923,6 +1923,8 @@ v5.35.0 (2026-10-08, direct instructions): page compiles accept a deck file that
 v5.35.1 (2026-10-08, direct report: "After a single-slide compile has finished, the blue progress bar continues to move left to right in 'starting' mode"): the progress bar ends a job on its "MOVING" line, which a page compile never logs (it patches the PDF itself); a job's PASS line now ends it as well, so the bar fills and clears after a page compile like after any other.
 
 v5.35.2 (2026-10-08, direct report: "On 1ub, the image source footnote is moved partially below the footer"): tools/check_layout.py now sees a footnote or image-source line that an overfull frame pushed into or under the footer box (it skipped every small line reaching into the footer, so it could not report it); such a line is told apart from the footer's own text by its size (3.19 pt; footer text is 3.99 pt and up in every template). Manual: 1ub 1.3.1 (item 4 names the deck buttons in two lines instead of three; 1.3.0 frozen) and 1rv 1.2.2 (smaller version crops; its source line was hidden under the footer since v5.30.1; 1.2.1 frozen).
+
+v5.35.3 (2026-10-09, direct report: Update Ollama models failed for four models with "pull model manifest: file does not exist"): those were custom models (built with ollama create from a base model), which have no registry entry of their own. SlideMage knew custom models only from a hand-kept name table that listed some of them, partly under misspelt names; it now pulls every model first and, when the registry says the model does not exist, takes its base from what Ollama records (/api/show details.parent_model), updates that base and rebuilds the custom model on it -- or, if the custom model already uses the base's current weights, leaves it as it is ("already uses the current ..."). Not a custom-model fallback for other pull errors (e.g. Ollama not running). The update confirmation now explains the custom-model case in general instead of naming models from the table.
 """
 from __future__ import annotations
 
@@ -1932,7 +1934,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.2"
+VERSION_NUMBER = "v5.35.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
