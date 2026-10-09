@@ -1,7 +1,7 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–4 done, paused before
-step 5 (see "Progress and handover").
+Status: in progress on branch `ui-redesign`. Steps 1–5 done (see
+"Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
 (plus `sm-images.js`, `support.js`, `latex/slidemage-logo.svg`).
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
-6.5 s; ruff clean.
+Last updated 2026-10-09. Suite after step 5: 815 passed, 4 skipped, about
+6 s; ruff clean.
 
 | Step | Commit | State |
 |---|---|---|
@@ -54,7 +54,10 @@ Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
 | 2. AI provider layer | `49c1fa4` | done |
 | 3. Workspace shell | `ef3a5a6` | done |
 | 4. Slide list | `61e348f` | done |
-| 5–11 | | not started |
+| (user's preview work) | `776267e` | committed before step 5 |
+| 5a. Centre views | `d543147` | done |
+| 5b. Lint, AI fix, Insert/Cite | `15a30ed` | done |
+| 6–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -81,26 +84,36 @@ Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
 - Removed: `qt_deck_table.py`, `qt_closable_tab_bar.py`,
   `qt_deck_editor_tab.py`, the menu bar.
 
+- Step 5: `ui/workspace/centre.py` (`CentreColumn`), `source_editor.py`
+  (`SourceEditor` protocol, `LatexPlainTextEdit`, find bar),
+  `source_file.py`, `source_view.py`, `preview_view.py`,
+  `details_view.py`, `ai_fix.py` (inline "Ask AI to fix"),
+  `insert_popovers.py` (hyperlink, code file, Cite ▾); backend
+  `latex_edit.py`, `preview_target.py`, `snippets.py`,
+  `bibliography.search`. Kit: `Popover`, `Surface`,
+  `SegmentedControl.set_badge`. `WorkspaceState` has `mode`, `dirty`,
+  `lint_errors`, `footer_timestamp`.
+- Removed in step 5: `qt_slide_source_tab.py`, `qt_slide_preview_popup.py`,
+  `qt_syntax_check_dialog.py`, `qt_insert_citation_dialog.py`.
+
 ### Temporary hosts still in place
-- Centre `QStackedWidget` in `window.py`: `SlideSourceTab` (until step 5),
-  `TranscriptPreviewTab` / `TranscriptTab` for Images (until step 9).
+- Centre stack in `window.py`: `TranscriptPreviewTab` / `TranscriptTab`
+  for Images (until step 9).
 - Log panel under the columns (until step 7's Log drawer).
-- Preview/Split/Source/Details switch is disabled (until step 5).
 - Right column empty (steps 6 and 10).
+- Details view hosts versions (open / make current), read-only
+  visibility, the transcript summary editor, and Duplicate / Rename /
+  Delete slide; the versions, visibility and summary parts move to step 6
+  panels (`CentreColumn.restore_version` is reusable).
+- "Add reference to .bib…" (Cite ▾ footer) still opens
+  `qt_citation_dialog` (until step 6 Citations).
 - `qt_deck_group_dialog.py` kept for ⋮ "Tags…" and "Duplicate deck…"
   (until step 9).
-- `window.footer_timestamp_checkbox` is exposed only because
-  `qt_slide_source_tab.py` reads it (drop in step 5).
 
 ### Carried over to later steps
-- Step 5: the user's uncommitted preview work (`preview_build.py`,
-  `preview_cli.py`, `slide_preview.py`, `qt_slide_source_tab.py`,
-  `tests/test_preview_build.py`, `tools/preview_benchmark/`,
-  `docs/preview-benchmark-*`, plus `.gitignore` and `README.md` edits) must
-  be committed or shelved by the user first, or explicitly folded into
-  step 5. Until then no agent may touch those files.
-- Step 5: slide titles in the list come from the slug, not the frame
-  title; take the real title if the Preview/Details work exposes it.
+- Step 6: Preview chips "course note" and "outdated translation" need
+  backend data (none exists yet); the slide list's lint dot follows the
+  saved file, not the live buffer.
 - Step 7: `try_start_ollama_task`/`end_ollama_task` also serialise cloud
   tasks (too strict); `deck_outline.forget_lint()` is not wired to "Refresh
   decks"; deck switch rebuilds the list twice (harmless, ~75 ms).
@@ -114,6 +127,12 @@ Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
 - Section menu "Add slide here" adds at the end of the section (old: top).
 - Grid view and the hover preview tooltip of the deck editor are dropped.
 - Deck group collapse state and the deck table's "?" help are dropped.
+- Step 5: no Close / Close-and-save (no tabs); language is set by an
+  explicit Details action (no pending-language offer on save); top-bar
+  EN/DE always applies to the preview; Tools ▾ "Check syntax" became
+  "Ask AI to fix" on the lint line; Cite ▾ inserts `\fullcite` (default),
+  `\textcite`, `\parencite` or the key; a pending transcript summary is
+  auto-saved on slide/deck switch and is in the close prompt.
 
 ### How the work is run (to resume)
 - Orchestrator: the main session briefs one agent per step, reviews the
@@ -121,7 +140,8 @@ Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
   then commits on `ui-redesign` with only that step's files. The user asked
   for no extra whole-branch review at the end.
 - Agents: Sonnet at high effort, via `.claude/agents/ui-step-implementer.md`
-  (needs a session reload to be picked up; earlier steps ran at medium).
+  (earlier steps ran at medium). Step 5 was split into 5a and 5b,
+  run by one agent resumed with SendMessage.
 - Each brief contains: read the plan (Decisions, Approach, the step),
   the relevant modules and tests, the prototype; the step's tasks; tests
   `uv run --extra dev python -m pytest -q` and `uv run --extra dev ruff
@@ -138,7 +158,9 @@ Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
   `3e2dd21f-cbd5-4329-a0d7-d3e1779450aa`, `get_file` on
   `SlideMage Prototype v3.dc.html`; needs `/design-login`). Reads are
   capped at 256 KiB, so the last ~5 KB of script are missing. Save it to
-  the session scratchpad and point agents at that path.
+  the session scratchpad and point agents at that path. Prototype path in
+  the 2026-10-09 evening session:
+  `/tmp/claude-1000/-home-juergen-github-SlideMage/846a66b3-5695-49c8-8ed3-dad860494bc8/scratchpad/prototype-v3.html`.
 
 ## Approach
 
