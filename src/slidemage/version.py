@@ -28,6 +28,18 @@ Since v5.29.0 such a release also registers the change in slidemage/compat.py
 migration); a test fails a BREAKING: paragraph without an entry. See the
 README, "Project compatibility".
 
+Release notes (v5.35.4, direct instruction: GitHub users should see "in few
+sentences or bullet points what is new since the previous release"): every
+history entry after v5.35.3 has a paragraph of its own starting "NEW:" --
+on the NEW: line an optional one-sentence summary, then one "- " bullet per
+change users notice, in plain words (what they can do now, what was fixed;
+no module names). The GitHub release lists the NEW: bullets of every
+version since the previous release, the tagged version's summary on top
+(so when a release bundles several versions, that summary describes them
+all), then the BREAKING: paragraphs; the technical text of an entry stays
+here. packaging/release_notes.py refuses a release with an entry lacking
+NEW:.
+
 Estimated at v2.9.0 on 2026-07-28 from this app's commit history (`git log
 --oneline -- slidemanager/`): v1.x covered the original compile/archive
 tool through its Stop-compilation button; v2.0 began with the deck
@@ -1925,6 +1937,11 @@ v5.35.1 (2026-10-08, direct report: "After a single-slide compile has finished, 
 v5.35.2 (2026-10-08, direct report: "On 1ub, the image source footnote is moved partially below the footer"): tools/check_layout.py now sees a footnote or image-source line that an overfull frame pushed into or under the footer box (it skipped every small line reaching into the footer, so it could not report it); such a line is told apart from the footer's own text by its size (3.19 pt; footer text is 3.99 pt and up in every template). Manual: 1ub 1.3.1 (item 4 names the deck buttons in two lines instead of three; 1.3.0 frozen) and 1rv 1.2.2 (smaller version crops; its source line was hidden under the footer since v5.30.1; 1.2.1 frozen).
 
 v5.35.3 (2026-10-09, direct report: Update Ollama models failed for four models with "pull model manifest: file does not exist"): those were custom models (built with ollama create from a base model), which have no registry entry of their own. SlideMage knew custom models only from a hand-kept name table that listed some of them, partly under misspelt names; it now pulls every model first and, when the registry says the model does not exist, takes its base from what Ollama records (/api/show details.parent_model), updates that base and rebuilds the custom model on it -- or, if the custom model already uses the base's current weights, leaves it as it is ("already uses the current ..."). Not a custom-model fallback for other pull errors (e.g. Ollama not running). The update confirmation now explains the custom-model case in general instead of naming models from the table.
+
+v5.35.4 (2026-10-09, direct instruction: "describe the releases in a more helpful manner, so GitHub users see in few sentences or bullet points what is new since the previous release"): every history entry from now on has a NEW: paragraph -- a one-sentence summary and "- " bullets for users -- and packaging/release_notes.py builds the GitHub release from those: the tagged version's summary, "This release covers ..." when it bundles several versions, every version's bullets, a "## Breaking changes" section from the BREAKING: paragraphs and a "## Full changelog" link under a heading of its own (release.yml no longer lets GitHub append its own changelog line, which would have landed inside the breaking-changes section the updater reads). A release fails when an entry after v5.35.3 has no NEW: paragraph; older entries keep printing their full text. version.parse_history() gives each entry its summary and bullets (HistoryEntry.summary, .news). The texts of all six releases so far (v4.0.0 to v5.35.3) were rewritten on GitHub the same way.
+
+NEW: Clearer release notes.
+- Release notes on GitHub now list in a few bullet points what is new since the previous release, followed by any breaking changes and a link to the full list of changes.
 """
 from __future__ import annotations
 
@@ -1934,7 +1951,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.3"
+VERSION_NUMBER = "v5.35.4"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
@@ -1958,6 +1975,32 @@ class HistoryEntry:
     # joined -- keeps a "BREAKING:" paragraph recognizable
     # (packaging/release_notes.py, updater.breaking_notes()).
     paragraphs: list[str] = field(default_factory=list)
+    # The entry's "NEW:" paragraph (since v5.35.4): what users get, for the
+    # GitHub release notes (packaging/release_notes.py) -- an optional
+    # one-sentence summary on the NEW: line, then "- " bullets
+    summary: str = ""
+    news: list[str] = field(default_factory=list)
+
+
+NEW_PREFIX = "NEW:"
+
+
+def _parse_news(paragraph: str) -> tuple[str, list[str]]:
+    """(summary, bullets) of a "NEW:" paragraph: the text after NEW: on its
+    first line is the summary, every line starting with "- " a bullet, and
+    other lines continue the line before them."""
+    summary_lines: list[str] = []
+    bullets: list[str] = []
+    for line in paragraph.strip()[len(NEW_PREFIX):].split("\n"):
+        line = line.strip()
+        if line.startswith("- "):
+            bullets.append(line[2:].strip())
+        elif line:
+            if bullets:
+                bullets[-1] += " " + line
+            else:
+                summary_lines.append(line)
+    return " ".join(summary_lines), bullets
 
 
 def parse_history() -> list[HistoryEntry]:
@@ -1974,12 +2017,15 @@ def parse_history() -> list[HistoryEntry]:
         version, meta, body = match.group(1), match.group(2), match.group(3)
         meta = re.sub(r"\s+", " ", meta).strip()
         description = re.sub(r"\s+", " ", body).strip()
-        paragraphs = [
-            re.sub(r"\s+", " ", paragraph).strip()
-            for paragraph in re.split(r"\n\s*\n", body) if paragraph.strip()
-        ]
+        raw = [p for p in re.split(r"\n\s*\n", body) if p.strip()]
+        paragraphs = [re.sub(r"\s+", " ", paragraph).strip() for paragraph in raw]
+        summary, news = "", []
+        for paragraph in raw:
+            if paragraph.strip().startswith(NEW_PREFIX):
+                summary, news = _parse_news(paragraph)
         entries.append(HistoryEntry(
-            version=version, meta=meta, description=description, paragraphs=paragraphs))
+            version=version, meta=meta, description=description, paragraphs=paragraphs,
+            summary=summary, news=news))
     return entries
 
 

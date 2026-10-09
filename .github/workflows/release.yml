@@ -92,4 +92,7 @@ jobs:
           files: out/${{ matrix.asset_name }}.zip
           fail_on_unmatched_files: true
           body_path: release_notes.md
-          generate_release_notes: true
+          # release_notes.py writes the changelog link itself, under a
+          # heading of its own -- GitHub's appended "Full Changelog" line
+          # would otherwise sit inside a "## Breaking changes" section
+          generate_release_notes: false
