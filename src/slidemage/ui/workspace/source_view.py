@@ -44,6 +44,7 @@ class SourcePane(Surface):
     render_requested = Signal()          # Ctrl+R: render the buffer
     restore_requested = Signal(object)   # Path of a frozen version to make current
     file_requested = Signal(object)      # Path of another file to show
+    reference_added = Signal()           # an entry was added to Slidemaster.bib
 
     def __init__(self, app) -> None:
         super().__init__()
@@ -406,10 +407,10 @@ class SourcePane(Surface):
 
     # -- references --------------------------------------------------------------------
 
-    def add_reference(self) -> None:
-        """Add an entry to Slidemaster.bib. The dialog writes the file on disk, not a
-        buffer: unsaved edits of the .bib are saved first, or the two would
-        overwrite each other, and an open buffer is reloaded afterwards."""
+    def add_reference(self, key: str = "") -> None:
+        """Add an entry to Slidemaster.bib (with the citation key `key`, if one is missing).
+        The dialog writes the file on disk, not a buffer: unsaved edits of the .bib are saved
+        first, or the two would overwrite each other, and an open buffer is reloaded afterwards."""
         bib = self._files.get(bibliography.DEFAULT_BIB)
         if bib is not None and bib.dirty:
             reply = QMessageBox.question(
@@ -418,8 +419,11 @@ class SourcePane(Surface):
                 "and your edits can't overwrite each other?")
             if reply != QMessageBox.StandardButton.Yes or not bib.save():
                 return
-        dialog = CitationDialog(self.app)
-        if dialog.exec() != CitationDialog.DialogCode.Accepted or bib is None:
+        dialog = CitationDialog(self.app, key)
+        if dialog.exec() != CitationDialog.DialogCode.Accepted:
+            return
+        self.reference_added.emit()
+        if bib is None:
             return
         bib.reload()
         if dialog.new_key:

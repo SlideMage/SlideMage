@@ -484,6 +484,21 @@ def bib_keys() -> frozenset[str]:
     return _bib_cache[1]
 
 
+def _citations(masked: str):
+    """(key, offset) of every key a citation command of the (comment-masked) text names."""
+    for m in _CITE_RE.finditer(masked):
+        for key in (k.strip() for k in m.group(1).split(",")):
+            if key:
+                yield key, m.start(1)
+
+
+def cited_keys(text: str) -> list[str]:
+    """The citation keys a slide's text cites (comments and verbatim text left out), in order of
+    first use, each once; keys built from macros or arguments are left out."""
+    masked, _ = _mask_comments_and_verbatim(text)
+    return list(dict.fromkeys(k for k, _ in _citations(masked) if "\\" not in k and "#" not in k))
+
+
 def _external(text: str) -> list[LintIssue]:
     masked, _ = _mask_comments_and_verbatim(text)
     issues: list[LintIssue] = []
@@ -493,11 +508,9 @@ def _external(text: str) -> list[LintIssue]:
         return masked.count("\n", 0, pos) + 1
 
     if keys:
-        for m in _CITE_RE.finditer(masked):
-            for key in (k.strip() for k in m.group(1).split(",")):
-                if key and key not in keys and "\\" not in key and "#" not in key:
-                    issues.append(LintIssue(
-                        "citation", f"citation key '{key}' is not in Slidemaster.bib", line_of(m.start(1))))
+        for key, position in _citations(masked):
+            if key not in keys and "\\" not in key and "#" not in key:
+                issues.append(LintIssue("citation", f"citation key '{key}' is not in Slidemaster.bib", line_of(position)))
     for regex in _IMAGE_RES:
         for m in regex.finditer(masked):
             # \fullbleedframe takes a comma-separated list (one image per reveal step)

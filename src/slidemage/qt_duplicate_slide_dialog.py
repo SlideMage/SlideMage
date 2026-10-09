@@ -60,7 +60,9 @@ def _slug_of(id_slug: str) -> str:
 
 
 class DuplicateSlideDialog(QDialog):
-    def __init__(self, app, source_id_slug: str, source_path: Path) -> None:
+    def __init__(self, app, source_id_slug: str, source_path: Path, target: Optional[str] = None) -> None:
+        """`target`: a language ("DE") to open the dialog on, as a translation into it (the
+        Language panel's Translate), with the machine translation ticked when it is possible."""
         super().__init__(app)
         # The window: the app-wide Ollama mutex (try_start_ollama_task()/
         # end_ollama_task()) around the auto-translate option below.
@@ -73,9 +75,14 @@ class DuplicateSlideDialog(QDialog):
         self.new_id_slug: Optional[str] = None
         self.new_path: Optional[Path] = None
 
-        self.setWindowTitle("Duplicate slide")
+        self.setWindowTitle("Duplicate slide" if target is None else "Translate slide")
         self.setModal(True)
         self._build()
+        if target is not None:
+            self.other_radio.setChecked(True)
+            self.slug_entry.setText(_slug_of(source_id_slug))   # the translation keeps the slug; its id is new
+            self.target_combo.setCurrentText(_LANGUAGE_LABELS.get(target, target))
+            self.translate_checkbox.setChecked(self.translate_checkbox.isEnabled())
 
     # -- widgets ------------------------------------------------------------------
 

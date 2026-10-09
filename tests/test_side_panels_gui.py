@@ -1,5 +1,8 @@
-"""The right column: the panel picker and the panels Used in decks, Slide versions and Visibility."""
+"""The right column: the panel picker and the eight panels (Used in decks, Slide versions, Visibility,
+Citations, Language, Image descriptions, Transcript entry, Speaker notes)."""
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
@@ -7,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QW
 
 from slidemage import app_settings, deck_scan
 from slidemage.archive import _read
+from slidemage.slide_source import read_slide_source
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
@@ -28,10 +32,23 @@ def qapp():
 
 
 class FakeCentre:
-    """What the Slide versions panel asks of the centre column."""
+    """What the panels ask of the centre column: versions, the Source view's buffers and its Save."""
 
     def __init__(self):
-        self.restored, self.frozen = [], []
+        self.restored, self.frozen, self.saved, self.references = [], [], [], []
+        self.buffers: dict = {}
+        self.unsaved: set = set()
+        self.source = SimpleNamespace(save=lambda: self.saved.append(True) or True, add_reference=self.references.append)
+
+    def slide_text(self, path):
+        return self.buffers[path] if path in self.buffers else read_slide_source(path)[0]
+
+    def is_dirty(self, path):
+        return path in self.unsaved
+
+    def edit_slide_text(self, path, change):
+        self.buffers[path] = change(self.slide_text(path))
+        return True
 
     def restore_version(self, path):
         self.restored.append(path)
@@ -50,6 +67,17 @@ class FakeWindow:
         self.centre = FakeCentre()
         self.opened = []
         self.logged = []
+        self.busy = None
+
+    def try_start_ollama_task(self, label):
+        self.busy = label
+        return True
+
+    def end_ollama_task(self):
+        self.busy = None
+
+    def refresh_open_deck_editors(self):
+        self.refreshed = getattr(self, "refreshed", 0) + 1
 
     def after_deck_edit(self, path, summary, previous_text=None):
         self.state.set_deck(next(d for d in deck_scan.scan_decks() if d.path == path))
@@ -57,8 +85,8 @@ class FakeWindow:
         self.slide_list.deck_edited(path, summary, previous_text)
         self.panels.refresh()
 
-    def open_slide_editor(self, path, **_kwargs):
-        self.opened.append(path)
+    def open_slide_editor(self, path, **kwargs):
+        self.opened.append((path, kwargs) if kwargs else path)
 
     def log(self, line):
         self.logged.append(line)
@@ -119,8 +147,10 @@ def test_the_picker_names_the_panel_and_lists_all_of_them(column):
     assert panels.picker.text() == "Used in decks"
     panels._open_menu()
     menu = next(m for m in QApplication.topLevelWidgets() if type(m).__name__ == "PopoverMenu" and m.isVisible())
-    assert [(e[1], e[2], e[4]) for e in menu._entries if e[0] == "item"] == [
+    assert [(e[1], e[2], e[4]) for e in menu._entries if e[0] == "item"][:3] == [
         ("used", "Used in decks", "check"), ("versions", "Slide versions", ""), ("visibility", "Visibility", "")]
+    assert [e[2] for e in menu._entries if e[0] == "item"][3:] == [
+        "Citations", "Language", "Image descriptions", "Transcript entry", "Speaker notes"]
     menu.triggered.emit("visibility")
     menu.close()
     assert panels.picker.text() == "Visibility" and app_settings.get(SETTING) == "visibility"
@@ -311,3 +341,342 @@ def test_freezing_asks_the_centre_with_the_chosen_level(column):
     levels._buttons["patch"].click()
     buttons(panel, "Freeze as v1.0.1")[0].click()
     assert window.centre.frozen == [("abc-EN-Demo", "patch")]
+
+
+# -- the panels about one slide's content ------------------------------------------------------------------
+
+CITED = ("\\begin{standardframe}{Cited}\n\t\\footnote{\\fullcite{smith2020}} \\textcite{ghost1999}\n"
+         "\t\\includegraphics{media/pic.png}\n\t\\note{First note}\n\t\\note<2>{Second note}\n\\end{standardframe}\n")
+
+
+@pytest.fixture
+def paths(tmp_path):
+    return SimpleNamespace(path=tmp_path / "slides" / "cit-EN-Cited-current.tex", bib=tmp_path / "Slidemaster.bib")
+
+
+@pytest.fixture
+def content(project, column, paths, tmp_path, monkeypatch):
+    """The slide `cit` (citations, an image, two notes), a Slidemaster.bib and an alt-text store of its own."""
+    from slidemage import alt_images, bibliography
+
+    panels, state, window = column
+    paths.path.write_text(CITED, encoding="utf-8")
+    bib = paths.bib
+    bib.write_text("@article{smith2020,\n\tauthor = {Smith, Jane},\n\ttitle = {Findings},\n\tyear = {2020},\n"
+                   "\tjournaltitle = {Journal},\n}\n", encoding="utf-8")
+    monkeypatch.setattr(bibliography, "DEFAULT_BIB", bib)
+    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "alt-text.json")
+    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "alt-text.csv")
+    state.set_focused_slide("cit")
+    return panels, state, window
+
+
+def shown(panels, key):
+    panels.set_panel(key)
+    return panels.panels[key]
+
+
+def test_citations_resolve_the_keys_and_mark_the_missing_ones(content, paths):
+    panels, _state, window = content
+    panel = shown(panels, "citations")
+    lines = texts(panel)
+    assert lines[:2] == ["smith2020", "Smith (2020), “Findings”, Journal"]
+    assert lines[2:4] == ["ghost1999", "Not in Slidemaster.bib"]
+    assert panel.meta() == "2"
+    assert next(l for l in panel.findChildren(QLabel) if l.text() == "Not in Slidemaster.bib").objectName() == "kitPanelMissing"
+    next(r for r in rows(panel) if r.findChildren(QLabel)[0].text() == "smith2020").activated.emit()
+    assert window.opened[-1] == (paths.bib, {"line": 1})
+    buttons(panel, "Add to .bib…")[0].click()
+    assert window.centre.references == ["ghost1999"]
+
+
+def test_a_slide_without_citations_says_so(content, paths):
+    panels, _state, window = content
+    window.centre.buffers[paths.path] = "\\begin{standardframe}{T}\n\\end{standardframe}\n"
+    panel = shown(panels, "citations")
+    assert "No citations on this slide." in texts(panel)
+
+
+def test_language_shows_the_translation_and_whether_it_is_outdated(content, tmp_path):
+    from slidemage import slide_source
+
+    panels, state, _window = content
+    slides = tmp_path / "slides"
+    (slides / "cit-EN-Cited-current.tex").write_text("%% DE translation: ciu-DE-Zitiert\n" + CITED, encoding="utf-8")
+    (slides / "ciu-DE-Zitiert-current.tex").write_text(
+        "%% Translation of: cit-EN-Cited\n" + CITED.replace("Cited", "Zitiert"), encoding="utf-8")
+    panel = shown(panels, "language")
+    lines = texts(panel)
+    assert lines[:2] == ["EN", "Cited"] and "The original." in lines and "Zitiert" in lines
+    assert "Translation up to date." in lines and panel.meta() == "EN · DE"
+    slide_source.save_slide_source(slides / "cit-EN-Cited-current.tex", "%% DE translation: ciu-DE-Zitiert\n" + CITED,
+                                   "\n")                                              # the original is saved again
+    import os
+    old = 1_600_000_000
+    os.utime(slides / "ciu-DE-Zitiert-current.tex", (old, old))
+    state.set_focused_slide("ciu")
+    state.set_focused_slide("cit")
+    assert "Translation outdated: the original was saved after the translation was written." in texts(panel)
+    assert panel.meta() == "EN · DE outdated"
+    assert buttons(panel, "Open")
+
+
+def test_translate_opens_the_duplicate_form_on_a_translation_and_opens_the_new_slide(content, monkeypatch, paths):
+    from slidemage.ui.workspace.panels import language
+
+    panels, _state, window = content
+    panel = shown(panels, "language")
+    opened = []
+
+    class FakeDialog:
+        class DialogCode:
+            Accepted = 1
+        new_id_slug, new_path = "new-DE-Cited", paths.path.parent / "new-DE-Cited-current.tex"
+
+        def __init__(self, app, id_slug, path, target):
+            opened.append((id_slug, path, target))
+
+        def exec(self):
+            return 1
+
+    monkeypatch.setattr(language, "DuplicateSlideDialog", FakeDialog)
+    assert "No translation yet" in texts(panel)
+    buttons(panel, "Translate to DE…")[0].click()
+    assert opened == [("cit-EN-Cited", paths.path, "DE")]
+    assert window.opened[-1] == FakeDialog.new_path and window.refreshed == 1
+    window.centre.unsaved.add(paths.path)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: opened.append(args[2]))
+    buttons(panel, "Translate to DE…")[0].click()
+    assert "Save or revert" in opened[-1]
+
+
+def test_set_language_asks_and_goes_through_slide_rename(content, monkeypatch):
+    from slidemage import slide_rename
+
+    panels, _state, window = content
+    panel = shown(panels, "language")
+    calls = []
+    monkeypatch.setattr(slide_rename, "count_references", lambda id_slug: 2)
+    monkeypatch.setattr(slide_rename, "set_slide_language", lambda old, lang: calls.append((old, lang)) or "cit-DE-Cited")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    panel._set_language("cit-EN-Cited", "EN")              # already English: nothing to do
+    panel._set_language("cit-EN-Cited", "DE")
+    assert calls == [("cit-EN-Cited", "DE")] and window.refreshed == 1
+    assert any(l.startswith("Set language of cit-EN-Cited -> cit-DE-Cited") for l in window.logged)
+
+
+def test_images_show_state_and_save_drafts_and_reviews_through_the_store(content, monkeypatch):
+    from slidemage import alt_images
+
+    panels, _state, window = content
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    assert form.reference == "media/pic.png" and form.state_chip.text() == "No description"
+    assert panel.meta() == "1 image"
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: window.logged.append(args[2]))
+    form.review_button.click()                               # an informative image needs a long description
+    assert "long description" in window.logged[-1] and not alt_images.load_store()
+    form = panel._forms[0]
+    form.short_edit.setPlainText("A chart")
+    form.long_edit.setPlainText("A long chart description.")
+    assert panel.dirty
+    form.save_button.click()
+    entry = alt_images.load_store()["media/pic.png"]
+    assert (entry.short, entry.long, entry.used_on["cit"].reviewed) == ("A chart", "A long chart description.", "")
+    assert panels.panels["images"]._forms[0].state_chip.text() == "Draft, unreviewed" and not panel.dirty
+    panel._forms[0].review_button.click()
+    assert panel._forms[0].state_chip.text() == "Reviewed"
+    assert alt_images.load_store()["media/pic.png"].status == "reviewed"
+
+
+def test_a_pending_image_edit_is_saved_as_a_draft_when_the_slide_is_left(content):
+    from slidemage import alt_images
+
+    panels, state, _window = content
+    panel = shown(panels, "images")
+    panel._forms[0].long_edit.setPlainText("Typed, never saved.")
+    assert state.dirty
+    state.set_focused_slide(None)
+    entry = alt_images.load_store()["media/pic.png"]
+    assert entry.long == "Typed, never saved." and entry.used_on["cit"].reviewed == "" and not state.dirty
+
+
+def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(content, monkeypatch, paths):
+    from slidemage import alt_draft, alt_images
+    from slidemage.ui.workspace.panels import images
+
+    panels, _state, window = content
+    panel = shown(panels, "images")
+    drafted = []
+    provider = SimpleNamespace(label="qwen3 · local")
+    monkeypatch.setattr(images, "provider_for_task", lambda parent, task, what: drafted.append((task, what)) or provider)
+    monkeypatch.setattr(alt_draft, "draftable_images", lambda row, entries: [(row.images[0], paths.path)])
+
+    class FakeBackend:
+        def __init__(self, given):
+            self.given = given
+
+        def draft(self, resolved, context):
+            drafted.append((resolved, context.image))
+            return alt_draft.DraftResult(short="Drafted short", long="Drafted long", model="qwen3 · local")
+
+    class Now:
+        def __init__(self, target, args, daemon):
+            self.run = lambda: target(*args)
+
+        def start(self):
+            self.run()
+
+    monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
+    monkeypatch.setattr(images.threading, "Thread", Now)
+    form = panel._forms[0]
+    form.redraft_button.click()
+    assert drafted[0][0] == "image_description" and drafted[1] == (paths.path, "media/pic.png")
+    form = panel._forms[0]
+    assert (form.short_edit.toPlainText(), form.long_edit.toPlainText()) == ("Drafted short", "Drafted long")
+    assert "Drafted by qwen3 · local" in form.note.text() and window.busy is None
+    assert panel.dirty and not alt_images.load_store()
+
+
+def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, paths):
+    from slidemage import alt_draft
+    from slidemage.ui.workspace.panels import images
+
+    panels, _state, window = content
+    panel = shown(panels, "images")
+    monkeypatch.setattr(alt_draft, "draftable_images", lambda row, entries: [(row.images[0], paths.path)])
+    monkeypatch.setattr(images, "provider_for_task", lambda *args: None)           # declined, or no model
+    panel._forms[0].redraft_button.click()
+    assert window.busy is None
+    panel._on_drafted("media/pic.png", alt_draft.DraftResult(error="timed out"))
+    assert "The draft failed: timed out" in panel._forms[0].note.text()
+    panel._on_drafted("media/gone.png", alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
+
+
+def test_transcript_entry_renders_student_versions_only(content):
+    panels, state, _window = content
+    panel = shown(panels, "transcript")
+    assert any("Transcripts are made for During course and After course only" in t for t in texts(panel))
+    assert panels.suffix.text() == "in Instructor"
+    state.set_view("during-course")
+    lines = texts(panel)
+    assert "Slide cit · During course · EN" in lines and "Cited" in lines
+    assert any(line.startswith("Image media/pic.png: no description") for line in lines)
+    assert any("Some images have no description yet" in line for line in texts(panels))
+    assert panels.suffix.text() == "in During course"
+
+
+@pytest.fixture
+def saved_summaries(monkeypatch):
+    from slidemage import alt_images
+
+    saved = {}
+    monkeypatch.setattr(alt_images, "update_slide_notes",
+                        lambda mutate: mutate(notes := {}) and saved.update({k: v.summary for k, v in notes.items()}))
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+    return saved
+
+
+def test_a_pending_summary_counts_as_unsaved_until_it_is_saved(content, saved_summaries):
+    panels, state, _window = content
+    panel = shown(panels, "transcript")
+    states = []
+    state.dirty_changed.connect(states.append)
+    panel._summary.setPlainText("A note.")
+    assert state.dirty and panel.dirty and states == [True]
+    panel._save.click()
+    assert saved_summaries == {"cit": "A note."} and not state.dirty and states == [True, False]
+
+
+def test_a_pending_summary_is_saved_when_the_slide_the_panel_or_the_deck_is_left(content, saved_summaries):
+    panels, state, _window = content
+    panel = shown(panels, "transcript")
+    panel._summary.setPlainText("  First.  ")
+    state.set_focused_slide("abc")
+    assert saved_summaries == {"cit": "First."} and not state.dirty
+    panel._summary.setPlainText("Second.")
+    panels.set_panel("used")                                 # another panel is picked
+    assert saved_summaries == {"cit": "First.", "abc": "Second."}
+    shown(panels, "transcript")._summary.setPlainText("Third.")
+    state.set_deck(None)
+    assert saved_summaries["abc"] == "Third." and not state.dirty
+
+
+def test_speaker_notes_are_listed_and_edited_in_the_source_buffer(content, paths):
+    panels, state, window = content
+    panel = shown(panels, "notes")
+    assert texts(panel)[:3] == ["Note 1", "Note 2 · <2>", "New note"] and panels.suffix.text() == "instructor only"
+    assert [e.toPlainText() for e in panel._edits] == ["First note", "Second note"] and panel.meta() == "2"
+    panel._edits[0].setPlainText("First, revised")
+    panel._edits[1].setPlainText("")
+    panel._new.setPlainText("A third")
+    assert panel.dirty and state.dirty
+    buttons(panel, "Save notes")[0].click()
+    assert read_slide_source(paths.path)[0] == CITED.replace("\n", "\n")     # the file itself is not written here
+    buffer = window.centre.buffers[paths.path]
+    assert "\\note{First, revised}" in buffer and "Second note" not in buffer and "\t\\note{A third}\n\\end" in buffer
+    assert window.centre.saved == [True] and not state.dirty
+    assert [e.toPlainText() for e in panel._edits] == ["First, revised", "A third"]
+
+
+def test_pending_notes_go_to_the_buffer_unsaved_when_the_slide_is_left(content, paths):
+    panels, state, window = content
+    panel = shown(panels, "notes")
+    panel._edits[0].setPlainText("Changed")
+    state.set_focused_slide("abc")
+    assert "\\note{Changed}" in window.centre.buffers[paths.path] and window.centre.saved == []
+    assert not panel.dirty
+
+
+def test_notes_edited_in_the_source_view_meanwhile_are_not_overwritten(content, paths):
+    panels, _state, window = content
+    panel = shown(panels, "notes")
+    panel._edits[0].setPlainText("Changed")
+    window.centre.buffers[paths.path] = CITED.replace("First note", "Edited in the Source view")
+    buttons(panel, "Save notes")[0].click()
+    assert "Edited in the Source view" in window.centre.buffers[paths.path]
+    assert window.centre.saved == [] and any("changed in the Source view" in line for line in window.logged)
+
+
+def test_a_frozen_versions_notes_are_read_only(content, project, paths):
+    panels, state, _window = content
+    frozen = paths.path.parent / "cit-EN-Cited-v1-0-0.tex"
+    frozen.write_text(CITED, encoding="utf-8")
+    (project.decks / "course.tex").write_text(
+        HEAD + "\\slideversion{cit-EN-Cited}{1-0-0}\n\\end{document}\n", encoding="utf-8")
+    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "course"))
+    state.set_focused_slide("cit")
+    panel = shown(panels, "notes")
+    assert all(e.isReadOnly() for e in panel._edits) and not buttons(panel, "Save notes")
+    assert "This is a frozen version: its notes are read-only." in texts(panel)
+
+
+def test_side_panels_can_take_more_than_the_first_three_panels():
+    assert [p.key for p in PANELS] == ["used", "versions", "visibility", "citations", "language", "images",
+                                       "transcript", "notes"]
+
+
+def test_the_reference_form_can_start_from_a_missing_key_and_the_duplicate_form_from_a_translation(
+        qapp, project, monkeypatch):
+    from slidemage.ai.providers import OllamaProvider
+    from slidemage.qt_citation_dialog import CitationDialog
+    from slidemage.qt_duplicate_slide_dialog import DuplicateSlideDialog
+
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
+    parent = QWidget()
+    dialog = CitationDialog(parent, "ghost1999")
+    dialog.author_entry.setText("Smith, Jane")
+    dialog.year_entry.setText("2020")
+    assert dialog.key_entry.text() == "ghost1999"                  # not replaced by the suggestion smith2020
+    dialog.deleteLater()
+
+    window = parent
+    path = deck_scan.DECKS_DIR.parent / "slides" / "abc-EN-Demo-current.tex"
+    form = DuplicateSlideDialog(window, "abc-EN-Demo", path, "DE")
+    assert form.other_radio.isChecked() and form.target_combo.currentText() == "DE"
+    assert form.translate_checkbox.isChecked() and form.slug_entry.text() == "Demo"
+    form.deleteLater()
+    plain = DuplicateSlideDialog(window, "abc-EN-Demo", path)
+    assert plain.same_radio.isChecked() and plain.slug_entry.text() == "Demo-Copy"
+    plain.deleteLater()
+    parent.deleteLater()

@@ -30,3 +30,10 @@ def test_table_edges_is_a_warning():
                  if i.code == "table-edges")
     assert issue.severity == latex_lint.WARNING
     assert issue.line == 1
+
+
+def test_cited_keys_are_listed_once_in_order_without_comments_or_macro_keys():
+    text = ("\\footnote{\\fullcite{smith2020,doe2021}} \\textcite[p.~3]{doe2021}\n"
+            "% \\fullcite{commented2000}\n\\parencite{\\mykey} \\parencite{#1} \\textcite{lee1999}\n")
+    assert latex_lint.cited_keys(text) == ["smith2020", "doe2021", "lee1999"]
+    assert latex_lint.cited_keys("no citations here") == []

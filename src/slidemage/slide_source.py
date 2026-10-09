@@ -4,10 +4,13 @@ explicit scope decision, see SESSION_HANDOFF.md).
 """
 from __future__ import annotations
 
+import re
 import shutil
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from . import alt_blocks
 from .deck_scan import PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -115,3 +118,89 @@ def save_slide_source(
         f.write(normalized)
 
     return backup_path
+
+
+def last_saved(path: Path) -> datetime | None:
+    """When the slide was last saved through save_slide_source(): the newest backup of
+    slides/.backups/<filename>/, whose name is the time of the save. None for a file never saved
+    that way. (A file's mtime would also move when the header sync or a rename rewrites it.)"""
+    stamps = []
+    for backup in (BACKUPS_DIR / path.name).glob("*.tex"):
+        try:
+            stamps.append(datetime.strptime(backup.stem[:15], "%Y%m%d-%H%M%S"))
+        except ValueError:
+            continue
+    return max(stamps, default=None)
+
+
+# -- speaker notes: \note{...} --------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class NoteCall:
+    start: int       # the backslash of \note
+    end: int         # after the closing brace
+    overlay: str     # what stands between \note and the brace, e.g. "<2>" or "<2>[item]"; may be empty
+    content: str     # the braced argument, as written
+
+    @property
+    def text(self) -> str:
+        return f"\\note{self.overlay}{{{self.content}}}"
+
+
+def note_calls(text: str) -> list[NoteCall]:
+    r"""Every \note call of a slide's text, in order: Beamer's \note{...}, \note<2>{...} and
+    \note<2>[item]{...} (the same forms alt_blocks.extract_note_calls() removes for a transcript)."""
+    calls = []
+    last_end = 0
+    for name, found, command_end in alt_blocks._iter_tex_commands(text):
+        if name != "note" or found < last_end:
+            continue
+        cursor = command_end
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        seen: set[str] = set()
+        while cursor < len(text) and text[cursor] in "<[" and text[cursor] not in seen:
+            seen.add(text[cursor])
+            after = alt_blocks._delimited_group_end(text, cursor, text[cursor], ">" if text[cursor] == "<" else "]")
+            if after is None:
+                break
+            cursor = after
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
+        content, after = alt_blocks.braced_argument(text, cursor)
+        if after == cursor:
+            continue
+        overlay = text[command_end:cursor].strip()
+        calls.append(NoteCall(found, after, overlay, content))
+        last_end = after
+    return calls
+
+
+def replace_note(text: str, index: int, content: str) -> str:
+    """`text` with the argument of its `index`-th note replaced (its overlay stays)."""
+    call = note_calls(text)[index]
+    return text[:call.start] + NoteCall(call.start, call.end, call.overlay, content).text + text[call.end:]
+
+
+def remove_note(text: str, index: int) -> str:
+    """`text` without its `index`-th note and the line it stood alone on."""
+    call = note_calls(text)[index]
+    line_start = text.rfind("\n", 0, call.start) + 1
+    line_end = text.find("\n", call.end)
+    line_end = len(text) if line_end == -1 else line_end + 1
+    if text[line_start:call.start].strip() == "" and text[call.end:line_end].strip() == "":
+        return text[:line_start] + text[line_end:]
+    return text[:call.start] + text[call.end:]
+
+
+_FRAME_END_RE = re.compile(r"^([ \t]*)\\end\{\w*frame\}", re.MULTILINE)
+
+
+def add_note(text: str, content: str) -> str:
+    """`text` with a new \\note{content} on its own line before the closing \\end{...frame} (one
+    indent deeper than it), or at the end when the slide has no frame."""
+    ends = list(_FRAME_END_RE.finditer(text))
+    if not ends:
+        return text.rstrip("\n") + f"\n\\note{{{content}}}\n"
+    end = ends[-1]
+    return text[:end.start()] + f"{end.group(1)}\t\\note{{{content}}}\n" + text[end.start():]

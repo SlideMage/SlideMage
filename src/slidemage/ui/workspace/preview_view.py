@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QInputDialog, QLabel, Q
 from ... import latex_lint, preview_target, qt_render_check, slide_preview, slide_snapshot, slide_source, transcript
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
+from ...slide_language import TranslationLink, translation_link
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface
 from .menus import VIEW_LABELS
@@ -45,9 +46,11 @@ def short_view(view: str) -> str:
     return VIEW_LABELS[view].replace(" course", "")
 
 
-def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str) -> list[tuple]:
+def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str,
+              link: Optional[TranslationLink] = None) -> list[tuple]:
     """(icon, text, tone, tooltip) of the chips above the page. `row` is the
-    slide's row in the open deck, None for a file shown alone."""
+    slide's row in the open deck, None for a file shown alone; `link` its translation
+    partner, if it has one."""
     chips = []
     if row is None:
         if target.version:
@@ -66,6 +69,9 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
         if row.missing_translation:
             chips.append(("translate", f"No {language} version", "warning",
                           f"The slide has no translation into {language}."))
+    if link is not None and link.outdated:
+        chips.append(("translate", "Translation outdated", "warning",
+                      "The original was saved after the translation was last written (Language panel)."))
     badge = row.badge.strip("[]") if row is not None else ""
     if badge:
         chips.append(("language", badge, "neutral", "The slide's language, and its translation if it has one."))
@@ -253,7 +259,8 @@ class PreviewPane(Surface):
             if item.widget() is not None:
                 item.widget().setParent(None)
         if target is not None:
-            for icon, text, tone, tooltip in chips_for(target, row, view, language):
+            link = translation_link(row.call.id_slug) if row is not None else None
+            for icon, text, tone, tooltip in chips_for(target, row, view, language, link):
                 chip = Chip(text, tone, icon)
                 chip.setToolTip(tooltip)
                 self._chips.addWidget(chip)

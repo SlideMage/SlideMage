@@ -27,9 +27,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from . import slide_source
 from .deck_scan import PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -102,6 +104,48 @@ def cross_referenced_language(id_slug: str, path: Optional[Path] = None) -> Opti
         return lm.group(1)
 
     return None
+
+
+@dataclass
+class TranslationLink:
+    """A slide and the partner its header comment names."""
+
+    partner: str                # the partner's id-slug
+    language: Optional[str]     # the partner's language
+    path: Path                  # the partner's current file
+    is_translation: bool        # this slide is the translation of `partner` (else `partner` is of this)
+    outdated: bool              # the original was saved in SlideMage after the translation was last written
+
+
+def translation_link(id_slug: str, path: Optional[Path] = None) -> Optional[TranslationLink]:
+    """The slide's translation partner, from its own header comment ("%% Translation of:" or
+    "%% <LANG> translation:"), or None when there is no such comment or the partner's file is gone.
+
+    `outdated` measures this and nothing more: the original has been saved through SlideMage
+    (slide_source.last_saved(): its newest backup) later than the translation was last written
+    (the later of its own newest backup and its file's mtime). It is not a comparison of
+    content, and an edit made outside SlideMage is not noticed."""
+    path = path or SLIDES_DIR / f"{id_slug}{CURRENT_SUFFIX}"
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except OSError:
+        return None
+    if m := TRANSLATION_OF_RE.search(text):
+        is_translation, ref = True, m.group(1)
+    elif m := LANG_TRANSLATION_RE.search(text):
+        is_translation, ref = False, m.group(2)
+    else:
+        return None
+    partner = current_id_slug_for_bare_id(bare_id(ref))
+    partner_path = current_path_for_bare_id(bare_id(ref))
+    if partner is None or partner_path is None or partner == id_slug:
+        return None
+    original, translation = (partner_path, path) if is_translation else (path, partner_path)
+    saved = slide_source.last_saved(original)
+    written = max(filter(None, (slide_source.last_saved(translation),
+                                datetime.fromtimestamp(translation.stat().st_mtime))))
+    return TranslationLink(partner, own_language(partner), partner_path, is_translation,
+                           saved is not None and saved > written)
 
 
 @dataclass

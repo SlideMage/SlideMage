@@ -82,6 +82,7 @@ PANEL_BOX = "kitPanelBox"
 PANEL_ROW = "kitPanelRow"
 PANEL_MONO = "kitPanelMono"
 PANEL_CAPTION = "kitPanelCaption"
+PANEL_MISSING = "kitPanelMissing"
 MATRIX_HEAD = "kitMatrixHead"
 MATRIX_SLOT = "kitMatrixSlot"
 MATRIX_CELL = "kitMatrixCell"
@@ -676,6 +677,9 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 11.5px;
             color: {t.text_3};
+        }}
+        QFrame#{PANEL_BOX} QLabel#{PANEL_MISSING} {{
+            color: {t.error};
         }}
         QLabel#{MATRIX_HEAD} {{
             {font}

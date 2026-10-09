@@ -65,7 +65,6 @@ class CentreColumn(QFrame):
         self.setObjectName(q.CARD)   # the white card on the grey page
 
         self.source.dirty_changed.connect(self._update_dirty)
-        self.details.summary_dirty_changed.connect(self._update_dirty)
         self.source.lint_errors_changed.connect(state.set_lint_errors)
         self.source.saved.connect(self._on_saved)
         self.source.render_requested.connect(self._render_buffer)
@@ -101,6 +100,23 @@ class CentreColumn(QFrame):
     def is_dirty(self, path: Path) -> bool:
         file = self.source.file_for(path)
         return file is not None and file.dirty
+
+    def slide_text(self, path: Path) -> str:
+        """The text of a slide file as the Source view has it, unsaved edits included, else the saved file."""
+        file = self.source.file_for(path)
+        return file.editor.text() if file is not None else slide_source.read_slide_source(path)[0]
+
+    def edit_slide_text(self, path: Path, change: Callable[[str], str]) -> bool:
+        """Apply `change(text) -> text` to the Source view's buffer of `path`, as one undo step, and
+        leave it there unsaved: a save is the Source view's, with its version prompt, backup and
+        deck questions, so that an edit made from a panel is never saved by another route. False
+        when the file is not editable (a frozen version, until it is unlocked)."""
+        self.source.show_path(path)
+        file = self.source.current
+        if file is None or file.editor.is_read_only():
+            return False
+        file.editor.replace_all_text(change(file.editor.text()))
+        return True
 
     def restore_version(self, frozen: Path) -> None:
         """"Make this the current version": slide_versioning.restore_version()."""
@@ -170,10 +186,9 @@ class CentreColumn(QFrame):
     # -- keeping the views in step -----------------------------------------------------
 
     def _update_dirty(self, _dirty: bool = False) -> None:
-        self.state.set_dirty(bool(self.source.dirty_files()) or self.details.summary_dirty)
+        self.state.set_dirty(bool(self.source.dirty_files()))
 
     def _on_deck_changed(self, _deck) -> None:
-        self.details.flush_summary()   # it belongs to the slide of the deck being left
         self._path = None
         self.refresh()
 

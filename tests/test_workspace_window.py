@@ -598,10 +598,12 @@ def test_the_build_options_footer_timestamp_is_the_states(window):
     assert window.state.footer_timestamp
 
 
-def test_closing_asks_about_a_pending_transcript_summary_too(window, monkeypatch):
+def test_closing_asks_about_a_pending_side_panel_edit_too(window, monkeypatch):
     saved = []
-    monkeypatch.setattr(window.centre.details, "flush_summary", lambda: saved.append(True))
-    window.centre.details.summary_dirty = True
+    panel = window.side_panels.panels["transcript"]
+    monkeypatch.setattr(panel, "flush", lambda: saved.append(True))
+    panel.set_dirty(True)
+    assert window.state.dirty                  # a panel's pending edit is an unsaved edit of the workspace
     asked = []
 
     def answer(_parent, _title, text, *_args):
@@ -610,7 +612,7 @@ def test_closing_asks_about_a_pending_transcript_summary_too(window, monkeypatch
 
     monkeypatch.setattr(QMessageBox, "question", answer)
     assert window._resolve_dirty_edits() is False
-    assert asked == ["Save changes in a transcript summary before closing?"] and saved == []
+    assert asked == ["Save changes in edits in the Transcript entry panel before closing?"] and saved == []
     monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
     monkeypatch.setattr(window.transcript_tab, "_any_editor_dirty", lambda: False)
     assert window._resolve_dirty_edits() is True and saved == [True]

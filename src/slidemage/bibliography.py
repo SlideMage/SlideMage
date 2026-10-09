@@ -216,6 +216,16 @@ def load(path: Path | None = None) -> dict[str, BibEntry]:
     return entries
 
 
+def entry_line(key: str, path: Path | None = None) -> int | None:
+    """The 1-based line of `@type{key,` in the .bib, or None when the file has no such entry."""
+    try:
+        text = (path or DEFAULT_BIB).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    match = re.search(rf"^[ \t]*@\w+\s*\{{\s*{re.escape(key)}\s*,", text, re.MULTILINE)
+    return text.count("\n", 0, match.start()) + 1 if match else None
+
+
 KEY_RE = re.compile(r"^[a-z]+[0-9]{4}[a-z]?$")
 
 

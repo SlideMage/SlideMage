@@ -58,6 +58,7 @@ import os
 import tempfile
 import threading
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from . import alt_blocks
@@ -744,3 +745,28 @@ def slide_use_state(entry: ImageEntry, slide_id: str, slide_hash: str) -> str:
     if use.stored_hash != slide_hash:
         return STATE_STALE
     return STATE_REVIEWED
+
+
+def save_slide_image(
+    image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
+) -> None:
+    """Store what was written for one image on one slide: its role and English short and long
+    description (an entry is made if the image has none yet). `reviewed` confirms the image and
+    this slide's use of it, stamped with today and the slide's current text; saving as a draft
+    un-reviews this slide's use only, since another slide may have reviewed the same image.
+    Everything else of the entry (takeaway, German text, source) is left as it is."""
+    today = date.today().isoformat()
+    slide_hash = slide_context_hash(slide_path)
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        entry = entries.setdefault(image, ImageEntry(image=image))
+        entry.role, entry.short, entry.long = role, short, long
+        use = entry.used_on.setdefault(slide_id, SlideUse())
+        if reviewed:
+            entry.status = STATUS_REVIEWED
+            use.reviewed, use.stored_hash = today, slide_hash
+        else:
+            use.reviewed = ""
+        return True
+
+    update_store(mutate)

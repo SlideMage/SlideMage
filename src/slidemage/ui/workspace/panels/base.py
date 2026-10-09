@@ -6,20 +6,25 @@ open deck): where it is used, its versions, its visibility. The host
 language changed, or an edit was made, and only for the panel that is shown, so
 a panel reads what it needs from the project when asked and keeps no copy.
 
+A panel that lets the user type keeps the edit as pending (`set_dirty`) until it is saved;
+the host asks every panel to `flush()` before the slide, the deck or the panel changes, so that
+a pending edit is saved, never lost, and counts for the close prompt.
+
 To add a panel: a subclass with `key`, `title` and `build()`, listed in
 panels/__init__.py. The content goes into grey boxes (`box()`) whose rows
 (`row()`) are separated by hairlines; the colors come from kit_qss.
 """
 from __future__ import annotations
 
-from typing import Callable
+from pathlib import Path
+from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout
 
-from ....deck_editor import SlideCall, parse_slide_calls
-from ....slide_language import current_id_slug_for_bare_id
+from ....deck_editor import SLIDES_DIR, SlideCall, parse_slide_calls
+from ....slide_language import current_id_slug_for_bare_id, current_path_for_bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Surface
 from ..state import WorkspaceState
@@ -81,6 +86,8 @@ class SidePanel(Surface):
     key = ""      # what the host remembers and the picker's menu returns
     title = ""    # the picker's text
 
+    dirty_changed = Signal(bool)   # the panel has (no) pending edits
+
     def __init__(self, app, state: WorkspaceState) -> None:
         """`app` is the window: it logs, opens files in the Source view and edits the deck
         through the slide list; `state` says which slide, view and language."""
@@ -90,6 +97,7 @@ class SidePanel(Surface):
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(10)
+        self.dirty = False
 
     def meta(self) -> str:
         """A few words about the focused slide for the picker's menu ("3 frozen")."""
@@ -98,6 +106,15 @@ class SidePanel(Surface):
     def suffix(self) -> str:
         """Grey text next to the picker ("in Instructor")."""
         return ""
+
+    def set_dirty(self, dirty: bool) -> None:
+        if dirty != self.dirty:
+            self.dirty = dirty
+            self.dirty_changed.emit(dirty)
+
+    def flush(self) -> None:
+        """Save the pending edits, if the panel has any (called before the slide, the deck or the
+        panel changes)."""
 
     def refresh(self) -> None:
         clear(self.body)
@@ -129,3 +146,16 @@ class SidePanel(Surface):
             return calls[0][1].id_slug
         slide = self.state.focused_slide
         return current_id_slug_for_bare_id(slide) or "" if slide else ""
+
+    def slide_path(self) -> Optional[Path]:
+        """The file of the focused slide: what the open deck calls (a pinned version is its own
+        file), else the slide's current file."""
+        calls = self.deck_calls()
+        slide = self.state.focused_slide
+        path = SLIDES_DIR / calls[0][1].source_filename if calls else (current_path_for_bare_id(slide) if slide else None)
+        return path if path is not None and path.is_file() else None
+
+    def slide_text(self) -> str:
+        """The text of that file, with unsaved edits of the Source view (`CentreColumn.slide_text`)."""
+        path = self.slide_path()
+        return self.app.centre.slide_text(path) if path is not None else ""

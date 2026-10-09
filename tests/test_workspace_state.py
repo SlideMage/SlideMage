@@ -70,6 +70,17 @@ def test_mode_and_dirty_signal_only_real_changes():
     assert modes == ["source"] and dirty == [True]
 
 
+def test_dirty_is_the_or_of_every_source_that_has_unsaved_edits():
+    state = WorkspaceState()
+    dirty = record(state.dirty_changed)
+    state.set_dirty(True)
+    state.set_dirty(True, "panels")
+    state.set_dirty(False)
+    assert state.dirty and dirty == [True]           # the panels still have a pending edit
+    state.set_dirty(False, "panels")
+    assert not state.dirty and dirty == [True, False]
+
+
 def test_switching_decks_resets_focus_and_selection_and_reports_each_only_if_it_changed():
     state = WorkspaceState()
     first, second = make_deck("first"), make_deck("second")

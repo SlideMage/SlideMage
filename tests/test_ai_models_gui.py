@@ -70,3 +70,21 @@ def test_local_only_blocks_a_stale_cloud_selection(settings, monkeypatch):
     combo.addItem("claude (cloud)", "anthropic:claude-sonnet-5-5")
     assert qt_ai_models.provider_from_combo(QWidget(), combo, "x") is None
     assert "Local AI only" in errors[0]
+
+
+def test_the_provider_of_a_task_without_a_picker_follows_the_settings(settings, monkeypatch):
+    errors = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: errors.append(text))
+    parent = QWidget()
+    assert qt_ai_models.provider_for_task(parent, "translation", "the slide") is None
+    assert "No AI model is chosen" in errors[-1]
+    app_settings.set("translation_model", "qwen3")
+    provider = qt_ai_models.provider_for_task(parent, "translation", "the slide")
+    assert provider.label.startswith("qwen3")
+    app_settings.set("translation_model", "anthropic:claude-sonnet-5-5")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.No)
+    assert qt_ai_models.provider_for_task(parent, "translation", "the slide") is None      # consent declined
+    resolver.set_global_local_only(True)
+    assert qt_ai_models.provider_for_task(parent, "translation", "the slide") is None
+    assert "Local AI only" in errors[-1]

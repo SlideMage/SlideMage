@@ -63,12 +63,15 @@ def confirm_cloud_request(parent: QWidget, provider: ChatProvider, what: str) ->
 
 
 def provider_from_combo(parent: QWidget, combo: QComboBox, what: str) -> ChatProvider | None:
-    """The provider for the picker's selection, or None after telling the
-    user why not (no model, local-only, or consent declined)."""
-    spec = combo.currentData()
+    """The provider for the picker's selection, or None after telling the user why not (no
+    model, local-only, or consent declined)."""
+    return _confirmed_provider(parent, combo.currentData(), what, "No AI model is available. "
+                               "Install an Ollama model or add an API key in Settings.")
+
+
+def _confirmed_provider(parent: QWidget, spec: str, what: str, missing: str) -> ChatProvider | None:
     if not spec:
-        QMessageBox.critical(parent, "AI model", "No AI model is available. "
-                             "Install an Ollama model or add an API key in Settings.")
+        QMessageBox.critical(parent, "AI model", missing)
         return None
     try:
         provider = resolver.provider_for(spec)
@@ -76,3 +79,11 @@ def provider_from_combo(parent: QWidget, combo: QComboBox, what: str) -> ChatPro
         QMessageBox.critical(parent, "AI model", str(exc))
         return None
     return provider if confirm_cloud_request(parent, provider, what) else None
+
+
+def provider_for_task(parent: QWidget, task: str, what: str) -> ChatProvider | None:
+    """The provider Settings -> "AI models" names for `task` (a MODEL_SETTINGS key), for a place
+    with no picker of its own; None after telling the user why not (no model chosen, local-only,
+    or consent declined)."""
+    return _confirmed_provider(parent, app_settings.default_model(task), what,
+                               "No AI model is chosen for this task. Choose one under Settings -> AI models.")

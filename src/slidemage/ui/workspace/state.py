@@ -50,7 +50,8 @@ class WorkspaceState(QObject):
         self.language = UI_LANGUAGES[0]
         self.selection: tuple[str, ...] = ()
         self.mode = MODES[0]
-        self.dirty = False   # some source or transcript summary has unsaved edits
+        self.dirty = False   # some source or side panel has unsaved edits
+        self._dirty_by: dict[str, bool] = {}
         # The Build options' "Include footer timestamp", which the Preview renders with too.
         # Read when a render starts, so it has no signal.
         self.footer_timestamp = False
@@ -107,7 +108,11 @@ class WorkspaceState(QObject):
             self._remember("mode", mode)
             self.mode_changed.emit(mode)
 
-    def set_dirty(self, dirty: bool) -> None:
+    def set_dirty(self, dirty: bool, source: str = "source") -> None:
+        """`source` says who has unsaved edits (the Source view, the side panels); the state is
+        dirty while any of them is."""
+        self._dirty_by[source] = dirty
+        dirty = any(self._dirty_by.values())
         if dirty != self.dirty:
             self.dirty = dirty
             self.dirty_changed.emit(dirty)

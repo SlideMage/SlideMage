@@ -200,6 +200,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
+        self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+Shift+F is the same shortcut whichever widget has focus, since
         # this is a project-wide search, not scoped to whatever's open.
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self._on_open_slide_search)
@@ -429,11 +430,12 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
     def _resolve_dirty_edits(self) -> bool:
         """Return False when the user cancels or any requested save fails."""
         dirty_files = self.centre.source.dirty_files()
-        summary = self.centre.details.summary_dirty
-        if dirty_files or summary:
+        panels = self.side_panels.dirty_panels()
+        if dirty_files or panels:
             unsaved = [f"{len(dirty_files)} unsaved file{'s' if len(dirty_files) != 1 else ''}"] if dirty_files else []
-            if summary:
-                unsaved.append("a transcript summary")
+            if panels:
+                unsaved.append("edits in the " + " and ".join(p.title for p in panels) + " panel"
+                               + ("s" if len(panels) > 1 else ""))
             choice = QMessageBox.question(
                 self,
                 "Unsaved source edits",
@@ -445,7 +447,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             if choice == QMessageBox.StandardButton.Cancel:
                 return False
             if choice == QMessageBox.StandardButton.Yes:
-                for file in dirty_files:
+                self.side_panels.flush()   # speaker notes go into their file's buffer, saved below
+                for file in self.centre.source.dirty_files():
                     try:
                         saved = file.save()
                     except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
@@ -458,7 +461,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
                     # stale disk content, or any other handled save failure.
                     if not saved or file.dirty:
                         return False
-                self.centre.details.flush_summary()
 
         # Image descriptions have their own Save draft action and shared
         # alt-text store. Resolve those edits before the window disappears.

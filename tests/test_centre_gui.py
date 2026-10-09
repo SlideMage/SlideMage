@@ -136,6 +136,20 @@ def chip_texts(centre):
     return [layout.itemAt(i).widget()._label.text() for i in range(layout.count()) if layout.itemAt(i).widget()]
 
 
+def test_an_outdated_translation_shows_a_chip(centre, project, monkeypatch):
+    from slidemage import slide_language
+
+    state = centre.state
+    state.set_focused_slide("bbb")
+    link = slide_language.TranslationLink("bbb-DE-Zwei", "DE", project / "bbb-DE-Zwei-current.tex", False, True)
+    monkeypatch.setattr(preview_view, "translation_link", lambda id_slug: link)
+    centre.preview._refresh()
+    assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN"]
+    monkeypatch.setattr(preview_view, "translation_link", lambda id_slug: None)
+    centre.preview._refresh()
+    assert "Translation outdated" not in chip_texts(centre)
+
+
 # -- modes and what each view shows ------------------------------------------------
 
 def test_the_mode_decides_which_views_are_shown(centre):
@@ -458,18 +472,6 @@ def test_details_follow_the_focused_slide(centre):
     assert "not a slide" in centre.details.findChildren(QLabel)[0].text()
 
 
-def test_the_transcript_summary_is_saved_when_the_slide_is_left(centre, monkeypatch):
-    saved = {}
-    monkeypatch.setattr(alt_images, "update_slide_notes",
-                        lambda mutate: mutate(notes := {}) and saved.update({k: v.summary for k, v in notes.items()}))
-    centre.state.set_mode("details")
-    centre.state.set_focused_slide("aaa")
-    centre.details._summary.setPlainText("  What this slide says.  ")
-    assert saved == {}
-    centre.state.set_focused_slide("bbb")
-    assert saved == {"aaa": "What this slide says."}
-
-
 def test_moving_or_copying_a_slide_with_unsaved_edits_is_refused(centre, project, monkeypatch):
     state = centre.state
     state.set_mode("source")
@@ -483,18 +485,16 @@ def test_moving_or_copying_a_slide_with_unsaved_edits_is_refused(centre, project
     details._rename()
     details._duplicate()
     details._delete()
-    details._set_language("EN")
-    assert len(told) == 4 and (project / "ccc-DE-Drei-current.tex").exists()
+    assert len(told) == 3 and (project / "ccc-DE-Drei-current.tex").exists()
 
 
-def test_set_language_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch):
+def test_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch):
     from slidemage import slide_rename
     from slidemage.ui.workspace import details_view
 
     calls = []
     monkeypatch.setattr(slide_rename, "count_references", lambda id_slug: 2)
     monkeypatch.setattr(slide_rename, "deck_names_referencing", lambda id_slug: ["course"])
-    monkeypatch.setattr(slide_rename, "set_slide_language", lambda old, lang: calls.append(("lang", old, lang)) or "ccc-EN-Drei")
     monkeypatch.setattr(slide_rename, "rename_slide_slug", lambda old, slug: calls.append(("slug", old, slug)) or "ccc-DE-Drie")
     monkeypatch.setattr(slide_rename, "delete_slide_id",
                         lambda id_slug: calls.append(("delete", id_slug)) or {"files_removed": 1, "deck_references_removed": 2})
@@ -505,12 +505,10 @@ def test_set_language_rename_and_delete_go_through_slide_rename(centre, project,
     centre.state.set_mode("details")
     centre.state.set_focused_slide("ccc")
     details = centre.details
-    details._set_language("DE")                      # already German: nothing to do
-    details._set_language("EN")
     details._rename()
     details._delete()
-    assert calls == [("lang", "ccc-DE-Drei", "EN"), ("slug", "ccc-DE-Drei", "Drie"), ("delete", "ccc-DE-Drei")]
-    assert refreshed == [True] * 3 and centre.state.focused_slide is None
+    assert calls == [("slug", "ccc-DE-Drei", "Drie"), ("delete", "ccc-DE-Drei")]
+    assert refreshed == [True] * 2 and centre.state.focused_slide is None
     assert any(line.startswith("Deleted slide ccc-DE-Drei") for line in centre.app.logged)
 
 
@@ -541,45 +539,3 @@ def test_the_footer_timestamp_of_the_state_reaches_the_render(centre, renders):
     centre.preview.render_now()
     wait_idle(centre)
     assert [c[3]["footer_timestamp"] for c in renders] == [False, True]
-
-
-@pytest.fixture
-def saved_summaries(monkeypatch):
-    saved = {}
-    monkeypatch.setattr(alt_images, "update_slide_notes",
-                        lambda mutate: mutate(notes := {}) and saved.update({k: v.summary for k, v in notes.items()}))
-    return saved
-
-
-def test_a_pending_summary_counts_as_unsaved_until_it_is_saved(centre, saved_summaries):
-    states = []
-    centre.state.dirty_changed.connect(states.append)
-    centre.state.set_mode("details")
-    centre.state.set_focused_slide("aaa")
-    centre.details._summary.setPlainText("A note.")
-    assert centre.state.dirty and centre.details.summary_dirty and states == [True]
-    centre.details._summary_save.click()
-    assert saved_summaries == {"aaa": "A note."} and not centre.state.dirty and states == [True, False]
-
-
-def test_a_pending_summary_is_saved_when_the_slide_or_the_deck_is_left(centre, saved_summaries, deck):
-    centre.state.set_mode("details")
-    centre.state.set_focused_slide("aaa")
-    centre.details._summary.setPlainText("First.")
-    centre.state.set_focused_slide("bbb")
-    assert saved_summaries == {"aaa": "First."} and not centre.state.dirty
-    centre.details._summary.setPlainText("Second.")
-    centre.state.set_deck(None)
-    assert saved_summaries == {"aaa": "First.", "bbb": "Second."} and not centre.state.dirty
-
-
-def test_unsaved_source_and_summary_stay_dirty_until_both_are_resolved(centre, saved_summaries):
-    centre.state.set_mode("details")
-    centre.state.set_focused_slide("aaa")
-    centre.details._summary.setPlainText("A note.")
-    centre.open_file(centre.state.deck.path.parent / "slides" / "aaa-EN-One-current.tex")
-    centre.source.current.editor.insertPlainText("x")
-    centre.source.current.reload()
-    assert centre.state.dirty                       # the summary is still pending
-    centre.details.flush_summary()
-    assert not centre.state.dirty

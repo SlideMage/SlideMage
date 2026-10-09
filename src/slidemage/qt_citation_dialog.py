@@ -111,16 +111,21 @@ def _make_field(name: str) -> QLineEdit:
 
 
 class CitationDialog(QDialog):
-    def __init__(self, app) -> None:
+    def __init__(self, app, key: str = "") -> None:
+        """`key`: a key that is missing from the file (a slide cites it), to be added as it is
+        written -- not replaced by the suggestion from author and year."""
         super().__init__(app)
         self.app = app
-        self._key_manually_edited = False
+        self._key_manually_edited = bool(key)
         self.new_key: Optional[str] = None
 
         self.setWindowTitle("Add reference to .bib")
         self.setModal(True)
         self._build()
         self._on_type_change()
+        if key:
+            self.key_entry.setText(key)
+            self._update_key_status()
 
     # -- widgets ------------------------------------------------------------------
 

@@ -6,7 +6,8 @@ The picker (▾) names the shown panel and lists the others with a few facts abo
 slide. The choice is remembered across sessions (app_settings, like the centre's mode).
 The panels themselves are in panels/; they follow WorkspaceState's deck, slide, view and
 language, and the window calls `refresh()` after anything that changed the project, because
-a rescan of the open deck is no state change."""
+a rescan of the open deck is no state change. A panel's pending edit (`SidePanel.flush`) is saved
+before anything it belongs to changes, and counts as an unsaved edit of the workspace."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -58,6 +59,9 @@ class SidePanels(QSplitter):
         outer.addWidget(scroll, 1)
         self.addWidget(card)
 
+        self._state = state
+        for panel in self.panels.values():
+            panel.dirty_changed.connect(lambda _dirty: state.set_dirty(bool(self.dirty_panels()), "panels"))
         for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed):
             signal.connect(lambda _value: self.refresh())
         self.refresh()
@@ -68,8 +72,17 @@ class SidePanels(QSplitter):
             app_settings.set(SETTING, key)
             self.refresh()
 
+    def dirty_panels(self) -> list[SidePanel]:
+        return [panel for panel in self.panels.values() if panel.dirty]
+
+    def flush(self) -> None:
+        """Save every pending edit of the panels (before closing, too)."""
+        for panel in self.panels.values():
+            panel.flush()
+
     def refresh(self) -> None:
         """Bring the shown panel up to date."""
+        self.flush()   # an edit belongs to the slide, deck and panel it was made in
         for key, panel in self.panels.items():
             panel.setVisible(key == self.current)
         panel = self.panels[self.current]
