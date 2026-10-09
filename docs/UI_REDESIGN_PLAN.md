@@ -15,7 +15,7 @@ Images page. The prototype has one workspace for each open deck:
 ```
 ┌ logo · deck ▾ · View as [Instructor|During|After] [EN|DE] · saved · [Preview|Split|Source|Details] · [Compile PDF ▾] · Images · ⋮ ┐
 ├──────────────┬──────────────────────────────────────┬───────────────────────────────┤
-│ Find slide…  │  slide preview / source / split /    │ side panel ▾ (9 panels)       │
+│ Find slide…  │  slide preview / source / split /    │ side panel ▾ (8 panels)       │
 │ § Section    │  details for the focused slide       │ ───────────────────────────── │
 │   1y8 Title ●│  chips: pinned · course · lang · …   │ AI chat (this slide | deck)   │
 │   …          │                                      │ local ⇄ cloud toggle          │
@@ -36,6 +36,12 @@ Images page. The prototype has one workspace for each open deck:
 4. **Current source editor.** The Source view uses the existing
    `LatexPlainTextEdit`. `EMBEDDED_EDITOR_PLAN.md` stays a separate, later
    project; the editor sits behind a small interface so it can be swapped.
+5. **No reveal-steps feature** (2026-10-09). Ignore and do not implement
+   the prototype's "Reveal steps" panel (step cards, per-step show/hide,
+   step badges on the preview) or painting slide parts onto steps (step
+   12). Existing `\slidestep` support stays as it is: the call variant in
+   the slide list, the Visibility matrix and "One reveal step" in Add
+   slide.
 
 ## Progress and handover
 
@@ -283,8 +289,7 @@ Panel picker (▾). Order follows how much backend work each panel needs:
    from `transcript`.
 8. **Speaker notes**: read/edit `\note` content. New parsing goes into
    `slide_source` with tests.
-9. **Reveal steps**: step cards and per-step show/hide from `\slidestep` and
-   overlay specs. Painting slide parts onto steps is step 12.
+9. ~~**Reveal steps**~~: not implemented (decision 5).
 
 ### 7. Compile flow
 - Compile split button: the current view; the caret menu offers all views,
@@ -345,9 +350,8 @@ old module named in brackets:
   screenshots in `example/media/`, and `PYSIDE6_MIGRATION.md` (mark as
   historical). Major version bump (SlideMage 6.0).
 
-### 12. Later: paint reveal steps on the preview
-Map regions of the rendered preview back to source blocks (for example from
-SyncTeX), so that clicking a region assigns it to a step.
+### 12. ~~Paint reveal steps on the preview~~
+Not implemented (decision 5).
 
 ## Notes on the source
 
