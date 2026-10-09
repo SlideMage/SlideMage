@@ -2,7 +2,7 @@
 EN/DE, save status, Preview/Split/Source/Details, Compile, Images and ⋮.
 
 The bar changes the shared WorkspaceState for the things that are state (deck,
-view, language) and reports every other click as a command key through
+view, language, mode) and reports every other click as a command key through
 `command` (menus.py lists the keys); the window decides what a command does.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, IconButton, IconLabel, SegmentedControl, SplitButton
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
-from .state import UI_LANGUAGES, VIEWS, WorkspaceState
+from .state import MODES, UI_LANGUAGES, VIEWS, WorkspaceState
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
 LOGO_SIZE = 32
@@ -119,11 +119,8 @@ class TopBar(QWidget):
         self._save.setObjectName(q.TOPBAR_SAVE)
         add(self._save)
 
-        # Waits for the centre column of step 5 (preview, split, source, details).
-        self._modes = SegmentedControl(
-            [("preview", "Preview"), ("split", "Split"), ("source", "Source"), ("details", "Details")])
-        self._modes.setEnabled(False)
-        self._modes.setToolTip("Available with the new centre column.")
+        self._modes = SegmentedControl([(mode, mode.capitalize()) for mode in MODES], current=state.mode)
+        self._modes.changed.connect(state.set_mode)
         add(self._modes)
 
         self._compile = SplitButton("")
@@ -139,6 +136,8 @@ class TopBar(QWidget):
         state.deck_changed.connect(self._on_deck_changed)
         state.view_changed.connect(self._on_view_changed)
         state.language_changed.connect(self._languages.set_current)
+        state.mode_changed.connect(self._modes.set_current)
+        state.dirty_changed.connect(lambda dirty: self._save.setText("Unsaved changes" if dirty else "Saved"))
         self._on_deck_changed(state.deck)
         self._on_view_changed(state.view)
 
@@ -146,9 +145,6 @@ class TopBar(QWidget):
 
     def set_decks(self, decks: list[Deck]) -> None:
         self._decks = decks
-
-    def set_save_status(self, text: str) -> None:
-        self._save.setText(text)
 
     def set_images_open(self, is_open: bool) -> None:
         self._images.setText("Close images" if is_open else "Images")

@@ -78,3 +78,13 @@ def pytest_sessionfinish(session):
         widget.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
+
+
+def use_slides_folder(monkeypatch, folder):
+    """Point every module that looks a slide up at `folder` (and keep the backups of saves in it)."""
+    from slidemage import deck_editor, deck_outline, preview_target, slide_language, slide_source
+    from slidemage.ui.workspace import centre, details_view
+
+    for module in (deck_editor, deck_outline, preview_target, slide_language, slide_source, centre, details_view):
+        monkeypatch.setattr(module, "SLIDES_DIR", folder)
+    monkeypatch.setattr(slide_source, "BACKUPS_DIR", folder / ".backups")

@@ -1,5 +1,5 @@
 """A read-only per-slide transcript preview tab (2026-08-25) --
-qt_slide_source_tab.py's own "Render transcript" button opens one of
+the Preview's "Render transcript" menu entry opens one of
 these so the result can be reviewed in-app rather than needing to go find
 and open a file externally (unlike the deck-wide "Generate transcript"
 button in the Images tab, which still just writes transcripts/*.md/.html

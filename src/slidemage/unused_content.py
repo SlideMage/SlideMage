@@ -85,7 +85,7 @@ def _is_media_metadata_filename(name: str) -> bool:
         or (name.startswith(".alt-text.json.") and name.endswith(".tmp"))
     )
 # Same convention already used for syntax highlighting/other text scans in
-# this project (qt_slide_source_tab.py's own COMMENT_RE, alt_blocks.py's) --
+# this project (source_editor.py's own COMMENT_RE, alt_blocks.py's) --
 # an unescaped "%" starts a comment running to end of line; "\%" (a literal
 # percent sign) does not.
 COMMENT_RE = re.compile(r"(?<!\\)%.*")

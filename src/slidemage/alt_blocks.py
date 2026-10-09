@@ -14,13 +14,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from .deck_scan import PROJECT_ROOT
 
 # Same approximation deck_headers.py's neighbours use: an unescaped "%"
 # through end of line, "unescaped" taken as "not immediately preceded by a
 # single backslash". The classic even/odd-backslash case ("\\%") is not
-# handled -- see slide_source_tab.py's COMMENT_RE for the full reasoning; it
+# handled -- see source_editor.py's COMMENT_RE for the full reasoning; it
 # matters even less here, where the result is only ever hashed or scanned.
 COMMENT_RE = re.compile(r"(?<!\\)%.*")
 
@@ -296,9 +297,19 @@ def extract_macro_calls(text: str, macro: str) -> tuple[str, list[str]]:
 
 
 FRAME_OPEN_RE = re.compile(
-    r"\\begin\{(?:standard|figure|section|highlight|quote|title|sideimage)frame\}"
+    r"\\begin\{((?:standard|figure|section|highlight|quote|title|sideimage)frame)\}"
     r"(?:\[[^\]]*\])?\s*\{"
 )
+
+
+def frame_type(source: str) -> Optional[str]:
+    """The frame a slide is made of: the environment of its \\begin{standardframe}
+    (and kin) or "titleframe" for the \\titleframe command; None if neither is found."""
+    stripped = COMMENT_RE.sub("", source)
+    match = FRAME_OPEN_RE.search(stripped)
+    if match:
+        return match.group(1)
+    return "titleframe" if TITLEFRAME_RE.search(stripped) else None
 
 
 def _slide_title(source: str, slide_path: Path) -> tuple[str, str]:

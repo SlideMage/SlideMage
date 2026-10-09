@@ -25,7 +25,7 @@ from __future__ import annotations
 import difflib
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -42,6 +42,7 @@ from . import ai_draft
 from .ai.providers import OllamaProvider
 from .qt_ai_models import fill_model_combo, provider_from_combo
 from .ui.kit.theme import MUTED_LABEL
+from .ui.workspace.source_editor import source_font
 
 
 class _DiffHighlighter(QSyntaxHighlighter):
@@ -65,10 +66,11 @@ class _DiffHighlighter(QSyntaxHighlighter):
 
 
 class AiDraftDialog(QDialog):
-    def __init__(self, source_tab, filename: str) -> None:
-        super().__init__(source_tab)
-        self.app = source_tab.app
-        self.source_tab = source_tab
+    def __init__(self, app, editor, filename: str) -> None:
+        """`editor` is the SourceEditor (ui/workspace/source_editor.py) the draft is for."""
+        super().__init__(app)
+        self.app = app
+        self.editor = editor
         self.filename = filename
         self._proposed_text: str | None = None
         self._proposal_baseline: str | None = None
@@ -116,7 +118,7 @@ class AiDraftDialog(QDialog):
 
         self.diff_view = QPlainTextEdit()
         self.diff_view.setReadOnly(True)
-        self.diff_view.setFont(self.source_tab.widget.font())
+        self.diff_view.setFont(source_font())
         self._diff_highlighter = _DiffHighlighter(self.diff_view.document())
         layout.addWidget(self.diff_view, stretch=1)
 
@@ -170,7 +172,7 @@ class AiDraftDialog(QDialog):
         self.status_label.setText(f"Generating with {provider.label}… {disclaimer}")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            current_text = self.source_tab.widget.toPlainText()
+            current_text = self.editor.text()
             drafter = ai_draft.SlideDrafter(provider)
             result = drafter.draft(current_text, prompt)
         finally:
@@ -208,7 +210,7 @@ class AiDraftDialog(QDialog):
     def _on_accept(self) -> None:
         if self._proposed_text is None or self._proposal_baseline is None:
             return
-        if self.source_tab.widget.toPlainText() != self._proposal_baseline:
+        if self.editor.text() != self._proposal_baseline:
             # The dialog is nonmodal, so the source editor can change after
             # this diff was generated. Refuse to apply a whole-buffer
             # proposal whose displayed baseline no longer matches the live
@@ -220,12 +222,7 @@ class AiDraftDialog(QDialog):
                 "changes against the current source."
             )
             return
-        cursor = self.source_tab.widget.textCursor()
-        cursor.beginEditBlock()
-        cursor.select(QTextCursor.SelectionType.Document)
-        cursor.insertText(self._proposed_text)
-        cursor.endEditBlock()
-        self.source_tab.widget.setTextCursor(cursor)
+        self.editor.replace_all_text(self._proposed_text)
         self.app.log(f"Applied an AI-drafted revision to {self.filename}")
         self.accept_button.setEnabled(False)
         self.status_label.setText(

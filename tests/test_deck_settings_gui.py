@@ -107,7 +107,7 @@ def test_settings_action_saves_all_changes_then_opens_the_link(tmp_path, monkeyp
     monkeypatch.setattr(deck_actions, "DeckSettingsDialog", AcceptedDialog)
     monkeypatch.setattr(deck_actions.open_path, "open_in_default_app", opened.append)
     window = SimpleNamespace(
-        _slide_source_tabs={}, _log=logged.append,
+        centre=SimpleNamespace(is_dirty=lambda _path: False), _log=logged.append,
         refresh_open_deck_editors=lambda: refreshed.append(True),
         reload_decks=lambda: reloaded.append(True),
     )
@@ -121,11 +121,11 @@ def test_settings_action_saves_all_changes_then_opens_the_link(tmp_path, monkeyp
     assert "template" in logged[0] and "course url" in logged[0]
 
 
-def test_settings_action_refuses_while_the_deck_source_is_open(tmp_path, monkeypatch, qapp):
+def test_settings_action_refuses_while_the_deck_source_has_unsaved_edits(tmp_path, monkeypatch, qapp):
     deck = make_deck(tmp_path)
     told = []
     monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
-    window = SimpleNamespace(_slide_source_tabs={deck.path: object()})
+    window = SimpleNamespace(centre=SimpleNamespace(is_dirty=lambda path: path == deck.path))
     DeckActionsMixin._on_deck_settings(window, deck)
     assert told and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 

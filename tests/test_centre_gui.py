@@ -1,0 +1,585 @@
+"""The centre column: which view shows what for the focused slide, the Preview's
+states and renders (the renderer is faked), and unsaved edits across slides."""
+from __future__ import annotations
+
+import os
+import time
+from pathlib import Path
+from types import SimpleNamespace
+
+import pymupdf
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextCursor
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QMessageBox
+
+from slidemage import alt_images, preview_target, qt_render_check, slide_snapshot
+from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.ui.kit.theme import ThemeManager
+from slidemage.ui.workspace import preview_view
+from slidemage.ui.workspace.centre import CentreColumn
+from slidemage.ui.workspace.state import WorkspaceState
+
+from conftest import use_slides_folder
+
+FRAME = "\\begin{standardframe}{%s}\nText\n\\end{standardframe}\n"
+DECK = (
+    "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}\n"
+    "\\section{Part}\n\\slide{aaa-EN-One}\n\\slideversion{bbb-EN-Two}{1-0-0}\n"
+    "\\conditionalslide[instructor]{ccc-DE-Drei}\n\\end{document}\n")
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+class FakeApp:
+    """What the centre needs of the window."""
+
+    def __init__(self):
+        self.theme = ThemeManager()
+        self.logged = []
+        self.transcripts = []
+        self.signals = SimpleNamespace(log=SimpleNamespace(emit=lambda line: None))
+
+    def log(self, line):
+        self.logged.append(line)
+
+    def open_slide_editor(self, path, on_saved=None, line=None):
+        self.centre.open_file(path, on_saved, line)
+
+    def open_transcript_preview(self, key, title):
+        self.transcripts.append((key, title))
+        return SimpleNamespace(set_html=lambda html: self.transcripts.append(html))
+
+    def refresh_open_deck_editors(self):
+        pass
+
+
+@pytest.fixture
+def project(tmp_path, monkeypatch):
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    (slides / "aaa-EN-One-current.tex").write_text("\\setSlideVersion{1-1-0}\n" + FRAME % "First", encoding="utf-8")
+    (slides / "bbb-EN-Two-current.tex").write_text(FRAME % "Second now", encoding="utf-8")
+    (slides / "bbb-EN-Two-v1-0-0.tex").write_text("\\setSlideVersion{1-0-0}\n" + FRAME % "Second then", encoding="utf-8")
+    (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
+    use_slides_folder(monkeypatch, slides)
+    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path / "previews")
+    (tmp_path / "previews").mkdir()
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
+    return slides
+
+
+@pytest.fixture
+def deck(tmp_path):
+    return Deck(name="course", path=tmp_path / "course.tex", archived=False, text=DECK, supports_version=True,
+                uses_biblatex=False, preamble_end=DECK.index("\\begin{document}") + len("\\begin{document}"),
+                chapters=_parse_chapters(DECK), output_folders={})
+
+
+@pytest.fixture
+def renders(tmp_path, monkeypatch):
+    """preview_target's two renderers, replaced by recorders that write a small 16:9 PDF."""
+    pdf = tmp_path / "render.pdf"
+    doc = pymupdf.open()
+    doc.new_page(width=320, height=180)
+    doc.save(pdf)
+    doc.close()
+    calls = []
+
+    def fake(kind):
+        def render(target, *args, **kwargs):
+            calls.append((kind, target.id_slug, args, kwargs))
+            if calls[-1][3].get("fail"):
+                raise RuntimeError("boom")
+            return pdf
+        return render
+
+    real_png = slide_snapshot.page_png      # the pages need not be full HD for these tests
+    monkeypatch.setattr(slide_snapshot, "page_png", lambda path: real_png(path, 160))
+    monkeypatch.setattr(preview_target, "render", fake("saved"))
+    monkeypatch.setattr(preview_target, "render_text", fake("buffer"))
+    monkeypatch.setattr(preview_view.slide_preview, "open_pdf", lambda path: calls.append(("open", path)))
+    return calls
+
+
+@pytest.fixture
+def centre(qapp, project, deck, monkeypatch):
+    monkeypatch.setattr(qt_render_check, "confirm_render", lambda *a, **k: True)
+    app = FakeApp()
+    state = WorkspaceState()
+    centre = CentreColumn(app, state)
+    app.centre = centre
+    state.set_deck(deck)
+    return centre
+
+
+def wait_idle(centre):
+    deadline = time.monotonic() + 5
+    while centre.preview.busy and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    QApplication.processEvents()
+    assert not centre.preview.busy
+
+
+def page(centre):
+    return centre.preview._page
+
+
+def chip_texts(centre):
+    layout = centre.preview._chips
+    return [layout.itemAt(i).widget()._label.text() for i in range(layout.count()) if layout.itemAt(i).widget()]
+
+
+# -- modes and what each view shows ------------------------------------------------
+
+def test_the_mode_decides_which_views_are_shown(centre):
+    state = centre.state
+    states = {}
+    for mode in ("preview", "split", "source", "details"):
+        state.set_mode(mode)
+        states[mode] = (centre.source.isVisibleTo(centre), centre.preview.isVisibleTo(centre),
+                        centre.details.isVisibleTo(centre))
+    assert states == {"preview": (False, True, False), "split": (True, True, False),
+                      "source": (True, False, False), "details": (False, False, True)}
+
+
+def test_focusing_a_slide_shows_its_file_as_the_deck_calls_it(centre, project):
+    state = centre.state
+    state.set_mode("source")
+    state.set_focused_slide("aaa")
+    assert centre.source.current.path == project / "aaa-EN-One-current.tex"
+    state.set_focused_slide("bbb")                    # the deck pins v1.0.0: that is the file it typesets
+    assert centre.source.current.path == project / "bbb-EN-Two-v1-0-0.tex"
+    assert centre.source.current.editor.is_read_only()
+    state.set_focused_slide(None)
+    assert centre.source.current is None
+
+
+def test_views_that_are_not_shown_are_not_built_until_they_are(centre):
+    centre.state.set_focused_slide("aaa")
+    assert centre.source.current is None              # preview mode: no editor yet
+    centre.state.set_mode("split")
+    assert centre.source.current.path.name == "aaa-EN-One-current.tex"
+
+
+def test_unsaved_edits_survive_focusing_other_slides_and_count_as_dirty(centre, project):
+    state = centre.state
+    dirty = []
+    state.dirty_changed.connect(dirty.append)
+    state.set_mode("source")
+    state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("edit ")
+    state.set_focused_slide("ccc")
+    assert dirty == [True] and state.dirty
+    assert centre.is_dirty(project / "aaa-EN-One-current.tex") and not centre.is_dirty(project / "ccc-DE-Drei-current.tex")
+    state.set_focused_slide("aaa")
+    assert centre.source.current.editor.text().startswith("edit ")
+    centre.source.current.reload()
+    assert dirty == [True, False]
+
+
+def test_opening_a_file_switches_to_source_and_a_slide_of_the_project_is_focused(centre, project):
+    seen = []
+    centre.open_file(project / "ccc-DE-Drei-current.tex", seen.append, line=2)
+    assert centre.state.mode == "source" and centre.state.focused_slide == "ccc"
+    assert centre.source.current.on_saved == seen.append
+    assert centre.source.current.editor.textCursor().blockNumber() == 1
+    centre.state.set_mode("split")
+    centre.open_file(project / "aaa-EN-One-current.tex")
+    assert centre.state.mode == "split"               # Split stays Split
+
+
+def test_a_deck_source_has_nothing_to_preview_and_ends_when_another_slide_is_focused(centre, deck, project):
+    deck.path.write_text(DECK, encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    centre.open_file(deck.path)
+    centre.state.set_mode("split")
+    assert centre.source.current.path == deck.path and not centre.source.current.is_slide
+    assert "not a slide" in page(centre).message
+    centre.state.set_focused_slide("ccc")
+    assert centre.source.current.path == project / "ccc-DE-Drei-current.tex"
+
+
+def test_a_frozen_version_opened_by_itself_is_previewed_alone(centre, project):
+    centre.open_file(project / "bbb-EN-Two-v1-0-0.tex")
+    centre.state.set_mode("split")
+    assert centre.preview._target.macro == "slideversion" and centre.preview._row.call.version == "1-0-0"
+    centre.open_file(project / "bbb-EN-Two-current.tex")       # not what the deck pins: shown alone
+    assert centre.preview._row is None and "Frozen" not in " ".join(chip_texts(centre))
+    centre.open_file(project / "bbb-EN-Two-v1-0-0.tex")
+    assert chip_texts(centre)[0] == "Deck stays on v1.0.0"
+
+
+def test_a_file_that_is_renamed_meanwhile_is_forgotten(centre, project):
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    (project / "aaa-EN-One-current.tex").rename(project / "aaa-EN-Uno-current.tex")
+    centre.refresh()
+    assert centre.source.current is None
+
+
+# -- the preview ----------------------------------------------------------------------
+
+def test_the_chips_say_what_the_page_is_not_showing(centre):
+    state = centre.state
+    state.set_focused_slide("bbb")
+    assert chip_texts(centre) == ["Deck stays on v1.0.0", "EN"]
+    state.set_focused_slide("ccc")
+    assert chip_texts(centre) == ["No EN version", "DE"]       # a German slide while editing English
+    state.set_language("DE")
+    assert chip_texts(centre) == ["DE"]
+    state.set_view("during-course")
+    assert chip_texts(centre) == ["Hidden in During course", "DE"]
+
+
+def test_a_slide_the_view_does_not_typeset_says_so_and_does_not_offer_to_render(centre, renders):
+    centre.state.set_view("after-course")
+    centre.state.set_focused_slide("ccc")
+    assert "not typeset in the After course view" in page(centre).message
+    assert not page(centre).render_button.isVisibleTo(centre) and renders == []
+
+
+def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_result(centre, renders):
+    state = centre.state
+    state.set_focused_slide("aaa")
+    assert "No preview" in page(centre).message and not page(centre).render_button.isHidden()
+    page(centre).render_button.click()
+    assert centre.preview.busy
+    wait_idle(centre)
+    kind, id_slug, args, kwargs = renders[0]
+    assert (kind, id_slug, args[:2]) == ("saved", "aaa-EN-One", ("instructor", "EN"))
+    assert kwargs["footer_timestamp"] is False
+    assert page(centre).pixmap is not None and page(centre).pixmap.width() == 160
+    assert page(centre).render_button.isHidden() and not centre.preview._status_chip.isVisibleTo(centre)
+    state.set_view("during-course")                         # another view has no picture yet
+    assert page(centre).pixmap is None and "During course" in page(centre).message
+    state.set_view("instructor")
+    assert page(centre).pixmap is not None                  # the first one is remembered
+    state.set_language("DE")
+    assert page(centre).pixmap is None
+
+
+def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current(centre, renders, project):
+    centre.state.set_focused_slide("aaa")
+    centre.preview.render_now()
+    wait_idle(centre)
+    source = project / "aaa-EN-One-current.tex"
+    os.utime(source, ns=(1, source.stat().st_mtime_ns + 5_000_000_000))
+    centre.refresh()
+    assert page(centre).pixmap is not None
+    assert centre.preview._status_chip.text() == "Older than the slide's source"
+    assert centre.preview._status_button.isVisibleTo(centre)
+    centre.preview._status_button.click()
+    wait_idle(centre)
+    assert not centre.preview._status_chip.isVisibleTo(centre) and len(renders) == 2
+
+
+def test_the_cached_snapshot_is_shown_for_the_instructor_view(centre, project, tmp_path):
+    centre.state.set_focused_slide("aaa")
+    template = centre.preview._target.template
+    png = slide_snapshot.snapshot_path("aaa", template, slide_snapshot.FULL_SIZE)
+    doc = pymupdf.open()
+    page_ = doc.new_page(width=320, height=180)
+    png.write_bytes(page_.get_pixmap().tobytes("png"))
+    doc.close()
+    os.utime(png, (1, (project / "aaa-EN-One-current.tex").stat().st_mtime + 10))
+    centre.refresh()
+    assert page(centre).pixmap is not None and not centre.preview._status_chip.isVisibleTo(centre)
+    centre.state.set_view("after-course")
+    assert page(centre).pixmap is None                      # only the instructor view is cached
+
+
+def test_a_failed_render_is_reported_and_can_be_repeated(centre, renders, monkeypatch):
+    centre.state.set_focused_slide("aaa")
+    original = preview_target.render
+    monkeypatch.setattr(preview_target, "render", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom: no PDF")))
+    centre.preview.render_now()
+    wait_idle(centre)
+    assert centre.preview._status_chip.text() == "Render failed" and "boom" in centre.preview._error_label.text()
+    assert any("Render failed" in line for line in centre.app.logged)
+    centre.state.set_view("during-course")                  # the failure belongs to the view it happened in
+    assert not centre.preview._error
+    centre.state.set_view("instructor")
+    monkeypatch.setattr(preview_target, "render", original)
+    centre.preview.render_now()
+    wait_idle(centre)
+    assert not centre.preview._error and page(centre).pixmap is not None
+
+
+@pytest.mark.parametrize("button", ["page", "status", "footer"])
+def test_the_syntax_check_can_stop_a_render_whichever_button_starts_it(centre, renders, monkeypatch, button):
+    centre.state.set_focused_slide("aaa")
+    asked = []
+    monkeypatch.setattr(qt_render_check, "confirm_render", lambda *args, **kw: asked.append(args[3]) or False)
+    preview = centre.preview
+    if button == "status":                          # shown for a picture older than its source
+        preview._status_button.setVisible(True)
+    {"page": page(centre).render_button, "status": preview._status_button,
+     "footer": preview._render._main}[button].click()
+    assert asked == ["aaa-EN-One-current.tex (saved file)"] and renders == [] and not preview.busy
+
+
+def test_the_render_menu_offers_scope_reveal_step_presenter_transcript_and_the_last_pdf(centre, renders):
+    centre.state.set_focused_slide("aaa")
+    entries = {e[1]: e for e in centre.preview._menu._entries if e[0] == "item"}
+    assert entries["scope:slide"][4] == "check" and entries["scope:region"][4] == ""
+    assert not entries["open_pdf"][6]                        # nothing rendered yet
+    centre.preview._on_menu("scope:element")
+    entries = {e[1]: e for e in centre.preview._menu._entries if e[0] == "item"}
+    assert entries["scope:element"][4] == "check" and not entries["overlay"][6]
+    centre.preview._on_menu("scope:slide")
+    centre.preview.render_now()
+    wait_idle(centre)
+    assert [e for e in centre.preview._menu._entries if e[0] == "item" and e[1] == "open_pdf"][0][6]
+    centre.preview._on_menu("open_pdf")
+    assert renders[-1][0] == "open"
+
+
+def test_rendering_the_buffer_uses_the_unsaved_text_the_scope_and_the_reveal_step(centre, renders, monkeypatch):
+    state = centre.state
+    state.set_focused_slide("aaa")
+    state.set_mode("split")
+    editor = centre.source.current.editor
+    editor.insertPlainText("% unsaved\n")
+    preview = centre.preview
+    preview._on_menu("scope:region")
+    informed = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: informed.append(args[2]))
+    preview.render_buffer()                                   # nothing selected
+    assert informed and renders == []
+    cursor = editor.textCursor()
+    cursor.setPosition(2)
+    cursor.setPosition(9, QTextCursor.MoveMode.KeepAnchor)
+    editor.setTextCursor(cursor)
+    monkeypatch.setattr(preview_view.QInputDialog, "getInt", lambda *a, **k: (3, True))
+    preview._on_menu("overlay")
+    preview.render_buffer()
+    wait_idle(centre)
+    kind, id_slug, args, kwargs = renders[0]
+    assert kind == "buffer" and args[0] == editor.selected_text() == "unsaved"
+    assert (kwargs["mode"], kwargs["overlay"], args[1]) == ("region", 3, "instructor")
+    assert page(centre).pixmap is not None
+    assert preview._status_chip.text() == "Rendered from the editor buffer, not the saved file"
+    preview._on_menu("scope:element")                         # a cropped element has no reveal steps
+    preview.render_buffer()
+    wait_idle(centre)
+    assert renders[1][3]["overlay"] is None
+    state.set_view("after-course")
+    assert preview._status_chip.text() != "Rendered from the editor buffer, not the saved file"
+
+
+def test_a_presenter_render_opens_the_viewer_instead_of_the_page(centre, renders):
+    centre.state.set_focused_slide("aaa")
+    centre.preview.render_buffer(presenter=True)
+    wait_idle(centre)
+    assert renders[0][3]["presenter"] and renders[1][0] == "open"
+    assert page(centre).pixmap is None
+
+
+def test_ctrl_r_in_the_source_view_shows_the_page_and_renders_the_buffer(centre, renders):
+    state = centre.state
+    state.set_mode("source")
+    state.set_focused_slide("aaa")
+    centre.source.show()
+    centre.source.current.editor.setFocus()
+    centre.source.render_requested.emit()
+    wait_idle(centre)
+    assert state.mode == "split" and renders[0][0] == "buffer"
+
+
+def test_saving_renders_the_slide_again_when_the_page_is_visible(centre, renders, monkeypatch):
+    from slidemage.ui.workspace import source_file
+
+    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
+    monkeypatch.setattr(source_file, "PROJECT_ROOT", centre.source.current.path.parent.parent
+                        if centre.source.current else Path("/"))
+    state = centre.state
+    state.set_mode("split")
+    state.set_focused_slide("aaa")
+    monkeypatch.setattr(source_file, "PROJECT_ROOT", centre.source.current.path.parent.parent)
+    centre.source.current.editor.insertPlainText("% saved ")
+    assert centre.source.save()
+    wait_idle(centre)
+    assert [c[0] for c in renders] == ["saved"] and page(centre).pixmap is not None
+    state.set_mode("source")                                  # no page to show: no render
+    centre.source.current.editor.insertPlainText("% again ")
+    assert centre.source.save()
+    wait_idle(centre)
+    assert len(renders) == 1
+
+
+def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monkeypatch, project):
+    from slidemage.ui.workspace import source_file
+
+    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
+    monkeypatch.setattr(source_file, "PROJECT_ROOT", project.parent)
+    centre.state.set_mode("split")
+    centre.state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("\\begin{standardframe}{x}{oops")
+    assert centre.source.save()
+    wait_idle(centre)
+    assert renders == []
+
+
+def test_the_transcript_of_the_buffer_opens_in_its_own_page(centre, monkeypatch):
+    centre.state.set_focused_slide("aaa")
+    monkeypatch.setattr(preview_view.transcript, "generate_single_slide",
+                        lambda text, bare, view, language: SimpleNamespace(undescribed=True, args=(bare, view, language)))
+    monkeypatch.setattr(preview_view.transcript, "to_html", lambda result, title: f"<h1>{title}</h1>")
+    centre.preview.render_transcript()
+    assert centre.app.transcripts[0] == ("aaa", "Transcript: aaa-EN-One")
+    assert centre.app.transcripts[1] == "<h1>Transcript preview: aaa-EN-One</h1>"
+    assert any("undescribed image" in line for line in centre.app.logged)
+
+
+# -- details ----------------------------------------------------------------------------
+
+def test_details_follow_the_focused_slide_and_say_where_the_deck_shows_it(centre):
+    from PySide6.QtWidgets import QLabel
+
+    state = centre.state
+    state.set_mode("details")
+    state.set_focused_slide("ccc")
+    texts = [label.text() for label in centre.details.findChildren(QLabel)]
+    assert "Dritte" in texts and "ccc-DE-Drei-current.tex" in texts and "standardframe" in texts
+    assert [t for t in texts if t in ("Shown", "Hidden")] == ["Shown", "Hidden", "Hidden"]
+    state.set_focused_slide(None)
+    assert [label.text() for label in centre.details.findChildren(QLabel)] == [
+        "Select a slide in the list. Double-click it to open its source."]
+    centre.state.deck.path.write_text(DECK, encoding="utf-8")
+    centre.open_file(centre.state.deck.path)
+    state.set_mode("details")
+    assert "not a slide" in centre.details.findChildren(QLabel)[0].text()
+
+
+def test_the_transcript_summary_is_saved_when_the_slide_is_left(centre, monkeypatch):
+    saved = {}
+    monkeypatch.setattr(alt_images, "update_slide_notes",
+                        lambda mutate: mutate(notes := {}) and saved.update({k: v.summary for k, v in notes.items()}))
+    centre.state.set_mode("details")
+    centre.state.set_focused_slide("aaa")
+    centre.details._summary.setPlainText("  What this slide says.  ")
+    assert saved == {}
+    centre.state.set_focused_slide("bbb")
+    assert saved == {"aaa": "What this slide says."}
+
+
+def test_moving_or_copying_a_slide_with_unsaved_edits_is_refused(centre, project, monkeypatch):
+    state = centre.state
+    state.set_mode("source")
+    state.set_focused_slide("ccc")
+    centre.source.current.editor.insertPlainText("edit ")
+    state.set_mode("details")
+    told = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: pytest.fail("must not ask"))
+    details = centre.details
+    details._rename()
+    details._duplicate()
+    details._delete()
+    details._set_language("EN")
+    assert len(told) == 4 and (project / "ccc-DE-Drei-current.tex").exists()
+
+
+def test_set_language_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch):
+    from slidemage import slide_rename
+    from slidemage.ui.workspace import details_view
+
+    calls = []
+    monkeypatch.setattr(slide_rename, "count_references", lambda id_slug: 2)
+    monkeypatch.setattr(slide_rename, "deck_names_referencing", lambda id_slug: ["course"])
+    monkeypatch.setattr(slide_rename, "set_slide_language", lambda old, lang: calls.append(("lang", old, lang)) or "ccc-EN-Drei")
+    monkeypatch.setattr(slide_rename, "rename_slide_slug", lambda old, slug: calls.append(("slug", old, slug)) or "ccc-DE-Drie")
+    monkeypatch.setattr(slide_rename, "delete_slide_id",
+                        lambda id_slug: calls.append(("delete", id_slug)) or {"files_removed": 1, "deck_references_removed": 2})
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(details_view.QInputDialog, "getText", lambda *a, **k: ("Drie", True))
+    refreshed = []
+    centre.app.refresh_open_deck_editors = lambda: refreshed.append(True)
+    centre.state.set_mode("details")
+    centre.state.set_focused_slide("ccc")
+    details = centre.details
+    details._set_language("DE")                      # already German: nothing to do
+    details._set_language("EN")
+    details._rename()
+    details._delete()
+    assert calls == [("lang", "ccc-DE-Drei", "EN"), ("slug", "ccc-DE-Drei", "Drie"), ("delete", "ccc-DE-Drei")]
+    assert refreshed == [True] * 3 and centre.state.focused_slide is None
+    assert any(line.startswith("Deleted slide ccc-DE-Drei") for line in centre.app.logged)
+
+
+def test_keys_in_the_source_view_do_not_leak_into_other_views(centre):
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    editor = centre.source.current.editor
+    centre.source.show()
+    editor.setFocus()
+    QTest.keyClick(editor, Qt.Key.Key_X)
+    assert centre.source.current.dirty
+
+
+def test_a_lint_issue_opens_its_file_at_its_line(centre, project):
+    from slidemage import latex_lint
+
+    issue = latex_lint.LintIssue(latex_lint.CHECKS[0][0], "m", 3, "ccc-DE-Drei-current.tex", project / "ccc-DE-Drei-current.tex")
+    qt_render_check.open_issue_in_editor(centre.app, issue)
+    assert centre.source.current.path == issue.path
+    assert centre.source.current.editor.textCursor().blockNumber() == 2
+
+
+def test_the_footer_timestamp_of_the_state_reaches_the_render(centre, renders):
+    centre.state.set_focused_slide("aaa")
+    centre.preview.render_now()
+    wait_idle(centre)
+    centre.state.set_footer_timestamp(True)
+    centre.preview.render_now()
+    wait_idle(centre)
+    assert [c[3]["footer_timestamp"] for c in renders] == [False, True]
+
+
+@pytest.fixture
+def saved_summaries(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(alt_images, "update_slide_notes",
+                        lambda mutate: mutate(notes := {}) and saved.update({k: v.summary for k, v in notes.items()}))
+    return saved
+
+
+def test_a_pending_summary_counts_as_unsaved_until_it_is_saved(centre, saved_summaries):
+    states = []
+    centre.state.dirty_changed.connect(states.append)
+    centre.state.set_mode("details")
+    centre.state.set_focused_slide("aaa")
+    centre.details._summary.setPlainText("A note.")
+    assert centre.state.dirty and centre.details.summary_dirty and states == [True]
+    centre.details._summary_save.click()
+    assert saved_summaries == {"aaa": "A note."} and not centre.state.dirty and states == [True, False]
+
+
+def test_a_pending_summary_is_saved_when_the_slide_or_the_deck_is_left(centre, saved_summaries, deck):
+    centre.state.set_mode("details")
+    centre.state.set_focused_slide("aaa")
+    centre.details._summary.setPlainText("First.")
+    centre.state.set_focused_slide("bbb")
+    assert saved_summaries == {"aaa": "First."} and not centre.state.dirty
+    centre.details._summary.setPlainText("Second.")
+    centre.state.set_deck(None)
+    assert saved_summaries == {"aaa": "First.", "bbb": "Second."} and not centre.state.dirty
+
+
+def test_unsaved_source_and_summary_stay_dirty_until_both_are_resolved(centre, saved_summaries):
+    centre.state.set_mode("details")
+    centre.state.set_focused_slide("aaa")
+    centre.details._summary.setPlainText("A note.")
+    centre.open_file(centre.state.deck.path.parent / "slides" / "aaa-EN-One-current.tex")
+    centre.source.current.editor.insertPlainText("x")
+    centre.source.current.reload()
+    assert centre.state.dirty                       # the summary is still pending
+    centre.details.flush_summary()
+    assert not centre.state.dirty

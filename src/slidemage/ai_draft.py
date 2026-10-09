@@ -54,8 +54,8 @@ _CODE_FENCE_RE = re.compile(r"^```[A-Za-z]*\n(.*)\n```$", re.DOTALL)
 
 def _find_matching_brace(text: str, open_pos: int) -> Optional[int]:
     """Index of the '}' matching the '{' at `open_pos`, or None if
-    unbalanced. Same escaped-brace handling as qt_slide_source_tab.py's
-    own brace-matcher (LatexSyntaxHighlighter/_highlight_matching_brace)."""
+    unbalanced. Same escaped-brace handling as latex_edit.matching_brace
+    (the source editor's brace matcher)."""
     depth = 0
     i = open_pos
     while i < len(text):
@@ -74,7 +74,7 @@ def _find_matching_brace(text: str, open_pos: int) -> Optional[int]:
 
 def _header_comment_end(text: str) -> int:
     """End offset (exclusive) of the file's own leading %-comment block --
-    same rule as qt_slide_source_tab.py's own _count_header_comment_lines:
+    same rule as latex_edit.header_comment_lines:
     consecutive lines starting with optional whitespace then '%', up to
     the first line that isn't."""
     offset = 0

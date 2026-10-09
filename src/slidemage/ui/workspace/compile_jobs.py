@@ -47,6 +47,7 @@ from ...compiler import (
 from ...deck_scan import PROJECT_ROOT, Deck
 from ...partial_compile import PartialError, parse_page_spec
 from .multi_compile import MultiCompileSheet
+from .state import WorkspaceState
 
 RUNNING_LOG_RE = re.compile(r"^==== Compiling \S+ -> (\S+) ====")
 MOVING_LOG_RE = re.compile(r"^==== MOVING: (\S+) ->")
@@ -91,14 +92,15 @@ class BuildOptionsDialog(QDialog):
     the footer timestamp) read. Step 7 turns them into toggles of the Compile
     menu."""
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget, state: WorkspaceState) -> None:
         super().__init__(parent)
         self.setWindowTitle("Build options")
         layout = QVBoxLayout(self)
 
         self.footer_timestamp_checkbox = QCheckBox("Include footer timestamp")
         # Default off (2026-08-20, direct instruction) -- was on by default.
-        self.footer_timestamp_checkbox.setChecked(False)
+        self.footer_timestamp_checkbox.setChecked(state.footer_timestamp)
+        self.footer_timestamp_checkbox.toggled.connect(state.set_footer_timestamp)
         layout.addWidget(self.footer_timestamp_checkbox)
 
         self.appendix_toc_checkbox = QCheckBox("Generate appendix TOC")
@@ -745,7 +747,7 @@ class CompileJobsMixin:
                 self.status_label.setText(f"{self._current_progress_base}: Compile {run_number}...")
 
     def log(self, line: str) -> None:
-        """Public entry point for the deck editor/slide source tab modules
+        """Public entry point for the centre column's views and the dialogs
         to append to the log pane -- always called from the main thread (a
         button/dialog action)."""
         self._log(line)

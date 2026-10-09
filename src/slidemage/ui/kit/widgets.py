@@ -103,12 +103,23 @@ class IconButton(QToolButton):
 
 class Button(QPushButton):
     """Text button. kind: "primary" (inverse fill), "secondary" (bordered),
-    "ghost" (flat)."""
+    "ghost" (flat). `compact` is the smaller padding of toolbars."""
 
-    def __init__(self, text: str, kind: str = "secondary", parent: QWidget | None = None) -> None:
+    def __init__(self, text: str, kind: str = "secondary", parent: QWidget | None = None, *,
+                 compact: bool = False) -> None:
         super().__init__(text, parent)
         self.setProperty("kind", kind)
+        self.setProperty("compact", compact)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+
+class Surface(QFrame):
+    """A transparent container for content on a white card. A plain QWidget
+    or QFrame would take the app-wide page color (theme.py), not the card's."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName(q.SURFACE)
 
 
 class Card(QFrame):
@@ -217,7 +228,8 @@ class _MenuRow(QWidget):
     activated = Signal(str)
     hovered = Signal(object)
 
-    def __init__(self, key: str, text: str, meta: str, icon: str, tone: str, show_icon_slot: bool) -> None:
+    def __init__(self, key: str, text: str, meta: str, icon: str, tone: str, show_icon_slot: bool,
+                 swatch: str) -> None:
         super().__init__()
         self.key = key
         self.setObjectName(q.MENU_ROW)
@@ -229,6 +241,12 @@ class _MenuRow(QWidget):
         layout.setSpacing(8)
         if show_icon_slot:
             layout.addWidget(IconLabel(icon, 18))
+        if swatch:
+            chip = QFrame()
+            chip.setObjectName(q.MENU_SWATCH)
+            chip.setFixedSize(14, 14)
+            chip.setStyleSheet(f"background-color: {swatch};")   # the one thing a theme can't tell
+            layout.addWidget(chip)
         label = QLabel(text)
         label.setObjectName(q.MENU_TEXT)
         layout.addWidget(label, 1)
@@ -269,9 +287,10 @@ class PopoverMenu(QFrame):
         self._entries: list[tuple] = []  # queued by add_*, built on popup
 
     def add_item(self, key: str, text: str, *, meta: str = "", icon: str = "",
-                 tone: str = "", enabled: bool = True) -> None:
-        """tone "danger" colors the text as an error."""
-        self._entries.append(("item", key, text, meta, icon, tone, enabled))
+                 tone: str = "", enabled: bool = True, swatch: str = "") -> None:
+        """tone "danger" colors the text as an error; `swatch` is a color ("#rrggbb")
+        shown as a small square before the text."""
+        self._entries.append(("item", key, text, meta, icon, tone, enabled, swatch))
 
     def add_header(self, text: str) -> None:
         self._entries.append(("header", text))
@@ -300,8 +319,8 @@ class PopoverMenu(QFrame):
                 self._layout.addWidget(sep)
                 self._layout.addSpacing(4)
             else:
-                _, key, text, meta, icon, tone, enabled = entry
-                row = _MenuRow(key, text, meta, icon, tone, slot)
+                _, key, text, meta, icon, tone, enabled, swatch = entry
+                row = _MenuRow(key, text, meta, icon, tone, slot, swatch)
                 row.setEnabled(enabled)
                 row.setProperty("off", not enabled)
                 row.activated.connect(self._on_activated)

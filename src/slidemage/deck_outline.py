@@ -1,13 +1,15 @@
 """The deck's slide list as the workspace shows it (UI_REDESIGN_PLAN.md, step 4):
 sections with their slides, and for each slide what is worth a glance --
-a lint error in its source, a preview older than its source, not typeset in
-the view being edited, no translation into the language being edited.
+its title, a lint error in its source, a preview older than its source, not
+typeset in the view being edited, no translation into the language being
+edited.
 
 Nothing here starts LaTeX or opens a window. The checks read a few small
-files per slide (its source, once, for the lint; the preview's timestamp), so
-a deck of 600 slides takes well under a second the first time and about 100 ms
-after, because a slide's lint result is kept until the file changes
-(forget_lint() drops them, e.g. after the bibliography or an image changed).
+files per slide (its source, once, for the title and the lint; the preview's
+timestamp), so a deck of 600 slides takes well under a second the first time
+and about 100 ms after, because what a slide's source says is kept until the
+file changes (forget_lint() drops it, e.g. after the bibliography or an image
+changed).
 """
 from __future__ import annotations
 
@@ -15,15 +17,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import deck_editor, latex_lint, slide_language, slide_snapshot
+from . import alt_blocks, deck_editor, latex_lint, slide_language, slide_snapshot
 from .deck_editor import SLIDES_DIR, SlideCall
 from .deck_scan import Chapter, Deck
 
 # What the first section is called when slides come before the first \section.
 UNSECTIONED = "(before the first section)"
 
-# path -> (mtime_ns, source has a lint error)
-_lint_cache: dict[Path, tuple[int, bool]] = {}
+# path -> (mtime_ns, source has a lint error, frame title)
+_source_cache: dict[Path, tuple[int, bool, str]] = {}
 
 
 @dataclass(frozen=True)
@@ -49,26 +51,61 @@ class SectionRow:
 
 
 def forget_lint() -> None:
-    _lint_cache.clear()
+    _source_cache.clear()
 
 
-def has_lint_error(path: Path) -> bool:
+def _source_facts(call: SlideCall) -> tuple[bool, str]:
+    """(the source has a lint error, the slide's title): the frame title, else
+    the slug without its language segment ("EN-Quote-Demo" -> "Quote Demo")."""
+    path = SLIDES_DIR / call.source_filename
     try:
         mtime = path.stat().st_mtime_ns
     except OSError:
-        return True   # a missing slide file is an error (lint_file reports it)
-    cached = _lint_cache.get(path)
+        # A missing slide file is an error (lint_file reports it).
+        return True, _title("", call.id_slug)
+    cached = _source_cache.get(path)
     if cached is None or cached[0] != mtime:
         errors = any(i.severity == latex_lint.ERROR for i in latex_lint.lint_file(path))
-        cached = _lint_cache[path] = (mtime, errors)
-    return cached[1]
+        text = path.read_text(encoding="utf-8", errors="replace")
+        cached = _source_cache[path] = (mtime, errors, _title(text, call.id_slug))
+    return cached[1], cached[2]
 
 
-def slide_title(call: SlideCall) -> str:
-    """The slug without its language segment, as words: "EN-Quote-Demo" -> "Quote Demo"."""
-    language, _, rest = call.slug.partition("-")
-    slug = rest if language in slide_language.LANGUAGES and rest else call.slug
-    return slug.replace("-", " ")
+def _title(source: str, id_slug: str) -> str:
+    # Named as the current file whichever version the source is of, so that a
+    # slide without a frame title falls back to its slug alone.
+    return alt_blocks._slide_title(source, Path(f"{id_slug}-current.tex"))[1]
+
+
+def slide_file_title(path: Path, id_slug: str) -> str:
+    """The title of a slide file that is not a call of the open deck (any version of `id_slug`)."""
+    return _title(path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
+
+
+def _row(call: SlideCall, key: tuple, position: int, template: str, view: str, language: str) -> SlideRow:
+    path = SLIDES_DIR / call.source_filename
+    png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
+    badge = slide_language.badge_for(call.id_slug, path)
+    lint_error, title = _source_facts(call)
+    return SlideRow(
+        call=call,
+        key=key,
+        position=position,
+        title=title,
+        badge=badge.text(),
+        thumbnail=png if png.is_file() else None,
+        lint_error=lint_error,
+        stale_preview=png.is_file() and _older(png, path),
+        hidden=not call.included_in(view),
+        missing_translation=badge.own in ("EN", "DE") and badge.own != language
+        and badge.cross_referenced != language,
+    )
+
+
+def _call_key(call: SlideCall) -> tuple:
+    """What a call *is*, apart from where it stands."""
+    return (call.macro, call.id_slug, call.version,
+            tuple(call.conditions) if call.conditions else None, call.steps)
 
 
 def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
@@ -78,26 +115,10 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     occurrences: dict[tuple, int] = {}
     for position, call in enumerate(deck_editor.parse_slide_calls(deck), start=1):
-        hidden = not call.included_in(view)
-        path = SLIDES_DIR / call.source_filename
-        base = (call.macro, call.id_slug, call.version,
-                tuple(call.conditions) if call.conditions else None, call.steps)
+        base = _call_key(call)
         occurrences[base] = occurrences.get(base, 0) + 1
-        png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
-        badge = slide_language.badge_for(call.id_slug, path)
-        by_section.setdefault(call.chapter.start if call.chapter else None, []).append(SlideRow(
-            call=call,
-            key=base + (occurrences[base] - 1,),
-            position=position,
-            title=slide_title(call),
-            badge=badge.text(),
-            thumbnail=png if png.is_file() else None,
-            lint_error=has_lint_error(path),
-            stale_preview=png.is_file() and _older(png, path),
-            hidden=hidden,
-            missing_translation=badge.own in ("EN", "DE") and badge.own != language
-            and badge.cross_referenced != language,
-        ))
+        by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
+            _row(call, base + (occurrences[base] - 1,), position, template, view, language))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -105,6 +126,15 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
         for chapter in deck.chapters
     ]
     return sections
+
+
+def slide_row(deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
+    """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
+    template = slide_snapshot.detect_template(deck.preamble_text)
+    for position, call in enumerate(deck_editor.parse_slide_calls(deck), start=1):
+        if call.id == slide_id:
+            return _row(call, _call_key(call) + (0,), position, template, view, language)
+    return None
 
 
 def _older(png: Path, source: Path) -> bool:

@@ -1099,8 +1099,8 @@ class TranscriptTab(QWidget):
     # Drafting runs on a background thread (one image takes 10-60s, a full
     # batch takes hours) and would otherwise freeze the window. Widget
     # mutation has to happen on the GUI thread, so completion comes back
-    # over a signal -- same pattern as qt_slide_source_tab.py's render
-    # button. Signal(object) carries an alt_draft.BatchSummary; the drafts
+    # over a signal -- same pattern as the Preview's render
+    # button (ui/workspace/preview_view.py). Signal(object) carries an alt_draft.BatchSummary; the drafts
     # themselves are already on disk by then.
     drafts_ready = Signal(object)
     # One image of a batch finished. Carries (image, written: bool) so the
@@ -2018,7 +2018,7 @@ class TranscriptTab(QWidget):
 
     def _on_open_source(self) -> None:
         if self._current is not None:
-            self.app.open_slide_editor(self._current.row.path, return_to=self)
+            self.app.open_slide_editor(self._current.row.path)
 
     def _on_find_slide_activated(self, text: str) -> None:
         """Fires the instant a completer suggestion is picked -- by a
@@ -2219,14 +2219,14 @@ class TranscriptTab(QWidget):
 
         open_elsewhere = sorted(
             path.name for sid, path in targets.items()
-            if sid in changed_slides and path in self.app._slide_source_tabs
+            if sid in changed_slides and self.app.centre.is_dirty(path)
         )
         if open_elsewhere:
             QMessageBox.information(
                 self, "Replace image",
-                "These slides are open in an editor tab and were updated "
-                "on disk, but their open tab still shows the old text -- "
-                "close and reopen to see the change:\n\n"
+                "These slides have unsaved edits in the Source view and were "
+                "updated on disk. Saving them will be refused, since the file "
+                "changed; Revert there to see the change:\n\n"
                 + "\n".join(open_elsewhere),
             )
 
@@ -2316,8 +2316,8 @@ class TranscriptTab(QWidget):
 
     def _on_generate_transcript(self) -> None:
         """Preview -- not write -- this one slide's own transcript entry.
-        Same pattern as qt_slide_source_tab.py's own "Render transcript"
-        button (_on_render_transcript): generate_single_slide() never
+        Same pattern as the Preview's own "Render transcript"
+        (PreviewPane.render_transcript): generate_single_slide() never
         touches disk beyond its own throwaway tempfile.mkdtemp(), deleted
         before it returns, so this satisfies "don't save it, just show it"
         with no extra scratch-path bookkeeping of its own."""
@@ -2627,7 +2627,7 @@ class TranscriptTab(QWidget):
         # drafting run in progress is visually obvious, not just a text
         # change -- objectName after the widget is already styled needs a
         # polish to pick up the new QSS rule (same fix
-        # qt_slide_preview_popup.py's own status_label already uses).
+        # the old preview popup's status label used).
         self.draft_all_button.setObjectName(CLOSE_BUTTON)
         self.draft_all_button.style().unpolish(self.draft_all_button)
         self.draft_all_button.style().polish(self.draft_all_button)

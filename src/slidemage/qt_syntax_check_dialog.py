@@ -1,13 +1,12 @@
 """"Check syntax" results dialog (2026-08-31, direct instruction) -- shows
-what syntax_check.SyntaxChecker found for one slide/deck editor
-tab's own *current buffer* (unsaved edits included, same as "Render to
-PDF"), with a per-issue "Apply fix" button wherever
+what syntax_check.SyntaxChecker found for one file's editor
+*current buffer* (unsaved edits included, same as "Render
+buffer"), with a per-issue "Apply fix" button wherever
 syntax_check.SyntaxIssue.fix_is_safe() confirms the model's own claimed
 "original" line still matches the live buffer exactly.
 
-Applying a fix edits the source tab's own QPlainTextEdit directly (one
-Undo step per fix, via the source tab's own document -- Ctrl+Z in the
-editor undoes it same as any other edit), then marks that row applied and
+Applying a fix edits the file's editor directly (one Undo step per fix --
+Ctrl+Z in the editor undoes it same as any other edit), then marks that row applied and
 disables its own button. Multiple fixes can be reviewed and applied one
 at a time without closing this dialog; re-running the check (a fresh
 "Check again") re-evaluates every row's own safety against whatever the
@@ -22,7 +21,6 @@ reported line, fix something by hand, then click "Check again").
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Qt, Signal
-from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -59,10 +57,11 @@ class _CheckWorker(QThread):
 
 
 class SyntaxCheckDialog(QDialog):
-    def __init__(self, source_tab, filename: str) -> None:
-        super().__init__(source_tab)
-        self.app = source_tab.app
-        self.source_tab = source_tab
+    def __init__(self, app, editor, filename: str) -> None:
+        """`editor` is the SourceEditor (ui/workspace/source_editor.py) that is checked."""
+        super().__init__(app)
+        self.app = app
+        self.editor = editor
         self.filename = filename
         self._worker: _CheckWorker | None = None
         self.setWindowTitle(f"Check syntax — {filename}")
@@ -135,8 +134,8 @@ class SyntaxCheckDialog(QDialog):
         return self._worker is not None
 
     def abort_check(self) -> bool:
-        """Escape (dialog focused, or the editor -- see the source tab's
-        own escape hook): stops a running check. Returns whether one was
+        """Escape (dialog focused, or the editor -- see SourceFile's
+        escape hook): stops a running check. Returns whether one was
         actually running, so the caller knows if the key press was used."""
         if self._worker is None:
             return False
@@ -172,7 +171,7 @@ class SyntaxCheckDialog(QDialog):
         self.status_label.setText(f"Checking with {provider.label}… (press Esc to abort)")
         self.recheck_button.setEnabled(False)
         checker = syntax_check.SyntaxChecker(provider)
-        worker = _CheckWorker(checker, self.source_tab.widget.toPlainText())
+        worker = _CheckWorker(checker, self.editor.text())
         worker.finished_with_result.connect(self._on_check_finished)
         self._worker = worker
         worker.start()
@@ -238,7 +237,7 @@ class SyntaxCheckDialog(QDialog):
             fix_label.setWordWrap(True)
             row_layout.addWidget(fix_label)
 
-            buffer_lines = self.source_tab.widget.toPlainText().split("\n")
+            buffer_lines = self.editor.text().split("\n")
             safe = issue.fix_is_safe(buffer_lines)
 
             button_row = QHBoxLayout()
@@ -259,17 +258,10 @@ class SyntaxCheckDialog(QDialog):
         return frame
 
     def _jump_to_line(self, line: int) -> None:
-        document = self.source_tab.widget.document()
-        block = document.findBlockByNumber(line - 1)
-        if not block.isValid():
-            return
-        cursor = QTextCursor(block)
-        self.source_tab.widget.setTextCursor(cursor)
-        self.source_tab.widget.centerCursor()
-        self.source_tab.widget.setFocus()
+        self.editor.go_to_line(line)
 
     def _apply_fix(self, issue: syntax_check.SyntaxIssue, button: QPushButton) -> None:
-        buffer_lines = self.source_tab.widget.toPlainText().split("\n")
+        buffer_lines = self.editor.text().split("\n")
         if not issue.fix_is_safe(buffer_lines):
             QMessageBox.warning(
                 self, "Apply fix",
@@ -280,19 +272,7 @@ class SyntaxCheckDialog(QDialog):
             button.setEnabled(False)
             return
 
-        document = self.source_tab.widget.document()
-        block = document.findBlockByNumber(issue.line - 1)
-        cursor = QTextCursor(block)
-        # StartOfBlock/EndOfBlock, not the LineUnderCursor selection type --
-        # LineUnderCursor selects only the current *visual* line, which a
-        # long slide line word-wrapped across several on-screen rows would
-        # truncate; a block is always exactly one logical line regardless
-        # of how it wraps on screen.
-        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
-        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
-        cursor.beginEditBlock()
-        cursor.insertText(issue.suggested_fix)
-        cursor.endEditBlock()
+        self.editor.replace_line(issue.line, issue.suggested_fix)
 
         button.setEnabled(False)
         button.setText("Applied")

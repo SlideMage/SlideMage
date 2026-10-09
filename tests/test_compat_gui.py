@@ -64,7 +64,7 @@ def window(root, monkeypatch, changes, choice, logged):
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     win = SimpleNamespace(
-        log=logged.append, _slide_source_tabs={},
+        log=logged.append, centre=SimpleNamespace(source=SimpleNamespace(dirty_files=lambda: [])),
         refresh_open_deck_editors=lambda: None)
     for name in ("check_project_compat", "_show_compat", "_compat_update", "_compat_report",
                  "_compat_newer_notice"):
@@ -105,9 +105,9 @@ def test_update_project_with_work_left_does_not_move_the_baseline(tmp_path, monk
     assert opened and opened[0].name == "compat-report.md"
 
 
-def test_update_is_refused_while_a_source_editor_is_open(tmp_path, monkeypatch, qapp):
+def test_update_is_refused_while_a_source_has_unsaved_edits(tmp_path, monkeypatch, qapp):
     root = make_project(tmp_path)
     win = window(root, monkeypatch, [BREAKING], qt_compat_dialog.UPDATE, [])
-    win._slide_source_tabs = {root / "decks" / "course.tex": object()}
+    win.centre.source.dirty_files = lambda: [object()]
     win.check_project_compat()
     assert b"\\old" in (root / "decks" / "course.tex").read_bytes()

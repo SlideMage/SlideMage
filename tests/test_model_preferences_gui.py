@@ -10,10 +10,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QComboBox, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
 from slidemage import app_settings, qt_syntax_check_dialog
+from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import window as window_module
+from slidemage.ui.workspace.source_file import SourceFile
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, InstalledModel, OllamaProvider
 from slidemage.qt_ai_draft_dialog import AiDraftDialog
 from slidemage.qt_settings_dialog import SettingsDialog
@@ -54,7 +56,7 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     class App(QWidget):
         def __init__(self):
             super().__init__()
-            self.theme = SimpleNamespace(dark=False)
+            self.theme = ThemeManager()
             self.set_dark_mode = lambda _value: None
             self.set_tab_width_chars = lambda _value: None
             self.try_start_ollama_task = lambda _label: True
@@ -82,13 +84,7 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     assert app_settings.default_model("image_description") == "ollama:vision-2"
     assert app_settings.default_model("translation") == "ollama:translator"
 
-    class Source(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.app = app
-            self.widget = QPlainTextEdit("slide text", self)
-
-    source = Source()
+    editor = SimpleNamespace(text=lambda: "slide text")
     requests = []
 
     class Checker:
@@ -99,12 +95,12 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
             return SyntaxCheckResult(model="general-text")
 
     monkeypatch.setattr(qt_syntax_check_dialog.syntax_check, "SyntaxChecker", Checker)
-    syntax = SyntaxCheckDialog(source, "slide.tex")
+    syntax = SyntaxCheckDialog(app, editor, "slide.tex")
     # The check itself runs on a worker thread; let it finish.
     if syntax._worker is not None:
         syntax._worker.wait()
     qapp.processEvents()
-    draft = AiDraftDialog(source, "slide.tex")
+    draft = AiDraftDialog(app, editor, "slide.tex")
     assert syntax.model_combo.currentText() == "general-text"
     assert draft.model_combo.currentText() == "translator"
     assert requests == [("general-text", "http://ollama.example:11434")]
@@ -126,9 +122,10 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     _choose(settings, "syntax_check", "vision")
     _choose(settings, "ai_draft", "general-text")
     _choose(settings, "image_description", "vision")
-    source._syntax_check_dialog = syntax
-    source._ai_draft_dialog = draft
-    app._slide_source_tabs = {"source": source}
+    (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
+    file = SourceFile(app, tmp_path / "slide.tex")      # holds the two open dialogs
+    file.syntax_dialog, file.ai_dialog = syntax, draft
+    app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
 
     class OpenTranscript:
         _populate_models = TranscriptTab._populate_models

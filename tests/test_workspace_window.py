@@ -91,8 +91,8 @@ def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     window.topbar._on_deck_picked(deck_key(TEST))
     assert window.state.deck is TEST
     assert window.topbar._deck_button._name.text() == "test-all"
-    assert "test deck" in window.placeholder.text()                 # it has no slide list
-    assert window.stack.currentWidget() is window.placeholder
+    assert "test deck" in window.centre.preview._page.message       # it has no slide list
+    assert window.stack.currentWidget() is window.centre
 
 
 def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, monkeypatch):
@@ -100,8 +100,8 @@ def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, 
     monkeypatch.setattr(window_module, "scan_decks", lambda: decks)
     window = build_window(monkeypatch)
     assert window.slide_list.deck is WORK
-    assert window.stack.currentWidget() is window.placeholder
-    assert "Double-click" in window.placeholder.text()
+    assert window.stack.currentWidget() is window.centre
+    assert "Double-click" in window.centre.preview._page.message
     window.state.set_deck(COURSE)
     assert window.slide_list.deck is COURSE
     decks[:] = [WORK]                                               # course archived or removed
@@ -124,7 +124,7 @@ def test_a_project_without_decks_shows_a_placeholder(qapp, monkeypatch):
     monkeypatch.setattr(window_module, "scan_decks", lambda: [])
     window = build_window(monkeypatch)
     assert window.state.deck is None
-    assert "no decks" in window.placeholder.text()
+    assert "no decks" in window.centre.preview._page.message
     assert window.topbar._deck_button._name.text() == "No deck"
     assert not window.topbar._compile.isEnabled()
 
@@ -264,23 +264,20 @@ def test_images_button_toggles_the_images_page(window, monkeypatch):
     bar._images.click()
     assert window.stack.currentWidget() is window.transcript_tab and bar._images.text() == "Close images"
     bar._images.click()
-    assert window.stack.currentWidget() is window.placeholder and bar._images.text() == "Images"
+    assert window.stack.currentWidget() is window.centre and bar._images.text() == "Images"
 
 
-def test_a_slide_editor_opens_in_the_centre_and_closing_returns_to_the_deck(window, tmp_path):
+def test_a_slide_editor_opens_in_the_centre_and_unsaved_edits_show_in_the_top_bar(window, tmp_path):
     path = tmp_path / "abc-EN-Test-current.tex"
     path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
     window.open_slide_editor(path)
-    tab = window._slide_source_tabs[path]
-    assert window.stack.currentWidget() is tab
-    assert window.topbar._save.text() == "Saved"
-    tab.widget.insertPlainText("x")
-    assert window.topbar._save.text() == "Unsaved changes"
-    tab._set_dirty(False)
-    tab.widget.document().setModified(False)
-    window.close_slide_editor_tab(tab)
-    assert window.stack.currentWidget() is window.placeholder
-    assert path not in window._slide_source_tabs and window.topbar._save.text() == "Saved"
+    file = window.centre.source.current
+    assert window.stack.currentWidget() is window.centre and window.state.mode == "source"
+    assert file.path == path and window.topbar._save.text() == "Saved"
+    file.editor.insertPlainText("x")
+    assert window.topbar._save.text() == "Unsaved changes" and window.state.dirty
+    file.editor.mark_saved()
+    assert window.topbar._save.text() == "Saved" and not window.state.dirty
 
 
 def test_opening_a_slide_focuses_it(window, monkeypatch):
@@ -312,11 +309,10 @@ def test_the_slide_list_redraws_when_a_slide_source_is_saved(window, monkeypatch
     path = tmp_path / "abc-EN-Test-current.tex"
     path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
     window.open_slide_editor(path)
-    tab = window._slide_source_tabs[path]
-    tab.widget.insertPlainText("x")
+    editor = window.centre.source.current.editor
+    editor.insertPlainText("x")
     assert redraws == []                                          # still being edited
-    tab._set_dirty(False)
-    tab.widget.document().setModified(False)                      # saved
+    editor.mark_saved()                                           # saved
     assert redraws
 
 
@@ -439,12 +435,12 @@ def test_go_to_slide_opens_an_existing_slide_and_refuses_an_unknown_one(window, 
     told: list = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *a: told.append(a[2]))
     window._on_slide_search_activated("zzz-EN-No-Such-Slide")
-    assert told and not window._slide_source_tabs
+    assert told and window.centre.source.current is None
 
     id_slug = slide_ids.list_id_slugs()[0]
     window._on_slide_search_activated(id_slug)
-    assert [p.name for p in window._slide_source_tabs] == [f"{id_slug}-current.tex"]
-    assert window.stack.currentWidget() is next(iter(window._slide_source_tabs.values()))
+    assert window.centre.source.current.path.name == f"{id_slug}-current.tex"
+    assert window.stack.currentWidget() is window.centre and window.state.mode == "source"
 
 
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):
@@ -523,3 +519,98 @@ def test_several_decks_write_the_ticked_transcripts_quietly(window, monkeypatch)
     assert jobs == []
     assert made == [("course", "after-course", True), ("slidemage-manual", "during-course", True)]
     assert "2 of 2 transcript(s)" in window.log_text.toPlainText()
+
+
+# -- the centre column in the window ---------------------------------------------------
+
+def test_the_mode_switch_of_the_top_bar_drives_the_state_and_follows_it(window):
+    bar = window.topbar
+    assert bar._modes.isEnabled() and bar._modes.current() == "preview"
+    bar._modes._buttons["source"].click()
+    assert window.state.mode == "source" and window.centre.source.isVisibleTo(window.centre)
+    window.state.set_mode("details")
+    assert bar._modes.current() == "details" and window.centre.details.isVisibleTo(window.centre)
+
+
+def test_a_saved_deck_source_goes_through_the_deck_edit_pipeline(window, tmp_path, monkeypatch):
+    from slidemage.ui.workspace import source_file
+
+    path = tmp_path / "course.tex"
+    path.write_text("\\begin{document}\n\\end{document}\n", encoding="utf-8")
+    deck = make_deck("course", ["course"])
+    deck.path = path
+    edits = []
+    monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
+    monkeypatch.setattr(source_file, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(source_file.slide_source, "BACKUPS_DIR", tmp_path / ".backups")
+    window.open_deck_source_editor(deck)
+    window.centre.source.current.editor.insertPlainText("% hand edit\n")
+    assert window.centre.source.save()
+    assert edits == [((path, "Edited course's source directly"),
+                      {"previous_text": "\\begin{document}\n\\end{document}\n"})]
+
+
+def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_path, monkeypatch):
+    from slidemage import bibliography
+
+    bib = tmp_path / "Slidemaster.bib"
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    monkeypatch.setattr(bibliography, "DEFAULT_BIB", bib)
+    sorted_ = []
+    monkeypatch.setattr(bibliography, "sort_entries", lambda: sorted_.append(True))
+    window._on_edit_bib()
+    assert sorted_ == [True] and window.centre.source.current.path == bib
+    window._on_edit_bib()                                   # already open: nothing to sort under it
+    assert sorted_ == [True]
+    window.centre.source.show_path(None)                    # leaving the clean buffer closes it
+    assert sorted_ == [True, True]
+
+
+def test_the_images_page_hides_the_centre_and_comes_back_to_it(window, monkeypatch):
+    monkeypatch.setattr(window.transcript_tab, "ensure_loaded", lambda: None)
+    window.state.set_mode("source")
+    window._toggle_images()
+    assert window.stack.currentWidget() is window.transcript_tab
+    window._toggle_images()
+    assert window.stack.currentWidget() is window.centre
+
+
+def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, monkeypatch):
+    path = tmp_path / "abc-EN-Test-current.tex"
+    path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
+    window.open_slide_editor(path)
+    editor = window.centre.source.current.editor
+    repainted = []
+    monkeypatch.setattr(editor, "refresh_colors", lambda: repainted.append(True))
+    monkeypatch.setattr(window.theme, "set_dark", lambda dark: None)     # no app-wide restyle here
+    window.set_dark_mode(True)
+    assert repainted == [True]
+    before = editor.tabStopDistance()
+    window.set_tab_width_chars(4)
+    assert editor.tabStopDistance() == pytest.approx(before * 2)
+    assert app_settings.get("tab_width_chars") == 4
+
+
+def test_the_build_options_footer_timestamp_is_the_states(window):
+    box = window.build_options.footer_timestamp_checkbox
+    assert not box.isChecked() and not window.state.footer_timestamp
+    box.setChecked(True)
+    assert window.state.footer_timestamp
+
+
+def test_closing_asks_about_a_pending_transcript_summary_too(window, monkeypatch):
+    saved = []
+    monkeypatch.setattr(window.centre.details, "flush_summary", lambda: saved.append(True))
+    window.centre.details.summary_dirty = True
+    asked = []
+
+    def answer(_parent, _title, text, *_args):
+        asked.append(text)
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(QMessageBox, "question", answer)
+    assert window._resolve_dirty_edits() is False
+    assert asked == ["Save changes in a transcript summary before closing?"] and saved == []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(window.transcript_tab, "_any_editor_dirty", lambda: False)
+    assert window._resolve_dirty_edits() is True and saved == [True]

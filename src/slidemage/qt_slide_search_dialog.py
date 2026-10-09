@@ -78,5 +78,5 @@ class SlideSearchDialog(QDialog):
 
     def _on_result_activated(self, item: QListWidgetItem) -> None:
         path = item.data(Qt.ItemDataRole.UserRole)
-        self.app.open_slide_editor(path, return_to=self.app.stack.currentWidget())
+        self.app.open_slide_editor(path)
         self.accept()

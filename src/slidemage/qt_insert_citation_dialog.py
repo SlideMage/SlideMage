@@ -1,4 +1,4 @@
-"""qt_slide_source_tab.py's own "Insert citation" button (2026-09-25,
+"""The Source view's own "Insert citation" menu entry (2026-09-25,
 direct instruction) -- search Slidemaster.bib for an existing entry and
 insert a citation call for it at the editor's own cursor, without leaving
 the app or remembering the exact key by heart. Companion to
@@ -51,10 +51,11 @@ _STYLE_BUTTONS: list[tuple[str, Optional[str]]] = [
 
 
 class InsertCitationDialog(QDialog):
-    def __init__(self, parent) -> None:
-        super().__init__(parent)
-        self.app = parent.app
-        self.editor = parent  # the SlideSourceTab -- for _replace_selection_or_insert
+    def __init__(self, app, editor) -> None:
+        """`editor` is the SourceEditor the citation is inserted into."""
+        super().__init__(app)
+        self.app = app
+        self.editor = editor
         self._entries = bibliography.load()
         self._selected_key: str | None = None
 
@@ -153,5 +154,5 @@ class InsertCitationDialog(QDialog):
         if self._selected_key is None:
             return
         text = f"\\{macro}{{{self._selected_key}}}" if macro else self._selected_key
-        self.editor._replace_selection_or_insert(text)
+        self.editor.replace_selection(text)
         self.accept()

@@ -132,3 +132,35 @@ def test_a_call_is_found_again_by_what_it_is_even_twice_in_a_deck(tmp_path, proj
     assert first[1].key != first[2].key
     moved = rows_of(deck_outline.build_outline(make_deck(tmp_path, "\\slide{new-EN-N}\n" + body), "instructor", "EN"))
     assert [r.key for r in moved[1:]] == [r.key for r in first]
+
+
+def test_a_slides_title_is_its_frame_title_else_its_slug(tmp_path, project):
+    slide(project, "aaa-EN-Quote-Demo", "\\begin{standardframe}{Risk \\& \\emph{Return}\\footnote{\\fullcite{k}}}x\\end{standardframe}\n")
+    slide(project, "bbb-EN-Only-A-Slug", "just text\n")
+    slide(project, "ccc-EN-Pinned-Old", "\\begin{standardframe}{Old title}x\\end{standardframe}\n")
+    (project / "ccc-EN-Pinned-Old-v1-0-0.tex").write_text("no frame here\n", encoding="utf-8")
+    deck = make_deck(tmp_path, "\\slide{aaa-EN-Quote-Demo}\n\\slide{bbb-EN-Only-A-Slug}\n"
+                               "\\slideversion{ccc-EN-Pinned-Old}{1-0-0}\n\\slide{ddd-EN-Gone}\n")
+    titles = [r.title for r in rows_of(deck_outline.build_outline(deck, "instructor", "EN"))]
+    assert titles == ["Risk \\& Return", "Only A Slug", "Pinned Old", "Gone"]
+
+
+def test_a_title_follows_the_file_when_it_changes(tmp_path, project):
+    slide(project, "aaa-EN-Slug", "\\begin{standardframe}{First}x\\end{standardframe}\n")
+    deck = make_deck(tmp_path, "\\slide{aaa-EN-Slug}\n")
+    assert rows_of(deck_outline.build_outline(deck, "instructor", "EN"))[0].title == "First"
+    path = project / "aaa-EN-Slug-current.tex"
+    path.write_text("\\begin{standardframe}{Second}x\\end{standardframe}\n", encoding="utf-8")
+    os.utime(path, ns=(1, path.stat().st_mtime_ns + 5_000_000_000))
+    assert rows_of(deck_outline.build_outline(deck, "instructor", "EN"))[0].title == "Second"
+
+
+def test_slide_row_is_the_outlines_row_of_the_first_call(tmp_path, project):
+    slide(project, "aaa-EN-One")
+    slide(project, "bbb-EN-Two")
+    deck = make_deck(tmp_path, "\\slide{aaa-EN-One}\n\\slide{bbb-EN-Two}\n\\slide{bbb-EN-Two}\n")
+    rows = rows_of(deck_outline.build_outline(deck, "instructor", "EN"))
+    row = deck_outline.slide_row(deck, "bbb", "instructor", "EN")
+    assert (row.call.id, row.position, row.key) == ("bbb", 2, rows[1].key)
+    assert row.title == "Title" and not row.hidden
+    assert deck_outline.slide_row(deck, "zzz", "instructor", "EN") is None

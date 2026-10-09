@@ -1,12 +1,12 @@
 """The workspace's shared state: one signal per field, emitted only on a real
-change, and the view and language remembered for each deck."""
+change, and the view, language and mode remembered for each deck."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from slidemage import app_settings
 from slidemage.deck_scan import Deck
-from slidemage.ui.workspace.state import SETTINGS_KEY, UI_LANGUAGES, VIEWS, WorkspaceState
+from slidemage.ui.workspace.state import MODES, SETTINGS_KEY, UI_LANGUAGES, VIEWS, WorkspaceState
 
 
 def make_deck(name: str, text: str = "") -> Deck:
@@ -47,13 +47,27 @@ def test_a_setter_emits_only_when_the_value_changes():
     assert focus == ["1y8"] and selection == [("1y8", "1ym")]
 
 
-def test_unknown_views_and_languages_are_ignored():
+def test_unknown_views_languages_and_modes_are_ignored():
     state = WorkspaceState()
     seen = record(state.view_changed)
     state.set_view("presenter")
     state.set_language("FR")
     state.set_language("mult")
-    assert seen == [] and (state.view, state.language) == ("instructor", "EN")
+    state.set_mode("grid")
+    assert seen == [] and (state.view, state.language, state.mode) == ("instructor", "EN", "preview")
+    assert MODES == ("preview", "split", "source", "details")
+
+
+def test_mode_and_dirty_signal_only_real_changes():
+    state = WorkspaceState()
+    modes, dirty = record(state.mode_changed), record(state.dirty_changed)
+    state.set_mode("preview")
+    state.set_mode("source")
+    state.set_mode("source")
+    state.set_dirty(False)
+    state.set_dirty(True)
+    state.set_dirty(True)
+    assert modes == ["source"] and dirty == [True]
 
 
 def test_switching_decks_resets_focus_and_selection_and_reports_each_only_if_it_changed():
@@ -86,28 +100,29 @@ def test_a_fresh_scan_of_the_open_deck_is_not_a_switch():
     assert decks == [] and focus == []
 
 
-def test_view_and_language_are_remembered_per_deck():
+def test_view_language_and_mode_are_remembered_per_deck():
     state = WorkspaceState()
     first, second = make_deck("first"), make_deck("second")
     state.set_deck(first)
     state.set_view("after-course")
     state.set_language("DE")
+    state.set_mode("split")
     state.set_deck(second)
-    assert (state.view, state.language) == ("instructor", "EN")      # a deck of its own
+    assert (state.view, state.language, state.mode) == ("instructor", "EN", "preview")   # a deck of its own
     state.set_view("during-course")
 
-    views = record(state.view_changed)
+    views, modes = record(state.view_changed), record(state.mode_changed)
     state.set_deck(first)
-    assert (state.view, state.language) == ("after-course", "DE")
-    assert views == ["after-course"]
+    assert (state.view, state.language, state.mode) == ("after-course", "DE", "split")
+    assert views == ["after-course"] and modes == ["split"]
     state.set_deck(second)
     assert state.view == "during-course"
 
     # ... and across a restart: a new state reads the same settings file
     reopened = WorkspaceState()
     reopened.set_deck(first)
-    assert (reopened.view, reopened.language) == ("after-course", "DE")
-    assert app_settings.get(SETTINGS_KEY)["first"] == {"view": "after-course", "language": "DE"}
+    assert (reopened.view, reopened.language, reopened.mode) == ("after-course", "DE", "split")
+    assert app_settings.get(SETTINGS_KEY)["first"] == {"view": "after-course", "language": "DE", "mode": "split"}
 
 
 def test_a_deck_without_a_saved_language_starts_in_its_own():

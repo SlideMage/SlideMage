@@ -44,19 +44,12 @@ VERSION_LABELS = {
 class AddSlideDialog(QDialog):
     def __init__(
         self, app, deck: Deck, insert_at: int, indent: str,
-        return_to: Optional[QWidget] = None,
     ) -> None:
         super().__init__(app)
         self.app = app
         self.deck = deck
         self.insert_at = insert_at
         self.indent = indent
-        # The page this dialog was opened from -- passed straight
-        # through to open_slide_editor() as its own return_to (2026-09-22,
-        # direct instruction: a "Create new slide" should open its source
-        # editor immediately), so closing that new editor tab lands back
-        # here, same as every other slide-editor-tab open in this app.
-        self.return_to = return_to
         self._selected_id_slug: Optional[str] = None
         self._duplicate_source_id_slug: Optional[str] = None
         self._listbox_items: list[str] = []
@@ -368,7 +361,7 @@ class AddSlideDialog(QDialog):
             source_path = slide_ids.SLIDES_DIR / f"{self._duplicate_source_id_slug}-current.tex"
             # The dialog does the actual duplication (same language, or
             # another language with an optional auto-translate pass) --
-            # same entry point as qt_slide_source_tab.py's own "Duplicate
+            # same entry point as the Details view's own "Duplicate
             # slide" button, just launched from here as a nested modal
             # instead. A cancel there (dialog.new_id_slug left None) backs
             # out of this whole "Add" click too, rather than falling
@@ -457,4 +450,4 @@ class AddSlideDialog(QDialog):
         # jump into.
         if is_new_slide:
             self.app.open_slide_editor(
-                slide_ids.SLIDES_DIR / f"{id_slug}-current.tex", return_to=self.return_to)
+                slide_ids.SLIDES_DIR / f"{id_slug}-current.tex")

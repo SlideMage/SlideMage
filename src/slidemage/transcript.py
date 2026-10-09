@@ -1634,7 +1634,7 @@ def _fill_deck_tocs(entries: list[TranscriptSlide], chapters: list[int],
 def generate_single_slide(
     source_text: str, bare_id: str, version: str, language: str
 ) -> TranscriptResult:
-    """qt_slide_source_tab.py's own "Render transcript" button (2026-08-25)
+    """The Preview's own "Render transcript" menu entry (2026-08-25)
     -- one slide's transcript entry, independent of any real deck (no
     numbering/deck title/undescribed-image-count context beyond this one
     slide), rendered exactly as generate() would render it inside a real

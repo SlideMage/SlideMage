@@ -121,12 +121,8 @@ def confirm_render(parent, app, result: CheckResult, what: str,
     return dialog.render_anyway
 
 
-def open_issue_in_editor(app, issue: LintIssue, return_to=None) -> None:
+def open_issue_in_editor(app, issue: LintIssue) -> None:
     """Open the file an issue was found in (slide, deck or fragment) and put
     the cursor on its line."""
-    if issue.path is None:
-        return
-    app.open_slide_editor(issue.path, return_to=return_to)
-    tab = app._slide_source_tabs.get(issue.path)
-    if tab is not None:
-        tab.jump_to_line(issue.line)
+    if issue.path is not None:
+        app.open_slide_editor(issue.path, line=issue.line)

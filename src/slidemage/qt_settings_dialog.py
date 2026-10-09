@@ -64,7 +64,7 @@ from .ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, OllamaPr
 from . import draft_prompts
 from . import slide_snapshot
 from . import updater
-from .qt_slide_source_tab import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
+from .latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from .qt_translation_prompts_panel import TranslationPromptsPanel
 
 
@@ -187,10 +187,9 @@ class SettingsDialog(QDialog):
         self.dark_mode_checkbox.toggled.connect(self.app.set_dark_mode)
         layout.addWidget(self.dark_mode_checkbox)
 
-        # Slide-source editor's own Tab-key width (2026-08-29, direct
-        # instruction -- was hardcoded, see qt_slide_source_tab.py's own
-        # DEFAULT_TAB_WIDTH_CHARS comment for why 80px-default-tab-stop was
-        # worth changing at all). Applied immediately (like dark mode
+        # Source editor's own Tab-key width (2026-08-29, direct
+        # instruction -- was hardcoded; Qt's own 80px default tab stop is far
+        # too wide for code, see latex_edit.DEFAULT_TAB_WIDTH_CHARS). Applied immediately (like dark mode
         # above), not deferred to this dialog's Close button -- there's
         # nothing to "commit", same reasoning as every other control here.
         tab_width_row = QHBoxLayout()

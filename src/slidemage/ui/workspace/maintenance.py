@@ -110,10 +110,10 @@ class MaintenanceMixin:
 
     def _compat_update(self, evaluation) -> None:
         app_version = version_mod.VERSION_NUMBER
-        if self._slide_source_tabs:
+        if self.centre.source.dirty_files():
             QMessageBox.information(
                 self, "Update project",
-                "Close the open slide and deck source editors first, so the update and "
+                "Save or revert the unsaved edits in the Source view first, so the update and "
                 "an editor can't overwrite each other.")
             return
         result = compat.run_update(PROJECT_ROOT, evaluation.loud)

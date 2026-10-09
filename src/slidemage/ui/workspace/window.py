@@ -6,12 +6,12 @@ the current deck, view and language; the top bar and the columns read and
 write it instead of each other.
 
 The window replaces qt_gui.py's tabbed window. The left column is the slide
-list (slide_list.py). Steps 5 to 9 replace the old tab widgets the centre
-still hosts, each marked "replaced in step N" below; until then the centre
-column is a stack holding the slide and deck source editors, the Images page
-and transcript previews. The window's other duties live in mixins next to it: compile
-orchestration (compile_jobs.py), deck actions (deck_actions.py) and project
-maintenance (maintenance.py).
+list (slide_list.py), the centre the Preview / Source / Split / Details views
+of the focused slide (centre.py). Steps 9 and 10 replace the old pages the
+centre column's stack still hosts, each marked "replaced in step N" below:
+the Images page and the transcript previews. The window's other duties live
+in mixins next to it: compile orchestration (compile_jobs.py), deck actions
+(deck_actions.py) and project maintenance (maintenance.py).
 """
 from __future__ import annotations
 
@@ -40,22 +40,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, bibliography, compile_progress, deck_headers, latex_lint, project
-from ... import qt_render_check, qt_slide_source_tab, slide_ids, slide_preview, slide_snapshot, updater
+from ... import app_settings, bibliography, compile_progress, deck_headers, latex_edit, project, slide_ids, updater
 from ... import version as version_mod
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
 from ...qt_add_slide_dialog import AddSlideDialog
 from ...qt_import_dialog import ImportPresentationDialog
 from ...qt_settings_dialog import SettingsDialog
-from ...qt_slide_preview_popup import SlidePreviewPopup
 from ...qt_slide_search_dialog import SlideSearchDialog
-from ...qt_slide_source_tab import SlideSourceTab
 from ...qt_transcript_preview_tab import TranscriptPreviewTab
 from ...qt_transcript_tab import TranscriptTab
 from ...slide_ids import SLIDES_DIR
 from ...slide_language import bare_id
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
+from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin, CompileSignals
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
@@ -93,9 +91,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         # must not ask a second time.
         self._dirty_edits_resolved_for_close = False
         self.decks: list[Deck] = []
-        # Keyed by path, deduping already-open pages -- reselecting an
-        # already-open slide editor instead of reopening it.
-        self._slide_source_tabs: dict[Path, SlideSourceTab] = {}
         # Keyed by slide bare id, not path -- a transcript preview has no
         # file of its own to dedupe on, and re-clicking "Render transcript"
         # for the same slide should refresh its existing page rather than
@@ -122,9 +117,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self._after_snapshots: Optional[Callable[[list], None]] = None
 
         self.state = WorkspaceState(self)
-        self.build_options = BuildOptionsDialog(self)
-        # Read by the slide editor tab (replaced in step 5).
-        self.footer_timestamp_checkbox = self.build_options.footer_timestamp_checkbox
+        self.build_options = BuildOptionsDialog(self, self.state)
 
         central = QWidget()
         outer = QVBoxLayout(central)
@@ -144,13 +137,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.slide_list.compile_pages.connect(
             self._compile_slides)
         self.side_column = QWidget()
-        # Centre: a stack of the pages below -- replaced in step 5 (source
-        # editor), step 9 (Images page).
+        # Centre: the views of the focused slide, or one of the pages below
+        # (replaced in step 9: the Images page).
         self.stack = QStackedWidget()
-        self.placeholder = QLabel()
-        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder.setWordWrap(True)
-        self.stack.addWidget(self.placeholder)
+        self.centre = CentreColumn(self, self.state)
+        self.stack.addWidget(self.centre)
         # Its own first scan reads every slide that includes an image and
         # hashes those images' bytes (~1s) and syncs the store -- deferred to
         # the first time the page is shown (_on_page_changed) rather than
@@ -179,7 +170,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             "open_pdf": self._for_deck(self._on_open_latest_pdf),
             "deck_settings": self._for_deck(self._on_deck_settings),
             "admin_slides": self._for_deck(self._on_admin_slides),
-            "deck_source": lambda: self.open_deck_source_editor(self.state.deck, self.placeholder),
+            "deck_source": lambda: self.open_deck_source_editor(self.state.deck),
             "deck_tags": self._for_deck(self._on_edit_deck_tags),
             "duplicate_deck": self._for_deck(self._on_duplicate_deck),
             "export_pptx": self._for_deck(self._on_export_pptx),
@@ -204,7 +195,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             "exit": self.close,
         }
         self.topbar.command.connect(self._on_command)
-        self.state.deck_changed.connect(self._show_deck)
+        self.state.deck_changed.connect(self._remember_deck)
+        self.state.dirty_changed.connect(self._on_dirty_changed)
+        self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
+        self.centre.source.file_closed.connect(self._on_source_closed)
         # Ctrl+Shift+F is the same shortcut whichever widget has focus, since
         # this is a project-wide search, not scoped to whatever's open.
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self._on_open_slide_search)
@@ -296,22 +290,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         first_active = next((d for d in self.decks if not d.archived), None)
         self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
         self.slide_list.rebuild()   # a fresh scan of the open deck is no switch (state.set_deck)
+        self.centre.refresh()
 
-    def _show_deck(self, deck: Optional[Deck]) -> None:
-        """The current deck changed: the slide list shows its slides itself; the
-        centre says what to do (replaced by the preview in step 5). A test deck has
-        no slide list (its slides come from a shared fragment); compile it from the top bar."""
-        if deck is None:
-            self.placeholder.setText("This project has no decks yet.")
-        elif deck.is_test_deck:
+    def _remember_deck(self, deck: Optional[Deck]) -> None:
+        if deck is not None:
             app_settings.set(LAST_DECK_KEY, deck.name)
-            self.placeholder.setText(
-                f"{deck.name} is a test deck: it has no slide list. Compile it from "
-                "the top bar, or edit its source from the ⋮ menu.")
-        else:
-            app_settings.set(LAST_DECK_KEY, deck.name)
-            self.placeholder.setText("Double-click a slide in the list to open its source.")
-        self.stack.setCurrentWidget(self.placeholder)
 
     def _on_refresh_decks_clicked(self) -> None:
         """⋮ -> "Refresh decks": a wait cursor for the duration of the rescan,
@@ -343,7 +326,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(
-            self.placeholder if self.stack.currentWidget() is self.transcript_tab else self.transcript_tab)
+            self.centre if self.stack.currentWidget() is self.transcript_tab else self.transcript_tab)
 
     def open_images_for_slide(self, id_slug: str) -> None:
         """The slide list's "Images" entry (2026-09-19, direct instruction):
@@ -354,76 +337,24 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.transcript_tab.ensure_loaded()
         self.transcript_tab._find_and_show_slide(id_slug)
 
-    def show_slide_preview(self, deck: Deck, call, position: int) -> None:
-        """The slide list's "Preview" entry: the slide's cached snapshot in a popup,
-        with "Render now" (replaced by the Preview tab in step 5)."""
-        path = SLIDES_DIR / call.source_filename
-        popup = SlidePreviewPopup(
-            self, call.id, path,
-            render_fn=lambda: slide_preview.render_slide_to_pdf(
-                call.macro, call.id_slug, call.version, call.conditions,
-                footer_timestamp=self.footer_timestamp_checkbox.isChecked(),
-                preamble_text=deck.preamble_text, frame_number=position,
-                log=self.signals.log.emit, steps=call.steps),
-            template=slide_snapshot.detect_template(deck.preamble_text),
-            precheck_fn=lambda: qt_render_check.confirm_render(
-                self, self, latex_lint.check_slide_files([path]), path.name,
-                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)),
-        )
-        popup.exec()
-        self.slide_list.rebuild()   # "Render now" may have captured the slide's first thumbnail
-
     def open_slide_editor(
-        self,
-        path: Path,
-        on_saved: Optional[Callable[[str], None]] = None,
-        return_to: Optional[QWidget] = None,
+        self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
     ) -> None:
-        existing = self._slide_source_tabs.get(path)
-        if existing is not None:
-            if return_to is not None:
-                existing.return_to = return_to
-            self.stack.setCurrentWidget(existing)
-            return
-        tab = SlideSourceTab(self, path, on_saved=on_saved, return_to=return_to)
-        self._slide_source_tabs[path] = tab
-        self.stack.addWidget(tab)
-        self.stack.setCurrentWidget(tab)
-        tab.widget.document().modificationChanged.connect(self._update_save_status)
-        if path.parent == SLIDES_DIR:
-            self.state.set_focused_slide(bare_id(path.name))
+        """Show a file in the Source view: a slide, a deck's own source or Slidemaster.bib.
+        `on_saved(previous_text)` runs after each save; `line` puts the cursor there."""
+        self.stack.setCurrentWidget(self.centre)
+        self.centre.open_file(path, on_saved, line)
 
-    def rename_slide_editor_tab(self, tab: SlideSourceTab, new_path: Path) -> None:
-        """Re-key _slide_source_tabs after slide_rename.set_slide_language()
-        moves a slide's own file out from under an already-open editor tab
-        (2026-08-24) -- SlideSourceTab._on_set_language calls this right
-        after a successful rename, so open_slide_editor()'s own
-        already-open-tab dedup (keyed by path) keeps working against the
-        file's *new* name instead of pointing at a path that no longer
-        exists on disk."""
-        self._slide_source_tabs.pop(tab.path, None)
-        self._slide_source_tabs[new_path] = tab
-
-    def close_slide_editor_tab(self, tab: SlideSourceTab) -> None:
-        # Return to whichever page this slide was (most recently) opened
-        # from, if it's still there; else to the centre's start page.
-        target = tab.return_to if tab.return_to is not None and self.stack.indexOf(tab.return_to) != -1 \
-            else self.placeholder
-        self._slide_source_tabs.pop(tab.path, None)
-        self.stack.setCurrentWidget(target)
-        self._discard(tab)
-        self._update_save_status()
-        # Close-side half of the open-side sort in _on_edit_bib(): both
-        # SlideSourceTab's own "Close" (discards any unsaved edit) and
-        # "Close and save" paths funnel through here already, so by this
-        # point the file on disk already reflects whatever the user meant
-        # to keep -- sorting it now catches any entry added/reordered
-        # during this session without needing a manual sort_bib.py run.
-        if tab.path == bibliography.DEFAULT_BIB:
+    def _on_source_closed(self, path: Path) -> None:
+        """Close-side half of the open-side sort in _on_edit_bib(): the file on disk
+        already holds whatever the user meant to keep, so sorting it now catches
+        any entry added or reordered during the session without a manual
+        sort_bib.py run."""
+        if path == bibliography.DEFAULT_BIB:
             bibliography.sort_entries()
 
     def open_transcript_preview(self, key: str, title: str) -> TranscriptPreviewTab:
-        """SlideSourceTab's own "Render transcript" button (2026-08-25) --
+        """The Preview's "Render transcript" (2026-08-25) --
         `key` is the slide's bare id, so re-rendering the same slide
         refreshes its existing page (via the caller's own set_html() call
         right after this returns) instead of piling up duplicates."""
@@ -441,12 +372,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         for key, existing in list(self._transcript_preview_tabs.items()):
             if existing is tab:
                 del self._transcript_preview_tabs[key]
-        self.stack.setCurrentWidget(self.placeholder)
+        self.stack.setCurrentWidget(self.centre)
         self._discard(tab)
 
-    def _update_save_status(self, *_args) -> None:
-        dirty = any(tab._dirty for tab in self._slide_source_tabs.values())
-        self.topbar.set_save_status("Unsaved changes" if dirty else "Saved")
+    def _on_dirty_changed(self, dirty: bool) -> None:
         if not dirty:
             self.slide_list.rebuild()   # a save changes lint errors and stale previews
 
@@ -472,7 +401,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if not path.is_file():
             QMessageBox.warning(self, "Go to slide", f"There is no slide named {id_slug}.")
             return
-        self.open_slide_editor(path, return_to=self.stack.currentWidget())
+        self.open_slide_editor(path)
 
     def _on_open_slide_search(self) -> None:
         SlideSearchDialog(self).exec()
@@ -495,16 +424,16 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def _resolve_dirty_edits(self) -> bool:
         """Return False when the user cancels or any requested save fails."""
-        dirty_source_tabs = sorted(
-            (tab for tab in self._slide_source_tabs.values() if tab._dirty),
-            key=lambda tab: str(tab.path),
-        )
-        if dirty_source_tabs:
+        dirty_files = self.centre.source.dirty_files()
+        summary = self.centre.details.summary_dirty
+        if dirty_files or summary:
+            unsaved = [f"{len(dirty_files)} unsaved file{'s' if len(dirty_files) != 1 else ''}"] if dirty_files else []
+            if summary:
+                unsaved.append("a transcript summary")
             choice = QMessageBox.question(
                 self,
                 "Unsaved source edits",
-                f"Save changes in {len(dirty_source_tabs)} open source "
-                f"editor{'s' if len(dirty_source_tabs) != 1 else ''} before closing?",
+                f"Save changes in {' and '.join(unsaved)} before closing?",
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.No
                 | QMessageBox.StandardButton.Cancel,
@@ -512,19 +441,20 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             if choice == QMessageBox.StandardButton.Cancel:
                 return False
             if choice == QMessageBox.StandardButton.Yes:
-                for tab in dirty_source_tabs:
+                for file in dirty_files:
                     try:
-                        saved = tab._on_save()
+                        saved = file.save()
                     except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
                         QMessageBox.critical(
                             self, "Save failed",
-                            f"Could not save {tab.path.name}: {exc}",
+                            f"Could not save {file.path.name}: {exc}",
                         )
                         return False
-                    # _on_save() returns False on a cancelled version dialog,
+                    # save() returns False on a cancelled version dialog,
                     # stale disk content, or any other handled save failure.
-                    if not saved or tab._dirty:
+                    if not saved or file.dirty:
                         return False
+                self.centre.details.flush_summary()
 
         # Image descriptions have their own Save draft action and shared
         # alt-text store. Resolve those edits before the window disappears.
@@ -603,11 +533,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         dialog.exec()
         models = dialog.available_models
         self.transcript_tab.refresh_model_preferences(models, dialog.vision_models)
-        for source_tab in self._slide_source_tabs.values():
-            for name in ("_syntax_check_dialog", "_ai_draft_dialog"):
-                open_dialog = getattr(source_tab, name, None)
-                if open_dialog is not None:
-                    open_dialog.refresh_model_preference(models)
+        self.centre.refresh_model_preferences(models)
 
     def set_dark_mode(self, checked: bool) -> None:
         """Public (2026-08-25): called from the Settings dialog's own
@@ -617,11 +543,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.theme.set_dark(checked)
         # QSS covers every ordinary widget automatically, but a
         # QSyntaxHighlighter's own tag colors live on the text document,
-        # outside the stylesheet mechanism entirely -- each open slide
-        # editor's highlighter needs an explicit nudge to pick up the new
-        # palette and re-run.
-        for tab in self._slide_source_tabs.values():
-            tab.highlighter.refresh_colors()
+        # outside the stylesheet mechanism entirely -- each open editor's
+        # highlighter needs an explicit nudge to pick up the new palette and re-run.
+        self.centre.refresh_colors()
 
     def set_tab_width_chars(self, chars: int) -> None:
         """Called from the Settings dialog's own tab-width spinbox
@@ -629,9 +553,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         persist the choice (app_settings.py), then nudge every already-open
         slide/deck-source editor to pick it up immediately rather than only
         on next open."""
-        app_settings.set(qt_slide_source_tab.TAB_WIDTH_SETTING_KEY, chars)
-        for tab in self._slide_source_tabs.values():
-            tab.refresh_tab_width()
+        app_settings.set(latex_edit.TAB_WIDTH_SETTING_KEY, chars)
+        self.centre.set_tab_width(chars)
 
     def after_deck_edit(
         self, deck_path: Path, summary: str, previous_text: Optional[str] = None
@@ -695,7 +618,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ===="
         )
 
-    def open_deck_source_editor(self, deck: Deck, return_to: Optional[QWidget] = None) -> None:
+    def open_deck_source_editor(self, deck: Deck) -> None:
         """⋮ -> "Edit deck source" -- opens the deck's raw .tex file in the same
         editor used for a slide's own source. A save is routed through the same
         after_deck_edit() pipeline every list action already uses, so a hand-edit
@@ -706,16 +629,14 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             on_saved=lambda previous_text: self.after_deck_edit(
                 deck.path, f"Edited {deck.name}'s source directly", previous_text=previous_text
             ),
-            return_to=return_to,
         )
 
     def _on_edit_bib(self) -> None:
         """"⋮ -> "Edit .bib" (a plain toolbar button until
-        2026-08-25) -- opens Slidemaster.bib in the same editor tab used
+        2026-08-25) -- opens Slidemaster.bib in the same editor used
         for a slide's/deck's own .tex source. That editor
-        already degrades gracefully for a non-slide path (no Preview/
-        Render/transcript-summary controls, see SlideSourceTab's own
-        _is_slide check), so no separate editor was needed just for this.
+        already degrades gracefully for a non-slide path, so no separate
+        editor was needed just for this.
 
         Sorted on disk *before* opening (2026-08-18, direct instruction:
         keep Slidemaster.bib sorted automatically on open/close of this tab
@@ -723,10 +644,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         creating a new tab, not when this just re-focuses an already-open
         one, so a mid-edit buffer is never silently reloaded out from under
         the user. The matching close-side sort lives in
-        close_slide_editor_tab()."""
-        if bibliography.DEFAULT_BIB not in self._slide_source_tabs:
+        _on_source_closed()."""
+        if self.centre.source.file_for(bibliography.DEFAULT_BIB) is None:
             bibliography.sort_entries()
-        self.open_slide_editor(bibliography.DEFAULT_BIB, return_to=self.stack.currentWidget())
+        self.open_slide_editor(bibliography.DEFAULT_BIB)
 
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
@@ -735,12 +656,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
             return
-        self.open_slide_editor(path, return_to=self.stack.currentWidget())
+        self.open_slide_editor(path)
 
-    def open_add_slide_dialog(
-        self, deck: Deck, insert_at: int, indent: str, return_to: Optional[QWidget] = None,
-    ) -> None:
-        dialog = AddSlideDialog(self, deck, insert_at, indent, return_to=return_to)
+    def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str) -> None:
+        dialog = AddSlideDialog(self, deck, insert_at, indent)
         dialog.exec()
 
     def _build_snapshot_banner(self) -> Optional[QLabel]:

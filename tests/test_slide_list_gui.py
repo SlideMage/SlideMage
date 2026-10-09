@@ -52,9 +52,6 @@ class FakeWindow:
     def open_slide_editor(self, path, **_kwargs):
         self.opened.append(path)
 
-    def show_slide_preview(self, deck, call, position):
-        self.opened.append(("preview", call.id, position))
-
     def open_images_for_slide(self, id_slug):
         self.opened.append(("images", id_slug))
 
@@ -452,10 +449,14 @@ def test_the_slide_menu_hides_a_slide_in_one_view_and_opens_the_other_tools(make
     assert [e[2] for e in slide_list._slide_menu(row)._entries if e[0] == "item" and e[1] == "visible:during-course"] \
         == ["Show in During course"]
     slide_list._run("preview", [row])
+    assert (slide_list.state.focused_slide, slide_list.state.mode) == ("aaa", "preview")
+    slide_list.state.set_mode("details")
+    slide_list._run("preview", [row])
+    assert slide_list.state.mode == "preview"
     slide_list._run("images", [row])
     slide_list._run("open", [row])
-    assert window.opened[0] == ("preview", "aaa", 1) and window.opened[1] == ("images", "aaa-First")
-    assert window.opened[2].name == "aaa-First-current.tex"
+    assert window.opened[0] == ("images", "aaa-First")
+    assert window.opened[1].name == "aaa-First-current.tex"
     # adding next to a slide, or a section before it
     slide_list._run("before", [row])
     slide_list._run("after", [row])

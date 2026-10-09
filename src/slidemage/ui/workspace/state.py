@@ -3,11 +3,12 @@
 One object that the top bar, the slide list, the centre column and the side
 panels all read and write, instead of reaching into each other: the current
 deck, the focused slide, the view being edited (Instructor / During-course /
-After-course), the language being edited (EN / DE) and the selected slides.
+After-course), the language being edited (EN / DE), the selected slides, what the centre shows
+(Preview / Split / Source / Details) and whether any source has unsaved edits.
 Each field has a setter and one signal; a setter that would not change the
 value does nothing, so listeners can connect without guarding against loops.
 
-The view and the language are remembered per deck in the project's app
+The view, the language and the centre's mode are remembered per deck in the project's app
 settings (app_settings.py, the same JSON file as the other UI preferences),
 so reopening a deck brings back the view you left it in.
 """
@@ -23,10 +24,11 @@ from ...slide_language import LANGUAGES
 from ...transcript import VERSION_AFTER, VERSION_DURING, VERSION_INSTRUCTOR
 
 VIEWS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
+MODES = ("preview", "split", "source", "details")
 # "mult" marks a slide that is the same in every language: not a language to edit in.
 UI_LANGUAGES = tuple(lang for lang in LANGUAGES if lang != "mult")
 
-# {deck name: {"view": ..., "language": ...}} in app_settings.json.
+# {deck name: {"view": ..., "language": ..., "mode": ...}} in app_settings.json.
 SETTINGS_KEY = "workspace_decks"
 
 
@@ -36,6 +38,8 @@ class WorkspaceState(QObject):
     view_changed = Signal(str)
     language_changed = Signal(str)
     selection_changed = Signal(object)       # tuple of bare slide ids
+    mode_changed = Signal(str)
+    dirty_changed = Signal(bool)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -44,6 +48,11 @@ class WorkspaceState(QObject):
         self.view = VERSION_INSTRUCTOR
         self.language = UI_LANGUAGES[0]
         self.selection: tuple[str, ...] = ()
+        self.mode = MODES[0]
+        self.dirty = False   # some source or transcript summary has unsaved edits
+        # The Build options' "Include footer timestamp", which the Preview renders with too.
+        # Read when a render starts, so it has no signal.
+        self.footer_timestamp = False
 
     def set_deck(self, deck: Optional[Deck]) -> None:
         """Switch decks: the view and language come back from the settings
@@ -53,13 +62,14 @@ class WorkspaceState(QObject):
         if deck is not None and self.deck is not None and deck.path == self.deck.path:
             self.deck = deck
             return
-        before = (self.focused_slide, self.selection, self.view, self.language)
+        before = (self.focused_slide, self.selection, self.view, self.language, self.mode)
         self.deck = deck
         remembered = self._remembered(deck)
         self.focused_slide, self.selection = None, ()
         self.view = remembered["view"] if remembered.get("view") in VIEWS else VERSION_INSTRUCTOR
         self.language = remembered["language"] if remembered.get("language") in UI_LANGUAGES \
             else self._deck_language(deck)
+        self.mode = remembered["mode"] if remembered.get("mode") in MODES else MODES[0]
         self.deck_changed.emit(deck)
         if before[0] is not None:
             self.focused_slide_changed.emit(None)
@@ -69,6 +79,8 @@ class WorkspaceState(QObject):
             self.view_changed.emit(self.view)
         if before[3] != self.language:
             self.language_changed.emit(self.language)
+        if before[4] != self.mode:
+            self.mode_changed.emit(self.mode)
 
     def set_focused_slide(self, slide_id: Optional[str]) -> None:
         if slide_id != self.focused_slide:
@@ -86,6 +98,20 @@ class WorkspaceState(QObject):
             self.language = language
             self._remember("language", language)
             self.language_changed.emit(language)
+
+    def set_mode(self, mode: str) -> None:
+        if mode in MODES and mode != self.mode:
+            self.mode = mode
+            self._remember("mode", mode)
+            self.mode_changed.emit(mode)
+
+    def set_dirty(self, dirty: bool) -> None:
+        if dirty != self.dirty:
+            self.dirty = dirty
+            self.dirty_changed.emit(dirty)
+
+    def set_footer_timestamp(self, enabled: bool) -> None:
+        self.footer_timestamp = enabled
 
     def set_selection(self, slide_ids: tuple[str, ...]) -> None:
         slide_ids = tuple(slide_ids)

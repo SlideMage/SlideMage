@@ -9,12 +9,13 @@ import pytest
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QMessageBox, QPlainTextEdit, QWidget
 
-from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_slide_source_tab, qt_transcript_tab
+from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_transcript_tab
 from slidemage.ui.workspace import maintenance, window as window_module
 from slidemage.ai.providers import OllamaProvider
 from slidemage.ai_draft import DraftProposal
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
+from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
 
 from conftest import build_window
 
@@ -41,67 +42,67 @@ def _write_slide(path: Path, text: str = "\\slide{abc-EN-Test}\nBODY\n") -> Path
 def _open_dirty_source(window, path: Path, monkeypatch):
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
     window.open_slide_editor(path)
-    tab = window._slide_source_tabs[path]
-    cursor = tab.widget.textCursor()
+    file = window.centre.source.current
+    cursor = file.editor.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)
     cursor.insertText("\n% unsaved edit")
-    tab.widget.setTextCursor(cursor)
-    assert tab._dirty
-    return tab
+    file.editor.setTextCursor(cursor)
+    assert file.dirty
+    return file
 
 
 def test_main_window_cancel_keeps_dirty_source_open(monkeypatch, qapp, tmp_path):
     window = _make_window(monkeypatch, qapp)
-    tab = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
-    save_called = False
-    tab._on_save = lambda: save_called  # must not run after Cancel
+    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
+    saved = []
+    file.save = lambda: saved.append(True)  # must not run after Cancel
     monkeypatch.setattr(
         QMessageBox, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Cancel,
     )
 
     assert window.close() is False
-    assert tab._dirty
-    assert not save_called
+    assert file.dirty
+    assert not saved
 
 
 def test_main_window_saves_dirty_source_before_close(monkeypatch, qapp, tmp_path):
     window = _make_window(monkeypatch, qapp)
-    tab = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
+    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     calls = []
 
     def save_without_disk_write():
-        calls.append(tab.path)
-        tab._set_dirty(False)
+        calls.append(file.path)
+        file.editor.mark_saved()
         return True
 
-    tab._on_save = save_without_disk_write
+    file.save = save_without_disk_write
     monkeypatch.setattr(
         QMessageBox, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
 
     assert window.close() is True
-    assert calls == [tab.path]
-    assert not tab._dirty
+    assert calls == [file.path]
+    assert not file.dirty
 
 
 def test_main_window_stays_open_when_source_save_is_cancelled(monkeypatch, qapp, tmp_path):
     window = _make_window(monkeypatch, qapp)
-    tab = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
+    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     monkeypatch.setattr(
         QMessageBox, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
-    tab._on_save = lambda: False
+    file.save = lambda: False
 
     assert window.close() is False
-    assert tab._dirty
+    assert file.dirty
 
 
 def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, tmp_path):
     window = _make_window(monkeypatch, qapp)
-    tab = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
+    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     chosen = tmp_path / "another-project"
     monkeypatch.setattr(window_module.project, "pick_or_create_project", lambda *args: chosen)
     relaunched = []
@@ -118,7 +119,7 @@ def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, t
 
     assert titles == ["Open project", "Unsaved source edits"]
     assert relaunched == [chosen]
-    assert tab._dirty  # the explicit Discard choice applies to this relaunch
+    assert file.dirty  # the explicit Discard choice applies to this relaunch
     assert window.isHidden()
 
 
@@ -459,17 +460,14 @@ def test_individual_translation_keeps_fields_typed_after_request(monkeypatch, qa
 def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
     _mock_ollama_lists(monkeypatch)
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["offline-test"])
-    monkeypatch.setattr(app_settings, "get", lambda _key: None)
+    monkeypatch.setattr(app_settings, "get", lambda _key, default=None: default)
 
-    class SourceTab(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.app = SimpleNamespace(
-                try_start_ollama_task=lambda _label: True,
-                end_ollama_task=lambda: None,
-                log=lambda _line: None,
-            )
-            self.widget = QPlainTextEdit("original source", self)
+    app = QWidget()
+    app.try_start_ollama_task = lambda _label: True
+    app.end_ollama_task = lambda: None
+    app.log = lambda _line: None
+    editor = LatexPlainTextEdit(ThemeManager())
+    editor.set_text("original source")
 
     class FakeDrafter:
         def __init__(self, *_args, **_kwargs):
@@ -483,38 +481,45 @@ def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
             )
 
     monkeypatch.setattr(qt_ai_draft_dialog.ai_draft, "SlideDrafter", FakeDrafter)
-    source_tab = SourceTab()
-    dialog = qt_ai_draft_dialog.AiDraftDialog(source_tab, "test.tex")
+    dialog = qt_ai_draft_dialog.AiDraftDialog(app, editor, "test.tex")
     dialog.prompt_edit.setPlainText("add a line")
     dialog._on_generate()
     assert dialog._proposal_baseline == "original source"
-    source_tab.widget.setPlainText("original source\nmanual edit")
+    editor.set_text("original source\nmanual edit")
 
     dialog._on_accept()
 
-    assert source_tab.widget.toPlainText() == "original source\nmanual edit"
+    assert editor.text() == "original source\nmanual edit"
     assert not dialog.accept_button.isEnabled()
     assert "source changed" in dialog.status_label.text().lower()
 
 
-def test_minimal_replacement_uses_utf16_offsets_and_keeps_cursor(monkeypatch, qapp, tmp_path):
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
-    path = _write_slide(
-        tmp_path / "abc-EN-Emoji-current.tex",
-        "😀\n\\setSlideVersion{1.0.0}\nBODY",
-    )
-    app = SimpleNamespace(theme=ThemeManager(), log=lambda _line: None)
-    tab = qt_slide_source_tab.SlideSourceTab(app, path)
-    old = tab.widget.toPlainText()
-    new = old.replace("1.0.0", "12.0.1")
-    cursor = tab.widget.textCursor()
-    cursor.movePosition(QTextCursor.MoveOperation.End)
-    tab.widget.setTextCursor(cursor)
+def test_an_accepted_ai_proposal_replaces_the_buffer_in_one_undo_step(monkeypatch, qapp):
+    _mock_ollama_lists(monkeypatch)
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["offline-test"])
+    monkeypatch.setattr(app_settings, "get", lambda _key, default=None: default)
+    app = QWidget()
+    app.try_start_ollama_task = lambda _label: True
+    app.end_ollama_task = lambda: None
+    app.log = lambda _line: None
+    editor = LatexPlainTextEdit(ThemeManager())
+    editor.set_text("original source")
 
-    tab._apply_minimal_text_replace(old, new)
+    class FakeDrafter:
+        def __init__(self, *_args, **_kwargs):
+            pass
 
-    assert tab.widget.toPlainText() == new
-    assert tab.widget.textCursor().position() == len(new.encode("utf-16-le")) // 2
+        def draft(self, current_text, _prompt):
+            return DraftProposal(proposed_text=current_text + "\nAI proposal", model="offline-test", elapsed_s=0.1)
+
+    monkeypatch.setattr(qt_ai_draft_dialog.ai_draft, "SlideDrafter", FakeDrafter)
+    dialog = qt_ai_draft_dialog.AiDraftDialog(app, editor, "test.tex")
+    dialog.prompt_edit.setPlainText("add a line")
+    dialog._on_generate()
+    dialog._on_accept()
+    assert editor.text() == "original source\nAI proposal" and editor.is_modified()
+    editor.undo()
+    assert editor.text() == "original source"
 
 
 def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp, tmp_path):

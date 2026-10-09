@@ -1,9 +1,9 @@
 """Render a single slide to a standalone, temporary PDF and open it --
-available from both the deck slide-list editor (deck_editor_tab.py, using
-that deck's own preamble so theme/colors/footer match how the slide
-actually looks in context) and the slide-source editor (slide_source_tab.py,
-which has no owning deck, so it falls back to a generic standalone
-preamble matching decks/test.tex, this project's own demo deck).
+used by the workspace's Preview (ui/workspace/preview_view.py, through
+preview_target.py) with the open deck's own preamble, so theme/colors/footer
+match how the slide actually looks in context. A slide that is in no deck
+falls back to a generic standalone preamble matching decks/test.tex, this
+project's own demo deck.
 
 Reuses compiler.py's own _build_env()/FATAL_ERROR_RE (the Git-for-Windows
 Perl PATH fix and the "trust the log, not the exit code" pass/fail check --
@@ -421,6 +421,7 @@ def render_slide_to_pdf(
     steps: Optional[str] = None,
     reuse_build: bool = True,
     overlay: Optional[int] = None,
+    capture_snapshot: bool = True,
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -442,14 +443,15 @@ def render_slide_to_pdf(
 
     reuse_build retains dependency-checked auxiliary state between requests.
     overlay selects a positive reveal number per frame; None keeps all pages.
-    Explicit overlay selections do not update canonical snapshots.
+    Explicit overlay selections do not update canonical snapshots, and neither
+    does `capture_snapshot=False` (a frozen version looked at on its own is not
+    what the slide's thumbnail should show).
 
     `footer_timestamp` (2026-08-30, direct report) mirrors the main
     toolbar's own "Include footer timestamp" checkbox, the same
     _footer_timestamp_line hook render_slide_text_to_pdf's own docstring
-    already explains -- this function (the "Preview" popup's "Render now",
-    used by both qt_slide_source_tab.py's own _on_preview() and
-    qt_deck_editor_tab.py's _render_to_pdf()) ignored it entirely too,
+    already explains -- this function (the Preview's "Render now",
+    preview_target.render()) ignored it entirely too,
     always showing the timestamp regardless of the checkbox's state; the
     2026-08-26 fix only reached render_slide_text_to_pdf's own separate
     "Render to PDF" button, this sibling function was missed.
@@ -481,7 +483,7 @@ def render_slide_to_pdf(
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
-        if deck_version in (None, "instructor") and overlay is None else None
+        if capture_snapshot and deck_version in (None, "instructor") and overlay is None else None
     )
     return _compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
@@ -547,7 +549,7 @@ def render_slide_text_to_pdf(
     _compile_and_extract() without a `snapshot_template`, so it silently
     skipped the capture_single_slide() side effect that
     render_slide_to_pdf() above already documents and performs; the
-    "Preview" popup (qt_slide_preview_popup.py's _load_image()) reads
+    Preview (preview_target.cached_image()) reads
     exactly that cached PNG, so it never found one. Same
     instructor-version-only guard as render_slide_to_pdf(), for the same
     reason: an explicit during-course/after-course request is a

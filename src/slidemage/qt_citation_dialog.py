@@ -1,4 +1,4 @@
-"""qt_slide_source_tab.py's own "Add reference" button (2026-09-23, direct
+"""The Source view's own "Add reference" menu entry (2026-09-23, direct
 instruction; renamed from "Add citation" 2026-09-25, direct instruction,
 once qt_insert_citation_dialog.py's own "Insert citation" gave the word
 "citation" a second, different meaning in the same toolbar -- this one
@@ -111,9 +111,9 @@ def _make_field(name: str) -> QLineEdit:
 
 
 class CitationDialog(QDialog):
-    def __init__(self, parent) -> None:
-        super().__init__(parent)
-        self.app = parent.app
+    def __init__(self, app) -> None:
+        super().__init__(app)
+        self.app = app
         self._key_manually_edited = False
         self.new_key: Optional[str] = None
 

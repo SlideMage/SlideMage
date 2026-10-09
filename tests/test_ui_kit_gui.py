@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.fonts import FONT_DIR, load_fonts
@@ -15,6 +15,7 @@ from slidemage.ui.kit.gallery import KitGallery
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.tokens import DARK, FONT_ICONS, FONT_MONO, FONT_SANS, LIGHT, tokens_for, with_alpha
 from slidemage.ui.kit.widgets import (
+    Button,
     Card,
     Chip,
     IconButton,
@@ -23,6 +24,7 @@ from slidemage.ui.kit.widgets import (
     PopoverMenu,
     SegmentedControl,
     SplitButton,
+    Surface,
     Toast,
 )
 
@@ -130,6 +132,19 @@ def test_popover_menu_triggers_and_skips_disabled(theme):
     menu.popup_at(QPoint(10, 10))
     QTest.mouseClick(menu._rows[0], Qt.MouseButton.LeftButton)
     assert seen == ["b", "a"]
+
+
+def test_menu_row_swatch_and_compact_button_and_surface(theme):
+    menu = PopoverMenu()
+    menu.add_item("red", "c_secondary_red", swatch="#e4684b")
+    menu.add_item("plain", "Plain")
+    menu.popup_at(QPoint(10, 10))
+    swatches = menu.findChildren(QFrame, kit_qss.MENU_SWATCH)
+    assert len(swatches) == 1 and "#e4684b" in swatches[0].styleSheet()
+    menu.close()
+    assert Button("Save", "primary", compact=True).property("compact") is True
+    assert Button("Save").property("compact") is False
+    assert Surface().objectName() == kit_qss.SURFACE
 
 
 def test_split_button_main_and_caret(theme):

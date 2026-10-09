@@ -425,7 +425,8 @@ class SlideList(QWidget):
         elif name == "open":
             self._open_source(target)
         elif name == "preview":
-            self.app.show_slide_preview(self.deck, target.call, target.position)
+            self.state.set_focused_slide(target.call.id)
+            self.state.set_mode("preview")
         elif name == "images":
             self.app.open_images_for_slide(target.call.id_slug)
         elif name == "variant":

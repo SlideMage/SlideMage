@@ -213,6 +213,24 @@ def _save_page(page: "fitz.Page", slide_id: str, template: str,
         pixmap.save(str(snapshot_path(slide_id, template, (width, height))))
 
 
+def page_png(pdf_path: Path, width: int = FULL_SIZE[0]) -> bytes | None:
+    """The last page of a single-slide preview PDF (its final build step) as
+    PNG bytes `width` pixels wide, at the page's own aspect ratio (a cropped
+    element preview is not 16:9). None if the PDF cannot be read."""
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return None
+    try:
+        if doc.page_count == 0:
+            return None
+        page = doc[doc.page_count - 1]
+        zoom = width / page.rect.width
+        return page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).tobytes("png")
+    finally:
+        doc.close()
+
+
 def capture_single_slide(pdf_path: Path, slide_id: str, template: str,
                          sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                          ) -> bool:
@@ -293,7 +311,7 @@ def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
     mass-regenerating on rollout day. Resolved internally from disk
     (slide_language.current_id_slug_for_bare_id) rather than taken as a
     parameter, so every existing caller (slide_list.py,
-    qt_slide_preview_popup.py, ...) gets the right cache key with no
+    preview_target.py, ...) gets the right cache key with no
     call-site changes needed.
 
     For an "mult" (multilingual) slide, the segment is the literal string

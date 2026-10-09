@@ -141,11 +141,11 @@ class DeckActionsMixin:
     def _on_deck_settings(self, deck: Deck) -> None:
         """⋮ -> "Deck settings…": the deck-wide settings that live in
         the deck's own file (deck_settings.py), all written in one go."""
-        if deck.path in self._slide_source_tabs:
+        if self.centre.is_dirty(deck.path):
             QMessageBox.information(
                 self, "Deck settings",
-                f"{deck.name}.tex is open in a source editor tab -- close it "
-                "first, so this change and that editor can't overwrite each other.",
+                f"{deck.name}.tex has unsaved edits in the Source view -- save or "
+                "revert them first, so this change and that editor can't overwrite each other.",
             )
             return
         old = deck_settings.read_settings(deck.text)
@@ -176,11 +176,11 @@ class DeckActionsMixin:
     def _on_edit_deck_tags(self, deck: Deck) -> None:
         """⋮ -> "Tags…": choose the group the deck appears
         in. Written into the deck's own file as \\decktags{...}."""
-        if deck.path in self._slide_source_tabs:
+        if self.centre.is_dirty(deck.path):
             QMessageBox.information(
                 self, "Tags",
-                f"{deck.name}.tex is open in a source editor tab -- close it "
-                "first, so this change and that editor can't overwrite each "
+                f"{deck.name}.tex has unsaved edits in the Source view -- save or "
+                "revert them first, so this change and that editor can't overwrite each "
                 "other.",
             )
             return

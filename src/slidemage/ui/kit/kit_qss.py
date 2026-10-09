@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from .tokens import (
     FONT_ICONS,
+    FONT_MONO,
     FONT_SANS,
     RADIUS_MD,
     RADIUS_PILL,
@@ -37,6 +38,7 @@ MENU_TEXT = "kitMenuText"
 MENU_META = "kitMenuMeta"
 MENU_HEADER = "kitMenuHeader"
 MENU_SEPARATOR = "kitMenuSeparator"
+MENU_SWATCH = "kitMenuSwatch"
 TOAST = "kitToast"
 TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
@@ -56,6 +58,20 @@ SLIDES_RENAME = "kitSlidesRename"
 SLIDES_NOTE = "kitSlidesNote"
 SLIDES_BULK_LABEL = "kitSlidesBulkLabel"
 
+# Centre column (ui/workspace/centre.py and its views).
+SURFACE = "kitSurface"
+SOURCE = "kitSource"
+SOURCE_NOTE = "kitSourceNote"
+SOURCE_FILE_NAME = "kitSourceFileName"
+SOURCE_BAR = "kitSourceBar"
+PREVIEW_TITLE = "kitPreviewTitle"
+PREVIEW_ID = "kitPreviewId"
+DETAILS_LABEL = "kitDetailsLabel"
+DETAILS_VALUE = "kitDetailsValue"
+DETAILS_PANEL = "kitDetailsPanel"
+DETAILS_HEAD = "kitDetailsHead"
+DETAILS_TITLE = "kitDetailsTitle"
+
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
 
@@ -73,6 +89,7 @@ def _chip_colors(t: Tokens, tone: str) -> tuple[str, str]:
 
 def build_kit_qss(t: Tokens) -> str:
     font = f'font-family: "{FONT_SANS}";'
+    mono = f'font-family: "{FONT_MONO}";'
     chips = "\n".join(
         f"""QFrame#{CHIP}[tone="{tone}"] {{ background-color: {bg}; }}
             QFrame#{CHIP}[tone="{tone}"] QLabel {{ color: {fg}; }}"""
@@ -176,6 +193,10 @@ def build_kit_qss(t: Tokens) -> str:
             background-color: {t.hover};
             color: {t.text};
         }}
+        QPushButton[kind][compact="true"] {{
+            font-size: 12.5px;
+            padding: 4px 9px;
+        }}
         QPushButton[kind]:disabled {{
             color: {t.text_4};
             background-color: {t.bg};
@@ -268,6 +289,11 @@ def build_kit_qss(t: Tokens) -> str:
         QFrame#{MENU_SEPARATOR} {{
             background-color: {t.line};
             border: none;
+        }}
+
+        QFrame#{MENU_SWATCH} {{
+            border: 1px solid {t.line};
+            border-radius: 3px;
         }}
 
         QFrame#{TOAST} {{
@@ -426,6 +452,106 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 13px;
             font-weight: 500;
+            color: {t.text};
+        }}
+
+        /* Centre column: containers are transparent on the white card, so a
+           plain QFrame doesn't take the page color of the app-wide rule. */
+        #{SURFACE} {{
+            background-color: transparent;
+        }}
+        QFrame#{SOURCE_BAR} {{
+            background-color: transparent;
+            border-bottom: 1px solid {t.line};
+        }}
+        QPlainTextEdit#{SOURCE} {{
+            {mono}
+            font-size: 13px;
+            background-color: {t.surface};
+            color: {t.text};
+            border: none;
+        }}
+        QPlainTextEdit#{SOURCE} QScrollBar:vertical {{
+            background: transparent;
+            width: 8px;
+            margin: 0;
+        }}
+        QPlainTextEdit#{SOURCE} QScrollBar::handle:vertical {{
+            background: {t.text_4};
+            border-radius: 4px;
+            min-height: 24px;
+        }}
+        QPlainTextEdit#{SOURCE} QScrollBar::add-line:vertical,
+        QPlainTextEdit#{SOURCE} QScrollBar::sub-line:vertical {{
+            height: 0;
+        }}
+        QLabel#{SOURCE_NOTE} {{
+            {font}
+            font-size: 12px;
+            color: {t.text_3};
+        }}
+        QLabel#{SOURCE_FILE_NAME} {{
+            {mono}
+            font-size: 12px;
+            color: {t.text};
+        }}
+
+        QLabel#{PREVIEW_TITLE} {{
+            {font}
+            font-size: 13px;
+            font-weight: 600;
+            color: {t.text};
+        }}
+        QLabel#{PREVIEW_ID} {{
+            {mono}
+            font-size: 12px;
+            font-weight: 500;
+            color: {t.text_2};
+        }}
+
+        QLabel#{DETAILS_LABEL} {{
+            {font}
+            font-size: 12.5px;
+            color: {t.text_3};
+        }}
+        QLabel#{DETAILS_VALUE} {{
+            {font}
+            font-size: 12.5px;
+            color: {t.text};
+        }}
+        QLabel#{DETAILS_TITLE} {{
+            {font}
+            font-size: 18px;
+            font-weight: 500;
+            color: {t.text};
+        }}
+        QScrollArea#{SURFACE} QScrollBar:vertical {{
+            background: transparent;
+            width: 8px;
+            margin: 0;
+        }}
+        QScrollArea#{SURFACE} QScrollBar::handle:vertical {{
+            background: {t.text_4};
+            border-radius: 4px;
+            min-height: 24px;
+        }}
+        QScrollArea#{SURFACE} QScrollBar::add-line:vertical,
+        QScrollArea#{SURFACE} QScrollBar::sub-line:vertical {{
+            height: 0;
+        }}
+        QFrame#{DETAILS_PANEL} {{
+            background-color: {t.bg};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{DETAILS_PANEL} QLabel {{
+            {font}
+            font-size: 12.5px;
+            color: {t.text};
+        }}
+        QLabel#{DETAILS_HEAD} {{
+            {font}
+            font-size: 13px;
+            font-weight: 600;
             color: {t.text};
         }}
     """

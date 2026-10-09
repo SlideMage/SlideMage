@@ -1,4 +1,4 @@
-"""qt_slide_source_tab.py's own "Duplicate slide" button (2026-08-25) --
+"""The Details view's "Duplicate slide" button (2026-08-25) --
 either a same-language copy (a fresh, independent slide seeded from this
 one's content, no translation link) or a cross-referenced translation into
 another language, with an optional machine-translation pass over the
@@ -10,12 +10,11 @@ AddSlideDialog's own "base on existing slide" flow already uses (see that
 module) -- this is a shortcut into the same mechanism, scoped to one
 specific source slide and callable directly from the slide-source editor
 rather than needing a deck's own "+ before"/"+ after" button. Unlike
-AddSlideDialog, this never inserts the result into any deck: this tab has
-no fixed deck of its own to insert into. The new file is created "loose"
-(its own fresh "Included in decks: (none)" header) and the caller
-(qt_slide_source_tab.py's _on_duplicate_slide) opens it directly in a new
-editor tab for review -- the usual deck-editor "+ before"/"+ after" flow is
-how it gets attached to a deck once it's ready.
+AddSlideDialog, this never inserts the result into any deck: it is scoped
+to one slide, not to a deck. The new file is created "loose" (its own fresh
+"Included in decks: (none)" header) and the caller (the Details view) opens
+it directly in the Source view for review -- the slide list's "Add slide"
+flow is how it gets attached to a deck once it's ready.
 """
 from __future__ import annotations
 
@@ -61,19 +60,16 @@ def _slug_of(id_slug: str) -> str:
 
 
 class DuplicateSlideDialog(QDialog):
-    def __init__(self, parent, source_id_slug: str, source_path: Path) -> None:
-        super().__init__(parent)
-        # `parent` is always the SlideSourceTab that opened this dialog
-        # (qt_slide_source_tab.py's _on_duplicate_slide), which already
-        # carries this same reference -- needed here for the app-wide
-        # Ollama mutex (try_start_ollama_task()/end_ollama_task()) around
-        # the auto-translate option below.
-        self.app = parent.app
+    def __init__(self, app, source_id_slug: str, source_path: Path) -> None:
+        super().__init__(app)
+        # The window: the app-wide Ollama mutex (try_start_ollama_task()/
+        # end_ollama_task()) around the auto-translate option below.
+        self.app = app
         self.source_id_slug = source_id_slug
         self.source_path = source_path
         self._own_language = slide_language.own_language(source_id_slug)
-        # Set on accept(); the caller (qt_slide_source_tab.py's
-        # _on_duplicate_slide) reads these back after exec() returns.
+        # Set on accept(); the caller (the Details view) reads these back
+        # after exec() returns.
         self.new_id_slug: Optional[str] = None
         self.new_path: Optional[Path] = None
 
