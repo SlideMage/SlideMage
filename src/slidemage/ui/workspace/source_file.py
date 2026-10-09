@@ -16,22 +16,20 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout
 
 from ... import (
     bibliography,
-    deck_editor,
     latex_edit,
     latex_lint,
     slide_preview,
     slide_source,
-    slide_usage,
     slide_versioning,
 )
 from ...deck_scan import PROJECT_ROOT
 from ...qt_ai_draft_dialog import AiDraftDialog
-from ...qt_slide_usage_dialog import SlideUsageDialog
 from ...slide_language import bare_id
+from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from .ai_fix import AiFixPanel
 from .source_editor import FindBar, LatexPlainTextEdit
@@ -248,9 +246,8 @@ class SourceFile(Surface):
         raw_text = self.editor.text()
         new_text = raw_text
         previous_text = self.text
-        usage_choices: dict[str, str] = {}
-        open_translation = None
-        frozen_hyphen = None
+        versions = DeckVersions({}, None)
+        frozen_version = None
         if self.is_current_slide:
             old_version = slide_versioning.parse_version(self.text)
             choice = prompt_version_choice(self.app, old_version)
@@ -260,18 +257,11 @@ class SourceFile(Surface):
             if freeze_as is not None:
                 # A slide in several decks (or pinned, or translated) asks which
                 # version each deck uses from now on.
-                frozen_hyphen = slide_versioning.format_hyphen(freeze_as)
-                usages = slide_usage.find_usage(self.id_slug)
-                translations = slide_usage.find_translations(self.id_slug, self.text)
-                if slide_usage.needs_dialog(usages, translations):
-                    dialog = SlideUsageDialog(
-                        self.app, self.id_slug, slide_versioning.format_dot(final_version),
-                        slide_versioning.format_dot(freeze_as), usages, translations)
-                    if dialog.exec() != QDialog.DialogCode.Accepted:
-                        return False
-                    usage_choices = dialog.choices()
-                    if dialog.open_translation() and translations:
-                        open_translation = translations[0].path
+                frozen_version = freeze_as
+                asked = ask_deck_versions(self.app, self.id_slug, self.text, final_version, freeze_as)
+                if asked is None:
+                    return False
+                versions = asked
                 frozen = slide_versioning.freeze_slide(self.path, self.id_slug, freeze_as)
                 if frozen is not None:
                     self.app.log(f"    (froze outgoing v{slide_versioning.format_dot(freeze_as)} -> {frozen.name})")
@@ -293,16 +283,10 @@ class SourceFile(Surface):
             # disk but not in the buffer, which would keep showing the old one.
             self.editor.patch_text(new_text)
         self.editor.mark_saved()
-        if usage_choices:
-            try:
-                for line in slide_usage.apply_choices(self.id_slug, usage_choices, frozen_hyphen):
-                    self.app.log(line)
-                self.app.refresh_open_deck_editors()
-            except (deck_editor.StaleFileError, ValueError) as exc:
-                QMessageBox.warning(
-                    self.app, "Decks not updated", f"The slide is saved, but a deck could not be changed: {exc}")
-        if open_translation is not None and self.on_open is not None:
-            self.on_open(open_translation)
+        if frozen_version is not None:
+            apply_deck_versions(self.app, self.id_slug, versions.choices, frozen_version)
+        if versions.open_translation is not None and self.on_open is not None:
+            self.on_open(versions.open_translation)
         if backup_path is not None:
             self.app.log(f"Saved {self.path.name} (backup: {backup_path.relative_to(PROJECT_ROOT)})")
         else:

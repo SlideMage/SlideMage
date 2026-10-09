@@ -76,6 +76,15 @@ DETAILS_VALUE = "kitDetailsValue"
 DETAILS_PANEL = "kitDetailsPanel"
 DETAILS_HEAD = "kitDetailsHead"
 DETAILS_TITLE = "kitDetailsTitle"
+# Side panels (ui/workspace/side_panels.py, panels/).
+PANEL_PICKER = "kitPanelPicker"
+PANEL_BOX = "kitPanelBox"
+PANEL_ROW = "kitPanelRow"
+PANEL_MONO = "kitPanelMono"
+PANEL_CAPTION = "kitPanelCaption"
+MATRIX_HEAD = "kitMatrixHead"
+MATRIX_SLOT = "kitMatrixSlot"
+MATRIX_CELL = "kitMatrixCell"
 
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
@@ -108,6 +117,13 @@ def build_kit_qss(t: Tokens) -> str:
     )
     strips = "\n".join(
         f"""QFrame#{TOPBAR_STRIP}[tone="{view}"] {{ background-color: {t.view_color(view)}; }}"""
+        for view in ("instructor", "during", "after")
+    )
+    # The matrix cells and their headings take the color of their view.
+    matrix_cells = "\n".join(
+        f"""QPushButton#{MATRIX_CELL}[view="{view}"]:checked {{
+                background-color: {t.view_color(view)}; border-color: {t.view_color(view)}; }}
+            QLabel#{MATRIX_HEAD}[view="{view}"] {{ color: {t.view_color(view)}; }}"""
         for view in ("instructor", "during", "after")
     )
     return f"""
@@ -616,4 +632,75 @@ def build_kit_qss(t: Tokens) -> str:
             font-weight: 600;
             color: {t.text};
         }}
+    
+        /* Side panels: the picker is a grey pill; a panel's content sits in grey boxes
+           whose rows are separated by hairlines. */
+        QFrame#{PANEL_PICKER} {{
+            background-color: {t.bg};
+            {font}
+            font-size: 12.5px;
+            font-weight: 500;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QFrame#{PANEL_PICKER}:hover, QFrame#{PANEL_PICKER}[active="true"] {{
+            background-color: {t.line};
+        }}
+        QFrame#{PANEL_PICKER} QLabel {{
+            color: {t.text};
+        }}
+        QFrame#{PANEL_PICKER} QLabel#{ICON} {{
+            color: {t.text_3};
+        }}
+        QFrame#{PANEL_BOX} {{
+            background-color: {t.bg};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{PANEL_ROW} {{
+            background-color: transparent;
+            border: none;
+            border-bottom: 1px solid {t.line};
+        }}
+        QFrame#{PANEL_BOX} QLabel {{
+            {font}
+            font-size: 12.5px;
+            color: {t.text};
+        }}
+        QFrame#{PANEL_BOX} QLabel#{DETAILS_LABEL} {{
+            color: {t.text_3};
+        }}
+        QFrame#{PANEL_BOX} QLabel#{PANEL_MONO} {{
+            {mono}
+            font-size: 12px;
+        }}
+        QFrame#{PANEL_BOX} QLabel#{PANEL_CAPTION}, QLabel#{PANEL_CAPTION} {{
+            {font}
+            font-size: 11.5px;
+            color: {t.text_3};
+        }}
+        QLabel#{MATRIX_HEAD} {{
+            {font}
+            font-size: 11.5px;
+            font-weight: 600;
+        }}
+        QLabel#{MATRIX_HEAD}[current="true"] {{
+            background-color: {t.surface};
+        }}
+        QFrame#{MATRIX_SLOT}[current="true"] {{
+            background-color: {t.surface};
+        }}
+        QPushButton#{MATRIX_CELL} {{
+            {font}
+            font-size: 11px;
+            font-weight: 700;
+            color: #ffffff;
+            background-color: {t.surface};
+            border: 1px solid {t.text_4};
+            border-radius: {RADIUS_SM}px;
+            padding: 0;
+        }}
+        QPushButton#{MATRIX_CELL}:disabled {{
+            background-color: transparent;
+            border-color: {t.line};
+        }}
+        {matrix_cells}
     """

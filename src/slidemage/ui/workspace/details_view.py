@@ -1,16 +1,15 @@
 """The Details view: facts about the focused slide and the slide-level actions.
 
-What the slide is (file, frame, version, language, slug), where the open deck
-shows it (the visibility per view, read-only here; the slide list's menu
-changes it), its frozen versions (open a read-only copy, make one the current
-version), Duplicate / Rename / Delete, and the transcript summary. The
-summary is a note that lives in media/alt-text.json, not in the .tex file;
-until the Transcript panel of step 6 takes it over it has its own Save, and
-leaving the slide saves a pending edit so that it is never lost.
+What the slide is (file, frame, version, language, slug), Set language /
+Rename / Duplicate / Delete, and the transcript summary. Its frozen versions,
+where it is used and its visibility in the open deck are side panels
+(panels/). The summary is a note that lives in media/alt-text.json, not in the
+.tex file; until the Transcript entry panel (step 6b) takes it over it has its
+own Save, and leaving the slide saves a pending edit so that it is never lost.
 
 All of these act on the slide's `-current.tex` and its frozen versions, not on
-the version the open deck happens to pin. The work is in slide_rename,
-slide_versioning and alt_images; this view asks, confirms and reports.
+the version the open deck happens to pin. The work is in slide_rename and
+alt_images; this view asks, confirms and reports.
 """
 from __future__ import annotations
 
@@ -31,14 +30,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import alt_blocks, alt_images, deck_editor, slide_language, slide_rename, slide_source, slide_versioning
+from ... import alt_blocks, alt_images, slide_language, slide_rename, slide_source, slide_versioning
 from ...deck_editor import SLIDES_DIR
 from ...deck_outline import SlideRow
 from ...qt_duplicate_slide_dialog import DuplicateSlideDialog
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Chip, PopoverMenu, Surface
-from .menus import VIEW_LABELS
-from .state import VIEWS, WorkspaceState
+from ..kit.widgets import Button, PopoverMenu, Surface
+from .state import WorkspaceState
 
 # The language menu: label -> the code slide_rename.set_slide_language() takes.
 LANGUAGE_CHOICES = (("EN", "EN"), ("DE", "DE"), ("Multilingual", "mult"))
@@ -54,8 +52,6 @@ def _label(text: str, name: str) -> QLabel:
 
 
 class DetailsPane(Surface):
-    open_requested = Signal(object)      # Path of a file to show in the Source view
-    restore_requested = Signal(object)   # Path of a frozen version to make current
     summary_dirty_changed = Signal(bool)   # the transcript summary has (no) unsaved edits
 
     def __init__(self, app, state: WorkspaceState, is_dirty: Callable[[Path], bool]) -> None:
@@ -101,8 +97,6 @@ class DetailsPane(Surface):
             layout.addWidget(self._build_header())
             layout.addWidget(self._build_facts())
             layout.addLayout(self._build_actions())
-            layout.addWidget(self._build_visibility())
-            layout.addWidget(self._build_versions())
             layout.addWidget(self._build_summary())
             layout.addStretch(1)
         self._scroll.setWidget(page)
@@ -168,57 +162,6 @@ class DetailsPane(Surface):
         row.addWidget(delete)
         row.addStretch(1)
         return row
-
-    def _build_visibility(self) -> QWidget:
-        panel, layout = self._panel("Visibility in this deck")
-        call = self._row.call if self._row else None
-        if call is None:
-            layout.addWidget(_label("The open deck does not use this slide.", q.DETAILS_LABEL))
-            return panel
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        for column, view in enumerate(VIEWS, start=1):
-            grid.addWidget(_label(VIEW_LABELS[view], q.DETAILS_LABEL), 0, column, Qt.AlignmentFlag.AlignCenter)
-            shown = call.included_in(view)
-            grid.addWidget(Chip("Shown" if shown else "Hidden", "ok" if shown else "muted"), 1, column,
-                           Qt.AlignmentFlag.AlignCenter)
-        grid.addWidget(_label("This slide", q.DETAILS_VALUE), 1, 0)
-        grid.setColumnStretch(0, 1)
-        layout.addLayout(grid)
-        how = f"Called as \\{call.macro}" + (f" in steps {call.steps}" if call.steps else "")
-        layout.addWidget(_label(how + ". Change it with the slide list's right-click menu.", q.DETAILS_LABEL))
-        return panel
-
-    def _build_versions(self) -> QWidget:
-        panel, layout = self._panel("Versions")
-        versions = list(reversed(deck_editor.available_versions(self._id_slug)))
-        pinned = self._row.call.version if self._row else None
-        layout.addWidget(_label("The current version is the one the live slide calls load." if versions
-                                else "No frozen versions yet: a save that bumps the version freezes the old one.",
-                                q.DETAILS_LABEL))
-        for version in versions:
-            path = SLIDES_DIR / f"{self._id_slug}-v{version}.tex"
-            row = QHBoxLayout()
-            row.addWidget(_label(f"v{version.replace('-', '.')}", q.DETAILS_VALUE))
-            if version == pinned:
-                row.addWidget(Chip("pinned by this deck", "info", "push_pin"))
-            row.addStretch(1)
-            open_button = Button("Open", "secondary", compact=True)
-            open_button.setToolTip("Look at this version in the Source view (read-only).")
-            open_button.clicked.connect(lambda _=False, p=path: self._open_version(p))
-            make_current = Button("Make this the current version", "secondary", compact=True)
-            make_current.clicked.connect(lambda _=False, p=path: self.restore_requested.emit(p))
-            row.addWidget(open_button)
-            row.addWidget(make_current)
-            layout.addLayout(row)
-        return panel
-
-    def _open_version(self, path: Path) -> None:
-        if path.is_file():
-            self.open_requested.emit(path)
-        else:
-            QMessageBox.warning(self, "Version not found", f"{path.name} no longer exists.")
-            self.show_slide(self._id_slug, self._row)
 
     def _build_summary(self) -> QWidget:
         panel, layout = self._panel("Transcript summary")

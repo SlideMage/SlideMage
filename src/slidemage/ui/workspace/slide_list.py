@@ -310,7 +310,7 @@ class SlideList(QWidget):
             move = lambda path, text: deck_editor.move_slide_past_section(path, text, call, neighbor)  # noqa: E731
         else:
             move = lambda path, text: deck_editor.move_slide_call(path, text, call, neighbor.call)  # noqa: E731
-        self._edit("Move failed", f"Moved {call.id_slug} {direction} in {deck.name}", move)
+        self.edit("Move failed", f"Moved {call.id_slug} {direction} in {deck.name}", move)
 
     # -- menus --------------------------------------------------------------------
 
@@ -460,21 +460,21 @@ class SlideList(QWidget):
         elif name in ("section_up", "section_down"):
             self._step_section(section, -1 if name == "section_up" else 1)
         elif name == "remove_section":
-            self._edit("Remove section failed", f"Removed section {section.title} from {deck.name}",
+            self.edit("Remove section failed", f"Removed section {section.title} from {deck.name}",
                        lambda path, text: deck_editor.remove_section(path, text, section.chapter))
 
     def _step_section(self, section: SectionRow, delta: int) -> None:
         chapters = self.deck.chapters
         index = chapters.index(section.chapter) + delta if section.chapter in chapters else -1
         if 0 <= index < len(chapters):
-            self._edit(
+            self.edit(
                 "Move section failed",
                 f"Moved section {section.title} {'up' if delta < 0 else 'down'} in {self.deck.name}",
                 lambda path, text: deck_editor.move_section(path, text, section.chapter, chapters[index]))
 
     # -- edits ---------------------------------------------------------------------
 
-    def _edit(self, failed: str, summary: str, change: Callable[[Path, str], str]) -> bool:
+    def edit(self, failed: str, summary: str, change: Callable[[Path, str], str]) -> bool:
         """Run `change(deck path, deck text)` (a deck_editor function); on success the
         window rescans and calls deck_edited(). False when it was refused or changed nothing."""
         deck = self.deck
@@ -525,7 +525,7 @@ class SlideList(QWidget):
             if not accepted:
                 return
         conditions = call.conditions if macro in deck_editor.CONDITIONAL_MACROS else None
-        self._edit(
+        self.edit(
             "Change variant failed",
             f"Changed {call.id_slug} in {self.deck.name}: \\{call.macro} -> \\{macro}",
             lambda path, text: deck_editor.change_slide_call_variant(
@@ -534,7 +534,7 @@ class SlideList(QWidget):
     def _set_visibility(self, rows: list[SlideRow], view: str, visible: bool) -> None:
         calls = [r.call for r in rows]
         what = ", ".join(c.id_slug for c in calls)
-        self._edit(
+        self.edit(
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {what} in {VIEW_LABELS[view]} of {self.deck.name}",
             lambda path, text: deck_editor.set_calls_visibility(path, text, calls, view, visible))
@@ -549,7 +549,7 @@ class SlideList(QWidget):
             return
         calls = [r.call for r in rows]
         what = calls[0].id_slug if len(calls) == 1 else f"{len(calls)} slides ({', '.join(c.id_slug for c in calls)})"
-        self._edit("Remove failed", f"Removed {what} from {self.deck.name}",
+        self.edit("Remove failed", f"Removed {what} from {self.deck.name}",
                    lambda path, text: deck_editor.remove_slide_calls(path, text, calls))
 
     def _compile_pages(self, rows: list[SlideRow]) -> None:
@@ -587,12 +587,12 @@ class SlideList(QWidget):
     def _add_section(self, insert_at: int) -> None:
         title, accepted = QInputDialog.getText(self, "Add section", "Section title:")
         if accepted:
-            self._edit("Add section failed", f"Added section {title.strip()} in {self.deck.name}",
+            self.edit("Add section failed", f"Added section {title.strip()} in {self.deck.name}",
                        lambda path, text: deck_editor.add_section(path, text, title, insert_at))
 
     def _rename_section(self, section: SectionRow, title: str) -> None:
         if title.strip() and title.strip() != section.title:
-            self._edit("Rename section failed", f"Renamed section {section.title} in {self.deck.name}",
+            self.edit("Rename section failed", f"Renamed section {section.title} in {self.deck.name}",
                        lambda path, text: deck_editor.rename_section(path, text, section.chapter, title))
 
     def _move_to_section(self, rows: list[SlideRow], section: SectionRow) -> None:
@@ -605,7 +605,7 @@ class SlideList(QWidget):
 
     def _move_slides(self, rows: list[SlideRow], insert_at: int, where: str) -> None:
         calls = [r.call for r in rows]
-        self._edit("Move failed", f"Moved {', '.join(c.id_slug for c in calls)} {where}",
+        self.edit("Move failed", f"Moved {', '.join(c.id_slug for c in calls)} {where}",
                    lambda path, text: deck_editor.move_slide_calls(path, text, calls, insert_at))
 
     # -- drag and drop ---------------------------------------------------------------
@@ -637,5 +637,5 @@ class SlideList(QWidget):
         if owner is None or owner.chapter is None or owner is section or section.chapter is None:
             return
         index = chapters.index(owner.chapter)
-        self._edit("Move section failed", f"Moved section {section.title} in {self.deck.name}",
+        self.edit("Move section failed", f"Moved section {section.title} in {self.deck.name}",
                    lambda path, text: deck_editor.move_section_to(path, text, section.chapter, index))

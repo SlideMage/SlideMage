@@ -152,6 +152,22 @@ def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional
     return dest
 
 
+def freeze_current(current_path: Path, id_slug: str, level: BumpLevel) -> tuple[Path, Version]:
+    """Freeze the slide's current content under its own tracked version and move
+    the slide on to the next one (`level`), as a Save does -- but with no change
+    to the content. Returns (the frozen file, the new version). Raises ValueError
+    when that version is frozen already."""
+    from . import slide_source
+
+    text, eol = slide_source.read_slide_source(current_path)
+    final, freeze_as = plan_save(parse_version(text), level)
+    frozen = freeze_slide(current_path, id_slug, freeze_as)
+    if frozen is None:
+        raise ValueError(f"v{format_dot(freeze_as)} of {id_slug} is already frozen, so the current content cannot be.")
+    slide_source.save_slide_source(current_path, set_marker(text, final), eol, expected_text=text)
+    return frozen, final
+
+
 _FROZEN_RE = re.compile(r"-v(\d+)-(\d+)-(\d+)\.tex$")
 
 

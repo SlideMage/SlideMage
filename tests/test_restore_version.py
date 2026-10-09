@@ -50,3 +50,23 @@ def test_restore_refuses_identical_content_and_taken_archive_name(tmp_path):
     with pytest.raises(sv.RestoreError):
         sv.restore_version(current, "abc-EN-Demo", slides / "abc-EN-Demo-v1-0-0.tex")
     assert "new" in current.read_text(encoding="utf-8")        # nothing changed
+
+
+def test_freeze_current_keeps_the_content_and_moves_the_slide_on(tmp_path):
+    slides = _slide(tmp_path, HEADER + "\\setSlideVersion{1-1-0}\ntext\n", {})
+    current = slides / "abc-EN-Demo-current.tex"
+    frozen, version = sv.freeze_current(current, "abc-EN-Demo", "major")
+
+    assert version == (2, 0, 0) and frozen == slides / "abc-EN-Demo-v1-1-0.tex"
+    assert "\\setSlideVersion{1-1-0}" in frozen.read_text(encoding="utf-8")
+    text, _ = read_slide_source(current)
+    assert "\\setSlideVersion{2-0-0}" in text and text.startswith("%% Included in decks: talk\n") and "text\n" in text
+
+
+def test_freeze_current_treats_an_untracked_slide_as_1_0_0_and_refuses_a_taken_version(tmp_path):
+    slides = _slide(tmp_path, "plain\n", {})
+    current = slides / "abc-EN-Demo-current.tex"
+    assert sv.freeze_current(current, "abc-EN-Demo", "minor")[1] == (1, 1, 0)
+    (slides / "abc-EN-Demo-v1-1-0.tex").write_text("taken", encoding="utf-8")
+    with pytest.raises(ValueError, match="already frozen"):
+        sv.freeze_current(current, "abc-EN-Demo", "patch")

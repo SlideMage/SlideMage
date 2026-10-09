@@ -440,7 +440,7 @@ def test_the_transcript_of_the_buffer_opens_in_its_own_page(centre, monkeypatch)
 
 # -- details ----------------------------------------------------------------------------
 
-def test_details_follow_the_focused_slide_and_say_where_the_deck_shows_it(centre):
+def test_details_follow_the_focused_slide(centre):
     from PySide6.QtWidgets import QLabel
 
     state = centre.state
@@ -448,7 +448,7 @@ def test_details_follow_the_focused_slide_and_say_where_the_deck_shows_it(centre
     state.set_focused_slide("ccc")
     texts = [label.text() for label in centre.details.findChildren(QLabel)]
     assert "Dritte" in texts and "ccc-DE-Drei-current.tex" in texts and "standardframe" in texts
-    assert [t for t in texts if t in ("Shown", "Hidden")] == ["Shown", "Hidden", "Hidden"]
+    assert "Visibility in this deck" not in texts and "Versions" not in texts   # side panels now
     state.set_focused_slide(None)
     assert [label.text() for label in centre.details.findChildren(QLabel)] == [
         "Select a slide in the list. Double-click it to open its source."]

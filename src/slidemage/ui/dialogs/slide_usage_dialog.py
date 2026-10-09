@@ -1,9 +1,17 @@
 """Save-time dialog for a slide that is used in several decks (v5.23.0,
 direct instruction): per deck, move on to the new version or stay on the
 previous one -- see slide_usage.py for what each choice does to the deck.
-Also names the slide's translations, which this save leaves unchanged."""
+Also names the slide's translations, which this save leaves unchanged.
+
+Moved here from qt_slide_usage_dialog.py: it is a question that a save (the Source
+view) and "Freeze as" (the Slide versions panel) put, not a viewer; the "Used in
+decks" panel shows the same facts without asking anything.
+ask_deck_versions() and apply_deck_versions() are the two halves of that question
+for those callers."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -13,11 +21,12 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QGridLayout,
     QLabel,
+    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
 
-from . import slide_usage
+from ... import deck_editor, slide_usage, slide_versioning
 
 CURRENT = "current"
 KEEP = "keep"
@@ -107,3 +116,41 @@ class SlideUsageDialog(QDialog):
 
     def open_translation(self) -> bool:
         return self._open_translation is not None and self._open_translation.isChecked()
+
+
+@dataclass
+class DeckVersions:
+    choices: dict[str, str]                 # deck name -> CURRENT | KEEP (empty: nothing to choose)
+    open_translation: Optional[Path]        # the translation to open after the save, if asked for
+
+
+def ask_deck_versions(
+    parent: QWidget, id_slug: str, text: str,
+    new_version: slide_versioning.Version, old_version: slide_versioning.Version,
+) -> Optional[DeckVersions]:
+    """Before `id_slug` (whose current `text`) moves from `old_version` to `new_version`:
+    ask what each deck does when the slide is used in several decks, pinned somewhere
+    or translated. None if the user cancelled; nothing to ask gives an empty answer."""
+    usages = slide_usage.find_usage(id_slug)
+    translations = slide_usage.find_translations(id_slug, text)
+    if not slide_usage.needs_dialog(usages, translations):
+        return DeckVersions({}, None)
+    dialog = SlideUsageDialog(
+        parent, id_slug, slide_versioning.format_dot(new_version), slide_versioning.format_dot(old_version),
+        usages, translations)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return None
+    return DeckVersions(dialog.choices(), translations[0].path if dialog.open_translation() else None)
+
+
+def apply_deck_versions(app, id_slug: str, choices: dict[str, str], frozen: slide_versioning.Version) -> None:
+    """Rewrite the decks as chosen, once the new version is saved (`frozen`: the version
+    that was frozen), log what changed and refresh the open deck."""
+    if not choices:
+        return
+    try:
+        for line in slide_usage.apply_choices(id_slug, choices, slide_versioning.format_hyphen(frozen)):
+            app.log(line)
+        app.refresh_open_deck_editors()
+    except (deck_editor.StaleFileError, ValueError) as exc:
+        QMessageBox.warning(app, "Decks not updated", f"The slide is saved, but a deck could not be changed: {exc}")

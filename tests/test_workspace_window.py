@@ -90,7 +90,7 @@ def test_window_opens_the_first_active_deck_then_the_one_left_open(window, monke
 def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     window.topbar._on_deck_picked(deck_key(TEST))
     assert window.state.deck is TEST
-    assert window.topbar._deck_button._name.text() == "test-all"
+    assert window.topbar._deck_button.text() == "test-all"
     assert "test deck" in window.centre.preview._page.message       # it has no slide list
     assert window.stack.currentWidget() is window.centre
 
@@ -125,7 +125,7 @@ def test_a_project_without_decks_shows_a_placeholder(qapp, monkeypatch):
     window = build_window(monkeypatch)
     assert window.state.deck is None
     assert "no decks" in window.centre.preview._page.message
-    assert window.topbar._deck_button._name.text() == "No deck"
+    assert window.topbar._deck_button.text() == "No deck"
     assert not window.topbar._compile.isEnabled()
 
 
@@ -654,3 +654,14 @@ def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path
     assert window.close() is True
     assert aborted.is_set() and worker.isFinished()
     assert window._ollama_task_label is None and not file.fix_panel.running
+
+
+def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(window, monkeypatch):
+    panels = window.side_panels
+    assert panels.picker.text() == "Used in decks" and window.splitter.indexOf(panels) == 2
+    refreshed = []
+    monkeypatch.setattr(panels, "refresh", lambda: refreshed.append(True))
+    window.reload_decks()                      # a rescan is no state change, so the window tells the panels
+    window._on_dirty_changed(False)            # and a save changes the slide's versions
+    window.centre.versions_changed.emit()
+    assert len(refreshed) == 3

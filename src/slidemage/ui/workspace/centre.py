@@ -22,13 +22,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMessageBox, QSplitter, QStackedWidget
 
-from ... import deck_editor, deck_outline, slide_preview, slide_versioning
+from ... import deck_editor, deck_outline, slide_preview, slide_source, slide_versioning
 from ...deck_editor import SLIDES_DIR
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import bare_id, current_path_for_bare_id
+from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
@@ -37,6 +38,8 @@ from .state import WorkspaceState
 
 
 class CentreColumn(QFrame):
+    versions_changed = Signal()   # a slide was restored or frozen as a version
+
     def __init__(self, app, state: WorkspaceState) -> None:
         super().__init__()
         self.app = app
@@ -68,8 +71,6 @@ class CentreColumn(QFrame):
         self.source.render_requested.connect(self._render_buffer)
         self.source.restore_requested.connect(self.restore_version)
         self.source.file_requested.connect(self.open_file)
-        self.details.open_requested.connect(self.open_file)
-        self.details.restore_requested.connect(self.restore_version)
         state.deck_changed.connect(self._on_deck_changed)
         state.focused_slide_changed.connect(self._on_focus)
         state.view_changed.connect(lambda _view: self.refresh())
@@ -133,6 +134,38 @@ class CentreColumn(QFrame):
         if open_current is not None:
             open_current.reload()
         self.open_file(current)
+        self.versions_changed.emit()
+
+    def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
+        """"Freeze as": the slide's current content becomes a frozen version and the slide moves on
+        to the next one (slide_versioning.freeze_current()), after asking what each deck does."""
+        current = SLIDES_DIR / f"{id_slug}-current.tex"
+        if not current.is_file():
+            QMessageBox.warning(self.app, "Cannot freeze", "The slide's current file was not found.")
+            return
+        open_current = self.source.file_for(current)
+        if open_current is not None and open_current.dirty:
+            QMessageBox.warning(self.app, "Unsaved changes",
+                                f"{current.name} has unsaved changes. Save or revert them first.")
+            return
+        text, _eol = slide_source.read_slide_source(current)
+        final, frozen_as = slide_versioning.plan_save(slide_versioning.parse_version(text), level)
+        asked = ask_deck_versions(self.app, id_slug, text, final, frozen_as)
+        if asked is None:
+            return
+        try:
+            frozen, version = slide_versioning.freeze_current(current, id_slug, level)
+        except (ValueError, slide_source.StaleFileError) as exc:
+            QMessageBox.warning(self.app, "Cannot freeze", str(exc))
+            return
+        self.app.log(f"Froze {id_slug} as {frozen.name}: now v{slide_versioning.format_dot(version)}")
+        apply_deck_versions(self.app, id_slug, asked.choices, frozen_as)
+        if open_current is not None:
+            open_current.reload()
+        self.refresh()
+        self.versions_changed.emit()
+        if asked.open_translation is not None:
+            self.open_file(asked.open_translation)
 
     # -- keeping the views in step -----------------------------------------------------
 

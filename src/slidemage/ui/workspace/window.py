@@ -57,6 +57,7 @@ from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin, CompileSignals
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
+from .side_panels import SidePanels
 from .slide_list import SlideList
 from .state import WorkspaceState
 from .topbar import TopBar
@@ -129,14 +130,13 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if snapshot_banner is not None:
             outer.addWidget(snapshot_banner)
 
-        # Left: the slide list, right: side panels and chat (steps 6 and 10),
-        # collapsed until those exist.
+        # Left: the slide list, right: side panels (and the chat of step 10 below them).
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
         self.slide_list.compile_pages.connect(
             self._compile_slides)
-        self.side_column = QWidget()
+        self.side_panels = SidePanels(self, self.state)
         # Centre: the views of the focused slide, or one of the pages below
         # (replaced in step 9: the Images page).
         self.stack = QStackedWidget()
@@ -150,7 +150,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.transcript_tab = TranscriptTab(self)
         self.stack.addWidget(self.transcript_tab)
         self.stack.currentChanged.connect(self._on_page_changed)
-        for column in (self.slide_list, self.stack, self.side_column):
+        for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
         self.splitter.setStretchFactor(1, 1)
         body = QWidget()
@@ -199,6 +199,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.state.dirty_changed.connect(self._on_dirty_changed)
         self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
         self.centre.source.file_closed.connect(self._on_source_closed)
+        self.centre.versions_changed.connect(self.side_panels.refresh)
         # Ctrl+Shift+F is the same shortcut whichever widget has focus, since
         # this is a project-wide search, not scoped to whatever's open.
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self._on_open_slide_search)
@@ -291,6 +292,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
         self.slide_list.rebuild()   # a fresh scan of the open deck is no switch (state.set_deck)
         self.centre.refresh()
+        self.side_panels.refresh()
 
     def _remember_deck(self, deck: Optional[Deck]) -> None:
         if deck is not None:
@@ -378,6 +380,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
     def _on_dirty_changed(self, dirty: bool) -> None:
         if not dirty:
             self.slide_list.rebuild()   # a save changes lint errors and stale previews
+            self.side_panels.refresh()  # and the slide's versions
 
     # -- finding slides --------------------------------------------------------
 

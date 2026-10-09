@@ -51,6 +51,8 @@ VERSIONED_MACROS = {"slideversion", "omitslideversion"}
 # pickers too (BASE_MACROS), with a "Steps" field next to the version checkboxes.
 CONDITIONAL_MACROS = {"conditionalslide", "slidestep"}
 OMIT_MACROS = {"omitslide", "omitslideversion"}
+# The calls whose views can be set (set_calls_visibility); pinned versions and \slidefinal have no conditional form.
+VISIBILITY_MACROS = {"slide", "omitslide", "conditionalslide", "slidestep"}
 ALL_MACROS = {
     "slide", "slidefinal", "slideversion", "omitslide",
     "omitslideversion", "conditionalslide", "slidestep",
@@ -443,12 +445,11 @@ def set_calls_visibility(
     to a plain \\slide when that is all of them); a \\slidestep keeps its
     steps. Pinned versions and \\slidefinal have no conditional form and are
     refused, as is hiding a slide from every version."""
-    plain = {"slide", "omitslide", "conditionalslide", "slidestep"}
     edits: list[tuple[SlideCall, str]] = []
     for call in calls:
         if not call.editable:
             raise ValueError(f"can't change {call.id_slug} -- {call.readonly_reason}")
-        if call.macro not in plain:
+        if call.macro not in VISIBILITY_MACROS:
             raise ValueError(f"\\{call.macro}{{{call.id_slug}}} can't be shown or hidden per view")
         if call.included_in(view) == visible:
             continue

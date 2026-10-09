@@ -6,7 +6,7 @@ the new content in -current. A deck that calls \slide{ID} follows -current,
 so it moves on to the new version by itself; a deck that calls
 \slideversion{ID}{X-Y-Z} stays on its pinned version. When a slide is used
 in several decks (or pinned somewhere, or has a translation), the save
-dialog (qt_slide_usage_dialog.py) asks for each deck:
+dialog (ui/dialogs/slide_usage_dialog.py) asks for each deck:
 
 - "current" (the default): the deck uses the new version. A pinned call
   (\slideversion, \omitslideversion) becomes \slide / \omitslide; a call
@@ -35,6 +35,8 @@ PINNABLE = {"slide": "slideversion", "omitslide": "omitslideversion"}
 class DeckUsage:
     deck: Deck
     calls: list = field(default_factory=list)       # deck_editor.SlideCall
+    positions: list = field(default_factory=list)   # 1-based place of each call among the deck's slide calls
+    total: int = 0                                  # the deck's slide calls
 
     @property
     def pinned_versions(self) -> list[str]:
@@ -62,6 +64,18 @@ class DeckUsage:
         return "; ".join(parts)
 
 
+def call_text(call: deck_editor.SlideCall) -> str:
+    r"""How a deck calls the slide: "\slide, follows the current version", "\slideversion,
+    frozen v1.0.0", "\slidestep, steps 2"."""
+    if call.macro in PINNED:
+        how = "frozen v" + call.version.replace("-", ".")
+    elif call.macro in PINNABLE:
+        how = "follows the current version"
+    else:
+        how = f"steps {call.steps}" if call.steps else "always the current version"
+    return f"\\{call.macro}, {how}"
+
+
 @dataclass
 class Translation:
     id_slug: str
@@ -80,9 +94,10 @@ def find_usage(id_slug: str, decks: Optional[list[Deck]] = None) -> list[DeckUsa
     for deck in decks if decks is not None else scan_decks():
         if _skipped(deck):
             continue
-        calls = [c for c in deck_editor.parse_slide_calls(deck) if c.id_slug == id_slug]
-        if calls:
-            usages.append(DeckUsage(deck, calls))
+        every = deck_editor.parse_slide_calls(deck)
+        places = [(c, i) for i, c in enumerate(every, start=1) if c.id_slug == id_slug]
+        if places:
+            usages.append(DeckUsage(deck, [c for c, _ in places], [i for _, i in places], len(every)))
     return usages
 
 
@@ -112,6 +127,24 @@ def needs_dialog(usages: list[DeckUsage], translations: list[Translation]) -> bo
     return len(usages) > 1 or any(u.pinned_versions for u in usages) or bool(translations)
 
 
+def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCall],
+            version: Optional[str]) -> str:
+    """Make `calls` of one slide use the frozen `version` ("1-0-0"), or follow the
+    current version again (None). \\slide / \\omitslide become \\slideversion /
+    \\omitslideversion and back; a call that is pinned already moves to another
+    version. A call of a kind with no pinned form is left alone. As one edit,
+    through the deck editor's stale-checked rewrite; returns the new deck text."""
+    text = expected_text
+    for call in sorted(calls, key=lambda c: c.call_start, reverse=True):
+        if version is None:
+            macro = PINNED.get(call.macro)
+        else:
+            macro = PINNABLE.get(call.macro) or (call.macro if call.macro in PINNED else None)
+        if macro is not None:
+            text = deck_editor.change_slide_call_variant(deck_path, text, call, macro, new_version=version)
+    return text
+
+
 def apply_choices(id_slug: str, choices: dict[str, str], frozen_version: Optional[str]) -> list[str]:
     """Rewrite the decks' calls as chosen ({deck name: "current" | "keep"};
     frozen_version is the hyphenated version just frozen, "1-1-0" -- None if
@@ -121,22 +154,15 @@ def apply_choices(id_slug: str, choices: dict[str, str], frozen_version: Optiona
     log = []
     for usage in find_usage(id_slug):
         choice = choices.get(usage.deck.name)
-        if choice not in ("current", "keep"):
+        if choice == "current":
+            version, wanted = None, PINNED
+        elif choice == "keep" and frozen_version:
+            version, wanted = frozen_version, PINNABLE
+        else:
             continue
-        changes = 0
-        text = usage.deck.text
-        for call in sorted(usage.calls, key=lambda c: c.call_start, reverse=True):
-            if not call.editable:
-                continue
-            if choice == "current" and call.macro in PINNED:
-                text = deck_editor.change_slide_call_variant(
-                    usage.deck.path, text, call, PINNED[call.macro])
-                changes += 1
-            elif choice == "keep" and call.macro in PINNABLE and frozen_version:
-                text = deck_editor.change_slide_call_variant(
-                    usage.deck.path, text, call, PINNABLE[call.macro], new_version=frozen_version)
-                changes += 1
-        if changes:
+        calls = [c for c in usage.calls if c.editable and c.macro in wanted]
+        if calls:
+            set_pin(usage.deck.path, usage.deck.text, calls, version)
             verb = "now uses the new version" if choice == "current" else f"stays on v{frozen_version.replace('-', '.')}"
-            log.append(f"    {usage.deck.name}: {changes} call(s) changed -- {verb}")
+            log.append(f"    {usage.deck.name}: {len(calls)} call(s) changed -- {verb}")
     return log

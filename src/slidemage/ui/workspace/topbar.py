@@ -7,14 +7,14 @@ view, language, mode) and reports every other click as a command key through
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QIcon, QMouseEvent
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
-from ..kit.widgets import Button, IconButton, IconLabel, SegmentedControl, SplitButton
+from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
 from .state import MODES, UI_LANGUAGES, VIEWS, WorkspaceState
 
@@ -27,41 +27,6 @@ VIEW_TONES = {"instructor": "instructor", "during-course": "during", "after-cour
 def _repolish(widget: QWidget) -> None:
     widget.style().unpolish(widget)
     widget.style().polish(widget)
-
-
-class _DeckButton(QFrame):
-    """The current deck's name with a chevron; click opens the switcher."""
-
-    clicked = Signal()
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setObjectName(q.TOPBAR_DECK)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 5, 4, 5)
-        layout.setSpacing(6)
-        self._name = QLabel()
-        layout.addWidget(self._name)
-        layout.addWidget(IconLabel("expand_more", 20))
-
-    def set_name(self, name: str) -> None:
-        self._name.setText(name)
-
-    def set_active(self, active: bool) -> None:
-        self.setProperty("active", active)
-        _repolish(self)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
-
-    def event(self, event: QEvent) -> bool:
-        # The :hover rule needs a repolish of this frame, not just of the label under the pointer.
-        if event.type() in (QEvent.Type.Enter, QEvent.Type.Leave):
-            _repolish(self)
-        return super().event(event)
 
 
 class TopBar(QWidget):
@@ -98,7 +63,7 @@ class TopBar(QWidget):
         logo.setPixmap(QIcon(str(LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
         add(logo)
 
-        self._deck_button = _DeckButton()
+        self._deck_button = DropdownButton(q.TOPBAR_DECK)
         self._deck_button.clicked.connect(self._open_deck_menu)
         add(self._deck_button)
 
@@ -159,7 +124,7 @@ class TopBar(QWidget):
     # -- reacting to the state ---------------------------------------------
 
     def _on_deck_changed(self, deck: Deck | None) -> None:
-        self._deck_button.set_name(deck.name if deck is not None else "No deck")
+        self._deck_button.set_text(deck.name if deck is not None else "No deck")
         self._rebuild_compile_menu()
         self._update_compile_label()
 

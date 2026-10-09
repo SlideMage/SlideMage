@@ -101,6 +101,45 @@ class IconButton(QToolButton):
         _set_property(self, "active", active)
 
 
+class DropdownButton(QFrame):
+    """A label with a chevron that opens a menu: the deck switcher, the side panel picker.
+    `name` is the object name its QSS rules are written for; `clicked` is emitted on
+    release, `set_active` shows the menu is open."""
+
+    clicked = Signal()
+
+    def __init__(self, name: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName(name)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 5, 4, 5)
+        layout.setSpacing(6)
+        self._label = QLabel()
+        layout.addWidget(self._label)
+        layout.addWidget(IconLabel("expand_more", 20))
+
+    def text(self) -> str:
+        return self._label.text()
+
+    def set_text(self, text: str) -> None:
+        self._label.setText(text)
+
+    def set_active(self, active: bool) -> None:
+        _set_property(self, "active", active)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+    def event(self, event: QEvent) -> bool:
+        # The :hover rule needs a repolish of this frame, not just of the label under the pointer.
+        if event.type() in (QEvent.Type.Enter, QEvent.Type.Leave):
+            _repolish(self)
+        return super().event(event)
+
+
 class Button(QPushButton):
     """Text button. kind: "primary" (inverse fill), "secondary" (bordered),
     "ghost" (flat). `compact` is the smaller padding of toolbars."""
