@@ -536,3 +536,50 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     assert not old_file.exists()
     assert not old_run.exists()
     assert "2 build item(s)" in window.log_text.toPlainText()
+
+
+def _click_row(tab, row):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    rect = tab.slide_list.visualItemRect(tab.slide_list.item(row))
+    QTest.mouseClick(tab.slide_list.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+
+
+@pytest.mark.parametrize("reason", ["translation", "unsaved"])
+def test_declining_the_switch_keeps_the_slide_and_its_selection(
+    reason, monkeypatch, qapp, tmp_path
+):
+    # direct report 2026-10-09: "I attempted to switch to another slide ... selected No
+    # in response to 'Switch anyway' ... SlideMage still made the switch"
+    tab, _sync_calls, _store = _make_transcript_tab(monkeypatch, qapp, tmp_path)
+    tab.resize(900, 600)
+    tab.show()
+    qapp.processEvents()
+    shown = tab._current.row.path
+    editor = tab._editors[0]
+    if reason == "translation":
+        editor.translating = True
+    else:
+        editor.fields["long"].setPlainText("UNSAVED HUMAN EDIT")
+        assert editor.dirty
+    asked = []
+
+    def decline(*args, **kwargs):
+        asked.append(args[2] if len(args) > 2 else "")
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "question", decline)
+    other = 1 if tab.slide_list.currentRow() == 0 else 0
+
+    _click_row(tab, other)
+    qapp.processEvents()
+
+    assert len(asked) == 1
+    assert tab._current.row.path == shown
+    assert tab._editors[0] is editor
+    assert tab.slide_list.currentRow() == tab._current_row_index
+    assert [tab.slide_list.row(item) for item in tab.slide_list.selectedItems()] == [
+        tab._current_row_index
+    ]
+    tab.hide()

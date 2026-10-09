@@ -1622,9 +1622,7 @@ class TranscriptTab(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if confirm != QMessageBox.StandardButton.Yes:
-                self.slide_list.blockSignals(True)
-                self.slide_list.setCurrentRow(self._current_row_index)
-                self.slide_list.blockSignals(False)
+                self._decline_switch()
                 return
 
         # Warn before discarding an in-flight translation (2026-08-25,
@@ -1648,15 +1646,37 @@ class TranscriptTab(QWidget):
                 # currentRowChanged already fired -- the list's own
                 # selection has already moved by the time this runs, so
                 # "declining" means moving it back, not preventing it.
-                # Signals blocked so that revert doesn't re-enter this
-                # same method.
-                self.slide_list.blockSignals(True)
-                self.slide_list.setCurrentRow(self._current_row_index)
-                self.slide_list.blockSignals(False)
+                self._decline_switch()
                 return
 
         self._current_row_index = index
         self._show_slide(target_view)
+
+    def _decline_switch(self) -> None:
+        """The user answered "No" to "Switch anyway?": put the list back on
+        the slide that is still showing. Signals are blocked so the revert
+        doesn't re-enter _on_slide_selected(). Done twice (2026-10-09, direct
+        report: "I selected No ... SlideMage still made the switch"): a click
+        on a row reaches this handler from inside the list's mousePressEvent,
+        which goes on to select the clicked row after the handler returns --
+        the slide stayed but the list highlighted the other one. The second
+        revert runs once Qt has finished with the click."""
+        row = self._current_row_index
+        self._revert_list_to(row)
+        QTimer.singleShot(0, lambda: self._revert_list_to(row))
+
+    def _revert_list_to(self, row: int) -> None:
+        if row != self._current_row_index:
+            return          # the user has moved on since (a later, accepted switch)
+        selected = [self.slide_list.row(i) for i in self.slide_list.selectedItems()]
+        if self.slide_list.currentRow() == row and selected == [row]:
+            return
+        self.slide_list.blockSignals(True)
+        try:
+            self.slide_list.clearSelection()
+            self.slide_list.setCurrentRow(row)
+        finally:
+            self.slide_list.blockSignals(False)
 
     def _has_in_flight_translation(self) -> bool:
         return any(editor.translating for editor in self._editors)

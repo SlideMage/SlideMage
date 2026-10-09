@@ -1942,6 +1942,11 @@ v5.35.4 (2026-10-09, direct instruction: "describe the releases in a more helpfu
 
 NEW: Clearer release notes.
 - Release notes on GitHub now list in a few bullet points what is new since the previous release, followed by any breaking changes and a link to the full list of changes.
+
+v5.35.5 (2026-10-09, direct report: "While translating an image description, I attempted to switch to another slide on the Images tab. I got the warning message and selected 'No' in response to 'Switch anyway'. However, SlideMage still made the switch"): reproduced with a real click on a row (tests/test_review_gui.py). The slide on show did stay, but the list highlighted the clicked row: the warning is raised from inside the list's mouse press, and Qt selects the clicked row after the handler has returned, undoing the revert (qt_transcript_tab._decline_switch()). The list is now put back once more after Qt has finished the click, for both warnings ("Unsaved image edits" and "Translation in progress"); the revert is skipped if the user has moved on since. A test covers both warnings.
+
+NEW: Fixed: answering "No" to "Switch anyway?" on the Images tab.
+- Declining the warning when you leave a slide with unsaved image edits or a translation still running keeps the list on the slide you are working on; the list used to highlight the slide you had clicked while the old slide stayed open.
 """
 from __future__ import annotations
 
@@ -1951,7 +1956,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.4"
+VERSION_NUMBER = "v5.35.5"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
