@@ -1,6 +1,6 @@
 """The update check on start (v4.1.0): modes, the four answers to the
 "Update available" question, and breaking releases asked about even in
-"auto" mode. Uses SlideMageWindow's methods on a stand-in object, so no
+"auto" mode. Uses MaintenanceMixin's methods on a stand-in object, so no
 dialog is ever shown."""
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from slidemage import qt_gui, updater
+from slidemage import updater
+from slidemage.ui.workspace import maintenance
 
 
 def _release(tag, body=""):
@@ -18,7 +19,7 @@ def _release(tag, body=""):
 @pytest.fixture
 def window(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "config_dir", lambda: tmp_path / "cfg")
-    monkeypatch.setattr(qt_gui.version_mod, "VERSION_NUMBER", "v4.1.0")
+    monkeypatch.setattr(maintenance.version_mod, "VERSION_NUMBER", "v4.1.0")
     fake = SimpleNamespace(installed=[], logged=[], asked=[])
     fake.log = fake.logged.append
     fake._download_and_install_update = lambda release: fake.installed.append(release.tag)
@@ -26,7 +27,7 @@ def window(tmp_path, monkeypatch):
     fake._ask_breaking_update = lambda plan: fake.asked.append(("breaking", plan.latest.tag)) or fake.breaking_choice
     fake._confirm_safe_update = lambda release: fake.asked.append(("safe", release.tag)) or fake.confirm_safe
     for name in ("_offer_update", "_apply_update_choice", "_on_startup_update_check_done"):
-        setattr(fake, name, getattr(qt_gui.SlideMageWindow, name).__get__(fake))
+        setattr(fake, name, getattr(maintenance.MaintenanceMixin, name).__get__(fake))
     return fake
 
 
@@ -93,7 +94,7 @@ def test_staying_on_the_major_version_installs_the_safe_release(window):
 
 def test_no_startup_check_for_a_source_checkout(monkeypatch):
     scheduled = []
-    monkeypatch.setattr(qt_gui.updater, "can_self_update", lambda: False)
-    monkeypatch.setattr(qt_gui.QTimer, "singleShot", lambda *a: scheduled.append(a))
-    qt_gui.SlideMageWindow.schedule_startup_update_check(SimpleNamespace())
+    monkeypatch.setattr(maintenance.updater, "can_self_update", lambda: False)
+    monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda *a: scheduled.append(a))
+    maintenance.MaintenanceMixin.schedule_startup_update_check(SimpleNamespace())
     assert scheduled == []

@@ -138,7 +138,7 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     A presenter job (job.presenter) checks `\\deckoutputfolder[presenter]{...}`
     first, before falling back to the same instructor/bare lookup any other
     job uses -- job.version is *already* "instructor" for a presenter job
-    (qt_deck_table.py's own DeckRow.build_jobs()), so without this a
+    (build_jobs() below), so without this a
     presenter compile would otherwise silently share the plain instructor
     PDF's own folder/filename with no way to tell them apart (2026-09-17,
     found via direct question after a real deck used [presenter] and
@@ -355,12 +355,12 @@ class CompileJob:
     # dual-screen mechanism, so \note{} content (already authored
     # throughout this project) reaches a presenter-view app like pympress
     # instead of sitting unused. Always paired with instructor-version
-    # content by whoever builds this job (qt_deck_table.py's own
-    # DeckRow.build_jobs()) regardless of self.version's own value --
+    # content by whoever builds this job (build_jobs()
+    # below) regardless of self.version's own value --
     # never on its own a reason to change what version means here.
     presenter: bool = False
     # SlideMage's "Generate appendix TOC" checkbox -- set uniformly on
-    # every job a compile batch builds (qt_gui.py's _compile_rows(), same
+    # every job a compile batch builds (the window's _compile_jobs(), same
     # pattern as footer_timestamp), but _wrapper_text() below only actually
     # generates the appendix for a whole-deck job (job.chapter is None) --
     # of any version since 2026-10-03 (direct instruction; it used to be
@@ -868,6 +868,26 @@ def order_jobs(jobs: list[CompileJob]) -> list[CompileJob]:
     group_rank = {tag: i for i, tag in enumerate(GROUP_ORDER)}
     return sorted(jobs, key=lambda job: (
         job_stage(job), group_rank.get(job.deck.group, len(group_rank))))
+
+
+def build_jobs(deck: Deck, kind: str, pages: Optional[list[int]] = None) -> list[CompileJob]:
+    """The jobs behind one entry of the Compile menu: `kind` is a view
+    ("instructor", "during-course", "after-course"), "all" (every view the deck has), "chapters" (the
+    after-course version split into one PDF per chapter) or "presenter"
+    (beamer's notes mode, always instructor content). A deck without
+    \\deckversionoverride has only its hardcoded content, so every view is
+    the one job with no version. `pages` (partial_compile.py) restricts a
+    view or the presenter PDF to those frames; chapters are always whole."""
+    if kind == "all":
+        views = ("instructor", "during-course", "after-course") if deck.supports_version else (None,)
+        return [CompileJob(deck, view, None, pages=pages) for view in views]
+    if kind == "chapters":
+        version = "after-course" if deck.supports_version else None
+        return [CompileJob(deck, version, chapter) for chapter in deck.chapters]
+    if kind == "presenter":
+        version = "instructor" if deck.supports_version else None
+        return [CompileJob(deck, version, None, presenter=True, pages=pages)]
+    return [CompileJob(deck, kind if deck.supports_version else None, None, pages=pages)]
 
 
 def run_jobs(

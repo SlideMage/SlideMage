@@ -11,7 +11,8 @@ import pymupdf as fitz
 import pytest
 from PySide6.QtWidgets import QApplication, QInputDialog, QWidget
 
-from slidemage import compile_records, compiler, deck_scan, qt_gui
+from slidemage import compile_records, compiler, deck_scan
+from slidemage.ui.workspace import deck_actions
 from slidemage.compiler import DeckPdf, pdf_to_open
 
 NOW = time.time()
@@ -118,10 +119,10 @@ def test_open_pdf_asks_and_opens_the_choice(deck_with_pdfs, monkeypatch):
 
     monkeypatch.setattr(QInputDialog, "getItem", get_item)
     opened: list[Path] = []
-    monkeypatch.setattr(qt_gui.open_path, "open_in_default_app", opened.append)
+    monkeypatch.setattr(deck_actions.open_path, "open_in_default_app", opened.append)
     win = QWidget()
     win._log = lambda line: None
-    qt_gui.SlideMageWindow._on_open_latest_pdf(win, deck_with_pdfs)
+    deck_actions.DeckActionsMixin._on_open_latest_pdf(win, deck_with_pdfs)
     assert asked["items"][0].startswith("After-course -- ")
     assert asked["current"] == 1                          # the instructor PDF preselected
     assert opened == [compiler.PDF_DIR / "t-A-instructor.pdf"]

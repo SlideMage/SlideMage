@@ -152,30 +152,6 @@ def test_commented_out_slide_call_is_excluded_from_appendix():
     assert commented == {"abc-EN-Old": False, "xyz-EN-Old": True}
 
 
-def test_reload_decks_remaps_job_status_without_crashing():
-    """qt_gui.py's _job_status_map used to keep DeckRow objects a later
-    reload_decks() (deck edit/archive/tag/duplicate, none of which check
-    self.compiling) deletes the widgets of -- the next status update then
-    raised RuntimeError inside _log(). Headless GUI test: build the main
-    window against the example project, start a fake batch, reload, and
-    confirm the status map only points at live rows."""
-    import os
-
-    from PySide6.QtWidgets import QApplication
-
-    from slidemage import qt_gui
-
-    app = QApplication.instance() or QApplication([])
-    window = qt_gui.SlideMageWindow(qt_gui.ThemeManager())
-    row = window.active_rows[0]
-    window._job_status_map = {"fake-jobname": (row, "instructor")}
-    window.reload_decks()
-    for jobname, (mapped_row, key) in window._job_status_map.items():
-        assert mapped_row in (*window.active_rows, *window.archived_rows)
-        mapped_row.set_status(key, "running")  # must not raise
-    window.close()
-
-
 def test_save_slide_source_detects_stale_disk_content(tmp_path):
     from slidemage import slide_source
 

@@ -5,7 +5,7 @@ bibliography -- since v5.15.0 the number the deck needed last time, see
 compile_passes.py; progress *within* a pass from the slide currently being
 typeset; also for single-slide renders and Update previews).
 
-No Qt in here -- `BatchProgress.feed(line)` is called by qt_gui.py's `_log()`
+No Qt in here -- `BatchProgress.feed(line)` is called by the window's `_log()` (ui/workspace/compile_jobs.py)
 for every log line and returns the new (fraction, text) when something
 changed, so the whole thing can be tested by replaying a captured log.
 
@@ -109,6 +109,26 @@ def spec_for_job(job) -> JobSpec:
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
                    count_job_slides(job.deck, job.version, job.chapter),
                    estimated=not known)
+
+
+def build_progress_texts(jobs: list) -> dict[str, str]:
+    """One human-readable "what job is this" line per job, keyed by
+    jobname. The "Deck n/m" prefix counts compiles, not distinct decks
+    (2026-10-03, direct instruction): ten deck versions of four decks are
+    "Deck 1/10" ... "Deck 10/10", each version being a compile of its own."""
+    total = len(jobs)
+    texts: dict[str, str] = {}
+    for position, job in enumerate(jobs, start=1):
+        prefix = f"Deck {position}/{total} | " if total > 1 else ""
+        if job.chapter is None:
+            texts[job.jobname] = f"{prefix}Compiling {job.deck.name}"
+        else:
+            total_chapters = len(job.deck.chapters)
+            texts[job.jobname] = (
+                f"{prefix}Compiling {job.deck.name}: Chapter {job.chapter.order}/"
+                f"{total_chapters}"
+            )
+    return texts
 
 
 class BatchProgress:

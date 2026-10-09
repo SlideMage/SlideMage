@@ -42,7 +42,7 @@ which is merged instead: descriptions of images the project doesn't describe
 yet are added, unreviewed ones of updated images are replaced). New slide ids
 are appended to the project's ``slide_ids.csv``.
 
-Free of Qt; qt_gui.py shows the dialog.
+Free of Qt; ui/workspace/maintenance.py shows the dialog.
 """
 from __future__ import annotations
 

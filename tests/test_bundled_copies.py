@@ -233,16 +233,16 @@ def test_init_project_records_the_baseline(tmp_path):
         example_source=project._template_dir("example")) == []
 
 
-# -- the dialog (qt_gui.SlideMageWindow.check_bundled_copies) ---------------
+# -- the dialog (MaintenanceMixin.check_bundled_copies) ----------------
 
 def _run_dialog(monkeypatch, root, bundle, choose: str):
     from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
-    from slidemage import qt_gui
+    from slidemage.ui.workspace import maintenance
 
     QApplication.instance() or QApplication([])
     latex, example = bundle
-    monkeypatch.setattr(qt_gui, "PROJECT_ROOT", root)
+    monkeypatch.setattr(maintenance, "PROJECT_ROOT", root)
     monkeypatch.setattr(project, "_template_dir", lambda name: {"latex": latex, "example": example}[name])
     seen = {}
 
@@ -265,7 +265,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
             Window.reloaded += 1
 
     window = Window()
-    qt_gui.SlideMageWindow.check_bundled_copies(window)
+    maintenance.MaintenanceMixin.check_bundled_copies(window)
     return seen, window
 
 

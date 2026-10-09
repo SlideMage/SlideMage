@@ -65,7 +65,7 @@ def test_deck_without_version_support_counts_as_instructor():
 
 
 def test_progress_text_counts_compiles_not_decks():
-    from slidemage.qt_deck_table import build_progress_texts
+    from slidemage.compile_progress import build_progress_texts
 
     versions = ("instructor", "during-course", "after-course")
     jobs = order_jobs([CompileJob(d, v, None) for d in (WORK, IA2, FM2, TEST) for v in versions][:10])

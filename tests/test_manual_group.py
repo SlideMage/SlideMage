@@ -1,18 +1,17 @@
 """The SlideMage manual's own deck group: tag `manual`, its own section in
-the deck table, above the test decks, never offered as a choice, and the manual's Tags
-button is disabled -- so the manual always stays in its section."""
+the deck switcher, above the test decks, never offered as a choice, and the manual's Tags
+entry is disabled -- so the manual always stays in its section."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QRadioButton
+from PySide6.QtWidgets import QApplication, QDialog, QRadioButton
 
 from slidemage import qt_deck_group_dialog
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import GROUP_ORDER, SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
-from slidemage.qt_deck_table import GROUPS, DeckTable
-from slidemage.ui.kit.theme import ThemeManager
+from slidemage.ui.workspace.menus import GROUP_HEADINGS, build_deck_menu, build_more_menu
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 
@@ -34,8 +33,8 @@ def test_manual_tag_wins_and_is_its_own_group():
     assert make_deck("m", ["manual"]).is_test_deck is False   # clickable, has a slide list
     assert TAG_MANUAL not in SELECTABLE_GROUP_TAGS
     assert GROUP_ORDER[-2:] == (TAG_MANUAL, "test")      # test decks sort below the manual
-    assert [g[0] for g in GROUPS][-2:] == [TAG_MANUAL, "test"]
-    assert GROUPS[-2][1] == "SlideMage manual"
+    assert list(GROUP_HEADINGS)[-2:] == [TAG_MANUAL, "test"]
+    assert GROUP_HEADINGS[TAG_MANUAL] == "SlideMage manual"
 
 
 def test_shipped_manual_carries_the_tag():
@@ -67,15 +66,17 @@ def test_dialog_never_offers_the_manual_group(qapp, monkeypatch):
     assert seen["checked"] == [qt_deck_group_dialog.GROUP_LABELS["course"]]
 
 
-def test_manual_row_has_a_disabled_tags_button(qapp):
-    nothing = lambda *a, **k: None  # noqa: E731
-    table = DeckTable(
-        ThemeManager(), archivable=True, on_open=nothing, on_archive=nothing, on_edit=nothing,
-        on_duplicate=nothing, on_tags=nothing, on_export_pptx=nothing,
-        on_compile_selected=nothing, on_stop_compilation=nothing,
-        on_create_transcript=nothing, on_refresh=nothing)
-    table.rebuild([make_deck("course-deck", ["course"]), make_deck("slidemage-manual", ["manual"])])
-    tags_buttons = [b for b in table.findChildren(QPushButton) if b.text() == "Tags"]
-    assert [b.isEnabled() for b in tags_buttons] == [True, False]
-    headings = [b.text() for b in table.findChildren(QPushButton) if "(" in b.text()]
-    assert any("SlideMage manual" in h for h in headings)
+def menu_rows(menu):
+    menu._build()
+    return {row.key: row for row in menu._rows}
+
+
+def test_manual_has_a_disabled_tags_entry_and_its_own_switcher_section(qapp):
+    course, manual = make_deck("course-deck", ["course"]), make_deck("slidemage-manual", ["manual"])
+    tags = {deck.name: menu_rows(build_more_menu(None, deck))["deck_tags"].isEnabled()
+            for deck in (course, manual)}
+    assert tags == {"course-deck": True, "slidemage-manual": False}
+    menu = build_deck_menu(None, [course, manual], course)
+    menu._build()
+    headings = [entry[1] for entry in menu._entries if entry[0] == "header"]
+    assert headings == ["Course decks", "SlideMage manual"]

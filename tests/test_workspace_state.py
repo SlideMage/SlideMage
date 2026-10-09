@@ -1,0 +1,125 @@
+"""The workspace's shared state: one signal per field, emitted only on a real
+change, and the view and language remembered for each deck."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from slidemage import app_settings
+from slidemage.deck_scan import Deck
+from slidemage.ui.workspace.state import SETTINGS_KEY, UI_LANGUAGES, VIEWS, WorkspaceState
+
+
+def make_deck(name: str, text: str = "") -> Deck:
+    return Deck(
+        name=name, path=Path(f"decks/{name}.tex"), archived=False, text=text,
+        supports_version=True, uses_biblatex=False, preamble_end=0,
+        chapters=[], output_folders={}, tags=[])
+
+
+def record(signal) -> list:
+    seen: list = []
+    signal.connect(seen.append)
+    return seen
+
+
+def test_views_and_languages_are_the_projects_own_names():
+    assert VIEWS == ("instructor", "during-course", "after-course")
+    assert UI_LANGUAGES == ("EN", "DE")
+
+
+def test_a_setter_emits_only_when_the_value_changes():
+    state = WorkspaceState()
+    views, languages = record(state.view_changed), record(state.language_changed)
+    focus, selection = record(state.focused_slide_changed), record(state.selection_changed)
+
+    state.set_view("instructor")                 # already the view
+    state.set_view("during-course")
+    state.set_view("during-course")
+    state.set_language("EN")
+    state.set_language("DE")
+    state.set_language("DE")
+    state.set_focused_slide("1y8")
+    state.set_focused_slide("1y8")
+    state.set_selection(("1y8", "1ym"))
+    state.set_selection(["1y8", "1ym"])          # the same slides, any sequence type
+
+    assert views == ["during-course"] and languages == ["DE"]
+    assert focus == ["1y8"] and selection == [("1y8", "1ym")]
+
+
+def test_unknown_views_and_languages_are_ignored():
+    state = WorkspaceState()
+    seen = record(state.view_changed)
+    state.set_view("presenter")
+    state.set_language("FR")
+    state.set_language("mult")
+    assert seen == [] and (state.view, state.language) == ("instructor", "EN")
+
+
+def test_switching_decks_resets_focus_and_selection_and_reports_each_only_if_it_changed():
+    state = WorkspaceState()
+    first, second = make_deck("first"), make_deck("second")
+    decks = record(state.deck_changed)
+    focus, selection = record(state.focused_slide_changed), record(state.selection_changed)
+
+    state.set_deck(first)
+    assert decks == [first] and focus == [] and selection == []      # nothing to reset yet
+    state.set_focused_slide("1y8")
+    state.set_selection(("1y8",))
+    state.set_deck(second)
+    assert decks == [first, second]
+    assert focus == ["1y8", None] and selection == [("1y8",), ()]
+    assert state.focused_slide is None and state.selection == ()
+
+
+def test_a_fresh_scan_of_the_open_deck_is_not_a_switch():
+    state = WorkspaceState()
+    deck = make_deck("course", text="old")
+    state.set_deck(deck)
+    state.set_focused_slide("1y8")
+    decks, focus = record(state.deck_changed), record(state.focused_slide_changed)
+
+    rescanned = make_deck("course", text="new")
+    state.set_deck(rescanned)
+
+    assert state.deck is rescanned and state.focused_slide == "1y8"
+    assert decks == [] and focus == []
+
+
+def test_view_and_language_are_remembered_per_deck():
+    state = WorkspaceState()
+    first, second = make_deck("first"), make_deck("second")
+    state.set_deck(first)
+    state.set_view("after-course")
+    state.set_language("DE")
+    state.set_deck(second)
+    assert (state.view, state.language) == ("instructor", "EN")      # a deck of its own
+    state.set_view("during-course")
+
+    views = record(state.view_changed)
+    state.set_deck(first)
+    assert (state.view, state.language) == ("after-course", "DE")
+    assert views == ["after-course"]
+    state.set_deck(second)
+    assert state.view == "during-course"
+
+    # ... and across a restart: a new state reads the same settings file
+    reopened = WorkspaceState()
+    reopened.set_deck(first)
+    assert (reopened.view, reopened.language) == ("after-course", "DE")
+    assert app_settings.get(SETTINGS_KEY)["first"] == {"view": "after-course", "language": "DE"}
+
+
+def test_a_deck_without_a_saved_language_starts_in_its_own():
+    state = WorkspaceState()
+    state.set_deck(make_deck("german", text="\\decklanguage[de]\n\\begin{document}\n"))
+    assert state.language == "DE"
+    state.set_deck(make_deck("english", text="\\decklanguage[en]\n\\begin{document}\n"))
+    assert state.language == "EN"
+
+
+def test_no_deck_leaves_the_settings_alone():
+    state = WorkspaceState()
+    state.set_view("after-course")               # nothing to remember it for
+    state.set_deck(None)
+    assert app_settings.get(SETTINGS_KEY) is None

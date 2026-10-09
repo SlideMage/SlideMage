@@ -43,7 +43,7 @@ from . import deck_editor, slide_language, slide_snapshot
 from .deck_editor import SlideCall
 from .deck_scan import SECTION_RE, TAG_COURSE, Chapter, Deck
 from .qt_slide_preview_popup import SlidePreviewPopup
-from .ui.kit.theme import CLOSE_BUTTON, LINK_LABEL, WARNING_LABEL
+from .ui.kit.theme import LINK_LABEL, WARNING_LABEL
 from .slide_ids import SLIDES_DIR
 
 VERSIONS = ["instructor", "during-course", "after-course"]
@@ -128,7 +128,7 @@ class DeckEditorTab(QWidget):
         # This deck's own id_slugs in on-page order, refreshed on every
         # _build_rows -- backs the "Find slide in deck" box's completer and
         # its Enter-key substring fallback. Deliberately scoped to *this*
-        # deck's slides only, unlike qt_gui.py's own toolbar "Find slide:"
+        # deck's slides only, unlike the window's "Go to slide…"
         # box, which autocompletes across every slide in the project and
         # opens a fresh editor tab rather than jumping within this one.
         self._deck_id_slugs: list[str] = []
@@ -255,11 +255,6 @@ class DeckEditorTab(QWidget):
         )
         toolbar.addWidget(self.find_slide_entry)
 
-        close_button = QPushButton("Close")
-        close_button.setObjectName(CLOSE_BUTTON)
-        close_button.clicked.connect(self._on_close)
-        toolbar.addWidget(close_button)
-
         toolbar.addStretch()
 
         toolbar.addWidget(QLabel("View:"))
@@ -341,7 +336,7 @@ class DeckEditorTab(QWidget):
 
         self._build_rows()
 
-    # -- public API used by qt_gui.py ------------------------------------------
+    # -- public API used by the window ------------------------------------------
 
     def reload(self, deck: Deck) -> None:
         self.deck = deck
@@ -398,9 +393,6 @@ class DeckEditorTab(QWidget):
             return
         self._update_undo_button_state()
         self.app.after_deck_edit(self.deck.path, f"Undid last change to {self.deck.name}")
-
-    def _on_close(self) -> None:
-        self.app.close_deck_editor_tab(self)
 
     def _on_view_toggled(self, checked: bool) -> None:
         if not checked:

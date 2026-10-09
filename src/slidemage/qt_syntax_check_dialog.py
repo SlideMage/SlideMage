@@ -116,7 +116,7 @@ class SyntaxCheckDialog(QDialog):
     def refresh_model_preference(self, models: list[str] | None = None) -> None:
         """(Re)fill the model picker and preselect the default from
         Settings -> "AI models" -- on construction, and again from
-        qt_gui.py after the Settings dialog closes, so a default changed
+        the main window after the Settings dialog closes, so a default changed
         there (or a model deleted) reaches this dialog while it's open."""
         if models is None:
             models = OllamaProvider().list_models()

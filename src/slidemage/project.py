@@ -438,7 +438,7 @@ def relaunch_with_project(root: Path) -> None:
 
 def pick_or_create_project(parent, start_dir: Path) -> Path | None:
     """Shared folder-picker loop for cli.py's first-run fallback (no
-    window exists yet, parent=None) and qt_gui.py's "Open Project…"
+    window exists yet, parent=None) and the main window's "Open project…"
     (parent=the main window) -- one implementation so the two don't drift
     apart, and so the "not a project yet" case offers to create one
     (init_project() above) instead of only ever rejecting the folder and

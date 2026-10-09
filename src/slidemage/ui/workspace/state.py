@@ -1,0 +1,115 @@
+"""The workspace's shared state (UI_REDESIGN_PLAN.md, step 3).
+
+One object that the top bar, the slide list, the centre column and the side
+panels all read and write, instead of reaching into each other: the current
+deck, the focused slide, the view being edited (Instructor / During-course /
+After-course), the language being edited (EN / DE) and the selected slides.
+Each field has a setter and one signal; a setter that would not change the
+value does nothing, so listeners can connect without guarding against loops.
+
+The view and the language are remembered per deck in the project's app
+settings (app_settings.py, the same JSON file as the other UI preferences),
+so reopening a deck brings back the view you left it in.
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+from PySide6.QtCore import QObject, Signal
+
+from ... import app_settings, deck_settings
+from ...deck_scan import Deck
+from ...slide_language import LANGUAGES
+from ...transcript import VERSION_AFTER, VERSION_DURING, VERSION_INSTRUCTOR
+
+VIEWS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
+# "mult" marks a slide that is the same in every language: not a language to edit in.
+UI_LANGUAGES = tuple(lang for lang in LANGUAGES if lang != "mult")
+
+# {deck name: {"view": ..., "language": ...}} in app_settings.json.
+SETTINGS_KEY = "workspace_decks"
+
+
+class WorkspaceState(QObject):
+    deck_changed = Signal(object)            # Deck | None
+    focused_slide_changed = Signal(object)   # bare slide id | None
+    view_changed = Signal(str)
+    language_changed = Signal(str)
+    selection_changed = Signal(object)       # tuple of bare slide ids
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.deck: Optional[Deck] = None
+        self.focused_slide: Optional[str] = None
+        self.view = VERSION_INSTRUCTOR
+        self.language = UI_LANGUAGES[0]
+        self.selection: tuple[str, ...] = ()
+
+    def set_deck(self, deck: Optional[Deck]) -> None:
+        """Switch decks: the view and language come back from the settings
+        and the focus and selection start empty. A fresh scan of the deck
+        already open (same file) only replaces the stored object, so that
+        readers see the new text; it is not a switch and emits nothing."""
+        if deck is not None and self.deck is not None and deck.path == self.deck.path:
+            self.deck = deck
+            return
+        before = (self.focused_slide, self.selection, self.view, self.language)
+        self.deck = deck
+        remembered = self._remembered(deck)
+        self.focused_slide, self.selection = None, ()
+        self.view = remembered["view"] if remembered.get("view") in VIEWS else VERSION_INSTRUCTOR
+        self.language = remembered["language"] if remembered.get("language") in UI_LANGUAGES \
+            else self._deck_language(deck)
+        self.deck_changed.emit(deck)
+        if before[0] is not None:
+            self.focused_slide_changed.emit(None)
+        if before[1]:
+            self.selection_changed.emit(())
+        if before[2] != self.view:
+            self.view_changed.emit(self.view)
+        if before[3] != self.language:
+            self.language_changed.emit(self.language)
+
+    def set_focused_slide(self, slide_id: Optional[str]) -> None:
+        if slide_id != self.focused_slide:
+            self.focused_slide = slide_id
+            self.focused_slide_changed.emit(slide_id)
+
+    def set_view(self, view: str) -> None:
+        if view in VIEWS and view != self.view:
+            self.view = view
+            self._remember("view", view)
+            self.view_changed.emit(view)
+
+    def set_language(self, language: str) -> None:
+        if language in UI_LANGUAGES and language != self.language:
+            self.language = language
+            self._remember("language", language)
+            self.language_changed.emit(language)
+
+    def set_selection(self, slide_ids: tuple[str, ...]) -> None:
+        slide_ids = tuple(slide_ids)
+        if slide_ids != self.selection:
+            self.selection = slide_ids
+            self.selection_changed.emit(slide_ids)
+
+    # -- per-deck memory -------------------------------------------------
+
+    @staticmethod
+    def _remembered(deck: Optional[Deck]) -> dict:
+        if deck is None:
+            return {}
+        return app_settings.get(SETTINGS_KEY, {}).get(deck.name, {})
+
+    @staticmethod
+    def _deck_language(deck: Optional[Deck]) -> str:
+        """The deck's own \\decklanguage while nothing was chosen yet."""
+        code = deck_settings.read_settings(deck.text).language.upper() if deck else ""
+        return code if code in UI_LANGUAGES else UI_LANGUAGES[0]
+
+    def _remember(self, field: str, value: str) -> None:
+        if self.deck is None:
+            return
+        saved = app_settings.get(SETTINGS_KEY, {})
+        saved.setdefault(self.deck.name, {})[field] = value
+        app_settings.set(SETTINGS_KEY, saved)

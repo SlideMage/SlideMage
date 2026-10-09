@@ -22,7 +22,7 @@ DEFAULT_BIB = PROJECT_ROOT / "Slidemaster.bib"
 
 # Same logic as the former one-off sort_bib.py (project root, deleted once
 # folded in here) -- SlideMage now runs this itself, on open and close of
-# the "Edit .bib" tab (qt_gui.py's _on_edit_bib/close_slide_editor_tab), so
+# the "Edit .bib" tab (the main window's _on_edit_bib/close_slide_editor_tab), so
 # the file never needs a manual sort pass again. Splits on a bare "@" at the
 # start of a line rather than trying to fully parse each entry -- the file's
 # own entries are already one-per-paragraph, blank-line-separated, so this

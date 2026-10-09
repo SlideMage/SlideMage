@@ -42,6 +42,13 @@ TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
 SHEET_TITLE = "kitSheetTitle"
 SHEET_TABS = "kitSheetTabs"
+# Workspace top bar (ui/workspace/topbar.py); its styling lives here so that
+# all colors stay in one place.
+TOPBAR = "kitTopbar"
+TOPBAR_STRIP = "kitTopbarStrip"
+TOPBAR_DECK = "kitTopbarDeck"
+TOPBAR_LABEL = "kitTopbarLabel"
+TOPBAR_SAVE = "kitTopbarSave"
 
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
@@ -69,6 +76,10 @@ def build_kit_qss(t: Tokens) -> str:
     view_segments = "\n".join(
         f"""QPushButton[kitSegment="true"][tone="{view}"]:checked {{
                 background-color: {t.view_color(view)}; color: #ffffff; border-bottom-color: transparent; }}"""
+        for view in ("instructor", "during", "after")
+    )
+    strips = "\n".join(
+        f"""QFrame#{TOPBAR_STRIP}[tone="{view}"] {{ background-color: {t.view_color(view)}; }}"""
         for view in ("instructor", "during", "after")
     )
     return f"""
@@ -238,7 +249,7 @@ def build_kit_qss(t: Tokens) -> str:
         QWidget#{MENU_ROW}[tone="danger"] QLabel#{MENU_TEXT} {{
             color: {t.error};
         }}
-        QWidget#{MENU_ROW}[off="true"] QLabel {{
+        QWidget#{MENU_ROW}[off="true"] QLabel, QWidget#{MENU_ROW}[off="true"] QLabel#{MENU_TEXT} {{
             color: {t.text_4};
         }}
         QLabel#{MENU_HEADER} {{
@@ -319,5 +330,42 @@ def build_kit_qss(t: Tokens) -> str:
             color: {t.text};
             border-bottom: 2px solid {t.inverse};
             background-color: transparent;
+        }}
+
+        /* Top bar: white surface with a hairline, and a 3px strip below it
+           in the color of the view being edited. */
+        QFrame#{TOPBAR} {{
+            background-color: {t.surface};
+            border-bottom: 1px solid {t.line};
+        }}
+        QFrame#{TOPBAR_STRIP} {{
+            background-color: {t.line};
+        }}
+        {strips}
+        QFrame#{TOPBAR_DECK} {{
+            background-color: transparent;
+            {font}
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QFrame#{TOPBAR_DECK}:hover, QFrame#{TOPBAR_DECK}[active="true"] {{
+            background-color: {t.hover};
+        }}
+        QFrame#{TOPBAR_DECK} QLabel {{
+            color: {t.text};
+        }}
+        QFrame#{TOPBAR_DECK} QLabel#{ICON} {{
+            color: {t.text_2};
+        }}
+        QLabel#{TOPBAR_LABEL} {{
+            {font}
+            font-size: 12px;
+            color: {t.text_3};
+        }}
+        QLabel#{TOPBAR_SAVE} {{
+            {font}
+            font-size: 11.5px;
+            color: {t.text_3};
         }}
     """

@@ -656,7 +656,7 @@ class _ImageEditor(QFrame):
             try:
                 # self.app.signals.log.emit(...), not self.app.log(...): this
                 # runs on _translate_bg's own background thread, and log()
-                # is documented main-thread-only (qt_gui.py) -- emitting the
+                # is documented main-thread-only (the main window) -- emitting the
                 # signal instead queues the call onto the GUI thread the
                 # same way every compile-log line already does.
                 self.app.signals.log.emit(
@@ -1325,7 +1325,7 @@ class TranscriptTab(QWidget):
         # direct instruction: picking a slide from the popup should land on
         # it immediately, no separate "go" click) -- same QLineEdit +
         # QCompleter pattern as the main window's own "Find slide:" search
-        # box (qt_gui.py._build_search_box()), just wired to this tab's own
+        # box (the main window's "Go to slide…"), just wired to this tab's own
         # _find_and_show_slide() instead of opening a slide editor.
         # completer.activated fires directly from a popup click (or Enter
         # on a highlighted suggestion) with no OK button in between;
@@ -1419,7 +1419,7 @@ class TranscriptTab(QWidget):
 
     def ensure_loaded(self) -> None:
         """First scan, run when the tab is first opened rather than at launch
-        (qt_gui.py's _on_tab_changed) -- it walks every slide, hashes the
+        (the main window's _on_page_changed) -- it walks every slide, hashes the
         images they reference, and writes any new rows to the JSON store."""
         if self._loaded:
             return
@@ -2404,7 +2404,7 @@ class TranscriptTab(QWidget):
     ) -> None:
         """Re-fill both model pickers (and re-preselect their Settings ->
         "AI models" defaults) after the Settings dialog closes -- called by
-        qt_gui.py, so a changed default or a deleted model reaches this
+        the main window, so a changed default or a deleted model reaches this
         already-open tab."""
         self._populate_models(vision_models)
         self._populate_translation_models(models)

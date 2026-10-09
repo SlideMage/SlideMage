@@ -111,21 +111,6 @@ class ThemeManager:
             "brace_match_bg": c["select_bg"],
         }
 
-    def tab_colors(self) -> dict[str, str]:
-        """Per-tab-role text colors -- QTabBar::tab's QSS color applies to
-        every tab alike, so distinguishing Active/Archived/deck-editor/
-        slide-editor tabs needs QTabBar.setTabTextColor() per index instead
-        (not QSS-expressible), same reasoning as syntax_colors() above."""
-        c = self.colors
-        return {
-            "active": c["tab_active"],
-            "archived": c["tab_archived"],
-            "deck_editor": c["tab_deck_editor"],
-            "slide_editor": c["tab_slide_editor"],
-            "transcript": c["tab_transcript"],
-            "bib_editor": c["tab_bib_editor"],
-        }
-
     def toggle(self) -> None:
         self.set_dark(not self.dark)
 
@@ -287,19 +272,6 @@ class ThemeManager:
                 border: 1px solid {c['border']};
                 border-bottom: none;
                 max-width: 220px;
-                /* No text-align/text-decoration/color here (2026-08-26,
-                   direct report -- a `text-align: left` tried here first
-                   was confirmed to have zero effect, unlike most other
-                   QSS-styled controls: Qt's built-in tab styles hardcode
-                   centered label painting and simply ignore it). This
-                   rule now only drives the tab's *shape* -- background,
-                   border, sizing -- via CE_TabBarTabShape;
-                   qt_closable_tab_bar.py's own paintEvent() draws every
-                   tab's label itself (left-aligned, elided, underlined
-                   when selected, colored per its role via
-                   QTabBar.setTabTextColor()) instead of letting Qt's
-                   default CE_TabBarTabLabel do it, so those properties
-                   would be dead code here even if text-align weren't. */
             }}
             QTabBar::tab:selected {{
                 background-color: {c['panel_bg']};

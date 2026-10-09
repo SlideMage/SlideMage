@@ -1,4 +1,4 @@
-"""The Decks menu, the "Create deck snapshot" dialog, the snapshot run on the
+"""The ⋮ menu's Decks section, the "Create deck snapshot" dialog, the snapshot run on the
 compile slot and the archive question that offers a snapshot first."""
 from __future__ import annotations
 
@@ -9,8 +9,13 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget
 
-from slidemage import app_settings, compile_progress, deck_snapshot, qt_gui, qt_snapshot_dialog
+from slidemage import app_settings, compile_progress, deck_snapshot, qt_snapshot_dialog
 from slidemage.deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
+from slidemage.ui.workspace import compile_jobs
+from slidemage.ui.workspace import window as window_module
+from slidemage.ui.workspace.compile_jobs import CompileJobsMixin
+from slidemage.ui.workspace.deck_actions import DeckActionsMixin
+from slidemage.ui.workspace.menus import build_more_menu
 
 
 @pytest.fixture(scope="session")
@@ -46,14 +51,14 @@ def press_on_exec(monkeypatch, label: str, seen: list | None = None):
 
 # ---------------------------------------------------------------- menu
 
-def test_decks_menu_sits_after_system_and_holds_snapshot_and_import(qapp):
-    window = qt_gui.SlideMageWindow(qt_gui.ThemeManager())
-    menus = {a.text(): a.menu() for a in window.menuBar().actions()}
-    assert list(menus) == ["System", "Decks", "Tabs", "Housekeeping", "Info"]
-    decks = [a.text() for a in menus["Decks"].actions()]
-    assert decks == ["Create deck snapshot…", "Import PPTX/ODP…"]
-    assert "Import PPTX/ODP…" not in [a.text() for a in menus["System"].actions()]
-    window.close()
+def test_decks_section_holds_snapshot_and_import(qapp):
+    menu = build_more_menu(None, None)
+    menu._build()
+    entries = [(e[0], e[2] if e[0] == "item" else e[-1]) for e in menu._entries]
+    start = entries.index(("header", "Decks"))
+    assert entries[start:start + 4] == [
+        ("header", "Decks"), ("item", "Create deck snapshot…"), ("item", "Import PPTX/ODP…"),
+        ("item", "Refresh decks")]
 
 
 def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
@@ -66,12 +71,12 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
         "deck_name": "t-A", "created": "2026-10-07T14:12:30+02:00", "read_only": True}})
     (tmp_path / "snapshot.json").write_text(json.dumps({"slidemage": {"version": "v5.33.0"}}),
                                             encoding="utf-8")
-    banner = qt_gui.SlideMageWindow._build_snapshot_banner
-    monkeypatch.setattr(qt_gui, "PROJECT_ROOT", proj)
+    banner = window_module.WorkspaceWindow._build_snapshot_banner
+    monkeypatch.setattr(window_module, "PROJECT_ROOT", proj)
     label = banner(None)
     assert label.text().startswith(
         "Deck snapshot of t-A, taken 2026-10-07 14:12 with SlideMage v5.33.0.")
-    monkeypatch.setattr(qt_gui, "PROJECT_ROOT", tmp_path)   # an ordinary folder
+    monkeypatch.setattr(window_module, "PROJECT_ROOT", tmp_path)   # an ordinary folder
     assert banner(None) is None
 
 
@@ -82,28 +87,25 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
 ])
 def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, button, expected):
     jobs = [SimpleNamespace(jobname="t-A-instructor"), SimpleNamespace(jobname="t-A-during-course")]
-    monkeypatch.setattr(qt_gui.compiler, "unchanged_jobs",
+    monkeypatch.setattr(compile_jobs.compiler, "unchanged_jobs",
                         lambda jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")])
     seen: list = []
     press_on_exec(monkeypatch, button, seen)
     win = QWidget()
     win._job_output_paths = {}
     win._log = lambda line: None
-    status = {"t-A-instructor": 1, "t-A-during-course": 2}
-    result = qt_gui.SlideMageWindow._confirm_unchanged_jobs(win, jobs, status)
+    result = CompileJobsMixin._confirm_unchanged_jobs(win, jobs)
     assert [j.jobname for j in result] == expected
     assert "t-A-instructor (compiled 2026-10-08 07:51)" in seen[0][0]
-    if button == "Skip unchanged":
-        assert status == {"t-A-during-course": 2}
 
 
 def test_nothing_unchanged_no_question(qapp, monkeypatch):
     jobs = [SimpleNamespace(jobname="t-A-instructor")]
-    monkeypatch.setattr(qt_gui.compiler, "unchanged_jobs", lambda jobs, dests: [])
+    monkeypatch.setattr(compile_jobs.compiler, "unchanged_jobs", lambda jobs, dests: [])
     monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked"))
     win = QWidget()
     win._job_output_paths = {}
-    assert qt_gui.SlideMageWindow._confirm_unchanged_jobs(win, jobs, {}) == jobs
+    assert CompileJobsMixin._confirm_unchanged_jobs(win, jobs) == jobs
 
 
 # ---------------------------------------------------------------- dialog
@@ -153,7 +155,7 @@ def archive_window(monkeypatch, settings):
     win._start_snapshots = lambda decks, options, after=None: calls.append(
         ("snapshot", [d.name for d in decks], options, after)) or True
     for name in ("_archive_deck", "_archive_after_snapshot"):
-        setattr(win, name, getattr(qt_gui.SlideMageWindow, name).__get__(win))
+        setattr(win, name, getattr(DeckActionsMixin, name).__get__(win))
     return win, calls
 
 
@@ -199,18 +201,19 @@ def test_failed_snapshot_archives_only_after_a_second_yes(qapp, monkeypatch, set
 def run_window(monkeypatch, settings, compiling=False):
     emitted: list = []
     signal = lambda name: SimpleNamespace(emit=lambda *a: emitted.append((name, *a)))  # noqa: E731
-    table = SimpleNamespace(set_compiling=lambda on: emitted.append(("compiling", on)))
+    topbar = SimpleNamespace(set_compiling=lambda on: emitted.append(("compiling", on)))
     win = SimpleNamespace(
         compiling=compiling, cancel_token=None, _after_snapshots=None,
-        _job_status_map={"x": 1}, _job_progress_texts={}, _progress=compile_progress.BatchProgress(),
-        footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
-        appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False),
-        active_table=table, archived_table=table,
+        _job_progress_texts={}, _progress=compile_progress.BatchProgress(),
+        build_options=SimpleNamespace(
+            footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
+            appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
+        topbar=topbar,
         signals=SimpleNamespace(log=signal("log"), batch_done=signal("batch_done"),
                                 snapshots_done=signal("snapshots_done")),
     )
     for name in ("_start_snapshots", "_run_snapshots_thread"):
-        setattr(win, name, getattr(qt_gui.SlideMageWindow, name).__get__(win))
+        setattr(win, name, getattr(CompileJobsMixin, name).__get__(win))
 
     class SyncThread:
         def __init__(self, target, args=(), daemon=None):
@@ -219,7 +222,7 @@ def run_window(monkeypatch, settings, compiling=False):
         def start(self):
             self.target(*self.args)
 
-    monkeypatch.setattr(qt_gui.threading, "Thread", SyncThread)
+    monkeypatch.setattr(compile_jobs.threading, "Thread", SyncThread)
     monkeypatch.setattr(compile_progress, "spec_for_job", lambda job: compile_progress.JobSpec(3, 1))
     return win, emitted
 
@@ -244,7 +247,6 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
     assert set(win._job_progress_texts) == {
         "snapshot~t-A", "verify~t-A", "snapshot~t-A-presenter", "verify~t-A-presenter",
         "snapshot~t-B", "verify~t-B", "snapshot~t-B-presenter", "verify~t-B-presenter"}
-    assert win._job_status_map == {}
     assert win.compiling is False and win.cancel_token is None       # slot freed again
     assert ("log", "==== Done: 2 of 2 snapshot(s) created ====") in emitted
     assert emitted[-1][0] == "snapshots_done"

@@ -1,7 +1,7 @@
 """Settings dialog (2026-08-25, direct instruction): a "Settings" menu
 holding cross-cutting app preferences that don't belong scattered across
 individual toolbars -- dark mode (moved here from its own toolbar
-checkbox in qt_gui.py), the default Ollama model per AI task (an "AI
+checkbox in the main window), the default Ollama model per AI task (an "AI
 models" tab), and (2026-08-25) an "Ollama models" section to delete
 models this app no longer needs -- genuinely from Ollama's own local model
 store (ai.ollama_admin.delete_model(), its own DELETE /api/delete), not just
@@ -107,7 +107,7 @@ class SettingsDialog(QDialog):
         # is built; None until then fails safe (never "dirty").
         self._draft_prompt_snapshot: str | None = None
         self._rewrite_prompt_snapshot: str | None = None
-        # Read by qt_gui.py after this dialog closes, to refresh the model
+        # Read by the main window after this dialog closes, to refresh the model
         # pickers of any dialog/tab that's still open -- filled in by
         # _reload_ollama_models().
         self.available_models: list[str] = []
@@ -602,7 +602,7 @@ class SettingsDialog(QDialog):
             return
 
         # Uses the same app-wide Ollama mutex every drafting/translation
-        # call goes through (qt_gui.py's try_start_ollama_task()) -- not
+        # call goes through (the main window's try_start_ollama_task()) -- not
         # because deleting itself is an Ollama *inference* call, but to
         # refuse deleting a model out from under a draft/translate batch
         # that's actively using it. Held for the whole loop below (2026-08-26,

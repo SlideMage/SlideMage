@@ -9,11 +9,14 @@ import pytest
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QMessageBox, QPlainTextEdit, QWidget
 
-from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_gui, qt_slide_source_tab, qt_transcript_tab
+from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_slide_source_tab, qt_transcript_tab
+from slidemage.ui.workspace import maintenance, window as window_module
 from slidemage.ai.providers import OllamaProvider
 from slidemage.ai_draft import DraftProposal
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
+
+from conftest import build_window
 
 
 @pytest.fixture(scope="session")
@@ -27,7 +30,7 @@ def _mock_ollama_lists(monkeypatch) -> None:
 
 def _make_window(monkeypatch, qapp):
     _mock_ollama_lists(monkeypatch)
-    return qt_gui.SlideMageWindow(ThemeManager())
+    return build_window(monkeypatch)
 
 
 def _write_slide(path: Path, text: str = "\\slide{abc-EN-Test}\nBODY\n") -> Path:
@@ -100,9 +103,9 @@ def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, t
     window = _make_window(monkeypatch, qapp)
     tab = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     chosen = tmp_path / "another-project"
-    monkeypatch.setattr(qt_gui.project, "pick_or_create_project", lambda *args: chosen)
+    monkeypatch.setattr(window_module.project, "pick_or_create_project", lambda *args: chosen)
     relaunched = []
-    monkeypatch.setattr(qt_gui.project, "relaunch_with_project", relaunched.append)
+    monkeypatch.setattr(window_module.project, "relaunch_with_project", relaunched.append)
     replies = iter((QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No))
     titles = []
 
@@ -523,11 +526,11 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     old_run = build_root / "old-run"
     old_run.mkdir()
     (old_run / "output.pdf").write_bytes(b"old")
-    monkeypatch.setattr(qt_gui.compiler, "removable_build_entries", lambda: [old_file, old_run])
-    monkeypatch.setattr(qt_gui, "DECKS_DIR", tmp_path / "decks")
-    monkeypatch.setattr(qt_gui, "TEMP_DIR", tmp_path / ".temp")
-    qt_gui.DECKS_DIR.mkdir()
-    qt_gui.TEMP_DIR.mkdir()
+    monkeypatch.setattr(maintenance.compiler, "removable_build_entries", lambda: [old_file, old_run])
+    monkeypatch.setattr(maintenance, "DECKS_DIR", tmp_path / "decks")
+    monkeypatch.setattr(maintenance, "TEMP_DIR", tmp_path / ".temp")
+    maintenance.DECKS_DIR.mkdir()
+    maintenance.TEMP_DIR.mkdir()
     monkeypatch.setattr(
         QMessageBox, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,

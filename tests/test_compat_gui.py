@@ -6,9 +6,11 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 
-from slidemage import compat, qt_compat_dialog, qt_gui
+from slidemage import compat, qt_compat_dialog
 from slidemage import version as version_mod
 from slidemage.qt_compat_dialog import CompatDialog
+from slidemage.ui.workspace import maintenance
+from slidemage.ui.workspace.maintenance import MaintenanceMixin
 
 from test_compat import BREAKING, LOOK, MANUAL_FIX, make_project
 
@@ -47,7 +49,7 @@ def test_review_dialog_lists_quiet_changes_and_has_no_not_now(tmp_path, qapp):
 
 def window(root, monkeypatch, changes, choice, logged):
     """A stand-in main window running the real handlers."""
-    monkeypatch.setattr(qt_gui, "PROJECT_ROOT", root)
+    monkeypatch.setattr(maintenance, "PROJECT_ROOT", root)
     monkeypatch.setattr(version_mod, "VERSION_NUMBER", "v5.30.0")
     monkeypatch.setattr(compat, "CHANGES", changes)
 
@@ -58,7 +60,7 @@ def window(root, monkeypatch, changes, choice, logged):
         def exec(self):
             return 1
 
-    monkeypatch.setattr(qt_gui, "CompatDialog", FakeDialog)
+    monkeypatch.setattr(maintenance, "CompatDialog", FakeDialog)
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     win = SimpleNamespace(
@@ -66,7 +68,7 @@ def window(root, monkeypatch, changes, choice, logged):
         refresh_open_deck_editors=lambda: None)
     for name in ("check_project_compat", "_show_compat", "_compat_update", "_compat_report",
                  "_compat_newer_notice"):
-        setattr(win, name, getattr(qt_gui.SlideMageWindow, name).__get__(win))
+        setattr(win, name, getattr(MaintenanceMixin, name).__get__(win))
     return win
 
 
@@ -97,7 +99,7 @@ def test_update_project_with_work_left_does_not_move_the_baseline(tmp_path, monk
     logged = []
     win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], qt_compat_dialog.UPDATE, logged)
     opened = []
-    monkeypatch.setattr(qt_gui.open_path, "open_in_default_app", opened.append)
+    monkeypatch.setattr(maintenance.open_path, "open_in_default_app", opened.append)
     win.check_project_compat()
     assert compat.checked_version(root) == "v5.28.1"          # the manual-only change is still open
     assert opened and opened[0].name == "compat-report.md"

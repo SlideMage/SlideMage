@@ -1,7 +1,7 @@
 """Decks -> "Create deck snapshot..." (v5.33.0, docs/DECK_SNAPSHOT_PLAN.md):
 pick one or more decks, folder or .zip, and whether the LaTeX package files
 and the SlideMage app go in. The snapshots themselves are made one after the
-other by deck_snapshot.snapshot_decks() on a worker thread (qt_gui.py); this
+other by deck_snapshot.snapshot_decks() on a worker thread (ui/workspace/compile_jobs.py); this
 module also has the two questions around a run -- whether older snapshots
 should be deleted, and the summary at the end."""
 from __future__ import annotations

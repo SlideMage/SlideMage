@@ -1,8 +1,7 @@
 """Full-text slide search dialog (2026-08-26, direct instruction) --
 searches every slide's raw .tex source via slide_search.search_slides(),
-unlike the toolbar's existing "Find slide:" box (qt_gui.py's own
-_build_search_box), which only autocompletes on a slide's own id/slug,
-never its body text.
+unlike the main window's "Go to slide…" (ui/workspace/window.py), which only
+autocompletes on a slide's own id/slug, never its body text.
 """
 from __future__ import annotations
 
@@ -79,5 +78,5 @@ class SlideSearchDialog(QDialog):
 
     def _on_result_activated(self, item: QListWidgetItem) -> None:
         path = item.data(Qt.ItemDataRole.UserRole)
-        self.app.open_slide_editor(path, return_to=self.app.tabs.currentWidget())
+        self.app.open_slide_editor(path, return_to=self.app.stack.currentWidget())
         self.accept()

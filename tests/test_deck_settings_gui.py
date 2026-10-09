@@ -1,17 +1,18 @@
-"""The deck row's Settings button and dialog (formerly "Course link...")."""
+"""The deck settings dialog and the ⋮ menu entry that opens it (formerly the deck row's Settings button)."""
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from slidemage import deck_settings, qt_gui
+from slidemage import deck_settings
 from slidemage.deck_scan import Deck
 from slidemage.deck_settings import DeckSettings
 from slidemage.qt_deck_settings_dialog import DeckSettingsDialog
-from slidemage.qt_deck_table import DeckTable
-from slidemage.ui.kit.theme import ThemeManager
+from slidemage.ui.workspace import deck_actions
+from slidemage.ui.workspace.deck_actions import DeckActionsMixin
+from slidemage.ui.workspace.menus import build_more_menu
 
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
 TEMPLATES = [("slidemage", "SlideMage"), ("uni-graz", "University of Graz")]
@@ -103,15 +104,15 @@ def test_settings_action_saves_all_changes_then_opens_the_link(tmp_path, monkeyp
             return new
 
     opened, refreshed, reloaded, logged = [], [], [], []
-    monkeypatch.setattr(qt_gui, "DeckSettingsDialog", AcceptedDialog)
-    monkeypatch.setattr(qt_gui.open_path, "open_in_default_app", opened.append)
+    monkeypatch.setattr(deck_actions, "DeckSettingsDialog", AcceptedDialog)
+    monkeypatch.setattr(deck_actions.open_path, "open_in_default_app", opened.append)
     window = SimpleNamespace(
         _slide_source_tabs={}, _log=logged.append,
         refresh_open_deck_editors=lambda: refreshed.append(True),
         reload_decks=lambda: reloaded.append(True),
     )
 
-    qt_gui.SlideMageWindow._on_deck_settings(window, deck)
+    DeckActionsMixin._on_deck_settings(window, deck)
 
     written = deck.path.read_text(encoding="utf-8")
     assert "\\input{Slidemaster_preamble_slidemage}" in written
@@ -125,33 +126,19 @@ def test_settings_action_refuses_while_the_deck_source_is_open(tmp_path, monkeyp
     told = []
     monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
     window = SimpleNamespace(_slide_source_tabs={deck.path: object()})
-    qt_gui.SlideMageWindow._on_deck_settings(window, deck)
+    DeckActionsMixin._on_deck_settings(window, deck)
     assert told and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 
 
-@pytest.mark.parametrize("archivable", [True, False])
+@pytest.mark.parametrize("archived", [False, True])
 @pytest.mark.parametrize("tags, enabled", [
     ([], True), (["course"], True), (["work"], True), (["research"], True),
     (["test"], True), (["manual"], False),
 ])
-def test_settings_button_is_in_every_deck_row(tmp_path, qapp, archivable, tags, enabled):
+def test_settings_entry_is_in_the_menu_of_every_deck(tmp_path, qapp, archived, tags, enabled):
     deck = make_deck(tmp_path, tags)
-    clicked = []
-    table = DeckTable(
-        ThemeManager(), archivable=archivable,
-        on_open=lambda _deck: None,
-        on_archive=None, on_edit=None, on_duplicate=None, on_export_pptx=None,
-        on_compile_selected=lambda _rows: None,
-        on_stop_compilation=lambda: None,
-        on_create_transcript=lambda _rows: None,
-        on_refresh=lambda: None,
-        on_settings=clicked.append,
-    )
-    table.rebuild([deck])
-
-    buttons = [b for b in table.findChildren(QPushButton) if b.text().endswith("Settings")]
-    assert len(buttons) == 1
-    assert buttons[0].isEnabled() == enabled
-    if enabled:
-        buttons[0].click()
-        assert clicked == [deck]
+    deck.archived = archived
+    menu = build_more_menu(None, deck)
+    menu._build()
+    row = next(row for row in menu._rows if row.key == "deck_settings")
+    assert row.isEnabled() == enabled

@@ -31,13 +31,13 @@ from .compiler import CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
 from .slide_preview import DECKS_DIR, template_preamble
 
-# qt_gui.py's own log parser watches every "==== PASS: <jobname> ->" line
+# The window's own log parser (ui/workspace/compile_jobs.py) watches every "==== PASS: <jobname> ->" line
 # globally (it's the only channel this background compile has back to the
 # GUI) to auto-open the resulting PDF when the "Auto-open" checkbox is on
 # -- fine for a real per-deck row, but this job's own PDF is a throwaway
 # megadeck nobody wants popping open, regardless of that checkbox
 # (2026-08-15, direct instruction: "irrespective of the global Auto-open
-# setting"). A recognizable prefix lets qt_gui.py exclude every one of
+# setting"). A recognizable prefix lets the window exclude every one of
 # this module's own PASS lines from that behavior without needing any
 # other channel back from this module.
 JOBNAME_PREFIX = "preview_all_"
@@ -175,7 +175,7 @@ def run(log: LogCallback, cancel: Optional[CancelToken] = None,
     preview file that isn't part of that valid set any more. Returns
     whether every template's compile succeeded.
 
-    base_jobnames: {template key: jobname} -- lets the caller (qt_gui.py)
+    base_jobnames: {template key: jobname} -- lets the caller (the window)
     pick each template's own job name in advance and register a
     progress-status label for it before that compile's first log line --
     and therefore the status lookup for it -- ever arrives. A template

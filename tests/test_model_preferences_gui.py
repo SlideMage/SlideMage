@@ -12,7 +12,8 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox, QPlainTextEdit, QWidget
 
-from slidemage import app_settings, qt_gui, qt_syntax_check_dialog
+from slidemage import app_settings, qt_syntax_check_dialog
+from slidemage.ui.workspace import window as window_module
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, InstalledModel, OllamaProvider
 from slidemage.qt_ai_draft_dialog import AiDraftDialog
 from slidemage.qt_settings_dialog import SettingsDialog
@@ -140,7 +141,7 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
             self._update_draft_button = lambda: None
 
     app.transcript_tab = OpenTranscript()
-    monkeypatch.setattr(qt_gui, "SettingsDialog", lambda _app: settings)
+    monkeypatch.setattr(window_module, "SettingsDialog", lambda _app: settings)
     monkeypatch.setattr(settings, "exec", lambda: None)
 
     def no_network():
@@ -149,7 +150,7 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     monkeypatch.setattr(OllamaProvider, "list_models", no_network)
     monkeypatch.setattr(OllamaProvider, "installed", no_network)
 
-    qt_gui.SlideMageWindow._on_open_settings(app)
+    window_module.WorkspaceWindow._on_open_settings(app)
     assert syntax.model_combo.currentText() == "vision"
     assert draft.model_combo.currentText() == "general-text"
     assert app.transcript_tab.model_combo.currentText() == "vision"
