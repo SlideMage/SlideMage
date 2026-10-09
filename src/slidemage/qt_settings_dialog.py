@@ -4,7 +4,7 @@ individual toolbars -- dark mode (moved here from its own toolbar
 checkbox in qt_gui.py), the default Ollama model per AI task (an "AI
 models" tab), and (2026-08-25) an "Ollama models" section to delete
 models this app no longer needs -- genuinely from Ollama's own local model
-store (alt_draft.delete_model(), its own DELETE /api/delete), not just
+store (ai.ollama_admin.delete_model(), its own DELETE /api/delete), not just
 some SlideMage-side list.
 
 Merged in v4.0.0 from Jürgen Fleiß's fork: the General tab's "Updates"
@@ -18,6 +18,11 @@ descriptions, Slide rewrite and Translation (TranslationPromptsPanel, the
 per-(model, source language, target language) translation prompts that
 used to open from a "Translation prompts…" button on the AI models tab);
 the General tab's Updates group chooses the update mode (updater.py).
+
+2026-10-09 (UI redesign step 2): the AI models tab picks provider and model
+per task (local Ollama or Claude), toggles "Local AI only" (globally and for
+this project) and stores the Anthropic API key. Kept deliberately small --
+this dialog is rebuilt in a later step.
 """
 from __future__ import annotations
 
@@ -54,6 +59,8 @@ from PySide6.QtWidgets import (
 from . import ai_draft
 from . import alt_draft
 from . import app_settings
+from .ai import credentials, ollama_admin, resolver
+from .ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, OllamaProvider
 from . import draft_prompts
 from . import slide_snapshot
 from . import updater
@@ -105,6 +112,7 @@ class SettingsDialog(QDialog):
         # _reload_ollama_models().
         self.available_models: list[str] = []
         self.vision_models: list[str] = []
+        self._cloud_models: list[str] = []
         self._model_combos: dict[str, QComboBox] = {}
 
         self._ollama_update_done.connect(self._on_ollama_update_finished)
@@ -324,6 +332,7 @@ class SettingsDialog(QDialog):
         picking a different model there only affects that dialog."""
         page = QWidget()
         layout = QVBoxLayout(page)
+        self._build_cloud_section(layout)
         layout.addWidget(_note_label(
             "Default model for each AI task. Every dialog with a model picker "
             "starts on the model chosen here; picking another one there "
@@ -352,7 +361,7 @@ class SettingsDialog(QDialog):
             self._model_combos[task] = combo
             combo.activated.connect(
                 lambda index, t=task, c=combo: app_settings.set(
-                    app_settings.MODEL_SETTINGS[t], c.itemData(index) or ""))
+                    app_settings.MODEL_SETTINGS[t], c.itemData(index) or ""))  # "<provider>:<model>"
             form.addRow(label, combo)
         layout.addLayout(form)
         self._models_unreachable_label = _note_label("")
@@ -370,6 +379,108 @@ class SettingsDialog(QDialog):
         layout.addWidget(heading)
         self._build_ollama_models_section(layout)
         return page
+
+    # -- Cloud models (Claude): Local AI only and the API key -----------------
+
+    _PROJECT_CHOICES = (
+        ("Follow the global setting", "follow"),
+        ("Local AI only", "local"),
+        ("Allow cloud models", "cloud"),
+    )
+
+    def _build_cloud_section(self, layout: QVBoxLayout) -> None:
+        layout.addWidget(QLabel("<b>Cloud models (Claude)</b>"))
+        layout.addWidget(_note_label(
+            "A cloud model receives whatever the task sends it (slide text, "
+            "images). The first cloud request in a project asks for "
+            "confirmation."
+        ))
+        self.local_only_check = QCheckBox("Local AI only: never use a cloud model")
+        self.local_only_check.setChecked(resolver.global_local_only())
+        self.local_only_check.toggled.connect(self._on_local_only_changed)
+        layout.addWidget(self.local_only_check)
+
+        project_row = QHBoxLayout()
+        project_row.addWidget(QLabel("This project:"))
+        self.project_local_only_combo = QComboBox()
+        for label, value in self._PROJECT_CHOICES:
+            self.project_local_only_combo.addItem(label, value)
+        override = resolver.project_local_only()
+        self.project_local_only_combo.setCurrentIndex(
+            self.project_local_only_combo.findData(
+                "follow" if override is None else "local" if override else "cloud"))
+        self.project_local_only_combo.activated.connect(self._on_project_local_only_changed)
+        project_row.addWidget(self.project_local_only_combo)
+        project_row.addStretch(1)
+        layout.addLayout(project_row)
+
+        key_row = QHBoxLayout()
+        key_row.addWidget(QLabel("Anthropic API key:"))
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_edit.setPlaceholderText("sk-ant-…")
+        key_row.addWidget(self.api_key_edit, stretch=1)
+        save_key = QPushButton("Save key")
+        save_key.clicked.connect(self._on_api_key_save)
+        key_row.addWidget(save_key)
+        remove_key = QPushButton("Remove key")
+        remove_key.clicked.connect(self._on_api_key_remove)
+        key_row.addWidget(remove_key)
+        layout.addLayout(key_row)
+        self.api_key_status = _note_label("")
+        layout.addWidget(self.api_key_status)
+        self._refresh_api_key_status()
+        self._load_cloud_models()
+
+    def _refresh_api_key_status(self) -> None:
+        key = credentials.get_api_key()
+        self.api_key_status.setText({
+            None: "No API key set.",
+            credentials.SOURCE_ENV: f"Using the key from the {credentials.ENV_VAR} "
+                                    "environment variable (it takes precedence).",
+            credentials.SOURCE_KEYCHAIN: "Key stored in the system keychain.",
+            credentials.SOURCE_FILE: "Key stored in the settings file "
+                                     "(.slidemage/app_settings.json inside the project "
+                                     "folder, which may be synced). Install the optional "
+                                     "'keyring' package to use the system keychain instead.",
+        }[key.source if key else None])
+
+    def _load_cloud_models(self) -> None:
+        """The models Claude offers (live list with a key, else the short
+        built-in one); none in local-only mode."""
+        if resolver.local_only():
+            self._cloud_models = []
+        else:
+            self._cloud_models = (
+                AnthropicProvider().list_models() or list(ANTHROPIC_FALLBACK_MODELS))
+
+    def _on_cloud_settings_changed(self) -> None:
+        self._refresh_api_key_status()
+        self._load_cloud_models()
+        self._populate_default_model_combos()
+
+    def _on_local_only_changed(self, checked: bool) -> None:
+        resolver.set_global_local_only(checked)
+        self._on_cloud_settings_changed()
+
+    def _on_project_local_only_changed(self, _index: int) -> None:
+        resolver.set_project_local_only(
+            {"follow": None, "local": True, "cloud": False}[
+                self.project_local_only_combo.currentData()])
+        self._on_cloud_settings_changed()
+
+    def _on_api_key_save(self) -> None:
+        key = self.api_key_edit.text().strip()
+        if not key:
+            return
+        credentials.set_api_key(key)
+        self.api_key_edit.clear()
+        self._on_cloud_settings_changed()
+
+    def _on_api_key_remove(self) -> None:
+        credentials.set_api_key("")
+        self.api_key_edit.clear()
+        self._on_cloud_settings_changed()
 
     # -- Ollama models (a section of the AI models tab, not its own tab) --------
 
@@ -441,17 +552,19 @@ class SettingsDialog(QDialog):
     def _populate_default_model_combos(self) -> None:
         """(Re)fill the per-task default pickers from the current model
         lists, keeping each task's saved default selected -- listed as
-        "(not installed)" rather than silently dropped when it's missing,
+        "(not available)" rather than silently dropped when it's missing,
         so a temporarily unreachable Ollama never rewrites a setting."""
         for task, combo in self._model_combos.items():
             models = self.vision_models if task == "image_description" else self.available_models
             combo.clear()
             combo.addItem("(none chosen -- built-in fallback)", "")
             for model in models:
-                combo.addItem(model, model)
+                combo.addItem(model, f"ollama:{model}")
+            for model in self._cloud_models:
+                combo.addItem(f"{model} (cloud)", f"anthropic:{model}")
             saved = app_settings.default_model(task)
             if saved and combo.findData(saved) == -1:
-                combo.addItem(f"{saved} (not installed)", saved)
+                combo.addItem(f"{app_settings.split_spec(saved)[1]} (not available)", saved)
             combo.setCurrentIndex(max(0, combo.findData(saved)))
         self._models_unreachable_label.setText(
             "" if self.available_models else
@@ -461,7 +574,7 @@ class SettingsDialog(QDialog):
 
     def _reload_ollama_models(self) -> None:
         self.ollama_models_list.clear()
-        models = alt_draft.list_installed_models_detailed()
+        models = OllamaProvider().installed()
         self.available_models = [model.name for model in models]
         self.vision_models = [model.name for model in models if "vision" in model.capabilities]
         self._populate_default_model_combos()
@@ -527,7 +640,7 @@ class SettingsDialog(QDialog):
                 failures: list[tuple[str, str]] = []
                 deleted = 0
                 for model in models:
-                    ok, error = alt_draft.delete_model(model)
+                    ok, error = ollama_admin.delete_model(model)
                     if ok:
                         deleted += 1
                         self.app.log(f"Deleted Ollama model {model}")
@@ -556,7 +669,7 @@ class SettingsDialog(QDialog):
             return
 
         # which models are custom shows only when the registry is asked
-        # (alt_draft.update_model), so the note covers the case in general
+        # (ollama_admin.update_model), so the note covers the case in general
         note = ("\n\nA custom model you built from another one (ollama create) "
                 "is updated by updating the model it was built from and "
                 "rebuilding it on top.")
@@ -601,7 +714,7 @@ class SettingsDialog(QDialog):
                 def progress(line: str) -> None:
                     self.app.signals.log.emit(line)
 
-                ok, error = alt_draft.update_model(model, on_progress=progress)
+                ok, error = ollama_admin.update_model(model, on_progress=progress)
                 results.append((model, ok, error))
                 if ok:
                     self.app.signals.log.emit(f"Updated Ollama model {model}")
@@ -650,7 +763,7 @@ class SettingsDialog(QDialog):
         draft_layout = QVBoxLayout(draft_group)
         draft_layout.addWidget(_note_label(
             "Sent as the system prompt for every \"Draft\"/\"Draft all…\" "
-            "call (alt_draft.OllamaBackend). Changing it can make a model "
+            "call (alt_draft.ModelBackend). Changing it can make a model "
             "abandon the required JSON output format -- see the per-image "
             "\"Tune prompt…\" dialog for a way to experiment on one image "
             "before changing this default for every batch."
@@ -678,7 +791,7 @@ class SettingsDialog(QDialog):
         rewrite_layout = QVBoxLayout(rewrite_group)
         rewrite_layout.addWidget(_note_label(
             "Sent as the system prompt for the slide-source editor's own "
-            "\"AI draft\" rewrite (ai_draft.OllamaSlideDrafter). Must keep "
+            "\"AI draft\" rewrite (ai_draft.SlideDrafter). Must keep "
             "the instruction to reproduce every \"%%%PROTECTED_N%%%\" "
             "placeholder line verbatim -- removing it lets the model edit "
             "content this feature is specifically meant to protect (the "

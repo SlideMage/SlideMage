@@ -38,7 +38,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import ai_draft, alt_draft, app_settings
+from . import ai_draft
+from .ai.providers import OllamaProvider
+from .qt_ai_models import fill_model_combo, provider_from_combo
 from .ui.kit.theme import MUTED_LABEL
 
 
@@ -139,13 +141,8 @@ class AiDraftDialog(QDialog):
         qt_gui.py after the Settings dialog closes, so a default changed
         there (or a model deleted) reaches this dialog while it's open."""
         if models is None:
-            models = alt_draft.list_all_models()
-        self.model_combo.clear()
-        self.model_combo.addItems(models or ["(no Ollama models installed)"])
-        self.model_combo.setEnabled(bool(models))
-        default = app_settings.default_model("ai_draft")
-        if default in models:
-            self.model_combo.setCurrentText(default)
+            models = OllamaProvider().list_models()
+        fill_model_combo(self.model_combo, "ai_draft", models, "(no AI models available)")
 
     # -- generate ------------------------------------------------------------
 
@@ -154,9 +151,9 @@ class AiDraftDialog(QDialog):
         if not prompt:
             QMessageBox.critical(self, "AI draft", "Describe what you want changed first.")
             return
-        model = self.model_combo.currentText()
-        if not model or model.startswith("("):
-            QMessageBox.critical(self, "AI draft", "No Ollama models are installed.")
+        provider = provider_from_combo(
+            self, self.model_combo, "this slide's full LaTeX source and your request")
+        if provider is None:
             return
         if not self.app.try_start_ollama_task("drafting a slide revision"):
             return
@@ -170,11 +167,11 @@ class AiDraftDialog(QDialog):
             "Review carefully -- a local model can misunderstand LaTeX structure, "
             "invent content, or make plausible-looking but wrong changes."
         )
-        self.status_label.setText(f"Generating with {model}… {disclaimer}")
+        self.status_label.setText(f"Generating with {provider.label}… {disclaimer}")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             current_text = self.source_tab.widget.toPlainText()
-            drafter = ai_draft.OllamaSlideDrafter(model=model)
+            drafter = ai_draft.SlideDrafter(provider)
             result = drafter.draft(current_text, prompt)
         finally:
             QApplication.restoreOverrideCursor()

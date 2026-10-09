@@ -6,7 +6,7 @@ reached from a "Translation prompts…" button on the AI models tab
 (2026-09-27 to v4.0.0); before that it was a tab of its own (2026-08-25).
 
 Per-(model, source language, target language) prompt overrides
-(translation_prompts.py), used by alt_draft.OllamaTranslationBackend for
+(translation_prompts.py), used by alt_draft.ModelTranslationBackend for
 both the Images tab's per-image "Translate now" button and its
 "Translate all…" batch. The two forms here only save on their own Save
 buttons; SettingsDialog.reject() asks about unsaved text through
@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import alt_draft
+from .ai.providers import OllamaProvider
 from . import translation_prompts as tp
 
 
@@ -106,7 +106,7 @@ class TranslationPromptsPanel(QWidget):
         self.prompt_model_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.prompt_model_combo.setMinimumContentsLength(16)
-        self.prompt_model_combo.addItems(alt_draft.list_all_models())
+        self.prompt_model_combo.addItems(OllamaProvider().list_models())
         model_row.addWidget(self.prompt_model_combo, stretch=1)
         form.addLayout(model_row)
 

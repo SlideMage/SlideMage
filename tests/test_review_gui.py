@@ -10,6 +10,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QMessageBox, QPlainTextEdit, QWidget
 
 from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_gui, qt_slide_source_tab, qt_transcript_tab
+from slidemage.ai.providers import OllamaProvider
 from slidemage.ai_draft import DraftProposal
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
@@ -21,8 +22,7 @@ def qapp():
 
 
 def _mock_ollama_lists(monkeypatch) -> None:
-    monkeypatch.setattr(alt_draft, "list_vision_models", lambda: [])
-    monkeypatch.setattr(alt_draft, "list_all_models", lambda: [])
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
 
 
 def _make_window(monkeypatch, qapp):
@@ -338,6 +338,8 @@ def _patch_translate_dialog_and_thread(monkeypatch, *, run_inline):
                 self.target(*self.args)
 
     monkeypatch.setattr(qt_transcript_tab, "QMessageBox", FakeMessageBox)
+    monkeypatch.setattr(qt_transcript_tab, "provider_from_combo",
+                        lambda *_args: OllamaProvider("offline-test"))
     monkeypatch.setattr(qt_transcript_tab.threading, "Thread", ControlledThread)
     return jobs
 
@@ -360,13 +362,13 @@ def test_unsaved_english_translation_stays_current_after_save(
     _patch_translate_dialog_and_thread(monkeypatch, run_inline=True)
 
     class FakeBackend:
-        def __init__(self, **_kwargs):
+        def __init__(self, *_args, **_kwargs):
             pass
 
         def translate(self, entry):
             return _translation_result_for(entry)
 
-    monkeypatch.setattr(alt_draft, "OllamaTranslationBackend", FakeBackend)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeBackend)
     editor._on_translate()
 
     assert "matches current English text" in editor.translation_state_label.text()
@@ -411,13 +413,13 @@ def test_edit_after_translation_completion_invalidates_saved_provenance(
     _patch_translate_dialog_and_thread(monkeypatch, run_inline=True)
 
     class FakeBackend:
-        def __init__(self, **_kwargs):
+        def __init__(self, *_args, **_kwargs):
             pass
 
         def translate(self, entry):
             return _translation_result_for(entry)
 
-    monkeypatch.setattr(alt_draft, "OllamaTranslationBackend", FakeBackend)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeBackend)
     editor._on_translate()
     editor.fields["long_de"].setPlainText("HUMAN GERMAN EDIT AFTER TRANSLATION")
     tab._save(mark_reviewed=False)
@@ -453,7 +455,7 @@ def test_individual_translation_keeps_fields_typed_after_request(monkeypatch, qa
 
 def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
     _mock_ollama_lists(monkeypatch)
-    monkeypatch.setattr(alt_draft, "list_all_models", lambda: ["offline-test"])
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["offline-test"])
     monkeypatch.setattr(app_settings, "get", lambda _key: None)
 
     class SourceTab(QWidget):
@@ -467,7 +469,7 @@ def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
             self.widget = QPlainTextEdit("original source", self)
 
     class FakeDrafter:
-        def __init__(self, **_kwargs):
+        def __init__(self, *_args, **_kwargs):
             pass
 
         def draft(self, current_text, _prompt):
@@ -477,7 +479,7 @@ def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
                 elapsed_s=0.1,
             )
 
-    monkeypatch.setattr(qt_ai_draft_dialog.ai_draft, "OllamaSlideDrafter", FakeDrafter)
+    monkeypatch.setattr(qt_ai_draft_dialog.ai_draft, "SlideDrafter", FakeDrafter)
     source_tab = SourceTab()
     dialog = qt_ai_draft_dialog.AiDraftDialog(source_tab, "test.tex")
     dialog.prompt_edit.setPlainText("add a line")

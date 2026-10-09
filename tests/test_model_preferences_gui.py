@@ -12,7 +12,8 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox, QPlainTextEdit, QWidget
 
-from slidemage import alt_draft, app_settings, qt_gui, qt_syntax_check_dialog
+from slidemage import app_settings, qt_gui, qt_syntax_check_dialog
+from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, InstalledModel, OllamaProvider
 from slidemage.qt_ai_draft_dialog import AiDraftDialog
 from slidemage.qt_settings_dialog import SettingsDialog
 from slidemage.qt_syntax_check_dialog import SyntaxCheckDialog
@@ -27,7 +28,7 @@ def qapp():
 
 def _choose(settings: SettingsDialog, task: str, model: str) -> None:
     combo = settings._model_combos[task]
-    index = combo.findData(model)
+    index = combo.findData(f"ollama:{model}")
     assert index != -1, (task, model)
     combo.setCurrentIndex(index)
     combo.activated.emit(index)
@@ -37,15 +38,16 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     names = ["general-text", "translator", "vision", "vision-2"]
     vision = ["vision", "vision-2"]
-    monkeypatch.setattr(alt_draft, "list_all_models", lambda: names)
-    monkeypatch.setattr(alt_draft, "list_vision_models", lambda: vision)
     monkeypatch.setattr(
-        alt_draft, "list_installed_models_detailed",
-        lambda: [
-            alt_draft.InstalledModel(name, 1, "", ("vision",) if name in vision else ())
+        OllamaProvider, "installed",
+        lambda self: [
+            InstalledModel(name, 1, "", ("vision",) if name in vision else ())
             for name in names
         ],
     )
+    monkeypatch.setattr(
+        OllamaProvider, "list_models",
+        lambda self, vision_only=False: vision if vision_only else names)
     monkeypatch.setattr(SettingsDialog, "_build_ai_prompts_tab", lambda self: QWidget())
 
     class App(QWidget):
@@ -62,19 +64,22 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     settings = SettingsDialog(app)
     assert settings.available_models == names
     assert settings.vision_models == vision
-    # Image descriptions only offer vision models (plus the "none" entry).
+    # Image descriptions only offer vision models among the local ones (plus
+    # the "none" entry); without an API key the cloud list is the built-in one.
     image_combo = settings._model_combos["image_description"]
-    assert [image_combo.itemData(i) for i in range(image_combo.count())] == ["", *vision]
+    assert [image_combo.itemData(i) for i in range(image_combo.count())] == [
+        "", *(f"ollama:{m}" for m in vision),
+        *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
 
     _choose(settings, "syntax_check", "general-text")
     _choose(settings, "ai_draft", "translator")
     _choose(settings, "image_description", "vision-2")
     _choose(settings, "translation", "translator")
     app_settings.set_ollama_host("http://ollama.example:11434")
-    assert app_settings.default_model("syntax_check") == "general-text"
-    assert app_settings.default_model("ai_draft") == "translator"
-    assert app_settings.default_model("image_description") == "vision-2"
-    assert app_settings.default_model("translation") == "translator"
+    assert app_settings.default_model("syntax_check") == "ollama:general-text"
+    assert app_settings.default_model("ai_draft") == "ollama:translator"
+    assert app_settings.default_model("image_description") == "ollama:vision-2"
+    assert app_settings.default_model("translation") == "ollama:translator"
 
     class Source(QWidget):
         def __init__(self):
@@ -86,13 +91,13 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     requests = []
 
     class Checker:
-        def __init__(self, *, model, host):
-            requests.append((model, host))
+        def __init__(self, provider):
+            requests.append((provider.model, provider.host))
 
         def check(self, _text):
             return SyntaxCheckResult(model="general-text")
 
-    monkeypatch.setattr(qt_syntax_check_dialog.syntax_check, "OllamaSyntaxChecker", Checker)
+    monkeypatch.setattr(qt_syntax_check_dialog.syntax_check, "SyntaxChecker", Checker)
     syntax = SyntaxCheckDialog(source, "slide.tex")
     # The check itself runs on a worker thread; let it finish.
     if syntax._worker is not None:
@@ -112,7 +117,7 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     # Picking another model in a dialog applies to that dialog only.
     draft.model_combo.setCurrentText("vision")
     draft.model_combo.activated.emit(draft.model_combo.currentIndex())
-    assert app_settings.default_model("ai_draft") == "translator"
+    assert app_settings.default_model("ai_draft") == "ollama:translator"
 
     # A default changed in Settings reaches already-open pickers when the
     # Settings dialog closes -- from the dialog's own model lists, with no
@@ -141,8 +146,8 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     def no_network():
         raise AssertionError("refresh should use the Settings dialog's model lists")
 
-    monkeypatch.setattr(alt_draft, "list_all_models", no_network)
-    monkeypatch.setattr(alt_draft, "list_vision_models", no_network)
+    monkeypatch.setattr(OllamaProvider, "list_models", no_network)
+    monkeypatch.setattr(OllamaProvider, "installed", no_network)
 
     qt_gui.SlideMageWindow._on_open_settings(app)
     assert syntax.model_combo.currentText() == "vision"

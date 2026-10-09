@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from slidemage import alt_draft, app_settings, slide_preview, slide_snapshot, update_all_previews
+from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
+from slidemage.ai.providers import OllamaProvider
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 LATEX = Path(__file__).resolve().parents[1] / "latex"
@@ -135,9 +136,8 @@ def test_settings_offers_the_project_templates_and_saves_the_choice(tmp_path, mo
     _framework(tmp_path / "latex", "slidemage")
     monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT",
                         _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
-    monkeypatch.setattr(alt_draft, "list_all_models", lambda: [])
-    monkeypatch.setattr(alt_draft, "list_vision_models", lambda: [])
-    monkeypatch.setattr(alt_draft, "list_installed_models_detailed", lambda: [])
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
+    monkeypatch.setattr(OllamaProvider, "installed", lambda self: [])
     monkeypatch.setattr(SettingsDialog, "_build_ai_prompts_tab", lambda self: QWidget())
 
     class App(QWidget):

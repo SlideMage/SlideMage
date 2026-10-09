@@ -363,10 +363,10 @@ def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
     """2026-09-23 review finding: the Ollama host was a hardcoded constant
     duplicated in alt_draft.py and ai_draft.py, with no way to point this
     app at a non-default Ollama server. app_settings.get_ollama_host()
-    resolves it; every backend's `host` field now defaults to None and
-    resolves through it in __post_init__ instead of freezing a constant
-    at class-definition time."""
-    from slidemage import alt_draft, ai_draft, app_settings
+    resolves it; OllamaProvider reads it when constructed instead of
+    freezing a constant at class-definition time."""
+    from slidemage import app_settings
+    from slidemage.ai.providers import OllamaProvider
 
     monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
@@ -375,12 +375,10 @@ def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
 
     app_settings.set_ollama_host("http://gpu-box:9999")
     assert app_settings.get_ollama_host() == "http://gpu-box:9999"
-    assert alt_draft.OllamaBackend(model="m").host == "http://gpu-box:9999"
-    assert alt_draft.OllamaTranslationBackend(model="m").host == "http://gpu-box:9999"
-    assert ai_draft.OllamaSlideDrafter(model="m").host == "http://gpu-box:9999"
+    assert OllamaProvider("m").host == "http://gpu-box:9999"
 
     # An explicit host= still wins over the saved setting.
-    assert alt_draft.OllamaBackend(model="m", host="http://explicit").host == "http://explicit"
+    assert OllamaProvider("m", host="http://explicit").host == "http://explicit"
 
     # Clearing it falls back through $OLLAMA_HOST, then the plain default.
     app_settings.set_ollama_host("")
@@ -395,6 +393,7 @@ def test_draft_and_rewrite_prompts_are_customizable_and_persist(monkeypatch, tmp
     constants -- unlike translation_prompts.py's already-customizable
     prompts, there was no way to tune either without editing source."""
     from slidemage import ai_draft, alt_draft, draft_prompts
+    from slidemage.ai.providers import OllamaProvider
 
     monkeypatch.setattr(draft_prompts, "STORE_PATH", tmp_path / "draft_prompts.json")
 
@@ -410,9 +409,10 @@ def test_draft_and_rewrite_prompts_are_customizable_and_persist(monkeypatch, tmp
 
     # A freshly constructed backend with no explicit system_prompt picks
     # up the current custom default; an explicit one still overrides it.
-    assert alt_draft.OllamaBackend(model="m").system_prompt == "Custom draft prompt."
-    assert alt_draft.OllamaBackend(model="m", system_prompt="one-off").system_prompt == "one-off"
-    assert ai_draft.OllamaSlideDrafter(model="m").system_prompt == "Custom rewrite prompt."
+    provider = OllamaProvider("m")
+    assert alt_draft.ModelBackend(provider).system_prompt == "Custom draft prompt."
+    assert alt_draft.ModelBackend(provider, system_prompt="one-off").system_prompt == "one-off"
+    assert ai_draft.SlideDrafter(provider).system_prompt == "Custom rewrite prompt."
 
     # Clearing (empty string) reverts to the hardcoded default.
     draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "")

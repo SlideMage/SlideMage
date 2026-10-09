@@ -58,9 +58,11 @@ from PySide6.QtWidgets import (
 
 from . import open_path
 from . import (
-    alt_blocks, alt_draft, alt_images, app_settings, media_render,
+    alt_blocks, alt_draft, alt_images, media_render,
     slide_ids, slide_language, tikz_render, transcript,
 )
+from .ai.providers import ChatProvider, OllamaProvider
+from .qt_ai_models import fill_model_combo, provider_from_combo
 from .ui.kit.theme import CLOSE_BUTTON, MUTED_LABEL, WARNING_LABEL
 from .deck_editor import parse_slide_calls
 from .deck_scan import PROJECT_ROOT, Deck, scan_decks
@@ -587,6 +589,10 @@ class _ImageEditor(QFrame):
         else:
             use_short, use_long, use_takeaway = self.short, self.long, self.takeaway_text
 
+        provider = provider_from_combo(
+            self, self._translation_model_combo, "this image's description text")
+        if provider is None:
+            return
         if not self.app.try_start_ollama_task("translating this image"):
             return
         self._translation_provenance = None
@@ -600,7 +606,6 @@ class _ImageEditor(QFrame):
         self.translate_button.setText("Translating...")
         # Model comes from the tab's own "Translation model:" picker, read
         # live so a mid-session change applies immediately.
-        model = self._translation_model_combo.currentText()
         live_entry = alt_images.ImageEntry(
             image=self.reference, short=use_short, long=use_long,
             takeaway_default=use_takeaway,
@@ -614,17 +619,17 @@ class _ImageEditor(QFrame):
         # editor (the user picked a different slide while it was running)
         # from raising into an unhandled background-thread exception.
         threading.Thread(
-            target=self._translate_bg, args=(model, live_entry), daemon=True
+            target=self._translate_bg, args=(provider, live_entry), daemon=True
         ).start()
         # Confirms this point was actually reached (2026-08-27, direct
         # report: "Save, then translate" saved but didn't visibly start
         # translating) -- the button's own "Translating..." text says the
         # same thing, but only while the editor is on screen and only if
         # someone's looking right at it; this stays in the log pane.
-        self.app.log(f"Translating {self.reference} into German ({model})...")
+        self.app.log(f"Translating {self.reference} into German ({provider.label})...")
 
-    def _translate_bg(self, model: str, live_entry: alt_images.ImageEntry) -> None:
-        backend = alt_draft.OllamaTranslationBackend(model=model)
+    def _translate_bg(self, provider: ChatProvider, live_entry: alt_images.ImageEntry) -> None:
+        backend = alt_draft.ModelTranslationBackend(provider)
         try:
             result = backend.translate(live_entry)
         except Exception as exc:  # noqa: BLE001 -- reported via the result, not raised
@@ -1237,8 +1242,8 @@ class TranscriptTab(QWidget):
 
         toolbar.addSpacing(_GROUP_GAP - 2 * _RELATED_GAP)
         # German translation (2026-08-25): a different model list than
-        # drafting's (list_all_models(),
-        # not list_vision_models() -- translation is text-only, so any
+        # drafting's (all models, not
+        # only vision ones -- translation is text-only, so any
         # installed model works, not just a vision-capable one) and a
         # separate "all" action, per direct instruction to make the model
         # choice itself pickable rather than hardcoded.
@@ -2356,61 +2361,42 @@ class TranscriptTab(QWidget):
 
     def _populate_models(self, models: list[str] | None = None) -> None:
         if models is None:
-            models = alt_draft.list_vision_models()
-        self.model_combo.clear()
-        if models:
-            self.model_combo.addItems(models)
-            self.model_combo.setEnabled(True)
-            self.model_combo.setToolTip("Vision-capable models Ollama currently has")
-            # Preselects the image-description default from Settings ->
-            # "AI models" (2026-09-26, direct instruction; replaces the
-            # earlier remember-the-last-pick behaviour -- picking another
-            # model here applies to this tab only). Only applied if that
-            # model is actually in today's list; otherwise Qt's own
-            # default (the first item) stands.
-            default = app_settings.default_model("image_description")
-            if default:
-                index = self.model_combo.findText(default)
-                if index != -1:
-                    self.model_combo.setCurrentIndex(index)
-        else:
-            self.model_combo.addItem("(no Ollama vision models)")
-            self.model_combo.setEnabled(False)
+            models = OllamaProvider().list_models(vision_only=True)
+        # Preselects the image-description default from Settings -> "AI
+        # models" (2026-09-26, direct instruction; replaces the earlier
+        # remember-the-last-pick behaviour -- picking another model here
+        # applies to this tab only), when it is in today's list.
+        if fill_model_combo(self.model_combo, "image_description", models,
+                            "(no vision models available)"):
             self.model_combo.setToolTip(
-                "Ollama is unreachable, or has no "
-                "vision-capable model installed."
+                "Vision-capable Ollama models, plus Claude models when an API "
+                "key is set and Local AI only is off")
+        else:
+            self.model_combo.setToolTip(
+                "Ollama is unreachable or has no vision-capable model "
+                "installed, and no Claude API key is set."
             )
 
     def _populate_translation_models(self, models: list[str] | None = None) -> None:
         if models is None:
-            models = alt_draft.list_all_models()
-        self.translation_model_combo.clear()
-        if models:
-            self.translation_model_combo.addItems(models)
-            self.translation_model_combo.setEnabled(True)
+            models = OllamaProvider().list_models()
+        # The translation default from Settings -> "AI models" takes
+        # priority over the hardcoded DEFAULT_TRANSLATION_MODEL, same "only
+        # if still in today's list" guard as _populate_models() above --
+        # falls back to the hardcoded default when none is set or that
+        # model isn't installed here.
+        if fill_model_combo(self.translation_model_combo, "translation", models,
+                            "(no AI models available)",
+                            fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL):
             self.translation_model_combo.setToolTip(
                 "Every model Ollama currently has -- translation is "
                 "text-only, so any of them works, not just a vision-"
-                "capable one."
+                "capable one -- plus Claude models when enabled."
             )
-            # The translation default from Settings -> "AI models" takes
-            # priority over the hardcoded DEFAULT_TRANSLATION_MODEL, same
-            # "only if still in today's list" guard as _populate_models()
-            # above -- falls back to the hardcoded default when none is set
-            # or that model isn't installed here.
-            configured = app_settings.default_model("translation")
-            preferred = (
-                configured if configured in models
-                else alt_draft.DEFAULT_TRANSLATION_MODEL
-            )
-            if preferred in models:
-                self.translation_model_combo.setCurrentText(preferred)
         else:
-            self.translation_model_combo.addItem("(no Ollama models found)")
-            self.translation_model_combo.setEnabled(False)
             self.translation_model_combo.setToolTip(
-                "Ollama is unreachable, or has no "
-                "models installed."
+                "Ollama is unreachable or has no models installed, and no "
+                "Claude API key is set."
             )
 
     def refresh_model_preferences(
@@ -2453,17 +2439,22 @@ class TranscriptTab(QWidget):
                 "is written to disk until you save."
             )
 
-    def _backend(self) -> alt_draft.OllamaBackend:
-        return alt_draft.OllamaBackend(model=self.model_combo.currentText())
+    def _backend(self) -> alt_draft.ModelBackend | None:
+        """The backend for the picked model; None (user already told) when
+        there is none or a cloud request was declined. Called before an
+        Ollama slot is reserved, on the GUI thread."""
+        provider = provider_from_combo(
+            self, self.model_combo, "the slide's text and the images to describe")
+        return None if provider is None else alt_draft.ModelBackend(provider)
 
     def _on_draft(self) -> None:
         """Draft the selected slide's images. Writes unreviewed drafts."""
         view = self._current
         if view is None or self._drafting:
             return
-        if not self.app.try_start_ollama_task("drafting descriptions"):
-            return
         backend = self._backend()
+        if backend is None or not self.app.try_start_ollama_task("drafting descriptions"):
+            return
         self._begin_drafting(f"Drafting {view.row.path.name} via {backend.label}…")
         threading.Thread(
             target=self._draft_one_bg, args=(view, backend), daemon=True
@@ -2503,7 +2494,9 @@ class TranscriptTab(QWidget):
         view = self._current
         if view is None or self._drafting:
             return
-        if not self.app.try_start_ollama_task("tuning a description prompt"):
+        provider = provider_from_combo(
+            self, self.model_combo, "the slide's text and the image to describe")
+        if provider is None or not self.app.try_start_ollama_task("tuning a description prompt"):
             return
         try:
             pairs = alt_draft.draftable_images(view.row, self._entries)
@@ -2527,8 +2520,8 @@ class TranscriptTab(QWidget):
             # separate Ollama requests before the user is done.
             dialog = PromptTuningDialog(
                 self, reference, resolved, context,
-                backend_factory=lambda prompt: alt_draft.OllamaBackend(
-                    model=self.model_combo.currentText(), system_prompt=prompt),
+                backend_factory=lambda prompt: alt_draft.ModelBackend(
+                    provider, system_prompt=prompt),
                 existing_hint=entry.hint if entry else "",
             )
             if dialog.exec() != QDialog.Accepted or dialog.result_draft is None:
@@ -2581,10 +2574,10 @@ class TranscriptTab(QWidget):
                 self.app.log("Stopping after the current image…")
             return
 
-        if not self.app.try_start_ollama_task("drafting descriptions"):
+        backend = self._backend()
+        if backend is None or not self.app.try_start_ollama_task("drafting descriptions"):
             return
 
-        backend = self._backend()
         queue = alt_draft.images_needing_drafts()
         redraftable = alt_draft.images_needing_drafts(
             redraft_unless_model=backend.label)
@@ -2672,11 +2665,12 @@ class TranscriptTab(QWidget):
             self.app.log("Stopping translation after the current image…")
             return
 
-        if not self.app.try_start_ollama_task("translating images"):
+        provider = provider_from_combo(
+            self, self.translation_model_combo, "the descriptions of all untranslated images")
+        if provider is None or not self.app.try_start_ollama_task("translating images"):
             return
 
-        backend = alt_draft.OllamaTranslationBackend(
-            model=self.translation_model_combo.currentText())
+        backend = alt_draft.ModelTranslationBackend(provider)
         queue = alt_draft.images_needing_translation()
         if not queue:
             QMessageBox.information(

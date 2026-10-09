@@ -6,46 +6,32 @@ reviewed -- see that file's decisions log for why that is not optional:
 chart values read off a scanned figure are exactly where a vision model goes
 wrong, and a wrong number in a description is worse than no description.
 
-Backends are pluggable. Ollama is the one implemented (the user's Anthropic
-account has no API access), but `DraftBackend` is a plain protocol, so an
-`AnthropicBackend` can be added later without touching the review tab.
+Backends are pluggable (`DraftBackend` is a plain protocol), and the one
+implemented, `ModelBackend`, runs on any ai.providers.ChatProvider -- local
+Ollama or Claude (2026-10-09; before that only Ollama, and this file
+carried its HTTP calls). Nothing here makes a request itself.
 
-The actual Ollama calls here are stdlib only -- `urllib.request` and
-`base64`, no `requests`, no `Pillow` -- matching this project's own
-stdlib-first policy (see requirements.txt's header) wherever a real
-dependency isn't already justified; PyMuPDF is one such justified
-exception (slide_snapshot.py originally, media_render.py now too), and
-this file only ever reaches it indirectly, via _resolve_describable()
-rendering a .pdf media file to a PNG. Image resizing is otherwise
-deliberately absent: Ollama does its own preprocessing for the vision
-model, and the largest raster chart in media/ is 3400x1800, which
-Qwen3-VL handles at native resolution.
+No `requests`, no `Pillow` -- matching this project's own stdlib-first
+policy (see requirements.txt's header) wherever a real dependency isn't
+already justified; PyMuPDF is one such justified exception
+(slide_snapshot.py originally, media_render.py now too), and this file
+only ever reaches it indirectly, via _resolve_describable() rendering a
+.pdf media file to a PNG. Image resizing is otherwise deliberately absent:
+Ollama does its own preprocessing for the vision model, and the largest
+raster chart in media/ is 3400x1800, which Qwen3-VL handles at native
+resolution.
 """
 from __future__ import annotations
 
-import ast
-import base64
-import json
-import math
 import re
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional, Protocol
+from typing import Optional, Protocol
 
-from . import alt_blocks, alt_images, app_settings, draft_prompts, media_render, tikz_render, translation_prompts
+from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
+from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .deck_scan import PROJECT_ROOT
-
-# Kept as the hardcoded fallback effective_system_prompt() below returns
-# once draft_prompts has no user override -- the *default* host to send
-# to is now app_settings.get_ollama_host() (Preferences-configurable),
-# not this constant; DEFAULT_OLLAMA_HOST stays only as the very last
-# fallback inside that resolution chain (see app_settings.py's own
-# _FALLBACK_OLLAMA_HOST, which duplicates this value rather than
-# importing it, since app_settings.py sits below this module).
-DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 # Formats Ollama's vision path can read directly.
 DRAFTABLE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
@@ -165,7 +151,7 @@ replace it with a description of the range and shape.
 
 
 def effective_system_prompt() -> str:
-    """What OllamaBackend should actually send as its system prompt: the
+    """What ModelBackend should actually send as its system prompt: the
     user's own saved override (Preferences dialog, draft_prompts.py) if
     they've set one, else this module's own hardcoded SYSTEM_PROMPT
     above."""
@@ -367,43 +353,40 @@ class DraftBackend(Protocol):
     def draft(self, image_path: Path, context: SlideContext) -> DraftResult: ...
 
 
-# See the num_predict field comment on OllamaBackend below for what this is
+# See the max_tokens field comment on ModelBackend below for what this is
 # for. 4x the default budget -- large enough to finish the dense charts that
 # actually need it, without becoming the new default cost for every image.
-NUM_PREDICT_RETRY = 8192
+MAX_TOKENS_RETRY = 8192
 
 
 @dataclass
 class _Attempt:
-    """One raw call to Ollama, before DraftResult's higher-level shaping."""
+    """One raw call to the model, before DraftResult's higher-level shaping."""
 
     elapsed_s: float
     error: str | None = None
     fields: dict | None = None
     content: str = ""
     thinking: str = ""
-    done_reason: str = ""
+    truncated: bool = False
 
 
 @dataclass
-class OllamaBackend:
-    """Local Ollama. No API key, no per-image cost, nothing leaves the machine."""
+class ModelBackend:
+    """Describes images with a vision model behind any ChatProvider: local
+    Ollama (no API key, no per-image cost, nothing leaves the machine) or
+    Claude. Output is the same unreviewed draft either way."""
 
-    model: str
-    # None resolves to app_settings.get_ollama_host() in __post_init__ below,
-    # not at class-definition time -- a plain "host: str = DEFAULT_OLLAMA_HOST"
-    # default would freeze whatever that constant was when this module was
-    # first imported, never picking up a host the user later sets in
-    # Preferences without restarting the app.
-    host: Optional[str] = None
+    provider: ChatProvider
     # 16k rather than the model's native 256k: one image plus a few hundred
     # words of slide context never approaches that, and the KV cache for a
     # 256k window is what pushes a 21 GB model past a 24 GB card into system
     # RAM. Keeping the window small is what keeps the whole model resident.
+    # (Ollama only; the Claude provider ignores it.)
     num_ctx: int = 16384
     # Thinking improves value-reading off charts but multiplies wall-clock
     # time across a 200-image batch. Off by default; the bake-off measures
-    # whether it earns its cost on this content.
+    # whether it earns its cost on this content. (Ollama only.)
     think: bool = False
     temperature: float = 0.2
     # A hard ceiling on generated tokens. Without it a model can run away on a
@@ -415,11 +398,11 @@ class OllamaBackend:
     # (a return-triangle table, many close bars) make the model reason for
     # longer than this before ever writing the answer, hitting the cap with
     # zero content and all of it sitting unfinished in `thinking`. That specific
-    # signature gets one retry at NUM_PREDICT_RETRY rather than a permanently
+    # signature gets one retry at MAX_TOKENS_RETRY rather than a permanently
     # higher ceiling, so the common case keeps this budget's speed.
-    num_predict: int = 2048
+    max_tokens: int = 2048
     timeout: float = 600.0
-    # The NUM_PREDICT_RETRY retry needs its own, longer ceiling: measured
+    # The MAX_TOKENS_RETRY retry needs its own, longer ceiling: measured
     # back-to-back on the same real image, one run finished the 8192-budget
     # retry in 422s and another exceeded 600s on it alone (GPU contention,
     # presumably) -- close enough to the base timeout that reusing `timeout`
@@ -428,99 +411,59 @@ class OllamaBackend:
     # Overridable so the review tab can offer a "tune the prompt and try
     # again" loop on a single image without touching the default everyone
     # else's batch uses. None (the default) resolves to
-    # effective_system_prompt() in __post_init__ below, for the same
-    # reason `host` above does -- picks up a Preferences-saved custom
-    # prompt without needing a restart.
+    # effective_system_prompt() in __post_init__ below, so a
+    # Preferences-saved custom prompt applies without needing a restart.
     system_prompt: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.host is None:
-            self.host = app_settings.get_ollama_host()
         if self.system_prompt is None:
             self.system_prompt = effective_system_prompt()
 
     @property
     def label(self) -> str:
-        return f"{self.model}{' +think' if self.think else ''}"
+        return f"{self.provider.label}{' +think' if self.think else ''}"
 
     def _attempt(self, image_path: Path, context: SlideContext,
-                 num_predict: int, timeout: float) -> "_Attempt":
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "format": RESPONSE_SCHEMA,
-            "options": {"num_ctx": self.num_ctx, "temperature": self.temperature,
-                        "num_predict": num_predict},
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {
-                    "role": "user",
-                    "content": build_prompt(context),
-                    "images": [
-                        base64.b64encode(image_path.read_bytes()).decode("ascii")
-                    ],
-                },
-            ],
-        }
-        # `think` is sent ONLY when enabled -- never as an explicit false.
-        # On qwen3-vl:32b, `format` + `think: false` makes the model put its
-        # JSON answer in the response's `thinking` field and return an empty
-        # `content`, so every image fails with "non-JSON output: ''". Omitting
-        # the key entirely produces correct, well-formed output. (It does not
-        # even suppress thinking on that model -- `think: false` still
-        # returned 1000 characters of it, literal <think> tag included; it
-        # only breaks the channel separation.) Measured 2026-08-14 across the
-        # whole five-slide bake-off, where it failed all six images on the one
-        # model this was meant to run.
-        if self.think:
-            payload["think"] = True
-
+                 max_tokens: int, timeout: float) -> "_Attempt":
         started = time.monotonic()
         try:
-            request = urllib.request.Request(
-                f"{self.host.rstrip('/')}/api/chat",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
-            return _Attempt(elapsed_s=time.monotonic() - started,
-                            error=f"Ollama unreachable: {exc}")
-        except (TimeoutError, OSError) as exc:
-            return _Attempt(elapsed_s=time.monotonic() - started,
-                            error=f"Ollama request failed: {exc}")
+            reply = self.provider.chat(
+                [{"role": "user", "content": build_prompt(context)}],
+                system=self.system_prompt, images=[image_path.read_bytes()],
+                schema=RESPONSE_SCHEMA, temperature=self.temperature,
+                max_tokens=max_tokens, timeout=timeout, think=self.think,
+                num_ctx=self.num_ctx)
+        except ProviderError as exc:
+            return _Attempt(elapsed_s=time.monotonic() - started, error=str(exc))
 
         elapsed = time.monotonic() - started
-        message = body.get("message") or {}
-        content = message.get("content") or ""
-        thinking = message.get("thinking") or ""
-        fields = _parse_response_json(content)
+        fields = parse_json_object(reply.text)
         if fields is None:
-            # Belt and braces for the misrouting described above: if `content`
-            # didn't parse, the schema-shaped answer may be sitting in
-            # `thinking` instead. Cheap to check, and it turns a hard failure
-            # into a usable draft on any model with the same quirk.
-            fields = _parse_response_json(thinking)
-        return _Attempt(elapsed_s=elapsed, fields=fields, content=content,
-                        thinking=thinking, done_reason=body.get("done_reason") or "")
+            # Belt and braces for the misrouting described in
+            # OllamaProvider.chat: if `content` didn't parse, the
+            # schema-shaped answer may be sitting in `thinking` instead.
+            # Cheap to check, and it turns a hard failure into a usable
+            # draft on any model with the same quirk.
+            fields = parse_json_object(reply.thinking)
+        return _Attempt(elapsed_s=elapsed, fields=fields, content=reply.text,
+                        thinking=reply.thinking, truncated=reply.truncated)
 
     def draft(self, image_path: Path, context: SlideContext) -> DraftResult:
-        attempt = self._attempt(image_path, context, self.num_predict, self.timeout)
+        attempt = self._attempt(image_path, context, self.max_tokens, self.timeout)
         if attempt.error:
             return DraftResult(model=self.label, error=attempt.error,
                                elapsed_s=attempt.elapsed_s)
 
-        if (attempt.fields is None and attempt.done_reason == "length"
+        if (attempt.fields is None and attempt.truncated
                 and attempt.thinking and not attempt.content):
             # The model hadn't reached its answer yet -- all of it is still
             # sitting unfinished in `thinking` when the token cap cut it off.
-            # Measured on chart-eurostoxx-return-triangle.png: at num_predict
-            # 2048, done_reason "length", 6646 chars of thinking and zero
-            # content; retried at 8192 it finished naturally (done_reason
-            # "stop") with a valid answer. One retry at a much larger budget
+            # Measured on chart-eurostoxx-return-triangle.png: at max_tokens
+            # 2048, truncated, 6646 chars of thinking and zero
+            # content; retried at 8192 it finished naturally with a valid
+            # answer. One retry at a much larger budget
             # recovers these without raising the ceiling for every image.
-            retry = self._attempt(image_path, context, NUM_PREDICT_RETRY,
+            retry = self._attempt(image_path, context, MAX_TOKENS_RETRY,
                                   self.retry_timeout)
             retry.elapsed_s += attempt.elapsed_s
             if retry.error:
@@ -633,432 +576,6 @@ def _strip_ramp_table(text: str) -> str:
 
 
 _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
-
-
-def _parse_response_json(text: str) -> dict | None:
-    """Parse a model's structured reply, tolerating a wrapping <think> block.
-
-    Returns None rather than raising, so the caller can try another field.
-    """
-    text = _THINK_TAG_RE.sub("", text or "").strip()
-    if not text:
-        return None
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        # Some models wrap the object in prose despite `format`; take the
-        # outermost brace-delimited span and try that.
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end <= start:
-            return None
-        try:
-            parsed = json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def list_vision_models(host: Optional[str] = None) -> list[str]:
-    """Vision-capable models Ollama currently has, newest-installed first."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        with urllib.request.urlopen(f"{host.rstrip('/')}/api/tags", timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return []
-    models = [
-        entry for entry in data.get("models", [])
-        if "vision" in (entry.get("capabilities") or [])
-    ]
-    models.sort(key=lambda e: e.get("modified_at", ""), reverse=True)
-    return [entry["name"] for entry in models]
-
-
-def list_all_models(host: Optional[str] = None) -> list[str]:
-    """Every model Ollama currently has, newest-installed first -- for
-    translation's own model picker (2026-08-25): unlike drafting, which
-    needs a vision-capable model, translation is text-only and works with
-    any installed model, general-purpose chat model or a model
-    specifically fine-tuned for machine translation alike (e.g.
-    sun_leaf/HY-MT, this project's current default -- confirmed directly
-    to follow both a plain "translate this" prompt and the structured
-    short_de/long_de/takeaway_de JSON format OllamaTranslationBackend
-    actually sends, despite being untagged for "tools"/structured output
-    in Ollama's own capability list)."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        with urllib.request.urlopen(f"{host.rstrip('/')}/api/tags", timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return []
-    models = sorted(data.get("models", []), key=lambda e: e.get("modified_at", ""), reverse=True)
-    return [entry["name"] for entry in models]
-
-
-@dataclass
-class InstalledModel:
-    name: str
-    size_bytes: int
-    modified_at: str
-    capabilities: tuple[str, ...] = ()
-
-
-def list_installed_models_detailed(host: Optional[str] = None) -> list[InstalledModel]:
-    """Every model Ollama currently has, with its on-disk size -- for the
-    Settings dialog's own "Ollama models" tab (2026-08-25), where knowing
-    how much space each one takes matters more than for the plain
-    name-only pickers (list_vision_models()/list_all_models() above)."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        with urllib.request.urlopen(f"{host.rstrip('/')}/api/tags", timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return []
-    models = sorted(data.get("models", []), key=lambda e: e.get("modified_at", ""), reverse=True)
-    return [
-        InstalledModel(
-            name=entry["name"],
-            size_bytes=entry.get("size", 0),
-            modified_at=entry.get("modified_at", ""),
-            capabilities=tuple(entry.get("capabilities") or ()),
-        )
-        for entry in models
-    ]
-
-
-def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
-    """Deletes `model` from the local Ollama server via its own
-    DELETE /api/delete -- this removes the model's actual files from
-    disk (Ollama's own model store, typically several GB each), not just
-    something this app was tracking; there is nothing else to clean up on
-    this side. Returns (True, "") on success, (False, error message)
-    otherwise -- never raises, same contract as the list_*() functions
-    above.
-
-    Safe to call on a model that shares underlying blob files with another
-    installed model (e.g. one created from it via `ollama create`) --
-    confirmed by research, not assumed, 2026-08-25: this is the exact same
-    endpoint the `ollama rm` CLI itself calls, and Ollama's own
-    content-addressable blob store does reference counting server-side --
-    a model's manifest is removed, and a blob is only actually deleted
-    once no other remaining manifest references it. Nothing on this
-    client side touches blob files directly, so there is no way for this
-    function to bypass that. The real, well-documented danger case is
-    someone manually deleting files under Ollama's own blobs/ directory,
-    which is not what this does."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/delete",
-            data=json.dumps({"model": model}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="DELETE",
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            response.read()
-        return True, ""
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode("utf-8"))
-            message = body.get("error") or str(exc)
-        except (json.JSONDecodeError, OSError):
-            message = str(exc)
-        return False, message
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, str(exc)
-
-
-# Custom models built with `ollama create <name> -f <modelfile>` -- FROM some
-# pulled base model plus PARAMETER num_ctx/temperature overrides -- have no
-# registry entry of their own, so pulling them fails ("pull model manifest:
-# file does not exist"). Ollama records the base they were built from in
-# /api/show's details.parent_model, so update_model() below finds the base
-# there (v5.35.3, direct report: four custom models failed to update; this
-# replaces a hand-kept name -> base table that listed only some of them,
-# partly under misspelt names). parent_model is not proof of a custom model
-# on its own: some registry models carry one too (gemma4:latest names its
-# upstream build), so it is only consulted after the registry has said the
-# model does not exist.
-_NOT_IN_REGISTRY_RE = re.compile(r"does not exist|not found|manifest unknown", re.IGNORECASE)
-_WEIGHTS_BLOB_RE = re.compile(r"^FROM\s+.*?(sha256[-:][0-9a-f]{64})", re.MULTILINE)
-
-
-def parent_model(model: str, host: Optional[str] = None) -> str | None:
-    """The model `model` was built from (/api/show details.parent_model),
-    or None if Ollama records none or can't be reached."""
-    show = _get_model_show(model, host=host)
-    details = show.get("details") if show is not None else None
-    parent = details.get("parent_model") if isinstance(details, dict) else None
-    return parent if isinstance(parent, str) and parent.strip() else None
-
-
-def _weights_blob(model: str, host: Optional[str] = None) -> str | None:
-    """The digest of `model`'s weights -- the blob its Modelfile's first
-    FROM line points to -- or None if unknown."""
-    m = _WEIGHTS_BLOB_RE.search(get_modelfile(model, host=host) or "")
-    return m.group(1).replace(":", "-") if m else None
-
-
-def pull_model(model: str, host: Optional[str] = None,
-                on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
-    """Re-downloads `model` from the Ollama registry via POST /api/pull
-    (stream=True) -- an already-up-to-date model just returns "success"
-    quickly rather than wasting bandwidth, same as the `ollama pull` CLI.
-    Calls on_progress(line) for each streamed NDJSON status update (layer
-    download percentage, "verifying sha256 digest", etc.) so a caller can
-    show live progress instead of a frozen UI for what can be a many-GB,
-    many-minute download. Returns (True, "") on success, (False, error)
-    otherwise -- never raises, same contract as delete_model() above."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/pull",
-            data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=1800) as response:
-            for raw_line in response:
-                line = raw_line.decode("utf-8").strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if "error" in event:
-                    return False, event["error"]
-                status = event.get("status", "")
-                if on_progress and status:
-                    total = event.get("total")
-                    completed = event.get("completed")
-                    if total and completed:
-                        on_progress(f"{model}: {status} ({completed / total * 100:.0f}%)")
-                    else:
-                        on_progress(f"{model}: {status}")
-        return True, ""
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode("utf-8"))
-            message = body.get("error") or str(exc)
-        except (json.JSONDecodeError, OSError):
-            message = str(exc)
-        return False, message
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, str(exc)
-
-
-def _get_model_show(model: str, host: Optional[str] = None) -> dict | None:
-    """Returns Ollama's structured `/api/show` response, or None if the
-    model doesn't exist, the server isn't reachable, or it returns invalid
-    JSON. Keeping this response lets callers preserve model configuration
-    through APIs that no longer accept a Modelfile string."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/show",
-            data=json.dumps({"model": model}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        return data if isinstance(data, dict) else None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return None
-
-
-def get_modelfile(model: str, host: Optional[str] = None) -> str | None:
-    """Returns `model`'s current Modelfile text via POST /api/show, or None
-    if the model doesn't exist or the server isn't reachable. Kept for
-    callers that still need the display/export form; model relinking uses
-    `/api/show`'s structured fields instead of sending this text back to
-    `/api/create`."""
-    data = _get_model_show(model, host=host)
-    modelfile = data.get("modelfile") if data is not None else None
-    return modelfile if isinstance(modelfile, str) else None
-
-
-_FLOAT_PARAMETER_RE = re.compile(
-    r"[+-]?(?:\d+\.\d*|\.\d+|\d+[eE][+-]?\d+|"
-    r"\d+\.\d*[eE][+-]?\d+|\.\d+[eE][+-]?\d+)\Z"
-)
-
-
-def _parse_parameter_value(value: str) -> bool | int | float | str:
-    """Convert one formatted `/api/show` parameter value into JSON's
-    corresponding scalar type without treating zero or false as absent."""
-    lowered = value.casefold()
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-    if re.fullmatch(r"[+-]?\d+", value):
-        return int(value)
-    if _FLOAT_PARAMETER_RE.fullmatch(value):
-        number = float(value)
-        if not math.isfinite(number):
-            raise ValueError(f"non-finite numeric value {value!r}")
-        return number
-    if lowered in {"nan", "+nan", "-nan", "inf", "+inf", "-inf",
-                   "infinity", "+infinity", "-infinity"}:
-        raise ValueError(f"non-finite numeric value {value!r}")
-    return value
-
-
-def _parse_show_parameters(parameters: object) -> dict[str, bool | int | float | str | list[str]]:
-    """Parse Ollama's formatted `parameters` text into the `/api/create`
-    JSON map. `stop` is the one repeatable parameter and becomes a list;
-    malformed or ambiguous lines fail instead of silently dropping a
-    setting while relinking a model."""
-    if parameters is None or parameters == "":
-        return {}
-    if not isinstance(parameters, str):
-        raise ValueError("Ollama returned model parameters in an unsupported format")
-
-    parsed: dict[str, bool | int | float | str | list[str]] = {}
-    for line_number, line in enumerate(parameters.splitlines(), start=1):
-        if not line.strip():
-            continue
-        parts = line.split(None, 1)
-        if len(parts) != 2 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", parts[0]):
-            raise ValueError(f"unsupported parameter syntax on line {line_number}")
-        name, serialized_value = parts
-        is_quoted = serialized_value.startswith('"')
-        if is_quoted:
-            try:
-                raw_value = ast.literal_eval(serialized_value)
-            except (SyntaxError, ValueError) as exc:
-                raise ValueError(f"invalid parameter line {line_number}: {exc}") from exc
-            if not isinstance(raw_value, str):
-                raise ValueError(f"unsupported parameter value on line {line_number}")
-        else:
-            if any(character.isspace() for character in serialized_value):
-                raise ValueError(f"unsupported parameter syntax on line {line_number}")
-            raw_value = serialized_value
-        if name == "stop":
-            parsed.setdefault(name, []).append(raw_value)
-        elif name in parsed:
-            raise ValueError(f"repeated non-stop parameter {name!r} on line {line_number}")
-        else:
-            try:
-                parsed[name] = raw_value if is_quoted else _parse_parameter_value(raw_value)
-            except ValueError as exc:
-                raise ValueError(f"invalid parameter {name!r} on line {line_number}: {exc}") from exc
-    return parsed
-
-
-def _strip_modelfile_comments(modelfile: str) -> list[str]:
-    """Drops Ollama's own auto-generated leading "#" comment lines and
-    blank separator lines from a `ollama show --modelfile`-style Modelfile
-    -- but only outside a multi-line triple-quoted field (SYSTEM/TEMPLATE/
-    LICENSE all use this). Blank lines and stray "#" characters *inside*
-    one of those are real content (confirmed directly, 2026-09-18: the
-    qwen3.6:jbef custom model's inherited LICENSE field is the Apache 2.0
-    text, which has blank lines throughout) and must survive untouched, or
-    the model re-created from this would silently carry a mangled
-    SYSTEM/LICENSE/etc. compared to the one it's replacing."""
-    kept: list[str] = []
-    in_block = False
-    for line in modelfile.splitlines():
-        if not in_block and (not line.strip() or line.lstrip().startswith("#")):
-            continue
-        kept.append(line)
-        if line.count('"""') % 2 == 1:
-            in_block = not in_block
-    return kept
-
-
-def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> tuple[bool, str]:
-    """Re-creates custom `model` (built from `base`) against `base`'s
-    current weights. Reads Ollama's structured `/api/show` response and
-    sends the supported `/api/create` fields, replacing only `from` while
-    preserving the model's template, prompts, license, parameters, and
-    messages. Returns (True, "") on success, (False, error) otherwise,
-    same contract as delete_model()."""
-    host = host or app_settings.get_ollama_host()
-    show = _get_model_show(model, host=host)
-    if show is None:
-        return False, f"Could not read {model}'s current model configuration"
-
-    try:
-        payload: dict[str, object] = {
-            "model": model,
-            "from": base,
-            "parameters": _parse_show_parameters(show.get("parameters")),
-            "stream": False,
-        }
-        for field_name in (
-            "template", "system", "license", "renderer", "parser",
-            "messages", "requires",
-        ):
-            if field_name not in show or show[field_name] is None:
-                continue
-            value = show[field_name]
-            if field_name in {"template", "system", "renderer", "parser", "requires"}:
-                if not isinstance(value, str):
-                    raise ValueError(f"Ollama returned {field_name} in an unsupported format")
-            elif field_name == "license":
-                if not isinstance(value, (str, list)) or (
-                    isinstance(value, list) and not all(isinstance(item, str) for item in value)
-                ):
-                    raise ValueError("Ollama returned license in an unsupported format")
-            elif field_name == "messages":
-                if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-                    raise ValueError("Ollama returned messages in an unsupported format")
-            payload[field_name] = value
-    except ValueError as exc:
-        return False, f"Could not preserve {model}'s current configuration: {exc}"
-
-    try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/create",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=120) as response:
-            response.read()
-        return True, ""
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode("utf-8"))
-            message = body.get("error") or str(exc)
-        except (json.JSONDecodeError, OSError):
-            message = str(exc)
-        return False, message
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, str(exc)
-
-
-def update_model(model: str, host: Optional[str] = None,
-                  on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
-    """"Update" for the Settings dialog's "Update selected…" button: pulls
-    `model` itself; if the registry has no such model, it is a custom model
-    (see _NOT_IN_REGISTRY_RE above), so its base (parent_model()) is pulled
-    instead and `model` relinked to those refreshed weights
-    (relink_derived_model() above) -- unless it already uses them, which
-    needs no relink. `host=None` is passed straight through; each helper
-    resolves it itself."""
-    ok, error = pull_model(model, host=host, on_progress=on_progress)
-    if ok or not _NOT_IN_REGISTRY_RE.search(error):
-        return ok, error
-    base = parent_model(model, host=host)
-    if base is None or base == model:
-        return False, f"{error} (a custom model, but Ollama does not record the model it was built from)"
-    if on_progress:
-        on_progress(f"{model}: a custom model built from {base}; updating {base}")
-    ok, base_error = pull_model(base, host=host, on_progress=on_progress)
-    if not ok:
-        return False, f"Pulling base {base} failed: {base_error}"
-    current = _weights_blob(model, host=host)
-    if current is not None and current == _weights_blob(base, host=host):
-        if on_progress:
-            on_progress(f"{model}: already uses the current {base}")
-        return True, ""
-    if on_progress:
-        on_progress(f"{model}: relinking to updated {base}")
-    return relink_derived_model(model, base, host=host)
 
 
 # --------------------------------------------------------------------------
@@ -1295,9 +812,9 @@ def run_batch(
 # takeaway_default text, not by an independent vision-model draft against
 # the image -- cheaper, and keeps the two languages semantically aligned.
 # This reuses the DraftBackend-style pluggable-seam pattern above (a plain
-# Protocol + one Ollama implementation), but the backend here is
+# Protocol + one provider-based implementation), but the backend here is
 # text-only: no image, no vision model needed -- so any installed Ollama
-# model works (list_all_models(), not list_vision_models()), general
+# model works (list_models(), not list_models(vision_only=True)), general
 # chat model or a model fine-tuned specifically for machine translation
 # alike.
 #
@@ -1370,8 +887,8 @@ class TranslationBackend(Protocol):
 
 
 @dataclass
-class OllamaTranslationBackend:
-    """Text-only sibling of OllamaBackend above -- no image, no vision
+class ModelTranslationBackend:
+    """Text-only sibling of ModelBackend above -- no image, no vision
     model required (a smaller/cheaper text model, or one fine-tuned
     specifically for translation, is a perfectly reasonable choice here).
     Issues up to three separate calls per image (short/long/takeaway),
@@ -1389,26 +906,18 @@ class OllamaTranslationBackend:
     here respond far more reliably to one self-contained instruction+text
     block than to a system/user split."""
 
-    model: str
-    # None resolves to app_settings.get_ollama_host() in __post_init__
-    # below -- see OllamaBackend's own host field for why not a plain
-    # "= DEFAULT_OLLAMA_HOST" default.
-    host: Optional[str] = None
+    provider: ChatProvider
     num_ctx: int = 8192
     think: bool = False
     temperature: float = 0.2
-    num_predict: int = 2048
+    max_tokens: int = 2048
     timeout: float = 300.0
     source_lang: str = "en"
     target_lang: str = "de"
 
-    def __post_init__(self) -> None:
-        if self.host is None:
-            self.host = app_settings.get_ollama_host()
-
     @property
     def label(self) -> str:
-        return f"{self.model}{' +think' if self.think else ''}"
+        return f"{self.provider.label}{' +think' if self.think else ''}"
 
     def _translate_one(self, text: str) -> tuple[str, Optional[str]]:
         """(translated text, error) for one field's own text -- "" (no
@@ -1418,36 +927,18 @@ class OllamaTranslationBackend:
             return "", None
 
         config = translation_prompts.get_effective_prompt(
-            self.model, self.source_lang, self.target_lang)
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "options": {"num_ctx": self.num_ctx, "temperature": self.temperature,
-                        "num_predict": self.num_predict},
-            "messages": [{"role": "user", "content": config.build_message(text)}],
-        }
-        # Same reasoning as OllamaBackend._attempt above: never send `think`
-        # as an explicit false.
-        if self.think:
-            payload["think"] = True
+            self.provider.model, self.source_lang, self.target_lang)
         try:
-            request = urllib.request.Request(
-                f"{self.host.rstrip('/')}/api/chat",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
-            return "", f"Ollama unreachable: {exc}"
-        except (TimeoutError, OSError) as exc:
-            return "", f"Ollama request failed: {exc}"
+            reply = self.provider.chat(
+                [{"role": "user", "content": config.build_message(text)}],
+                temperature=self.temperature, max_tokens=self.max_tokens,
+                timeout=self.timeout, think=self.think, num_ctx=self.num_ctx)
+        except ProviderError as exc:
+            return "", str(exc)
 
-        message = body.get("message") or {}
-        content = (message.get("content") or "").strip()
+        content = reply.text.strip()
         if not content:
-            thinking = (message.get("thinking") or "").strip()
-            content = _THINK_TAG_RE.sub("", thinking).strip()
+            content = _THINK_TAG_RE.sub("", reply.thinking.strip()).strip()
         if not content:
             return "", "Model returned an empty response"
         return content, None

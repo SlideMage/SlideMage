@@ -1,5 +1,5 @@
 """"Check syntax" results dialog (2026-08-31, direct instruction) -- shows
-what syntax_check.OllamaSyntaxChecker found for one slide/deck editor
+what syntax_check.SyntaxChecker found for one slide/deck editor
 tab's own *current buffer* (unsaved edits included, same as "Render to
 PDF"), with a per-issue "Apply fix" button wherever
 syntax_check.SyntaxIssue.fix_is_safe() confirms the model's own claimed
@@ -36,18 +36,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import alt_draft, app_settings, syntax_check
+from . import syntax_check
+from .ai.providers import OllamaProvider
+from .qt_ai_models import fill_model_combo, provider_from_combo
 from .ui.kit.theme import MUTED_LABEL, WARNING_LABEL
 
 
 class _CheckWorker(QThread):
-    """Runs one OllamaSyntaxChecker.check() off the GUI thread (2026-09-26,
+    """Runs one SyntaxChecker.check() off the GUI thread (2026-09-26,
     direct instruction: Escape aborts a running check -- impossible while
     the request blocked the GUI thread's own event loop)."""
 
     finished_with_result = Signal(object)
 
-    def __init__(self, checker: syntax_check.OllamaSyntaxChecker, text: str) -> None:
+    def __init__(self, checker: syntax_check.SyntaxChecker, text: str) -> None:
         super().__init__()
         self.checker = checker
         self.text = text
@@ -117,13 +119,8 @@ class SyntaxCheckDialog(QDialog):
         qt_gui.py after the Settings dialog closes, so a default changed
         there (or a model deleted) reaches this dialog while it's open."""
         if models is None:
-            models = alt_draft.list_all_models()
-        self.model_combo.clear()
-        self.model_combo.addItems(models or ["(no Ollama models installed)"])
-        self.model_combo.setEnabled(bool(models))
-        default = app_settings.default_model("syntax_check")
-        if default in models:
-            self.model_combo.setCurrentText(default)
+            models = OllamaProvider().list_models()
+        fill_model_combo(self.model_combo, "syntax_check", models, "(no AI models available)")
 
     def _clear_results(self) -> None:
         while self.results_layout.count() > 1:  # keep the trailing stretch
@@ -164,18 +161,17 @@ class SyntaxCheckDialog(QDialog):
     def _run_check(self) -> None:
         if self._worker is not None:
             return
-        model = self.model_combo.currentText()
-        if not model or model.startswith("("):
-            QMessageBox.critical(self, "Check syntax", "No Ollama models are installed.")
+        provider = provider_from_combo(
+            self, self.model_combo, "this file's full LaTeX source")
+        if provider is None:
             return
         if not self.app.try_start_ollama_task("checking syntax"):
             return
 
         self._clear_results()
-        self.status_label.setText(f"Checking with {model}… (press Esc to abort)")
+        self.status_label.setText(f"Checking with {provider.label}… (press Esc to abort)")
         self.recheck_button.setEnabled(False)
-        checker = syntax_check.OllamaSyntaxChecker(
-            model=model, host=app_settings.get_ollama_host())
+        checker = syntax_check.SyntaxChecker(provider)
         worker = _CheckWorker(checker, self.source_tab.widget.toPlainText())
         worker.finished_with_result.connect(self._on_check_finished)
         self._worker = worker
@@ -197,7 +193,7 @@ class SyntaxCheckDialog(QDialog):
             return
 
         disclaimer = (
-            "Heuristic check via a local language model, not a real LaTeX "
+            "Heuristic check via a language model, not a real LaTeX "
             "compile -- it can miss real problems and flag things that are "
             "actually fine. Review every item yourself."
         )

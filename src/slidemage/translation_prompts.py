@@ -1,6 +1,6 @@
 """Per-(model, source language, target language) translation prompt
 configuration -- lets the Settings dialog tune exactly how
-alt_draft.OllamaTranslationBackend talks to a given Ollama model, since
+alt_draft.ModelTranslationBackend talks to a given Ollama model, since
 different models expect very different prompt shapes: a dedicated MT
 model (e.g. sun_leaf/HY-MT) wants a short, plain instruction with an
 exact blank-line count before the text; a general instruction-tuned
@@ -194,7 +194,7 @@ def set_default_prompt(config: PromptConfig) -> None:
 
 
 def get_effective_prompt(model: str, source_lang: str, target_lang: str) -> PromptConfig:
-    """What OllamaTranslationBackend should actually send: the exact
+    """What ModelTranslationBackend should actually send: the exact
     model+pair entry if one exists, else the user's own default prompt,
     else a hardcoded last-resort default for a fresh install that has
     never configured anything at all. Always returns something usable --

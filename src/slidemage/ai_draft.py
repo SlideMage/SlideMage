@@ -1,6 +1,6 @@
 """AI draft: propose a full rewrite of a slide's own current source from
-an open, free-text prompt, via a local Ollama model (2026-08-31, direct
-instruction).
+an open, free-text prompt, via a local (Ollama) or cloud (Claude) model
+(2026-08-31, direct instruction; any ChatProvider since 2026-10-09).
 
 Unlike syntax_check.py's per-line, verified-before-apply fixes, an open
 rewrite prompt has no ground truth to check a proposal against -- there is
@@ -33,21 +33,13 @@ before touching the editor buffer at all -- this module only ever
 """
 from __future__ import annotations
 
-import json
 import re
 import time
-import urllib.error
-import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from . import app_settings, draft_prompts
-
-# Kept as the last-resort fallback effective_system_prompt() below returns
-# once draft_prompts has no user override -- see alt_draft.py's own
-# DEFAULT_OLLAMA_HOST comment for why the *host* to send to is now
-# app_settings.get_ollama_host() instead, not this constant.
-DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+from . import draft_prompts
+from .ai.providers import ChatProvider, ProviderError
 
 _PLACEHOLDER_TOKEN_RE = re.compile(r"%%%PROTECTED_(\d+)%%%")
 _HEADER_COMMENT_LINE_RE = re.compile(r"^\s*%")
@@ -208,7 +200,7 @@ fences, no commentary before or after it."""
 
 
 def effective_system_prompt() -> str:
-    """What OllamaSlideDrafter should actually send as its system prompt:
+    """What SlideDrafter should actually send as its system prompt:
     the user's own saved override (Preferences dialog, draft_prompts.py)
     if they've set one, else this module's own hardcoded SYSTEM_PROMPT
     above."""
@@ -245,74 +237,42 @@ def _strip_wrapping(raw: str) -> str:
 
 
 @dataclass
-class OllamaSlideDrafter:
-    model: str
-    # None resolves through app_settings.get_ollama_host()/
-    # effective_system_prompt() in __post_init__ below, not at
-    # class-definition time -- see alt_draft.OllamaBackend's own host
-    # field for why not a plain "= DEFAULT_OLLAMA_HOST" default.
-    host: Optional[str] = None
+class SlideDrafter:
+    provider: ChatProvider
     num_ctx: int = 16384
     think: bool = False
     temperature: float = 0.3
-    num_predict: int = 4096
+    max_tokens: int = 4096
     timeout: float = 300.0
+    # None resolves through effective_system_prompt() in __post_init__, not
+    # at class-definition time, so a prompt saved in Preferences applies
+    # without a restart.
     system_prompt: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.host is None:
-            self.host = app_settings.get_ollama_host()
         if self.system_prompt is None:
             self.system_prompt = effective_system_prompt()
 
     @property
     def label(self) -> str:
-        return f"{self.model}{' +think' if self.think else ''}"
+        return f"{self.provider.label}{' +think' if self.think else ''}"
 
     def draft(self, current_text: str, prompt: str) -> DraftProposal:
         mask = mask_protected_regions(current_text)
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "options": {
-                "num_ctx": self.num_ctx, "temperature": self.temperature,
-                "num_predict": self.num_predict,
-            },
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {
-                    "role": "user",
-                    "content": USER_TEMPLATE.format(
-                        masked_text=mask.masked_text, prompt=prompt),
-                },
-            ],
-        }
-        if self.think:
-            payload["think"] = True
-
         started = time.monotonic()
         try:
-            request = urllib.request.Request(
-                f"{self.host.rstrip('/')}/api/chat",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
+            reply = self.provider.chat(
+                [{"role": "user", "content": USER_TEMPLATE.format(
+                    masked_text=mask.masked_text, prompt=prompt)}],
+                system=self.system_prompt, temperature=self.temperature,
+                max_tokens=self.max_tokens, timeout=self.timeout,
+                think=self.think, num_ctx=self.num_ctx)
+        except ProviderError as exc:
             return DraftProposal(
-                model=self.label, error=f"Ollama unreachable: {exc}",
-                elapsed_s=time.monotonic() - started)
-        except (TimeoutError, OSError) as exc:
-            return DraftProposal(
-                model=self.label, error=f"Ollama request failed: {exc}",
-                elapsed_s=time.monotonic() - started)
+                model=self.label, error=str(exc), elapsed_s=time.monotonic() - started)
 
         elapsed = time.monotonic() - started
-        message = body.get("message") or {}
-        content = (message.get("content") or "").strip()
-        thinking = (message.get("thinking") or "").strip()
-        raw = _strip_wrapping(content or thinking)
+        raw = _strip_wrapping(reply.text.strip() or reply.thinking.strip())
         if not raw:
             return DraftProposal(
                 model=self.label, error="Model returned an empty response",

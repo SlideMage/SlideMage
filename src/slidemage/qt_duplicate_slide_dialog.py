@@ -38,7 +38,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import alt_draft, app_settings, slide_ids, slide_language, slide_rename
+from . import alt_draft, slide_ids, slide_language, slide_rename
+from .ai.providers import OllamaProvider
+from .qt_ai_models import fill_model_combo, provider_from_combo
 from .qt_add_slide_dialog import SLUG_RE
 from .ui.kit.theme import MUTED_LABEL
 
@@ -137,19 +139,13 @@ class DuplicateSlideDialog(QDialog):
         self.model_label = QLabel("Translation model:")
         model_row.addWidget(self.model_label)
         self.model_combo = QComboBox()
-        models = alt_draft.list_all_models()
-        self.model_combo.addItems(models or [alt_draft.DEFAULT_TRANSLATION_MODEL])
         # Preselects the translation default from Settings -> "AI models"
         # (hardcoded DEFAULT_TRANSLATION_MODEL when none is set), falling
         # back to that hardcoded default if the configured model isn't
         # installed; a different pick here applies to this dialog only.
-        configured = app_settings.default_model("translation")
-        preferred = (
-            configured if configured in models
-            else alt_draft.DEFAULT_TRANSLATION_MODEL
-        )
-        if preferred in models:
-            self.model_combo.setCurrentText(preferred)
+        fill_model_combo(
+            self.model_combo, "translation", OllamaProvider().list_models(),
+            "(no AI models available)", fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
         model_row.addWidget(self.model_combo)
         model_row.addStretch(1)
         layout.addLayout(model_row)
@@ -269,6 +265,10 @@ class DuplicateSlideDialog(QDialog):
         """Translates everything in `dest` *after* its own header block --
         never the header comments themselves, which describe the file
         (deck inclusion, translation cross-reference), not its content."""
+        provider = provider_from_combo(
+            self, self.model_combo, "the slide's LaTeX body")
+        if provider is None:
+            return  # no model, or cloud declined: the slide stays untranslated
         if not self.app.try_start_ollama_task("translating a duplicated slide"):
             # Same graceful fallback as any other translation failure below
             # -- the slide itself was already created (as a same-language,
@@ -289,12 +289,11 @@ class DuplicateSlideDialog(QDialog):
             full_text = dest.read_bytes().decode("utf-8")
             header = slide_ids.build_new_slide_header(cross_ref_id_slug)
             body = full_text[len(header):]
-            # A higher num_predict than the image-alt-text default (2048)
+            # A higher max_tokens than the image-alt-text default (2048)
             # -- a slide's own body can run considerably longer than an
             # image description, and a truncated translation is worse than
             # a slightly slower one.
-            backend = alt_draft.OllamaTranslationBackend(
-                model=self.model_combo.currentText(), num_predict=4096)
+            backend = alt_draft.ModelTranslationBackend(provider, max_tokens=4096)
             translated, error = backend.translate_text(body)
         finally:
             QApplication.restoreOverrideCursor()
