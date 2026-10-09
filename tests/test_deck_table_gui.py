@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication, QPushButton
 
 from slidemage.deck_scan import Deck
 from slidemage.qt_deck_table import DeckTable
-from slidemage.qt_theme import ThemeManager
+from slidemage.ui.kit.theme import ThemeManager
 
 
 @pytest.fixture(scope="session")

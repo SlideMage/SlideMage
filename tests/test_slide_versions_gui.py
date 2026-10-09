@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from slidemage import deck_editor
 from slidemage.qt_slide_source_tab import SlideSourceTab, VERSIONS_COMBO_PLACEHOLDER
-from slidemage.qt_theme import ThemeManager
+from slidemage.ui.kit.theme import ThemeManager
 
 
 @pytest.fixture(scope="session")

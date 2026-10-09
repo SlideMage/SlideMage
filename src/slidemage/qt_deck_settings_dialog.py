@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from . import deck_editor, deck_settings
 from .deck_scan import OPEN_PDF_CHOICES
 from .deck_settings import DeckSettings
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 LANGUAGE_LABELS = {"en": "English", "de": "Deutsch"}
 OUTPUT_LABELS = {

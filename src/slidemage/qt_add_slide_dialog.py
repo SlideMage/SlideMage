@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from . import deck_editor, slide_ids, slide_language, slide_rename
 from .deck_scan import Deck
 from .qt_deck_editor_tab import VERSIONS, VERSION_LABELS
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$")
 

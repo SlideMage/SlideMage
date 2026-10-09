@@ -17,6 +17,11 @@ Three widget-role names (matching theme.py's "Link.TLabel"/"Muted.TLabel"/
 set them via `label.setObjectName(LINK_LABEL)` and the QSS rules below apply
 automatically. Unlike a DOM id, a Qt objectName is not required to be
 unique, so many labels can share one.
+
+Moved here from slidemage/qt_theme.py on 2026-10-09 (UI redesign, step 1).
+The palette above still styles the old widgets; the redesign's design tokens
+(tokens.py) are exposed as `ThemeManager.tokens` and turned into QSS for the
+kit widgets by kit_qss.py, appended to the same application stylesheet.
 """
 from __future__ import annotations
 
@@ -27,8 +32,10 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
-from . import app_settings
-from .palette import PALETTES, Mode
+from ... import app_settings
+from ...palette import PALETTES, Mode
+from .kit_qss import build_kit_qss
+from .tokens import Tokens, tokens_for
 
 LINK_LABEL = "linkLabel"
 MUTED_LABEL = "mutedLabel"
@@ -81,6 +88,10 @@ class ThemeManager:
     @property
     def colors(self) -> dict[str, str]:
         return PALETTES["dark" if self.dark else "light"]
+
+    @property
+    def tokens(self) -> Tokens:
+        return tokens_for(self.dark)
 
     def status_color(self, status: str) -> str:
         return self.colors[f"status_{status}"]
@@ -137,7 +148,7 @@ class ThemeManager:
         # QScrollBar/QDialog) -- individual selectors will likely need
         # tuning once each widget is actually built out in later phases
         # and rendered for real, same as any first-pass stylesheet would.
-        return f"""
+        qss = f"""
             QMainWindow, QWidget {{
                 background-color: {c['bg']};
                 color: {c['fg']};
@@ -341,3 +352,4 @@ class ThemeManager:
                 margin: 4px 6px;
             }}
         """
+        return qss + build_kit_qss(self.tokens)

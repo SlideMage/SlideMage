@@ -61,7 +61,7 @@ from . import (
     alt_blocks, alt_draft, alt_images, app_settings, media_render,
     slide_ids, slide_language, tikz_render, transcript,
 )
-from .qt_theme import CLOSE_BUTTON, MUTED_LABEL, WARNING_LABEL
+from .ui.kit.theme import CLOSE_BUTTON, MUTED_LABEL, WARNING_LABEL
 from .deck_editor import parse_slide_calls
 from .deck_scan import PROJECT_ROOT, Deck, scan_decks
 
@@ -2630,7 +2630,7 @@ class TranscriptTab(QWidget):
         self.draft_all_button.setText("Stop")
         self.draft_all_button.setEnabled(True)
         # Reuses the "Close" buttons' own red-outline/red-fill-on-hover
-        # style (qt_theme.py) while this button doubles as Stop, so a
+        # style (ui/kit/theme.py) while this button doubles as Stop, so a
         # drafting run in progress is visually obvious, not just a text
         # change -- objectName after the widget is already styled needs a
         # polish to pick up the new QSS rule (same fix

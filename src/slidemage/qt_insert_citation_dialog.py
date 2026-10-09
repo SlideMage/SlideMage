@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import bibliography
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 # (button label, literal LaTeX macro name) -- in the same left-to-right
 # order as this module's own docstring frequency survey, most-used first.

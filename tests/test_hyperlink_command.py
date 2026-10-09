@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from slidemage import qt_slide_source_tab, transcript
 from slidemage.qt_slide_source_tab import SlideSourceTab, format_hyperlink
-from slidemage.qt_theme import ThemeManager
+from slidemage.ui.kit.theme import ThemeManager
 
 
 @pytest.fixture(scope="session")

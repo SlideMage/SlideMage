@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QPlainTextEdit, QWidget
 from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_gui, qt_slide_source_tab, qt_transcript_tab
 from slidemage.ai_draft import DraftProposal
 from slidemage.alt_blocks import SlideRow
-from slidemage.qt_theme import ThemeManager
+from slidemage.ui.kit.theme import ThemeManager
 
 
 @pytest.fixture(scope="session")

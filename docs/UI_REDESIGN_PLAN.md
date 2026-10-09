@@ -75,7 +75,7 @@ Images page. The prototype has one workspace for each open deck:
   (error #b91c1c, warning amber, ok green), corner radii and shadows. The
   existing dark-mode palette stays.
 - Bundle the fonts under `assets/fonts/` (Roboto and Roboto Mono under
-  Apache 2.0, Material Icons under Apache 2.0) with license files. Load them
+  SIL OFL 1.1, Material Icons under Apache 2.0) with license files. Load them
   through `QFontDatabase` at startup, and add them to the PyInstaller spec in
   `packaging/`.
 - Widgets in `ui/kit/`: segmented control, chip, split button, icon button

@@ -11,7 +11,7 @@ from slidemage.deck_scan import Deck
 from slidemage.deck_settings import DeckSettings
 from slidemage.qt_deck_settings_dialog import DeckSettingsDialog
 from slidemage.qt_deck_table import DeckTable
-from slidemage.qt_theme import ThemeManager
+from slidemage.ui.kit.theme import ThemeManager
 
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
 TEMPLATES = [("slidemage", "SlideMage"), ("uni-graz", "University of Graz")]

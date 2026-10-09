@@ -15,7 +15,7 @@ else a last-resort hardcoded fallback for a completely fresh install
 that has never had a default set at all.
 
 Tracked in git (unlike SlideMage's own UI preferences -- see
-qt_theme.py's dark-mode QSettings use, a deliberately different, per-
+ui/kit/theme.py's dark-mode QSettings use, a deliberately different, per-
 machine store) since this is genuinely project config: which models
 translate this project's content, and exactly how, is worth sharing/
 versioning the same way Slidemaster.bib or slide_ids.csv are, not left

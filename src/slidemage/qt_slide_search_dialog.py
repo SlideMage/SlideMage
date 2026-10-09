@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import slide_search
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 # Debounced, not searched on every single keystroke directly -- typing a
 # whole word fires several keystrokes in quick succession, and re-scanning

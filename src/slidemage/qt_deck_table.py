@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 from . import app_settings
 from .compiler import CompileJob
 from .deck_scan import TAG_COURSE, TAG_MANUAL, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
-from .qt_theme import LINK_LABEL, ThemeManager
+from .ui.kit.theme import LINK_LABEL, ThemeManager
 
 # The deck table's groups, top to bottom: (tag, heading, shown even while
 # empty on the active table). The workdeck has no heading -- it is pinned

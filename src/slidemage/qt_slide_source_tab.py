@@ -63,7 +63,7 @@ from .qt_insert_citation_dialog import InsertCitationDialog
 from .qt_syntax_check_dialog import SyntaxCheckDialog
 from .qt_slide_preview_popup import SlidePreviewPopup
 from .qt_slide_usage_dialog import SlideUsageDialog
-from .qt_theme import CLOSE_BUTTON, FORMAT_TOOLBAR, MUTED_LABEL, WARNING_LABEL
+from .ui.kit.theme import CLOSE_BUTTON, FORMAT_TOOLBAR, MUTED_LABEL, WARNING_LABEL
 
 # Same three base regexes as slide_source_tab.py, unchanged -- see that
 # module's own comments for the escaping/comment-boundary caveats (not

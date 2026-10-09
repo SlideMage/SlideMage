@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 
 class ArchiveUnusedDialog(QDialog):

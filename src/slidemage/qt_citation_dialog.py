@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import bibliography
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 # label shown in the "Type:" combo -> bibliography.TYPE_FIELDS key
 _TYPE_LABELS: dict[str, str] = {

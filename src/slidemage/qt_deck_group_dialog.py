@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .deck_scan import SELECTABLE_GROUP_TAGS, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 GROUP_LABELS = {
     TAG_WORK: "Workdeck (pinned to the top of the table)",

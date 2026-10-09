@@ -8,7 +8,7 @@ does almost exactly this (an always-visible close button that widens the
 tab), but it's a real QToolButton child widget per tab, styled through a
 different QSS path (`QTabBar::close-button`) than the rest of this app's
 QSS theming -- painting the glyph directly here keeps it themed the same
-simple way as everything else in qt_theme.py's stylesheet, and keeps the
+simple way as everything else in ui/kit/theme.py's stylesheet, and keeps the
 hit-test/close-request wiring in one place (_is_closable/_on_close_requested
 callbacks, not a signal this class would otherwise need to route through).
 """
@@ -54,7 +54,7 @@ class ClosableTabBar(QTabBar):
         # bigger, uneven stretch driven by whatever room happened to be
         # left in the window, not by this tab's own actual content. Off,
         # every tab sizes to exactly what it needs (still capped by
-        # qt_theme.py's own `max-width: 220px` QSS for a long title).
+        # ui/kit/theme.py's own `max-width: 220px` QSS for a long title).
         self.setExpanding(False)
 
     def _close_rect(self, index: int) -> QRect:

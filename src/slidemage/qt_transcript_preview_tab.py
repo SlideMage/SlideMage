@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout, QWidget
 
-from .qt_theme import CLOSE_BUTTON
+from .ui.kit.theme import CLOSE_BUTTON
 
 
 class TranscriptPreviewTab(QWidget):

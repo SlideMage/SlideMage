@@ -1,6 +1,6 @@
 """Light/dark color data shared by both GUI toolkits during the PySide6
 migration (see PYSIDE6_MIGRATION.md) -- deliberately has no Tkinter *or* Qt
-import of its own, just plain data, so theme.py (Tk) and qt_theme.py (Qt)
+import of its own, just plain data, so theme.py (Tk) and ui/kit/theme.py (Qt)
 can both read the exact same palette without either one depending on the
 other's toolkit. Extracted out of theme.py verbatim (same values, same
 keys) rather than duplicated, so the two GUIs can't visually drift apart

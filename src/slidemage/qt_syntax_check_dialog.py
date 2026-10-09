@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import alt_draft, app_settings, syntax_check
-from .qt_theme import MUTED_LABEL, WARNING_LABEL
+from .ui.kit.theme import MUTED_LABEL, WARNING_LABEL
 
 
 class _CheckWorker(QThread):

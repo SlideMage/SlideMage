@@ -43,7 +43,7 @@ from . import deck_editor, slide_language, slide_snapshot
 from .deck_editor import SlideCall
 from .deck_scan import SECTION_RE, TAG_COURSE, Chapter, Deck
 from .qt_slide_preview_popup import SlidePreviewPopup
-from .qt_theme import CLOSE_BUTTON, LINK_LABEL, WARNING_LABEL
+from .ui.kit.theme import CLOSE_BUTTON, LINK_LABEL, WARNING_LABEL
 from .slide_ids import SLIDES_DIR
 
 VERSIONS = ["instructor", "during-course", "after-course"]

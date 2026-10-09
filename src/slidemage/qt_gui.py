@@ -100,7 +100,8 @@ from .qt_transcript_tab import TranscriptTab
 from .qt_version_history_dialog import VersionHistoryDialog
 from .slide_ids import SLIDES_DIR
 from .qt_deck_table import DeckRow, DeckTable, build_progress_texts, job_column_key
-from .qt_theme import WARNING_LABEL, ThemeManager
+from .ui.kit.fonts import load_fonts
+from .ui.kit.theme import WARNING_LABEL, ThemeManager
 from . import unused_content
 from .qt_archive_unused_dialog import ArchiveUnusedDialog
 from .unused_content import archive_unused_content
@@ -1127,7 +1128,7 @@ class SlideMageWindow(QMainWindow):
         """Public (2026-08-25): called from the Settings dialog's own
         checkbox (qt_settings_dialog.py), not just an internal toolbar
         handler any more -- theme.set_dark() itself now also persists the
-        choice (QSettings, per-machine -- see qt_theme.py)."""
+        choice (QSettings, per-machine -- see ui/kit/theme.py)."""
         self.theme.set_dark(checked)
         # QSS covers every ordinary widget automatically, but a
         # QSyntaxHighlighter's own tag colors live on the text document,
@@ -2566,6 +2567,7 @@ class SlideMageWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication.instance() or QApplication(sys.argv)
+    load_fonts()
     app.setWindowIcon(QIcon(str(ICON_PATH)))
     theme = ThemeManager()
     theme.apply()

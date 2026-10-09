@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import ai_draft, alt_draft, app_settings
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 
 class _DiffHighlighter(QSyntaxHighlighter):

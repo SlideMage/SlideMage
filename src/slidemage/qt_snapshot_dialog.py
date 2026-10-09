@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from . import app_settings, deck_snapshot, open_path
 from .deck_scan import Deck
 from .deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 # Remembered between runs (app_settings), and used as they are by the
 # snapshot the archive question offers.

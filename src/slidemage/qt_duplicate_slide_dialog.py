@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 
 from . import alt_draft, app_settings, slide_ids, slide_language, slide_rename
 from .qt_add_slide_dialog import SLUG_RE
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 _LANGUAGE_LABELS = {"EN": "EN", "DE": "DE", "mult": "Multilingual"}
 _LABEL_TO_LANGUAGE = {v: k for k, v in _LANGUAGE_LABELS.items()}

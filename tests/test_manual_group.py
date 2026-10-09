@@ -12,7 +12,7 @@ from slidemage import qt_deck_group_dialog
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import GROUP_ORDER, SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
 from slidemage.qt_deck_table import GROUPS, DeckTable
-from slidemage.qt_theme import ThemeManager
+from slidemage.ui.kit.theme import ThemeManager
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 

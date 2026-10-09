@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from . import latex_lint
 from .latex_lint import CheckResult, LintIssue
-from .qt_theme import MUTED_LABEL
+from .ui.kit.theme import MUTED_LABEL
 
 
 class RenderCheckDialog(QDialog):
