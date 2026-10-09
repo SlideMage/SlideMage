@@ -6,7 +6,7 @@ before anything is actually moved, so a mistaken/over-broad result can be
 caught and cancelled instead of only being discovered afterward in the log.
 
 Non-modal-in-spirit but implemented as an ordinary exec() dialog -- unlike
-SyntaxCheckDialog/RenderCheckDialog, there is nothing here to keep working
+RenderCheckDialog, there is nothing here to keep working
 against while it's open (the scan is already finished by the time this
 shows), so a plain modal confirmation is simplest.
 """

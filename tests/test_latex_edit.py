@@ -110,10 +110,11 @@ def test_block_lands_in_the_title_braces_and_floating_blocks_take_a_width_first(
     assert floating.text[:floating.caret].endswith("{5cm}{")
 
 
-def test_every_insert_entry_has_an_edit_except_the_hyperlink():
+def test_every_insert_entry_has_an_edit_except_those_that_ask_first():
     for insert in le.INSERT_COMMANDS + le.INSERT_LIST_COMMANDS + le.INSERT_BLOCK_COMMANDS:
         edit = le.insert_edit(insert, "sel", "\t")
-        assert (edit is None) == (insert.kind == "hyperlink"), insert
+        assert (edit is None) == (insert.kind in le.ASKS), insert
+    assert {i.kind for i in le.INSERT_COMMANDS} >= set(le.ASKS)
     literal = le.insert_edit(le.Insert("\\tallitem", "literal"), "sel", "")
     assert literal == le.Edit("\\tallitem", len("\\tallitem"))
 

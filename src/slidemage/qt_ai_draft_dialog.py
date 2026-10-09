@@ -5,7 +5,7 @@ the real original. Nothing touches the editor until "Accept" is clicked;
 "Generate" can be run again first (a fresh prompt, a different model, or
 just retrying) with no commitment either way.
 
-Non-modal, same reasoning as SyntaxCheckDialog: staying open alongside a
+Non-modal: staying open alongside a
 clickable editor is the point, not a limitation -- reading a proposed
 rewrite is much easier with the real slide still visible/scrollable
 underneath.

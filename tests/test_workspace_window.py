@@ -614,3 +614,43 @@ def test_closing_asks_about_a_pending_transcript_summary_too(window, monkeypatch
     monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
     monkeypatch.setattr(window.transcript_tab, "_any_editor_dirty", lambda: False)
     assert window._resolve_dirty_edits() is True and saved == [True]
+
+
+def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path, monkeypatch):
+    import threading
+
+    from slidemage.ai.providers import OllamaProvider
+    from slidemage.syntax_check import SyntaxCheckResult
+    from slidemage.ui.workspace import ai_fix
+
+    path = tmp_path / "abc-EN-Test-current.tex"
+    path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
+    held, aborted = threading.Event(), threading.Event()
+
+    class Checker:
+        def __init__(self, provider):
+            pass
+
+        def check(self, text):
+            held.wait(10)
+            return SyntaxCheckResult(model="m", error="Aborted.", cancelled=True)
+
+        def abort(self):
+            aborted.set()
+            held.set()
+
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["m"])
+    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m"})())
+    monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
+    window.open_slide_editor(path)
+    file = window.centre.source.current
+    file.ask_ai_button.click()
+    worker = file.fix_panel._worker
+    assert worker is not None and worker.isRunning() and window._ollama_task_label == "checking syntax"
+    window.state.set_mode("preview")           # the file is kept only because its check runs
+    window.centre.source.show_path(None)
+    assert file.keep_open
+
+    assert window.close() is True
+    assert aborted.is_set() and worker.isFinished()
+    assert window._ollama_task_label is None and not file.fix_panel.running

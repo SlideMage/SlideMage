@@ -27,6 +27,7 @@ from .tokens import (
 CARD = "kitCard"
 SEGMENTED = "kitSegmented"
 CHIP = "kitChip"
+SEGMENT_BADGE = "kitSegmentBadge"
 SPLIT = "kitSplit"
 SPLIT_DIVIDER = "kitSplitDivider"
 SPLIT_CARET = "kitSplitCaret"
@@ -60,6 +61,10 @@ SLIDES_BULK_LABEL = "kitSlidesBulkLabel"
 
 # Centre column (ui/workspace/centre.py and its views).
 SURFACE = "kitSurface"
+AI_PANEL = "kitAiPanel"
+AI_ROW = "kitAiRow"
+DIFF_OLD = "kitDiffOld"
+DIFF_NEW = "kitDiffNew"
 SOURCE = "kitSource"
 SOURCE_NOTE = "kitSourceNote"
 SOURCE_FILE_NAME = "kitSourceFileName"
@@ -134,6 +139,20 @@ def build_kit_qss(t: Tokens) -> str:
             font-size: 11px;
             font-weight: 600;
             padding: 5px 8px;
+        }}
+        QPushButton[kitSegment="true"][badge="true"] {{
+            padding-right: 22px;
+        }}
+        QLabel#{SEGMENT_BADGE} {{
+            {font}
+            font-size: 10px;
+            font-weight: 700;
+            color: #ffffff;
+            background-color: {t.error};
+            border-radius: 7px;
+            padding: 0 4px;
+            min-width: 8px;
+            min-height: 14px;
         }}
         QPushButton[kitSegment="true"]:hover {{
             color: {t.text};
@@ -256,6 +275,22 @@ def build_kit_qss(t: Tokens) -> str:
             background-color: {t.surface};
             border: 1px solid {t.line};
             border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{MENU} QListWidget {{
+            {font}
+            font-size: 12.5px;
+            background-color: transparent;
+            border: none;
+            outline: none;
+        }}
+        QFrame#{MENU} QListWidget::item {{
+            padding: 6px 8px;
+            border-radius: {RADIUS_SM}px;
+            color: {t.text};
+        }}
+        QFrame#{MENU} QListWidget::item:selected {{
+            background-color: {t.hover};
+            color: {t.text};
         }}
         QWidget#{MENU_ROW} {{
             {font}
@@ -484,6 +519,33 @@ def build_kit_qss(t: Tokens) -> str:
         QPlainTextEdit#{SOURCE} QScrollBar::add-line:vertical,
         QPlainTextEdit#{SOURCE} QScrollBar::sub-line:vertical {{
             height: 0;
+        }}
+        QFrame#{AI_PANEL} {{
+            background-color: transparent;
+            border-bottom: 1px solid {t.line};
+        }}
+        QFrame#{AI_ROW} {{
+            background-color: {t.bg};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{AI_ROW} QLabel {{
+            {font}
+            font-size: 12.5px;
+            color: {t.text};
+        }}
+        QFrame#{AI_ROW} QLabel#{DIFF_OLD}, QFrame#{AI_ROW} QLabel#{DIFF_NEW} {{
+            {mono}
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }}
+        QFrame#{AI_ROW} QLabel#{DIFF_OLD} {{
+            background-color: {t.error_bg};
+            color: {t.error_fg};
+        }}
+        QFrame#{AI_ROW} QLabel#{DIFF_NEW} {{
+            background-color: {t.ok_bg};
+            color: {t.ok_fg};
         }}
         QLabel#{SOURCE_NOTE} {{
             {font}

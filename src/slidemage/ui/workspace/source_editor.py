@@ -55,9 +55,10 @@ class SourceEditor(Protocol):
     1, offsets are characters into `text()`.
 
     Signals: `modified_changed(bool)` (the buffer differs from what was last
-    marked saved) and `escape_pressed()`."""
+    marked saved), `text_changed()` and `escape_pressed()`."""
 
     modified_changed: Any
+    text_changed: Any
     escape_pressed: Any
 
     def widget(self) -> QWidget: ...
@@ -188,6 +189,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
     error lines."""
 
     modified_changed = Signal(bool)
+    text_changed = Signal()
     escape_pressed = Signal()
 
     def __init__(self, theme: ThemeManager) -> None:
@@ -205,6 +207,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
         self.cursorPositionChanged.connect(self._line_area.update)
         self.cursorPositionChanged.connect(self._highlight_matching_brace)
         self.document().modificationChanged.connect(self.modified_changed)
+        self.textChanged.connect(self.text_changed)
         self._update_line_area_width()
 
     # -- the SourceEditor protocol: the buffer -----------------------------------------

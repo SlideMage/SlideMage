@@ -18,7 +18,6 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMessageBox,
     QStackedWidget,
@@ -27,21 +26,20 @@ from PySide6.QtWidgets import (
 )
 
 from ... import bibliography, latex_edit
-from ...latex_edit import INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
+from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
 from ...qt_citation_dialog import CitationDialog
-from ...qt_insert_citation_dialog import InsertCitationDialog
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Chip, IconButton, PopoverMenu, Surface
+from ..kit.widgets import Button, Chip, IconButton, Popover, PopoverMenu, Surface
+from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
 from .source_file import SourceFile
 
-# Menu keys of the Insert menu that are not an Insert entry.
-ADD_REFERENCE, INSERT_CITATION = "bib:add", "bib:cite"
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 class SourcePane(Surface):
     dirty_changed = Signal(bool)         # some file has unsaved edits
     file_closed = Signal(object)         # the Path of a file the view no longer holds
+    lint_errors_changed = Signal(int)    # errors the static check finds in the file shown
     saved = Signal(object)               # the Path that was saved
     render_requested = Signal()          # Ctrl+R: render the buffer
     restore_requested = Signal(object)   # Path of a frozen version to make current
@@ -53,6 +51,7 @@ class SourcePane(Surface):
         self._files: dict[Path, SourceFile] = {}
         self._current: Optional[SourceFile] = None
         self._dirty = False
+        self._lint_errors = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -141,6 +140,10 @@ class SourcePane(Surface):
         self._insert_button = Button("Insert ▾", "ghost", compact=True)
         self._insert_button.clicked.connect(self._open_insert_menu)
         row.addWidget(self._insert_button)
+        self._cite_button = Button("Cite ▾", "ghost", compact=True)
+        self._cite_button.setToolTip("Insert a citation of an entry of Slidemaster.bib")
+        self._cite_button.clicked.connect(self._open_citation_popover)
+        row.addWidget(self._cite_button)
         row.addStretch(1)
         self._tools_button = Button("Tools ▾", "ghost", compact=True)
         self._tools_button.clicked.connect(self._open_tools_menu)
@@ -208,6 +211,7 @@ class SourcePane(Surface):
             if file is None:
                 file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
                 file.modified_changed.connect(self._on_modified)
+                file.lint_changed.connect(self._emit_lint_errors)
                 file.saved.connect(lambda p=path: self.saved.emit(p))
                 self._files[path] = file
                 self._stack.addWidget(file)
@@ -222,6 +226,14 @@ class SourcePane(Surface):
         for stale in [f for f in self._files.values() if f is not self._current and not f.keep_open]:
             self._drop(stale)
         self._update_toolbar()
+        self._emit_lint_errors()
+
+    def _emit_lint_errors(self) -> None:
+        lint = self._current.lint if self._current is not None else None
+        errors = len(lint.errors) if lint is not None else 0
+        if errors != self._lint_errors:
+            self._lint_errors = errors
+            self.lint_errors_changed.emit(errors)
 
     def set_message(self, message: str) -> None:
         """What to say when no file is shown."""
@@ -244,6 +256,11 @@ class SourcePane(Surface):
         """(the whole text, the selected text) of the file shown, if it is a slide."""
         file = self._current
         return (file.editor.text(), file.editor.selected_text()) if file is not None and file.is_slide else None
+
+    def stop_ai_checks(self) -> None:
+        """Abort and join every running "Ask AI to fix" check, whichever file it belongs to."""
+        for file in self._files.values():
+            file.fix_panel.stop()
 
     def refresh_colors(self) -> None:
         for file in self._files.values():
@@ -321,57 +338,56 @@ class SourcePane(Surface):
         self._popup(menu, self._color_button)
 
     def _open_insert_menu(self) -> None:
-        menu = PopoverMenu(self, min_width=300)
-        groups = (("Lists", "list", INSERT_LIST_COMMANDS), ("Blocks", "block", INSERT_BLOCK_COMMANDS),
-                  ("Commands", "cmd", INSERT_COMMANDS))
+        menu = PopoverMenu(self, min_width=340)
+        # The two that ask first lead; then the lists, the blocks and the plain commands.
+        commands = list(enumerate(INSERT_COMMANDS))
+        groups = (("", "cmd", [c for c in commands if c[1].kind in ASKS]),
+                  ("Lists", "list", list(enumerate(INSERT_LIST_COMMANDS))),
+                  ("Blocks", "block", list(enumerate(INSERT_BLOCK_COMMANDS))),
+                  ("Commands", "cmd", [c for c in commands if c[1].kind not in ASKS]))
         for title, prefix, inserts in groups:
-            menu.add_header(title)
-            for i, insert in enumerate(inserts):
-                menu.add_item(f"{prefix}:{i}", insert.label)
-        menu.add_separator()
-        menu.add_header("References")
-        menu.add_item(ADD_REFERENCE, "Add reference to .bib…")
-        menu.add_item(INSERT_CITATION, "Insert citation…")
+            if title:
+                menu.add_header(title)
+            for i, insert in inserts:
+                menu.add_item(f"{prefix}:{i}", insert.label, meta=insert.hint)
         menu.triggered.connect(self._on_insert_chosen)
         self._popup(menu, self._insert_button)
 
     def _on_insert_chosen(self, key: str) -> None:
-        if key == ADD_REFERENCE:
-            self.add_reference()
-        elif key == INSERT_CITATION:
-            self.insert_citation()
-        else:
-            prefix, _, index = key.partition(":")
-            inserts = {"list": INSERT_LIST_COMMANDS, "block": INSERT_BLOCK_COMMANDS, "cmd": INSERT_COMMANDS}[prefix]
-            self.insert(inserts[int(index)])
+        prefix, _, index = key.partition(":")
+        inserts = {"list": INSERT_LIST_COMMANDS, "block": INSERT_BLOCK_COMMANDS, "cmd": INSERT_COMMANDS}[prefix]
+        self.insert(inserts[int(index)])
 
     def insert(self, insert: Insert) -> None:
+        """Insert at the cursor; hyperlink and code file ask in a popover under the Insert button first."""
         if self._current is None or self._current.editor.is_read_only():
             return
         editor = self._current.editor
-        if not editor.apply_insert(insert):
-            self._insert_hyperlink()
+        if insert.kind not in ASKS:
+            editor.apply_insert(insert)
+        elif insert.kind == "hyperlink":
+            self._ask(LinkPopover(editor.selected_text()), self._insert_button)
+        else:
+            self._ask(CodeFilePopover(self._current.bare_id), self._insert_button)
 
-    def _insert_hyperlink(self) -> None:
-        editor = self._current.editor
-        word, ok = QInputDialog.getText(
-            self, "Insert hyperlink", "Visible word or phrase:", text=editor.selected_text())
-        if not ok:
-            return
-        url, ok = QInputDialog.getText(self, "Insert hyperlink", "Link URL (http:// or https://):")
-        if not ok:
-            return
-        try:
-            editor.replace_selection(latex_edit.format_hyperlink(word, url))
-        except ValueError as exc:
-            QMessageBox.warning(self, "Insert hyperlink", str(exc))
+    def _open_citation_popover(self) -> None:
+        if self._current is not None and not self._current.editor.is_read_only():
+            popover = CitationPopover()
+            popover.add_reference_requested.connect(self.add_reference)
+            self._ask(popover, self._cite_button)
+
+    def _ask(self, popover: Popover, anchor: QWidget) -> None:
+        """Show `popover` under `anchor`; what it chooses replaces the selection."""
+        popover.setParent(self, popover.windowFlags())     # owned by the view, not garbage collected
+        popover.chosen.connect(self._current.editor.replace_selection)
+        popover.closed.connect(popover.deleteLater)
+        popover.popup_below(anchor)
 
     def _open_tools_menu(self) -> None:
         file = self._current
         menu = PopoverMenu(self, min_width=240)
         menu.add_item("reindent", "Reindent", meta="one tab per \\begin level",
                       enabled=file.is_slide and not file.editor.is_read_only())
-        menu.add_item("check", "Check syntax", enabled=not file.is_bib)
         menu.add_item("ai", "AI draft…", enabled=file.is_slide and not file.editor.is_read_only())
         menu.triggered.connect(self._on_tool_chosen)
         self._popup(menu, self._tools_button)
@@ -380,8 +396,6 @@ class SourcePane(Surface):
         file = self._current
         if key == "reindent":
             self.reindent()
-        elif key == "check":
-            file.check_syntax()
         elif key == "ai":
             file.ai_draft()
 
@@ -410,7 +424,3 @@ class SourcePane(Surface):
         bib.reload()
         if dialog.new_key:
             bib.show_bib_key(dialog.new_key)
-
-    def insert_citation(self) -> None:
-        if self._current is not None and not self._current.editor.is_read_only():
-            InsertCitationDialog(self.app, self._current.editor).exec()

@@ -12,14 +12,14 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
-from slidemage import app_settings, qt_syntax_check_dialog
+from slidemage import app_settings
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import window as window_module
+from slidemage.ui.workspace import ai_fix
 from slidemage.ui.workspace.source_file import SourceFile
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, InstalledModel, OllamaProvider
 from slidemage.qt_ai_draft_dialog import AiDraftDialog
 from slidemage.qt_settings_dialog import SettingsDialog
-from slidemage.qt_syntax_check_dialog import SyntaxCheckDialog
 from slidemage.qt_transcript_tab import TranscriptTab
 from slidemage.syntax_check import SyntaxCheckResult
 
@@ -84,7 +84,9 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     assert app_settings.default_model("image_description") == "ollama:vision-2"
     assert app_settings.default_model("translation") == "ollama:translator"
 
-    editor = SimpleNamespace(text=lambda: "slide text")
+    (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
+    file = SourceFile(app, tmp_path / "slide.tex")      # holds the open "Ask AI to fix" panel and AI draft dialog
+    editor = file.editor
     requests = []
 
     class Checker:
@@ -94,8 +96,9 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
         def check(self, _text):
             return SyntaxCheckResult(model="general-text")
 
-    monkeypatch.setattr(qt_syntax_check_dialog.syntax_check, "SyntaxChecker", Checker)
-    syntax = SyntaxCheckDialog(app, editor, "slide.tex")
+    monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
+    syntax = file.fix_panel
+    syntax.run_check()
     # The check itself runs on a worker thread; let it finish.
     if syntax._worker is not None:
         syntax._worker.wait()
@@ -122,9 +125,7 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
     _choose(settings, "syntax_check", "vision")
     _choose(settings, "ai_draft", "general-text")
     _choose(settings, "image_description", "vision")
-    (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
-    file = SourceFile(app, tmp_path / "slide.tex")      # holds the two open dialogs
-    file.syntax_dialog, file.ai_dialog = syntax, draft
+    file.ai_dialog = draft
     app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
 
     class OpenTranscript:

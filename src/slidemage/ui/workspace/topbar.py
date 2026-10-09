@@ -137,6 +137,7 @@ class TopBar(QWidget):
         state.view_changed.connect(self._on_view_changed)
         state.language_changed.connect(self._languages.set_current)
         state.mode_changed.connect(self._modes.set_current)
+        state.lint_errors_changed.connect(lambda count: self._modes.set_badge("source", count))
         state.dirty_changed.connect(lambda dirty: self._save.setText("Unsaved changes" if dirty else "Saved"))
         self._on_deck_changed(state.deck)
         self._on_view_changed(state.view)

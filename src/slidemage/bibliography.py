@@ -301,6 +301,20 @@ def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = N
     return entry_text
 
 
+def search(entries: dict[str, BibEntry], query: str) -> list[str]:
+    """The keys, sorted, of the entries that contain every word of `query`
+    (case-insensitive) in their key, author, title, year or container."""
+    words = query.lower().split()
+    found = []
+    for key in sorted(entries):
+        entry = entries[key]
+        haystack = " ".join((key, entry.fields.get("author", ""), entry.title, entry.year,
+                             entry.container)).lower()
+        if all(word in haystack for word in words):
+            found.append(key)
+    return found
+
+
 def _authors(entry: BibEntry) -> str:
     names = entry.surnames
     if not names:

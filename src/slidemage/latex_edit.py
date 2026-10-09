@@ -192,14 +192,22 @@ class Insert(NamedTuple):
     environment `payload`; "wrap_env_ellipsis" the same with
     \\item[\\SMBulletEllipsis] items; "wrap_multilingual" a two-argument macro
     (see insert_multilingual); "wrap_block" and "wrap_block_floating" a
-    beamer block (see wrap_block); "hyperlink" needs the visible word and a
-    URL from the user first (format_hyperlink)."""
+    beamer block (see wrap_block). "hyperlink" and "code_file" need the
+    user's input first (format_hyperlink, code_file_call). `hint` is the
+    LaTeX a menu shows beside a label that is not itself LaTeX."""
     label: str
     kind: str
     payload: Optional[str] = None
+    hint: str = ""
 
 
+# What needs the user's input before there is any text to insert.
+ASKS = ("hyperlink", "code_file")
+
+# The two that ask first, then the plain commands.
 INSERT_COMMANDS = [
+    Insert("Hyperlink…", "hyperlink", hint="\\href{URL}{text}"),
+    Insert("Code file…", "code_file", hint="\\SMCodeFile{snippets/…}"),
     Insert("\\conditionalpause[instructor]", "literal"),
     Insert("\\only<2->{...}", "wrap_macro", "only<2->"),
     Insert("\\tallitem", "literal"),
@@ -207,34 +215,48 @@ INSERT_COMMANDS = [
     # all list levels one font size smaller, for a slide whose text doesn't
     # fit; goes inside the frame -- change the 1 to 2 for two sizes smaller
     Insert("\\shrinklists{1}", "literal"),
-    Insert("\\multilingualtext{EN}{DE}", "wrap_multilingual", "multilingualtext"),
-    Insert("\\href{LINK}{WORD} (hyperlink…)", "hyperlink"),
+    Insert("Both languages", "wrap_multilingual", "multilingualtext", "\\multilingualtext{EN}{DE}"),
 ]
 
 INSERT_LIST_COMMANDS = [
-    Insert("Regular bullet", "wrap_env", "itemize"),
-    Insert("Ellipsis", "wrap_env_ellipsis", "itemize"),
-    Insert("Numbered", "wrap_env", "enumerate"),
+    Insert("Bulleted list", "wrap_env", "itemize", "\\begin{itemize}"),
+    Insert("Bulleted list, ellipses", "wrap_env_ellipsis", "itemize", "\\item[\\SMBulletEllipsis]"),
+    Insert("Numbered list", "wrap_env", "enumerate", "\\begin{enumerate}"),
 ]
 
 # The beamer blocks this project defines (Slidemaster_preamble_base.tex,
 # slides/ZZX-EN-Definition-formula-current.tex shows them side by side).
 INSERT_BLOCK_COMMANDS = [
-    Insert("Block", "wrap_block", "block"),
-    Insert("Example block", "wrap_block", "exampleblock"),
-    Insert("Alert block", "wrap_block", "alertblock"),
-    Insert("Reference block", "wrap_block", "referenceblock"),
-    Insert("Definition block", "wrap_block", "definitionblock"),
-    Insert("Info block", "wrap_block", "infoblock"),
-    Insert("Floating block", "wrap_block_floating", "gothamfloatingblock"),
-    Insert("Floating example block", "wrap_block_floating", "gothamfloatingexampleblock"),
-    Insert("Floating info block", "wrap_block_floating", "gothamfloatinginfoblock"),
+    Insert(label, kind, env, f"\\begin{{{env}}}") for label, kind, env in (
+        ("Block", "wrap_block", "block"),
+        ("Example block", "wrap_block", "exampleblock"),
+        ("Alert block", "wrap_block", "alertblock"),
+        ("Reference block", "wrap_block", "referenceblock"),
+        ("Definition block", "wrap_block", "definitionblock"),
+        ("Info block", "wrap_block", "infoblock"),
+        ("Floating block", "wrap_block_floating", "gothamfloatingblock"),
+        ("Floating example block", "wrap_block_floating", "gothamfloatingexampleblock"),
+        ("Floating info block", "wrap_block_floating", "gothamfloatinginfoblock"),
+    )
 ]
+
+
+def code_file_call(path: str, keys: str = "") -> str:
+    """\\SMCodeFile[keys]{path}: LaTeX source a slide shows from a file at
+    `path`, relative to the project folder (`keys` are listings options such
+    as firstline=3)."""
+    path, keys = path.strip(), keys.strip()
+    if not path:
+        raise ValueError("Enter the path of the code file.")
+    if any(char in path + keys for char in "{}\n\\%") or " " in path:
+        raise ValueError("The path and the options must not contain spaces (in the path), braces, "
+                         "backslashes, percent signs or line breaks.")
+    return f"\\SMCodeFile{f'[{keys}]' if keys else ''}{{{path}}}"
 
 
 def insert_edit(insert: Insert, selected: str, indent: str) -> Optional[Edit]:
     """What choosing `insert` does to `selected`, the text selected in a line
-    indented by `indent`; None for a "hyperlink", which needs the user's input."""
+    indented by `indent`; None for an entry in ASKS, which needs the user's input first."""
     kind, payload = insert.kind, insert.payload
     if kind == "literal":
         return Edit(insert.label, len(insert.label))

@@ -420,6 +420,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if not self._dirty_edits_resolved_for_close and not self._resolve_dirty_edits():
             event.ignore()
             return
+        self.centre.source.stop_ai_checks()   # no worker thread outlives the window
         super().closeEvent(event)
 
     def _resolve_dirty_edits(self) -> bool:

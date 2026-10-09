@@ -12,8 +12,9 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import bibliography, deck_editor, latex_edit, slide_source
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.workspace import source_file, source_view
+from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
+from slidemage.ui.workspace.insert_popovers import LinkPopover
 from slidemage.ui.workspace.source_view import SourcePane
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
@@ -102,7 +103,7 @@ def test_a_multiline_selection_becomes_list_items_and_keeps_the_indent(qapp):
     select(editor, 1, 9)
     assert editor.apply_insert(latex_edit.INSERT_LIST_COMMANDS[0])
     assert editor.text() == "\t\\begin{itemize}\n\t\t\\item one\n\t\t\\item two\n\t\\end{itemize}"
-    assert not editor.apply_insert(latex_edit.INSERT_COMMANDS[-1])    # the hyperlink needs input first
+    assert not editor.apply_insert(next(i for i in latex_edit.INSERT_COMMANDS if i.kind == "hyperlink"))    # the hyperlink needs input first
 
 
 def test_positions_after_an_emoji_are_utf16_positions(qapp):
@@ -264,40 +265,43 @@ def test_the_toolbar_follows_the_kind_of_file(pane, slides, tmp_path, monkeypatc
     assert not pane._jump_bar.isVisibleTo(pane)
 
 
-def test_the_hyperlink_command_prompts_for_a_label_and_url_and_replaces_the_selection(pane, slides, monkeypatch):
+def popover_of(pane, kind):
+    """The popover an insert of `kind` opened under the Insert button (shown, so top level)."""
+    popovers = [w for w in QApplication.topLevelWidgets() if isinstance(w, kind) and w.isVisible()]
+    assert len(popovers) == 1
+    return popovers[0]
+
+
+def test_the_hyperlink_command_asks_in_a_popover_and_replaces_the_selection(pane, slides):
     path = slides / "def-EN-Other-current.tex"
     path.write_text("Word appears here", encoding="utf-8")
     pane.show_path(path)
     select(pane.current.editor, 0, 4)
-    answers = iter([("R&D", True), ("https://example.org/page?x=1&y=2", True)])
-    prompts = []
-
-    def prompt(*_args, **kwargs):
-        prompts.append(kwargs)
-        return next(answers)
-
-    monkeypatch.setattr(source_view.QInputDialog, "getText", prompt)
     hyperlink = next(i for i in latex_edit.INSERT_COMMANDS if i.kind == "hyperlink")
     pane.insert(hyperlink)
-    assert prompts[0]["text"] == "Word"
+    popover = popover_of(pane, LinkPopover)
+    assert popover.word.text() == "Word"                        # the selection is the visible text
+    popover.word.setText("R&D")
+    popover.url.setText("https://example.org/page?x=1&y=2")
+    popover._on_insert()
     assert pane.current.editor.text() == r"\href{https://example.org/page?x=1\&y=2}{R\&D} appears here"
     assert path.read_text(encoding="utf-8") == "Word appears here"        # Save stays explicit
+    assert not popover.isVisible()
 
 
-def test_cancelling_or_misspelling_the_hyperlink_keeps_the_source(pane, slides, monkeypatch):
+def test_a_bad_hyperlink_stays_in_the_popover_with_the_reason(pane, slides):
     path = slides / "def-EN-Other-current.tex"
     path.write_text("Word", encoding="utf-8")
     pane.show_path(path)
-    hyperlink = next(i for i in latex_edit.INSERT_COMMANDS if i.kind == "hyperlink")
-    answers = iter([("Word", True), ("", False)])
-    monkeypatch.setattr(source_view.QInputDialog, "getText", lambda *_a, **_k: next(answers))
-    pane.insert(hyperlink)
+    pane.insert(next(i for i in latex_edit.INSERT_COMMANDS if i.kind == "hyperlink"))
+    popover = popover_of(pane, LinkPopover)
+    popover.word.setText("Word")
+    popover.url.setText("javascript:x")
+    popover._on_insert()
+    assert popover.isVisible() and "http" in popover.note.text()
     assert pane.current.editor.text() == "Word"
-    warned = []
-    answers = iter([("Word", True), ("javascript:x", True)])
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
-    pane.insert(hyperlink)
-    assert warned and pane.current.editor.text() == "Word"
+    popover.close()
+    assert pane.current.editor.text() == "Word"                # cancelling leaves the source alone
 
 
 # -- saving ----------------------------------------------------------------------------

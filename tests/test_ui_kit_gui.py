@@ -222,3 +222,20 @@ def test_gallery_renders(theme, dark):
     gallery.toast.show_message("hello", [("a", "Act")])
     assert gallery.grab().toImage().width() == image.width()
     gallery.close()
+
+
+def test_segment_badge_shows_a_count_and_hides_at_zero(theme):
+    control = SegmentedControl([("p", "Preview"), ("s", "Source")])
+    styled(control, theme, False)
+    control.show()
+    badge = control._badges["s"]
+    assert badge.isHidden()
+    control.set_badge("s", 3)
+    QApplication.processEvents()
+    assert badge.isVisible() and badge.text() == "3" and control._buttons["s"].property("badge") is True
+    assert badge.geometry().right() <= control._buttons["s"].geometry().width()
+    control.set_badge("s", 120)
+    assert badge.text() == "99+"
+    control.set_badge("s", 0)
+    assert badge.isHidden() and control._buttons["s"].property("badge") is False
+    assert control.current() == "p"          # a badge is not a click

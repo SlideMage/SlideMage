@@ -1,7 +1,7 @@
-"""The Source view's own "Add reference" menu entry (2026-09-23, direct
+"""The Source view's own "Add reference to .bib…" entry (2026-09-23, direct
 instruction; renamed from "Add citation" 2026-09-25, direct instruction,
-once qt_insert_citation_dialog.py's own "Insert citation" gave the word
-"citation" a second, different meaning in the same toolbar -- this one
+once the "Cite" popover (insert_popovers.py) gave the word "citation" a
+second, different meaning in the same toolbar -- this one
 only ever *creates* a new .bib entry, never inserts a citation call for
 one) -- a small form for adding a new entry to Slidemaster.bib
 without leaving the app or hand-writing BibTeX. Picking a source type

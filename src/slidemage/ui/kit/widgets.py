@@ -164,6 +164,7 @@ class SegmentedControl(QFrame):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons: dict[str, QPushButton] = {}
+        self._badges: dict[str, QLabel] = {}
         for key, label in items:
             button = QPushButton(label)
             button.setCheckable(True)
@@ -173,6 +174,12 @@ class SegmentedControl(QFrame):
                 button.setProperty("tone", tones[key])
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda _checked=False, k=key: self.changed.emit(k))
+            button.installEventFilter(self)
+            badge = QLabel(button)
+            badge.setObjectName(q.SEGMENT_BADGE)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.hide()
+            self._badges[key] = badge
             self._group.addButton(button)
             layout.addWidget(button)
             self._buttons[key] = button
@@ -187,6 +194,28 @@ class SegmentedControl(QFrame):
     def set_current(self, key: str | None) -> None:
         if key in self._buttons:
             self._buttons[key].setChecked(True)
+
+    def set_badge(self, key: str, count: int) -> None:
+        """A small red count on a segment ("2" lint errors); 0 hides it."""
+        badge, button = self._badges[key], self._buttons[key]
+        badge.setText("99+" if count > 99 else str(count))
+        button.setProperty("badge", count > 0)   # the segment makes room for it
+        _repolish(button)
+        badge.setVisible(count > 0)
+        badge.adjustSize()
+        self._place_badge(key)
+        badge.raise_()
+
+    def _place_badge(self, key: str) -> None:
+        badge, button = self._badges[key], self._buttons[key]
+        badge.move(max(0, button.width() - badge.width() - 4), 3)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Resize:   # the segment grew to make room for its badge
+            for key, button in self._buttons.items():
+                if obj is button:
+                    self._place_badge(key)
+        return super().eventFilter(obj, event)
 
 
 class Chip(QFrame):
@@ -266,22 +295,63 @@ class _MenuRow(QWidget):
         super().mouseReleaseEvent(event)
 
 
-class PopoverMenu(QFrame):
-    """Popup list of actions with an optional right-hand metadata column
-    (shortcut, count, date). `triggered(key)` fires on click or Enter, then
-    the menu closes; `closed` fires whenever it hides. Rows are added with
-    add_item/add_header/add_separator before popup_below()/popup_at()."""
+class Popover(QFrame):
+    """A frameless popup under a button, closing on a click elsewhere or Esc;
+    `closed` fires whenever it hides. Fill its `body` (a QVBoxLayout) and show it with popup_below()/popup_at(); the
+    widget in `focus_target` (else the popover itself) gets the keyboard."""
 
-    triggered = Signal(str)
     closed = Signal()
 
     def __init__(self, parent: QWidget | None = None, *, min_width: int = 220) -> None:
         super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setObjectName(q.MENU)
         self.setMinimumWidth(min_width)
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(4, 4, 4, 4)
-        self._layout.setSpacing(0)
+        self.body = QVBoxLayout(self)
+        self.body.setContentsMargins(4, 4, 4, 4)
+        self.body.setSpacing(0)
+        self.focus_target: QWidget | None = None
+
+    def _prepare(self) -> None:
+        """Called before the popup is positioned: build what is shown."""
+
+    def popup_at(self, global_pos: QPoint) -> None:
+        self._prepare()
+        self._show_at(global_pos)
+
+    def _show_at(self, global_pos: QPoint) -> None:
+        self.adjustSize()
+        screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            x = min(global_pos.x(), area.right() - self.width())
+            y = min(global_pos.y(), area.bottom() - self.height())
+            global_pos = QPoint(max(area.left(), x), max(area.top(), y))
+        self.move(global_pos)
+        self.show()
+        (self.focus_target or self).setFocus()
+
+    def popup_below(self, anchor: QWidget, *, align_right: bool = False) -> None:
+        self._prepare()
+        self.adjustSize()
+        point = anchor.mapToGlobal(QPoint(anchor.width() - self.width() if align_right else 0, anchor.height() + 4))
+        self._show_at(point)
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        self.closed.emit()
+
+
+class PopoverMenu(Popover):
+    """Popup list of actions with an optional right-hand metadata column
+    (shortcut, count, date). `triggered(key)` fires on click or Enter, then
+    the menu closes. Rows are added with add_item/add_header/add_separator
+    before popup_below()/popup_at()."""
+
+    triggered = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None, *, min_width: int = 220) -> None:
+        super().__init__(parent, min_width=min_width)
+        self._layout = self.body
         self._rows: list[_MenuRow] = []
         self._current = -1
         self._entries: list[tuple] = []  # queued by add_*, built on popup
@@ -358,31 +428,8 @@ class PopoverMenu(QFrame):
         else:
             super().keyPressEvent(event)
 
-    def popup_at(self, global_pos: QPoint) -> None:
+    def _prepare(self) -> None:
         self._build()
-        self._show_at(global_pos)
-
-    def _show_at(self, global_pos: QPoint) -> None:
-        self.adjustSize()
-        screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
-        if screen is not None:
-            area = screen.availableGeometry()
-            x = min(global_pos.x(), area.right() - self.width())
-            y = min(global_pos.y(), area.bottom() - self.height())
-            global_pos = QPoint(max(area.left(), x), max(area.top(), y))
-        self.move(global_pos)
-        self.show()
-        self.setFocus()
-
-    def popup_below(self, anchor: QWidget, *, align_right: bool = False) -> None:
-        self._build()
-        self.adjustSize()
-        point = anchor.mapToGlobal(QPoint(anchor.width() - self.width() if align_right else 0, anchor.height() + 4))
-        self._show_at(point)
-
-    def hideEvent(self, event) -> None:
-        super().hideEvent(event)
-        self.closed.emit()
 
 
 class SplitButton(QFrame):

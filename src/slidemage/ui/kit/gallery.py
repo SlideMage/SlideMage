@@ -99,6 +99,7 @@ class KitGallery(QWidget):
             tones=VIEW_TONES, current="during")
         lang = SegmentedControl([("en", "EN"), ("de", "DE")], mono=True)
         mode = SegmentedControl([("p", "Preview"), ("s", "Split"), ("c", "Source"), ("d", "Details")])
+        mode.set_badge("c", 3)   # lint errors in the Source view
         return self._row(view, lang, mode)
 
     def _chips(self) -> QWidget:

@@ -63,6 +63,7 @@ class CentreColumn(QFrame):
 
         self.source.dirty_changed.connect(self._update_dirty)
         self.details.summary_dirty_changed.connect(self._update_dirty)
+        self.source.lint_errors_changed.connect(state.set_lint_errors)
         self.source.saved.connect(self._on_saved)
         self.source.render_requested.connect(self._render_buffer)
         self.source.restore_requested.connect(self.restore_version)

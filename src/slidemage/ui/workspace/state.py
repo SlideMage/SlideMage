@@ -40,6 +40,7 @@ class WorkspaceState(QObject):
     selection_changed = Signal(object)       # tuple of bare slide ids
     mode_changed = Signal(str)
     dirty_changed = Signal(bool)
+    lint_errors_changed = Signal(int)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -53,6 +54,7 @@ class WorkspaceState(QObject):
         # The Build options' "Include footer timestamp", which the Preview renders with too.
         # Read when a render starts, so it has no signal.
         self.footer_timestamp = False
+        self.lint_errors = 0   # errors the static check finds in the source being edited
 
     def set_deck(self, deck: Optional[Deck]) -> None:
         """Switch decks: the view and language come back from the settings
@@ -109,6 +111,11 @@ class WorkspaceState(QObject):
         if dirty != self.dirty:
             self.dirty = dirty
             self.dirty_changed.emit(dirty)
+
+    def set_lint_errors(self, count: int) -> None:
+        if count != self.lint_errors:
+            self.lint_errors = count
+            self.lint_errors_changed.emit(count)
 
     def set_footer_timestamp(self, enabled: bool) -> None:
         self.footer_timestamp = enabled
