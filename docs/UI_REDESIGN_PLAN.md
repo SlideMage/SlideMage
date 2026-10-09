@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–5 and 6a done (see
+Status: in progress on branch `ui-redesign`. Steps 1–6 done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 6a: 837 passed, 4 skipped, about
-6.5 s; ruff clean.
+Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
+7 s; ruff clean.
 
 | Step | Commit | State |
 |---|---|---|
@@ -58,7 +58,8 @@ Last updated 2026-10-09. Suite after step 6a: 837 passed, 4 skipped, about
 | 5a. Centre views | `d543147` | done |
 | 5b. Lint, AI fix, Insert/Cite | `15a30ed` | done |
 | 6a. Panel host, Used in decks, Slide versions, Visibility | (see git log) | done |
-| 6b–11 | | not started |
+| 6b. Citations, Language, Images, Transcript, Notes panels | (see git log) | done |
+| 7–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -103,11 +104,17 @@ Last updated 2026-10-09. Suite after step 6a: 837 passed, 4 skipped, about
 - Log panel under the columns (until step 7's Log drawer).
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
-  `visibility.py`; add 6b panels to `PANELS` in `panels/__init__.py`).
-- Details view hosts the transcript summary editor (moves to the 6b
-  Transcript entry panel; `flush_summary`/`summary_dirty` and the close
-  prompt depend on `DetailsPane`) plus slug/frame/language and
-  Duplicate / Rename / Delete slide.
+  `visibility.py`, `citations.py`, `language.py`, `images.py`,
+  `transcript_entry.py`, `notes.py`; registry `PANELS` in
+  `panels/__init__.py`). Panels have `dirty`/`flush()`; the close prompt
+  counts them; Notes edits go into the Source buffer (versioned save).
+- Details view: slug, frame, language fact, Duplicate / Rename / Delete.
+- Citations "Add to .bib…" and Cite ▾ footer open `qt_citation_dialog`
+  (the add-entry form, kept; step 10 chat may take over).
+- Image descriptions panel and the Images page both edit
+  `media/alt-text.json`; the review stamp is duplicated in
+  `qt_transcript_tab._save` (fold into `alt_images.save_slide_image` in
+  step 9).
 - `qt_version_history_dialog.py` is the app's Info dialog (release
   history, license), not a slide-version viewer; step 6 left it. Decide
   its home in step 9.
@@ -117,9 +124,14 @@ Last updated 2026-10-09. Suite after step 6a: 837 passed, 4 skipped, about
   (until step 9).
 
 ### Carried over to later steps
-- Step 6: Preview chips "course note" and "outdated translation" need
-  backend data (none exists yet); the slide list's lint dot follows the
-  saved file, not the live buffer.
+- Preview chip "course note" has no slide-level backend data (not
+  built); "outdated translation" is wired (`translation_link`: original
+  saved via SlideMage after the translation was written, not a content
+  check). The slide list's lint dot follows the saved file.
+- Citations panel doesn't refresh after a hand edit of Slidemaster.bib;
+  no "update translation" action yet (only Open); Image descriptions
+  panel path label wraps awkwardly; some unused imports in `ui/`
+  (`window.py` `bare_id`, `gallery.py`, `theme.py`, `ai_fix.py`).
 - Step 7: `try_start_ollama_task`/`end_ollama_task` also serialise cloud
   tasks (too strict); `deck_outline.forget_lint()` is not wired to "Refresh
   decks"; deck switch rebuilds the list twice (harmless, ~75 ms).
@@ -139,6 +151,11 @@ Last updated 2026-10-09. Suite after step 6a: 837 passed, 4 skipped, about
   "Ask AI to fix" on the lint line; Cite ▾ inserts `\fullcite` (default),
   `\textcite`, `\parencite` or the key; a pending transcript summary is
   auto-saved on slide/deck switch and is in the close prompt.
+- Step 6: "Freeze as vX.Y.Z" in Slide versions; pin selector for the
+  open deck only; Set language lives in the Language panel; a pending
+  Image-descriptions edit is saved as a draft (un-reviewing it) on
+  leaving the slide/deck/panel; pending Notes edits move into the
+  Source buffer unsaved; Transcript entry has no per-step text.
 
 ### How the work is run (to resume)
 - Orchestrator: the main session briefs one agent per step, reviews the
