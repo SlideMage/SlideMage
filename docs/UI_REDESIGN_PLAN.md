@@ -1,6 +1,7 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: implementation plan only. No application changes implemented.
+Status: in progress on branch `ui-redesign`. Steps 1–4 done, paused before
+step 5 (see "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
 (plus `sm-images.js`, `support.js`, `latex/slidemage-logo.svg`).
@@ -35,6 +36,103 @@ Images page. The prototype has one workspace for each open deck:
 4. **Current source editor.** The Source view uses the existing
    `LatexPlainTextEdit`. `EMBEDDED_EDITOR_PLAN.md` stays a separate, later
    project; the editor sits behind a small interface so it can be swapped.
+
+## Progress and handover
+
+Last updated 2026-10-09. Suite at the pause: 688 passed, 4 skipped, about
+6.5 s; ruff clean.
+
+| Step | Commit | State |
+|---|---|---|
+| 1. Visual foundations | `2ead8ca` | done |
+| 2. AI provider layer | `49c1fa4` | done |
+| 3. Workspace shell | `ef3a5a6` | done |
+| 4. Slide list | `61e348f` | done |
+| 5–11 | | not started |
+
+### What exists now
+- `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
+  (moved from `qt_theme.py`), `fonts.py` (`load_fonts()`), `widgets.py`
+  (SegmentedControl, Chip, SplitButton, IconButton, IconLabel, Button,
+  PopoverMenu, Toast, Card, ModalSheet, `apply_shadow`), `gallery.py`
+  (`python -m slidemage.ui.kit.gallery`). Fonts in `assets/fonts/` (Roboto
+  and Roboto Mono SIL OFL 1.1, Material Icons Apache 2.0).
+- `ai/`: `providers.py` (`ChatProvider`, `OllamaProvider`,
+  `AnthropicProvider`, `ProviderError`, `Cancelled`), `resolver.py`
+  (`provider_for_task`, local-only global/per project, consent),
+  `credentials.py` (API key: env → keyring → settings file),
+  `ollama_admin.py`. Task logic stays in `ai_draft` (`SlideDrafter`),
+  `syntax_check` (`SyntaxChecker`), `alt_draft` (`ModelBackend`,
+  `ModelTranslationBackend`); Qt pickers share `qt_ai_models.py`
+  (`provider_from_combo` asks for consent). Settings values are
+  `ollama:<model>` / `anthropic:<model>`; optional extra `keyring`.
+- `ui/workspace/`: `state.py` (`WorkspaceState`), `window.py`
+  (`WorkspaceWindow`), `topbar.py`, `menus.py` (deck switcher, Compile
+  caret, ⋮ menu), mixins `compile_jobs.py`, `deck_actions.py`,
+  `maintenance.py`, `multi_compile.py` ("Several decks…"),
+  `slide_list.py` + `slide_tree.py`; backend `deck_outline.py` (row
+  statuses). `qt_gui.py` is only `main()`.
+- Removed: `qt_deck_table.py`, `qt_closable_tab_bar.py`,
+  `qt_deck_editor_tab.py`, the menu bar.
+
+### Temporary hosts still in place
+- Centre `QStackedWidget` in `window.py`: `SlideSourceTab` (until step 5),
+  `TranscriptPreviewTab` / `TranscriptTab` for Images (until step 9).
+- Log panel under the columns (until step 7's Log drawer).
+- Preview/Split/Source/Details switch is disabled (until step 5).
+- Right column empty (steps 6 and 10).
+- `qt_deck_group_dialog.py` kept for ⋮ "Tags…" and "Duplicate deck…"
+  (until step 9).
+- `window.footer_timestamp_checkbox` is exposed only because
+  `qt_slide_source_tab.py` reads it (drop in step 5).
+
+### Carried over to later steps
+- Step 5: the user's uncommitted preview work (`preview_build.py`,
+  `preview_cli.py`, `slide_preview.py`, `qt_slide_source_tab.py`,
+  `tests/test_preview_build.py`, `tools/preview_benchmark/`,
+  `docs/preview-benchmark-*`, plus `.gitignore` and `README.md` edits) must
+  be committed or shelved by the user first, or explicitly folded into
+  step 5. Until then no agent may touch those files.
+- Step 5: slide titles in the list come from the slug, not the frame
+  title; take the real title if the Preview/Details work exposes it.
+- Step 7: `try_start_ollama_task`/`end_ollama_task` also serialise cloud
+  tasks (too strict); `deck_outline.forget_lint()` is not wired to "Refresh
+  decks"; deck switch rebuilds the list twice (harmless, ~75 ms).
+- Step 9: "Move to section" menu can be long (13 entries on the manual).
+- Step 11: `tools/manual/make_screenshots.py` still uses the old window API
+  (broken); `docs/SlideMage.md` still describes `qt_deck_table.py`;
+  stale comment mentions of removed modules in `slide_preview.py`.
+
+### Behaviour changes made so far (user may reverse)
+- Single click selects a slide; double-click/Enter opens its source.
+- Section menu "Add slide here" adds at the end of the section (old: top).
+- Grid view and the hover preview tooltip of the deck editor are dropped.
+- Deck group collapse state and the deck table's "?" help are dropped.
+
+### How the work is run (to resume)
+- Orchestrator: the main session briefs one agent per step, reviews the
+  result (diff, tests, screenshots in the scratchpad), sends corrections,
+  then commits on `ui-redesign` with only that step's files. The user asked
+  for no extra whole-branch review at the end.
+- Agents: Sonnet at high effort, via `.claude/agents/ui-step-implementer.md`
+  (needs a session reload to be picked up; earlier steps ran at medium).
+- Each brief contains: read the plan (Decisions, Approach, the step),
+  the relevant modules and tests, the prototype; the step's tasks; tests
+  `uv run --extra dev python -m pytest -q` and `uv run --extra dev ruff
+  check src tests`; offscreen screenshots (`QT_QPA_PLATFORM=offscreen`,
+  `SLIDEMASTER_PROJECT=example`) looked at by the agent; never touch the
+  user's in-progress files, never git stash/checkout/reset/restore, never
+  commit; a report listing files and line counts, old feature → new
+  location, test results, open points.
+- Review checklist that caught real problems so far: test suite time
+  (step 1), workflows lost with removed widgets (step 3: multi-deck
+  compile), guessed data instead of backend truth (step 4: frame numbers),
+  flaky exit crashes (step 4).
+- Prototype: re-fetch with the DesignSync tool (project
+  `3e2dd21f-cbd5-4329-a0d7-d3e1779450aa`, `get_file` on
+  `SlideMage Prototype v3.dc.html`; needs `/design-login`). Reads are
+  capped at 256 KiB, so the last ~5 KB of script are missing. Save it to
+  the session scratchpad and point agents at that path.
 
 ## Approach
 
