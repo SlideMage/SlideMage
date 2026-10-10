@@ -238,11 +238,19 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.stack.setCurrentWidget(self.images_page)
         self.images_page.show_slide(id_slug)
 
-    def ask_chat(self, text: str) -> None:
-        """Put `text` to the chat as a question about the focused slide (the command palette)."""
+    def _show_chat(self) -> None:
         self.stack.setCurrentWidget(self.centre)   # the Images page hides the right column
         self.assistant.show_view("chat")
+
+    def ask_chat(self, text: str) -> None:
+        """Put `text` to the chat as a question about the focused slide (the command palette)."""
+        self._show_chat()
         self.assistant.chat.ask(text, "slide")
+
+    def focus_chat(self) -> None:
+        """Open the chat on the focused slide with the cursor in the message box (the Source view's Tools menu)."""
+        self._show_chat()
+        self.assistant.chat.focus_composer("slide")
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,

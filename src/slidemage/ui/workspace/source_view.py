@@ -389,7 +389,7 @@ class SourcePane(Surface):
         menu = PopoverMenu(self, min_width=240)
         menu.add_item("reindent", "Reindent", meta="one tab per \\begin level",
                       enabled=file.is_slide and not file.editor.is_read_only())
-        menu.add_item("ai", "AI draft…", enabled=file.is_slide and not file.editor.is_read_only())
+        menu.add_item("chat", "Ask the chat…", meta="about this slide", enabled=file.is_slide)
         menu.triggered.connect(self._on_tool_chosen)
         self._popup(menu, self._tools_button)
 
@@ -397,8 +397,8 @@ class SourcePane(Surface):
         file = self._current
         if key == "reindent":
             self.reindent()
-        elif key == "ai":
-            file.ai_draft()
+        elif key == "chat":
+            self.app.focus_chat()
 
     def reindent(self) -> None:
         file = self._current

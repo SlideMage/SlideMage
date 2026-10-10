@@ -27,7 +27,6 @@ from ... import (
     slide_versioning,
 )
 from ...deck_scan import PROJECT_ROOT
-from ...qt_ai_draft_dialog import AiDraftDialog
 from ...slide_language import bare_id
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from ..kit import kit_qss as q
@@ -97,7 +96,6 @@ class SourceFile(Surface):
             self.id_slug = ""
         self.bare_id = bare_id(self.id_slug)
         self.is_bib = path == bibliography.DEFAULT_BIB
-        self.ai_dialog: Optional[AiDraftDialog] = None
         self.lint: Optional[latex_lint.CheckResult] = None     # of the buffer; None for a .bib
 
         self.text, self.eol = slide_source.read_slide_source(path)
@@ -146,8 +144,8 @@ class SourceFile(Surface):
     @property
     def keep_open(self) -> bool:
         """Whether the view must not drop this file when it is shown no more: unsaved
-        edits, or a non-modal dialog that works on its editor."""
-        return self.dirty or self.fix_panel.running or self.ai_dialog is not None
+        edits or a running "Ask AI to fix"."""
+        return self.dirty or self.fix_panel.running
 
     # -- the status line: lint of the buffer, Ask AI to fix ------------------------------
 
@@ -375,20 +373,8 @@ class SourceFile(Surface):
         self.editor.go_to_offset(offset)
         return True
 
-    def ai_draft(self) -> None:
-        if self.ai_dialog is not None:
-            self.ai_dialog.raise_()
-            self.ai_dialog.activateWindow()
-            return
-        dialog = AiDraftDialog(self.app, self.editor, self.path.name)
-        self.ai_dialog = dialog
-        dialog.finished.connect(lambda _result: setattr(self, "ai_dialog", None))
-        dialog.show()
-
     def _abort_ai_fix(self) -> None:
         self.fix_panel.abort()
 
     def refresh_model_preference(self, models: list[str]) -> None:
         self.fix_panel.refresh_model_preference(models)
-        if self.ai_dialog is not None:
-            self.ai_dialog.refresh_model_preference(models)

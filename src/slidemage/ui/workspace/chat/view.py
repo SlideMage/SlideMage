@@ -31,7 +31,7 @@ from ....ai.agent_types import (
     ToolFinished,
     ToolStarted,
 )
-from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ProviderError
+from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderError
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption
 from ..state import WorkspaceState
@@ -99,6 +99,7 @@ class ChatView(Surface):
         self._diffs: dict[str, DiffCard] = {}
         self._asking: dict[DiffCard, EditAsk] = {}      # the cards whose Apply / Reject the agent waits for
         self._stick = True                             # the list follows the newest content
+        self._provider: Optional[ChatProvider] = None  # the model of the run under way (holds the Ollama slot if local)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -226,6 +227,13 @@ class ChatView(Surface):
             return
         self.send(text)
 
+    def focus_composer(self, scope: str) -> None:
+        """Ready the message box for a question about `scope`."""
+        if not self.session.running:
+            self.scope.set_current(scope)
+            self._fill_empty()
+        self.composer.setFocus()
+
     def send(self, text: str | None = None) -> None:
         text = (self.composer.toPlainText() if text is None else text).strip()
         if not text or self.session.running:
@@ -238,6 +246,9 @@ class ChatView(Surface):
         except ProviderError as exc:
             self._add(Notice(str(exc), "error"))
             return
+        if not self.app.try_start_ollama_task("answering in the chat", provider):
+            return
+        self._provider = provider
         self.composer.clear()
         self._begin_conversation()
         self._add(UserBubble(text))
@@ -253,6 +264,13 @@ class ChatView(Surface):
     def shutdown(self) -> None:
         self.status.stop()
         self.session.shutdown()
+        self._release_provider()
+
+    def _release_provider(self) -> None:
+        """The run is over: give the Ollama slot back (a cloud model never took it)."""
+        if self._provider is not None:
+            self.app.end_ollama_task(self._provider)
+            self._provider = None
 
     def _on_deck_changed(self, _deck) -> None:
         if self.session.running:
@@ -341,6 +359,7 @@ class ChatView(Surface):
 
     def _done(self, event: Done) -> None:
         self._set_running(False)
+        self._release_provider()
         self._text = None
         for card in self._asking:
             card.rejected()

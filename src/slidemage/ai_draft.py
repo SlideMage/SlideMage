@@ -1,11 +1,8 @@
-"""AI draft: propose a full rewrite of a slide's own current source from
-an open, free-text prompt, via a local (Ollama) or cloud (Claude) model
-(2026-08-31, direct instruction; any ChatProvider since 2026-10-09).
+"""Protected regions of a slide: what a model must never rewrite (2026-08-31, direct instruction;
+the whole-slide rewrite dialog was replaced by the chat's edit tools, 2026-10-10).
 
-Unlike syntax_check.py's per-line, verified-before-apply fixes, an open
-rewrite prompt has no ground truth to check a proposal against -- there is
-no way to confirm a rewritten slide body is "correct". Two things keep
-this from being a blind, high-risk auto-edit:
+An open rewrite has no ground truth to check against, so two things keep it from being a blind,
+high-risk edit:
 
 1. **Mechanical protection**, not a prompt-only request: before the
    model ever sees the slide, mask_protected_regions() replaces the
@@ -26,20 +23,16 @@ this from being a blind, high-risk auto-edit:
    hallucinates a protected block produces no usable proposal at all,
    rather than a "mostly right" one silently missing its footer.
 
-The caller (qt_ai_draft_dialog.py) then shows the reconstructed proposal
-as a diff against the real original and requires an explicit Accept
-before touching the editor buffer at all -- this module only ever
-*proposes* text, never writes to a file or a widget itself.
+The chat's edit tools (ai/tools/edits.py) use mask_protected_regions() to refuse an edit that
+touches those regions.
 """
 from __future__ import annotations
 
 import re
-import time
 from dataclasses import dataclass
 from typing import Optional
 
 from . import draft_prompts
-from .ai.providers import ChatProvider, ProviderError
 
 _PLACEHOLDER_TOKEN_RE = re.compile(r"%%%PROTECTED_(\d+)%%%")
 _HEADER_COMMENT_LINE_RE = re.compile(r"^\s*%")
@@ -47,9 +40,6 @@ _SET_SLIDE_VERSION_RE = re.compile(r"^\\setSlideVersion\{[^}]*\}[ \t]*$", re.MUL
 # Not a generic tikzpicture/overlay match -- deliberately anchored to this
 # one specific wrapper (see this module's own docstring for why).
 _VBOX_OPEN_RE = re.compile(r"\\vbox\s+to\s+0pt\s*\{")
-
-_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
-_CODE_FENCE_RE = re.compile(r"^```[A-Za-z]*\n(.*)\n```$", re.DOTALL)
 
 
 def _find_matching_brace(text: str, open_pos: int) -> Optional[int]:
@@ -200,90 +190,8 @@ fences, no commentary before or after it."""
 
 
 def effective_system_prompt() -> str:
-    """What SlideDrafter should actually send as its system prompt:
+    """The slide-rewrite system prompt:
     the user's own saved override (Preferences dialog, draft_prompts.py)
     if they've set one, else this module's own hardcoded SYSTEM_PROMPT
     above."""
     return draft_prompts.get_custom_prompt(draft_prompts.KIND_SLIDE_REWRITE) or SYSTEM_PROMPT
-
-
-USER_TEMPLATE = """\
-Current slide source:
-
-{masked_text}
-
-Requested change:
-{prompt}"""
-
-
-@dataclass
-class DraftProposal:
-    proposed_text: str = ""
-    model: str = ""
-    elapsed_s: float = 0.0
-    error: Optional[str] = None
-
-    @property
-    def ok(self) -> bool:
-        return self.error is None and bool(self.proposed_text)
-
-
-def _strip_wrapping(raw: str) -> str:
-    raw = _THINK_TAG_RE.sub("", raw).strip()
-    fence_match = _CODE_FENCE_RE.match(raw)
-    if fence_match:
-        raw = fence_match.group(1)
-    return raw
-
-
-@dataclass
-class SlideDrafter:
-    provider: ChatProvider
-    num_ctx: int = 16384
-    think: bool = False
-    temperature: float = 0.3
-    max_tokens: int = 4096
-    timeout: float = 300.0
-    # None resolves through effective_system_prompt() in __post_init__, not
-    # at class-definition time, so a prompt saved in Preferences applies
-    # without a restart.
-    system_prompt: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        if self.system_prompt is None:
-            self.system_prompt = effective_system_prompt()
-
-    @property
-    def label(self) -> str:
-        return f"{self.provider.label}{' +think' if self.think else ''}"
-
-    def draft(self, current_text: str, prompt: str) -> DraftProposal:
-        mask = mask_protected_regions(current_text)
-        started = time.monotonic()
-        try:
-            reply = self.provider.chat(
-                [{"role": "user", "content": USER_TEMPLATE.format(
-                    masked_text=mask.masked_text, prompt=prompt)}],
-                system=self.system_prompt, temperature=self.temperature,
-                max_tokens=self.max_tokens, timeout=self.timeout,
-                think=self.think, num_ctx=self.num_ctx)
-        except ProviderError as exc:
-            return DraftProposal(
-                model=self.label, error=str(exc), elapsed_s=time.monotonic() - started)
-
-        elapsed = time.monotonic() - started
-        raw = _strip_wrapping(reply.text.strip() or reply.thinking.strip())
-        if not raw:
-            return DraftProposal(
-                model=self.label, error="Model returned an empty response",
-                elapsed_s=elapsed)
-
-        reconstructed, problems = unmask(raw, mask.placeholders)
-        if reconstructed is None:
-            return DraftProposal(
-                model=self.label, elapsed_s=elapsed,
-                error="Refused this draft: " + "; ".join(problems) +
-                     ". Try again, possibly with a different model or a "
-                     "more specific prompt.",
-            )
-        return DraftProposal(proposed_text=reconstructed, model=self.label, elapsed_s=elapsed)

@@ -388,7 +388,6 @@ def test_draft_and_rewrite_prompts_are_customizable_and_persist(monkeypatch, tmp
     provider = OllamaProvider("m")
     assert alt_draft.ModelBackend(provider).system_prompt == "Custom draft prompt."
     assert alt_draft.ModelBackend(provider, system_prompt="one-off").system_prompt == "one-off"
-    assert ai_draft.SlideDrafter(provider).system_prompt == "Custom rewrite prompt."
 
     # Clearing (empty string) reverts to the hardcoded default.
     draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "")

@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–9 and 10a–10c done; next is 10d, Ollama in the chat (see
+Status: in progress on branch `ui-redesign`. Steps 1–9, 10a–10c and 10d-1 done; next is 10d-2, Ollama tool calling in the chat (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -111,7 +111,8 @@ Worth repeating before step 11.
 | 10a. Agent backend (`ai/agent.py`, `ai/tools/`, `anthropic` SDK) | (see git log) | done |
 | 10b. Chat UI + Chat \| Claude Code switch (`ui/workspace/chat/`) | (see git log) | done |
 | 10c. Claude Code terminal (`ui/workspace/terminal/`, MCP server, hook) | (see git log) | done |
-| 10d–11 | | not started |
+| 10d-1. Remove `qt_ai_draft_dialog.py` (Tools ▾ "Ask the chat…"), chat takes the Ollama slot | (see git log) | done |
+| 10d-2–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -124,7 +125,7 @@ Worth repeating before step 11.
   `AnthropicProvider`, `ProviderError`, `Cancelled`), `resolver.py`
   (`provider_for_task`, local-only global/per project, consent),
   `credentials.py` (API key: env → keyring → settings file),
-  `ollama_admin.py`. Task logic stays in `ai_draft` (`SlideDrafter`),
+  `ollama_admin.py`. Task logic stays in `ai_draft` (protected regions only),
   `syntax_check` (`SyntaxChecker`), `alt_draft` (`ModelBackend`,
   `ModelTranslationBackend`); Qt pickers share `qt_ai_models.py`
   (`provider_from_combo` asks for consent). Settings values are
@@ -288,6 +289,10 @@ Worth repeating before step 11.
   versions as `v1-0-0` (could use `version_label`); larger refactors
   not done: panel boilerplate helpers in `panels/base.py`, one click-frame
   base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
+- 10d-1 leftovers (for 10d-2 or 11): Settings → AI models "AI drafting"
+  (`ai_draft_model`) and the "Slide rewrite" prompt page
+  (`KIND_SLIDE_REWRITE`, `ai_draft.SYSTEM_PROMPT`) configure nothing now;
+  a busy Ollama slot drops a suggestion-chip send after the warning.
 - 10c leftovers: the hook has not fired in a real session yet (needs a
   model edit; user can try: ask Claude Code to change a slide header);
   real `tools/call` from Claude Code untested; Windows (pywinpty,

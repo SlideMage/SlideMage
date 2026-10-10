@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import ai_draft, alt_draft, alt_images, syntax_check, translation_prompts
+from slidemage import alt_draft, alt_images, syntax_check, translation_prompts
 from slidemage.ai.providers import Cancelled, ChatReply, ProviderError
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
@@ -35,37 +35,6 @@ class FakeProvider:
 
     def abort(self):
         self.aborted = True
-
-
-# -- AI draft (slide rewrite) ------------------------------------------------
-
-SLIDE = "% header\n\\setSlideVersion{1.0}\nBody text\n"
-
-
-def test_rewrite_masks_protected_regions_and_restores_them():
-    provider = FakeProvider(
-        "```\n%%%PROTECTED_0%%%\nNew body\n```")
-    proposal = ai_draft.SlideDrafter(provider).draft(SLIDE, "change it")
-    sent = provider.calls[0]["messages"][0]["content"]
-    assert "%%%PROTECTED_0%%%" in sent and "setSlideVersion" not in sent
-    assert provider.calls[0]["system"] == ai_draft.effective_system_prompt()
-    assert proposal.ok
-    assert proposal.proposed_text == "% header\n\\setSlideVersion{1.0}\nNew body"
-    assert proposal.model == "fake"
-
-
-def test_rewrite_refuses_a_proposal_that_loses_a_protected_block():
-    proposal = ai_draft.SlideDrafter(FakeProvider("New body only")).draft(SLIDE, "x")
-    assert not proposal.ok
-    assert "Refused this draft" in proposal.error
-
-
-def test_rewrite_reports_provider_errors_and_empty_replies():
-    assert ai_draft.SlideDrafter(
-        FakeProvider(ProviderError("Ollama unreachable: x"))).draft(SLIDE, "x").error == \
-        "Ollama unreachable: x"
-    assert ai_draft.SlideDrafter(FakeProvider("")).draft(SLIDE, "x").error == \
-        "Model returned an empty response"
 
 
 # -- syntax check ------------------------------------------------------------

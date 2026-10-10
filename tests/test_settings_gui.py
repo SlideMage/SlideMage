@@ -190,7 +190,6 @@ def test_choosing_a_default_saves_it_for_that_task_only(qapp):
 
 
 def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
-    from slidemage.qt_ai_draft_dialog import AiDraftDialog
     from slidemage.ui.pages.images import ImagesPage
     from slidemage.syntax_check import SyntaxCheckResult
     from slidemage.ui.workspace import ai_fix
@@ -201,7 +200,6 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     app = FakeApp()
     sheet = open_sheet(qapp, app)
     choose(sheet, "syntax_check", "general-text")
-    choose(sheet, "ai_draft", "translator")
     choose(sheet, "image_description", "vision-2")
     choose(sheet, "translation", "translator")
     app_settings.set_ollama_host("http://ollama.example:11434")
@@ -223,27 +221,19 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     if syntax._worker is not None:
         syntax._worker.wait()
     qapp.processEvents()
-    draft = AiDraftDialog(app, file.editor, "slide.tex")
     assert syntax.model_combo.currentText() == "general-text"
-    assert draft.model_combo.currentText() == "translator"
     assert requests == [("general-text", "http://ollama.example:11434")]
 
     tab = SimpleNamespace(draft_model=QComboBox(), translate_model=QComboBox(), _update_buttons=lambda: None)
     ImagesPage.refresh_model_preferences(tab)
     assert tab.draft_model.currentText() == "vision-2" and tab.translate_model.currentText() == "translator"
 
-    # Picking another model in a dialog applies to that dialog only.
-    draft.model_combo.setCurrentText("vision")
-    draft.model_combo.activated.emit(draft.model_combo.currentIndex())
-    assert app_settings.default_model("ai_draft") == "ollama:translator"
-
     # A default changed in Settings reaches the open pickers from the sheet's own model lists.
     choose(sheet, "syntax_check", "vision")
-    choose(sheet, "ai_draft", "general-text")
     choose(sheet, "image_description", "vision")
-    file.ai_dialog = draft
     app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
-    app.assistant = SimpleNamespace(chat=SimpleNamespace(refresh_route=lambda: None))
+    route_refreshes = []
+    app.assistant = SimpleNamespace(chat=SimpleNamespace(refresh_route=lambda: route_refreshes.append(True)))
 
     class OpenImages:
         refresh_model_preferences = ImagesPage.refresh_model_preferences
@@ -265,7 +255,7 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
 
     window_module.WorkspaceWindow._on_open_settings(app)
     assert syntax.model_combo.currentText() == "vision"
-    assert draft.model_combo.currentText() == "general-text"
+    assert route_refreshes == [True]      # the chat names its new model
     assert app.images_page.draft_model.currentText() == "vision"
     assert app.images_page.translate_model.currentText() == "translator"
 

@@ -7,13 +7,10 @@ import pytest
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
-from slidemage import alt_images, app_settings, housekeeping, qt_ai_draft_dialog
+from slidemage import alt_images, housekeeping
 from slidemage.ui.workspace import window as window_module
 from slidemage.ai.providers import OllamaProvider
-from slidemage.ai_draft import DraftProposal
 from slidemage.ui.dialogs.open_project import OpenProjectSheet
-from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
 
 from conftest import build_window
 
@@ -118,71 +115,6 @@ def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, t
     assert relaunched == [chosen]
     assert file.dirty  # the explicit Discard choice applies to this relaunch
     assert window.isHidden()
-
-
-def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
-    _mock_ollama_lists(monkeypatch)
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["offline-test"])
-    monkeypatch.setattr(app_settings, "get", lambda _key, default=None: default)
-
-    app = QWidget()
-    app.try_start_ollama_task = lambda _label, _provider=None: True
-    app.end_ollama_task = lambda _provider=None: None
-    app.log = lambda _line: None
-    editor = LatexPlainTextEdit(ThemeManager())
-    editor.set_text("original source")
-
-    class FakeDrafter:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def draft(self, current_text, _prompt):
-            return DraftProposal(
-                proposed_text=current_text + "\nAI proposal",
-                model="offline-test",
-                elapsed_s=0.1,
-            )
-
-    monkeypatch.setattr(qt_ai_draft_dialog.ai_draft, "SlideDrafter", FakeDrafter)
-    dialog = qt_ai_draft_dialog.AiDraftDialog(app, editor, "test.tex")
-    dialog.prompt_edit.setPlainText("add a line")
-    dialog._on_generate()
-    assert dialog._proposal_baseline == "original source"
-    editor.set_text("original source\nmanual edit")
-
-    dialog._on_accept()
-
-    assert editor.text() == "original source\nmanual edit"
-    assert not dialog.accept_button.isEnabled()
-    assert "source changed" in dialog.status_label.text().lower()
-
-
-def test_an_accepted_ai_proposal_replaces_the_buffer_in_one_undo_step(monkeypatch, qapp):
-    _mock_ollama_lists(monkeypatch)
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["offline-test"])
-    monkeypatch.setattr(app_settings, "get", lambda _key, default=None: default)
-    app = QWidget()
-    app.try_start_ollama_task = lambda _label, _provider=None: True
-    app.end_ollama_task = lambda _provider=None: None
-    app.log = lambda _line: None
-    editor = LatexPlainTextEdit(ThemeManager())
-    editor.set_text("original source")
-
-    class FakeDrafter:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def draft(self, current_text, _prompt):
-            return DraftProposal(proposed_text=current_text + "\nAI proposal", model="offline-test", elapsed_s=0.1)
-
-    monkeypatch.setattr(qt_ai_draft_dialog.ai_draft, "SlideDrafter", FakeDrafter)
-    dialog = qt_ai_draft_dialog.AiDraftDialog(app, editor, "test.tex")
-    dialog.prompt_edit.setPlainText("add a line")
-    dialog._on_generate()
-    dialog._on_accept()
-    assert editor.text() == "original source\nAI proposal" and editor.is_modified()
-    editor.undo()
-    assert editor.text() == "original source"
 
 
 def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp, tmp_path):

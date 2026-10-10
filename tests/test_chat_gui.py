@@ -370,6 +370,63 @@ def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
     assert len(widgets(env, UserBubble)) == 1 and widgets(env, AssistantText)[0].raw == "On it."
 
 
+# -- the Ollama slot -------------------------------------------------------------------------------------
+
+def slot(env):
+    return env.window._ollama_task_label
+
+
+def test_a_local_run_holds_the_ollama_slot_until_done(env):
+    script(env, blocked())
+    env.chat.send("go")
+    assert slot(env) == "answering in the chat"
+    env.chat.stop()
+    wait_until(lambda: not env.chat.session.running)
+    pump()
+    assert slot(env) is None
+
+
+def test_a_finished_local_run_releases_the_slot(env):
+    script(env, reply("Done."))
+    ask(env)
+    assert slot(env) is None
+
+
+def test_a_cloud_run_takes_no_slot(env, monkeypatch):
+    monkeypatch.setattr(resolver, "cloud_consent_given", lambda: True)
+    script(env, blocked()).is_local = False
+    env.chat.send("go")
+    assert slot(env) is None
+    env.chat.stop()
+    wait_until(lambda: not env.chat.session.running)
+
+
+def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch):
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+    assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
+    script(env, reply("never"))
+    env.chat.send("go")
+    assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == ""
+    assert "Drafting descriptions is already running" in warned[0]
+    env.window.end_ollama_task()
+
+
+def test_closing_the_window_mid_run_releases_the_slot(env):
+    script(env, blocked())
+    env.chat.send("go")
+    env.window.close()
+    assert slot(env) is None
+
+
+def test_the_tools_menu_entry_opens_the_chat_on_this_slide_ready_to_type(env):
+    env.window.assistant.show_view(CLAUDE_CODE)
+    env.chat.scope.set_current("deck")
+    env.window.focus_chat()
+    assert env.window.assistant.current == CHAT and env.chat.scope.current() == "slide"
+    assert not env.chat.session.running and not widgets(env, UserBubble)
+
+
 # -- the switch ------------------------------------------------------------------------------------------------
 
 def test_the_switch_is_remembered(env):
