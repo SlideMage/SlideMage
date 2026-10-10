@@ -51,20 +51,46 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
 
 ### Resume here (next session)
 1. Read this section, then `git log --oneline -15` on `ui-redesign`
-   (latest step commit: review fixes, after 9d-1 `52a7551`). Working tree should be clean
+   (latest step commit: 10d-1 `401b7ea`). Working tree should be clean
    apart from untracked `uv.lock` and `.claude/` (both left untracked on
-   purpose; don't commit them).
-2. Re-fetch the prototype into the new session's scratchpad (see "How
-   the work is run"); old scratchpad paths are gone.
-3. 9d-2 (Images page) is done: ~500k agent tokens (≈25%), above the
-   250–350k estimate.
-4. Next: 10d (Ollama tools + cleanup);
-   then step 11
-   (finish the switch-over: leftover `qt_*` modules incl.
-   `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
-   manual, screenshots tool, 6.0 version bump). Consider a kit restyle
-   pass (see "Carried over") before or within step 11. Size each before
-   starting and split if over ~350k tokens.
+   purpose; don't commit them). Run the suite once (expect 1272 passed,
+   5 skipped). If a test fails with a git-checkout symptom
+   (`test_bundled_copies`), look for a stray empty `/tmp/.git` left by
+   an earlier agent run and remove it.
+2. Re-fetch the prototype into the new session's scratchpad only if a
+   step needs it (10d-2 doesn't; see "How the work is run").
+3. Next step: **10d-2, Ollama tool calling in the chat.** Brief:
+   - `OllamaProvider.stream_turn()` in `ai/providers.py` (stdlib,
+     `/api/chat` with `"stream": true` (NDJSON) and `tools`), mapping to
+     the neutral types in `ai/agent_types.py` the same way the Claude
+     side does; `Agent` loop unchanged. Stop/abort via the existing
+     socket shutdown.
+   - Chat model picker: list only tool-capable local models (Ollama
+     `/api/show` capabilities, or a curated fallback); consider a
+     reduced tool list for small models (`Agent(tools=...)`).
+   - Remove the "cannot be used for the chat yet" paths (`chat/view.py`
+     `NOT_YET`, `_open_route_menu` meta) once Ollama works.
+   - Keep the suggestion-chip text when a busy Ollama slot blocks a
+     send.
+   - Drop the dead settings: Settings → AI models "AI drafting"
+     (`ai_draft_model`) and the "Slide rewrite" prompt page
+     (`KIND_SLIDE_REWRITE`, `ai_draft.SYSTEM_PROMPT` /
+     `effective_system_prompt`), with their tests.
+   - Tests with a fake NDJSON server (`tests/fake_http.py`); opt-in
+     live test against Ollama (`SLIDEMAGE_LIVE_AI=1`).
+   - Expected size ~100–150k agent tokens (≈5–8%).
+4. Then: a whole-code review before step 11 (12 Haiku reviewers, see
+   below; ~150–200k), then **step 11** (finish the switch-over: leftover
+   `qt_*` modules incl. `qt_ai_models.py`, `qt_citation_dialog.py`,
+   `qt_gui.py`; PyInstaller bundle check with `anthropic`, `ptyprocess`
+   and QtWebEngine (see 10c leftovers); docs, manual, screenshots tool,
+   6.0 version bump). Optional kit restyle before or within step 11.
+   Size each before starting and split if over ~350k tokens.
+5. User-side checks still open (need the user's quota or key): try the
+   Claude Code tab once (focused slide visible via MCP; an edit of a
+   slide header must be blocked by the hook); the chat against real
+   Claude needs an API key (`ANTHROPIC_API_KEY`; the user has a Pro
+   subscription only, so the Claude Code tab is their main route).
 
 ### Remaining work and size (estimate 2026-10-10)
 About 5% of the user's 5-hour window per ~100k agent tokens.
@@ -75,11 +101,14 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~10a Agent backend~~ | done (~370k actual) | | |
 | ~~10b Chat UI~~ | done (~340k actual) | | |
 | ~~10c Claude Code terminal~~ | done (~380k actual) | | |
-| 10d Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
+| ~~10d-1 Cleanup~~ | done (~90k actual) | | |
+| 10d-2 Ollama tool calling | `OllamaProvider.stream_turn`, tool-capable model list, drop dead AI-drafting settings | 100–150k | 5–8% |
+| Review before 11 | 12 Haiku reviewers + one Sonnet fix agent | 150–200k | 8–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
 
-Total ≈ 1.0–1.6M agent tokens (≈ 55–80% of one window). Pause after
+Remaining after 10d-1 ≈ 450–750k agent tokens (≈ 23–38% of one
+window; recent steps landed at the top of their estimates). Pause after
 each committed step.
 
 A cheap whole-code review that worked: 12 parallel read-only Haiku
