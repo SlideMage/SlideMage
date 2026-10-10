@@ -367,6 +367,19 @@ def test_other_files_refresh_the_lists_and_hidden_places_are_ignored(watch, monk
     assert rebuilt == ["list", "panels"]                       # nothing changed since
 
 
+def test_the_preview_of_a_slide_that_is_not_open_in_the_editor_learns_it_is_older(watch, monkeypatch):
+    centre = watch.window.centre
+    monkeypatch.setattr(centre, "disk_changed", lambda path: None)       # in Preview the file is not loaded
+    monkeypatch.setattr(type(centre), "path", property(lambda self: watch.path))
+    refreshed = []
+    monkeypatch.setattr(centre, "refresh", lambda: refreshed.append(1))
+    rewrite(watch.path, LF.replace("First point", "Claude's point"))
+    watch.sync.poll()
+    assert refreshed == [1]
+    watch.sync.poll()
+    assert refreshed == [1]                                    # nothing changed since
+
+
 def test_decks_and_new_or_removed_slides_go_through_the_deck_sequences(watch, monkeypatch):
     seen, rescans = [], []
     monkeypatch.setattr(watch.window, "after_deck_edit", lambda path, summary, previous=None: seen.append((path, summary)))

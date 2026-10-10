@@ -64,11 +64,13 @@ class DiskSync(QObject):
         decks = {deck.path: deck for deck in window.decks}
         structural = any(p.relative_to(self.root).parts[0] in STRUCTURE_FOLDERS
                          for p in (*changes.added, *changes.removed) if p.suffix == ".tex")
-        edited_decks, refresh = [], False
+        edited_decks, refresh, shown = [], False, False
         for path in (*changes.modified, *changes.added):
             outcome = window.centre.disk_changed(path)
             if outcome == SAME:
                 continue
+            if outcome is None and path == window.centre.path:
+                shown = True                    # the Preview shows this slide and must say it is older now
             deck = decks.get(path)
             if deck is None:
                 refresh = True
@@ -83,3 +85,5 @@ class DiskSync(QObject):
         elif refresh:
             window.slide_list.rebuild()
             window.side_panels.refresh()
+        if shown:
+            window.centre.refresh()
