@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 MARKER = "slide_ids.csv"
@@ -162,7 +163,40 @@ def load_last_project() -> Path | None:
     return None
 
 
+RECENT_LIMIT = 8
+
+
+def _recent_file() -> Path:
+    return config_dir() / "recent_projects.json"
+
+
+def recent_projects() -> list[Path]:
+    """The projects opened last on this computer, newest first. A folder that has
+    gone since stays listed (project_status says so)."""
+    try:
+        data = json.loads(_recent_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [Path(p) for p in data if isinstance(p, str)] if isinstance(data, list) else []
+
+
+def _remember_recent(path: Path) -> None:
+    paths = [str(path)] + [str(p) for p in recent_projects() if p != path]
+    text = json.dumps(paths[:RECENT_LIMIT], indent=2) + "\n"
+    try:
+        if _recent_file().read_text(encoding="utf-8") == text:
+            return
+    except OSError:
+        pass
+    try:
+        _recent_file().parent.mkdir(parents=True, exist_ok=True)
+        _recent_file().write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def save_last_project(path: Path) -> None:
+    _remember_recent(path)
     for target in (_last_project_file(), _exe_sidecar_file()):
         if target is None:
             continue
@@ -212,6 +246,25 @@ def write_project_json(root: Path, data: dict) -> None:
         pass
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+@dataclass(frozen=True)
+class ProjectStatus:
+    """What the project picker shows about a folder."""
+    path: Path
+    name: str
+    exists: bool            # a folder with slide_ids.csv
+    last_version: str       # the SlideMage that last opened it ("" if none is recorded)
+    newer: bool             # its format, or a SlideMage that used it, is newer than the running one
+
+
+def project_status(root: Path, app_version: str) -> ProjectStatus:
+    info = read_project_info(root)
+    used_with = read_project_json(root).get("highest_app_version") or info["last_app_version"]
+    from .updater import parse_version
+    top, current = parse_version(used_with or ""), parse_version(app_version)
+    newer = info["format"] > PROJECT_FORMAT or (top is not None and current is not None and top > current)
+    return ProjectStatus(root, root.name, is_project(root), info["last_app_version"], newer)
 
 
 # Deck snapshots (deck_snapshot.py, v5.33.0): a snapshot's project folder is
@@ -434,54 +487,3 @@ def relaunch_with_project(root: Path) -> None:
         else [sys.executable, "-m", "slidemage", "--project", str(root)]
     )
     subprocess.Popen(argv, env=env)
-
-
-def pick_or_create_project(parent, start_dir: Path) -> Path | None:
-    """Shared folder-picker loop for cli.py's first-run fallback (no
-    window exists yet, parent=None) and the main window's "Open project…"
-    (parent=the main window) -- one implementation so the two don't drift
-    apart, and so the "not a project yet" case offers to create one
-    (init_project() above) instead of only ever rejecting the folder and
-    making the user pick a different, already-existing project."""
-    from PySide6.QtWidgets import QFileDialog, QMessageBox
-
-    start = str(start_dir)
-    while True:
-        chosen = QFileDialog.getExistingDirectory(
-            parent, f"Open a Slidemaster project (folder containing {MARKER})", start
-        )
-        if not chosen:
-            return None
-        path = Path(chosen)
-        if is_project(path):
-            return path.resolve()
-        with_example = has_example_template()
-        detail = (
-            "Create a new project here, seeded with the demo content "
-            "(Gotham theme, sample slides, a deck-version example) so "
-            "there's something to compile and learn from right away?"
-            if with_example else
-            "Create a new, empty project here?"
-        )
-        box = QMessageBox(parent)
-        box.setWindowTitle("Not a Slidemaster project")
-        box.setText(f"{path} has no {MARKER} yet.")
-        box.setInformativeText(detail)
-        create_button = box.addButton("Create", QMessageBox.ButtonRole.AcceptRole)
-        pick_again_button = box.addButton(
-            "Pick a different folder", QMessageBox.ButtonRole.RejectRole)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(pick_again_button)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is create_button:
-            try:
-                init_project(path, copy_example=with_example)
-            except ProjectCreationError as exc:
-                QMessageBox.warning(parent, "Cannot create project", str(exc))
-                start = chosen
-                continue
-            return path.resolve()
-        if clicked is not pick_again_button:
-            return None  # Cancel
-        start = chosen

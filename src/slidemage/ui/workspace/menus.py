@@ -100,7 +100,7 @@ MORE_SECTIONS = (
                    "export_pptx", "archive_deck")),
     ("Decks", ("create_snapshot", "import_presentation", "refresh_decks")),
     ("Project", ("palette", "log", "edit_bib", "edit_test_slides", "open_project", "preferences")),
-    ("Housekeeping", ("empty_pdf", "remove_temp", "archive_unused", "update_previews", "sync_links")),
+    ("Housekeeping", ("housekeeping", "empty_pdf", "remove_temp", "archive_unused", "update_previews", "sync_links")),
     ("Info", ("version_history", "check_updates", "project_compat")),
 )
 

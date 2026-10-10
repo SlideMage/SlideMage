@@ -1,7 +1,7 @@
 import pytest
 
 from slidemage import slide_language, slide_rename, unused_content
-from slidemage.qt_version_history_dialog import _license_text
+from slidemage.app_info import license_text
 
 STEP_SLIDE = "1mu-EN-Slidestep-Demo"   # the manual's \slidestep demo
 
@@ -12,7 +12,7 @@ def test_raw_reads_work_below_python_313():
 
 
 def test_license_found_outside_project():
-    assert "Slidemaster" in _license_text()
+    assert "Slidemaster" in license_text()
 
 
 def test_slidestep_slide_counts_as_used():

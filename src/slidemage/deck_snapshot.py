@@ -54,7 +54,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import compile_records, compiler, project
+from . import app_settings, compile_records, compiler, project
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
@@ -185,6 +185,53 @@ def format_size(size: int) -> str:
             return f"{value:.0f} {unit}" if unit in ("B", "KB") else f"{value:.1f} {unit}"
         value /= 1024
     return f"{size} B"
+
+
+# Remembered between runs (app_settings), and used as they are by the snapshot the archive
+# question offers.
+OUTPUT_SETTING_KEY = "snapshot_output"        # "folder" / "zip"
+TEXMF_SETTING_KEY = "snapshot_texmf"
+APP_SETTING_KEY = "snapshot_app"
+
+
+def saved_options() -> SnapshotOptions:
+    """The settings last used in the Snapshots sheet."""
+    return SnapshotOptions(
+        zip=app_settings.get(OUTPUT_SETTING_KEY, "folder") == "zip",
+        texmf=bool(app_settings.get(TEXMF_SETTING_KEY, False)),
+        include_app=bool(app_settings.get(APP_SETTING_KEY, False)),
+    )
+
+
+def save_options(options: SnapshotOptions) -> None:
+    app_settings.set(OUTPUT_SETTING_KEY, "zip" if options.zip else "folder")
+    app_settings.set(TEXMF_SETTING_KEY, options.texmf)
+    app_settings.set(APP_SETTING_KEY, options.include_app)
+
+
+def describe_options(options: SnapshotOptions) -> str:
+    """"folder, without LaTeX package files" -- for the archive question."""
+    parts = [".zip file" if options.zip else "folder",
+             "with LaTeX package files" if options.texmf else "without LaTeX package files"]
+    if options.include_app:
+        parts.append("with the SlideMage app")
+    return ", ".join(parts)
+
+
+def summary_text(results: list[SnapshotResult]) -> str:
+    lines = []
+    for r in results:
+        if r.ok:
+            line = f"✓  {r.deck_name}: {r.path.name}  ({format_size(r.size)})"
+            if r.deleted:
+                line += f" -- {len(r.deleted)} older snapshot(s) moved to the trash"
+        elif r.skipped:
+            line = f"–  {r.deck_name}: skipped (stopped)"
+        else:
+            line = f"✗  {r.deck_name}: {r.error}"
+        lines.append(line)
+        lines.extend(f"      warning: {w}" for w in r.warnings)
+    return "\n".join(lines)
 
 
 def _rel(path: Path, root: Path) -> str:

@@ -68,7 +68,8 @@ def test_archive_takes_the_images_of_archived_slides_in_one_run(tmp_path, monkey
     monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
 
     assert [p.name for p in unused_content.find_unused_media()] == ["gone.png", "old.png"]
-    assert unused_content.archive_unused_content(lambda _line: None) == (2, 2)
+    assert unused_content.archive_files(
+        unused_content.find_unused_media(), unused_content.find_unused_slides(), lambda _line: None) == (2, 2)
     # a second run has nothing left to do
     assert unused_content.find_unused_media() == []
     assert unused_content.find_unused_slides() == []
@@ -126,75 +127,6 @@ def test_init_project_preserves_unrelated_existing_files(tmp_path, monkeypatch):
 
     assert note.read_text() == "my notes"
     assert (target / "decks" / "demo.tex").read_text() == "template"
-
-
-def test_project_picker_shows_collision_error(monkeypatch, tmp_path):
-    from PySide6 import QtWidgets
-
-    from slidemage import project
-
-    chosen = str(tmp_path / "not-a-project")
-    selections = iter([chosen, ""])
-
-    class FakeFileDialog:
-        @staticmethod
-        def getExistingDirectory(*_args):
-            return next(selections)
-
-    class FakeMessageBox:
-        class ButtonRole:
-            AcceptRole = 1
-            RejectRole = 2
-
-        class StandardButton:
-            Cancel = 3
-
-        warnings: list[tuple[str, str]] = []
-
-        def __init__(self, _parent):
-            self.buttons = []
-            self.clicked = None
-
-        def setWindowTitle(self, _title):
-            pass
-
-        def setText(self, _text):
-            pass
-
-        def setInformativeText(self, _text):
-            pass
-
-        def addButton(self, label, _role=None):
-            button = object()
-            self.buttons.append((label, button))
-            return button
-
-        def setDefaultButton(self, _button):
-            pass
-
-        def exec(self):
-            self.clicked = self.buttons[0][1]
-
-        def clickedButton(self):
-            return self.clicked
-
-        @classmethod
-        def warning(cls, _parent, title, message):
-            cls.warnings.append((title, message))
-
-    monkeypatch.setattr(QtWidgets, "QFileDialog", FakeFileDialog)
-    monkeypatch.setattr(QtWidgets, "QMessageBox", FakeMessageBox)
-    monkeypatch.setattr(project, "has_example_template", lambda: False)
-
-    def reject_creation(path, copy_example=True):
-        raise project.ProjectCreationError(path, [path / "decks" / "demo.tex"])
-
-    monkeypatch.setattr(project, "init_project", reject_creation)
-
-    assert project.pick_or_create_project(None, tmp_path) is None
-    assert FakeMessageBox.warnings
-    assert FakeMessageBox.warnings[0][0] == "Cannot create project"
-    assert "demo.tex" in FakeMessageBox.warnings[0][1]
 
 
 def _temporary_store(monkeypatch, tmp_path):

@@ -9,28 +9,36 @@ from pathlib import Path
 from . import project, splash
 
 
-def _ask_for_project(parent_hint: Path | None):
-    return project.pick_or_create_project(None, parent_hint or Path.home())
+def _prepare_gui(project_root: Path | None) -> None:
+    """The fonts and the kit stylesheet, for the sheets that run before the window (the project
+    picker, the newer-project question). With a project, its settings decide light or dark; the
+    picker has none, and importing them would fix the project folder."""
+    from .ui.kit.fonts import load_fonts
+    from .ui.kit.theme import ThemeManager
+
+    load_fonts()
+    ThemeManager(dark=None if project_root is not None else True).apply()
+
+
+def _ask_for_project() -> Path | None:
+    from .ui.dialogs.open_project import OpenProjectSheet
+
+    _prepare_gui(None)
+    sheet = OpenProjectSheet(first_run=True)
+    sheet.exec()
+    return sheet.chosen
 
 
 def _confirm_newer_project(root: Path, info: dict) -> bool:
     """Open anyway (True) or Quit, for a project whose format is newer
     than this app's."""
-    from PySide6.QtWidgets import QMessageBox
+    from .ui.dialogs.open_project import NewerProjectSheet
+    from .version import VERSION_NUMBER
 
-    last = info["last_app_version"] or "a newer SlideMage"
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle("Project from a newer SlideMage")
-    box.setText(
-        f"This project was last used with SlideMage {last}, which changed its "
-        "format; this version may not handle it correctly.")
-    box.setInformativeText(f"{root}\n\nUpdate SlideMage (Info → Check for updates…) to be safe.")
-    open_button = box.addButton("Open anyway", QMessageBox.ButtonRole.AcceptRole)
-    quit_button = box.addButton("Quit", QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(quit_button)
-    box.exec()
-    return box.clickedButton() is open_button
+    _prepare_gui(root)
+    sheet = NewerProjectSheet(None, root.name, info["last_app_version"], VERSION_NUMBER, opening=True)
+    sheet.exec()
+    return sheet.choice == NewerProjectSheet.OPEN
 
 
 def check_project_format(root: Path, app_version: str) -> bool:
@@ -95,16 +103,16 @@ def main(argv: list[str] | None = None) -> None:
         root = project.discover()
         if root is None:
             splash.close()  # the folder picker would open underneath it
-            root = _ask_for_project(project.last_project_hint() or Path.cwd())
+            root = _ask_for_project()
         if root is None:
             sys.exit(1)
 
     from .version import VERSION_NUMBER
 
+    os.environ[project.ENV_VAR] = str(root)   # before the first sheet: its theme reads the project's settings
     if not check_project_format(root, VERSION_NUMBER):
         sys.exit(1)
 
-    os.environ[project.ENV_VAR] = str(root)
     project.save_last_project(root)
 
     from .qt_gui import main as gui_main

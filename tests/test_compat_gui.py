@@ -1,14 +1,15 @@
-"""The compatibility dialog and the main window's handling of its choices."""
+"""The compatibility sheet and the main window's handling of its choices."""
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
 
-from slidemage import compat, qt_compat_dialog
+from slidemage import compat
 from slidemage import version as version_mod
-from slidemage.qt_compat_dialog import CompatDialog
+from slidemage.ui.dialogs import project_compat
+from slidemage.ui.dialogs.project_compat import CompatSheet
 from slidemage.ui.workspace import maintenance
 from slidemage.ui.workspace.maintenance import MaintenanceMixin
 
@@ -24,27 +25,43 @@ def click(dialog, text):
     next(b for b in dialog.findChildren(QPushButton) if b.text() == text).click()
 
 
-def test_startup_dialog_offers_the_four_choices_and_not_now_is_the_default(tmp_path, qapp):
-    root = make_project(tmp_path)
-    ev = compat.evaluate(root, "v5.30.0", [BREAKING, LOOK])
-    dialog = CompatDialog(None, ev, "v5.30.0")
-    labels = [b.text() for b in dialog.findChildren(QPushButton)]
-    assert labels == ["Update project", "Show report", "Not now", "Don't ask again"]
-    assert dialog.choice == qt_compat_dialog.NOT_NOW          # closing it counts as Not now
-    click(dialog, "Don't ask again")
-    assert dialog.choice == qt_compat_dialog.DONT_ASK
+def texts(sheet):
+    return "\n".join(label.text() for label in sheet.findChildren(QLabel))
 
 
-def test_review_dialog_lists_quiet_changes_and_has_no_not_now(tmp_path, qapp):
+def test_startup_sheet_offers_the_four_choices_and_not_now_is_the_default(tmp_path, qapp):
     root = make_project(tmp_path)
     ev = compat.evaluate(root, "v5.30.0", [BREAKING, LOOK])
-    html = qt_compat_dialog.render_html(ev, "v5.30.0")
-    assert "Looks different" in html and "decks/#workdeck.tex:1" in html
-    dialog = CompatDialog(None, ev, "v5.30.0", review=True)
-    assert [b.text() for b in dialog.findChildren(QPushButton)] == [
-        "Update project", "Show report", "Mark all as read", "Close"]
+    sheet = CompatSheet(None, ev, "v5.30.0", "finance-2025")
+    labels = [b.text() for b in sheet.findChildren(QPushButton)]
+    assert labels == ["Don't ask again", "Not now", "Show report", "Update project"]
+    assert sheet.choice == project_compat.NOT_NOW          # closing it counts as Not now
+    text = texts(sheet)
+    assert "finance-2025" in text and "1 more change(s) only affect how slides look" in text
+    assert "Looks different" not in text                  # the quiet ones are only in the review
+    click(sheet, "Don't ask again")
+    assert sheet.choice == project_compat.DONT_ASK
+
+
+def test_review_sheet_lists_quiet_changes_and_has_no_not_now(tmp_path, qapp):
+    root = make_project(tmp_path)
+    ev = compat.evaluate(root, "v5.30.0", [BREAKING, LOOK])
+    sheet = CompatSheet(None, ev, "v5.30.0", "course", review=True)
+    assert "Looks different" in texts(sheet) and "decks/#workdeck.tex:1" in texts(sheet)
+    assert [b.text() for b in sheet.findChildren(QPushButton)] == [
+        "Mark all as read", "Close", "Show report", "Update project"]
+    assert sheet.choice == project_compat.CLOSE
     assert not any(p.change.migrate for p in ev.quiet)
-    assert "Looks different" not in qt_compat_dialog.render_html(ev, "v5.30.0", include_quiet=False)
+    click(sheet, "Mark all as read")
+    assert sheet.choice == project_compat.MARK_READ
+
+
+def test_findings_are_listed_up_to_a_few_and_the_rest_counted(tmp_path, qapp):
+    root = make_project(tmp_path)
+    ev = compat.evaluate(root, "v5.30.0", [BREAKING])
+    ev.loud[0].findings = [compat.Finding("decks/a.tex", n, f"message {n}") for n in range(1, 10)]
+    text = texts(CompatSheet(None, ev, "v5.30.0", "course"))
+    assert "decks/a.tex:6: message 6" in text and "message 7" not in text and "and 3 more" in text
 
 
 def window(root, monkeypatch, changes, choice, logged):
@@ -60,7 +77,7 @@ def window(root, monkeypatch, changes, choice, logged):
         def exec(self):
             return 1
 
-    monkeypatch.setattr(maintenance, "CompatDialog", FakeDialog)
+    monkeypatch.setattr(maintenance, "CompatSheet", FakeDialog)
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     win = SimpleNamespace(
@@ -75,11 +92,11 @@ def window(root, monkeypatch, changes, choice, logged):
 def test_not_now_keeps_the_warning_dont_ask_again_ends_it(tmp_path, monkeypatch, qapp):
     root = make_project(tmp_path)
     logged = []
-    win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], qt_compat_dialog.NOT_NOW, logged)
+    win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], project_compat.NOT_NOW, logged)
     win.check_project_compat()
     assert compat.evaluate(root, "v5.30.0", [BREAKING, MANUAL_FIX]).loud       # still there
 
-    win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], qt_compat_dialog.DONT_ASK, logged)
+    win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], project_compat.DONT_ASK, logged)
     win.check_project_compat()
     assert not compat.evaluate(root, "v5.30.0", [BREAKING, MANUAL_FIX]).everything
 
@@ -87,7 +104,7 @@ def test_not_now_keeps_the_warning_dont_ask_again_ends_it(tmp_path, monkeypatch,
 def test_update_project_migrates_and_moves_the_baseline_when_all_is_fixed(tmp_path, monkeypatch, qapp):
     root = make_project(tmp_path)
     logged = []
-    win = window(root, monkeypatch, [BREAKING], qt_compat_dialog.UPDATE, logged)
+    win = window(root, monkeypatch, [BREAKING], project_compat.UPDATE, logged)
     win.check_project_compat()
     assert b"\\new" in (root / "decks" / "course.tex").read_bytes()
     assert any(line.startswith("  backup:") for line in logged)
@@ -97,7 +114,7 @@ def test_update_project_migrates_and_moves_the_baseline_when_all_is_fixed(tmp_pa
 def test_update_project_with_work_left_does_not_move_the_baseline(tmp_path, monkeypatch, qapp):
     root = make_project(tmp_path)
     logged = []
-    win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], qt_compat_dialog.UPDATE, logged)
+    win = window(root, monkeypatch, [BREAKING, MANUAL_FIX], project_compat.UPDATE, logged)
     opened = []
     monkeypatch.setattr(maintenance.open_path, "open_in_default_app", opened.append)
     win.check_project_compat()
@@ -107,7 +124,7 @@ def test_update_project_with_work_left_does_not_move_the_baseline(tmp_path, monk
 
 def test_update_is_refused_while_a_source_has_unsaved_edits(tmp_path, monkeypatch, qapp):
     root = make_project(tmp_path)
-    win = window(root, monkeypatch, [BREAKING], qt_compat_dialog.UPDATE, [])
+    win = window(root, monkeypatch, [BREAKING], project_compat.UPDATE, [])
     win.centre.source.dirty_files = lambda: [object()]
     win.check_project_compat()
     assert b"\\old" in (root / "decks" / "course.tex").read_bytes()

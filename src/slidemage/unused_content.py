@@ -1,6 +1,6 @@
 """Find and archive media/ and slides/ files nothing references anymore.
 
-Two independent scans, both run by archive_unused_content():
+Two independent scans (find_unused_media(), find_unused_slides()), archived by archive_files():
 
 - media/: a file is "in use" if any slides/*.tex file that is itself in
   use (see below) actually \\includegraphics{}s it (or similar -- \\chapterlogo{}, \\fullbleedframe{},
@@ -223,12 +223,11 @@ def _archive_files(
     return moved
 
 
-def archive_unused_content(log: LogCallback) -> tuple[int, int]:
-    """Move every unused media/ file into media/archive/ and every unused
-    slides/ file into slides/archive/. Returns (media moved, slides
-    moved)."""
-    media_moved = _archive_files(find_unused_media(), MEDIA_ARCHIVE_DIR, "media file", log)
-    slides_moved = _archive_files(find_unused_slides(), SLIDES_ARCHIVE_DIR, "slide", log)
+def archive_files(media: list[Path], slides: list[Path], log: LogCallback) -> tuple[int, int]:
+    """Move these media/ files into media/archive/ and these slides/ files into slides/archive/.
+    Returns (media moved, slides moved)."""
+    media_moved = _archive_files(media, MEDIA_ARCHIVE_DIR, "media file", log)
+    slides_moved = _archive_files(slides, SLIDES_ARCHIVE_DIR, "slide", log)
     log(
         f"==== Archive unused content done: {media_moved} media file(s), "
         f"{slides_moved} slide(s) moved ===="

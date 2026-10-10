@@ -9,11 +9,12 @@ import pytest
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QMessageBox, QPlainTextEdit, QWidget
 
-from slidemage import alt_blocks, alt_draft, alt_images, app_settings, qt_ai_draft_dialog, qt_transcript_tab
-from slidemage.ui.workspace import maintenance, window as window_module
+from slidemage import alt_blocks, alt_draft, alt_images, app_settings, housekeeping, qt_ai_draft_dialog, qt_transcript_tab
+from slidemage.ui.workspace import window as window_module
 from slidemage.ai.providers import OllamaProvider
 from slidemage.ai_draft import DraftProposal
 from slidemage.alt_blocks import SlideRow
+from slidemage.ui.dialogs.open_project import OpenProjectSheet
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
 
@@ -104,20 +105,19 @@ def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, t
     window = _make_window(monkeypatch, qapp)
     file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     chosen = tmp_path / "another-project"
-    monkeypatch.setattr(window_module.project, "pick_or_create_project", lambda *args: chosen)
+    monkeypatch.setattr(OpenProjectSheet, "exec", lambda sheet: sheet.choose(chosen))
     relaunched = []
     monkeypatch.setattr(window_module.project, "relaunch_with_project", relaunched.append)
-    replies = iter((QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No))
     titles = []
 
     def answer(_parent, title, *_args, **_kwargs):
         titles.append(title)
-        return next(replies)
+        return QMessageBox.StandardButton.No
 
     monkeypatch.setattr(QMessageBox, "question", answer)
     window._on_open_project()
 
-    assert titles == ["Open project", "Unsaved source edits"]
+    assert titles == ["Unsaved source edits"]
     assert relaunched == [chosen]
     assert file.dirty  # the explicit Discard choice applies to this relaunch
     assert window.isHidden()
@@ -531,11 +531,11 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     old_run = build_root / "old-run"
     old_run.mkdir()
     (old_run / "output.pdf").write_bytes(b"old")
-    monkeypatch.setattr(maintenance.compiler, "removable_build_entries", lambda: [old_file, old_run])
-    monkeypatch.setattr(maintenance, "DECKS_DIR", tmp_path / "decks")
-    monkeypatch.setattr(maintenance, "TEMP_DIR", tmp_path / ".temp")
-    maintenance.DECKS_DIR.mkdir()
-    maintenance.TEMP_DIR.mkdir()
+    monkeypatch.setattr(housekeeping.compiler, "removable_build_entries", lambda: [old_file, old_run])
+    monkeypatch.setattr(housekeeping, "DECKS_DIR", tmp_path / "decks")
+    monkeypatch.setattr(housekeeping, "TEMP_DIR", tmp_path / ".temp")
+    housekeeping.DECKS_DIR.mkdir()
+    housekeeping.TEMP_DIR.mkdir()
     monkeypatch.setattr(
         QMessageBox, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,

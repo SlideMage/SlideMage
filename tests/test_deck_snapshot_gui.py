@@ -7,10 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
-from slidemage import app_settings, compile_progress, deck_snapshot, qt_snapshot_dialog
+from slidemage import app_settings, compile_progress, deck_snapshot
 from slidemage.deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
+from slidemage.ui.dialogs import snapshot as snapshot_sheets
 from slidemage.ui.workspace import compile_jobs
 from slidemage.ui.workspace import window as window_module
 from slidemage.ui.workspace.compile_jobs import CompileJobsMixin
@@ -107,31 +108,31 @@ def test_nothing_unchanged_no_question(qapp, monkeypatch):
     assert CompileJobsMixin._confirm_unchanged_jobs(win, jobs, {}) == jobs
 
 
-# ---------------------------------------------------------------- dialog
+# ---------------------------------------------------------------- sheet
 
-def test_dialog_lists_decks_preselects_and_remembers_settings(qapp, settings):
+def test_sheet_lists_decks_preselects_and_remembers_settings(qapp, settings):
     decks = [deck("t-A"), deck("t-B"), deck("t-Old", archived=True)]
-    dialog = qt_snapshot_dialog.SnapshotDialog(None, decks, preselected={"t-B"})
+    dialog = snapshot_sheets.SnapshotSheet(None, decks, preselected={"t-B"})
     items = [dialog.deck_list.item(i) for i in range(dialog.deck_list.count())]
     assert [i.isHidden() for i in items] == [False, False, True]      # archived hidden
     assert [d.name for d in dialog.selected_decks()] == ["t-B"]
-    assert dialog.folder_radio.isChecked() and not dialog.texmf_checkbox.isChecked()
+    assert dialog.output.current() == "folder" and not dialog.texmf_checkbox.isChecked()
     dialog.show_archived.setChecked(True)
     items[2].setCheckState(Qt.CheckState.Checked)
     assert [d.name for d in dialog.selected_decks()] == ["t-B", "t-Old"]
-    dialog.zip_radio.setChecked(True)
+    dialog.output.set_current("zip")
     dialog.texmf_checkbox.setChecked(True)
     dialog.create_button.click()
     assert dialog.result() == 1
     assert settings == {"snapshot_output": "zip", "snapshot_texmf": True, "snapshot_app": False}
-    again = qt_snapshot_dialog.SnapshotDialog(None, decks, preselected=set())
-    assert again.zip_radio.isChecked() and again.texmf_checkbox.isChecked()
+    again = snapshot_sheets.SnapshotSheet(None, decks, preselected=set())
+    assert again.output.current() == "zip" and again.texmf_checkbox.isChecked()
     assert not again.create_button.isEnabled()                         # nothing checked
 
 
-def test_dialog_select_all_and_busy(qapp, settings):
+def test_sheet_select_all_and_busy(qapp, settings):
     decks = [deck("t-A"), deck("t-B")]
-    dialog = qt_snapshot_dialog.SnapshotDialog(None, decks, preselected=set(), busy=True)
+    dialog = snapshot_sheets.SnapshotSheet(None, decks, preselected=set(), busy=True)
     next(b for b in dialog.findChildren(QPushButton) if b.text() == "Select all").click()
     assert len(dialog.selected_decks()) == 2
     assert not dialog.create_button.isEnabled()                        # a compile is running
@@ -139,9 +140,9 @@ def test_dialog_select_all_and_busy(qapp, settings):
 
 
 def test_describe_options_for_the_archive_question():
-    assert qt_snapshot_dialog.describe_options(SnapshotOptions()) == \
+    assert deck_snapshot.describe_options(SnapshotOptions()) == \
         "folder, without LaTeX package files"
-    assert qt_snapshot_dialog.describe_options(SnapshotOptions(zip=True, texmf=True)) == \
+    assert deck_snapshot.describe_options(SnapshotOptions(zip=True, texmf=True)) == \
         ".zip file, with LaTeX package files"
 
 
@@ -235,8 +236,8 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
     win, emitted = run_window(monkeypatch, settings)
     old = [ExistingSnapshot(tmp_path / "t-A_2026-09-30_10-05", "t-A", "2026-09-30T10:05", False, 1)]
     monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names: old)
-    monkeypatch.setattr(qt_snapshot_dialog, "ask_about_old_snapshots",
-                        lambda parent, existing: qt_snapshot_dialog.DELETE_OLD)
+    monkeypatch.setattr(snapshot_sheets, "ask_about_old_snapshots",
+                        lambda parent, existing: snapshot_sheets.DELETE_OLD)
     seen = {}
 
     def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None):
@@ -260,8 +261,8 @@ def test_run_cancelled_at_the_old_snapshot_question(qapp, monkeypatch, settings,
     win, emitted = run_window(monkeypatch, settings)
     old = [ExistingSnapshot(tmp_path / "x", "t-A", "", True, 1)]
     monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names: old)
-    monkeypatch.setattr(qt_snapshot_dialog, "ask_about_old_snapshots",
-                        lambda parent, existing: qt_snapshot_dialog.CANCEL_RUN)
+    monkeypatch.setattr(snapshot_sheets, "ask_about_old_snapshots",
+                        lambda parent, existing: snapshot_sheets.CANCEL_RUN)
     assert not win._start_snapshots([deck("t-A")], SnapshotOptions())
     assert emitted == [] and win.compiling is False
 
@@ -274,7 +275,7 @@ def test_run_refused_while_compiling(qapp, monkeypatch, settings):
 
 
 def test_summary_text_lists_each_deck(tmp_path):
-    text = qt_snapshot_dialog.summary_text([
+    text = deck_snapshot.summary_text([
         SnapshotResult("t-A", ok=True, path=tmp_path / "t-A_2026-10-07_14-12", size=2048,
                        deleted=[tmp_path / "old"]),
         SnapshotResult("t-B", ok=False, error="t-B did not compile"),
@@ -283,3 +284,29 @@ def test_summary_text_lists_each_deck(tmp_path):
     assert "✓  t-A: t-A_2026-10-07_14-12  (2 KB) -- 1 older snapshot(s) moved to the trash" in text
     assert "✗  t-B: t-B did not compile" in text
     assert "–  t-C: skipped (stopped)" in text
+
+
+# ---------------------------------------------------------------- the questions around a run
+
+def test_old_snapshot_question_returns_the_button_pressed(qapp, tmp_path):
+    old = [ExistingSnapshot(tmp_path / "t-A_2026-09-30_10-05", "t-A", "2026-09-30T10:05", False, 1)]
+    answers = {}
+    for label, expected in (("Delete old snapshots", snapshot_sheets.DELETE_OLD),
+                            ("Keep them", snapshot_sheets.KEEP_OLD), ("Cancel", snapshot_sheets.CANCEL_RUN)):
+        sheet = snapshot_sheets._OldSnapshotsSheet(None, old)
+        assert "t-A  2026-09-30 10:05  folder" in "\n".join(w.text() for w in sheet.findChildren(QLabel))
+        next(b for b in sheet.findChildren(QPushButton) if b.text() == label).click()
+        answers[label] = sheet.choice
+        assert sheet.choice == expected
+    assert snapshot_sheets._OldSnapshotsSheet(None, old).choice == snapshot_sheets.CANCEL_RUN   # Esc
+
+
+def test_summary_sheet_counts_and_lists_the_results(qapp, monkeypatch, tmp_path):
+    shown = {}
+    monkeypatch.setattr(snapshot_sheets.ModalSheet, "exec", lambda sheet: shown.update(
+        texts=[w.text() for w in sheet.findChildren(QLabel)], buttons=[b.text() for b in sheet.findChildren(QPushButton)]))
+    snapshot_sheets.show_summary(None, [SnapshotResult("t-A", ok=True, path=tmp_path / "t-A_x", size=10),
+                                        SnapshotResult("t-B", ok=False, error="t-B did not compile")])
+    assert "1 of 2 snapshot(s) created." in shown["texts"]
+    assert any("✗  t-B: t-B did not compile" in text for text in shown["texts"])
+    assert shown["buttons"] == ["Open folder", "Close"]

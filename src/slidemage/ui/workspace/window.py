@@ -43,8 +43,10 @@ from ...qt_transcript_preview_tab import TranscriptPreviewTab
 from ...qt_transcript_tab import TranscriptTab
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
+from ..dialogs.open_project import OpenProjectSheet
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
+from ..pages.no_decks import NoDecksPage
 from .actions import build_registry
 from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
@@ -125,11 +127,15 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
         self.splitter.setStretchFactor(1, 1)
-        body = QWidget()
-        body_layout = QHBoxLayout(body)
-        body_layout.setContentsMargins(12, 12, 12, 12)
-        body_layout.addWidget(self.splitter)
-        outer.addWidget(body, 1)
+        workspace = QWidget()
+        workspace_layout = QHBoxLayout(workspace)
+        workspace_layout.setContentsMargins(12, 12, 12, 12)
+        workspace_layout.addWidget(self.splitter)
+        self.no_decks = NoDecksPage(self)
+        self.body = QStackedWidget()      # the workspace, or the page for a project without decks
+        self.body.addWidget(workspace)
+        self.body.addWidget(self.no_decks)
+        outer.addWidget(self.body, 1)
         self.setCentralWidget(central)
         self._init_compile(central)
         self.signals.update_check_done.connect(self._on_startup_update_check_done)
@@ -161,6 +167,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         that was open last time, else the first active deck."""
         self.decks = scan_decks()
         self.topbar.set_decks(self.decks)
+        self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
+        if not self.decks:
+            self.no_decks.refresh()
         current = self.state.deck
         remembered = app_settings.get(LAST_DECK_KEY)
         by_path = next((d for d in self.decks if current and d.path == current.path), None)
@@ -346,14 +355,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         return True
 
     def _on_open_project(self) -> None:
-        """⋮ → "Open project…" -- lets the user point SlideMage at
-        any folder on disk via a native file picker (QFileDialog, so this
-        is the same dialog whether it's Windows' or Linux's own), instead
-        of only ever discovering a project automatically (cli.py's
-        --project/$SLIDEMASTER_PROJECT/upward-search/last-opened chain) --
-        added 2026-09-23 after that chain silently reused a stale
-        "last project" on a fresh machine's first real run, with no
-        visible way to override it once the app was already open.
+        """⋮ → "Open project…": the project picker (recent projects, any folder, a new project).
 
         Restarts the whole application rather than switching in place:
         PROJECT_ROOT and every directory constant derived from it at
@@ -367,22 +369,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
                 "wait for it to finish first.",
             )
             return
-        # Shared with cli.py's own first-run picker (project.py's own
-        # pick_or_create_project()) -- also offers to create a new project
-        # (seeded with the demo content, if bundled) when the chosen
-        # folder isn't one yet, rather than only ever rejecting it.
-        chosen_path = project.pick_or_create_project(self, PROJECT_ROOT.parent)
-        if chosen_path is None:
-            return
-        if chosen_path == PROJECT_ROOT:
-            return  # already open -- nothing to restart for
-        reply = QMessageBox.question(
-            self, "Open project",
-            f"Switch to {chosen_path}?\n\nSlideMage restarts to open a "
-            "different project.",
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+        sheet = OpenProjectSheet(self, current=PROJECT_ROOT, needs_check=self._project_needs_check)
+        sheet.exec()
+        chosen_path = sheet.chosen
+        if chosen_path is None or chosen_path == PROJECT_ROOT:
+            return  # cancelled, or already open -- nothing to restart for
         if not self._resolve_dirty_edits():
             return
         project.relaunch_with_project(chosen_path)

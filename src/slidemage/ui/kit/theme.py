@@ -32,7 +32,6 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
-from ... import app_settings
 from ...palette import PALETTES
 from .kit_qss import build_kit_qss
 from .tokens import Tokens, tokens_for
@@ -73,7 +72,9 @@ def _checkmark_icon_path() -> str:
 
 
 class ThemeManager:
-    def __init__(self) -> None:
+    def __init__(self, dark: bool | None = None) -> None:
+        """`dark` is for the project picker, which runs before there is a project: with it, the
+        project's settings are not read (app_settings fixes the project folder when imported)."""
         # Persisted UI preference (2026-08-25, moved into the Settings
         # dialog) -- stored via app_settings.py, a plain JSON file inside
         # SlideMage/ itself, not the Windows registry (tried first via
@@ -83,7 +84,10 @@ class ThemeManager:
         # machine rather than being tied to one PC's own registry). True
         # (matching this app's own long-standing default) the first time
         # it's ever run anywhere this settings file doesn't exist yet.
-        self.dark = bool(app_settings.get("dark_mode", True))
+        if dark is None:
+            from ... import app_settings
+            dark = bool(app_settings.get("dark_mode", True))
+        self.dark = dark
 
     @property
     def colors(self) -> dict[str, str]:
@@ -115,6 +119,7 @@ class ThemeManager:
         self.set_dark(not self.dark)
 
     def set_dark(self, dark: bool) -> None:
+        from ... import app_settings
         self.dark = dark
         app_settings.set("dark_mode", dark)
         self.apply()

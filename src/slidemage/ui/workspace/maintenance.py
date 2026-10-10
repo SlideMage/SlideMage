@@ -6,7 +6,8 @@ qt_gui.py (step 3 of docs/UI_REDESIGN_PLAN.md) with the logic unchanged:
   and the update check (updater.py);
 * the Info menu actions that repeat them on demand;
 * the Housekeeping actions (empty pdf/, remove temp files, archive unused
-  content, reestablish translation links).
+  content, reestablish translation links), which the Housekeeping sheet
+  (ui/dialogs/housekeeping.py) offers in one place.
 
 On start, when a change of this SlideMage that may break the project is
 pending: Update project / Show report / Not now (asks again next time) /
@@ -18,31 +19,22 @@ listed under ⋮ → Project compatibility.
 """
 from __future__ import annotations
 
-import shutil
 import sys
 import tempfile
 import threading
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QProgressDialog
+from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from ... import bundled_copies, compat, compiler, deck_snapshot, open_path, project, qt_compat_dialog, slide_rename
-from ... import unused_content, updater
+from ... import bundled_copies, compat, housekeeping, open_path, project, slide_rename, updater
 from ... import version as version_mod
 from ...compiler import PDF_DIR
-from ...deck_scan import DECKS_DIR, PROJECT_ROOT
-from ...qt_archive_unused_dialog import ArchiveUnusedDialog
-from ...qt_compat_dialog import CompatDialog
-from ...qt_version_history_dialog import VersionHistoryDialog
-from ...unused_content import archive_unused_content
-
-# The project root's own workflow scratch folder (CONVERSION_NOTES.md) --
-# where a PPTX mid-conversion, a higher-resolution source image waiting to
-# be cropped, or similar working input gets placed by hand. Unlike .build/
-# and decks/_slidemage_*.tex, this isn't SlideMage's own build output, but
-# "Remove temp files" (2026-09-18, direct instruction) empties it too.
-TEMP_DIR = PROJECT_ROOT / ".temp"
+from ...deck_scan import PROJECT_ROOT
+from ..dialogs.about import AboutSheet
+from ..dialogs.housekeeping import ARCHIVE_PAGE, HousekeepingSheet
+from ..dialogs.open_project import NewerProjectSheet
+from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 # The framework/manual copy check (bundled_copies.py) runs once, shortly after
@@ -71,18 +63,20 @@ class MaintenanceMixin:
         if evaluation.loud:
             self._show_compat(evaluation, review=False)
 
+    def _project_needs_check(self, root: Path) -> bool:
+        """Whether a change of compat.py is pending for another project (the picker's chip)."""
+        if project.is_snapshot(root):
+            return False
+        try:
+            return bool(compat.evaluate(root, version_mod.VERSION_NUMBER).loud)
+        except Exception:  # noqa: BLE001 -- a broken detector must not stop the picker
+            return False
+
     def _compat_newer_notice(self, highest: str, app_version: str) -> None:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("Project from a newer SlideMage")
-        box.setText(f"This project was last used with SlideMage {highest}, which is newer "
-                    f"than this one ({app_version}).")
-        box.setInformativeText("Features of the newer version may not work here. Info → Check for "
-                               "updates… installs the newer one.")
-        box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
-        never = box.addButton("Don't ask again", QMessageBox.ButtonRole.DestructiveRole)
-        box.exec()
-        if box.clickedButton() is never:
+        sheet = NewerProjectSheet(self, PROJECT_ROOT.name, highest, app_version, opening=False,
+                                  on_update=self._on_check_for_updates)
+        sheet.exec()
+        if sheet.choice == NewerProjectSheet.NEVER:
             compat.ignore_newer(PROJECT_ROOT, highest)
 
     def _compat_report(self, evaluation) -> None:
@@ -94,18 +88,16 @@ class MaintenanceMixin:
             self.log(f"*** couldn't open {path.name}: {exc} ***")
 
     def _show_compat(self, evaluation, *, review: bool) -> None:
-        app_version = version_mod.VERSION_NUMBER
-        dialog = CompatDialog(self, evaluation, app_version, review=review,
-                              on_report=lambda: self._compat_report(evaluation))
-        dialog.exec()
-        choice = dialog.choice
-        if choice == qt_compat_dialog.DONT_ASK:
+        sheet = CompatSheet(self, evaluation, version_mod.VERSION_NUMBER, PROJECT_ROOT.name, review=review,
+                            on_report=lambda: self._compat_report(evaluation))
+        sheet.exec()
+        if sheet.choice == DONT_ASK:
             compat.dismiss(PROJECT_ROOT, [p.change.id for p in evaluation.loud])
             self.log("Compatibility notice dismissed for these changes "
-                     "(Info → Project compatibility still lists them).")
-        elif choice == qt_compat_dialog.MARK_READ:
+                     "(⋮ → Project compatibility still lists them).")
+        elif sheet.choice == MARK_READ:
             compat.dismiss(PROJECT_ROOT, [p.change.id for p in evaluation.everything])
-        elif choice == qt_compat_dialog.UPDATE:
+        elif sheet.choice == UPDATE:
             self._compat_update(evaluation)
 
     def _compat_update(self, evaluation) -> None:
@@ -142,8 +134,7 @@ class MaintenanceMixin:
         self._show_compat(evaluation, review=True)
 
     def _on_open_version_history(self) -> None:
-        dialog = VersionHistoryDialog(self)
-        dialog.exec()
+        AboutSheet(self).exec()
 
     def _on_check_for_updates(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -174,14 +165,18 @@ class MaintenanceMixin:
     def schedule_bundled_copies_check(self) -> None:
         QTimer.singleShot(BUNDLED_COPIES_CHECK_DELAY_MS, self.check_bundled_copies)
 
+    def _bundled_parts(self) -> list:
+        """What the framework / manual copies of this project would get (bundled_copies.plan_updates)."""
+        return bundled_copies.plan_updates(
+            PROJECT_ROOT, latex_source=project._template_dir("latex"),
+            example_source=project._template_dir("example"))
+
     def check_bundled_copies(self) -> None:
         app_version = version_mod.VERSION_NUMBER
         if bundled_copies.is_dismissed(PROJECT_ROOT, app_version):
             return
         try:
-            parts = bundled_copies.plan_updates(
-                PROJECT_ROOT, latex_source=project._template_dir("latex"),
-                example_source=project._template_dir("example"))
+            parts = self._bundled_parts()
         except OSError as exc:
             self.log(f"Couldn't compare the project's framework/manual copies: {exc}")
             return
@@ -214,11 +209,13 @@ class MaintenanceMixin:
             self.log(f"Framework/manual update for {app_version} declined; "
                      "not asking again until the next SlideMage version.")
             return
-        if clicked is not update_button:
-            return
+        if clicked is update_button:
+            self._apply_bundled_parts(parts)
+
+    def _apply_bundled_parts(self, parts: list) -> None:
         for part in parts:
             try:
-                backup = bundled_copies.apply_update(PROJECT_ROOT, part, app_version)
+                backup = bundled_copies.apply_update(PROJECT_ROOT, part, version_mod.VERSION_NUMBER)
             except OSError as exc:
                 QMessageBox.critical(self, "Update failed", f"{part.label}: {exc}")
                 continue
@@ -227,6 +224,18 @@ class MaintenanceMixin:
             if part.update or part.remove:
                 self.log(f"  backup: {backup}")
         self.reload_decks()
+
+    def can_add_manual(self) -> bool:
+        """Whether the SlideMage manual is not in this project and this copy carries it."""
+        try:
+            return any(part.new_install for part in self._bundled_parts())
+        except OSError:
+            return False
+
+    def _on_add_manual(self) -> None:
+        """Adds the SlideMage manual (bundled_copies, as the start-up offer does): its deck, slides,
+        snippets and images; files that exist are never overwritten."""
+        self._apply_bundled_parts([part for part in self._bundled_parts() if part.new_install])
 
     def schedule_startup_update_check(self) -> None:
         if not updater.can_self_update():
@@ -422,8 +431,22 @@ class MaintenanceMixin:
         self._dirty_edits_resolved_for_close = True
         self.close()
 
+    def _on_housekeeping(self) -> None:
+        sheet = HousekeepingSheet(self)
+        sheet.exec()
+        if sheet.update_previews:
+            self._on_update_previews()
+
     def _empty_pdf_folder(self) -> None:
-        self._empty_folder(PDF_DIR, "pdf/")
+        files = housekeeping.pdf_files()
+        if not files:
+            QMessageBox.information(self, "Nothing to do", "pdf/ is already empty (or doesn't exist yet).")
+            return
+        reply = QMessageBox.question(self, "Empty folder", f"Delete all {len(files)} file(s) in pdf/?")
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        housekeeping.delete_files(files)
+        self._log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
 
     def _remove_temp_files(self) -> None:
         if self.compiling:
@@ -431,81 +454,41 @@ class MaintenanceMixin:
                 self, "Busy", "Can't remove temp files while a compile run is in progress."
             )
             return
-        build_entries = compiler.removable_build_entries()
-        wrapper_files = list(DECKS_DIR.rglob("_slidemage_*.tex"))
-        if not project.is_snapshot(PROJECT_ROOT):
-            # left behind by an interrupted snapshot; in a snapshot they're its own
-            wrapper_files += DECKS_DIR.rglob(f"{deck_snapshot.WRAPPER_PREFIX}*.tex")
-        temp_entries = list(TEMP_DIR.iterdir()) if TEMP_DIR.exists() else []
-        all_files = build_entries + wrapper_files
-        if not all_files and not temp_entries:
+        found = housekeeping.find_temp_files()
+        if not found:
             QMessageBox.information(self, "Nothing to do", "No temp files to remove.")
             return
         reply = QMessageBox.question(
             self,
             "Remove temp files",
-            f"Delete {len(build_entries)} build item(s) in .build/, "
-            f"{len(wrapper_files)} leftover wrapper file(s) in decks/, and "
-            f"{len(temp_entries)} item(s) in .temp/ (the workflow scratch "
+            f"Delete {len(found.build)} build item(s) in .build/, "
+            f"{len(found.wrappers)} leftover wrapper file(s) in decks/, and "
+            f"{len(found.scratch)} item(s) in .temp/ (the workflow scratch "
             "folder -- e.g. a PPTX mid-conversion or an image waiting to "
             "be cropped -- not just build output)?",
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        for p in build_entries:
-            if p.is_dir():
-                shutil.rmtree(p, ignore_errors=True)
-            else:
-                p.unlink(missing_ok=True)
-        for p in wrapper_files:
-            p.unlink(missing_ok=True)
-        for p in temp_entries:
-            if p.is_dir():
-                shutil.rmtree(p, ignore_errors=True)
-            else:
-                p.unlink(missing_ok=True)
+        housekeeping.remove_temp_files(found)
         self._log(
-            f"Removed {len(all_files)} temp item(s) "
-            f"({len(build_entries)} build item(s) in .build/, "
-            f"{len(wrapper_files)} wrapper file(s) in decks/) "
-            f"and {len(temp_entries)} item(s) in .temp/"
+            f"Removed {found.count - len(found.scratch)} temp item(s) "
+            f"({len(found.build)} build item(s) in .build/, "
+            f"{len(found.wrappers)} wrapper file(s) in decks/) "
+            f"and {len(found.scratch)} item(s) in .temp/"
         )
 
     def _on_archive_unused_content(self) -> None:
-        if self.compiling:
-            QMessageBox.information(
-                self,
-                "Busy",
-                "Can't archive unused content while a compile run is in "
-                "progress -- a running compile could still need a file this "
-                "would move.",
-            )
-            return
-        # Scans first (a plain filesystem/text scan, fast enough to run on
-        # the GUI thread) and shows exactly what would move before moving
-        # anything (2026-09-27, direct instruction, after a batch run
-        # archived far more than expected -- see ArchiveUnusedDialog's own
-        # docstring). Only the actual move still runs in the background.
-        unused_media = unused_content.find_unused_media()
-        unused_slides = unused_content.find_unused_slides()
-        if not unused_media and not unused_slides:
-            QMessageBox.information(
-                self, "Archive unused content", "No unused media files or slides found."
-            )
-            return
-        dialog = ArchiveUnusedDialog(self, unused_media, unused_slides)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        threading.Thread(target=self._run_archive_unused_content, daemon=True).start()
+        """Opens the Housekeeping sheet on its archive review: it lists every file the scan
+        found before anything is moved (2026-09-27, direct instruction, after a batch run
+        archived far more than expected -- see unused_content.py)."""
+        sheet = HousekeepingSheet(self, ARCHIVE_PAGE)
+        sheet.exec()
 
-    def _run_archive_unused_content(self) -> None:
-        archive_unused_content(self.signals.log.emit)
-
-    def _on_sync_translation_links(self) -> None:
+    def _on_sync_translation_links(self) -> int:
         """Refreshes translation cross-reference comments from current
         disk state -- pure text scanning over slides/, no compile
-        involved, so (unlike Archive unused content/Update previews) this
-        runs synchronously rather than on a background thread."""
+        involved, so (unlike Update previews) this runs synchronously rather
+        than on a background thread. Returns the number of files updated."""
         changed, missing = slide_rename.regenerate_translation_links()
         self._log(f"Sync translation links: {changed} file(s) updated")
         for line in missing:
@@ -516,19 +499,4 @@ class MaintenanceMixin:
                 f"{changed} file(s) updated. {len(missing)} link(s) could "
                 "not be resolved -- see the log pane for details.",
             )
-
-    def _empty_folder(self, folder: Path, label: str) -> None:
-        if not folder.exists():
-            QMessageBox.information(self, "Nothing to do", f"{label} doesn't exist yet.")
-            return
-        files = [p for p in folder.iterdir() if p.is_file()]
-        if not files:
-            QMessageBox.information(self, "Nothing to do", f"{label} is already empty.")
-            return
-        reply = QMessageBox.question(self, "Empty folder", f"Delete all {len(files)} file(s) in {label}?")
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        for p in files:
-            p.unlink(missing_ok=True)
-        self._log(f"Emptied {label} ({len(files)} file(s) deleted)")
-
+        return changed

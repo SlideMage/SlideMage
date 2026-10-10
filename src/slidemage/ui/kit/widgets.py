@@ -299,6 +299,42 @@ class Chip(QFrame):
         super().mouseReleaseEvent(event)
 
 
+class RowButton(QFrame):
+    """A clickable row for a choice with a name and a second line: a project of the picker, an action
+    of the "No decks" page. Emits `clicked` unless disabled; `chip` is (text, tone) or empty."""
+
+    clicked = Signal()
+
+    def __init__(self, icon: str, title: str, sub: str = "", *, mono_sub: bool = False,
+                 chip: tuple[str, str] = ("", ""), parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName(q.ROW_BUTTON)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 9, 12, 9)
+        layout.setSpacing(12)
+        layout.addWidget(IconLabel(icon, 22))
+        texts = QVBoxLayout()
+        texts.setSpacing(1)
+        name = QLabel(title)
+        name.setObjectName(q.ROW_NAME)
+        texts.addWidget(name)
+        self.sub = QLabel(sub)
+        self.sub.setObjectName(q.PANEL_MONO if mono_sub else q.PANEL_CAPTION)
+        self.sub.setWordWrap(True)
+        texts.addWidget(self.sub)
+        layout.addLayout(texts, 1)
+        self.chip = Chip(*chip) if chip[0] else None
+        if self.chip is not None:
+            layout.addWidget(self.chip)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if (self.isEnabled() and event.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
 class Field(Surface):
     """A control under its label: the form row of sheets ("Title", "Load as")."""
 
@@ -699,6 +735,10 @@ class ModalSheet(QDialog):
         root.addWidget(self._stack, 1)
         root.addLayout(self._footer)
         self._tabs.currentChanged.connect(self._stack.setCurrentIndex)
+
+    def set_title(self, title: str) -> None:
+        self._title.setText(title)
+        self.setWindowTitle(title)
 
     def add_tab(self, label: str, widget: QWidget) -> int:
         self._tabs.addTab(label)

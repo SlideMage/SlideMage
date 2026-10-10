@@ -13,11 +13,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
 
 from ... import archive as archive_mod
-from ... import deck_duplicate, deck_editor, deck_settings, open_path, qt_snapshot_dialog, transcript
+from ... import deck_duplicate, deck_editor, deck_settings, deck_snapshot, open_path, transcript
 from ...compiler import deck_pdfs, pdf_to_open
 from ...deck_scan import GROUP_TAGS, TAG_MANUAL, Deck
-from ...qt_deck_group_dialog import ask_deck_details
 from ...qt_deck_settings_dialog import DeckSettingsDialog
+from ..dialogs.deck_group import DeckGroupSheet
+from ..dialogs.snapshot import SnapshotSheet
 
 
 class DeckActionsMixin:
@@ -47,7 +48,7 @@ class DeckActionsMixin:
         must come before archive.archive_deck() rewrites the deck's path
         lines -- the deck is archived only when it has finished (or, if it
         failed, after a second yes)."""
-        options = qt_snapshot_dialog.saved_options()
+        options = deck_snapshot.saved_options()
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Archive deck")
@@ -55,7 +56,7 @@ class DeckActionsMixin:
         box.setInformativeText(
             "Create a snapshot first? It keeps a self-contained copy of the deck "
             "as it compiles today in snapshots/ "
-            f"({qt_snapshot_dialog.describe_options(options)} -- change in "
+            f"({deck_snapshot.describe_options(options)} -- change in "
             "Decks → Create deck snapshot…).")
         snapshot_button = box.addButton("Snapshot, then archive",
                                         QMessageBox.ButtonRole.AcceptRole)
@@ -99,10 +100,10 @@ class DeckActionsMixin:
         per checked deck, one after the other, on the compile slot."""
         decks = self.decks
         preselected = {self.state.deck.name} if self.state.deck is not None else set()
-        dialog = qt_snapshot_dialog.SnapshotDialog(self, decks, preselected, busy=self.compiling)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        sheet = SnapshotSheet(self, decks, preselected, busy=self.compiling)
+        if sheet.exec() != QDialog.DialogCode.Accepted:
             return
-        self._start_snapshots(dialog.selected_decks(), dialog.options())
+        self._start_snapshots(sheet.selected_decks(), sheet.options())
 
     @staticmethod
     def _tags_with_group(deck_tags: list[str], group: str) -> list[str]:
@@ -186,10 +187,10 @@ class DeckActionsMixin:
             return
         if deck.group == TAG_MANUAL:
             return  # its Tags button is disabled; the manual keeps its section
-        result = ask_deck_details(self, f"Tags — {deck.name}", deck.group)
-        if result is None:
+        sheet = DeckGroupSheet(self, f"Tags — {deck.name}", deck.group)
+        if not sheet.exec():
             return
-        _name, group = result
+        group = sheet.group
         if group == deck.group and group in deck.tags:
             return  # already exactly that
         try:
@@ -205,15 +206,15 @@ class DeckActionsMixin:
         # Creation is where a deck's tag is first chosen (2026-09-19): the
         # dialog takes the copy's name and its group together, defaulting
         # to the original's group.
-        result = ask_deck_details(
-            self, "Duplicate deck", deck.group,
-            name_prompt=f"Name for the copy of {deck.name}.tex:",
+        sheet = DeckGroupSheet(
+            self, "Duplicate deck", deck.group, ok_text="Duplicate",
+            name_prompt=f"Name for the copy of {deck.name}.tex",
             default_name=f"{deck.name}-copy",
             validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, deck.path.parent),
         )
-        if result is None:
+        if not sheet.exec():
             return
-        new_name, group = result
+        new_name, group = sheet.name, sheet.group
         try:
             dest = deck_duplicate.duplicate_deck(deck, new_name)
         except Exception as exc:  # noqa: BLE001 -- surface any failure to the user

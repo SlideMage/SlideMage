@@ -98,6 +98,9 @@ MATRIX_SLOT = "kitMatrixSlot"
 MATRIX_CELL = "kitMatrixCell"
 # Compile job panel and Log drawer (ui/workspace/job_panel.py, log_drawer.py).
 LIST_BOX = "kitListBox"
+# A clickable row with an icon, a name and a second line (project picker, "No decks").
+ROW_BUTTON = "kitRowButton"
+ROW_NAME = "kitRowName"
 JOB_CARD = "kitJobCard"
 JOB_TITLE = "kitJobTitle"
 JOB_SUB = "kitJobSub"
@@ -773,7 +776,7 @@ def build_kit_qss(t: Tokens) -> str:
         QFrame#{PANEL_BOX} QLabel#{DETAILS_LABEL} {{
             color: {t.text_3};
         }}
-        QFrame#{PANEL_BOX} QLabel#{PANEL_MONO} {{
+        QFrame#{PANEL_BOX} QLabel#{PANEL_MONO}, QDialog#{SHEET} QLabel#{PANEL_MONO} {{
             {mono}
             font-size: 12px;
         }}
@@ -814,6 +817,19 @@ def build_kit_qss(t: Tokens) -> str:
             border-color: {t.line};
         }}
         {matrix_cells}
+
+        QFrame#{ROW_BUTTON} {{
+            background-color: transparent;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QFrame#{ROW_BUTTON}:hover {{
+            background-color: {t.hover};
+        }}
+        QLabel#{ROW_NAME} {{
+            {font}
+            font-size: 14px;
+            font-weight: 500;
+        }}
 
         /* A grey box of rows (job panel, pre-check sheet). Not PANEL_BOX: its
            label rule would override the icon labels' font. */

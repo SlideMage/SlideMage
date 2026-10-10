@@ -127,6 +127,25 @@ def test_a_project_without_decks_shows_a_placeholder(qapp, monkeypatch):
     assert "no decks" in window.centre.preview._page.message
     assert window.topbar._deck_button.text() == "No deck"
     assert not window.topbar._compile.isEnabled()
+    assert window.body.currentWidget() is window.no_decks      # the page for a project without decks
+
+
+def test_the_no_decks_page_offers_the_manual_only_where_it_can_be_added(qapp, monkeypatch):
+    monkeypatch.setattr(window_module, "scan_decks", lambda: [])
+    window = build_window(monkeypatch)
+    added = []
+    monkeypatch.setattr(window, "can_add_manual", lambda: True)
+    monkeypatch.setattr(window, "_on_add_manual", lambda: added.append(1))
+    window.no_decks.refresh()
+    assert window.no_decks.manual.isEnabled()
+    window.no_decks.manual.clicked.emit()
+    assert added == [1]
+    monkeypatch.setattr(window, "can_add_manual", lambda: False)
+    window.no_decks.refresh()
+    assert not window.no_decks.manual.isEnabled()
+    monkeypatch.setattr(window_module, "scan_decks", lambda: [WORK])
+    window.reload_decks()
+    assert window.body.currentWidget() is not window.no_decks    # decks again: the workspace is back
 
 
 # -- view, language, compile label ----------------------------------------------

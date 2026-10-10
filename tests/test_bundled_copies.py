@@ -254,7 +254,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
     monkeypatch.setattr(QMessageBox, "exec", fake_exec)
     monkeypatch.setattr(QMessageBox, "clickedButton", lambda box: seen["chosen"])
 
-    class Window(QWidget):
+    class Window(maintenance.MaintenanceMixin, QWidget):
         logged: list = []
         reloaded = 0
 
@@ -265,7 +265,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
             Window.reloaded += 1
 
     window = Window()
-    maintenance.MaintenanceMixin.check_bundled_copies(window)
+    window.check_bundled_copies()
     return seen, window
 
 

@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from ... import app_settings, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
 from ... import pptx_export
-from ... import qt_snapshot_dialog, slide_ids, slide_snapshot, update_all_previews
+from ... import slide_ids, slide_snapshot, update_all_previews
 from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, JobRow, RunStatus, job_title
 from ...compiler import (
     PDF_DIR,
@@ -44,6 +44,7 @@ from ...compiler import (
 )
 from ...deck_scan import PROJECT_ROOT, Deck
 from ...partial_compile import PartialError, parse_page_spec
+from ..dialogs import snapshot as snapshot_sheets
 from ..kit.widgets import Toast
 from . import render_check
 from .job_panel import JobPanel
@@ -53,7 +54,7 @@ from .state import WorkspaceState
 
 
 class CompileSignals(QObject):
-    """Cross-thread bridge: run_jobs()/archive_unused_content() (on plain
+    """Cross-thread bridge: run_jobs() (on plain
     threading.Thread workers, same as the Tk version) call
     log.emit(line) from the worker thread. Qt automatically queues a
     cross-thread signal emission onto the receiving QObject's own thread
@@ -293,10 +294,10 @@ class CompileJobsMixin:
         existing = deck_snapshot.find_snapshots([d.name for d in decks])
         delete_old: list = []
         if existing:
-            answer = qt_snapshot_dialog.ask_about_old_snapshots(self, existing)
-            if answer == qt_snapshot_dialog.CANCEL_RUN:
+            answer = snapshot_sheets.ask_about_old_snapshots(self, existing)
+            if answer == snapshot_sheets.CANCEL_RUN:
                 return False
-            if answer == qt_snapshot_dialog.DELETE_OLD:
+            if answer == snapshot_sheets.DELETE_OLD:
                 delete_old = existing
         # Same footer/appendix choices as a compile from the toolbar.
         options.footer_timestamp = self.build_options.footer_timestamp_checkbox.isChecked()
@@ -340,7 +341,7 @@ class CompileJobsMixin:
         if after is not None:
             after(results)
         else:
-            qt_snapshot_dialog.show_summary(self, results)
+            snapshot_sheets.show_summary(self, results)
 
     def _compile_current(self, kind: str, pages: Optional[list[int]] = None) -> None:
         """A Compile menu entry for the current deck: `kind` is a view,

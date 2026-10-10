@@ -211,6 +211,8 @@ def build_registry() -> CommandRegistry:
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
     add("preferences", "Preferences…", PROJECT, _window("_on_open_settings"))
+    add("housekeeping", "Housekeeping…", PROJECT, _window("_on_housekeeping"), icon="build",
+        meta="pdf, temp files, unused content, previews")
     add("empty_pdf", "Empty pdf folder", PROJECT, _window("_empty_pdf_folder"))
     add("remove_temp", "Remove temp files", PROJECT, _window("_remove_temp_files"))
     add("archive_unused", "Archive unused slides and media files", PROJECT, _window("_on_archive_unused_content"))
