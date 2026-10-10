@@ -82,7 +82,7 @@ def get_ollama_host() -> str:
     point this app at Ollama running elsewhere -- a different machine, a
     non-default port, WSL, ...).
 
-    Resolution order: the Preferences dialog's own saved value if the
+    Resolution order: the Settings sheet's own saved value if the
     user has set one, else $OLLAMA_HOST (Ollama's own conventional
     environment variable, so a script/CI run can point this app at a
     different server without touching its settings file), else the plain

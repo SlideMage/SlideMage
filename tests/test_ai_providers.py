@@ -303,6 +303,26 @@ def test_set_api_key_falls_back_to_the_settings_file(settings, monkeypatch):
     assert credentials.set_api_key("k3") == "settings file"
 
 
+def test_keychain_is_available_only_with_a_real_backend(monkeypatch):
+    class Backend:
+        def __init__(self, priority):
+            self.priority = priority
+
+    class Keyring:
+        def __init__(self, backend):
+            self.backend = backend
+
+        def get_keyring(self):
+            if isinstance(self.backend, Exception):
+                raise self.backend
+            return self.backend
+
+    assert not credentials.keychain_available()                               # keyring not installed
+    for backend, expected in ((Backend(5), True), (Backend(0), False), (RuntimeError("broken"), False)):
+        monkeypatch.setattr(credentials, "_keyring", lambda backend=backend: Keyring(backend))
+        assert credentials.keychain_available() is expected
+
+
 # -- resolver, migration, local-only, consent ----------------------------------
 
 def test_old_bare_model_names_read_as_ollama(settings):

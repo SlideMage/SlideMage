@@ -22,12 +22,16 @@ from slidemage.ui.kit.widgets import (
     IconButton,
     IconLabel,
     ModalSheet,
+    Page,
     PopoverMenu,
     SegmentedControl,
     SplitButton,
     Surface,
     ThumbnailGrid,
     Toast,
+    caption,
+    columns,
+    row,
 )
 
 
@@ -189,8 +193,10 @@ def test_modal_sheet_tabs_and_buttons(theme):
     sheet.add_tab("Two", QLabel("2"))
     sheet.show()
     assert not sheet._tabs.isHidden()
+    shown = []
+    sheet.tab_changed.connect(shown.append)
     sheet.set_current_tab(1)
-    assert sheet._stack.currentIndex() == 1
+    assert sheet._stack.currentIndex() == 1 and sheet.current_tab() == 1 and shown == [1]
     sheet.add_button("Save", kind="primary", role="accept").click()
     assert sheet.result() == 1
     sheet.add_button("Cancel", role="reject")
@@ -226,6 +232,20 @@ def test_modal_sheet_footer_note_sits_left_of_the_buttons(theme):
     button = sheet.add_button("Add", kind="primary")
     sheet.show()
     assert note.geometry().right() < button.geometry().left() and note.geometry().width() > button.width()
+
+
+def test_page_caption_row_and_columns_lay_widgets_out(theme):
+    page = Page()
+    page.body.addWidget(caption("A note", "error"))
+    first, second = QLabel("a"), QLabel("b")
+    page.body.addWidget(row(first, second, stretch=1))
+    page.body.addWidget(columns(Field("One", QLabel("1")), Field("Two", QLabel("2"))))
+    page.show()
+    note = page.findChild(QLabel, kit_qss.PANEL_CAPTION)
+    assert note.wordWrap() and note.property("tone") == "error"
+    assert second.width() > first.width()                              # the stretched one takes the room
+    ones, twos = (page.findChildren(QLabel, kit_qss.FIELD_LABEL)[i] for i in (0, 1))
+    assert ones.y() == twos.y() and abs(ones.parentWidget().width() - twos.parentWidget().width()) <= 1
 
 
 def test_icon_button_and_card_construct(theme):

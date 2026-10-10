@@ -12,33 +12,21 @@ from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
 
+from ... import admin_slides, deck_duplicate, deck_editor, deck_settings, deck_snapshot, open_path, transcript
 from ... import archive as archive_mod
-from ... import deck_duplicate, deck_editor, deck_settings, deck_snapshot, open_path, transcript
 from ...compiler import deck_pdfs, pdf_to_open
 from ...deck_scan import GROUP_TAGS, TAG_MANUAL, Deck
-from ...qt_deck_settings_dialog import DeckSettingsDialog
+from ...deck_settings import DeckSettings
+from ..dialogs.admin_slides import AdminSlidesTab
 from ..dialogs.deck_group import DeckGroupSheet
+from ..dialogs.deck_settings import ADMIN, GENERAL, INSERT, DeckSettingsSheet
 from ..dialogs.snapshot import SnapshotSheet
 
 
 class DeckActionsMixin:
     def _on_admin_slides(self, deck: Deck) -> None:
-        """⋮ -> "Admin slides…": insert a title slide and/or a course-sessions
-        table generated from the deck's linked Uni Graz course."""
-        from ...qt_admin_slides_dialog import AdminSlidesDialog, insert_admin_slides
-
-        dialog = AdminSlidesDialog(self, deck)
-        if dialog.exec() != AdminSlidesDialog.DialogCode.Accepted or not dialog.slide_specs:
-            return
-        try:
-            slide_paths = insert_admin_slides(
-                deck, dialog.position, dialog.slide_specs, dialog.language)
-        except (OSError, ValueError, deck_editor.StaleFileError) as exc:
-            QMessageBox.critical(self, "Admin slides failed", str(exc))
-            return
-        self.after_deck_edit(
-            deck.path, f"Inserted admin slides into {deck.name}", previous_text=deck.text)
-        self.open_slide_editor(slide_paths[0])
+        """⋮ -> "Admin slides…": Deck settings on its Admin slides tab."""
+        self._on_deck_settings(deck, tab=ADMIN)
 
     def _archive_deck(self, deck: Deck) -> None:
         """Archiving is when a deck stops being maintained, so it offers a
@@ -139,9 +127,9 @@ class DeckActionsMixin:
         except OSError as exc:
             self._log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
-    def _on_deck_settings(self, deck: Deck) -> None:
-        """⋮ -> "Deck settings…": the deck-wide settings that live in
-        the deck's own file (deck_settings.py), all written in one go."""
+    def _on_deck_settings(self, deck: Deck, tab: int = GENERAL) -> None:
+        """⋮ -> "Deck settings…": the deck-wide settings that live in the deck's own file
+        (deck_settings.py), all written in one go, and the admin slides of its course page."""
         if self.centre.is_dirty(deck.path):
             QMessageBox.information(
                 self, "Deck settings",
@@ -149,30 +137,40 @@ class DeckActionsMixin:
                 "revert them first, so this change and that editor can't overwrite each other.",
             )
             return
-        old = deck_settings.read_settings(deck.text)
-        dialog = DeckSettingsDialog(self, deck.name, old, deck_settings.template_choices())
-        if not dialog.exec():
+        sheet = DeckSettingsSheet(self, deck, deck_settings.template_choices(), tab=tab)
+        if not sheet.exec():
             return
-        new = dialog.result_settings()
-        if new != old:
-            try:
-                deck_settings.save_settings(deck.path, deck.text, old, new)
-            except (deck_editor.StaleFileError, ValueError, OSError) as exc:
-                QMessageBox.critical(self, "Deck settings failed", str(exc))
-                return
-            changed = [name for name in ("template", "language", "footer_text", "course_url",
-                                         "output_folders", "appendix_toc")
-                       if getattr(new, name) != getattr(old, name)]
-            self._log(f"Updated settings of {deck.name}: " + ", ".join(
-                name.replace("_", " ") for name in changed))
-            self.refresh_open_deck_editors()
-            self.reload_decks()
-        if dialog.open_link_requested and new.course_url:
-            try:
-                open_path.open_in_default_app(new.course_url)
-            except OSError as exc:
-                QMessageBox.warning(self, "Course link", f"Could not open {new.course_url}: {exc}")
-                self._log(f"*** couldn't open course link for {deck.name}: {exc} ***")
+        if sheet.action == INSERT:
+            self._insert_admin_slides(deck, sheet.admin)
+        else:
+            self._save_deck_settings(deck, sheet.original, sheet.result_settings())
+
+    def _save_deck_settings(self, deck: Deck, old: DeckSettings, new: DeckSettings) -> None:
+        if new == old:
+            return
+        try:
+            deck_settings.save_settings(deck.path, deck.text, old, new)
+        except (deck_editor.StaleFileError, ValueError, OSError) as exc:
+            QMessageBox.critical(self, "Deck settings failed", str(exc))
+            return
+        changed = [name for name in ("template", "language", "footer_text", "course_url",
+                                     "output_folders", "appendix_toc", "open_pdf")
+                   if getattr(new, name) != getattr(old, name)]
+        self._log(f"Updated settings of {deck.name}: " + ", ".join(
+            name.replace("_", " ") for name in changed))
+        self.refresh_open_deck_editors()
+        self.reload_decks()
+
+    def _insert_admin_slides(self, deck: Deck, admin: AdminSlidesTab) -> None:
+        try:
+            slide_paths = admin_slides.insert_admin_slides(
+                deck, admin.position, admin.slide_specs, admin.language)
+        except (OSError, ValueError, deck_editor.StaleFileError) as exc:
+            QMessageBox.critical(self, "Admin slides failed", str(exc))
+            return
+        self.after_deck_edit(
+            deck.path, f"Inserted admin slides into {deck.name}", previous_text=deck.text)
+        self.open_slide_editor(slide_paths[0])
 
     def _on_edit_deck_tags(self, deck: Deck) -> None:
         """⋮ -> "Tags…": choose the group the deck appears

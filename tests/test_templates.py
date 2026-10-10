@@ -121,37 +121,13 @@ def test_default_preamble_uses_the_render_template(monkeypatch):
     assert slide_snapshot.detect_template(preamble) == "slidemage"
 
 
-@pytest.fixture(scope="module")
-def qapp():
-    from PySide6.QtWidgets import QApplication
-    return QApplication.instance() or QApplication([])
-
-
-def test_settings_offers_the_project_templates_and_saves_the_choice(tmp_path, monkeypatch, qapp):
-    from PySide6.QtWidgets import QWidget
-
-    from slidemage.qt_settings_dialog import SettingsDialog
-
+def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     _framework(tmp_path / "latex", "slidemage")
-    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT",
-                        _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self: [])
-    monkeypatch.setattr(SettingsDialog, "_build_ai_prompts_tab", lambda self: QWidget())
-
-    class App(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.theme = SimpleNamespace(dark=False)
-            self.set_dark_mode = lambda _value: None
-            self.set_tab_width_chars = lambda _value: None
-            self.log = lambda _message: None
-
-    settings = SettingsDialog(App())
-    combo = settings.render_template_combo
-    assert [combo.itemData(i) for i in range(combo.count())] == ["uni-graz", "uni-ibk", "mci", "slidemage"]
-    assert combo.currentData() == "slidemage"  # out of the box
-    combo.setCurrentIndex(combo.findData("mci"))
+    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", _project(tmp_path / "project", "uni-graz", "mci"))
+    slide_snapshot.set_render_template("mci")
     assert app_settings.get(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
+    assert slide_snapshot.render_template() == "mci"
+    with pytest.raises(ValueError, match="not a template"):
+        slide_snapshot.set_render_template("nope")
     assert slide_snapshot.render_template() == "mci"

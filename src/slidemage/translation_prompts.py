@@ -193,14 +193,16 @@ def set_default_prompt(config: PromptConfig) -> None:
     _save(config, load_prompts())
 
 
+def effective_default_prompt() -> PromptConfig:
+    """The prompt used for a model/language pair with no entry of its own:
+    the user's default, else the hardcoded last-resort one."""
+    return get_default_prompt() or _FALLBACK_DEFAULT
+
+
 def get_effective_prompt(model: str, source_lang: str, target_lang: str) -> PromptConfig:
     """What ModelTranslationBackend should actually send: the exact
     model+pair entry if one exists, else the user's own default prompt,
     else a hardcoded last-resort default for a fresh install that has
     never configured anything at all. Always returns something usable --
     unlike get_prompt(), never None."""
-    return (
-        get_prompt(model, source_lang, target_lang)
-        or get_default_prompt()
-        or _FALLBACK_DEFAULT
-    )
+    return get_prompt(model, source_lang, target_lang) or effective_default_prompt()

@@ -68,7 +68,7 @@ def test_shortcuts_are_bound_to_the_window_and_run_the_command(qapp):
 
 # The old menu bar's entries (qt_gui.py before step 3) and the command each became.
 OLD_MENU_BAR = {
-    "Open Project…": "open_project", "Preferences…": "preferences", "Exit SlideMage": "exit",                 # System
+    "Open Project…": "open_project", "Settings…": "settings", "Exit SlideMage": "exit",                 # System
     "Create deck snapshot…": "create_snapshot", "Import PPTX/ODP…": "import_presentation",                   # Decks
     "Archived decks": "archived_decks", "Images": "images", "Edit .bib": "edit_bib",                          # Tabs
     "Edit test-slides.tex": "edit_test_slides",

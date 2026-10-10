@@ -9,7 +9,7 @@ The ids are the keys the menus have always used (`compile:instructor`,
 `deck_settings`, ...), plus `slide:` and `section:` for what acts on the slides
 and the section chosen in the list. The group is the palette's heading.
 
-Where the old menu bar's actions went: the "Open Project…", "Preferences…" and
+Where the old menu bar's actions went: the "Open Project…", "Settings…" and
 "Exit SlideMage" of System, the Decks menu, the housekeeping and info menus are
 all commands below, in the groups Deck and Project; "Images" and the archived
 decks of the Tabs menu are `images` and `archived_decks`.
@@ -210,7 +210,7 @@ def build_registry() -> CommandRegistry:
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
-    add("preferences", "Preferences…", PROJECT, _window("_on_open_settings"))
+    add("settings", "Settings…", PROJECT, _window("_on_open_settings"))
     add("housekeeping", "Housekeeping…", PROJECT, _window("_on_housekeeping"), icon="build",
         meta="pdf, temp files, unused content, previews")
     add("empty_pdf", "Empty pdf folder", PROJECT, _window("_empty_pdf_folder"))

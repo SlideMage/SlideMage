@@ -2,7 +2,7 @@
 
 `course_schedule.py` fetches two things from Uni Graz's course-management
 system (`online.uni-graz.at`, internally "KFU Online"/CAMPUSonline) to build
-the **Admin slides** feature (`qt_admin_slides_dialog.py`): a course's
+the **Admin slides** feature (`admin_slides.py`, the Admin slides tab of Deck settings): a course's
 session list and its title/number/semester/lecturers. Both are REST/JSON
 endpoints, keyed by the same course identifier, `pStpSpNr`, which is also
 the last path segment of a deck's linked course URL

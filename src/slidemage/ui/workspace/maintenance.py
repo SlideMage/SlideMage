@@ -309,7 +309,7 @@ class MaintenanceMixin:
             f"SlideMage {release.tag} is available (you have {version_mod.VERSION_NUMBER}).")
         box.setInformativeText(
             "Install it now? You can also change how SlideMage handles updates "
-            "(Preferences → General).")
+            "(Settings → General).")
         install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
         later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
         auto = box.addButton("Always install automatically", QMessageBox.ButtonRole.ActionRole)
@@ -328,10 +328,10 @@ class MaintenanceMixin:
                 self.log(f"Couldn't save the update setting: {exc}")
             else:
                 self.log(
-                    "Updates will be installed automatically (Preferences → General)"
+                    "Updates will be installed automatically (Settings → General)"
                     if choice == "auto" else
                     "SlideMage will no longer check for updates on start "
-                    "(Preferences → General; Info → Check for updates… still works)")
+                    "(Settings → General; ⋮ → Check for updates… still works)")
         if choice in ("install", "auto"):
             self._download_and_install_update(release)
         elif choice == "later":

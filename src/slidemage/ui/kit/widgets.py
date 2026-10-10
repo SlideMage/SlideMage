@@ -147,6 +147,39 @@ class DropdownButton(QFrame):
         return super().event(event)
 
 
+def caption(text: str, tone: str = "") -> QLabel:
+    """A wrapping line of small grey text under a control; tone "error" turns it red."""
+    label = QLabel(text)
+    label.setObjectName(q.PANEL_CAPTION)
+    label.setWordWrap(True)
+    if tone:
+        label.setProperty("tone", tone)
+    return label
+
+
+def row(*widgets: QWidget, stretch: int = 0) -> QWidget:
+    """`widgets` side by side; the `stretch`-th one takes the spare width."""
+    box = Surface()
+    layout = QHBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+    for index, widget in enumerate(widgets):
+        layout.addWidget(widget, 1 if index == stretch else 0)
+    return box
+
+
+def columns(*widgets: QWidget) -> QWidget:
+    """`widgets` side by side, as wide as each other and level at the top: two form fields in a
+    line."""
+    box = Surface()
+    layout = QHBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    for widget in widgets:
+        layout.addWidget(widget, 1, Qt.AlignmentFlag.AlignTop)
+    return box
+
+
 class Button(QPushButton):
     """Text button. kind: "primary" (inverse fill), "secondary" (bordered),
     "ghost" (flat). `compact` is the smaller padding of toolbars."""
@@ -166,6 +199,17 @@ class Surface(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName(q.SURFACE)
+
+
+class Page(Surface):
+    """The content of a sheet tab (or of one step of it): a column of widgets, added through
+    `body`."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.body = QVBoxLayout(self)
+        self.body.setContentsMargins(0, 0, 0, 0)
+        self.body.setSpacing(12)
 
 
 class Card(QFrame):
@@ -708,7 +752,9 @@ class ModalSheet(QDialog):
     hidden. add_button(text, kind=..., role="accept"|"reject") appends to the
     footer; roles close the dialog with accept()/reject(). A plain QDialog
     frame is used (no custom frameless chrome): the window manager draws the
-    shadow, which is reliable on every platform."""
+    shadow, which is reliable on every platform. `tab_changed` carries the new tab's index."""
+
+    tab_changed = Signal(int)
 
     def __init__(self, title: str, parent: QWidget | None = None, *, width: int = 640) -> None:
         super().__init__(parent)
@@ -735,6 +781,7 @@ class ModalSheet(QDialog):
         root.addWidget(self._stack, 1)
         root.addLayout(self._footer)
         self._tabs.currentChanged.connect(self._stack.setCurrentIndex)
+        self._tabs.currentChanged.connect(self.tab_changed)
 
     def set_title(self, title: str) -> None:
         self._title.setText(title)
@@ -748,6 +795,9 @@ class ModalSheet(QDialog):
 
     def set_current_tab(self, index: int) -> None:
         self._tabs.setCurrentIndex(index)
+
+    def current_tab(self) -> int:
+        return self._tabs.currentIndex()
 
     def add_footer_note(self, widget: QWidget) -> None:
         """A widget at the left of the footer, in the room the buttons leave (a summary of

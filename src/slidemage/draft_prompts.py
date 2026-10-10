@@ -52,14 +52,15 @@ def get_custom_prompt(kind: str) -> str | None:
     return _load_raw().get(kind) or None
 
 
-def set_custom_prompt(kind: str, prompt: str) -> None:
+def set_custom_prompt(kind: str, prompt: str, default: str = "") -> None:
     """Empty/whitespace-only clears the override, reverting to the
-    hardcoded default -- the Settings dialog's own "Reset to default"
-    button goes through this with an empty string rather than a separate
-    delete call."""
+    hardcoded default. So does a prompt equal to `default` (the caller's
+    hardcoded one): saving the stock text verbatim is the same as never
+    having customized it, and a stored copy would silently diverge once the
+    default is revised in a code update."""
     raw = _load_raw()
     prompt = prompt.strip()
-    if prompt:
+    if prompt and prompt != default.strip():
         raw[kind] = prompt
     else:
         raw.pop(kind, None)

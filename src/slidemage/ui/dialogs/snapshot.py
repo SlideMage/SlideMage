@@ -17,7 +17,7 @@ from ... import deck_snapshot, open_path
 from ...deck_scan import Deck
 from ...deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface
+from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption
 
 TEXMF_TIP = (
     "Copy the TeX distribution's package files the deck uses (class, style, Lua and font files) "
@@ -33,13 +33,6 @@ OUTPUTS = (("folder", "Folder"), ("zip", ".zip file"))
 DELETE_OLD, KEEP_OLD, CANCEL_RUN = "delete", "keep", "cancel"
 
 
-def _caption(text: str) -> QLabel:
-    label = QLabel(text)
-    label.setObjectName(q.PANEL_CAPTION)
-    label.setWordWrap(True)
-    return label
-
-
 class SnapshotSheet(ModalSheet):
     def __init__(self, parent: Optional[QWidget], decks: list[Deck], preselected: set[str],
                  busy: bool = False) -> None:
@@ -51,7 +44,7 @@ class SnapshotSheet(ModalSheet):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
-        layout.addWidget(_caption(
+        layout.addWidget(caption(
             "A snapshot is a self-contained copy of a deck -- slides, media, bibliography, "
             "template and LaTeX framework -- that compiles exactly as the deck does today, "
             "whatever changes later. Each selected deck gets its own snapshot; they are made "
@@ -97,7 +90,7 @@ class SnapshotSheet(ModalSheet):
         self.app_checkbox.setChecked(options.include_app)
         layout.addWidget(self.texmf_checkbox)
         layout.addWidget(self.app_checkbox)
-        layout.addWidget(_caption(
+        layout.addWidget(caption(
             "Each deck is compiled in all its versions, then rendered once more from the snapshot "
             "to check that it is complete -- this takes a while for a large deck and occupies the "
             "compile slot."))
@@ -116,7 +109,7 @@ class SnapshotSheet(ModalSheet):
         where_row.addWidget(open_folder)
         layout.addWidget(Field("Saved to", where))
 
-        self.busy_label = _caption("A compile run is in progress -- snapshots can be created once it has finished.")
+        self.busy_label = caption("A compile run is in progress -- snapshots can be created once it has finished.")
         self.busy_label.setVisible(busy)
         layout.addWidget(self.busy_label)
 
@@ -175,12 +168,12 @@ class _OldSnapshotsSheet(ModalSheet):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
-        layout.addWidget(_caption("These decks already have snapshots. Delete these older snapshots "
+        layout.addWidget(caption("These decks already have snapshots. Delete these older snapshots "
                                   "once the new ones have been created?"))
         listing = QLabel("\n".join(snap.label for snap in existing))
         listing.setObjectName(q.PANEL_MONO)
         layout.addWidget(listing)
-        layout.addWidget(_caption(
+        layout.addWidget(caption(
             "A deck's older snapshots are only deleted after its new snapshot has been created "
             "and checked, and they go to the Recycle Bin."))
         self.add_tab("", body)

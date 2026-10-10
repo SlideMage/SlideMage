@@ -1,5 +1,5 @@
-"""A deck's deck-wide settings: the lines of its preamble the "Settings" dialog
-(qt_deck_settings_dialog.py) reads and writes -- template, language, footer
+"""A deck's deck-wide settings: the lines of its preamble the Deck settings sheet
+(ui/dialogs/deck_settings.py) reads and writes -- template, language, footer
 text, course link, output folders and the appendix TOC.
 
 Everything here is plain text in, text out, so the dialog can apply all its
@@ -113,6 +113,26 @@ def _clean_path(path: str) -> str:
     if any(ch in path for ch in "{}%#"):
         raise ValueError("A folder or file path may not contain { } % or #.")
     return path
+
+
+def from_form(
+    original: DeckSettings, *, template: str, language: str, footer_text: str, course_url: str,
+    output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
+) -> DeckSettings:
+    """The settings a form of the sheet holds, checked: a course link must be a web address
+    (ValueError otherwise), an output path may not hold LaTeX specials. A path left as it was in
+    `original` stays byte for byte, whatever its slashes; an empty one is no entry."""
+    url = course_url.strip()
+    folders = {}
+    for key, typed in output_folders.items():
+        typed = typed.strip()
+        path = typed if typed == original.output_folders.get(key, "") else _clean_path(typed)
+        if path:
+            folders[key] = path
+    return DeckSettings(
+        template=template, language=language, footer_text=footer_text,
+        course_url=deck_editor.normalize_course_url(url) if url else "",
+        output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf)
 
 
 def template_choices(root: Path | None = None) -> list[tuple[str, str]]:

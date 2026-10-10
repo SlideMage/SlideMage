@@ -40,7 +40,7 @@ REPO = "stpalan/SlideMage"
 LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases"
 # A private repo's releases are only visible with a token that can read it.
-# The environment variable wins over the token saved in Preferences, which
+# The environment variable wins over the token saved in Settings, which
 # lives in the per-user config folder -- never the project's .slidemage/,
 # which travels with the (often cloud-synced) project folder.
 TOKEN_ENV_VAR = "SLIDEMAGE_GITHUB_TOKEN"
@@ -236,7 +236,7 @@ def _get_json(url: str, timeout: float):
             raise UpdateError(
                 f"No published release found for {REPO}. If the repository is "
                 "private, add a GitHub token that can read it under "
-                f"Preferences → General (or set {TOKEN_ENV_VAR})."
+                f"Settings → General (or set {TOKEN_ENV_VAR})."
             ) from exc
         if exc.code in (401, 403) and active_token():
             raise UpdateError(

@@ -38,12 +38,12 @@ from ... import app_settings, bibliography, deck_headers, deck_outline, latex_ed
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
-from ...qt_settings_dialog import SettingsDialog
 from ...qt_transcript_preview_tab import TranscriptPreviewTab
 from ...qt_transcript_tab import TranscriptTab
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
+from ..dialogs.settings import SettingsSheet
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
 from ..pages.no_decks import NoDecksPage
@@ -384,17 +384,15 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         ImportPresentationSheet(self, self.state.deck).exec()
 
     def _on_open_settings(self) -> None:
-        dialog = SettingsDialog(self)
-        dialog.exec()
-        models = dialog.available_models
-        self.transcript_tab.refresh_model_preferences(models, dialog.vision_models)
-        self.centre.refresh_model_preferences(models)
+        sheet = SettingsSheet(self)
+        sheet.exec()
+        if sheet.loaded:        # the model pickers that are open follow a changed default
+            self.transcript_tab.refresh_model_preferences(sheet.available_models, sheet.vision_models)
+            self.centre.refresh_model_preferences(sheet.available_models)
 
     def set_dark_mode(self, checked: bool) -> None:
-        """Public (2026-08-25): called from the Settings dialog's own
-        checkbox (qt_settings_dialog.py), not just an internal toolbar
-        handler any more -- theme.set_dark() itself now also persists the
-        choice (QSettings, per-machine -- see ui/kit/theme.py)."""
+        """Called from the Settings sheet's Dark mode checkbox; theme.set_dark() also
+        persists the choice (QSettings, per-machine -- see ui/kit/theme.py)."""
         self.theme.set_dark(checked)
         # QSS covers every ordinary widget automatically, but a
         # QSyntaxHighlighter's own tag colors live on the text document,
@@ -403,11 +401,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.centre.refresh_colors()
 
     def set_tab_width_chars(self, chars: int) -> None:
-        """Called from the Settings dialog's own tab-width spinbox
-        (qt_settings_dialog.py), same shape as set_dark_mode() just above:
-        persist the choice (app_settings.py), then nudge every already-open
-        slide/deck-source editor to pick it up immediately rather than only
-        on next open."""
+        """Called from the Settings sheet's tab-width spinbox, like set_dark_mode() above: persist
+        the choice (app_settings.py), then nudge every already-open slide/deck-source editor to pick
+        it up immediately rather than only on next open."""
         app_settings.set(latex_edit.TAB_WIDTH_SETTING_KEY, chars)
         self.centre.set_tab_width(chars)
 

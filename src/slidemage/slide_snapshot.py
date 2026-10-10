@@ -170,6 +170,15 @@ def render_template(root: Path | None = None) -> str:
     return available[0] if available else DEFAULT_TEMPLATE
 
 
+def set_render_template(key: str) -> None:
+    """Choose the template single-slide renders use (a TEMPLATES key)."""
+    from . import app_settings
+
+    if key not in TEMPLATES:
+        raise ValueError(f"'{key}' is not a template.")
+    app_settings.set(RENDER_TEMPLATE_SETTING_KEY, key)
+
+
 # Full HD, requested directly rather than picked via a DPI value: this
 # project's slides are all exactly 16:9 (aspectratio=169), so 1920x1080
 # fits with no letterboxing, but a fixed DPI doesn't hit that pixel size

@@ -26,17 +26,10 @@ from PySide6.QtWidgets import QCheckBox, QFileDialog, QFrame, QHBoxLayout, QLabe
 from ... import project
 from ...version import VERSION_NUMBER
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Field, ModalSheet, RowButton, Surface, set_property
+from ..kit.widgets import Button, Field, ModalSheet, RowButton, Surface, caption, set_property
 
 ICON_PATH = Path(__file__).resolve().parents[2] / "assets" / "icon.ico"
 NEW_FOLDER_NAME = "my-slides"
-
-
-def _caption(text: str) -> QLabel:
-    label = QLabel(text)
-    label.setObjectName(q.PANEL_CAPTION)
-    label.setWordWrap(True)
-    return label
 
 
 class OpenProjectSheet(ModalSheet):
@@ -58,7 +51,7 @@ class OpenProjectSheet(ModalSheet):
         layout.setSpacing(14)
         if first_run:
             layout.addLayout(self._header())
-            layout.addWidget(_caption(
+            layout.addWidget(caption(
                 "SlideMage works on a project: a folder with your decks, slides and media. Open one "
                 "you have, or create a new one."))
 
@@ -69,7 +62,7 @@ class OpenProjectSheet(ModalSheet):
         self.add_tab("", body)
 
         if current is not None:
-            self.add_footer_note(_caption("Opening another project restarts SlideMage."))
+            self.add_footer_note(caption("Opening another project restarts SlideMage."))
         if not first_run:
             self.add_button("Cancel", role="reject")
         self.new_button = self.add_button("New project…")
@@ -87,7 +80,7 @@ class OpenProjectSheet(ModalSheet):
         row.addWidget(logo)
         title = QLabel("<b style='font-size:20px'>SlideMage</b>")
         row.addWidget(title)
-        row.addWidget(_caption(self._app_version.lstrip("v")))
+        row.addWidget(caption(self._app_version.lstrip("v")))
         row.addStretch(1)
         return row
 
@@ -119,7 +112,7 @@ class OpenProjectSheet(ModalSheet):
             self.rows.append(row)
             layout.addWidget(row)
         if not self.rows:
-            layout.addWidget(_caption("No projects yet. Open a folder that holds a project, or create a new one."))
+            layout.addWidget(caption("No projects yet. Open a folder that holds a project, or create a new one."))
         return box
 
     def _new_project_form(self) -> QWidget:
@@ -145,12 +138,12 @@ class OpenProjectSheet(ModalSheet):
         self.with_manual.setChecked(project.has_example_template())
         self.with_manual.setEnabled(project.has_example_template())
         layout.addWidget(self.with_manual)
-        layout.addWidget(_caption(
+        layout.addWidget(caption(
             "Creates decks/, slides/ and media/, and a copy of the SlideMage framework in latex/. "
             "The manual is a finished deck to look at and copy slides from; you can delete it later."
             if project.has_example_template() else
             "Creates decks/, slides/ and media/. This copy of SlideMage carries no manual to add."))
-        self.status = _caption("")
+        self.status = caption("")
         self.status.hide()
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
@@ -241,7 +234,7 @@ class NewerProjectSheet(ModalSheet):
         label.setTextFormat(Qt.TextFormat.RichText)
         label.setWordWrap(True)
         layout.addWidget(label)
-        layout.addWidget(_caption(advice))
+        layout.addWidget(caption(advice))
         self.add_tab("", body)
         if opening:
             self.add_button("Cancel", role="reject")

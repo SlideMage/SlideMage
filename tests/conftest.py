@@ -33,6 +33,20 @@ def _isolated_app_settings(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(app_settings, "STORE_PATH", store)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_project_stores(monkeypatch, tmp_path_factory):
+    """What Settings writes besides app_settings.json -- the prompts and the project's own
+    project.json (its "Local AI only" override) -- goes to a throwaway folder too, never into the
+    example project."""
+    from slidemage import draft_prompts, translation_prompts
+    from slidemage.ai import resolver
+
+    root = tmp_path_factory.mktemp("project")
+    monkeypatch.setattr(draft_prompts, "STORE_PATH", root / "draft_prompts.json")
+    monkeypatch.setattr(translation_prompts, "STORE_PATH", root / "translation_prompts.json")
+    monkeypatch.setattr(resolver, "PROJECT_ROOT", root)
+
+
 def command_context(deck=None, *, compiling=False, selected=(), decks=()):
     """Stands in for the window as the context of the command registry, for the menus and
     predicates that only read the deck, the selection and whether a compile run is going."""

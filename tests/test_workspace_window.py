@@ -360,40 +360,10 @@ def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last
     assert warned[-1] == "compile the whole deck once" and len(seen) == 1
 
 
-def test_admin_slides_are_inserted_through_the_dialog_and_the_first_one_opens(window, monkeypatch, tmp_path):
-    from PySide6.QtWidgets import QDialog
-
-    from slidemage import qt_admin_slides_dialog
-
-    inserted, edits, opened = [], [], []
-
-    class FakeDialog:
-        DialogCode = QDialog.DialogCode
-        slide_specs = [("Course-Sessions", "source")]
-        position, language = "position", "de"
-
-        def __init__(self, parent, deck):
-            pass
-
-        def exec(self):
-            return QDialog.DialogCode.Accepted
-
-    monkeypatch.setattr(qt_admin_slides_dialog, "AdminSlidesDialog", FakeDialog)
-    monkeypatch.setattr(qt_admin_slides_dialog, "insert_admin_slides",
-                        lambda *args: inserted.append(args) or [tmp_path / "new-current.tex"])
-    monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
-    monkeypatch.setattr(window, "open_slide_editor", opened.append)
-    window.state.set_deck(COURSE)
-    window._on_admin_slides(COURSE)
-    assert inserted == [(COURSE, "position", FakeDialog.slide_specs, "de")]
-    assert edits == [((COURSE.path, "Inserted admin slides into course"), {"previous_text": COURSE.text})]
-    assert opened == [tmp_path / "new-current.tex"]
-
-
 # -- the ⋮ menu: nothing of the old deck table and menu bar is lost --------------------
 
 OLD_MENU_BAR = [
-    "Open Project…", "Preferences…", "Exit SlideMage",                        # System
+    "Open Project…", "Settings…", "Exit SlideMage",                        # System
     "Create deck snapshot…", "Import PPTX/ODP…",                              # Decks
     "Edit .bib", "Edit test-slides.tex",                                      # Tabs (Archived decks and
     "Empty pdf folder", "Remove temp files",                                  #  Images moved to the

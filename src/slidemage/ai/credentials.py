@@ -48,6 +48,19 @@ def _keyring():
     return keyring
 
 
+def keychain_available() -> bool:
+    """True when ``keyring`` is installed and has a real backend (its
+    ``fail`` backend, which refuses everything, has priority 0); a key saved
+    now goes to the keychain, otherwise to the settings file."""
+    module = _keyring()
+    if module is None:
+        return False
+    try:
+        return module.get_keyring().priority > 0
+    except Exception:  # noqa: BLE001 -- keyring backends raise assorted errors
+        return False
+
+
 def _keychain_get() -> str:
     module = _keyring()
     if module is None:
