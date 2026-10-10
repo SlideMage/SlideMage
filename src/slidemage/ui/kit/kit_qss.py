@@ -117,6 +117,18 @@ LOG_TITLE = "kitLogTitle"
 LOG_TEXT = "kitLogText"
 LOG_ACTION = "kitLogAction"
 LOG_ERROR = "kitLogError"
+# Chat (ui/workspace/chat/).
+CHAT_USER = "kitChatUser"
+CHAT_TEXT = "kitChatText"
+CHAT_MODEL = "kitChatModel"
+CHAT_TOOL = "kitChatTool"
+CHAT_TOOL_NAME = "kitChatToolName"
+CHAT_TOOL_SUMMARY = "kitChatToolSummary"
+CHAT_TOOL_BODY = "kitChatToolBody"
+CHAT_DIFF = "kitChatDiff"
+CHAT_DIFF_LINE = "kitChatDiffLine"
+CHAT_NOTICE = "kitChatNotice"
+CHAT_SUGGESTION = "kitChatSuggestion"
 
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
@@ -1005,4 +1017,94 @@ def build_kit_qss(t: Tokens) -> str:
             border-radius: {RADIUS_SM}px;
             padding: 4px 10px;
         }}
+
+        /* Chat: the user's bubble, the model's text, tool cards, diff cards, notices. */
+        QFrame#{CHAT_USER} {{
+            background-color: {t.inverse};
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 3px;
+        }}
+        QFrame#{CHAT_USER} QLabel {{
+            {font}
+            font-size: 13px;
+            color: {t.on_inverse};
+        }}
+        QLabel#{CHAT_TEXT} {{
+            {font}
+            font-size: 13px;
+            color: {t.text};
+        }}
+        QLabel#{CHAT_MODEL} {{
+            {mono}
+            font-size: 10.5px;
+            color: {t.text_3};
+        }}
+        QFrame#{CHAT_TOOL} {{
+            background-color: {t.bg};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QLabel#{CHAT_TOOL_SUMMARY} {{
+            {font}
+            font-size: 12px;
+            color: {t.text_2};
+        }}
+        QLabel#{CHAT_TOOL_NAME} {{
+            {mono}
+            font-size: 11.5px;
+            font-weight: 500;
+            color: {t.text};
+        }}
+        QLabel#{CHAT_TOOL_BODY} {{
+            {mono}
+            font-size: 11px;
+            color: {t.text_2};
+        }}
+        QFrame#{CHAT_DIFF} {{
+            background-color: transparent;
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE} {{
+            {mono}
+            font-size: 11px;
+            padding: 0 8px;
+        }}
+        QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="add"] {{ background-color: {t.ok_bg}; color: {t.ok_fg}; }}
+        QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="del"] {{ background-color: {t.error_bg}; color: {t.error_fg}; }}
+        QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="ctx"] {{ color: {t.text_3}; }}
+        QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="gap"] {{ color: {t.text_4}; }}
+        QFrame#{CHAT_DIFF}[state="rejected"] QLabel#{CHAT_DIFF_LINE}[kind="add"],
+        QFrame#{CHAT_DIFF}[state="undone"] QLabel#{CHAT_DIFF_LINE}[kind="add"],
+        QFrame#{CHAT_DIFF}[state="rejected"] QLabel#{CHAT_DIFF_LINE}[kind="del"],
+        QFrame#{CHAT_DIFF}[state="undone"] QLabel#{CHAT_DIFF_LINE}[kind="del"] {{
+            background-color: {t.bg};
+            color: {t.text_4};
+        }}
+        QFrame#{CHAT_DIFF}[state="rejected"] QLabel#{CHAT_TOOL_NAME},
+        QFrame#{CHAT_DIFF}[state="undone"] QLabel#{CHAT_TOOL_NAME} {{
+            color: {t.text_4};
+        }}
+        QLabel#{CHAT_NOTICE} {{
+            {font}
+            font-size: 12px;
+            padding: 8px 10px;
+            border-radius: {RADIUS_MD}px;
+            background-color: {t.bg};
+            color: {t.text_2};
+        }}
+        QLabel#{CHAT_NOTICE}[tone="warning"] {{ background-color: {t.warning_bg}; color: {t.warning_fg}; }}
+        QLabel#{CHAT_NOTICE}[tone="error"] {{ background-color: {t.error_bg}; color: {t.error_fg}; }}
+        QPushButton#{CHAT_SUGGESTION} {{
+            {font}
+            font-size: 12.5px;
+            text-align: left;
+            color: {t.text};
+            background-color: {t.bg};
+            border: none;
+            border-radius: {RADIUS_MD}px;
+            padding: 6px 10px;
+        }}
+        QPushButton#{CHAT_SUGGESTION}:hover {{ background-color: {t.line}; }}
     """

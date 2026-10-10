@@ -5,8 +5,8 @@ registry (actions.py, grouped as there; "Slide 1y8" holds what acts on the focus
 the slides of the open deck and the other slides of the project ("Go to slide"), and the
 decks ("Go to deck"). From three characters on, the project's source files are searched
 for the text too (slide_search.py) on a worker thread, started a moment after the last key
-and cancelled when the text changes, so that typing stays fast. "Ask the chat" is a
-placeholder until the chat of step 10.
+and cancelled when the text changes, so that typing stays fast. "Ask the chat" sends the text
+to the chat (about the focused slide).
 
 Keys: ↑ ↓ move, ↵ runs, Esc closes; a click on a row runs it, a click outside closes.
 
@@ -29,6 +29,7 @@ from ...deck_editor import SLIDES_DIR
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Chip, MenuRow, apply_shadow, set_property
+from .chat.session import current_route
 
 MIN_TEXT_QUERY = 3    # characters before the files are searched
 DEBOUNCE_MS = 200     # a pause after the last key before they are
@@ -293,8 +294,8 @@ class CommandPalette(QWidget):
         if self._hits_query == query:
             entries += hit_entries(self._window, self._hits)
         if len(query) >= MIN_TEXT_QUERY:
-            entries.append(Entry(CHAT, f"Ask the chat: “{query}”", None, GROUP_ICONS[CHAT], "not available yet",
-                                 enabled=False))
+            entries.append(Entry(CHAT, f"Ask the chat: “{query}”", lambda: self._window.ask_chat(query),
+                                 GROUP_ICONS[CHAT], current_route().label))
         self._entries = entries
         self._show_entries()
         kept = next((i for i, e in enumerate(entries) if before and (e.group, e.label) == (before.group, before.label)),

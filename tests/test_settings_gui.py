@@ -243,6 +243,7 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     choose(sheet, "image_description", "vision")
     file.ai_dialog = draft
     app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
+    app.assistant = SimpleNamespace(chat=SimpleNamespace(refresh_route=lambda: None))
 
     class OpenImages:
         refresh_model_preferences = ImagesPage.refresh_model_preferences

@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–9 and 10a done; next is 10b, the chat UI (see
+Status: in progress on branch `ui-redesign`. Steps 1–9, 10a and 10b done; next is 10c, the Claude Code terminal (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,7 +45,7 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 10a: 1173 passed, 5 skipped;
+Last updated 2026-10-10. Suite after 10b: 1204 passed, 5 skipped;
 ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
@@ -58,9 +58,8 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    the work is run"); old scratchpad paths are gone.
 3. 9d-2 (Images page) is done: ~500k agent tokens (≈25%), above the
    250–350k estimate.
-4. Next: 10b, the chat UI (see step 10, redesigned 2026-10-10, and
-   the 10a entry under "What exists now" for the interface), then 10c
-   (Claude Code terminal), 10d (Ollama tools + cleanup);
+4. Next: 10c, the Claude Code terminal (see step 10 and the 10b entry
+   under "What exists now" for the host API), then 10d (Ollama tools + cleanup);
    then step 11
    (finish the switch-over: leftover `qt_*` modules incl.
    `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
@@ -75,7 +74,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 |---|---|---|---|
 | ~~9d-2 Images page~~ | done (~500k actual) | | |
 | ~~10a Agent backend~~ | done (~370k actual) | | |
-| 10b Chat UI | right column chat, streaming, tool/diff cards, permissions | 250–350k | 13–18% |
+| ~~10b Chat UI~~ | done (~340k actual) | | |
 | 10c Claude Code terminal | xterm.js + pty in the right column, MCP server over `ai/tools`, protected-region hook, file watching / buffer conflicts | 250–400k | 13–20% |
 | 10d Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
@@ -111,7 +110,8 @@ Worth repeating before step 11.
 | Review fixes (12 Haiku reviewers, Sonnet fixes) | (see git log) | done |
 | 9d-2. Kit Images page under `ui/pages/`, transcript preview sheet; deleted `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | (see git log) | done |
 | 10a. Agent backend (`ai/agent.py`, `ai/tools/`, `anthropic` SDK) | (see git log) | done |
-| 10b–11 | | not started |
+| 10b. Chat UI + Chat \| Claude Code switch (`ui/workspace/chat/`) | (see git log) | done |
+| 10c–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -234,6 +234,18 @@ Worth repeating before step 11.
   `stream_turn` yet (10c). Settings → AI models has "Chat assistant"
   (`chat_model`). Live test: `SLIDEMAGE_LIVE_AI=1` + `ANTHROPIC_API_KEY`
   (not yet run). Open: server-side refusal `fallbacks` (beta) not used.
+- Step 10b: `ui/workspace/chat/` — `assistant.py` (`AssistantArea`,
+  Chat | Claude Code switch remembered as `assistant_view`; 10c calls
+  `window.assistant.set_view_widget("claude_code", widget)` and stops it
+  in `AssistantArea.shutdown()`), `view.py`, `cards.py` (text, tool,
+  diff cards with Apply/Reject/Undo), `session.py` (`ChatSession`: history,
+  agent `QThread`, `stop_worker`), `gui_workspace.py` (`GuiWorkspace`:
+  `on_gui(fn, default)` queues onto the GUI thread and waits on an
+  Event; Stop/close reject pending asks; compile via `_compile_jobs` +
+  `CompileSignals.run_settled`, `stop_compilation_now()`), `format.py`.
+  Settings: `chat_edit_mode`. `centre.path`, `centre.file_written(path)`;
+  palette "Ask the chat" live (`window.ask_chat`). The assistant sits
+  under the side panels (splitter 300/500, not remembered).
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -259,6 +271,10 @@ Worth repeating before step 11.
   versions as `v1-0-0` (could use `version_label`); larger refactors
   not done: panel boilerplate helpers in `panels/base.py`, one click-frame
   base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
+- 10b leftovers: cloud model picker lists `ANTHROPIC_FALLBACK_MODELS`,
+  not the live list; no chat history persistence/search; Ollama runs
+  take no Ollama slot yet and the "not for the chat yet" texts
+  (`view.py` `NOT_YET`, `_open_route_menu`) go in 10d.
 - 10a leftovers: check the PyInstaller bundle with `anthropic`
   (httpx/pydantic) in step 11; run the live agent test once with a key;
   `add_slide` header regeneration relies on the GUI's `file_changed`.
@@ -356,6 +372,11 @@ Worth repeating before step 11.
   left column's footer; "Tune prompt…" per image; deck order follows the
   open deck (no "any deck" combo); the transcript preview is a sheet,
   not a tab; new filter "No German".
+
+- Step 10b: "Ask the chat" works; window close / deck switch stop a
+  running chat request; chat edits go into the Source buffer when the
+  slide is open there, else to disk with a backup (Preview re-renders);
+  a chat compile can show the usual "nothing changed"/lint prompts.
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as

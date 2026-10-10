@@ -70,6 +70,8 @@ class CompileSignals(QObject):
     # deck_snapshot.snapshot_decks()'s list of SnapshotResult, once a
     # snapshot run is over.
     snapshots_done = Signal(object)
+    # A run is over: no job waits, runs or has its PDF moved (the RunStatus).
+    run_settled = Signal(object)
 
 
 class BuildOptionsDialog(QDialog):
@@ -197,6 +199,7 @@ class CompileJobsMixin:
         if self._run_over and self._run.settled:
             self._run_settled = True
             self._report_run_end(self._run)
+            self.signals.run_settled.emit(self._run)
 
     def _on_batch_done(self) -> None:
         """The worker thread has ended (the threads only emit): the compile slot is free, what never
@@ -416,10 +419,12 @@ class CompileJobsMixin:
             return
         self._compile_current(self.state.view, pages)
 
-    def _compile_jobs(self, jobs: list[CompileJob]) -> None:
+    def _compile_jobs(self, jobs: list[CompileJob]) -> bool:
+        """Compile `jobs` through the whole flow (prompts, job panel, Log drawer). False when the run
+        did not start: busy, nothing to typeset, or the user cancelled a question."""
         if self.compiling:
             QMessageBox.information(self, "Busy", "A compile run is already in progress.")
-            return
+            return False
         footer_timestamp = self.build_options.footer_timestamp_checkbox.isChecked()
         appendix_toc = self.build_options.appendix_toc_checkbox.isChecked()
         replace_pages = self.build_options.replace_pages_checkbox.isChecked()
@@ -442,7 +447,7 @@ class CompileJobsMixin:
                 "No slides to typeset -- every checked job is empty:\n\n"
                 + "\n".join(f"  • {d}" for d in empty_descriptions),
             )
-            return
+            return False
         if empty_descriptions:
             QMessageBox.warning(
                 self, "Some jobs skipped",
@@ -452,17 +457,18 @@ class CompileJobsMixin:
             )
         jobs = self._confirm_unchanged_jobs(jobs, outputs)
         if not jobs:
-            return
+            return False
         # Pre-render syntax check (2026-09-26), scoped to exactly what these
         # jobs read: the deck files plus the slides their versions/chapters
         # actually include.
         if not self._confirm_build(latex_lint.check_jobs(jobs), ", ".join(sorted({job.deck.name for job in jobs}))):
-            return
+            return False
         self._begin_run(
             {job.jobname: job_title(job) for job in jobs},
             {job.jobname: compile_progress.spec_for_job(job) for job in jobs},
             verb="Compiling", jobs=jobs, pdfs={job.jobname: outputs[job.jobname] for job in jobs})
         self._start_worker(self._run_jobs_thread, jobs)
+        return True
 
     def _confirm_build(self, result: latex_lint.CheckResult, what: str) -> bool:
         """The pre-render syntax check of a build: False when it found errors and the user cancelled."""
@@ -649,7 +655,13 @@ class CompileJobsMixin:
             "killed immediately (including latexmk's own lualatex/biber "
             "children); anything still queued after it will be skipped.",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
+            self.stop_compilation_now()
+
+    def stop_compilation_now(self) -> None:
+        """Stop the run without asking (the chat's Stop does; the job panel's asks first)."""
+        cancel = self.cancel_token
+        if cancel is None or not self.compiling:
             return
         self._log("==== Stop requested -- killing current job and skipping the rest ====")
         self._stop_requested = True

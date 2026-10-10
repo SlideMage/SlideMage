@@ -97,6 +97,12 @@ class CentreColumn(QFrame):
         if line is not None and self.source.current is not None:
             self.source.current.editor.go_to_line(line)
 
+    @property
+    def path(self) -> Optional[Path]:
+        """The file of the focused slide, or the one opened on purpose: what the Source view shows (in
+        Preview it is not loaded)."""
+        return self._path
+
     def is_dirty(self, path: Path) -> bool:
         file = self.source.file_for(path)
         return file is not None and file.dirty
@@ -106,6 +112,13 @@ class CentreColumn(QFrame):
         file = self.source.file_for(path)
         if file is not None:
             file.sync()
+
+    def file_written(self, path: Path) -> None:
+        """A file was written on disk outside the Source view (by the chat): a clean buffer shows it
+        again, and the Preview renders the slide if it is the one shown."""
+        self.sync_source(path)
+        if path == self._path:
+            self._on_saved(path)
 
     def slide_text(self, path: Path) -> str:
         """The text of a slide file as the Source view has it, unsaved edits included, else the saved file."""

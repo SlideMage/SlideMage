@@ -100,11 +100,12 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if snapshot_banner is not None:
             outer.addWidget(snapshot_banner)
 
-        # Left: the slide list, right: side panels (and the chat of step 10 below them).
+        # Left: the slide list, right: side panels with the assistant (chat) area below them.
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
         self.side_panels = SidePanels(self, self.state)
+        self.assistant = self.side_panels.assistant
         # Centre: the views of the focused slide, or the Images page. Its first scan reads every
         # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
         # deferred to the first time the page is shown (_on_page_changed) rather than paid on every
@@ -216,6 +217,12 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.stack.setCurrentWidget(self.images_page)
         self.images_page.show_slide(id_slug)
 
+    def ask_chat(self, text: str) -> None:
+        """Put `text` to the chat as a question about the focused slide (the command palette)."""
+        self.stack.setCurrentWidget(self.centre)   # the Images page hides the right column
+        self.assistant.show_view("chat")
+        self.assistant.chat.ask(text, "slide")
+
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
     ) -> None:
@@ -257,6 +264,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             event.ignore()
             return
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
+        self.assistant.shutdown()
         self.images_page.shutdown()
         self.palette.stop_search(5000)
         self._stop_worker()
@@ -338,6 +346,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if sheet.loaded:        # the model pickers that are open follow a changed default
             self.images_page.refresh_model_preferences(sheet.available_models, sheet.vision_models)
             self.centre.refresh_model_preferences(sheet.available_models)
+            self.assistant.chat.refresh_route()
 
     def set_dark_mode(self, checked: bool) -> None:
         """Called from the Settings sheet's Dark mode checkbox; theme.set_dark() also

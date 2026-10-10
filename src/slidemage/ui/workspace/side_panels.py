@@ -1,6 +1,5 @@
-"""The right column (UI_REDESIGN_PLAN.md, step 6): a panel picker and the chosen panel for
-the focused slide. The lower part is left to step 10's AI chat, which is added to this
-splitter below the panels.
+"""The right column (UI_REDESIGN_PLAN.md, steps 6 and 10): a panel picker and the chosen panel for
+the focused slide, and below them, in the same splitter, the assistant area (chat/assistant.py).
 
 The picker (▾) names the shown panel and lists the others with a few facts about the
 slide. The choice is remembered across sessions (app_settings, like the centre's mode).
@@ -16,12 +15,14 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QSplitter, QVBox
 from ... import app_settings
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
+from .chat.assistant import AssistantArea
 from .panels import PANELS
 from .panels.base import SidePanel
 from .state import WorkspaceState
 
 WIDTH = 340   # the prototype's width of the column
 SETTING = "side_panel"
+ASSISTANT_SPLIT = (300, 500)   # starting heights of the panels and of the assistant area
 
 
 class SidePanels(QSplitter):
@@ -58,6 +59,9 @@ class SidePanels(QSplitter):
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
         self.addWidget(card)
+        self.assistant = AssistantArea(app, state)
+        self.addWidget(self.assistant)
+        self.setSizes([ASSISTANT_SPLIT[0], ASSISTANT_SPLIT[1]])
 
         for panel in self.panels.values():
             panel.dirty_changed.connect(lambda _dirty: state.set_dirty(bool(self.dirty_panels()), "panels"))

@@ -88,7 +88,7 @@ def test_typing_filters_the_commands_and_adds_the_slides_and_decks_that_match(wi
     type_text(palette, deck.name)
     assert deck.name not in labels(palette, GO_TO_DECK)                            # not the open one
     type_text(palette, "zzzqqq")
-    assert labels(palette) == [] and palette._entries[0].group == CHAT and palette._current == -1
+    assert labels(palette) == [] and palette._entries[0].group == CHAT and palette._current == 0     # the chat row
 
 
 def test_the_slide_group_follows_the_focused_slide_and_the_selection(window):
@@ -139,8 +139,8 @@ def test_a_disabled_command_is_listed_but_does_not_run(window):
     palette.open()
     type_text(palette, "open latest pdf")
     assert labels(palette) == ["Open latest PDF"] and not palette._entries[0].enabled
-    assert palette._current == -1
-    press(palette, Qt.Key.Key_Return)
+    assert palette._current == 1                    # the chat row, the only one that can run
+    palette._run(0)
     assert palette.isVisible()
 
 
@@ -224,7 +224,7 @@ def test_from_three_characters_the_files_are_searched_and_a_hit_opens_at_its_lin
     palette.open()
     type_text(palette, "citation")
     chat = palette._entries[-1]
-    assert (chat.group, chat.label, chat.enabled) == (CHAT, "Ask the chat: “citation”", False)
+    assert (chat.group, chat.label, chat.enabled) == (CHAT, "Ask the chat: “citation”", True)
     assert palette._debounce.isActive()
     wait_until(lambda: palette._hits_query == "citation")
     hits = [e for e in palette._entries if e.group.startswith(TEXT_HITS)]
