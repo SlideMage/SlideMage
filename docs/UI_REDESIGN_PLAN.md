@@ -60,7 +60,8 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    250–350k estimate.
 4. Next: 10b, the chat UI (see step 10, redesigned 2026-10-10, and
    the 10a entry under "What exists now" for the interface), then 10c
-   (Ollama tools + cleanup); then step 11
+   (Claude Code subscription backend), 10d (Ollama tools + cleanup);
+   then step 11
    (finish the switch-over: leftover `qt_*` modules incl.
    `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
    manual, screenshots tool, 6.0 version bump). Consider a kit restyle
@@ -75,7 +76,8 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~9d-2 Images page~~ | done (~500k actual) | | |
 | ~~10a Agent backend~~ | done (~370k actual) | | |
 | 10b Chat UI | right column chat, streaming, tool/diff cards, permissions | 250–350k | 13–18% |
-| 10c Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
+| 10c Claude Code subscription backend | Agent SDK runs logged-in Claude Code; built-in tools off, `ai/tools` as in-process MCP; permission callback | 150–250k | 8–13% |
+| 10d Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
 
@@ -630,10 +632,21 @@ context and SlideMage tools, and makes the change itself.
 - **UI**: This slide / Whole deck scope, streamed messages, tool and diff
   cards, Stop, permission switch, provider label with local/cloud
   switch (disabled when "Local AI only" is on); palette "Ask the chat".
-- Split: **10a** agent backend (`ai/agent.py` loop, `ai/tools.py`,
+- **Subscription route** (user decision 2026-10-10): a second cloud
+  option "Claude Code (your subscription)" next to "Claude (API key)".
+  It runs the installed, logged-in Claude Code through the Claude Agent
+  SDK (`claude-agent-sdk`, optional) with its built-in tools disabled
+  and SlideMage's `ai/tools` exposed as an in-process MCP server; the
+  SDK's permission callback drives "Ask before edits". Claude Code runs
+  its own loop, so this is a second loop over the same tools,
+  `Workspace`, context and system prompt. Meant for personal use
+  (Anthropic's terms: products shipped to others use API keys); usage
+  counts against the user's Pro limits.
+- Split: **10a** agent backend (`ai/agent.py` loop, `ai/tools/`,
   SDK switch, system prompt; tests with a fake provider, opt-in live
-  test); **10b** chat UI in the right column; **10c** Ollama tools,
-  palette row, remove `qt_ai_draft_dialog.py`.
+  test); **10b** chat UI in the right column; **10c** Claude Code
+  subscription backend; **10d** Ollama tools, palette row, remove
+  `qt_ai_draft_dialog.py`.
 
 ### 11. Finish the switch-over
 - Delete any `qt_*` module left over (`qt_render_check.py` becomes a test
