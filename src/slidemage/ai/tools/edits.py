@@ -1,0 +1,169 @@
+"""Changing files: `edit_file` and `write_file`, and the rules every change follows
+(2026-10-10, UI redesign step 10a).
+
+* A file that is open in an editor buffer is changed in the buffer (one undo step, unsaved
+  until the user saves it, with the version prompt and the deck questions of the normal save).
+  Any other file is written straight away through slide_source.save_slide_source(): a backup
+  in slides/.backups/ first, the file's own line ends kept, nothing written if the file
+  changed since it was read. A slide saved that way keeps its tracked version (it is an
+  "overwrite"); freezing a version stays the user's decision.
+* A slide's protected parts are never edited: the leading header comment, the
+  \\setSlideVersion line and \\vbox to 0pt{...} blocks -- the same parts ai_draft hides from a
+  rewrite -- and a frozen version (-vX-Y-Z.tex) is a historical record and read-only.
+* Mode "ask": every change is shown (EditProposed, Workspace.confirm_edit) and waits for the
+  user; a rejection is reported to the model. Mode "auto": applied at once. Either way an
+  applied change is announced with its before and after text (EditApplied), which is what the
+  chat's diff card and Undo need (undo_edit).
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from ... import slide_preview, slide_source
+from ...ai_draft import mask_protected_regions
+from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
+from ..workspace import Workspace
+from .base import ToolContext, ToolError, tool
+from .files import current_text, project_path, relative
+
+EDITABLE_SUFFIXES = (".tex", ".bib", ".md", ".txt", ".csv", ".json", ".sty", ".cls", ".yaml", ".yml")
+MAX_NEW_FILE_CHARS = 200_000
+PROTECTED_MESSAGE = (
+    "That edit would change a protected part of the slide: the comment block at the top of the file, "
+    "the \\setSlideVersion line, or a \\vbox to 0pt{...} overlay block. SlideMage manages those; leave "
+    "them as they are and change only the rest of the slide.")
+
+
+def slide_kind(path: Path) -> str | None:
+    """"current" / "frozen" for a file in slides/ that is a slide's current or frozen version."""
+    if path.parent != slide_source.SLIDES_DIR.resolve():
+        return None
+    try:
+        macro, _id_slug, _version = slide_preview.call_for_slide_path(path)
+    except ValueError:
+        return None
+    return "current" if macro == "slide" else "frozen"
+
+
+def protected_problem(before: str, after: str) -> str | None:
+    """The message to give the model when `after` differs from `before` in a protected part."""
+    def regions(text: str) -> list[str]:
+        return list(mask_protected_regions(text).placeholders.values())
+
+    return None if regions(before) == regions(after) else PROTECTED_MESSAGE
+
+
+def _editable(ctx: ToolContext, arg: str) -> Path:
+    path = project_path(ctx.root, arg)
+    if path.suffix.lower() not in EDITABLE_SUFFIXES:
+        raise ToolError(f"{path.name}: only text files can be changed ({', '.join(EDITABLE_SUFFIXES)}).")
+    if slide_kind(path) == "frozen":
+        raise ToolError(f"{path.name} is a frozen version of a slide: a historical record, read-only. "
+                        "Edit the slide's -current.tex file instead.")
+    return path
+
+
+def propose(ctx: ToolContext, path: Path, before: str, after: str, note: str = "") -> bool:
+    """Announce a change; in mode "ask" wait for the user. False (EditRejected sent) when refused."""
+    ctx.emit(EditProposed(ctx.call_id, path, before, after, note))
+    if ctx.mode != EDIT_ASK or ctx.workspace.confirm_edit(path, before, after):
+        return True
+    ctx.emit(EditRejected(ctx.call_id, path))
+    return False
+
+
+def write_text(workspace: Workspace, path: Path, before: str, after: str) -> bool:
+    """Put `after` in place of `before` in the buffer if `path` is open, else on disk. Returns
+    whether it went into the buffer; ToolError when it could not be done."""
+    if workspace.is_open(path):
+        problem = workspace.apply_to_buffer(path, before, after)
+        if problem:
+            raise ToolError(f"{path.name} was not changed: {problem}")
+        return True
+    try:
+        slide_source.save_slide_source(path, after, slide_source.read_slide_source(path)[1], expected_text=before)
+    except slide_source.StaleFileError as exc:
+        raise ToolError(f"{path.name} was not changed: {exc}") from None
+    workspace.file_changed(path, before)
+    return False
+
+
+def undo_edit(workspace: Workspace, applied: EditApplied) -> str:
+    """Put back what an applied edit replaced. "" on success, else why not (the file changed since,
+    so the user's later work would be lost)."""
+    try:
+        now = current_text(workspace, applied.path)
+    except (OSError, ToolError) as exc:
+        return str(exc)
+    if now != applied.after:
+        return f"{applied.path.name} has changed since, so the edit cannot be undone automatically."
+    try:
+        write_text(workspace, applied.path, applied.after, applied.before)
+    except ToolError as exc:
+        return str(exc)
+    return ""
+
+
+def _applied(ctx: ToolContext, path: Path, before: str, after: str, via_buffer: bool, **extra) -> str:
+    ctx.emit(EditApplied(ctx.call_id, path, before, after, via_buffer, **extra))
+    name = relative(ctx.root, path)
+    return (f"Changed {name} in the open editor (not saved yet; the user saves it)." if via_buffer
+            else f"Changed {name} and saved it (a backup is kept).")
+
+
+@tool("edit_file",
+      "Replace one exact piece of text in a project file. old_text must occur exactly once in the "
+      "file (include enough surrounding lines to make it unique) and must match it character for "
+      "character, tabs included -- read_file first. If the file is open in the editor the change "
+      "goes into its buffer (the user can undo it there and saves it themselves). Refused: the "
+      "protected parts of a slide, frozen slide versions, non-text files.",
+      {"path": {"type": "string", "description": "Project-relative path."},
+       "old_text": {"type": "string", "description": "The text to replace, exactly as in the file."},
+       "new_text": {"type": "string", "description": "The replacement (may be empty to delete)."}},
+      ("path", "old_text", "new_text"))
+def edit_file(ctx: ToolContext, args: dict) -> str:
+    path = _editable(ctx, args["path"])
+    old, new = args["old_text"], args["new_text"]
+    if not old:
+        raise ToolError("old_text is empty. To create a file use write_file.")
+    text = current_text(ctx.workspace, path)
+    count = text.count(old)
+    if count == 0:
+        hint = (" The text exists with different spacing or line breaks: copy it from read_file exactly."
+                if " ".join(old.split()) in " ".join(text.split()) else "")
+        raise ToolError(f"old_text was not found in {relative(ctx.root, path)}.{hint}")
+    if count > 1:
+        raise ToolError(f"old_text occurs {count} times in {relative(ctx.root, path)}; add surrounding "
+                        "text so that it matches exactly once.")
+    after = text.replace(old, new, 1)
+    if after == text:
+        return "old_text and new_text are the same; nothing to change."
+    if slide_kind(path) == "current" and (problem := protected_problem(text, after)):
+        raise ToolError(problem)
+    if not propose(ctx, path, text, after):
+        raise ToolError("The user rejected this edit. Do not repeat it; ask what they would prefer.")
+    return _applied(ctx, path, text, after, write_text(ctx.workspace, path, text, after))
+
+
+@tool("write_file",
+      "Create a new text file in the project (not for slides: use add_slide; never overwrites -- an "
+      "existing file is changed with edit_file).",
+      {"path": {"type": "string", "description": "Project-relative path of the new file."},
+       "content": {"type": "string", "description": "The file's text."}},
+      ("path", "content"))
+def write_file(ctx: ToolContext, args: dict) -> str:
+    path = _editable(ctx, args["path"])
+    content = args["content"].replace("\r\n", "\n")
+    if path.exists():
+        raise ToolError(f"{relative(ctx.root, path)} exists already. Change it with edit_file.")
+    if path.parent == slide_source.SLIDES_DIR.resolve():
+        raise ToolError("New slides are created with add_slide (it mints the id and writes the header).")
+    if len(content) > MAX_NEW_FILE_CHARS:
+        raise ToolError("The file is too large for write_file.")
+    if not propose(ctx, path, "", content):
+        raise ToolError("The user rejected this file. Do not repeat it; ask what they would prefer.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8", newline="\n")
+    ctx.workspace.file_changed(path, None)
+    ctx.emit(EditApplied(ctx.call_id, path, "", content, False, undoable=False))
+    return f"Created {relative(ctx.root, path)}."

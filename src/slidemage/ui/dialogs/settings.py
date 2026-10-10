@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox, QWidget
 
 from ... import app_settings, slide_snapshot, updater
 from ...ai import credentials, resolver
@@ -37,6 +37,7 @@ TASKS = (
     ("ai_draft", "AI drafting"),
     ("image_description", "Image descriptions"),
     ("translation", "Translation"),
+    ("chat", "Chat assistant"),
 )
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
@@ -146,9 +147,9 @@ class ModelsTab(Page):
             "The model each AI task starts on. Every model picker begins here; choosing another one in the "
             "picker applies to that use only. Claude models are listed unless \"Local AI only\" is on (Cloud tab); "
             "a picker offers them once an API key is set."))
-        for pair in zip(TASKS[::2], TASKS[1::2]):
+        for start in range(0, len(TASKS), 2):
             fields = []
-            for task, label in pair:
+            for task, label in TASKS[start:start + 2]:
                 combo = QComboBox()
                 # A long model tag must not widen the whole sheet; the dropdown still shows full names.
                 combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -159,7 +160,7 @@ class ModelsTab(Page):
                     app_settings.MODEL_SETTINGS[t], c.itemData(i) or ""))       # "<provider>:<model>"
                 self.combos[task] = combo
                 fields.append(Field(label, combo))
-            layout.addWidget(columns(*fields))
+            layout.addWidget(columns(*fields, *([QWidget()] * (2 - len(fields)))))   # an odd last row keeps its column
         self.unreachable = caption("")
         layout.addWidget(self.unreachable)
         layout.addStretch(1)

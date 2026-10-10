@@ -137,3 +137,39 @@ def use_new_slide_files(monkeypatch, root):
     relinked = []
     monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: relinked.append(True))
     return relinked
+
+
+SLIDE_TEXT = (
+    "%% Included in decks: test\r\n%%\r\n\r\n% A note on this slide\r\n\\setSlideVersion{1-0-0}\r\n"
+    "\\begin{standardframe}{Hello}\r\n\t\\begin{itemize}\r\n\t\t\\item First point\r\n"
+    "\t\t\\item Second point\r\n\t\\end{itemize}\r\n\t\\vbox to 0pt{\\vss\\hbox{overlay}}\r\n"
+    "\\end{standardframe}\r\n")
+DECK_TEXT = (
+    "\\documentclass{beamer}\r\n\\begin{document}\r\n\\section{Intro}\r\n\\slide{abc-EN-Hello}\r\n"
+    "\\section{Main}\r\n\\slide{abd-EN-Second}\r\n\\end{document}\r\n")
+BIB_TEXT = "@book{old2000,\n\tauthor = {Old, Ann},\n\ttitle = {Older},\n\tyear = {2000},\n}\n"
+
+
+def make_project(monkeypatch, root):
+    """A small throwaway project at `root` (two slides, one with a frozen version, one deck, a
+    .bib) that every module looks up its files in, for tests that change files (the real
+    example/ must never be written). The text of the slides is SLIDE_TEXT (CRLF, as in real
+    projects); returns `root` resolved."""
+    from slidemage import bibliography, deck_scan
+
+    root.mkdir(parents=True, exist_ok=True)
+    relinked = use_new_slide_files(monkeypatch, root)    # slides/, slide_ids.csv, slide-template.tex
+    assert relinked == []
+    slides = root / "slides"
+    for name, text in (("abc-EN-Hello-current.tex", SLIDE_TEXT), ("abc-EN-Hello-v1-0-0.tex", SLIDE_TEXT),
+                       ("abd-EN-Second-current.tex", SLIDE_TEXT.replace("Hello", "Second"))):
+        (slides / name).write_bytes(text.encode())
+    (root / "decks").mkdir()
+    (root / "decks" / "test.tex").write_bytes(DECK_TEXT.encode())
+    (root / "Slidemaster.bib").write_text(BIB_TEXT, encoding="utf-8", newline="\n")
+    (root / ".slidemage").mkdir()
+    (root / ".slidemage" / "app_settings.json").write_text('{"anthropic_api_key": "sk-secret"}')
+    monkeypatch.setattr(deck_scan, "DECKS_DIR", root / "decks")
+    monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", root / "decks" / "archive")
+    monkeypatch.setattr(bibliography, "DEFAULT_BIB", root / "Slidemaster.bib")
+    return root.resolve()

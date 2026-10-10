@@ -5,9 +5,7 @@ and consent state."""
 from __future__ import annotations
 
 import base64
-import json
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -22,55 +20,9 @@ from slidemage.ai.providers import (
     parse_json_object,
 )
 
+from fake_http import Server, message_sse
+
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
-
-
-class Server:
-    """Answers every request with `status`/`body` and records what it got."""
-
-    def __init__(self):
-        self.status = 200
-        self.body: dict | str = {}
-        self.delay = threading.Event()  # set to release a held response
-        self.hold = False
-        self.requests: list[dict] = []
-        outer = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def _answer(self):
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length)
-                outer.requests.append({
-                    "method": self.command, "path": self.path,
-                    "headers": {k.lower(): v for k, v in self.headers.items()},
-                    "body": json.loads(raw) if raw else None})
-                if outer.hold:
-                    outer.delay.wait(5)
-                data = (outer.body if isinstance(outer.body, str)
-                        else json.dumps(outer.body)).encode()
-                try:
-                    self.send_response(outer.status)
-                    self.send_header("Content-Length", str(len(data)))
-                    self.end_headers()
-                    self.wfile.write(data)
-                except OSError:
-                    pass  # the client aborted
-
-            do_GET = do_POST = _answer
-
-            def log_message(self, *_args):
-                pass
-
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
-        threading.Thread(
-            target=self.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-        ).start()
-
-    def close(self):
-        self.delay.set()
-        self.httpd.shutdown()
-        self.httpd.server_close()
 
 
 @pytest.fixture
@@ -92,7 +44,13 @@ def settings(tmp_path, monkeypatch):
 def anthropic(server, **kwargs):
     provider = AnthropicProvider(api_key=kwargs.pop("api_key", "sk-test"), **kwargs)
     provider.base_url = server.url
+    provider.max_retries = 0     # an error answer is the test; the SDK's backoff would only slow it
     return provider
+
+
+def answer_with(server, content, stop_reason="end_turn"):
+    server.body = message_sse(content, stop_reason)
+    server.content_type = "text/event-stream"
 
 
 # -- Ollama ------------------------------------------------------------------
@@ -169,9 +127,7 @@ def test_abort_ends_a_running_request(server):
 # -- Anthropic ---------------------------------------------------------------
 
 def test_anthropic_request_shape_with_image_and_json_mode(server):
-    server.body = {"content": [{"type": "text", "text": "{\"a\": "},
-                               {"type": "text", "text": "1}"}],
-                   "stop_reason": "end_turn"}
+    answer_with(server, [{"type": "text", "text": "{\"a\": 1}"}])
     provider = anthropic(server)
     reply = provider.chat(
         [{"role": "user", "content": "describe"}], system="sys", images=[PNG],
@@ -182,7 +138,7 @@ def test_anthropic_request_shape_with_image_and_json_mode(server):
     assert request["headers"]["anthropic-version"] == "2023-06-01"
     assert request["headers"]["content-type"] == "application/json"
     body = request["body"]
-    assert set(body) == {"model", "max_tokens", "system", "messages"}
+    assert set(body) == {"model", "max_tokens", "system", "messages", "stream"}
     assert body["model"] == "claude-sonnet-5-5" and body["max_tokens"] == 123
     assert body["system"].startswith("sys\n\n") and '"type": "object"' in body["system"]
     assert body["messages"] == [{"role": "user", "content": [
@@ -195,11 +151,12 @@ def test_anthropic_request_shape_with_image_and_json_mode(server):
 
 
 def test_anthropic_plain_text_turn_has_no_system_and_flags_truncation(server):
-    server.body = {"content": [{"type": "text", "text": "cut"}], "stop_reason": "max_tokens"}
+    answer_with(server, [{"type": "text", "text": "cut"}], "max_tokens")
     reply = anthropic(server, model="claude-haiku-4-5-20251001").chat(
         [{"role": "user", "content": "hi"}])
     body = server.requests[0]["body"]
-    assert "system" not in body and body["model"] == "claude-haiku-4-5-20251001"
+    assert "system" not in body and "output_config" not in body
+    assert body["model"] == "claude-haiku-4-5-20251001"
     assert body["messages"] == [{"role": "user", "content": "hi"}]
     assert reply.truncated
 
@@ -224,6 +181,7 @@ def test_anthropic_http_errors_map_to_provider_errors(server, status, text):
 def test_anthropic_network_error_and_missing_key(server):
     provider = AnthropicProvider(api_key="k")
     provider.base_url = "http://127.0.0.1:9"
+    provider.max_retries = 0
     with pytest.raises(ProviderError, match="Anthropic unreachable"):
         provider.chat([{"role": "user", "content": "hi"}])
     with pytest.raises(ProviderError, match="No Anthropic API key"):

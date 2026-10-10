@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–9 done; next is 10, the AI chat (see
+Status: in progress on branch `ui-redesign`. Steps 1–9 and 10a done; next is 10b, the chat UI (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,7 +45,7 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 9d-2: 1106 passed, 4 skipped;
+Last updated 2026-10-10. Suite after 10a: 1173 passed, 5 skipped;
 ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
@@ -58,8 +58,9 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    the work is run"); old scratchpad paths are gone.
 3. 9d-2 (Images page) is done: ~500k agent tokens (≈25%), above the
    250–350k estimate.
-4. Next: step 10 as an agent chat (see step 10, redesigned
-   2026-10-10): 10a backend, 10b UI, 10c Ollama tools + cleanup; then step 11
+4. Next: 10b, the chat UI (see step 10, redesigned 2026-10-10, and
+   the 10a entry under "What exists now" for the interface), then 10c
+   (Ollama tools + cleanup); then step 11
    (finish the switch-over: leftover `qt_*` modules incl.
    `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
    manual, screenshots tool, 6.0 version bump). Consider a kit restyle
@@ -72,7 +73,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | Work | Content | Agent tokens | ≈ window |
 |---|---|---|---|
 | ~~9d-2 Images page~~ | done (~500k actual) | | |
-| 10a Agent backend | agent loop, project + SlideMage tools, `anthropic` SDK, system prompt | 250–350k | 13–18% |
+| ~~10a Agent backend~~ | done (~370k actual) | | |
 | 10b Chat UI | right column chat, streaming, tool/diff cards, permissions | 250–350k | 13–18% |
 | 10c Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
@@ -107,7 +108,8 @@ Worth repeating before step 11.
 | 9d-1. Images page logic → `image_review.py` (backend only) | (see git log) | done |
 | Review fixes (12 Haiku reviewers, Sonnet fixes) | (see git log) | done |
 | 9d-2. Kit Images page under `ui/pages/`, transcript preview sheet; deleted `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | (see git log) | done |
-| 10–11 | | not started |
+| 10a. Agent backend (`ai/agent.py`, `ai/tools/`, `anthropic` SDK) | (see git log) | done |
+| 10b–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -210,6 +212,26 @@ Worth repeating before step 11.
   `repoint_slides(unsaved=…)` refuses slides with unsaved Source edits;
   `alt_draft.slide_jobs`; `CentreColumn.sync_source`, `TopBar.mode_clicked`.
   Removed: `qt_transcript_tab`, `qt_transcript_preview_tab`.
+- Step 10a (agent backend, no Qt): `ai/agent_types.py` (events
+  `TextDelta`, `ToolStarted`/`ToolFinished`, `EditProposed`/`EditApplied`/
+  `EditRejected`, `Done(reason)` always last; `EDIT_ASK`/`EDIT_AUTO`),
+  `ai/agent.py` (`Agent(provider, workspace, on_event, mode, max_turns)`,
+  `run(history, request, scope)` blocking on a worker thread, never
+  raises; `stop()` from any thread; one `Agent` per request),
+  `ai/workspace.py` (`Workspace` base for 10b to subclass:
+  `context()`, `is_open`/`is_dirty`/`buffer_text`, `apply_to_buffer(path,
+  expected, new)`, `confirm_edit`, `confirm_cloud`, `file_changed`,
+  `compile_deck`; all called on the agent thread, GUI work must be
+  marshalled), `ai/agent_context.py` (fixed, cached system prompt +
+  per-request context; scope slide/deck), `ai/guides.py`, `ai/tools/`
+  (read_file, find_files, search, edit_file, write_file, list_slides,
+  lint, render_preview, add_slide, add_bib_entry, compile_deck,
+  read_guide; dot-folders and `pdf/` invisible; protected-region and
+  frozen-version refusal; `undo_edit`). `AnthropicProvider` now runs on
+  the `anthropic` SDK (lazy import, `stream_turn()`); Ollama has no
+  `stream_turn` yet (10c). Settings → AI models has "Chat assistant"
+  (`chat_model`). Live test: `SLIDEMAGE_LIVE_AI=1` + `ANTHROPIC_API_KEY`
+  (not yet run). Open: server-side refusal `fallbacks` (beta) not used.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -235,6 +257,9 @@ Worth repeating before step 11.
   versions as `v1-0-0` (could use `version_label`); larger refactors
   not done: panel boilerplate helpers in `panels/base.py`, one click-frame
   base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
+- 10a leftovers: check the PyInstaller bundle with `anthropic`
+  (httpx/pydantic) in step 11; run the live agent test once with a key;
+  `add_slide` header regeneration relies on the GUI's `file_changed`.
 - 9d-2 leftovers: the Images page uses legacy-themed combos, checkboxes
   and some scrollbars; first paint of a slide's forms can be squeezed for
   one event-loop turn; Draft all / Translate all show no counts;

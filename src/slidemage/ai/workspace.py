@@ -1,0 +1,92 @@
+"""The agent's window into the application: what the user has open, and the few
+things only the application can do for it (2026-10-10, UI redesign step 10a).
+
+`Workspace` is a plain class, not a Qt object: the default implementation is a
+headless project (no editor buffers; nothing to ask; a compile runs right
+here), which is what the tests and any command-line use get. The chat in the
+main window (10b) subclasses it and overrides the methods that need widgets.
+
+Threading contract: the agent loop runs on a worker thread and calls every
+method here on that thread. An implementation that touches widgets (buffers,
+dialogs, the job panel) must do that work on the GUI thread itself -- e.g.
+through a blocking queued call -- and return the result; the default
+implementation touches no widget, so it may be called from anywhere. Nothing
+in ai/ imports Qt.
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from .. import compiler
+from ..deck_scan import PROJECT_ROOT, Deck
+from . import resolver
+from .providers import ChatProvider
+
+
+@dataclass(frozen=True)
+class WorkspaceContext:
+    """What the user is looking at when they send a request."""
+    deck: Deck | None = None             # the open deck
+    slide_id: str | None = None          # bare id of the focused slide
+    path: Path | None = None             # the file the Source view shows (a slide, a deck, the .bib ...)
+    view: str = "instructor"             # "View as": instructor / during-course / after-course
+    language: str = "EN"                 # the language being edited
+    footer_timestamp: bool = True        # previews show the compile time in the footer
+
+
+class Workspace:
+    def __init__(self, root: Path | None = None, context: WorkspaceContext | None = None) -> None:
+        self.root = (root or PROJECT_ROOT).resolve()
+        self._context = context or WorkspaceContext()
+
+    def context(self) -> WorkspaceContext:
+        """A snapshot of the focus, taken when a request starts."""
+        return self._context
+
+    # -- editor buffers: a file that is open is edited there, not on disk --------------------------
+
+    def is_open(self, path: Path) -> bool:
+        """Whether `path` has an editor buffer (clean or not)."""
+        return False
+
+    def is_dirty(self, path: Path) -> bool:
+        """Whether the buffer of `path` has unsaved edits."""
+        return False
+
+    def buffer_text(self, path: Path) -> str:
+        """The text of an open file's buffer, unsaved edits included ("\\n" line ends)."""
+        raise FileNotFoundError(path)
+
+    def apply_to_buffer(self, path: Path, expected_text: str, new_text: str) -> str | None:
+        """Replace the buffer's whole text as one undo step, leaving it unsaved. None when done;
+        else why not: the buffer is read-only (a frozen version), or its text is no longer
+        `expected_text` (the user typed while the edit waited for their answer)."""
+        return "it is not open for editing"
+
+    # -- asking and telling the user ---------------------------------------------------------------
+
+    def confirm_edit(self, path: Path, before: str, after: str) -> bool:
+        """Show the change (whole-file texts; a new file has `before` "") and wait for Apply or
+        Reject. Headless there is nobody to ask, so nothing is applied."""
+        return False
+
+    def confirm_cloud(self, provider: ChatProvider) -> bool:
+        """The first cloud request in a project: say what leaves the machine (the focused slide,
+        files the model reads, rendered previews) and ask once. True to go ahead."""
+        return not resolver.needs_cloud_consent(provider)
+
+    def file_changed(self, path: Path, previous_text: str | None) -> None:
+        """A tool wrote `path` on disk (`previous_text` None: it is new). The application refreshes
+        what shows it: the slide list, a clean buffer, the deck header sync."""
+
+    # -- compiling -------------------------------------------------------------------------------
+
+    def compile_deck(
+        self, deck: Deck, kind: str, cancel: compiler.CancelToken, log: Callable[[str], None],
+    ) -> dict[str, bool]:
+        """Compile `deck` as compiler.build_jobs(deck, kind) says; {jobname: success}. Blocks until
+        done (the Stop of the chat ends it through `cancel`). The window overrides this to run
+        the jobs through its job panel."""
+        return compiler.run_jobs(compiler.build_jobs(deck, kind), log, cancel)
