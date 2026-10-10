@@ -707,3 +707,27 @@ def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(
     window._on_dirty_changed(False)            # and a save changes the slide's versions
     window.centre.versions_changed.emit()
     assert len(refreshed) == 3
+
+
+def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeypatch):
+    from slidemage.ui.workspace import side_panels
+
+    first = build_window(monkeypatch)
+    first.resize(2400, 800)
+    first.show()
+    assert first.side_panels.width() == side_panels.WIDTH == 340          # the default
+    first.set_right_column_width(520)
+    first.splitter.splitterMoved.emit(0, 2)                                 # what a drag of the handle sends
+    assert first.side_panels.width() == 520 and app_settings.get(side_panels.WIDTH_SETTING) == 520
+    first.set_right_column_width(100)                                       # not narrower than the default ...
+    assert first.side_panels.width() == 340
+    first.set_right_column_width(5000)                                      # ... nor wider than the maximum
+    assert first.side_panels.width() == side_panels.MAX_WIDTH
+    first.set_right_column_width(520)
+    first.splitter.splitterMoved.emit(0, 2)
+    second = build_window(monkeypatch)
+    second.resize(2400, 800)
+    second.show()
+    assert second.side_panels.width() == 520
+    app_settings.set(side_panels.WIDTH_SETTING, "garbage")
+    assert side_panels.remembered_width() == 340

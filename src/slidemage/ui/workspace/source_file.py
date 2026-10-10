@@ -16,7 +16,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ... import (
     bibliography,
@@ -30,6 +30,7 @@ from ...deck_scan import PROJECT_ROOT
 from ...qt_ai_draft_dialog import AiDraftDialog
 from ...slide_language import bare_id
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
+from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from ..text import plural
 from .ai_fix import AiFixPanel
@@ -37,6 +38,7 @@ from .source_editor import FindBar, LatexPlainTextEdit
 
 LINT_DELAY_MS = 300     # after the last keystroke
 LINT_LIST_LIMIT = 25    # issues shown in the status line's list
+SAME, RELOADED, CONFLICT = "same", "reloaded", "conflict"    # what disk_changed() found
 
 
 def prompt_version_choice(parent, old_version: Optional[slide_versioning.Version]) -> Optional[str]:
@@ -115,6 +117,7 @@ class SourceFile(Surface):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._build_status_line())
+        layout.addWidget(self._build_conflict_bar())
         layout.addWidget(self.fix_panel)
         layout.addWidget(self.find_bar)
         layout.addWidget(self.fold_button, 0, Qt.AlignmentFlag.AlignLeft)
@@ -164,6 +167,28 @@ class SourceFile(Surface):
         row.addWidget(self.ask_ai_button)
         line.setVisible(not self.is_bib)
         return line
+
+    def _build_conflict_bar(self) -> Surface:
+        """The notice for a file that changed on disk while the buffer has unsaved edits."""
+        self.conflict_bar = Surface()
+        row = QHBoxLayout(self.conflict_bar)
+        row.setContentsMargins(10, 4, 10, 4)
+        self.conflict_label = QLabel()
+        self.conflict_label.setObjectName(q.CHAT_NOTICE)
+        self.conflict_label.setProperty("tone", "warning")
+        self.conflict_label.setWordWrap(True)
+        row.addWidget(self.conflict_label, 1)
+        reload_button = Button("Reload from disk", "secondary", compact=True)
+        reload_button.setToolTip("Drop your unsaved edits and show the file as it is on disk now.")
+        reload_button.clicked.connect(self._reload_conflicting)
+        keep_button = Button("Keep my edits", "ghost", compact=True)
+        keep_button.setToolTip("Keep what you have in the editor. Saving it replaces the file on disk "
+                               "(a backup of that version is kept).")
+        keep_button.clicked.connect(self.keep_edits)
+        row.addWidget(reload_button)
+        row.addWidget(keep_button)
+        self.conflict_bar.hide()
+        return self.conflict_bar
 
     def run_lint(self) -> None:
         """Check the buffer now (a .bib is not LaTeX and is not checked)."""
@@ -224,12 +249,42 @@ class SourceFile(Surface):
         self.text, self.eol = slide_source.read_slide_source(self.path)
         self.editor.set_text(self.text)
         self._update_fold_button()
+        self.conflict_bar.hide()
 
     def sync(self) -> None:
         """Pick up a change of the file on disk made elsewhere in the app (a deck
         edit from the slide list, a replaced image), unless there are unsaved edits."""
-        if not self.dirty and self.path.is_file() and slide_source.read_slide_source(self.path)[0] != self.text:
+        if not self.dirty:
+            self.disk_changed()
+
+    def disk_changed(self) -> str:
+        """Compare the buffer's saved text with the file on disk: SAME (nothing to do: our own save, or no
+        change), RELOADED (the buffer was clean and shows the new text), or CONFLICT (someone else, e.g.
+        Claude Code in the terminal, changed a file that has unsaved edits here: the edits stay, and the
+        notice offers the choice)."""
+        if not self.path.is_file():
+            return SAME
+        on_disk = slide_source.read_slide_source(self.path)
+        if on_disk[0] == self.text:
+            self.conflict_bar.hide()
+            return SAME
+        if not self.dirty:
             self.reload()
+            return RELOADED
+        self.conflict_label.setText(f"{self.path.name} was changed on disk (by Claude Code or another program) "
+                                    "while you have unsaved edits here.")
+        self.conflict_bar.show()
+        return CONFLICT
+
+    def _reload_conflicting(self) -> None:
+        self.reload()
+        self.saved.emit()           # the shown file changed: the Preview renders it again
+
+    def keep_edits(self) -> None:
+        """Take the file on disk as what the buffer was loaded from, so that saving the edits replaces
+        it (save_slide_source keeps a backup of that version) instead of failing as stale."""
+        self.text, self.eol = slide_source.read_slide_source(self.path)
+        self.conflict_bar.hide()
 
     def revert(self) -> None:
         if not self.dirty:

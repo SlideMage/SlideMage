@@ -9,6 +9,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 import pytest  # noqa: E402 -- after the environment setup above
+from PySide6.QtCore import QCoreApplication, Qt  # noqa: E402
+
+# Qt WebEngine (the Claude Code terminal) needs this before any QApplication exists, as the real app sets it.
+QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +60,20 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
 
     state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected))
     return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks))
+
+
+@pytest.fixture(autouse=True)
+def _restore_app_stylesheet():
+    """`ThemeManager.apply()` sets the stylesheet of the whole application, and a test that calls it would leave
+    it on for every later one: with it, building a window takes several times as long. Put back what was there."""
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    before = app.styleSheet() if app is not None else ""
+    yield
+    app = QApplication.instance()
+    if app is not None and app.styleSheet() != before:
+        app.setStyleSheet(before)
 
 
 _windows = []

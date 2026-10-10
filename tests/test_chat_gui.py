@@ -372,7 +372,7 @@ def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
 
 # -- the switch ------------------------------------------------------------------------------------------------
 
-def test_the_switch_is_remembered_and_claude_code_is_a_placeholder(env):
+def test_the_switch_is_remembered(env):
     area = env.window.assistant
     assert area.current == CHAT
     area.switch.changed.emit(CLAUDE_CODE)
@@ -381,9 +381,6 @@ def test_the_switch_is_remembered_and_claude_code_is_a_placeholder(env):
     again = AssistantArea(env.window, env.window.state)
     assert again.current == CLAUDE_CODE
     again.shutdown()
-    widget = QMessageBox()      # any widget will do for 10c's terminal
-    area.set_view_widget(CLAUDE_CODE, widget)
-    assert area._stack.currentWidget() is widget
 
 
 # -- the workspace of the window ----------------------------------------------------------------------------------

@@ -52,7 +52,7 @@ from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
 from .palette import CommandPalette
-from .side_panels import SidePanels
+from .side_panels import MAX_WIDTH, WIDTH, WIDTH_SETTING, SidePanels, remembered_width
 from .slide_list import SlideList
 from .state import WorkspaceState
 from .topbar import TopBar
@@ -120,6 +120,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
         self.splitter.setStretchFactor(1, 1)
+        self.splitter.setCollapsible(2, False)
+        self.splitter.splitterMoved.connect(self._on_splitter_moved)
+        self._columns_sized = False
         workspace = QWidget()
         workspace_layout = QHBoxLayout(workspace)
         workspace_layout.setContentsMargins(12, 12, 12, 12)
@@ -147,6 +150,24 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 
         self.reload_decks()
+
+    # -- the right column's width ----------------------------------------------
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._columns_sized:
+            self._columns_sized = True
+            self.set_right_column_width(remembered_width())
+
+    def set_right_column_width(self, width: int) -> None:
+        """Give the right column `width` px (within its limits) at the centre's expense."""
+        width = min(max(width, WIDTH), MAX_WIDTH)
+        left = self.slide_list.minimumWidth()      # the slide list has a fixed width
+        self.splitter.setSizes([left, max(sum(self.splitter.sizes()) - left - width, 1), width])
+
+    def _on_splitter_moved(self, _pos: int, _index: int) -> None:
+        if self.side_panels.isVisible():       # the Images page hides the column: not the user's choice
+            app_settings.set(WIDTH_SETTING, self.splitter.sizes()[2])
 
     # -- commands --------------------------------------------------------------
 
@@ -352,6 +373,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         """Called from the Settings sheet's Dark mode checkbox; theme.set_dark() also
         persists the choice (QSettings, per-machine -- see ui/kit/theme.py)."""
         self.theme.set_dark(checked)
+        self.assistant.refresh_colors()
         # QSS covers every ordinary widget automatically, but a
         # QSyntaxHighlighter's own tag colors live on the text document,
         # outside the stylesheet mechanism entirely -- each open editor's

@@ -8,6 +8,8 @@ from pathlib import Path
 
 from . import project, splash
 
+CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook instead of the app (ai/claude_launch.py)
+
 
 def _prepare_gui(project_root: Path | None) -> None:
     """The fonts and the kit stylesheet, for the sheets that run before the window (the project
@@ -59,6 +61,12 @@ def check_project_format(root: Path, app_version: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> None:
+    if (sys.argv[1:] if argv is None else argv)[:1] == [CLAUDE_HOOK_FLAG]:
+        # Claude Code's PreToolUse hook (ai/claude_hook.py), run as this program in a frozen build, which
+        # has no `python -m`: before anything else, no window.
+        from .ai import claude_hook
+
+        sys.exit(claude_hook.main())
     parser = argparse.ArgumentParser(
         prog="slidemage",
         description="Build, compile and manage Slidemaster slide decks.",
@@ -87,8 +95,11 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(2)
         sys.exit(compat.main([str(root)] + (["--fix"] if args.fix else []) + (["--json"] if args.json else [])))
 
+    from PySide6.QtCore import QCoreApplication, Qt
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    # Qt WebEngine (the Claude Code terminal) needs this before the QApplication exists.
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
 
     if args.project is not None:

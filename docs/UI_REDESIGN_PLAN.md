@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–9, 10a and 10b done; next is 10c, the Claude Code terminal (see
+Status: in progress on branch `ui-redesign`. Steps 1–9 and 10a–10c done; next is 10d, Ollama in the chat (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,7 +45,7 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 10b: 1204 passed, 5 skipped;
+Last updated 2026-10-10. Suite after 10c: 1272 passed, 5 skipped (31–42 s);
 ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
@@ -58,8 +58,7 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    the work is run"); old scratchpad paths are gone.
 3. 9d-2 (Images page) is done: ~500k agent tokens (≈25%), above the
    250–350k estimate.
-4. Next: 10c, the Claude Code terminal (see step 10 and the 10b entry
-   under "What exists now" for the host API), then 10d (Ollama tools + cleanup);
+4. Next: 10d (Ollama tools + cleanup);
    then step 11
    (finish the switch-over: leftover `qt_*` modules incl.
    `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
@@ -75,7 +74,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~9d-2 Images page~~ | done (~500k actual) | | |
 | ~~10a Agent backend~~ | done (~370k actual) | | |
 | ~~10b Chat UI~~ | done (~340k actual) | | |
-| 10c Claude Code terminal | xterm.js + pty in the right column, MCP server over `ai/tools`, protected-region hook, file watching / buffer conflicts | 250–400k | 13–20% |
+| ~~10c Claude Code terminal~~ | done (~380k actual) | | |
 | 10d Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
@@ -111,7 +110,8 @@ Worth repeating before step 11.
 | 9d-2. Kit Images page under `ui/pages/`, transcript preview sheet; deleted `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | (see git log) | done |
 | 10a. Agent backend (`ai/agent.py`, `ai/tools/`, `anthropic` SDK) | (see git log) | done |
 | 10b. Chat UI + Chat \| Claude Code switch (`ui/workspace/chat/`) | (see git log) | done |
-| 10c–11 | | not started |
+| 10c. Claude Code terminal (`ui/workspace/terminal/`, MCP server, hook) | (see git log) | done |
+| 10d–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -235,9 +235,8 @@ Worth repeating before step 11.
   (`chat_model`). Live test: `SLIDEMAGE_LIVE_AI=1` + `ANTHROPIC_API_KEY`
   (not yet run). Open: server-side refusal `fallbacks` (beta) not used.
 - Step 10b: `ui/workspace/chat/` — `assistant.py` (`AssistantArea`,
-  Chat | Claude Code switch remembered as `assistant_view`; 10c calls
-  `window.assistant.set_view_widget("claude_code", widget)` and stops it
-  in `AssistantArea.shutdown()`), `view.py`, `cards.py` (text, tool,
+  Chat | Claude Code switch remembered as `assistant_view`; holds
+  `claude_code = ClaudeCodeView` since 10c), `view.py`, `cards.py` (text, tool,
   diff cards with Apply/Reject/Undo), `session.py` (`ChatSession`: history,
   agent `QThread`, `stop_worker`), `gui_workspace.py` (`GuiWorkspace`:
   `on_gui(fn, default)` queues onto the GUI thread and waits on an
@@ -246,6 +245,24 @@ Worth repeating before step 11.
   Settings: `chat_edit_mode`. `centre.path`, `centre.file_written(path)`;
   palette "Ask the chat" live (`window.ask_chat`). The assistant sits
   under the side panels (splitter 300/500, not remembered).
+- Step 10c: `pty_process.py` (`PtyProcess`: ptyprocess / pywinpty,
+  reader thread, fd soft limit lowered to 4096 around spawn),
+  `ai/mcp_server.py` (hand-written MCP over `http.server`, 127.0.0.1,
+  bearer token from env, tools `get_focus`, `read_buffer`, `list_slides`,
+  `lint`, `render_preview`, `read_guide`, `add_slide` (asks)),
+  `ai/claude_launch.py` (`find_claude`, flags `--mcp-config`,
+  `--settings` (PreToolUse hook + allow rules), `--append-system-prompt`;
+  child env drops `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`/session
+  markers so the Pro login is used), `ai/claude_hook.py` (exit 2 blocks
+  protected-region / frozen-version edits; `python -m
+  slidemage.ai.claude_hook` or frozen `<exe> --claude-hook`),
+  `ai/project_watch.py` (1 s poll), `ui/workspace/terminal/` (`view.py`,
+  `web.py` xterm.js in QWebEngineView via QWebChannel, `session.py`,
+  `sync.py`, `theme.py`), vendored xterm 6.0.0 + addon-fit 0.11.0 in
+  `assets/terminal/`. Source buffers get a conflict bar ("Reload from
+  disk" / "Keep my edits"). Right column is a draggable splitter
+  (340–900 px, `right_column_width`). Test fixture
+  `_restore_app_stylesheet` keeps the suite fast.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -271,6 +288,13 @@ Worth repeating before step 11.
   versions as `v1-0-0` (could use `version_label`); larger refactors
   not done: panel boilerplate helpers in `panels/base.py`, one click-frame
   base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
+- 10c leftovers: the hook has not fired in a real session yet (needs a
+  model edit; user can try: ask Claude Code to change a slide header);
+  real `tools/call` from Claude Code untested; Windows (pywinpty,
+  `claude.cmd`, frozen-hook stdin) untested; QtWebEngine runs with
+  `--disable-gpu`; step 11 must check PyInstaller with QtWebEngine
+  (~+220 MB, helper process, sandbox flags) and `anthropic`; plain URLs
+  in the terminal are not clickable.
 - 10b leftovers: cloud model picker lists `ANTHROPIC_FALLBACK_MODELS`,
   not the live list; no chat history persistence/search; Ollama runs
   take no Ollama slot yet and the "not for the chat yet" texts
@@ -377,6 +401,12 @@ Worth repeating before step 11.
   running chat request; chat edits go into the Source buffer when the
   slide is open there, else to disk with a backup (Preview re-renders);
   a chat compile can show the usual "nothing changed"/lint prompts.
+
+- Step 10c: the Claude Code tab runs the installed `claude` (Pro login)
+  in the project folder; a file with unsaved edits that changes on disk
+  shows a conflict bar instead of reloading; "Keep my edits" makes the
+  next save overwrite disk (backup kept); the right column is
+  resizable.
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as

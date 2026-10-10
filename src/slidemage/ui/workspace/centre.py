@@ -33,6 +33,7 @@ from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
+from .source_file import RELOADED
 from .source_view import SourcePane
 from .state import WorkspaceState
 
@@ -119,6 +120,18 @@ class CentreColumn(QFrame):
         self.sync_source(path)
         if path == self._path:
             self._on_saved(path)
+
+    def disk_changed(self, path: Path) -> Optional[str]:
+        """A file may have changed on disk behind the app's back (Claude Code in the terminal). What the
+        Source view did with its buffer of `path`: SAME / RELOADED / CONFLICT (source_file.py), None if the
+        file is not open."""
+        file = self.source.file_for(path)
+        if file is None:
+            return None
+        outcome = file.disk_changed()
+        if outcome == RELOADED and path == self._path:
+            self._on_saved(path)
+        return outcome
 
     def slide_text(self, path: Path) -> str:
         """The text of a slide file as the Source view has it, unsaved edits included, else the saved file."""

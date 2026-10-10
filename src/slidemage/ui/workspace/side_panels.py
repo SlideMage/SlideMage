@@ -20,15 +20,24 @@ from .panels import PANELS
 from .panels.base import SidePanel
 from .state import WorkspaceState
 
-WIDTH = 340   # the prototype's width of the column
+WIDTH = 340   # the prototype's width of the column; the least it may be dragged to, and the default
+MAX_WIDTH = 900
+WIDTH_SETTING = "right_column_width"
 SETTING = "side_panel"
 ASSISTANT_SPLIT = (300, 500)   # starting heights of the panels and of the assistant area
+
+
+def remembered_width() -> int:
+    """The width the user dragged the column to, within its limits (WIDTH if never)."""
+    value = app_settings.get(WIDTH_SETTING)
+    return min(max(value, WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 
 class SidePanels(QSplitter):
     def __init__(self, app, state: WorkspaceState) -> None:
         super().__init__(Qt.Orientation.Vertical)
-        self.setFixedWidth(WIDTH)
+        self.setMinimumWidth(WIDTH)
+        self.setMaximumWidth(MAX_WIDTH)
         self.setChildrenCollapsible(False)
         self.panels: dict[str, SidePanel] = {cls.key: cls(app, state) for cls in PANELS}
         remembered = app_settings.get(SETTING)

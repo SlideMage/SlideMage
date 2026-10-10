@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file: qrc:; style-src file: 'unsafe-inline'; font-src file:; img-src data: blob:">
+<link rel="stylesheet" href="xterm.css">
+<style>
+  @font-face { font-family: "Roboto Mono"; font-weight: 400; src: url("../fonts/RobotoMono-Regular.ttf"); }
+  @font-face { font-family: "Roboto Mono"; font-weight: 700; src: url("../fonts/RobotoMono-Medium.ttf"); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #ffffff; }
+  #term { position: absolute; inset: 6px 0 0 8px; }
+  .xterm-viewport { overflow-y: auto; }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="xterm.js"></script>
+<script src="addon-fit.js"></script>
+<script src="terminal.js"></script>
+</body>
+</html>

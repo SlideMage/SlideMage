@@ -1,0 +1,55 @@
+"""The two tools only the Claude Code connection has (UI redesign step 10c): what the user is looking at,
+and the editor buffer with its unsaved edits. Claude Code reads and edits files on disk with its own tools;
+these show what SlideMage's window knows beyond the disk."""
+from __future__ import annotations
+
+from ... import latex_lint
+from .base import ToolContext, ToolError, tool
+from .files import current_text, project_path, read_file, relative
+
+LINT_SHOWN = 10
+
+
+@tool("get_focus",
+      "What the user is looking at in SlideMage right now: the project, the open deck, the focused slide "
+      "and the file the editor shows, the 'View as' and language, whether that file has unsaved edits in the "
+      "editor (then the file on disk is older: use read_buffer), and its lint errors. Call it first when the "
+      "user says 'this slide' or 'here'.",
+      {})
+def get_focus(ctx: ToolContext, args: dict) -> str:
+    focus = ctx.workspace.context()
+    lines = [f"Project folder: {ctx.root}",
+             f"Open deck: {f'decks/{focus.deck.path.name}' if focus.deck else 'none'}",
+             f"Viewed as: {focus.view}; editing language: {focus.language}",
+             f"Focused slide id: {focus.slide_id or 'none'}"]
+    path = focus.path
+    if path is None:
+        lines.append("The editor shows no file.")
+        return "\n".join(lines)
+    name = relative(ctx.root, path) if path.is_relative_to(ctx.root) else path.name
+    is_open, dirty = ctx.workspace.is_open(path), ctx.workspace.is_dirty(path)
+    lines.append(f"File shown: {name}" + (f" (unsaved edits in the editor: the file on disk is older; "
+                                          f"read_buffer shows them)" if dirty else ""))
+    if path.suffix == ".tex":
+        text = current_text(ctx.workspace, path)
+        errors = [i for i in latex_lint.lint_text(text, path.name, path) if i.severity == latex_lint.ERROR]
+        lines.append(f"Lint errors in {'the buffer' if is_open else 'the file'}: "
+                     + ("none" if not errors else str(len(errors))))
+        lines += [f"  line {i.line}: {i.message}" for i in errors[:LINT_SHOWN]]
+    return "\n".join(lines)
+
+
+@tool("read_buffer",
+      "Read a file as the SlideMage editor has it, unsaved edits included (the numbered lines of "
+      "read_file). Only for files open in the editor; use your own Read for the rest.",
+      {"path": {"type": "string", "description": "Project-relative path, e.g. slides/1y8-EN-Title-current.tex"},
+       "start_line": {"type": "integer", "description": "First line to read (default 1)."},
+       "max_lines": {"type": "integer", "description": "How many lines at most."}},
+      ("path",))
+def read_buffer(ctx: ToolContext, args: dict) -> str:
+    path = project_path(ctx.root, args["path"])
+    if not ctx.workspace.is_open(path):
+        raise ToolError(f"{relative(ctx.root, path)} is not open in the editor, so there is no buffer: "
+                        "the file on disk is what your own Read shows.")
+    dirty = "unsaved edits: yes" if ctx.workspace.is_dirty(path) else "unsaved edits: no (same as on disk)"
+    return f"[editor buffer, {dirty}]\n" + read_file.run(ctx, args)
