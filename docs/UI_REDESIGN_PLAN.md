@@ -58,9 +58,8 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    the work is run"); old scratchpad paths are gone.
 3. 9d-2 (Images page) is done: ~500k agent tokens (≈25%), above the
    250–350k estimate.
-4. Next: step 10 (AI chat, right column lower part; replaces
-   `qt_ai_draft_dialog.py`; enables the palette's "Ask the chat" row and
-   could take over Citations "Add to .bib with chat"), then step 11
+4. Next: step 10 as an agent chat (see step 10, redesigned
+   2026-10-10): 10a backend, 10b UI, 10c Ollama tools + cleanup; then step 11
    (finish the switch-over: leftover `qt_*` modules incl.
    `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
    manual, screenshots tool, 6.0 version bump). Consider a kit restyle
@@ -73,7 +72,9 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | Work | Content | Agent tokens | ≈ window |
 |---|---|---|---|
 | ~~9d-2 Images page~~ | done (~500k actual) | | |
-| 10 AI chat | right column lower part (slide/deck scope, chips, inline diffs, Apply/Discard, local/cloud); replaces `qt_ai_draft_dialog.py`; enables palette "Ask the chat"; may split 10a/10b | 300–450k | 15–23% |
+| 10a Agent backend | agent loop, project + SlideMage tools, `anthropic` SDK, system prompt | 250–350k | 13–18% |
+| 10b Chat UI | right column chat, streaming, tool/diff cards, permissions | 250–350k | 13–18% |
+| 10c Ollama tools + cleanup | Ollama tool calls, palette row, remove `qt_ai_draft_dialog.py` | 100–200k | 5–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
 
@@ -570,13 +571,44 @@ old module named in brackets:
   changed, No German, Reviewed), search, per-image review.
 
 ### 10. AI chat (right column, lower part)
-- Scope (This slide / Whole deck), suggestion chips, messages with quoted
-  context and inline diffs, Apply / Discard, thinking indicator, waiting
-  note, and the provider label with a local/cloud switch (disabled when
-  "Local AI only" is on).
-- Requests go only through `ai/tasks.py`. Applied changes save through
-  `slide_versioning`, as manual edits do.
-- Replaces `qt_ai_draft_dialog.py`.
+Redesigned 2026-10-10 (user decision): the chat is an **agent**, like
+Claude Code, not a suggestion box. The model gets the focused slide as
+context and SlideMage tools, and makes the change itself.
+
+- **Context per request**: project, open deck, focused slide (id, path,
+  current buffer incl. unsaved edits), View as, language, lint errors.
+  A system prompt explains SlideMage's slide conventions (frames,
+  `\slidestep`, protected parts, project macros); longer guides can be
+  loaded on demand with a `read_guide` tool.
+- **Tools** (no shell, nothing outside the project folder):
+  - generic: `read_file`, `find_files`, `search`, `edit_file(path,
+    old_text, new_text)` (exact, unique replacement, like Claude Code's
+    Edit), `write_file` for new text files;
+  - SlideMage actions: `list_slides`, `lint`, `render_preview`
+    (returns the rendered image), `add_slide`, `add_bib_entry`,
+    `compile_deck`.
+  - Edit rules: a file open in an editor buffer is edited in the buffer
+    (undo, unsaved until saved); other files are saved through the
+    normal backend path (slides via `slide_versioning`); edits that
+    touch protected parts of a slide (header comment,
+    `\setSlideVersion`, `\vbox to 0pt` blocks) are refused; text files
+    only; `.build/`, `pdf/`, `.slidemage/` read-only or hidden.
+- **Permissions**: "Ask before edits" (default: each edit shows a diff
+  and waits for Apply / Reject; a reject is reported to the model) or
+  "Edit automatically" (applied at once, diff card with Undo).
+- **Providers**: one provider-neutral agent loop. Claude through the
+  official `anthropic` SDK (streaming + tool use, prompt caching;
+  becomes a dependency; `AnthropicProvider` moves onto it). Ollama
+  tool calling through the existing stdlib code comes in 10c. Not the
+  Claude Agent SDK (needs the Claude Code CLI, writes to disk directly,
+  hard to bundle).
+- **UI**: This slide / Whole deck scope, streamed messages, tool and diff
+  cards, Stop, permission switch, provider label with local/cloud
+  switch (disabled when "Local AI only" is on); palette "Ask the chat".
+- Split: **10a** agent backend (`ai/agent.py` loop, `ai/tools.py`,
+  SDK switch, system prompt; tests with a fake provider, opt-in live
+  test); **10b** chat UI in the right column; **10c** Ollama tools,
+  palette row, remove `qt_ai_draft_dialog.py`.
 
 ### 11. Finish the switch-over
 - Delete any `qt_*` module left over (`qt_render_check.py` becomes a test
