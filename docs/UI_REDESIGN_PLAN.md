@@ -92,6 +92,26 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    pass (see "Carried over") before or within step 11. Size each before
    starting and split if over ~350k tokens.
 
+### Remaining work and size (estimate 2026-10-10)
+About 5% of the user's 5-hour window per ~100k agent tokens.
+
+| Work | Content | Agent tokens | ≈ window |
+|---|---|---|---|
+| 9d-2 Images page | kit page on `image_review`; delete `qt_transcript_tab.py` + `qt_transcript_preview_tab.py`; fix `repoint_slides` vs open buffers; use `stop_worker` | 250–350k | 13–18% |
+| 10 AI chat | right column lower part (slide/deck scope, chips, inline diffs, Apply/Discard, local/cloud); replaces `qt_ai_draft_dialog.py`; enables palette "Ask the chat"; may split 10a/10b | 300–450k | 15–23% |
+| 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
+| Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
+
+Total ≈ 1.0–1.6M agent tokens (≈ 55–80% of one window). Pause after
+each committed step.
+
+A cheap whole-code review that worked: 12 parallel read-only Haiku
+reviewers (Explore, `model: haiku`), each on a ~1–1.5k-line slice, max
+12 findings tagged bug/simplify/layering with file:line; the
+orchestrator spot-checks bug claims (one of ~120 was false) and hands
+the confirmed list to one Sonnet agent (review fixes: ~160k tokens).
+Worth repeating before step 11.
+
 | Step | Commit | State |
 |---|---|---|
 | 1. Visual foundations | `2ead8ca` | done |
