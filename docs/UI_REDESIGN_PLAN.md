@@ -45,13 +45,13 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after step 9d-1: 1058 passed, 4 skipped;
+Last updated 2026-10-10. Suite after the review fixes: 1071 passed, 4 skipped;
 ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
 ### Resume here (next session)
 1. Read this section, then `git log --oneline -15` on `ui-redesign`
-   (latest step commit: 9d-1 `52a7551`). Working tree should be clean
+   (latest step commit: review fixes, after 9d-1 `52a7551`). Working tree should be clean
    apart from untracked `uv.lock` and `.claude/` (both left untracked on
    purpose; don't commit them).
 2. Re-fetch the prototype into the new session's scratchpad (see "How
@@ -109,6 +109,7 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
 | 9b. Project picker, compat, No decks/First run, Housekeeping, Snapshots, deck group dialog, About | (see git log) | done |
 | 9c. Settings + Deck settings sheets | (see git log) | done |
 | 9d-1. Images page logic → `image_review.py` (backend only) | (see git log) | done |
+| Review fixes (12 Haiku reviewers, Sonnet fixes) | (see git log) | done |
 | 9d-2. New kit Images page under `ui/pages/`, delete `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | | not started |
 | 10–11 | | not started |
 
@@ -220,6 +221,14 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
   built); "outdated translation" is wired (`translation_link`: original
   saved via SlideMage after the translation was written, not a content
   check). The slide list's lint dot follows the saved file.
+- Review leftovers: use `ui/background.stop_worker` for every new
+  worker thread (9d-2, 10); `image_review.repoint_slides` writes slides
+  directly, bypassing open Source buffers (fix in 9d-2); backend still
+  builds `-current.tex` names by hand in several modules
+  (`slide_language.current_name` exists); slide list shows pinned
+  versions as `v1-0-0` (could use `version_label`); larger refactors
+  not done: panel boilerplate helpers in `panels/base.py`, one click-frame
+  base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
 - Kit restyle pass still open: line edits, combos, checkboxes and
   scrollbars in the new sheets use the legacy app theme; "Appears in"
   uses plain checkboxes, not the prototype's view chips; Existing list
@@ -289,6 +298,9 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
   in Housekeeping; snapshot questions/summary are sheets; recent
   projects are remembered per machine; the first-run picker is dark by
   default (app_settings can't load before a project exists).
+- Review fixes: per-deck view/language/mode memory is keyed by deck
+  path (old name-keyed entries are ignored once); "Open pdf" labels
+  include the file name.
 - Step 9c: command `preferences`/"Preferences…" is `settings`/
   "Settings…"; per-project "Local AI only" lives in Settings → Cloud
   ("This project"), since it is per project, not per deck; prompts stay
