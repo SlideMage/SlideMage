@@ -17,6 +17,7 @@ from ... import (
     latex_lint,
     preview_target,
     slide_add,
+    slide_ids,
     slide_language,
     slide_snapshot,
 )
@@ -150,12 +151,17 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
 
 @tool("add_slide",
       "Create a new slide (fresh id, header, the frame's skeleton) and put its \\slide call into the deck. "
-      "Afterwards fill it in with edit_file. Frame types: see read_guide('frames').",
+      "Afterwards fill it in with edit_file. Frame types: see read_guide('frames'). To TRANSLATE a slide, "
+      "always pass translation_of (the source slide id) and language: the new slide starts as a copy of the "
+      "source, is linked to it both ways, and is then translated in place with edit_file. Never translate by "
+      "creating an unlinked slide.",
       {"slug": {"type": "string", "description": "Hyphenated name, letters and digits: 'Capital-Budgeting'."},
        "title": {"type": "string", "description": "The frame title (plain text)."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Default standardframe."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default: the edited language."},
        "after": {"type": "string", "description": "Slide id to put it after; default the end of the deck."},
+       "translation_of": {"type": "string", "description": "Slide id of the slide this is a translation of; "
+                          "needs a different language. The body is copied from it; translate it with edit_file."},
        "add_to_deck": {"type": "boolean", "description": "Default true; false creates the file only."}},
       ("slug", "title"))
 def add_slide(ctx: ToolContext, args: dict) -> str:
@@ -180,12 +186,25 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
         else:
             insert_at, indent = deck_editor.append_position(deck)
             where = f"at the end of {deck.name}"
-    body = slide_add.frame_body(frame, title).replace("\r\n", "\n")
+    source_id_slug = ""
+    if (args.get("translation_of") or "").strip():
+        source = slide_or_file(ctx, args["translation_of"])
+        source_id_slug = source.name.removesuffix("-current.tex")
+        if not slide_add.slide_path(source_id_slug).exists():
+            raise ToolError(f"'{args['translation_of']}' is not a slide. list_slides shows the ids.")
+        if slide_language.own_language(source_id_slug) == language:
+            raise ToolError(f"{source_id_slug} is already {language}; pass the target language.")
+        body = slide_ids.slide_body(source).replace("\r\n", "\n")
+    else:
+        body = slide_add.frame_body(frame, title).replace("\r\n", "\n")
     planned = slide_add.slide_path(f"(new id)-{language}-{slug}")
     if not propose(ctx, planned, "", body, f"New slide {where}"):
         raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
     try:
-        created = slide_add.create_new(slug, language, frame, title)
+        if source_id_slug:
+            created = slide_add.create_copy(source_id_slug, slug, language)
+        else:
+            created = slide_add.create_new(slug, language, frame, title)
     except (OSError, ValueError) as exc:
         raise ToolError(f"The slide was not created: {exc}") from None
     note = ""
@@ -199,7 +218,8 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     ctx.workspace.file_changed(created.path, None)
     ctx.emit(EditApplied(ctx.call_id, created.path, "", body, False, undoable=False, note=where))
     return (f"Created slide {created.id_slug} ({relative(ctx.root, created.path)}), {where}.{note} "
-            "It holds the frame skeleton: fill it in with edit_file.")
+            + ("It is a copy of the source, linked to it: translate its text with edit_file."
+               if source_id_slug else "It holds the frame skeleton: fill it in with edit_file."))
 
 
 @tool("add_bib_entry",

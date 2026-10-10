@@ -476,3 +476,13 @@ def test_context_of_the_whole_deck_lists_the_outline_instead_of_the_text(root):
 def test_context_without_a_deck_or_slide(root):
     text = agent_context.build_context(Workspace(root), agent_context.SCOPE_SLIDE)
     assert "Open deck: none" in text and "editor shows" not in text
+
+
+def test_add_slide_translation_of_links_both_ways_and_copies_the_body(box, root):
+    box.box.ctx.mode = EDIT_AUTO
+    out = box.ok("add_slide", slug="Hallo", title="Hallo", language="DE", translation_of="abc", after="abc")
+    created = next((root / "slides").glob("*-DE-Hallo-current.tex"))
+    assert "linked" in out
+    assert f"%% Translation of: abc-EN-Hello" in created.read_text()
+    assert f"%% DE translation: {created.name[:-12]}" in (root / "slides" / "abc-EN-Hello-current.tex").read_text()
+    assert "already EN" in box.error("add_slide", slug="Same", title="T", language="EN", translation_of="abc")
