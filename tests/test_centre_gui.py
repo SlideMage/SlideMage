@@ -42,6 +42,8 @@ class FakeApp:
         self.theme = ThemeManager()
         self.logged = []
         self.transcripts = []
+        self.added = []
+        self.slide_list = SimpleNamespace(add_slide=lambda *start: self.added.append(start))
         self.signals = SimpleNamespace(log=SimpleNamespace(emit=lambda line: None))
 
     def log(self, line):
@@ -472,7 +474,7 @@ def test_details_follow_the_focused_slide(centre):
     assert "not a slide" in centre.details.findChildren(QLabel)[0].text()
 
 
-def test_moving_or_copying_a_slide_with_unsaved_edits_is_refused(centre, project, monkeypatch):
+def test_moving_a_slide_with_unsaved_edits_is_refused(centre, project, monkeypatch):
     state = centre.state
     state.set_mode("source")
     state.set_focused_slide("ccc")
@@ -483,9 +485,15 @@ def test_moving_or_copying_a_slide_with_unsaved_edits_is_refused(centre, project
     monkeypatch.setattr(QMessageBox, "question", lambda *a: pytest.fail("must not ask"))
     details = centre.details
     details._rename()
-    details._duplicate()
     details._delete()
-    assert len(told) == 3 and (project / "ccc-DE-Drei-current.tex").exists()
+    assert len(told) == 2 and (project / "ccc-DE-Drei-current.tex").exists()
+
+
+def test_duplicate_opens_the_add_slide_sheet_on_the_slide(centre):
+    centre.state.set_mode("details")
+    centre.state.set_focused_slide("ccc")
+    centre.details._duplicate()
+    assert centre.app.added == [("duplicate", "ccc-DE-Drei")]
 
 
 def test_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch):

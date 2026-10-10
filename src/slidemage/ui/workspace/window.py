@@ -38,11 +38,11 @@ from ... import app_settings, bibliography, deck_headers, deck_outline, latex_ed
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
-from ...qt_add_slide_dialog import AddSlideDialog
-from ...qt_import_dialog import ImportPresentationDialog
 from ...qt_settings_dialog import SettingsDialog
 from ...qt_transcript_preview_tab import TranscriptPreviewTab
 from ...qt_transcript_tab import TranscriptTab
+from ..dialogs.add_slide import AddSlideSheet
+from ..dialogs.import_presentation import ImportPresentationSheet
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
 from .actions import build_registry
@@ -390,8 +390,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.close()
 
     def _on_import_presentation(self) -> None:
-        dialog = ImportPresentationDialog(self)
-        dialog.exec()
+        ImportPresentationSheet(self, self.state.deck).exec()
 
     def _on_open_settings(self) -> None:
         dialog = SettingsDialog(self)
@@ -451,8 +450,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         appears in the busy message below). Returns False, and shows why,
         if another Ollama-dependent task already holds it -- every call
         site (qt_transcript_tab.py's single/batch drafting, single/batch
-        translation, and its "Tune prompt…" dialog; qt_duplicate_slide_dialog.py's
-        auto-translate option) must call this before issuing its own first
+        translation, and its "Tune prompt…" dialog; the Add slide sheet's
+        translation) must call this before issuing its own first
         Ollama request and end_ollama_task() when that request (or batch of
         them) is fully done, whether it ran on a background thread or
         blocked the GUI thread synchronously. This is deliberately a single
@@ -530,9 +529,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             return
         self.open_slide_editor(path)
 
-    def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str) -> None:
-        dialog = AddSlideDialog(self, deck, insert_at, indent)
-        dialog.exec()
+    def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str, **start) -> None:
+        """The Add slide sheet for a place in `deck`; `start`: where, source, slide, target
+        (AddSlideSheet)."""
+        AddSlideSheet(self, deck, insert_at, indent, **start).exec()
 
     def _build_snapshot_banner(self) -> Optional[QLabel]:
         """A line above the tabs when the open project is a deck snapshot:

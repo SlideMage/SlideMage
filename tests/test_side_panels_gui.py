@@ -91,6 +91,9 @@ class FakeWindow:
     def log(self, line):
         self.logged.append(line)
 
+    def open_add_slide_dialog(self, deck, insert_at, indent, **start):
+        self.started = getattr(self, "started", []) + [start]
+
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
@@ -421,33 +424,13 @@ def test_language_shows_the_translation_and_whether_it_is_outdated(content, tmp_
     assert buttons(panel, "Open")
 
 
-def test_translate_opens_the_duplicate_form_on_a_translation_and_opens_the_new_slide(content, monkeypatch, paths):
-    from slidemage.ui.workspace.panels import language
-
+def test_translate_opens_the_add_slide_sheet_on_a_translation(content, paths):
     panels, _state, window = content
     panel = shown(panels, "language")
-    opened = []
-
-    class FakeDialog:
-        class DialogCode:
-            Accepted = 1
-        new_id_slug, new_path = "new-DE-Cited", paths.path.parent / "new-DE-Cited-current.tex"
-
-        def __init__(self, app, id_slug, path, target):
-            opened.append((id_slug, path, target))
-
-        def exec(self):
-            return 1
-
-    monkeypatch.setattr(language, "DuplicateSlideDialog", FakeDialog)
     assert "No translation yet" in texts(panel)
     buttons(panel, "Translate to DE…")[0].click()
-    assert opened == [("cit-EN-Cited", paths.path, "DE")]
-    assert window.opened[-1] == FakeDialog.new_path and window.refreshed == 1
-    window.centre.unsaved.add(paths.path)
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args: opened.append(args[2]))
-    buttons(panel, "Translate to DE…")[0].click()
-    assert "Save or revert" in opened[-1]
+    assert window.started == [{"where": "at the end of the deck", "source": "translate", "slide": "cit-EN-Cited",
+                               "target": "DE"}]
 
 
 def test_set_language_asks_and_goes_through_slide_rename(content, monkeypatch):
@@ -656,11 +639,9 @@ def test_side_panels_can_take_more_than_the_first_three_panels():
                                        "transcript", "notes"]
 
 
-def test_the_reference_form_can_start_from_a_missing_key_and_the_duplicate_form_from_a_translation(
-        qapp, project, monkeypatch):
+def test_the_reference_form_can_start_from_a_missing_key(qapp, project, monkeypatch):
     from slidemage.ai.providers import OllamaProvider
     from slidemage.qt_citation_dialog import CitationDialog
-    from slidemage.qt_duplicate_slide_dialog import DuplicateSlideDialog
 
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
     parent = QWidget()
@@ -669,14 +650,4 @@ def test_the_reference_form_can_start_from_a_missing_key_and_the_duplicate_form_
     dialog.year_entry.setText("2020")
     assert dialog.key_entry.text() == "ghost1999"                  # not replaced by the suggestion smith2020
     dialog.deleteLater()
-
-    window = parent
-    path = deck_scan.DECKS_DIR.parent / "slides" / "abc-EN-Demo-current.tex"
-    form = DuplicateSlideDialog(window, "abc-EN-Demo", path, "DE")
-    assert form.other_radio.isChecked() and form.target_combo.currentText() == "DE"
-    assert form.translate_checkbox.isChecked() and form.slug_entry.text() == "Demo"
-    form.deleteLater()
-    plain = DuplicateSlideDialog(window, "abc-EN-Demo", path)
-    assert plain.same_radio.isChecked() and plain.slug_entry.text() == "Demo-Copy"
-    plain.deleteLater()
     parent.deleteLater()

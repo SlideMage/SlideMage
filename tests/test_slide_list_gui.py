@@ -39,6 +39,7 @@ class FakeWindow:
         self.compiling = False
         self.list = None
         self.added = []
+        self.started = []     # what the Add slide sheet was asked to start on
         self.opened = []
         self.compiled = []
         self.edits = []
@@ -50,8 +51,9 @@ class FakeWindow:
         self.list.deck_edited(path, summary, previous_text)
         self.edits.append(summary)
 
-    def open_add_slide_dialog(self, deck, insert_at, indent):
+    def open_add_slide_dialog(self, deck, insert_at, indent, **start):
         self.added.append((insert_at, indent))
+        self.started.append(start)
 
     def open_slide_editor(self, path, **_kwargs):
         self.opened.append(path)
@@ -457,7 +459,8 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
-        "slide:before", "slide:after", "slide:section_before", "move:0", "slide:remove"]
+        "slide:before", "slide:after", "slide:duplicate", "slide:translate", "slide:section_before", "move:0",
+            "slide:remove"]
     assert _entry(menu, "variant:slide")[4] == "check"             # the current call is ticked
     for macro, expected in (
             ("slidefinal", "\\slidefinal{aaa-First}"), ("omitslide", "\\omitslide{aaa-First}"),
@@ -500,6 +503,8 @@ def test_the_slide_menu_hides_a_slide_in_one_view_and_opens_the_other_tools(make
     run("slide:before")
     run("slide:after")
     assert window.added == [(row.call.line_start, ""), (row.call.line_end, "")]
+    assert [(s["where"], s["source"], s["slide"]) for s in window.started] == [
+        ("before aaa-First", "new", "aaa-First"), ("after aaa-First", "new", "aaa-First")]
     monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("Intro", True))
     run("slide:section_before")
     assert deck_lines(path)[0] == "\\section{Intro}"
@@ -680,3 +685,24 @@ def test_the_add_slide_button_of_an_empty_deck_adds_before_the_end_of_the_docume
     slide_list, window, _path = make_list("")
     slide_list.add_slide_button.click()
     assert window.added == [deck_editor.empty_deck_insert_point(window.state.deck.text)]
+
+
+def test_duplicate_and_translate_start_the_sheet_after_the_slide(make_list):
+    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+    call = row_of(slide_list, "bbb").call
+    focus(slide_list, "bbb")
+    slide_list.run("duplicate")
+    slide_list.run("translate:DE")
+    slide_list.add_slide("translate", call.id_slug)       # what the Language panel asks for
+    assert window.added == [(call.line_end, call.indent)] * 3
+    assert [(s["source"], s["slide"], s["target"]) for s in window.started] == [
+        ("duplicate", call.id_slug, None), ("translate", call.id_slug, "DE"), ("translate", call.id_slug, None)]
+    assert window.started[0]["where"] == f"after {call.id_slug}"
+
+
+def test_a_slide_that_is_not_in_the_deck_is_added_at_the_end_of_it(make_list):
+    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+    slide_list.add_slide("duplicate", "zzz-EN-Elsewhere")
+    assert window.added == [deck_editor.append_position(window.state.deck)]
+    assert window.started[0] == {"where": "at the end of the deck", "source": "duplicate",
+                                 "slide": "zzz-EN-Elsewhere", "target": None}

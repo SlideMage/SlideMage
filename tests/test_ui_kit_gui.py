@@ -18,6 +18,7 @@ from slidemage.ui.kit.widgets import (
     Button,
     Card,
     Chip,
+    Field,
     IconButton,
     IconLabel,
     ModalSheet,
@@ -25,6 +26,7 @@ from slidemage.ui.kit.widgets import (
     SegmentedControl,
     SplitButton,
     Surface,
+    ThumbnailGrid,
     Toast,
 )
 
@@ -192,6 +194,38 @@ def test_modal_sheet_tabs_and_buttons(theme):
     sheet.add_button("Save", kind="primary", role="accept").click()
     assert sheet.result() == 1
     sheet.add_button("Cancel", role="reject")
+
+
+def test_thumbnail_grid_chooses_one_and_emits_only_for_user_clicks(theme, tmp_path):
+    from PySide6.QtGui import QColor, QPixmap
+
+    picture = tmp_path / "x.png"
+    pixmap = QPixmap(16, 9)
+    pixmap.fill(QColor("red"))
+    pixmap.save(str(picture))
+    grid = ThumbnailGrid([("a", "A", picture), ("b", "B", picture), ("c", "C", tmp_path / "missing.png")], columns=2)
+    styled(grid, theme, False)
+    grid.show()
+    seen = []
+    grid.chosen.connect(seen.append)
+    assert grid.current() == "a"
+    grid.set_current("b")
+    assert grid.current() == "b" and seen == []
+    QTest.mouseClick(grid._tiles["c"], Qt.MouseButton.LeftButton)
+    assert grid.current() == "c" and seen == ["c"] and not grid._tiles["a"].property("current")
+    assert grid.grab().toImage().width() > 0
+    field = Field("Frame", grid)
+    assert field.label.text() == "Frame"
+
+
+def test_modal_sheet_footer_note_sits_left_of_the_buttons(theme):
+    sheet = ModalSheet("Add")
+    sheet.add_tab("", QLabel("body"))
+    note = QLabel("\\slide{x}")
+    sheet.add_footer_note(note)
+    button = sheet.add_button("Add", kind="primary")
+    sheet.show()
+    assert note.geometry().right() < button.geometry().left() and note.geometry().width() > button.width()
 
 
 def test_icon_button_and_card_construct(theme):

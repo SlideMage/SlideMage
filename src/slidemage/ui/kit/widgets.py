@@ -11,14 +11,16 @@ IconLabel("expand_more"); fonts.load_fonts() must have run first.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -295,6 +297,79 @@ class Chip(QFrame):
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
             self.clicked.emit()
         super().mouseReleaseEvent(event)
+
+
+class Field(Surface):
+    """A control under its label: the form row of sheets ("Title", "Load as")."""
+
+    def __init__(self, label: str, control: QWidget, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        self.label = QLabel(label)
+        self.label.setObjectName(q.FIELD_LABEL)
+        layout.addWidget(self.label)
+        layout.addWidget(control)
+
+
+class _Tile(QFrame):
+    clicked = Signal()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class ThumbnailGrid(Surface):
+    """Exclusive choice among pictures with a caption, e.g. the frame gallery.
+
+    items: (key, caption, image file) triples; a file that is missing leaves the
+    picture empty. `chosen` is emitted with the key for user clicks only, like
+    SegmentedControl.changed."""
+
+    chosen = Signal(str)
+    PICTURE = (112, 63)   # 16:9
+
+    def __init__(self, items: Sequence[tuple[str, str, Path]], *, columns: int = 5, current: str | None = None,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(8)
+        self._tiles: dict[str, _Tile] = {}
+        for index, (key, caption, image) in enumerate(items):
+            tile = _Tile()
+            tile.setObjectName(q.THUMB)
+            tile.setCursor(Qt.CursorShape.PointingHandCursor)
+            tile.setToolTip(caption)
+            tile.clicked.connect(lambda k=key: self._on_click(k))
+            layout = QVBoxLayout(tile)
+            layout.setContentsMargins(2, 2, 2, 2)
+            layout.setSpacing(4)
+            picture = QLabel()
+            picture.setFixedSize(*self.PICTURE)
+            picture.setScaledContents(True)
+            picture.setPixmap(QPixmap(str(image)))
+            layout.addWidget(picture)
+            name = QLabel(caption)
+            name.setObjectName(q.THUMB_CAPTION)
+            layout.addWidget(name)
+            grid.addWidget(tile, index // columns, index % columns)
+            self._tiles[key] = tile
+        self.set_current(current if current is not None else (items[0][0] if items else None))
+
+    def current(self) -> str | None:
+        return next((key for key, tile in self._tiles.items() if tile.property("current")), None)
+
+    def set_current(self, key: str | None) -> None:
+        for name, tile in self._tiles.items():
+            set_property(tile, "current", name == key)
+
+    def _on_click(self, key: str) -> None:
+        self.set_current(key)
+        self.chosen.emit(key)
 
 
 class MenuRow(QWidget):
@@ -633,6 +708,11 @@ class ModalSheet(QDialog):
 
     def set_current_tab(self, index: int) -> None:
         self._tabs.setCurrentIndex(index)
+
+    def add_footer_note(self, widget: QWidget) -> None:
+        """A widget at the left of the footer, in the room the buttons leave (a summary of
+        what the primary button will do)."""
+        self._footer.insertWidget(0, widget, 100)
 
     def add_button(self, text: str, *, kind: str = "secondary", role: str | None = None) -> Button:
         button = Button(text, kind)

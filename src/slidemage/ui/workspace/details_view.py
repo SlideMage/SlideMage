@@ -1,7 +1,7 @@
 """The Details view: facts about the focused slide and the slide-level actions.
 
 What the slide is (file, frame, version, language, slug) and Rename / Duplicate /
-Delete. Everything else about the focused slide is a side panel (panels/): its
+Delete (Duplicate opens the Add slide sheet). Everything else about the focused slide is a side panel (panels/): its
 versions, where it is used, its visibility, citations, language (also Set
 language), images, transcript entry and speaker notes.
 
@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 from ... import alt_blocks, slide_language, slide_rename, slide_source, slide_versioning
 from ...deck_editor import SLIDES_DIR
 from ...deck_outline import SlideRow
-from ...qt_duplicate_slide_dialog import DuplicateSlideDialog
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
 from .state import WorkspaceState
@@ -135,8 +134,7 @@ class DetailsPane(Surface):
     def _build_actions(self) -> QHBoxLayout:
         row = QHBoxLayout()
         duplicate = Button("Duplicate slide…", "secondary")
-        duplicate.setToolTip("A new slide seeded from this one's saved content: a plain copy, or a "
-                             "cross-referenced translation (with an optional machine-translation pass).")
+        duplicate.setToolTip("Add a copy of this slide, seeded from its saved content, to the deck.")
         duplicate.clicked.connect(self._duplicate)
         delete = Button("Delete slide…", "secondary")
         delete.setToolTip("Permanently delete the slide's file and its frozen versions, after checking "
@@ -150,7 +148,7 @@ class DetailsPane(Surface):
     # -- actions on the slide's file -----------------------------------------------------
 
     def _guard(self, title: str) -> bool:
-        """Whether the slide's file may be moved or copied: not while the Source view
+        """Whether the slide's file may be moved: not while the Source view
         holds unsaved edits of it."""
         if self._is_dirty(self.current_path):
             QMessageBox.warning(self, title, SAVE_FIRST)
@@ -190,13 +188,7 @@ class DetailsPane(Surface):
         self.app.refresh_open_deck_editors()
 
     def _duplicate(self) -> None:
-        if not self._guard("Duplicate slide"):
-            return
-        dialog = DuplicateSlideDialog(self.app, self._id_slug, self.current_path)
-        if dialog.exec() != DuplicateSlideDialog.DialogCode.Accepted:
-            return
-        self.app.log(f"Duplicated {self._id_slug} -> {dialog.new_id_slug}")
-        self.app.open_slide_editor(dialog.new_path)
+        self.app.slide_list.add_slide("duplicate", self._id_slug)
 
     def _delete(self) -> None:
         id_slug = self._id_slug

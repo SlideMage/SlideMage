@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .fonts import load_fonts
+from .fonts import FONT_DIR, load_fonts
 from .theme import ThemeManager
 from .tokens import VIEWS
 from .widgets import (
@@ -30,10 +30,12 @@ from .widgets import (
     Chip,
     IconButton,
     IconLabel,
+    Field,
     ModalSheet,
     PopoverMenu,
     SegmentedControl,
     SplitButton,
+    ThumbnailGrid,
     Toast,
 )
 
@@ -63,6 +65,7 @@ class KitGallery(QWidget):
         self._section("Segmented control", self._segmented())
         self._section("Chips", self._chips())
         self._section("Buttons, split button, icon buttons", self._buttons())
+        self._section("Field, thumbnail grid", self._thumbnails())
         self._section("Card", self._card())
         self._section("Palette", self._swatches())
         self._root.addStretch(1)
@@ -128,6 +131,10 @@ class KitGallery(QWidget):
         sheet_button.clicked.connect(self._open_sheet)
         return self._row(split, more, IconLabel("lock"), Button("Primary", "primary"),
                          Button("Secondary", "secondary"), toast_error, sheet_button)
+
+    def _thumbnails(self) -> QWidget:
+        pictures = sorted((FONT_DIR.parent / "frames").glob("*.png"))   # the frame gallery of Add slide
+        return Field("Frame", ThumbnailGrid([(p.stem, p.stem, p) for p in pictures]))
 
     def _card(self) -> QWidget:
         card = Card(raised=True)

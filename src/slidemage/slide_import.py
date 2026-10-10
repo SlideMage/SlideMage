@@ -416,7 +416,7 @@ def slide_content_to_tex(content: SlideContent, image_paths: list[str]) -> tuple
 
 # -- Orchestration -------------------------------------------------------
 
-# Same shape as qt_add_slide_dialog.py's own SLUG_RE (letters/digits,
+# Same shape as slide_add.SLUG_RE (letters/digits,
 # single hyphens between groups, no leading/trailing/doubled hyphen) --
 # an id_slug built here has to satisfy every other part of the app that
 # assumes a slide's slug looks like this (slide_rename.py's own parsing,

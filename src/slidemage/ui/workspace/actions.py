@@ -162,6 +162,8 @@ def build_registry() -> CommandRegistry:
     for view in VIEWS:
         add(f"slide:visible:{view}", _visibility_label(view), SLIDE, _run_slide(f"visible:{view}"),
             visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
+    add("slide:duplicate", "Duplicate slide…", SLIDE, _run_slide("duplicate"), visible=_one_slide)
+    add("slide:translate", "Translate slide…", SLIDE, _run_slide("translate"), visible=_one_slide)
     add("slide:before", "Add slide before", SLIDE, _run_slide("before"), visible=_one_slide)
     add("slide:after", "Add slide after", SLIDE, _run_slide("after"), visible=_one_slide)
     add("slide:section_before", "Add section before", SLIDE, _run_slide("section_before"), visible=_one_slide)
@@ -196,6 +198,7 @@ def build_registry() -> CommandRegistry:
     add("export_pptx", "Export PPTX…", DECK, _deck("_on_export_pptx"), enabled=_active_deck)
     add("archive_deck", "Archive deck…", DECK, _deck("_archive_deck"), tone="danger", enabled=_active_deck)
     add("create_snapshot", "Create deck snapshot…", DECK, _window("_on_create_deck_snapshot"))
+    add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
     add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))
     add("archived_decks", "Archived decks…", DECK, lambda w: w.topbar.open_deck_menu(),

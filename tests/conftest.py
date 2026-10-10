@@ -100,3 +100,26 @@ def use_slides_folder(monkeypatch, folder):
     for module in (deck_editor, deck_outline, preview_target, slide_language, slide_source, centre, details_view, base):
         monkeypatch.setattr(module, "SLIDES_DIR", folder)
     monkeypatch.setattr(slide_source, "BACKUPS_DIR", folder / ".backups")
+
+
+TEMPLATE = "\\begin{standardframe}{Title}\r\n\t\\begin{itemize}\r\n\t\t\\item\r\n\t\\end{itemize}\r\n\\end{standardframe}\r\n"
+
+
+def use_new_slide_files(monkeypatch, root):
+    """Make `root` the project that new slides (slide_add) are written to: its slides/ folder, a
+    slide_ids.csv, and a starter slide. Translation links are not regenerated; the ids of the
+    calls are in the returned list."""
+    from slidemage import slide_ids, slide_rename
+
+    slides = root / "slides"
+    slides.mkdir(exist_ok=True)
+    (root / "slide_ids.csv").write_bytes(b'"id"\r\n')
+    template = root / "slide-template.tex"
+    template.write_bytes(TEMPLATE.encode("utf-8"))
+    monkeypatch.setattr(slide_ids, "SLIDES_DIR", slides)
+    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", root / "slide_ids.csv")
+    monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", template)
+    use_slides_folder(monkeypatch, slides)
+    relinked = []
+    monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: relinked.append(True))
+    return relinked

@@ -45,6 +45,9 @@ TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
 SHEET_TITLE = "kitSheetTitle"
 SHEET_TABS = "kitSheetTabs"
+FIELD_LABEL = "kitFieldLabel"
+THUMB = "kitThumb"
+THUMB_CAPTION = "kitThumbCaption"
 # Command palette (ui/workspace/palette.py).
 PALETTE = "kitPalette"
 PALETTE_CARD = "kitPaletteCard"
@@ -450,6 +453,49 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 18px;
             font-weight: 500;
+            color: {t.text};
+        }}
+        QDialog#{SHEET} QListWidget {{
+            {font}
+            font-size: 13px;
+            background-color: {t.bg};
+            border: none;
+            border-radius: {RADIUS_MD}px;
+            padding: 4px;
+            outline: none;
+        }}
+        QDialog#{SHEET} QListWidget::item {{
+            padding: 5px 8px;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QDialog#{SHEET} QListWidget::item:hover {{
+            background-color: {t.hover};
+        }}
+        QDialog#{SHEET} QListWidget::item:selected {{
+            background-color: {t.surface};
+            color: {t.text};
+        }}
+        QLabel#{FIELD_LABEL} {{
+            {font}
+            font-size: 13px;
+            font-weight: 500;
+            color: {t.text_2};
+        }}
+        QFrame#{THUMB} {{
+            border: 2px solid {t.line};
+            border-radius: {RADIUS_SM + 1}px;
+            background-color: transparent;
+        }}
+        QFrame#{THUMB}[current="true"] {{
+            border-color: {t.inverse};
+        }}
+        QLabel#{THUMB_CAPTION} {{
+            {mono}
+            font-size: 10.5px;
+            color: {t.text_3};
+            border: none;
+        }}
+        QFrame#{THUMB}[current="true"] QLabel#{THUMB_CAPTION} {{
             color: {t.text};
         }}
         QTabBar#{SHEET_TABS} {{

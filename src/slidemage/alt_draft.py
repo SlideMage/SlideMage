@@ -823,7 +823,7 @@ def run_batch(
 # Hunyuan-MT, 7B) -- a dedicated MT model, not a general instruction-
 # following LLM (Ollama reports its own capabilities as ["completion"]
 # only, no "tools"). Both translation-model combos (qt_transcript_tab.py's
-# own, and qt_duplicate_slide_dialog.py's auto-translate option) now
+# own, and the Add slide sheet's translation) now
 # remember the user's last pick in app_settings.json's "translation_model"
 # key -- this constant is still needed underneath that as the very first
 # preselection on a fresh install (nothing remembered yet), and as the
@@ -947,8 +947,8 @@ class ModelTranslationBackend:
         """Public entry point for translating an arbitrary block of text --
         not tied to alt_images.ImageEntry's short/long/takeaway shape.
         Thin wrapper around _translate_one(), which already does exactly
-        this; used by qt_duplicate_slide_dialog.py's own "auto-translate
-        the slide body" option (2026-08-25) to translate a whole slide's
+        this; used by slide_add.translate_body() (the Add slide sheet's
+        translation of a slide) to translate a whole slide's
         raw LaTeX body as one block. Experimental in that use -- a
         dedicated MT model has no notion of LaTeX syntax, so a command's
         argument text can come back altered along with the prose around

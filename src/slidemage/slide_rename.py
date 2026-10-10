@@ -19,7 +19,7 @@ Two entry points:
   don't trust old text" approach, but per translation cross-reference
   header line rather than per deck-inclusion header block. Run standalone
   (its own SlideMage toolbar button) or automatically after a rename /
-  after AddSlideDialog's "base on existing slide" flow.
+  after slide_add.create_copy() has written a translation.
 
 Deliberately does NOT try to reconcile roles across a pair of files (which
 side says "Translation of:" vs "<LANG> translation:") -- it only ever

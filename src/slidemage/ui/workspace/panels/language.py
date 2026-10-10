@@ -2,17 +2,15 @@
 
 The facts are slide_language's (the id-slug's language segment and the "Translation of" /
 "<LANG> translation" header comments); "outdated" is slide_language.translation_link()'s, which
-says exactly what it measures. Translate… opens the Duplicate slide form on a translation into
-the other language, with the machine translation ticked where it is possible (EN to DE): the
-same form, prompts and model choice as Duplicate in the Details view. Set language moved here
-from the Details view."""
+says exactly what it measures. Translate… opens the Add slide sheet on a translation into the
+other language, with the machine translation ticked where it is possible (EN to DE). Set language
+moved here from the Details view."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox
 
 from .... import slide_language, slide_rename
 from ....deck_outline import slide_file_title
-from ....qt_duplicate_slide_dialog import DuplicateSlideDialog
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, PopoverMenu
 from ..details_view import SAVE_FIRST
@@ -55,7 +53,7 @@ class Language(SidePanel):
             translate = Button(f"Translate to {OTHER[own]}…", "primary", compact=True)
             translate.setToolTip("Create the translation as a new slide linked to this one, with the text "
                                  "translated by the model chosen under Settings -> AI models (EN to DE).")
-            translate.clicked.connect(lambda: self._translate(id_slug, path, OTHER[own]))
+            translate.clicked.connect(lambda: self._translate(id_slug, OTHER[own]))
             line.addWidget(translate)
             row.body.addLayout(line)
         self.body.addWidget(frame)
@@ -93,7 +91,7 @@ class Language(SidePanel):
     # -- Translate -----------------------------------------------------------------------
 
     def _saved(self, title: str) -> bool:
-        """Whether the slide's file may be copied or moved: not while the Source view holds
+        """Whether the slide's file may be moved: not while the Source view holds
         unsaved edits of it."""
         path = self.slide_path()
         if path is not None and self.app.centre.is_dirty(path):
@@ -101,15 +99,8 @@ class Language(SidePanel):
             return False
         return True
 
-    def _translate(self, id_slug: str, path, target: str) -> None:
-        if path is None or not self._saved("Translate slide"):
-            return
-        dialog = DuplicateSlideDialog(self.app, id_slug, path, target)
-        if dialog.exec() != DuplicateSlideDialog.DialogCode.Accepted:
-            return
-        self.app.log(f"Created {dialog.new_id_slug}, a translation of {id_slug}")
-        self.app.refresh_open_deck_editors()
-        self.app.open_slide_editor(dialog.new_path)
+    def _translate(self, id_slug: str, target: str) -> None:
+        self.app.slide_list.add_slide("translate", id_slug, target)
 
     # -- Set language ----------------------------------------------------------------------
 

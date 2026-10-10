@@ -1,5 +1,5 @@
 """Multi-language parsing primitives shared by the SlideMage GUI's
-language badges (deck_outline.py, qt_add_slide_dialog.py,
+language badges (deck_outline.py, the Add slide sheet,
 the Details view) and slide_rename.py's translation-link repair
 pass. See LANGUAGE_NOTES.md for the whole design.
 
@@ -20,7 +20,7 @@ alongside the existing "%% Included in decks: ..." block
     %% Translation of: <source id-slug>        -- this file IS a translation
     %% <LANG> translation: <target id-slug>     -- this file HAS a translation
 
-Written by AddSlideDialog's "base on existing slide" flow (both sides at
+Written by slide_add.create_copy() for a translation (both sides at
 once) and kept honest afterward by slide_rename.regenerate_translation_links().
 """
 from __future__ import annotations
@@ -151,7 +151,7 @@ def translation_link(id_slug: str, path: Optional[Path] = None) -> Optional[Tran
 @dataclass
 class LanguageBadge:
     """What a GUI list row should show for one slide -- built once per
-    row so every caller (deck_outline.py, qt_add_slide_dialog.py,
+    row so every caller (deck_outline.py, the Add slide sheet,
     the Details view) renders the same underlying facts, even
     though each one displays them slightly differently (rich-text HTML,
     plain text + bold font, a QLabel)."""

@@ -388,7 +388,8 @@ class SlideList(QWidget):
         menu.add_separator()
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
         menu.add_separator()
-        add_commands(menu, self.app, ["slide:before", "slide:after", "slide:section_before"])
+        add_commands(menu, self.app, ["slide:before", "slide:after", "slide:duplicate", "slide:translate",
+                                  "slide:section_before"])
         self._add_move_items(menu, editable)
         menu.add_separator()
         add_commands(menu, self.app, ["slide:remove"])
@@ -469,9 +470,13 @@ class SlideList(QWidget):
         elif name == "visible":
             self._set_visibility(targets, arg, not all(r.call.included_in(arg) for r in targets))
         elif name == "before":
-            self.app.open_add_slide_dialog(self.deck, target.call.line_start, target.call.indent)
+            self._open_add(target.call.line_start, target.call.indent, f"before {target.call.id_slug}",
+                           target.call.id_slug)
         elif name == "after":
-            self.app.open_add_slide_dialog(self.deck, target.call.line_end, target.call.indent)
+            self._open_add(target.call.line_end, target.call.indent, f"after {target.call.id_slug}",
+                           target.call.id_slug)
+        elif name in ("duplicate", "translate"):
+            self.add_slide(name, target.call.id_slug, arg or None)
         elif name == "section_before":
             self._add_section(target.call.line_start)
         elif name == "move":
@@ -588,11 +593,18 @@ class SlideList(QWidget):
         return deck_editor.end_insert_point(self.deck.text)
 
     def _add_slide(self) -> None:
-        """+ Slide: after the focused slide, else at the end of the deck."""
+        self.add_slide()
+
+    def add_slide(self, source: str = "new", id_slug: Optional[str] = None, target: Optional[str] = None) -> None:
+        """Open the Add slide sheet on `source`, for a place after the slide `id_slug` (the
+        focused one by default), else at the end of the deck. Duplicate and Translate start from
+        that slide, a translation on the language `target`."""
         deck = self.deck
-        current = self._current_row()
-        if current is not None:
-            self.app.open_add_slide_dialog(deck, current.call.line_end, current.call.indent)
+        row = (next((r for r in self.rows() if r.call.id_slug == id_slug), None) if id_slug
+               else self._current_row())
+        if row is not None:
+            self._open_add(row.call.line_end, row.call.indent, f"after {row.call.id_slug}",
+                           row.call.id_slug, source, target)
             return
         try:
             insert_at, indent = (deck_editor.append_position(deck) if self.tree.slide_items()
@@ -600,7 +612,7 @@ class SlideList(QWidget):
         except ValueError as exc:
             QMessageBox.critical(self, "Add slide", str(exc))
             return
-        self.app.open_add_slide_dialog(deck, insert_at, indent)
+        self._open_add(insert_at, indent, "at the end of the deck", id_slug, source, target)
 
     def _add_slide_to(self, section: SectionRow) -> None:
         deck = self.deck
@@ -611,7 +623,12 @@ class SlideList(QWidget):
         except ValueError as exc:
             QMessageBox.critical(self, "Add slide", str(exc))
             return
-        self.app.open_add_slide_dialog(deck, insert_at, indent)
+        self._open_add(insert_at, indent, f"at the end of {section.title}", None)
+
+    def _open_add(self, insert_at: int, indent: str, where: str, slide: Optional[str], source: str = "new",
+                  target: Optional[str] = None) -> None:
+        self.app.open_add_slide_dialog(self.deck, insert_at, indent, where=where, source=source, slide=slide,
+                                       target=target)
 
     def _add_section(self, insert_at: int) -> None:
         title, accepted = QInputDialog.getText(self, "Add section", "Section title:")
