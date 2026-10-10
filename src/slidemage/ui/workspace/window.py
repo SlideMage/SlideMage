@@ -24,10 +24,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
-    QCompleter,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -37,23 +34,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, slide_ids, updater
+from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, updater
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
 from ...qt_add_slide_dialog import AddSlideDialog
 from ...qt_import_dialog import ImportPresentationDialog
 from ...qt_settings_dialog import SettingsDialog
-from ...qt_slide_search_dialog import SlideSearchDialog
 from ...qt_transcript_preview_tab import TranscriptPreviewTab
 from ...qt_transcript_tab import TranscriptTab
-from ...slide_ids import SLIDES_DIR
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
+from .actions import build_registry
 from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
+from .palette import CommandPalette
 from .side_panels import SidePanels
 from .slide_list import SlideList
 from .state import WorkspaceState
@@ -94,13 +91,14 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self._ollama_task_label: Optional[str] = None
 
         self.state = WorkspaceState(self)
+        self.commands = build_registry()
         self.build_options = BuildOptionsDialog(self, self.state)
 
         central = QWidget()
         outer = QVBoxLayout(central)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        self.topbar = TopBar(self.state)
+        self.topbar = TopBar(self)
         outer.addWidget(self.topbar)
         snapshot_banner = self._build_snapshot_banner()
         if snapshot_banner is not None:
@@ -110,8 +108,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
-        self.slide_list.compile_pages.connect(
-            self._compile_slides)
         self.side_panels = SidePanels(self, self.state)
         # Centre: the views of the focused slide, or one of the pages below
         # (replaced in step 9: the Images page).
@@ -138,42 +134,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self._init_compile(central)
         self.signals.update_check_done.connect(self._on_startup_update_check_done)
 
-        self._commands: dict[str, Callable[[], None]] = {
-            "images": self._toggle_images,
-            "stop": self._stop_compilation,
-            "build_options": self.build_options.exec,
-            "compile:pages": self._compile_pages,
-            "compile:slides": lambda: self._compile_slides(list(self.state.selected_or_focused())),
-            "compile:several": self._compile_several,
-            "compile:everything": self._compile_everything,
-            "log": self.log_drawer.toggle,
-            "open_pdf": self._for_deck(self._on_open_latest_pdf),
-            "deck_settings": self._for_deck(self._on_deck_settings),
-            "admin_slides": self._for_deck(self._on_admin_slides),
-            "deck_source": lambda: self.open_deck_source_editor(self.state.deck),
-            "deck_tags": self._for_deck(self._on_edit_deck_tags),
-            "duplicate_deck": self._for_deck(self._on_duplicate_deck),
-            "export_pptx": self._for_deck(self._on_export_pptx),
-            "archive_deck": self._for_deck(self._archive_deck),
-            "create_snapshot": self._on_create_deck_snapshot,
-            "import_presentation": self._on_import_presentation,
-            "refresh_decks": self._on_refresh_decks_clicked,
-            "go_to_slide": self._on_go_to_slide,
-            "search_text": self._on_open_slide_search,
-            "edit_bib": self._on_edit_bib,
-            "edit_test_slides": self._on_edit_test_slides,
-            "open_project": self._on_open_project,
-            "preferences": self._on_open_settings,
-            "empty_pdf": self._empty_pdf_folder,
-            "remove_temp": self._remove_temp_files,
-            "archive_unused": self._on_archive_unused_content,
-            "update_previews": self._on_update_previews,
-            "sync_links": self._on_sync_translation_links,
-            "version_history": self._on_open_version_history,
-            "check_updates": self._on_check_for_updates,
-            "project_compat": self._on_project_compat,
-            "exit": self.close,
-        }
+        self.palette = CommandPalette(self)
+        self.commands.bind_shortcuts(self)
         self.topbar.command.connect(self._on_command)
         self.state.deck_changed.connect(self._remember_deck)
         self.state.dirty_changed.connect(self._on_dirty_changed)
@@ -181,26 +143,15 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
-        # Ctrl+Shift+F is the same shortcut whichever widget has focus, since
-        # this is a project-wide search, not scoped to whatever's open.
-        QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self._on_open_slide_search)
+        # Ctrl+Shift+F, the old project-wide text search, opens the palette, where that search is now.
+        QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 
         self.reload_decks()
 
-    # -- commands from the top bar ---------------------------------------------
+    # -- commands --------------------------------------------------------------
 
-    def _on_command(self, key: str) -> None:
-        handler = self._commands.get(key)
-        if handler is not None:
-            handler()
-        elif key.startswith("compile:"):
-            self._compile_current(key.removeprefix("compile:"))
-        elif key.startswith("transcript:") and self.state.deck is not None:
-            self.generate_deck_transcript(self.state.deck, key.removeprefix("transcript:"))
-
-    def _for_deck(self, handler: Callable[[Deck], None]) -> Callable[[], None]:
-        """A command for the current deck (the menus disable these when there is none)."""
-        return lambda: handler(self.state.deck)
+    def _on_command(self, command_id: str) -> None:
+        self.commands.run(command_id, self)
 
     # -- decks -----------------------------------------------------------------
 
@@ -311,33 +262,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             self.slide_list.rebuild()   # a save changes lint errors and stale previews
             self.side_panels.refresh()  # and the slide's versions
 
-    # -- finding slides --------------------------------------------------------
-
-    def _on_go_to_slide(self) -> None:
-        """⋮ -> "Go to slide…": the old "Slide name search" box -- autocompletes
-        on a slide's own id-slug anywhere in it."""
-        dialog = QInputDialog(self)
-        dialog.setWindowTitle("Go to slide")
-        dialog.setLabelText("Slide id or name:")
-        dialog.setComboBoxEditable(True)
-        dialog.setComboBoxItems(slide_ids.list_id_slugs())
-        completer = dialog.findChild(QComboBox).completer()
-        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        completer.setFilterMode(Qt.MatchFlag.MatchContains)
-        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        if dialog.exec():
-            self._on_slide_search_activated(dialog.textValue().strip())
-
-    def _on_slide_search_activated(self, id_slug: str) -> None:
-        path = SLIDES_DIR / f"{id_slug}-current.tex"
-        if not path.is_file():
-            QMessageBox.warning(self, "Go to slide", f"There is no slide named {id_slug}.")
-            return
-        self.open_slide_editor(path)
-
-    def _on_open_slide_search(self) -> None:
-        SlideSearchDialog(self).exec()
-
     # -- deck resync after edits -----------------------------------------------
 
     def resync_deck(self, deck_path: Path) -> Optional[Deck]:
@@ -358,6 +282,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             event.ignore()
             return
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
+        self.palette.stop_search()
         self._stop_worker()
         super().closeEvent(event)
 

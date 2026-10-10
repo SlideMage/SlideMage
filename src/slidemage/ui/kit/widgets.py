@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QTabBar,
     QToolButton,
@@ -296,12 +297,15 @@ class Chip(QFrame):
         super().mouseReleaseEvent(event)
 
 
-class _MenuRow(QWidget):
+class MenuRow(QWidget):
+    """One row of a menu or of the command palette: icon, text (with a muted second line `detail`)
+    and a metadata column. `activated(key)` on click; the owner marks the current row."""
+
     activated = Signal(str)
     hovered = Signal(object)
 
     def __init__(self, key: str, text: str, meta: str, icon: str, tone: str, show_icon_slot: bool,
-                 swatch: str) -> None:
+                 swatch: str, detail: str = "") -> None:
         super().__init__()
         self.key = key
         self.setObjectName(q.MENU_ROW)
@@ -321,7 +325,17 @@ class _MenuRow(QWidget):
             layout.addWidget(chip)
         label = QLabel(text)
         label.setObjectName(q.MENU_TEXT)
-        layout.addWidget(label, 1)
+        if detail:
+            lines = QVBoxLayout()
+            lines.setSpacing(1)
+            lines.addWidget(label)
+            second = QLabel(detail)
+            second.setObjectName(q.MENU_META)
+            second.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)   # clipped, not widening
+            lines.addWidget(second)
+            layout.addLayout(lines, 1)
+        else:
+            layout.addWidget(label, 1)
         if meta:
             meta_label = QLabel(meta)
             meta_label.setObjectName(q.MENU_META)
@@ -395,7 +409,7 @@ class PopoverMenu(Popover):
     def __init__(self, parent: QWidget | None = None, *, min_width: int = 220) -> None:
         super().__init__(parent, min_width=min_width)
         self._layout = self.body
-        self._rows: list[_MenuRow] = []
+        self._rows: list[MenuRow] = []
         self._current = -1
         self._entries: list[tuple] = []  # queued by add_*, built on popup
 
@@ -433,7 +447,7 @@ class PopoverMenu(Popover):
                 self._layout.addSpacing(4)
             else:
                 _, key, text, meta, icon, tone, enabled, swatch = entry
-                row = _MenuRow(key, text, meta, icon, tone, slot, swatch)
+                row = MenuRow(key, text, meta, icon, tone, slot, swatch)
                 row.setEnabled(enabled)
                 row.setProperty("off", not enabled)
                 row.activated.connect(self._on_activated)

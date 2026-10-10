@@ -45,6 +45,13 @@ TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
 SHEET_TITLE = "kitSheetTitle"
 SHEET_TABS = "kitSheetTabs"
+# Command palette (ui/workspace/palette.py).
+PALETTE = "kitPalette"
+PALETTE_CARD = "kitPaletteCard"
+PALETTE_HEAD = "kitPaletteHead"
+PALETTE_INPUT = "kitPaletteInput"
+PALETTE_KEYS = "kitPaletteKeys"
+PALETTE_FOOT = "kitPaletteFoot"
 # Workspace top bar (ui/workspace/topbar.py); its styling lives here so that
 # all colors stay in one place.
 TOPBAR = "kitTopbar"
@@ -396,6 +403,41 @@ def build_kit_qss(t: Tokens) -> str:
         QFrame#{TOAST}[error="true"] QPushButton#{TOAST_ACTION} {{
             background-color: rgba(255,255,255,0.18);
             color: #ffffff;
+        }}
+
+        QWidget#{PALETTE} {{
+            background-color: {with_alpha("#000000", 0.4)};
+        }}
+        QFrame#{PALETTE_CARD} {{
+            background-color: {t.surface};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{PALETTE_CARD} QScrollArea, QFrame#{PALETTE_CARD} QScrollArea > QWidget > QWidget {{
+            background-color: transparent;
+            border: none;
+        }}
+        QFrame#{PALETTE_HEAD} {{
+            border-bottom: 1px solid {t.line};
+        }}
+        QLineEdit#{PALETTE_INPUT} {{
+            {font}
+            font-size: 16px;
+            color: {t.text};
+            background-color: transparent;
+            border: none;
+        }}
+        QFrame#{PALETTE_FOOT} {{
+            border-top: 1px solid {t.line};
+        }}
+        QFrame#{PALETTE_FOOT} QLabel {{
+            {font}
+            font-size: 11.5px;
+            color: {t.text_3};
+        }}
+        QLabel#{PALETTE_KEYS} {{
+            {mono}
+            font-size: 10.5px;
+            color: {t.text_3};
         }}
 
         QDialog#{SHEET} {{

@@ -304,12 +304,12 @@ def test_the_caret_compiles_the_selected_slides_and_every_active_deck(env, monke
     window = env.window
     seen = []
     monkeypatch.setattr(window, "_compile_slides", lambda ids: seen.append(ids))
-    window.topbar.command.emit("compile:slides")                          # nothing selected, nothing focused
+    window.topbar.command.emit("compile:slides")                          # nothing selected, nothing focused: disabled
     window.state.set_selection(("aaa", "bbb"))
     assert window.topbar._compile_menu._entries and any(
         e[0] == "item" and e[1] == "compile:slides" and e[6] for e in window.topbar._compile_menu._entries)
     window.topbar.command.emit("compile:slides")
-    assert seen == [[], ["aaa", "bbb"]]
+    assert seen == [["aaa", "bbb"]]
     window.decks = [WORK, COURSE, MANUAL, OLD]
     monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
     jobs = []

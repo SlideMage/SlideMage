@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QRadioButton
 from slidemage import qt_deck_group_dialog
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import GROUP_ORDER, SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
+from conftest import command_context
 from slidemage.ui.workspace.menus import GROUP_HEADINGS, build_deck_menu, build_more_menu
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
@@ -73,7 +74,7 @@ def menu_rows(menu):
 
 def test_manual_has_a_disabled_tags_entry_and_its_own_switcher_section(qapp):
     course, manual = make_deck("course-deck", ["course"]), make_deck("slidemage-manual", ["manual"])
-    tags = {deck.name: menu_rows(build_more_menu(None, deck))["deck_tags"].isEnabled()
+    tags = {deck.name: menu_rows(build_more_menu(None, command_context(deck)))["deck_tags"].isEnabled()
             for deck in (course, manual)}
     assert tags == {"course-deck": True, "slidemage-manual": False}
     menu = build_deck_menu(None, [course, manual], course)

@@ -33,6 +33,17 @@ def _isolated_app_settings(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(app_settings, "STORE_PATH", store)
 
 
+def command_context(deck=None, *, compiling=False, selected=(), decks=()):
+    """Stands in for the window as the context of the command registry, for the menus and
+    predicates that only read the deck, the selection and whether a compile run is going."""
+    from types import SimpleNamespace
+
+    from slidemage.ui.workspace.actions import build_registry
+
+    state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected))
+    return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks))
+
+
 _windows = []
 
 

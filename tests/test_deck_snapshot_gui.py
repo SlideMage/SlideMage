@@ -15,6 +15,7 @@ from slidemage.ui.workspace import compile_jobs
 from slidemage.ui.workspace import window as window_module
 from slidemage.ui.workspace.compile_jobs import CompileJobsMixin
 from slidemage.ui.workspace.deck_actions import DeckActionsMixin
+from conftest import command_context
 from slidemage.ui.workspace.menus import build_more_menu
 
 
@@ -52,7 +53,7 @@ def press_on_exec(monkeypatch, label: str, seen: list | None = None):
 # ---------------------------------------------------------------- menu
 
 def test_decks_section_holds_snapshot_and_import(qapp):
-    menu = build_more_menu(None, None)
+    menu = build_more_menu(None, command_context())
     menu._build()
     entries = [(e[0], e[2] if e[0] == "item" else e[-1]) for e in menu._entries]
     start = entries.index(("header", "Decks"))

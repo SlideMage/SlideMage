@@ -1,21 +1,23 @@
-"""The top bar's menus: deck switcher, Compile caret menu and the ⋮ menu.
+"""The top bar's menus: deck switcher, Compile caret menu and the ⋮ menu, and the
+helper the slide list's context menus use too.
 
-Each builder returns a PopoverMenu whose item keys are the command names the
-window dispatches (window.py, `WorkspaceWindow._commands`). This module holds
-the menus' content and when an entry is available, and nothing else. It is
-also the answer to "where did the old deck-table button / menu-bar action go":
-the old menu bar's System, Decks, Tabs, Housekeeping and Info menus became
-the sections of the ⋮ menu, and the deck table's per-deck buttons became its
-"This deck" section. The command registry of step 8 replaces these lists.
+A menu here is only a layout, which commands in which sections; the labels, the
+shortcuts and when an entry is available come from the command registry
+(actions.py). The item keys are command ids, which `WorkspaceWindow.run_command`
+runs. The old menu bar's System, Decks, Tabs, Housekeeping and Info menus became
+the sections of the ⋮ menu, and the deck table's per-deck buttons its "This deck"
+section.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Optional
 
 from PySide6.QtWidgets import QWidget
 
 from ...deck_scan import GROUP_ORDER, TAG_COURSE, TAG_MANUAL, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
 from ...transcript import STUDENT_VERSIONS
+from ..commands import Context
 from ..kit.widgets import PopoverMenu
 from .state import VIEWS
 
@@ -65,74 +67,48 @@ def _add_deck(menu: PopoverMenu, deck: Deck, current: Optional[Deck]) -> None:
     menu.add_item(deck_key(deck), deck.name, icon="check" if is_current else "")
 
 
-def build_compile_menu(parent: QWidget, deck: Optional[Deck], compiling: bool, slides: int = 0) -> PopoverMenu:
-    """Every PDF the old deck table could ask for (its version, per-chapter
-    and Presenter checkboxes), the transcripts of its Create Transcript
-    button, the Pages field, Stop creation and the options row of the old
-    toolbar; the pages of the `slides` selected in the slide list; and every
-    active deck at once. Entries a deck cannot use are disabled instead of hidden."""
+def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str], header: str = "") -> None:
+    """The visible commands `ids` as items (disabled where they are not available now),
+    under `header` if any of them is shown."""
+    commands = [c for c in (ctx.commands[i] for i in ids) if c.visible(ctx)]
+    if commands and header:
+        menu.add_header(header)
+    for command in commands:
+        menu.add_item(command.id, command.title(ctx), meta=command.info(ctx), tone=command.tone,
+                      enabled=command.enabled(ctx))
+
+
+def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
+    """Every PDF the old deck table could ask for (its version, per-chapter and Presenter
+    checkboxes), the transcripts of its Create Transcript button, the Pages field, Stop creation
+    and the options row of the old toolbar; the pages of the selected slides; and every active
+    deck at once. Entries a deck cannot use are disabled instead of hidden."""
     menu = PopoverMenu(parent, min_width=300)
-    menu.add_header("PDF")
-    shown = VIEWS if deck is not None and deck.supports_version else VIEWS[:1]
-    for view in shown:
-        menu.add_item(f"compile:{view}", VIEW_LABELS[view], enabled=deck is not None)
-    menu.add_item("compile:all", "All views of this deck", enabled=deck is not None)
-    menu.add_item("compile:chapters", "After course, one PDF per chapter",
-                  enabled=deck is not None and deck.has_chapters)
-    menu.add_item("compile:presenter", "Presenter", meta="speaker notes", enabled=deck is not None)
-    menu.add_item("compile:slides", "Pages of the selected slides", meta=f"{slides} slide{'s' if slides != 1 else ''}",
-                  enabled=deck is not None and slides > 0)
-    menu.add_item("compile:pages", "Pages by number…", meta="e.g. 4, 7-10", enabled=deck is not None)
-    menu.add_item("compile:several", "Several decks…")
-    menu.add_item("compile:everything", "All decks except archive", meta="every view")
-    if deck is not None and deck.supports_version:
-        menu.add_header("Accessible transcript · Markdown + HTML")
-        for version in STUDENT_VERSIONS:
-            menu.add_item(f"transcript:{version}", VIEW_LABELS[version])
+    add_commands(menu, ctx, [f"compile:{view}" for view in VIEWS] + [
+        "compile:all", "compile:chapters", "compile:presenter", "compile:slides", "compile:pages",
+        "compile:several", "compile:everything"], "PDF")
+    add_commands(menu, ctx, [f"transcript:{version}" for version in STUDENT_VERSIONS],
+                 "Accessible transcript")
     menu.add_separator()
-    menu.add_item("stop", "Stop compilation", tone="danger", enabled=compiling)
-    menu.add_item("build_options", "Build options…")
+    add_commands(menu, ctx, ["stop", "build_options"])
     return menu
 
 
-def build_more_menu(parent: QWidget, deck: Optional[Deck]) -> PopoverMenu:
+# The ⋮ menu: (header, command ids).
+MORE_SECTIONS = (
+    ("This deck", ("open_pdf", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
+                   "export_pptx", "archive_deck")),
+    ("Decks", ("create_snapshot", "import_presentation", "refresh_decks")),
+    ("Project", ("palette", "log", "edit_bib", "edit_test_slides", "open_project", "preferences")),
+    ("Housekeeping", ("empty_pdf", "remove_temp", "archive_unused", "update_previews", "sync_links")),
+    ("Info", ("version_history", "check_updates", "project_compat")),
+)
+
+
+def build_more_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
     menu = PopoverMenu(parent, min_width=260)
-    has_deck = deck is not None
-    # The manual is replaced by app updates: its settings and group stay as shipped.
-    keeps_group = has_deck and deck.group == TAG_MANUAL
-    active = has_deck and not deck.archived   # archived decks only compile and get settings
-    menu.add_header("This deck")
-    menu.add_item("open_pdf", "Open latest PDF", enabled=active)
-    menu.add_item("deck_settings", "Deck settings…", enabled=has_deck and not keeps_group)
-    menu.add_item("admin_slides", "Admin slides…", meta="course page",
-                  enabled=active and deck.group == TAG_COURSE and bool(deck.course_url))
-    menu.add_item("deck_source", "Edit deck source", enabled=active)
-    menu.add_item("deck_tags", "Tags…", enabled=active and not keeps_group)
-    menu.add_item("duplicate_deck", "Duplicate deck…", enabled=active)
-    menu.add_item("export_pptx", "Export PPTX…", enabled=active)
-    menu.add_item("archive_deck", "Archive deck…", tone="danger", enabled=active)
-    menu.add_header("Decks")
-    menu.add_item("create_snapshot", "Create deck snapshot…")
-    menu.add_item("import_presentation", "Import PPTX/ODP…")
-    menu.add_item("refresh_decks", "Refresh decks")
-    menu.add_header("Project")
-    menu.add_item("go_to_slide", "Go to slide…")
-    menu.add_item("search_text", "Search slide text…", meta="Ctrl+Shift+F")
-    menu.add_item("log", "Log", meta="Ctrl+L")
-    menu.add_item("edit_bib", "Edit .bib")
-    menu.add_item("edit_test_slides", "Edit test-slides.tex")
-    menu.add_item("open_project", "Open project…")
-    menu.add_item("preferences", "Preferences…")
-    menu.add_header("Housekeeping")
-    menu.add_item("empty_pdf", "Empty pdf folder")
-    menu.add_item("remove_temp", "Remove temp files")
-    menu.add_item("archive_unused", "Archive unused slides and media files")
-    menu.add_item("update_previews", "Update slide previews")
-    menu.add_item("sync_links", "Reestablish broken translation links")
-    menu.add_header("Info")
-    menu.add_item("version_history", "Version history…")
-    menu.add_item("check_updates", "Check for updates…")
-    menu.add_item("project_compat", "Project compatibility…")
+    for header, ids in MORE_SECTIONS:
+        add_commands(menu, ctx, ids, header)
     menu.add_separator()
-    menu.add_item("exit", "Exit SlideMage")
+    add_commands(menu, ctx, ["exit"])
     return menu

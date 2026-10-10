@@ -137,6 +137,7 @@ def test_a_bib_is_not_checked(make_file, tmp_path, monkeypatch):
 
 
 def test_the_pane_and_the_top_bar_show_the_error_count(qapp, tmp_path):
+    from conftest import command_context
     from slidemage.ui.workspace.state import WorkspaceState
     from slidemage.ui.workspace.topbar import TopBar
     from slidemage.ui.workspace.source_view import SourcePane
@@ -144,7 +145,9 @@ def test_the_pane_and_the_top_bar_show_the_error_count(qapp, tmp_path):
     path = tmp_path / "abc-EN-Demo-current.tex"
     path.write_text(BROKEN, encoding="utf-8")
     pane, state = SourcePane(FakeApp()), WorkspaceState()
-    bar = TopBar(state)
+    context = command_context()
+    context.state = state
+    bar = TopBar(context)
     counts = []
     pane.lint_errors_changed.connect(counts.append)
     pane.lint_errors_changed.connect(state.set_lint_errors)

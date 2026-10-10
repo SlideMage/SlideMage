@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QPoint, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -38,7 +38,7 @@ from ...slide_ids import SLIDES_DIR
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
-from .menus import VIEW_LABELS
+from .menus import VIEW_LABELS, add_commands
 from .slide_tree import SlideTree
 from .state import VIEWS, WorkspaceState
 
@@ -57,12 +57,10 @@ VARIANT_TITLES = {
 
 
 class SlideList(QWidget):
-    compile_pages = Signal(list)    # bare ids of the selected slides, for the page compile
-
     def __init__(self, app, state: WorkspaceState, theme: ThemeManager, toast: Toast) -> None:
-        """`app` is the window: it rescans after an edit (`after_deck_edit`) and
-        opens the add-slide dialog, the source editor, the preview and the
-        image descriptions."""
+        """`app` is the window: it rescans after an edit (`after_deck_edit`), opens the
+        add-slide dialog, the source editor, the preview and the image descriptions, and
+        owns the command registry that the context menus show (actions.py)."""
         super().__init__()
         self.app = app
         self.state = state
@@ -144,7 +142,7 @@ class SlideList(QWidget):
         self.bulk_visibility_button = Button("", "primary")
         self.bulk_visibility_button.clicked.connect(self._bulk_toggle_visibility)
         more = Button("More ▾", "secondary")
-        more.clicked.connect(lambda: self._popup(self._bulk_menu(self.tree.selected_rows()), more))
+        more.clicked.connect(lambda: self._popup(self._bulk_menu(), more))
         remove = IconButton("delete_outline", "Remove from the deck")
         remove.clicked.connect(lambda: self._remove(self.tree.selected_rows()))
         buttons.addWidget(self.bulk_visibility_button, 1)
@@ -216,7 +214,7 @@ class SlideList(QWidget):
         elif not self.tree.slide_items() and not words:
             self.note.setText("This deck has no slides yet.")
         elif not matches:
-            self.note.setText("No slide matches. Search all files with Ctrl+Shift+F.")
+            self.note.setText("No slide matches. Search all files with Ctrl+K.")
         else:
             self.note.setText("")
         self.note.setVisible(bool(self.note.text()))
@@ -237,14 +235,20 @@ class SlideList(QWidget):
             self.state.set_focused_slide(row.call.id)
 
     def _on_state_focus(self, slide_id: Optional[str]) -> None:
-        """Another part of the window focused a slide (the source editor, Go to slide)."""
-        current = self.tree.data_of(self.tree.currentItem())
-        if slide_id is None or (isinstance(current, SlideRow) and current.call.id == slide_id):
-            return
+        """Another part of the window focused a slide (the source editor, the palette's Go to
+        slide): it is shown even if the Find box hides it or its section is closed."""
         item = next((i for i in self.tree.slide_items() if self.tree.data_of(i).call.id == slide_id), None)
-        if item is not None:
+        if item is None:
+            return
+        head = item.parent()
+        self.tree.collapsed.discard(self.tree.data_of(head).title)
+        if item.isHidden():
+            self.find.clear()   # shows every slide again, the sections open as the user left them
+        head.setExpanded(True)
+        current = self.tree.data_of(self.tree.currentItem())
+        if not (isinstance(current, SlideRow) and current.call.id == slide_id):
             self.tree.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
-            self.tree.scrollToItem(item)
+        self.tree.scrollToItem(item)
 
     def _on_selection_changed(self) -> None:
         rows = self.tree.selected_rows()
@@ -263,6 +267,19 @@ class SlideList(QWidget):
     def _current_row(self) -> Optional[SlideRow]:
         row = self.tree.data_of(self.tree.currentItem())
         return row if isinstance(row, SlideRow) else None
+
+    def rows(self) -> list[SlideRow]:
+        """Every slide of the deck, in order."""
+        return [row for section in self._outline for row in section.rows]
+
+    def targets(self) -> list[SlideRow]:
+        """The slides the slide commands act on: the selected ones, else the focused one."""
+        return self.tree.selected_rows() or ([self._current_row()] if self._current_row() else [])
+
+    def current_section(self) -> Optional[SectionRow]:
+        """The section the section commands act on: the one chosen in the list."""
+        section = self.tree.data_of(self.tree.currentItem())
+        return section if isinstance(section, SectionRow) else None
 
     # -- keys and double click -------------------------------------------------------
 
@@ -319,10 +336,10 @@ class SlideList(QWidget):
         if isinstance(data, SlideRow):
             if not item.isSelected():
                 self.tree.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
-            rows = self.tree.selected_rows()
-            menu = self._bulk_menu(rows) if len(rows) > 1 else self._slide_menu(data)
+            menu = self._bulk_menu() if len(self.tree.selected_rows()) > 1 else self._slide_menu()
         elif isinstance(data, SectionRow):
-            menu = self._section_menu(data)
+            self.tree.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.NoUpdate)
+            menu = self._section_menu()
         else:
             return
         self._popup(menu, self.tree.viewport(), pos)
@@ -334,14 +351,25 @@ class SlideList(QWidget):
         else:
             menu.popup_at(anchor.mapToGlobal(pos))
 
-    def _slide_menu(self, row: SlideRow) -> PopoverMenu:
+    def _new_menu(self, min_width: int) -> PopoverMenu:
+        menu = PopoverMenu(self, min_width=min_width)
+        menu.triggered.connect(self._on_menu_chosen)
+        return menu
+
+    def _on_menu_chosen(self, key: str) -> None:
+        """A registry command, or one of the entries only this list knows (a way to call the
+        slide, a section to move to)."""
+        if key in self.app.commands:
+            self.app.commands.run(key, self.app)
+        else:
+            self._run(key, self.targets())
+
+    def _slide_menu(self) -> PopoverMenu:
+        row = self.targets()[0]
         call = row.call
-        menu = PopoverMenu(self, min_width=280)
-        menu.triggered.connect(lambda key: self._run(key, [row]))
+        menu = self._new_menu(280)
         menu.add_header(f"{call.id} · {row.title}")
-        menu.add_item("open", "Open source")
-        menu.add_item("preview", "Preview")
-        menu.add_item("images", "Images")
+        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images"])
         if not call.editable:
             menu.add_header(f"Read-only here: {call.readonly_reason}")
         menu.add_separator()
@@ -358,31 +386,22 @@ class SlideList(QWidget):
                 menu.add_item(f"variant:{macro}:{version}", f"{title} v{version}", meta=f"\\{macro}",
                               enabled=editable, icon="check" if (call.macro, call.version) == (macro, version) else "")
         menu.add_separator()
-        for view in VIEWS:
-            verb = "Hide" if call.included_in(view) else "Show"
-            menu.add_item(f"visible:{view}", f"{verb} in {VIEW_LABELS[view]}", enabled=editable)
+        add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
         menu.add_separator()
-        menu.add_item("before", "Add slide before")
-        menu.add_item("after", "Add slide after")
-        menu.add_item("section_before", "Add section before")
+        add_commands(menu, self.app, ["slide:before", "slide:after", "slide:section_before"])
         self._add_move_items(menu, editable)
         menu.add_separator()
-        menu.add_item("remove", "Remove from the deck", tone="danger", enabled=editable)
+        add_commands(menu, self.app, ["slide:remove"])
         return menu
 
-    def _bulk_menu(self, rows: list[SlideRow]) -> PopoverMenu:
-        menu = PopoverMenu(self, min_width=260)
-        menu.triggered.connect(lambda key: self._run(key, rows))
+    def _bulk_menu(self) -> PopoverMenu:
+        rows = self.targets()
+        menu = self._new_menu(260)
         menu.add_header(f"{len(rows)} slides selected")
-        for view in VIEWS:
-            verb = "Hide" if all(r.call.included_in(view) for r in rows) else "Show"
-            menu.add_item(f"visible:{view}", f"{verb} in {VIEW_LABELS[view]}")
+        add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
-        menu.add_item("compile", "Compile these pages", meta=f"in {VIEW_LABELS[self.state.view]}")
-        menu.add_item("clear", "Clear selection", meta="Esc")
-        menu.add_item("remove", f"Remove {len(rows)} from the deck", tone="danger",
-                      enabled=all(r.call.editable for r in rows))
+        add_commands(menu, self.app, ["compile:slides", "slide:clear", "slide:remove"])
         return menu
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:
@@ -391,37 +410,53 @@ class SlideList(QWidget):
         for index, section in enumerate(self._outline):
             menu.add_item(f"move:{index}", section.title, enabled=enabled)
 
-    def _section_menu(self, section: SectionRow) -> PopoverMenu:
-        deck = self.deck
-        menu = PopoverMenu(self, min_width=240)
-        menu.triggered.connect(lambda key: self._run(key, [section]))
+    def _section_menu(self) -> PopoverMenu:
+        menu = self._new_menu(240)
+        add_commands(menu, self.app, ["section:rename", "section:add_slide", "section:section_before"])
+        menu.add_separator()
+        add_commands(menu, self.app, ["section:section_up", "section:section_down"])
+        menu.add_separator()
+        add_commands(menu, self.app, ["section:remove_section"])
+        return menu
+
+    def section_enabled(self, name: str) -> bool:
+        """Whether the section command `name` can change the chosen section."""
+        section = self.current_section()
+        if section is None or self.deck is None:
+            return False
         marker = section.chapter is not None
         editable = marker and section.editable
-        chapters = deck.chapters if deck else []
-        index = chapters.index(section.chapter) if marker and section.chapter in chapters else -1
-        menu.add_item("rename", "Rename", enabled=editable)
-        menu.add_item("add_slide", "Add slide here")
-        menu.add_item("section_before", "Add section before", enabled=marker)
-        menu.add_separator()
-        menu.add_item("section_up", "Move section up",
-                      enabled=editable and index > 0 and self._chapter_editable(chapters[index - 1]))
-        menu.add_item("section_down", "Move section down",
-                      enabled=editable and 0 <= index < len(chapters) - 1
-                      and self._chapter_editable(chapters[index + 1]))
-        menu.add_separator()
-        menu.add_item("remove_section", "Remove section", meta="keeps its slides", tone="danger", enabled=editable)
-        return menu
+        if name == "section_before":
+            return marker
+        if name in ("rename", "remove_section"):
+            return editable
+        if name in ("section_up", "section_down"):
+            chapters = self.deck.chapters
+            index = chapters.index(section.chapter) if marker and section.chapter in chapters else -1
+            target = index + (-1 if name == "section_up" else 1)
+            return editable and index >= 0 and 0 <= target < len(chapters) and self._chapter_editable(chapters[target])
+        return True
 
     def _chapter_editable(self, chapter: Chapter) -> bool:
         return deck_editor.section_editable(self.deck.text, chapter)
 
-    def _run(self, key: str, targets: list) -> None:
-        """A menu entry was chosen; `targets` are the slide rows (or the one section) it was opened for."""
+    def run(self, name: str) -> None:
+        """A slide command of the registry: it acts on `targets()`."""
+        targets = self.targets()
+        if targets:
+            self._run(name, targets)
+
+    def run_section(self, name: str) -> None:
+        """A section command of the registry: it acts on the chosen section."""
+        section = self.current_section()
+        if section is not None:
+            self._run_section(name, section)
+
+    def _run(self, key: str, targets: list[SlideRow]) -> None:
+        """A slide command, `name` or `name:argument`, on the slides `targets`."""
         name, _, arg = key.partition(":")
         target = targets[0]
-        if isinstance(target, SectionRow):
-            self._run_section(name, target)
-        elif name == "open":
+        if name == "open":
             self._open_source(target)
         elif name == "preview":
             self.state.set_focused_slide(target.call.id)
@@ -443,8 +478,6 @@ class SlideList(QWidget):
             self._move_to_section(targets, self._outline[int(arg)])
         elif name == "remove":
             self._remove(targets)
-        elif name == "compile":
-            self._compile_pages(targets)
         elif name == "clear":
             self.tree.clearSelection()
 
@@ -550,9 +583,6 @@ class SlideList(QWidget):
         what = calls[0].id_slug if len(calls) == 1 else f"{len(calls)} slides ({', '.join(c.id_slug for c in calls)})"
         self.edit("Remove failed", f"Removed {what} from {self.deck.name}",
                    lambda path, text: deck_editor.remove_slide_calls(path, text, calls))
-
-    def _compile_pages(self, rows: list[SlideRow]) -> None:
-        self.compile_pages.emit(sorted({r.call.id for r in rows}))
 
     def _end_point(self) -> int:
         return deck_editor.end_insert_point(self.deck.text)

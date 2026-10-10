@@ -20,7 +20,7 @@ from slidemage.ui.workspace.menus import (
     deck_key,
 )
 
-from conftest import build_window
+from conftest import build_window, command_context
 
 
 @pytest.fixture(scope="session")
@@ -220,26 +220,28 @@ def test_selected_pages_compile_the_current_view(window, monkeypatch):
 
 
 def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
-    full = items(build_compile_menu(None, COURSE, compiling=False))
+    full = items(build_compile_menu(None, command_context(COURSE)))
     assert list(full) == [
         "compile:instructor", "compile:during-course", "compile:after-course", "compile:all",
         "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
         "compile:everything", "transcript:during-course", "transcript:after-course", "stop", "build_options"]
     assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
-    assert items(build_compile_menu(None, COURSE, compiling=False, slides=2))["compile:slides"]
-    plain = items(build_compile_menu(None, make_deck("plain", versions=False), compiling=False))
+    assert items(build_compile_menu(None, command_context(COURSE, selected=('aaa', 'bbb'))))["compile:slides"]
+    plain = items(build_compile_menu(None, command_context(make_deck("plain", versions=False))))
     assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters", "compile:presenter",
                            "compile:slides", "compile:pages", "compile:several", "compile:everything",
                            "stop", "build_options"]
     assert not plain["compile:chapters"]                              # no \section chapters
-    assert items(build_compile_menu(None, COURSE, compiling=True))["stop"]
+    assert items(build_compile_menu(None, command_context(COURSE, compiling=True)))["stop"]
 
 
 def test_stop_follows_the_compile_state(window):
     window.state.set_deck(COURSE)
     assert not items(window.topbar._compile_menu)["stop"]
-    window.topbar.set_compiling(True)
+    window.compiling = True
+    window.topbar.refresh_compile_menu()
     assert items(window.topbar._compile_menu)["stop"]
+    window.compiling = False
 
 
 def test_transcript_entries_write_the_current_decks_transcript(window, monkeypatch):
@@ -282,10 +284,9 @@ def test_a_slide_editor_opens_in_the_centre_and_unsaved_edits_show_in_the_top_ba
     assert window.topbar._save.text() == "Saved" and not window.state.dirty
 
 
-def test_opening_a_slide_focuses_it(window, monkeypatch):
+def test_opening_a_slide_focuses_it(window):
     from slidemage import slide_ids
 
-    monkeypatch.setattr(window_module, "SLIDES_DIR", slide_ids.SLIDES_DIR)
     slide = next(iter(slide_ids.SLIDES_DIR.glob("*-current.tex")))
     window.open_slide_editor(slide)
     assert window.state.focused_slide == slide.name.split("-", 1)[0]
@@ -328,15 +329,15 @@ def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last
     monkeypatch.setattr(partial_compile, "frames_for_slides",
                         lambda job, ids: asked.append(ids) or [4, 7])
     window.state.set_view("during-course")
-    window.slide_list.compile_pages.emit(["1ab", "1cd"])
+    window._compile_slides(["1ab", "1cd"])
     assert asked == [["1ab", "1cd"]] and seen == [("during-course", [4, 7])]
     monkeypatch.setattr(partial_compile, "frames_for_slides", lambda job, ids: [])
-    window.slide_list.compile_pages.emit(["1ab"])
+    window._compile_slides(["1ab"])
     assert "None of these slides" in warned[-1] and len(seen) == 1
     def refuse(job, ids):
         raise partial_compile.PartialError("compile the whole deck once")
     monkeypatch.setattr(partial_compile, "frames_for_slides", refuse)
-    window.slide_list.compile_pages.emit(["1ab"])
+    window._compile_slides(["1ab"])
     assert warned[-1] == "compile the whole deck once" and len(seen) == 1
 
 
@@ -364,7 +365,7 @@ def test_admin_slides_are_inserted_through_the_dialog_and_the_first_one_opens(wi
     monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
     monkeypatch.setattr(window, "open_slide_editor", opened.append)
     window.state.set_deck(COURSE)
-    window._commands["admin_slides"]()
+    window._on_admin_slides(COURSE)
     assert inserted == [(COURSE, "position", FakeDialog.slide_specs, "de")]
     assert edits == [((COURSE.path, "Inserted admin slides into course"), {"previous_text": COURSE.text})]
     assert opened == [tmp_path / "new-current.tex"]
@@ -386,23 +387,23 @@ OLD_DECK_ROW = ["Open latest PDF", "Deck settings…", "Edit deck source", "Dupl
 
 
 def test_every_former_menu_bar_and_deck_row_action_is_in_the_more_menu(qapp):
-    labels = [text.lower() for _key, text, _on in entries(build_more_menu(None, COURSE)) if text]
+    labels = [text.lower() for _key, text, _on in entries(build_more_menu(None, command_context(COURSE))) if text]
     for wanted in OLD_MENU_BAR + OLD_DECK_ROW:
         assert wanted.lower() in labels, wanted
-    assert "go to slide…" in labels and "search slide text…" in labels   # the old corner search
+    assert "find anything…" in labels                                  # the old corner searches are in the palette
 
 
-def test_every_menu_key_has_a_command(window):
-    keys = {key for menu in (build_more_menu(None, COURSE), build_compile_menu(None, COURSE, False))
+def test_every_menu_key_is_a_command(window):
+    context = command_context(COURSE, selected=("aaa",))
+    keys = {key for menu in (build_more_menu(None, context), build_compile_menu(None, context))
             for key in items(menu)}
-    prefixed = ("compile:", "transcript:")
-    assert [k for k in keys if k not in window._commands and not k.startswith(prefixed)] == []
+    assert [k for k in keys if k not in window.commands] == []
 
 
-def test_a_deck_command_runs_with_the_current_deck(window):
+def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
     window.state.set_deck(COURSE)
     seen: list = []
-    window._commands["duplicate_deck"] = window._for_deck(seen.append)
+    monkeypatch.setattr(window, "_on_duplicate_deck", seen.append)
     window.topbar.command.emit("duplicate_deck")
     assert seen == [COURSE]
 
@@ -415,7 +416,7 @@ def test_a_deck_command_runs_with_the_current_deck(window):
             "archive_deck"]),
 ])
 def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, deck, disabled):
-    enabled = items(build_more_menu(None, deck))
+    enabled = items(build_more_menu(None, command_context(deck)))
     deck_keys = ["open_pdf", "deck_settings", "deck_source", "deck_tags", "duplicate_deck",
                  "export_pptx", "archive_deck"]
     assert [key for key in deck_keys if not enabled[key]] == disabled
@@ -429,20 +430,6 @@ def test_the_more_button_opens_the_menu_and_forwards_the_choice(window):
     assert menu.isVisible()
     menu._on_activated("refresh_decks")
     assert seen == ["refresh_decks"] and not menu.isVisible()
-
-
-def test_go_to_slide_opens_an_existing_slide_and_refuses_an_unknown_one(window, monkeypatch):
-    from slidemage import slide_ids
-
-    told: list = []
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a: told.append(a[2]))
-    window._on_slide_search_activated("zzz-EN-No-Such-Slide")
-    assert told and window.centre.source.current is None
-
-    id_slug = slide_ids.list_id_slugs()[0]
-    window._on_slide_search_activated(id_slug)
-    assert window.centre.source.current.path.name == f"{id_slug}-current.tex"
-    assert window.stack.currentWidget() is window.centre and window.state.mode == "source"
 
 
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):

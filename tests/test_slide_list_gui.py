@@ -15,6 +15,7 @@ from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
+from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.slide_list import ABOVE_ITEM, BELOW_ITEM, ON_ITEM, SlideList
 from slidemage.ui.workspace.slide_tree import meta_text, tooltip_text, variant_label
 from slidemage.ui.workspace.state import WorkspaceState
@@ -29,10 +30,13 @@ def qapp():
 
 
 class FakeWindow:
-    """What the list needs of the main window: the rescan after an edit, the dialogs."""
+    """What the list needs of the main window: the rescan after an edit, the dialogs, and
+    the command registry its context menus show."""
 
     def __init__(self, state):
         self.state = state
+        self.commands = build_registry()
+        self.compiling = False
         self.list = None
         self.added = []
         self.opened = []
@@ -54,6 +58,13 @@ class FakeWindow:
 
     def open_images_for_slide(self, id_slug):
         self.opened.append(("images", id_slug))
+
+    @property
+    def slide_list(self):
+        return self.list
+
+    def _compile_slides(self, slide_ids):
+        self.compiled.append(slide_ids)
 
 
 @pytest.fixture
@@ -176,11 +187,18 @@ def test_a_slide_that_shares_its_line_is_locked(make_list):
     before = _read(path)
     slide_list._remove([slide_list.tree.data_of(first)])
     assert "shares its line" in make_list.errors[-1] and _read(path) == before
-    menu = slide_list._slide_menu(slide_list.tree.data_of(first))
-    assert not _entry(menu, "remove")[6] and not _entry(menu, "variant:omitslide")[6]
-    assert _entry(menu, "open")[6]                      # reading it is fine
-    section_menu = slide_list._section_menu(slide_list.tree.data_of(locked))
-    assert not _entry(section_menu, "rename")[6] and not _entry(section_menu, "remove_section")[6]
+    focus(slide_list, "aaa")
+    menu = slide_list._slide_menu()
+    assert not _entry(menu, "slide:remove")[6] and not _entry(menu, "variant:omitslide")[6]
+    assert _entry(menu, "slide:open")[6]                # reading it is fine
+    choose_section(slide_list, "T")
+    section_menu = slide_list._section_menu()
+    assert not _entry(section_menu, "section:rename")[6] and not _entry(section_menu, "section:remove_section")[6]
+
+
+def choose_section(slide_list, title):
+    slide_list.tree.setCurrentItem(head_of(slide_list, title), 0,
+                                   slide_list_module.QItemSelectionModel.SelectionFlag.NoUpdate)
 
 
 def _entry(menu, key_):
@@ -203,6 +221,25 @@ def test_the_find_box_filters_by_id_or_title_and_enter_goes_to_the_first_match(m
     slide_list.find.returnPressed.emit()
     assert slide_list.find.text() == "" and window.state.focused_slide == "ddd"
     assert all(not i.isHidden() for i in slide_list.tree.slide_items())
+
+
+def test_a_slide_focused_from_elsewhere_is_shown_though_the_filter_hides_it_or_its_section_is_closed(make_list):
+    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+    slide_list.find.setText("bbb")                          # the filter hides ddd
+    assert item_of(slide_list, "ddd").isHidden()
+    window.state.set_focused_slide("ddd")
+    assert slide_list.find.text() == "" and not item_of(slide_list, "ddd").isHidden()
+    assert slide_list.tree.currentItem() is item_of(slide_list, "ddd")
+    two = head_of(slide_list, "Two")
+    slide_list.tree.itemClicked.emit(two, 0)                # a click closes the section
+    assert not two.isExpanded()
+    window.state.set_focused_slide("ccc")
+    assert two.isExpanded() and "Two" not in slide_list.tree.collapsed
+    assert slide_list.tree.currentItem() is item_of(slide_list, "ccc")
+    slide_list.find.setText("aaa")                          # the focused slide itself is hidden
+    window.state.set_focused_slide(None)
+    window.state.set_focused_slide("ccc")
+    assert slide_list.find.text() == "" and not item_of(slide_list, "ccc").isHidden()
 
 
 def test_filtering_opens_closed_sections_and_clearing_closes_them_again(make_list):
@@ -317,9 +354,10 @@ def test_a_section_moves_up_with_its_legacy_block(make_list):
     body = ("\\section{Before}\n%% Block: legacy\n%%\n\\slide{aaa-First}\n\\slide{bbb-Second}\n"
             "%% End block: legacy\n%%\n\\section{After}\n")
     slide_list, _window, path = make_list(body)
-    menu = slide_list._section_menu(slide_list.tree.data_of(head_of(slide_list, "After")))
-    assert _entry(menu, "section_up")[6] and not _entry(menu, "section_down")[6]
-    slide_list._run("section_up", [slide_list.tree.data_of(head_of(slide_list, "After"))])
+    choose_section(slide_list, "After")
+    menu = slide_list._section_menu()
+    assert _entry(menu, "section:section_up")[6] and not _entry(menu, "section:section_down")[6]
+    slide_list.run_section("section_up")
     assert _read(path) == HEAD + "\\section{After}\n" + body.replace("\\section{After}\n", "") + TAIL
 
 
@@ -389,11 +427,9 @@ def test_the_bulk_bar_hides_and_shows_the_slides_in_the_current_view(make_list):
 def test_the_bulk_bar_removes_in_one_edit_and_hands_over_the_slide_ids_to_compile(make_list):
     slide_list, window, path = make_list(
         "\\slide{aaa-A}\n\\slide{bbb-B}\n\\slide{ccc-C}\n\\slide{ddd-D}\n")
-    pages = []
-    slide_list.compile_pages.connect(pages.append)
     select(slide_list, "ddd", "aaa")
-    slide_list._run("compile", slide_list.tree.selected_rows())
-    assert pages == [["aaa", "ddd"]]
+    window.commands.run("compile:slides", window)
+    assert [sorted(ids) for ids in window.compiled] == [["aaa", "ddd"]]
     select(slide_list, "aaa", "ccc")
     window.edits.clear()
     slide_list._remove(slide_list.tree.selected_rows())
@@ -414,13 +450,14 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     monkeypatch.setattr(deck_editor, "SLIDES_DIR", slides)
     slide_list, window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
     row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
-    menu = slide_list._slide_menu(row)
+    focus(slide_list, "aaa")
+    menu = slide_list._slide_menu()
     assert keys_of(menu) == [
-        "open", "preview", "images",
+        "slide:open", "slide:preview", "slide:images",
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
-        "visible:instructor", "visible:during-course", "visible:after-course",
-        "before", "after", "section_before", "move:0", "remove"]
+        "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
+        "slide:before", "slide:after", "slide:section_before", "move:0", "slide:remove"]
     assert _entry(menu, "variant:slide")[4] == "check"             # the current call is ticked
     for macro, expected in (
             ("slidefinal", "\\slidefinal{aaa-First}"), ("omitslide", "\\omitslide{aaa-First}"),
@@ -439,46 +476,50 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
 
 def test_the_slide_menu_hides_a_slide_in_one_view_and_opens_the_other_tools(make_list, monkeypatch):
     slide_list, window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
-    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
-    menu = slide_list._slide_menu(row)
-    assert [e[2] for e in menu._entries if e[0] == "item" and e[1].startswith("visible")] == [
+    focus(slide_list, "aaa")
+    run = lambda command: window.commands.run(command, window)   # noqa: E731 -- what a menu entry does
+    menu = slide_list._slide_menu()
+    assert [e[2] for e in menu._entries if e[0] == "item" and e[1].startswith("slide:visible")] == [
         "Hide in Instructor", "Hide in During course", "Hide in After course"]
-    slide_list._run("visible:during-course", [row])
+    run("slide:visible:during-course")
     assert deck_lines(path)[0] == "\\conditionalslide[instructor,after-course]{aaa-First}"
-    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
-    assert [e[2] for e in slide_list._slide_menu(row)._entries if e[0] == "item" and e[1] == "visible:during-course"] \
+    focus(slide_list, "aaa")
+    assert [e[2] for e in slide_list._slide_menu()._entries if e[0] == "item" and e[1] == "slide:visible:during-course"] \
         == ["Show in During course"]
-    slide_list._run("preview", [row])
+    run("slide:preview")
     assert (slide_list.state.focused_slide, slide_list.state.mode) == ("aaa", "preview")
     slide_list.state.set_mode("details")
-    slide_list._run("preview", [row])
+    run("slide:preview")
     assert slide_list.state.mode == "preview"
-    slide_list._run("images", [row])
-    slide_list._run("open", [row])
+    run("slide:images")
+    run("slide:open")
     assert window.opened[0] == ("images", "aaa-First")
     assert window.opened[1].name == "aaa-First-current.tex"
     # adding next to a slide, or a section before it
-    slide_list._run("before", [row])
-    slide_list._run("after", [row])
+    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
+    run("slide:before")
+    run("slide:after")
     assert window.added == [(row.call.line_start, ""), (row.call.line_end, "")]
     monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("Intro", True))
-    slide_list._run("section_before", [row])
+    run("slide:section_before")
     assert deck_lines(path)[0] == "\\section{Intro}"
 
 
 def test_the_bulk_menu_moves_slides_into_a_section(make_list):
-    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
+    slide_list, window, path = make_list(FRONT_AND_SECTIONS)
     select(slide_list, "aaa", "ddd")
     rows = slide_list.tree.selected_rows()
-    menu = slide_list._bulk_menu(rows)
+    menu = slide_list._bulk_menu()
     assert keys_of(menu) == [
-        "visible:instructor", "visible:during-course", "visible:after-course",
-        "move:0", "move:1", "move:2", "move:3", "compile", "clear", "remove"]
-    slide_list._run("move:2", rows)                    # into the empty section
+        "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
+        "move:0", "move:1", "move:2", "move:3", "compile:slides", "slide:clear", "slide:remove"]
+    assert _entry(menu, "slide:remove")[2] == "Remove 2 from the deck"
+    slide_list._on_menu_chosen("move:2")               # into the empty section
     assert deck_lines(path) == ["\\section{One}", "\\slide{bbb-One}", "\\section{Empty}", "\\slide{aaa-Front}",
                                 "\\slide{ddd-Two}", "\\section{Two}", "\\slide{ccc-Two}"]
+    assert rows
     select(slide_list, "bbb", "ccc")
-    slide_list._run("clear", slide_list.tree.selected_rows())
+    slide_list._on_menu_chosen("slide:clear")
     assert slide_list.tree.selected_rows() == []
 
 
@@ -608,11 +649,14 @@ def test_sections_are_added_removed_and_get_slides(make_list, monkeypatch):
     monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("New", True))
     slide_list.add_section_button.click()
     assert deck_lines(path)[-1] == "\\section{New}"
-    slide_list._run("section_before", [section_of(slide_list, "Empty")])
+    choose_section(slide_list, "Empty")
+    slide_list.run_section("section_before")
     assert deck_lines(path)[2:5] == ["\\slide{bbb-One}", "\\section{New}", "\\section{Empty}"]
-    slide_list._run("remove_section", [section_of(slide_list, "One")])    # its slides stay
+    choose_section(slide_list, "One")
+    slide_list.run_section("remove_section")                              # its slides stay
     assert "\\section{One}" not in _read(path) and "bbb" in ids(slide_list)
-    slide_list._run("add_slide", [section_of(slide_list, "Two")])
+    choose_section(slide_list, "Two")
+    slide_list.run_section("add_slide")
     deck = window.state.deck
     two = next(c for c in deck.chapters if c.title == "Two")
     assert window.added[-1] == (deck_editor.section_append_point(deck, two), "")     # after ddd, indented like it

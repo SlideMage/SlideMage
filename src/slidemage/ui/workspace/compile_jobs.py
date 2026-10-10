@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -128,10 +127,11 @@ class BuildOptionsDialog(QDialog):
 
 
 class CompileJobsMixin:
+    compiling = False   # a run holds the compile slot (the top bar's menu reads it before _init_compile)
+
     def _init_compile(self, central: QWidget) -> None:
         """Build the compile UI on the window's central widget and connect the
         log. The Log drawer covers the bottom of `self.stack`."""
-        self.compiling = False
         self.cancel_token: Optional[CancelToken] = None
         self._worker: Optional[threading.Thread] = None
         self._progress = compile_progress.BatchProgress()
@@ -160,7 +160,6 @@ class CompileJobsMixin:
         self.log_drawer.error_clicked.connect(lambda: self._show_error(self._run.failed[0]))
         self.compile_toast = Toast(central)
         self.compile_toast.action_triggered.connect(self._on_compile_toast_action)
-        QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self.log_drawer.toggle)
 
     # -- the run on show -------------------------------------------------------------
 
@@ -183,7 +182,7 @@ class CompileJobsMixin:
         self.job_panel.start(self._run, per_job_stop=bool(jobs), can_retry=bool(jobs))
         self.compiling = True
         self.cancel_token = CancelToken()
-        self.topbar.set_compiling(True)
+        self.topbar.refresh_compile_menu()
         self._refresh_job_panel()
 
     def _start_worker(self, target: Callable, *args) -> None:
@@ -201,7 +200,7 @@ class CompileJobsMixin:
     def _on_batch_done(self) -> None:
         """The worker thread has ended: what never ran is stopped, and the run is over
         once the last PDF has been moved into place (that goes on in the background)."""
-        self.topbar.set_compiling(False)
+        self.topbar.refresh_compile_menu()
         if self._run is not None:
             self._run.finish(self._stop_requested)
             self._run_over = True
@@ -664,7 +663,7 @@ class CompileJobsMixin:
         self.signals.log.emit(f"==== Done: {passed} passed, {failed} failed ====")
         self.compiling = False
         self.cancel_token = None
-        # set_compiling() touches widgets -- runs via this signal (queued
+        # refresh_compile_menu() touches widgets -- runs via this signal (queued
         # onto the GUI thread automatically, same as the log signal above)
         # rather than being called directly from this worker thread.
         self.signals.batch_done.emit()
@@ -760,7 +759,7 @@ class CompileJobsMixin:
         )
         self.compiling = False
         self.cancel_token = None
-        # set_compiling() touches widgets -- runs via this signal (queued
+        # refresh_compile_menu() touches widgets -- runs via this signal (queued
         # onto the GUI thread automatically), same as _run_jobs_thread's
         # own use of it.
         self.signals.batch_done.emit()

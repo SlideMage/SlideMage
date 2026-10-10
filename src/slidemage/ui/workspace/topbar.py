@@ -2,8 +2,9 @@
 EN/DE, save status, Preview/Split/Source/Details, Compile, Images and ⋮.
 
 The bar changes the shared WorkspaceState for the things that are state (deck,
-view, language, mode) and reports every other click as a command key through
-`command` (menus.py lists the keys); the window decides what a command does.
+view, language, mode) and reports every other click as a command id through
+`command`; the commands (actions.py) and their menus (menus.py) come from the
+registry of the window it is given.
 """
 from __future__ import annotations
 
@@ -32,11 +33,12 @@ def _repolish(widget: QWidget) -> None:
 class TopBar(QWidget):
     command = Signal(str)
 
-    def __init__(self, state: WorkspaceState, parent: QWidget | None = None) -> None:
+    def __init__(self, window, parent: QWidget | None = None) -> None:
+        """`window` is the command context: its `state`, `commands` and `compiling`."""
         super().__init__(parent)
-        self._state = state
+        self._window = window
+        self._state = state = window.state
         self._decks: list[Deck] = []
-        self._compiling = False
         self._compile_menu = None
 
         outer = QVBoxLayout(self)
@@ -64,7 +66,7 @@ class TopBar(QWidget):
         add(logo)
 
         self._deck_button = DropdownButton(q.TOPBAR_DECK)
-        self._deck_button.clicked.connect(self._open_deck_menu)
+        self._deck_button.clicked.connect(self.open_deck_menu)
         add(self._deck_button)
 
         view_as = QLabel("View as")
@@ -100,8 +102,8 @@ class TopBar(QWidget):
 
         state.deck_changed.connect(self._on_deck_changed)
         state.view_changed.connect(self._on_view_changed)
-        state.selection_changed.connect(lambda _ids: self._rebuild_compile_menu())
-        state.focused_slide_changed.connect(lambda _id: self._rebuild_compile_menu())
+        state.selection_changed.connect(lambda _ids: self.refresh_compile_menu())
+        state.focused_slide_changed.connect(lambda _id: self.refresh_compile_menu())
         state.language_changed.connect(self._languages.set_current)
         state.mode_changed.connect(self._modes.set_current)
         state.lint_errors_changed.connect(lambda count: self._modes.set_badge("source", count))
@@ -119,15 +121,11 @@ class TopBar(QWidget):
         self._images.setProperty("kind", "primary" if is_open else "secondary")
         _repolish(self._images)
 
-    def set_compiling(self, compiling: bool) -> None:
-        self._compiling = compiling
-        self._rebuild_compile_menu()
-
     # -- reacting to the state ---------------------------------------------
 
     def _on_deck_changed(self, deck: Deck | None) -> None:
         self._deck_button.set_text(deck.name if deck is not None else "No deck")
-        self._rebuild_compile_menu()
+        self.refresh_compile_menu()
         self._update_compile_label()
 
     def _on_view_changed(self, view: str) -> None:
@@ -144,17 +142,17 @@ class TopBar(QWidget):
         self._compile.set_text(label)
         self._compile.setEnabled(deck is not None)
 
-    def _rebuild_compile_menu(self) -> None:
+    def refresh_compile_menu(self) -> None:
+        """Build the caret menu again (a compile run began or ended, or the deck or selection changed)."""
         if self._compile_menu is not None:
             self._compile_menu.deleteLater()
-        self._compile_menu = build_compile_menu(
-            self, self._state.deck, self._compiling, len(self._state.selected_or_focused()))
+        self._compile_menu = build_compile_menu(self, self._window)
         self._compile_menu.triggered.connect(self.command)
         self._compile.set_menu(self._compile_menu)
 
     # -- menus -------------------------------------------------------------
 
-    def _open_deck_menu(self) -> None:
+    def open_deck_menu(self) -> None:
         menu = build_deck_menu(self, self._decks, self._state.deck)
         menu.triggered.connect(self._on_deck_picked)
         menu.closed.connect(lambda: self._deck_button.set_active(False))
@@ -169,7 +167,7 @@ class TopBar(QWidget):
                 return
 
     def _open_more_menu(self) -> None:
-        menu = build_more_menu(self, self._state.deck)
+        menu = build_more_menu(self, self._window)
         menu.triggered.connect(self.command)
         menu.closed.connect(lambda: self._more.set_active(False))
         menu.closed.connect(menu.deleteLater)

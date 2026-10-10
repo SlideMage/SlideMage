@@ -22,6 +22,7 @@ from slidemage.qt_admin_slides_dialog import (
     build_title_slide_source,
     insert_admin_slides,
 )
+from conftest import command_context
 from slidemage.ui.workspace.menus import build_more_menu
 
 
@@ -63,7 +64,7 @@ def make_dialog(tmp_path, monkeypatch, language="de"):
 
 def test_more_menu_offers_admin_slides_only_for_a_linked_course_deck(tmp_path, qapp):
     def entry(deck):
-        return next(e for e in build_more_menu(None, deck)._entries
+        return next(e for e in build_more_menu(None, command_context(deck))._entries
                     if e[0] == "item" and e[1] == "admin_slides")
 
     deck = make_deck(tmp_path)

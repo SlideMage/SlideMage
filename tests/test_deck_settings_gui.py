@@ -12,6 +12,7 @@ from slidemage.deck_settings import DeckSettings
 from slidemage.qt_deck_settings_dialog import DeckSettingsDialog
 from slidemage.ui.workspace import deck_actions
 from slidemage.ui.workspace.deck_actions import DeckActionsMixin
+from conftest import command_context
 from slidemage.ui.workspace.menus import build_more_menu
 
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
@@ -138,7 +139,7 @@ def test_settings_action_refuses_while_the_deck_source_has_unsaved_edits(tmp_pat
 def test_settings_entry_is_in_the_menu_of_every_deck(tmp_path, qapp, archived, tags, enabled):
     deck = make_deck(tmp_path, tags)
     deck.archived = archived
-    menu = build_more_menu(None, deck)
+    menu = build_more_menu(None, command_context(deck))
     menu._build()
     row = next(row for row in menu._rows if row.key == "deck_settings")
     assert row.isEnabled() == enabled
