@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–7 done (see
+Status: in progress on branch `ui-redesign`. Steps 1–8 done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 7: 893 passed, 4 skipped, about
-7.5 s; ruff clean.
+Last updated 2026-10-09. Suite after step 8: 922 passed, 4 skipped, about
+8.5 s; ruff clean.
 
 | Step | Commit | State |
 |---|---|---|
@@ -60,7 +60,8 @@ Last updated 2026-10-09. Suite after step 7: 893 passed, 4 skipped, about
 | 6a. Panel host, Used in decks, Slide versions, Visibility | (see git log) | done |
 | 6b. Citations, Language, Images, Transcript, Notes panels | (see git log) | done |
 | 7. Compile flow | (see git log) | done |
-| 8–11 | | not started |
+| 8. Command palette | (see git log) | done |
+| 9–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -109,6 +110,12 @@ Last updated 2026-10-09. Suite after step 7: 893 passed, 4 skipped, about
   (`RunStatus`, `LatexError`). `try_start_ollama_task`/`end_ollama_task`
   take the provider (cloud tasks skip the slot). Removed:
   `qt_render_check.py`, the log panel.
+- Step 8: `ui/commands.py` (`Command`, `CommandRegistry`,
+  `bind_shortcuts`), `ui/workspace/actions.py` (`build_registry()`, ~95
+  commands; ids such as `slide:*`, `section:*`, `compile:*`),
+  `palette.py` (Ctrl+K / Ctrl+Shift+F). Menus in `menus.py` are lists of
+  command ids (`add_commands`). New dialogs and pages in step 9 should
+  register commands there. Removed: `qt_slide_search_dialog.py`.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -171,6 +178,13 @@ Last updated 2026-10-09. Suite after step 7: 893 passed, 4 skipped, about
   "Selected pages…" is "Pages by number…"; new "Pages of the selected
   slides" and "All decks except archive"; Snapshots, Update previews and
   Export PPTX also show in the job panel (Export PPTX honours Stop).
+- Step 8: ⋮ "Go to slide…"/"Search slide text…" became "Find
+  anything… Ctrl+K"; Go to slide focuses a slide in the deck (reveals
+  it: clears the Find filter, opens its section) and opens other decks'
+  slides in Source; full-text search covers slides, deck .tex files and
+  Slidemaster.bib from 3 characters; the empty palette lists all
+  commands (prototype caps at 9); "Ask the chat" is a disabled row until
+  step 10; some labels changed ("Pages of the selected slides").
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as
