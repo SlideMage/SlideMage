@@ -150,14 +150,24 @@ def test_a_failed_request_ends_in_a_notice_not_a_crash(env):
     assert not env.chat.session.running
 
 
-def test_an_ollama_model_is_reported_as_not_usable_yet(env, monkeypatch):
+def test_a_local_model_answers_through_ollama_and_holds_the_slot(env):
+    from fake_http import Server, ollama_ndjson
+
     from slidemage.ai.providers import OllamaProvider
-    app_settings.set("chat_model", "ollama:qwen3")
-    env.providers.append(OllamaProvider("qwen3"))
-    assert current_route().label == "qwen3 · local"
-    ask(env)
-    notice = widgets(env, Notice)[0].text()
-    assert "qwen3 cannot be used for the chat yet" in notice and "Claude model" in notice
+    server = Server()
+    server.content_type = "application/x-ndjson"
+    server.script = [ollama_ndjson(["Looking."], [("read_file", {"path": SLIDE})]), ollama_ndjson(["Fine as is."])]
+    try:
+        app_settings.set("chat_model", "ollama:qwen3")
+        env.providers.append(OllamaProvider("qwen3", host=server.url))
+        assert current_route().label == "qwen3 · local"
+        ask(env)
+        assert [type(w).__name__ for w in widgets(env, (AssistantText, ToolCard))] == [
+            "AssistantText", "ToolCard", "AssistantText"]
+        assert widgets(env, AssistantText)[-1].raw == "Fine as is." and not widgets(env, Notice)
+        assert env.window._ollama_task_label is None
+    finally:
+        server.close()
 
 
 # -- edits against the real buffers ---------------------------------------------------------------
@@ -338,6 +348,20 @@ def test_local_ai_only_disables_the_cloud_model_with_a_hint(env):
     menu.close()
 
 
+def test_the_picker_lists_the_local_models_that_call_tools(env):
+    env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
+    app_settings.set("chat_model", "ollama:old-model:7b")
+    env.chat._open_route_menu()
+    menu = next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
+    keys = [entry[1] for entry in menu._entries if entry[0] == "item"]
+    assert keys[-4:] == ["ollama:old-model:7b", "ollama:qwen3:8b", "ollama:llama3.1:8b", "settings"]
+    chosen = next(entry for entry in menu._entries if entry[1] == "ollama:old-model:7b")
+    assert "cannot call tools" in chosen[3] and chosen[4] == "check"
+    menu.close()
+    env.chat._set_route("ollama:qwen3:8b")
+    assert app_settings.default_model("chat") == "ollama:qwen3:8b" and env.chat.route_chip.text() == "qwen3:8b · local"
+
+
 def test_the_picker_stores_the_choice_in_the_chat_assistant_setting(env):
     env.chat._set_route("anthropic:claude-opus-5-5")
     assert app_settings.default_model("chat") == "anthropic:claude-opus-5-5"
@@ -407,8 +431,18 @@ def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch):
     assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
     script(env, reply("never"))
     env.chat.send("go")
-    assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == ""
+    assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == "go"
     assert "Drafting descriptions is already running" in warned[0]
+    env.window.end_ollama_task()
+
+
+def test_a_suggestion_that_a_busy_slot_blocks_stays_in_the_message_box(env, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
+    script(env, reply("never"))
+    env.chat.ask("Make this slide more concise")
+    assert not env.chat.session.running and not widgets(env, UserBubble)
+    assert env.chat.composer.toPlainText() == "Make this slide more concise"
     env.window.end_ollama_task()
 
 

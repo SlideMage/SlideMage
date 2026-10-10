@@ -23,18 +23,18 @@ def settings(tmp_path, monkeypatch, qapp):
 def test_picker_lists_cloud_models_only_with_a_key_and_preselects_the_default(
         settings, monkeypatch):
     combo = QComboBox()
-    app_settings.set("ai_draft_model", "qwen3")        # old bare name still preselects
-    assert qt_ai_models.fill_model_combo(combo, "ai_draft", ["llama", "qwen3"], "(none)")
+    app_settings.set("translation_model", "qwen3")        # old bare name still preselects
+    assert qt_ai_models.fill_model_combo(combo, "translation", ["llama", "qwen3"], "(none)")
     assert [combo.itemData(i) for i in range(combo.count())] == ["ollama:llama", "ollama:qwen3"]
     assert combo.currentData() == "ollama:qwen3"
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    qt_ai_models.fill_model_combo(combo, "ai_draft", ["llama"], "(none)")
+    qt_ai_models.fill_model_combo(combo, "translation", ["llama"], "(none)")
     assert combo.itemText(1) == "claude-sonnet-5-5 (cloud)"
     assert combo.itemData(1) == "anthropic:claude-sonnet-5-5"
 
     resolver.set_global_local_only(True)
-    qt_ai_models.fill_model_combo(combo, "ai_draft", [], "(none)")
+    qt_ai_models.fill_model_combo(combo, "translation", [], "(none)")
     assert not combo.isEnabled() and combo.currentText() == "(none)"
     assert not combo.currentData()
 

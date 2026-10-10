@@ -1,5 +1,5 @@
 """A throwaway local HTTP server standing in for Ollama and the Anthropic API (no external
-network), and the Messages API's streaming wire format for it to answer with."""
+network), and the streaming wire formats of both for it to answer with."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Server:
-    """Answers every request with `status`/`body` and records what it got."""
+    """Answers every request with `status`/`body` (or, for a path in `routes`, with that route's
+    (status, body); a `script` of bodies is used up first, one per request) and records what it got."""
 
     def __init__(self):
         self.status = 200
@@ -17,6 +18,8 @@ class Server:
         self.delay = threading.Event()  # set to release a held response
         self.hold = False
         self.stall_after: int | None = None   # answer only this many bytes of the body, then wait
+        self.script: list[dict | str] = []   # bodies for the next requests, in turn (else `body`)
+        self.routes: dict[str, tuple[int, dict | str]] = {}
         self.requests: list[dict] = []
         outer = self
 
@@ -30,18 +33,20 @@ class Server:
                     "body": json.loads(raw) if raw else None})
                 if outer.hold:
                     outer.delay.wait(5)
-                data = (outer.body if isinstance(outer.body, str)
-                        else json.dumps(outer.body)).encode()
+                status, body = outer.routes.get(self.path, (outer.status, outer.body))
+                if outer.script:
+                    body = outer.script.pop(0)
+                data = (body if isinstance(body, str) else json.dumps(body)).encode()
                 try:
                     if outer.stall_after is not None:      # a stream that goes quiet in the middle
-                        self.send_response(outer.status)
+                        self.send_response(status)
                         self.send_header("Content-Type", outer.content_type)
                         self.end_headers()
                         self.wfile.write(data[:outer.stall_after])
                         self.wfile.flush()
                         outer.delay.wait(5)
                         return
-                    self.send_response(outer.status)
+                    self.send_response(status)
                     self.send_header("Content-Type", outer.content_type)
                     self.send_header("Content-Length", str(len(data)))
                     self.end_headers()
@@ -97,3 +102,16 @@ def message_sse(content: list[dict], stop_reason: str = "end_turn", usage: dict 
                                         "usage": {"output_tokens": usage["output_tokens"]}}))
     out.append(_event("message_stop", {"type": "message_stop"}))
     return "".join(out)
+
+
+def ollama_ndjson(pieces=(), tool_calls=(), done_reason: str = "stop") -> str:
+    """The lines /api/chat streams: one per text piece, then one carrying `tool_calls` (a list of
+    (name, arguments) pairs, each whole), then the closing statistics."""
+    lines = [{"model": "m", "message": {"role": "assistant", "content": piece}, "done": False}
+             for piece in pieces]
+    if tool_calls:
+        lines.append({"model": "m", "done": False, "message": {"role": "assistant", "content": "", "tool_calls": [
+            {"function": {"name": name, "arguments": arguments}} for name, arguments in tool_calls]}})
+    lines.append({"model": "m", "message": {"role": "assistant", "content": ""}, "done": True,
+                  "done_reason": done_reason, "prompt_eval_count": 12, "eval_count": 5})
+    return "".join(json.dumps(line) + "\n" for line in lines)

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
-from slidemage import ai_draft, alt_draft, app_settings, draft_prompts, slide_snapshot, updater
+from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater
 from slidemage import translation_prompts as tp
 from slidemage.ai import credentials, ollama_admin, resolver
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
@@ -16,7 +16,7 @@ from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.dialogs.settings import CLOUD, GENERAL, MODELS, OLLAMA, PROMPTS, SettingsSheet
 from test_templates import _framework, _project
 
-INSTALLED = [InstalledModel("general-text", 2_000_000_000, ""), InstalledModel("translator", 1_000_000, ""),
+INSTALLED = [InstalledModel("general-text", 2_000_000_000, "", ("tools",)), InstalledModel("translator", 1_000_000, ""),
              InstalledModel("vision", 7_000_000_000, "", ("vision",)), InstalledModel("vision-2", 5_000_000, "", ("vision",))]
 
 
@@ -49,7 +49,7 @@ class FakeApp(QWidget):
 @pytest.fixture(autouse=True)
 def fakes(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "config_dir", lambda: tmp_path / "cfg")
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self: list(INSTALLED))
+    monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: list(INSTALLED))
     monkeypatch.setattr(AnthropicProvider, "list_models", lambda self: [])
 
 
@@ -164,13 +164,18 @@ def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missin
     image = sheet.models.combos["image_description"]
     assert [image.itemData(i) for i in range(image.count())] == [
         "", "ollama:vision", "ollama:vision-2", *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
+    # The chat needs a model that calls tools.
+    assert sheet.tool_models == ["general-text"]
+    chat = sheet.models.combos["chat"]
+    assert [chat.itemData(i) for i in range(chat.count())] == [
+        "", "ollama:general-text", *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
     translation = sheet.models.combos["translation"]
     assert translation.currentData() == "ollama:gone" and translation.currentText() == "gone (not available)"
     assert app_settings.default_model("translation") == "ollama:gone"      # an unreachable model never rewrites it
 
 
 def test_an_unreachable_ollama_is_said_and_costs_no_setting(monkeypatch, qapp):
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self: [])
+    monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: [])
     sheet = open_sheet(qapp)
     assert not sheet.models.unreachable.isHidden() and "not reachable" in sheet.models.unreachable.text()
     assert not sheet.ollama.models_list.isEnabled() and not sheet.ollama.delete_button.isEnabled()
@@ -180,13 +185,13 @@ def test_choosing_a_default_saves_it_for_that_task_only(qapp):
     sheet = open_sheet(qapp)
     choose(sheet, "syntax_check", "general-text")
     choose(sheet, "image_description", "vision-2")
-    cloud = sheet.models.combos["ai_draft"]
+    cloud = sheet.models.combos["translation"]
     cloud.setCurrentIndex(cloud.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"))
     cloud.activated.emit(cloud.currentIndex())
     assert app_settings.default_model("syntax_check") == "ollama:general-text"
     assert app_settings.default_model("image_description") == "ollama:vision-2"
-    assert app_settings.default_model("ai_draft") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
-    assert app_settings.default_model("translation") == ""
+    assert app_settings.default_model("translation") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
+    assert app_settings.default_model("chat") == ""
 
 
 def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
@@ -538,11 +543,11 @@ def test_a_prompt_is_unsaved_until_its_own_save_button(qapp):
 
 def test_an_empty_prompt_is_refused_where_it_was_typed(qapp):
     sheet = open_sheet(qapp, tab=PROMPTS)
-    page = sheet.prompts.rewrite
+    page = sheet.prompts.image
     page.editor.edit.setPlainText("   ")
     page.editor.save_button.click()
     assert page.editor.status.text() == "The prompt text is required." and page.dirty()
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_SLIDE_REWRITE) is None
+    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
 
 
 def test_the_pages_are_switched_by_the_chooser(qapp):
@@ -582,11 +587,11 @@ def test_discarding_closes_without_saving_and_a_refused_save_keeps_the_sheet_ope
 
     sheet = open_sheet(qapp, tab=PROMPTS)
     sheet.show()
-    sheet.prompts.rewrite.editor.edit.setPlainText("")                 # not allowed
+    sheet.prompts.image.editor.edit.setPlainText("")                   # not allowed
     answer(monkeypatch, "Save")
     sheet.reject()
-    assert sheet.isVisible() and sheet.prompts.stack.currentWidget() is sheet.prompts.rewrite
-    sheet.prompts.rewrite.editor.edit.setPlainText(ai_draft.SYSTEM_PROMPT)
+    assert sheet.isVisible() and sheet.prompts.stack.currentWidget() is sheet.prompts.image
+    sheet.prompts.image.editor.edit.setPlainText(alt_draft.SYSTEM_PROMPT)
     sheet.reject()
     assert not sheet.isVisible()
 

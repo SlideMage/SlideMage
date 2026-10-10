@@ -120,7 +120,6 @@ def set_ollama_host(host: str) -> None:
 # needs rewriting; "chat" is the future chat pane's task.
 MODEL_SETTINGS: dict[str, str] = {
     "syntax_check": "syntax_check_model",
-    "ai_draft": "ai_draft_model",
     "image_description": "drafting_model",
     "translation": "translation_model",
     "chat": "chat_model",

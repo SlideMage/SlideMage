@@ -363,25 +363,20 @@ def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
     assert app_settings.get_ollama_host() == "http://from-env:8000"
 
 
-def test_draft_and_rewrite_prompts_are_customizable_and_persist(monkeypatch, tmp_path):
+def test_draft_prompt_is_customizable_and_persists(monkeypatch, tmp_path):
     """2026-09-23 review finding: alt_draft.py's image-description prompt
-    and ai_draft.py's slide-rewrite prompt were hardcoded SYSTEM_PROMPT
-    constants -- unlike translation_prompts.py's already-customizable
-    prompts, there was no way to tune either without editing source."""
-    from slidemage import ai_draft, alt_draft, draft_prompts
+    was a hardcoded SYSTEM_PROMPT constant -- unlike translation_prompts.py's
+    already-customizable prompts, there was no way to tune it without
+    editing source."""
+    from slidemage import alt_draft, draft_prompts
     from slidemage.ai.providers import OllamaProvider
 
     monkeypatch.setattr(draft_prompts, "STORE_PATH", tmp_path / "draft_prompts.json")
 
     assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
-    assert ai_draft.effective_system_prompt() == ai_draft.SYSTEM_PROMPT
 
     draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "Custom draft prompt.")
     assert alt_draft.effective_system_prompt() == "Custom draft prompt."
-    assert ai_draft.effective_system_prompt() == ai_draft.SYSTEM_PROMPT  # unaffected
-
-    draft_prompts.set_custom_prompt(draft_prompts.KIND_SLIDE_REWRITE, "Custom rewrite prompt.")
-    assert ai_draft.effective_system_prompt() == "Custom rewrite prompt."
 
     # A freshly constructed backend with no explicit system_prompt picks
     # up the current custom default; an explicit one still overrides it.

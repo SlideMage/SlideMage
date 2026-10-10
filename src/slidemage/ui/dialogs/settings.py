@@ -6,7 +6,7 @@
 * Cloud: "Local AI only" -- for every project, and this project's own override -- and the
   Anthropic API key, with where it is stored.
 * Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
-* Prompts: the system prompts of image descriptions, slide rewrite and translation:
+* Prompts: the system prompts of image descriptions and translation:
   ui/dialogs/settings_prompts.py.
 
 Every control applies when it changes and is saved at once, as before; only a prompt has its own
@@ -34,11 +34,12 @@ from .settings_prompts import PromptsTab
 GENERAL, MODELS, CLOUD, OLLAMA, PROMPTS = range(5)
 TASKS = (
     ("syntax_check", "Syntax check"),
-    ("ai_draft", "AI drafting"),
     ("image_description", "Image descriptions"),
     ("translation", "Translation"),
     ("chat", "Chat assistant"),
 )
+TASK_NOTES = {"image_description": "Only vision-capable local models are listed.",
+              "chat": "Only local models that can call tools are listed."}
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
 UPDATE_NOTES = {
@@ -60,7 +61,7 @@ class _ModelLoader(QThread):
     loaded = Signal(object, object, object)       # this loader, [InstalledModel], [model id]
 
     def run(self) -> None:
-        installed = OllamaProvider().installed()
+        installed = OllamaProvider().installed(detailed=True)
         cloud = [] if resolver.local_only() else AnthropicProvider().list_models() or list(ANTHROPIC_FALLBACK_MODELS)
         self.loaded.emit(self, installed, cloud)
 
@@ -154,8 +155,8 @@ class ModelsTab(Page):
                 # A long model tag must not widen the whole sheet; the dropdown still shows full names.
                 combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
                 combo.setMinimumContentsLength(16)
-                if task == "image_description":
-                    combo.setToolTip("Only vision-capable local models are listed.")
+                if task in TASK_NOTES:
+                    combo.setToolTip(TASK_NOTES[task])
                 combo.activated.connect(lambda i, t=task, c=combo: app_settings.set(
                     app_settings.MODEL_SETTINGS[t], c.itemData(i) or ""))       # "<provider>:<model>"
                 self.combos[task] = combo
@@ -165,14 +166,14 @@ class ModelsTab(Page):
         layout.addWidget(self.unreachable)
         layout.addStretch(1)
 
-    def fill(self, local: list[str], vision: list[str], cloud: list[str]) -> None:
+    def fill(self, local: list[str], vision: list[str], tools: list[str], cloud: list[str]) -> None:
         """(Re)fill the pickers from the model lists, keeping each task's saved default selected --
         listed as "(not available)" rather than silently dropped when it is missing, so an unreachable
         Ollama never rewrites a setting."""
         for task, combo in self.combos.items():
             combo.clear()
             combo.addItem("(none chosen -- built-in fallback)", "")
-            for model in vision if task == "image_description" else local:
+            for model in {"image_description": vision, "chat": tools}.get(task, local):
                 combo.addItem(model, f"ollama:{model}")
             for model in cloud:
                 combo.addItem(f"{model} (cloud)", f"anthropic:{model}")
@@ -287,6 +288,7 @@ class SettingsSheet(ModalSheet):
         self.app = app
         self.available_models: list[str] = []
         self.vision_models: list[str] = []
+        self.tool_models: list[str] = []
         self.loaded = False
         self._loader: QThread | None = None
         self._reload_pending = False
@@ -319,9 +321,10 @@ class SettingsSheet(ModalSheet):
             return
         self.available_models = [model.name for model in installed]
         self.vision_models = [model.name for model in installed if "vision" in model.capabilities]
+        self.tool_models = [model.name for model in installed if model.supports_tools]
         self._loader = None
         self.loaded = True
-        self.models.fill(self.available_models, self.vision_models, cloud)
+        self.models.fill(self.available_models, self.vision_models, self.tool_models, cloud)
         self.ollama.fill(installed)
         self.prompts.translation.set_models(self.available_models)
         if self._reload_pending:

@@ -3,7 +3,7 @@ step 10a): what the model may call, what it said and called, what came back,
 and the events the loop reports to the chat UI.
 
 The agent loop (agent.py) and the providers that run a model turn
-(providers.AnthropicProvider now, Ollama in 10c) both speak only the message
+(providers.AnthropicProvider and OllamaProvider) both speak only the message
 types, so a provider never sees the loop and the loop never sees a vendor's
 wire format. No Qt, no HTTP, no SDK in here.
 """

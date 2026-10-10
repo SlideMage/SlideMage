@@ -1,29 +1,23 @@
 """The Prompts tab of the Settings sheet: the system prompts the AI tasks send, one page each --
-image descriptions (alt_draft), slide rewrite (ai_draft) and translation (translation_prompts.py).
+image descriptions (alt_draft) and translation (translation_prompts.py).
 They are kept with the project (.slidemage/), not per deck.
 
 Unlike the rest of Settings a prompt is saved by its own Save button, because a half-edited prompt
-must not take effect (a model told to drop the required JSON or the protected-placeholder rule
-misbehaves). Unsaved text is shown, and closing the sheet asks about it (`confirm_close`). A prompt
-saved as it is by default is not stored (draft_prompts.set_custom_prompt), so a later change of the
-default still reaches it.
+must not take effect (a model told to drop the required JSON misbehaves). Unsaved text is shown, and
+closing the sheet asks about it (`confirm_close`). A prompt saved as it is by default is not stored
+(draft_prompts.set_custom_prompt), so a later change of the default still reaches it.
 """
 from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QPlainTextEdit, QSpinBox, QStackedWidget
 
-from ... import ai_draft, alt_draft, draft_prompts
+from ... import alt_draft, draft_prompts
 from ... import translation_prompts as tp
 from ..kit.widgets import Button, Field, Page, SegmentedControl, caption, columns, row, set_property
 
 IMAGE_NOTE = (
     "Sent as the system prompt of every Draft and Draft all. A model told to drop the required JSON "
     "output format stops working: try a change on one image with \"Tune prompt\" first.")
-REWRITE_NOTE = (
-    "Sent as the system prompt of \"AI draft\" slide rewrites. It must keep the instruction to reproduce "
-    "every \"%%%PROTECTED_N%%%\" placeholder line verbatim: without it the model can edit what the "
-    "feature protects (the slide's header comment, its \\setSlideVersion{} line and \\vbox to 0pt{...} "
-    "overlays).")
 TRANSLATION_NOTE = (
     "Used for the Images page's \"Translate\" and \"Translate all\" and for translating a slide. The "
     "prompt and the blank lines after it are sent as one message, followed by the text to translate. A "
@@ -239,12 +233,10 @@ class PromptsTab(Page):
         super().__init__()
         self.image = PromptPage(app, draft_prompts.KIND_IMAGE_DRAFT, alt_draft.SYSTEM_PROMPT, IMAGE_NOTE,
                                 "image description prompt")
-        self.rewrite = PromptPage(app, draft_prompts.KIND_SLIDE_REWRITE, ai_draft.SYSTEM_PROMPT, REWRITE_NOTE,
-                                  "slide rewrite prompt")
         self.translation = TranslationPage(app)
-        self.pages = {"image": self.image, "rewrite": self.rewrite, "translation": self.translation}
+        self.pages = {"image": self.image, "translation": self.translation}
         self.chooser = SegmentedControl(
-            (("image", "Image descriptions"), ("rewrite", "Slide rewrite"), ("translation", "Translation")))
+            (("image", "Image descriptions"), ("translation", "Translation")))
         self.stack = QStackedWidget()
         for page in self.pages.values():
             self.stack.addWidget(page)
@@ -261,8 +253,6 @@ class PromptsTab(Page):
         out = []
         if self.image.dirty():
             out.append("the image description prompt")
-        if self.rewrite.dirty():
-            out.append("the slide rewrite prompt")
         if self.translation.dirty():
             out.append(self.translation.description())
         return out

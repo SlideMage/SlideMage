@@ -45,7 +45,7 @@ MAX_TOKENS = 16000       # per model turn
 
 
 class AgentProvider(ChatProvider, Protocol):
-    """A provider that can run an agent turn (AnthropicProvider; Ollama follows in 10c)."""
+    """A provider that can run an agent turn (AnthropicProvider, OllamaProvider)."""
 
     def stream_turn(
         self, system: str, messages: list[AgentMessage], tools: list[ToolSpec],
@@ -141,10 +141,8 @@ class Agent:
         return results
 
     def _preflight(self) -> None:
-        """Whether this provider may be used: it can run agent turns, and for a cloud model "Local AI
-        only" and the first-request consent apply as they do to every cloud task."""
-        if not hasattr(self.provider, "stream_turn"):
-            raise ProviderError(f"{self.provider.label} cannot be used for the chat yet.")
+        """Whether this provider may be used: for a cloud model "Local AI only" and the first-request
+        consent apply as they do to every cloud task."""
         if self.provider.is_local:
             return
         if resolver.local_only():

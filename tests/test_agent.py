@@ -244,14 +244,6 @@ def test_the_first_cloud_request_needs_consent_once(workspace, settings):
     assert resolver.cloud_consent_given()
 
 
-def test_a_provider_without_agent_turns_is_refused_clearly(workspace):
-    class ChatOnly:
-        is_local, model, label = True, "qwen3", "qwen3"
-
-    done, _events, history = run(ChatOnly(), workspace)
-    assert done.reason == "error" and "qwen3 cannot be used for the chat yet" in done.message and history == []
-
-
 def test_a_local_provider_never_asks(workspace, settings):
     resolver.set_global_local_only(True)
     assert run(ScriptedProvider(reply("fine")), workspace)[0].reason == "end_turn"

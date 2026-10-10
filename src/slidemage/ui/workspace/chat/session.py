@@ -14,7 +14,7 @@ from .... import app_settings
 from ....ai import credentials, resolver
 from ....ai.agent import Agent
 from ....ai.agent_types import EDIT_ASK, AgentEvent, AgentMessage, Done
-from ....ai.providers import DEFAULT_ANTHROPIC_MODEL, ChatProvider
+from ....ai.providers import DEFAULT_ANTHROPIC_MODEL, ChatProvider, OllamaProvider
 from ... import background
 from .gui_workspace import GuiWorkspace
 
@@ -46,6 +46,15 @@ def current_route() -> Route:
         return Route(spec, f"{model} · local")
     problem = LOCAL_ONLY_HINT if resolver.local_only() else NO_KEY_HINT if credentials.get_api_key() is None else ""
     return Route(spec, f"{model} · cloud", problem)
+
+
+class LocalModels(QThread):
+    """The installed Ollama models the chat can use (the ones that call tools), asked for off the GUI thread."""
+
+    loaded = Signal(object)         # [model name]
+
+    def run(self) -> None:
+        self.loaded.emit(OllamaProvider().tool_models())
 
 
 class _AgentThread(QThread):

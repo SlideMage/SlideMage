@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–9, 10a–10c and 10d-1 done; next is 10d-2, Ollama tool calling in the chat (see
+Status: in progress on branch `ui-redesign`. Steps 1–9 and 10a–10d done; next is the whole-code review, then step 11 (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,48 +45,30 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 10c: 1272 passed, 5 skipped (31–42 s);
+Last updated 2026-10-10. Suite after 10d-2: 1285 passed, 6 skipped (26 s);
 ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
 ### Resume here (next session)
 1. Read this section, then `git log --oneline -15` on `ui-redesign`
-   (latest step commit: 10d-1 `401b7ea`). Working tree should be clean
+   (latest step commit: 10d-2, see the log). Working tree should be clean
    apart from untracked `uv.lock` and `.claude/` (both left untracked on
-   purpose; don't commit them). Run the suite once (expect 1272 passed,
-   5 skipped). If a test fails with a git-checkout symptom
+   purpose; don't commit them). Run the suite once (expect 1285 passed,
+   6 skipped). If a test fails with a git-checkout symptom
    (`test_bundled_copies`), look for a stray empty `/tmp/.git` left by
    an earlier agent run and remove it.
 2. Re-fetch the prototype into the new session's scratchpad only if a
-   step needs it (10d-2 doesn't; see "How the work is run").
-3. Next step: **10d-2, Ollama tool calling in the chat.** Brief:
-   - `OllamaProvider.stream_turn()` in `ai/providers.py` (stdlib,
-     `/api/chat` with `"stream": true` (NDJSON) and `tools`), mapping to
-     the neutral types in `ai/agent_types.py` the same way the Claude
-     side does; `Agent` loop unchanged. Stop/abort via the existing
-     socket shutdown.
-   - Chat model picker: list only tool-capable local models (Ollama
-     `/api/show` capabilities, or a curated fallback); consider a
-     reduced tool list for small models (`Agent(tools=...)`).
-   - Remove the "cannot be used for the chat yet" paths (`chat/view.py`
-     `NOT_YET`, `_open_route_menu` meta) once Ollama works.
-   - Keep the suggestion-chip text when a busy Ollama slot blocks a
-     send.
-   - Drop the dead settings: Settings → AI models "AI drafting"
-     (`ai_draft_model`) and the "Slide rewrite" prompt page
-     (`KIND_SLIDE_REWRITE`, `ai_draft.SYSTEM_PROMPT` /
-     `effective_system_prompt`), with their tests.
-   - Tests with a fake NDJSON server (`tests/fake_http.py`); opt-in
-     live test against Ollama (`SLIDEMAGE_LIVE_AI=1`).
-   - Expected size ~100–150k agent tokens (≈5–8%).
-4. Then: a whole-code review before step 11 (12 Haiku reviewers, see
+   step needs it (neither the review nor 11 does; see "How the work is run").
+3. Next: a whole-code review before step 11 (12 Haiku reviewers, see
    below; ~150–200k), then **step 11** (finish the switch-over: leftover
    `qt_*` modules incl. `qt_ai_models.py`, `qt_citation_dialog.py`,
    `qt_gui.py`; PyInstaller bundle check with `anthropic`, `ptyprocess`
    and QtWebEngine (see 10c leftovers); docs, manual, screenshots tool,
    6.0 version bump). Optional kit restyle before or within step 11.
    Size each before starting and split if over ~350k tokens.
-5. User-side checks still open (need the user's quota or key): try the
+4. User-side checks still open (need the user's quota or key): try a local
+   tool-capable model in the Chat once on a real slide edit (the live test only
+   reads); try the
    Claude Code tab once (focused slide visible via MCP; an edit of a
    slide header must be blocked by the hook); the chat against real
    Claude needs an API key (`ANTHROPIC_API_KEY`; the user has a Pro
@@ -102,12 +84,12 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~10b Chat UI~~ | done (~340k actual) | | |
 | ~~10c Claude Code terminal~~ | done (~380k actual) | | |
 | ~~10d-1 Cleanup~~ | done (~90k actual) | | |
-| 10d-2 Ollama tool calling | `OllamaProvider.stream_turn`, tool-capable model list, drop dead AI-drafting settings | 100–150k | 5–8% |
+| ~~10d-2 Ollama tool calling~~ | done (~190k actual) | | |
 | Review before 11 | 12 Haiku reviewers + one Sonnet fix agent | 150–200k | 8–10% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
 
-Remaining after 10d-1 ≈ 450–750k agent tokens (≈ 23–38% of one
+Remaining after 10d-2 ≈ 350–600k agent tokens (≈ 18–30% of one
 window; recent steps landed at the top of their estimates). Pause after
 each committed step.
 
@@ -141,7 +123,8 @@ Worth repeating before step 11.
 | 10b. Chat UI + Chat \| Claude Code switch (`ui/workspace/chat/`) | (see git log) | done |
 | 10c. Claude Code terminal (`ui/workspace/terminal/`, MCP server, hook) | (see git log) | done |
 | 10d-1. Remove `qt_ai_draft_dialog.py` (Tools ▾ "Ask the chat…"), chat takes the Ollama slot | (see git log) | done |
-| 10d-2–11 | | not started |
+| 10d-2. Ollama tool calling in the chat (`OllamaProvider.stream_turn`), tool-capable model pickers, dead AI-drafting settings removed | (see git log) | done |
+| 11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -150,6 +133,23 @@ Worth repeating before step 11.
   PopoverMenu, Toast, Card, ModalSheet, `apply_shadow`), `gallery.py`
   (`python -m slidemage.ui.kit.gallery`). Fonts in `assets/fonts/` (Roboto
   and Roboto Mono SIL OFL 1.1, Material Icons Apache 2.0).
+- Step 10d-2: `OllamaProvider.stream_turn()` (stdlib `/api/chat` NDJSON,
+  tools as functions, results as `role: "tool"` messages with
+  `tool_name`, `render_preview` images as a following user message for
+  vision models, else a text note; `_HttpProvider._request` is the
+  streaming plumbing, Stop shuts the socket down). `installed(detailed=)`
+  / `capabilities()` (`/api/show`) / `InstalledModel.supports_tools` (name
+  list fallback for Ollama < 0.6.4) / `tool_models()`; Settings → AI
+  models lists only tool-capable local models for "Chat assistant"
+  (`SettingsSheet.tool_models`), the chat's model menu (`LocalModels`
+  thread in `chat/session.py`) the same; a send that cannot start keeps
+  its text in the message box. Removed: Settings "AI drafting"
+  (`ai_draft` task) and the "Slide rewrite" prompt page
+  (`KIND_SLIDE_REWRITE`, `ai_draft.SYSTEM_PROMPT`, `unmask`);
+  `ai_draft.py` is now only `mask_protected_regions`. Tests:
+  `test_agent_ollama.py` (fake NDJSON server, `fake_http.ollama_ndjson`,
+  `Server.script` / `routes`); live: `test_ai_live.py` (ran green on
+  `maternion/ling-3.0-tiny:8b-Q4_K_M-8k`).
 - `ai/`: `providers.py` (`ChatProvider`, `OllamaProvider`,
   `AnthropicProvider`, `ProviderError`, `Cancelled`), `resolver.py`
   (`provider_for_task`, local-only global/per project, consent),
@@ -260,8 +260,8 @@ Worth repeating before step 11.
   lint, render_preview, add_slide, add_bib_entry, compile_deck,
   read_guide; dot-folders and `pdf/` invisible; protected-region and
   frozen-version refusal; `undo_edit`). `AnthropicProvider` now runs on
-  the `anthropic` SDK (lazy import, `stream_turn()`); Ollama has no
-  `stream_turn` yet (10c). Settings → AI models has "Chat assistant"
+  the `anthropic` SDK (lazy import, `stream_turn()`); Ollama
+  got its own in 10d-2. Settings → AI models has "Chat assistant"
   (`chat_model`). Live test: `SLIDEMAGE_LIVE_AI=1` + `ANTHROPIC_API_KEY`
   (not yet run). Open: server-side refusal `fallbacks` (beta) not used.
 - Step 10b: `ui/workspace/chat/` — `assistant.py` (`AssistantArea`,
@@ -318,10 +318,17 @@ Worth repeating before step 11.
   versions as `v1-0-0` (could use `version_label`); larger refactors
   not done: panel boilerplate helpers in `panels/base.py`, one click-frame
   base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
-- 10d-1 leftovers (for 10d-2 or 11): Settings → AI models "AI drafting"
-  (`ai_draft_model`) and the "Slide rewrite" prompt page
-  (`KIND_SLIDE_REWRITE`, `ai_draft.SYSTEM_PROMPT`) configure nothing now;
-  a busy Ollama slot drops a suggestion-chip send after the warning.
+- 10d-2 leftovers: no reduced tool list for small local models (the
+  chat sends all 12 tools and the same system prompt; `Agent(tools=...)`
+  allows it, but nothing says yet which models need it); the agent asks
+  Ollama for a 16384-token window (`providers.AGENT_NUM_CTX`) and does
+  not warn when a long conversation outgrows it (Ollama then drops the
+  oldest text silently; `usage["input"]` is the prompt size); thinking
+  output of local models is dropped, not shown; the local model list
+  of the chat is loaded when the chat is built and whenever the model
+  menu opens (so a model pulled meanwhile shows at the next opening);
+  the Claude cloud list is still the static one. `docs/SlideMage.md`
+  still names "AI drafting" and "Slide rewrite" (step 11).
 - 10c leftovers: the hook has not fired in a real session yet (needs a
   model edit; user can try: ask Claude Code to change a slide header);
   real `tools/call` from Claude Code untested; Windows (pywinpty,
@@ -330,9 +337,7 @@ Worth repeating before step 11.
   (~+220 MB, helper process, sandbox flags) and `anthropic`; plain URLs
   in the terminal are not clickable.
 - 10b leftovers: cloud model picker lists `ANTHROPIC_FALLBACK_MODELS`,
-  not the live list; no chat history persistence/search; Ollama runs
-  take no Ollama slot yet and the "not for the chat yet" texts
-  (`view.py` `NOT_YET`, `_open_route_menu`) go in 10d.
+  not the live list; no chat history persistence/search.
 - 10a leftovers: check the PyInstaller bundle with `anthropic`
   (httpx/pydantic) in step 11; run the live agent test once with a key;
   `add_slide` header regeneration relies on the GUI's `file_changed`.

@@ -32,12 +32,13 @@ from ....ai.agent_types import (
     ToolStarted,
 )
 from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderError
+from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption
 from ..state import WorkspaceState
 from .cards import AssistantText, DiffCard, Notice, Status, ToolCard, UserBubble, suggestion_button, text_label
 from .gui_workspace import EditAsk, GuiWorkspace
-from .session import ChatSession, current_route
+from .session import ChatSession, LocalModels, current_route
 
 MODE_SETTING = "chat_edit_mode"
 MODES = ((EDIT_ASK, "Ask before edits", "each change is shown first"),
@@ -49,7 +50,6 @@ SUGGESTIONS = {
                  "Add a slide after the current one"),
 }
 FIX_SUGGESTION = "Fix the LaTeX errors on this slide"
-NOT_YET = "cannot be used for the chat yet"
 COMPOSER_LINES = (2, 6)
 
 
@@ -100,6 +100,7 @@ class ChatView(Surface):
         self._asking: dict[DiffCard, EditAsk] = {}      # the cards whose Apply / Reject the agent waits for
         self._stick = True                             # the list follows the newest content
         self._provider: Optional[ChatProvider] = None  # the model of the run under way (holds the Ollama slot if local)
+        self._local_models: Optional[list[str]] = None  # the tool-capable Ollama models; None until Ollama has answered
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -171,6 +172,7 @@ class ChatView(Surface):
         self._fill_empty()
         self._show_mode()
         self.refresh_route()
+        self._load_local_models()
 
     # -- the message list ---------------------------------------------------------------
 
@@ -238,15 +240,10 @@ class ChatView(Surface):
         text = (self.composer.toPlainText() if text is None else text).strip()
         if not text or self.session.running:
             return
-        route = current_route()
-        if route.problem:       # the note under the message box says why
-            return
-        try:
-            provider = resolver.provider_for(route.spec)
-        except ProviderError as exc:
-            self._add(Notice(str(exc), "error"))
-            return
-        if not self.app.try_start_ollama_task("answering in the chat", provider):
+        provider = self._provider_for_send()
+        if provider is None:
+            if self.composer.toPlainText().strip() != text:
+                self.composer.setPlainText(text)        # a suggestion that could not be sent is kept
             return
         self._provider = provider
         self.composer.clear()
@@ -257,6 +254,19 @@ class ChatView(Surface):
         self._set_running(True)
         self.status.run()
         self.session.start(provider, text, self.scope.current())
+
+    def _provider_for_send(self) -> Optional[ChatProvider]:
+        """The model that answers the next request, holding the Ollama slot if it is local; None (and the
+        reason shown) when it cannot be used now."""
+        route = current_route()
+        if route.problem:       # the note under the message box says why
+            return None
+        try:
+            provider = resolver.provider_for(route.spec)
+        except ProviderError as exc:
+            self._add(Notice(str(exc), "error"))
+            return None
+        return provider if self.app.try_start_ollama_task("answering in the chat", provider) else None
 
     def stop(self) -> None:
         self.session.stop()
@@ -369,10 +379,7 @@ class ChatView(Surface):
         elif event.reason == "max_turns":
             self._add(Notice(event.message, "warning"))
         elif event.reason == "error":
-            message = event.message or "The request failed."
-            if NOT_YET in message:
-                message += " Choose a Claude model below until local models work in the chat."
-            self._add(Notice(message, "error"))
+            self._add(Notice(event.message or "The request failed.", "error"))
 
     # -- permission and model ---------------------------------------------------------------
 
@@ -403,10 +410,17 @@ class ChatView(Surface):
     def _show_mode(self) -> None:
         self.mode_picker.set_text(next(text for key, text, _meta in MODES if key == self.session.mode))
 
+    def _load_local_models(self) -> None:
+        loader = LocalModels()
+        loader.loaded.connect(lambda names: setattr(self, "_local_models", names))
+        background.start_detached(loader)
+
     def _open_route_menu(self) -> None:
         """The cloud models on offer, greyed with the reason while "Local AI only" is on or no key is set,
-        and the local model that is chosen now (the chat cannot use local models yet)."""
+        and the local models that can call tools (as of the last time Ollama was asked: when the menu
+        opens, for the next time)."""
         current = current_route().spec
+        self._load_local_models()
         local_only, has_key = resolver.local_only(), credentials.get_api_key() is not None
         menu = PopoverMenu(self, min_width=270)
         menu.add_header("Cloud")
@@ -414,9 +428,18 @@ class ChatView(Surface):
             spec = f"anthropic:{model}"
             menu.add_item(spec, model, icon="check" if spec == current else "", enabled=has_key and not local_only,
                           meta="Local AI only is on" if local_only else "" if has_key else "needs an API key")
-        if current.startswith("ollama:"):
-            menu.add_header("Local")
-            menu.add_item(current, current.removeprefix("ollama:"), icon="check", meta="not for the chat yet")
+        menu.add_header("Local")
+        known = self._local_models
+        local = list(known or [])
+        if current.startswith("ollama:") and current.removeprefix("ollama:") not in local:
+            local.insert(0, current.removeprefix("ollama:"))      # the chosen one stays visible, with a reason
+        for model in local:
+            spec = f"ollama:{model}"
+            menu.add_item(spec, model, icon="check" if spec == current else "",
+                          meta="not installed, or cannot call tools" if known is not None and model not in known else "")
+        if not local:
+            menu.add_item("", "Looking for local models…" if known is None else "No installed model can call tools",
+                          enabled=False)
         menu.add_separator()
         menu.add_item("settings", "More in Settings…")
         menu.triggered.connect(self._set_route)

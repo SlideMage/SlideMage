@@ -284,15 +284,14 @@ def test_keychain_is_available_only_with_a_real_backend(monkeypatch):
 # -- resolver, migration, local-only, consent ----------------------------------
 
 def test_old_bare_model_names_read_as_ollama(settings):
-    app_settings.set("ai_draft_model", "qwen3:8b")           # pre-provider settings file
+    app_settings.set("drafting_model", "qwen3:8b")           # pre-provider settings file
     app_settings.set("translation_model", "sun_leaf/HY-MT:7b")
     app_settings.set("syntax_check_model", "anthropic:claude-opus-5-5")
-    assert app_settings.default_model("ai_draft") == "ollama:qwen3:8b"
+    assert app_settings.default_model("image_description") == "ollama:qwen3:8b"
     assert app_settings.default_model("translation") == "ollama:sun_leaf/HY-MT:7b"
     assert app_settings.default_model("syntax_check") == "anthropic:claude-opus-5-5"
-    assert app_settings.default_model("image_description") == ""
     assert app_settings.default_model("chat") == ""
-    assert app_settings.get("ai_draft_model") == "qwen3:8b"  # file not rewritten
+    assert app_settings.get("drafting_model") == "qwen3:8b"  # file not rewritten
 
 
 def test_provider_for_builds_the_right_provider(settings):
