@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–8 and 9a–9c done (see
+Status: in progress on branch `ui-redesign`. Steps 1–8, 9a–9c and 9d-1 done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,7 +45,7 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 9c: 1042 passed, 4 skipped; ruff clean. Suite time
+Last updated 2026-10-09. Suite after step 9d-1: 1058 passed, 4 skipped; ruff clean. Suite time
 varies with machine load (9–16 s for the same commit).
 
 | Step | Commit | State |
@@ -64,7 +64,8 @@ varies with machine load (9–16 s for the same commit).
 | 9a. Add slide sheet | (see git log) | done |
 | 9b. Project picker, compat, No decks/First run, Housekeeping, Snapshots, deck group dialog, About | (see git log) | done |
 | 9c. Settings + Deck settings sheets | (see git log) | done |
-| 9d. Images page (`qt_transcript_tab.py`, 2,849 lines) | | not started |
+| 9d-1. Images page logic → `image_review.py` (backend only) | (see git log) | done |
+| 9d-2. New kit Images page under `ui/pages/`, delete `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | | not started |
 | 10–11 | | not started |
 
 ### What exists now
@@ -146,6 +147,19 @@ varies with machine load (9–16 s for the same commit).
   Removed: `qt_settings_dialog`, `qt_deck_settings_dialog`,
   `qt_admin_slides_dialog`, `qt_translation_prompts_panel`.
   `qt_ai_models.py` remains (move under `ui/` in step 11).
+- Step 9d-1: `image_review.py` (`FILTERS`, `scan_views`, `visible_views`,
+  `sort_order`, `slide_state`/`image_state`, `state_counts`,
+  `summary_text`, `find_slide`, `form_baseline`, `FormEdit`,
+  `save_slide_forms`, `needs_long_description`, `copy_into_media`,
+  `repoint_slides`, `is_unused_after`, `has_text`);
+  `alt_images.stamp_review`, `set_takeaway_default`. For 9d-2: the old
+  page is slide-centric with filters Needs attention, All slides with
+  images, No description, Draft unreviewed, Needs re-check, Reviewed;
+  it has no deck/all scope, free-text search, "Picture changed" or
+  "No German" filter (the plan's list came from the prototype; "No
+  German" needs a small predicate over `alt_images.translation_state`).
+  Drafting/translation batches are in `alt_draft`; image preview uses
+  `alt_blocks.resolve_image`/`media_render`.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
