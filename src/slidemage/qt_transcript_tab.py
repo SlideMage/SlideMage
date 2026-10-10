@@ -22,8 +22,6 @@ only thing that writes to that store.
 """
 from __future__ import annotations
 
-import datetime as _dt
-import shutil
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -58,13 +56,12 @@ from PySide6.QtWidgets import (
 
 from . import open_path
 from . import (
-    alt_blocks, alt_draft, alt_images, media_render,
+    alt_blocks, alt_draft, alt_images, image_review, media_render,
     slide_ids, slide_language, tikz_render, transcript,
 )
 from .ai.providers import ChatProvider, OllamaProvider
 from .qt_ai_models import fill_model_combo, provider_from_combo
 from .ui.kit.theme import CLOSE_BUTTON, MUTED_LABEL, WARNING_LABEL
-from .deck_editor import parse_slide_calls
 from .deck_scan import PROJECT_ROOT, Deck, scan_decks
 
 # Qt can only paint raster formats directly. A .pdf is rendered to a
@@ -133,48 +130,6 @@ _TRANSLATION_STATE_LABELS = {
     alt_images.STATE_STALE: "⚠ stale -- English text edited since translation",
     alt_images.STATE_REVIEWED: "translation matches current English text",
 }
-
-_FILTERS = [
-    ("Needs attention", (alt_images.STATE_NONE, alt_images.STATE_DRAFT,
-                         alt_images.STATE_STALE)),
-    ("All slides with images", None),
-    ("No description", (alt_images.STATE_NONE,)),
-    ("Draft, unreviewed", (alt_images.STATE_DRAFT,)),
-    ("Needs re-check", (alt_images.STATE_STALE,)),
-    ("Reviewed", (alt_images.STATE_REVIEWED,)),
-]
-
-
-@dataclass
-class _SlideView:
-    """One slide's row in the list: its scan result plus the worst review
-    state across the images it shows -- the per-slide aggregate the old
-    single %%ALT block used to carry directly, now computed from the
-    per-(image, slide) states of everything it references."""
-
-    row: alt_blocks.SlideRow
-    state: str
-    slide_hash: str
-
-
-# Worst-first, matching alt_images.STATE_LABELS's own ordering.
-_STATE_RANK = {alt_images.STATE_NONE: 0, alt_images.STATE_DRAFT: 1,
-              alt_images.STATE_STALE: 2, alt_images.STATE_REVIEWED: 3}
-
-
-def _slide_state(row: alt_blocks.SlideRow, entries: dict[str, alt_images.ImageEntry],
-                 slide_hash: str) -> str:
-    worst = alt_images.STATE_REVIEWED
-    for reference in row.images:
-        entry = alt_images.lookup(entries, reference)
-        if entry is None:
-            state = alt_images.STATE_NONE
-        else:
-            state = alt_images.slide_use_state(entry, row.slide_id, slide_hash)
-        if _STATE_RANK[state] < _STATE_RANK[worst]:
-            worst = state
-    return worst
-
 
 # Shown under the Source field (2026-09-19, direct instruction). The
 # "AI-generated -- " prefix convention is documented in CONVERSION_NOTES.md
@@ -403,17 +358,7 @@ class _ImageEditor(QFrame):
         # Immutable values as the form was first shown. _entry itself is
         # refreshed by "Set as default" below, so it cannot safely serve as
         # a conflict baseline for other fields during a later save.
-        self._form_baseline = {
-            "role": entry.role,
-            "short": entry.short,
-            "long": entry.long,
-            "source": entry.source,
-            "takeaway": entry.takeaway_for(slide_id),
-            "short_de": entry.short_de,
-            "long_de": entry.long_de,
-            "source_de": entry.source_de,
-            "takeaway_de": entry.takeaway_for_de(slide_id),
-        }
+        self._form_baseline = image_review.form_baseline(entry, slide_id)
         self._form_baseline_en_hash = alt_images.en_text_hash(entry)
         self._translation_provenance: dict[str, object] | None = None
         takeaway_edit = QPlainTextEdit(entry.takeaway_for(slide_id))
@@ -703,10 +648,7 @@ class _ImageEditor(QFrame):
         self._translation_provenance = None
         if source_before_translation is not None:
             short, long, takeaway = source_before_translation
-            requested_hash = alt_images.en_text_hash(alt_images.ImageEntry(
-                image=self.reference, short=short, long=long,
-                takeaway_default=takeaway,
-            ))
+            requested_hash = image_review.source_hash(short, long, takeaway)
             if all_fields_applied and result.source_hash == requested_hash:
                 # Save may happen after English was edited in this form. Keep
                 # the worker's exact source hash and applied German values so
@@ -752,26 +694,14 @@ class _ImageEditor(QFrame):
 
     def _on_set_default(self) -> None:
         text = self.fields["takeaway"].toPlainText().strip()
-
-        def mutate(entries: dict[str, alt_images.ImageEntry]) -> bool:
-            entry = entries.get(self.reference)
-            if entry is None:
-                return False
-            entry.takeaway_default = text
-            # This slide's own override, if it had one, now equals the
-            # default it just set -- clear it so it reads as "following"
-            # rather than "coincidentally identical override".
-            use = entry.used_on.get(self.slide_id)
-            if use is not None:
-                use.takeaway = ""
-            self._entry = entry
-            # This immediate action changed only the takeaway baseline. Keep
-            # the form's original snapshots for every other field so a
-            # background update is not mistaken for a human edit at Save.
-            self._form_baseline["takeaway"] = entry.takeaway_for(self.slide_id)
-            return True
-
-        alt_images.update_store(mutate)
+        entry = alt_images.set_takeaway_default(self.reference, self.slide_id, text)
+        if entry is None:
+            return
+        self._entry = entry
+        # This immediate action changed only the takeaway baseline. Keep
+        # the form's original snapshots for every other field so a
+        # background update is not mistaken for a human edit at Save.
+        self._form_baseline["takeaway"] = entry.takeaway_for(self.slide_id)
         self._refresh_takeaway_indicator()
 
     def _build_preview(self, reference: str) -> QWidget:
@@ -914,6 +844,17 @@ class _ImageEditor(QFrame):
                 "artifact and noted in one line in the transcript."
                 if decorative else ""
             )
+
+    def form_edit(self) -> image_review.FormEdit:
+        values = {
+            "role": self.role, "short": self.short, "long": self.long, "source": self.source,
+            "takeaway": self.takeaway_text, "short_de": self.short_de, "long_de": self.long_de,
+            "source_de": self.source_de, "takeaway_de": self.takeaway_de_text,
+        }
+        return image_review.FormEdit(
+            self.reference, values, self._form_baseline, self._form_baseline_en_hash,
+            self._translation_provenance,
+        )
 
     @property
     def role(self) -> str:
@@ -1132,7 +1073,7 @@ class TranscriptTab(QWidget):
         self.drafts_ready.connect(self._on_drafts_ready)
         self.batch_slide_done.connect(self._on_batch_slide_done)
         self.translations_ready.connect(self._on_translations_ready)
-        self._rows: list[_SlideView] = []
+        self._rows: list[image_review.SlideView] = []
         # Populated by _on_sort_deck_selected() from the picked deck's own
         # \slide{}-family call order (bare slide id -> position); empty
         # means "no sort" (the sort_combo's own first entry). Cached here
@@ -1142,7 +1083,7 @@ class TranscriptTab(QWidget):
         self._sort_order: dict[str, int] = {}
         self._sort_decks: list[Deck] = []
         self._editors: list[_ImageEditor] = []
-        self._current: _SlideView | None = None
+        self._current: image_review.SlideView | None = None
         # The path of the last slide actually *shown* (i.e. the last
         # non-None view) -- see _show_slide's own comment for why this,
         # not self._current, is what its same-slide/scroll-reset check
@@ -1298,7 +1239,7 @@ class TranscriptTab(QWidget):
 
         nav_toolbar.addWidget(QLabel("Show:"))
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems([label for label, _ in _FILTERS])
+        self.filter_combo.addItems([label for label, _ in image_review.FILTERS])
         self.filter_combo.currentIndexChanged.connect(self._populate_list)
         nav_toolbar.addWidget(self.filter_combo)
 
@@ -1458,55 +1399,26 @@ class TranscriptTab(QWidget):
             )
         self._entries = alt_images.load_store()
 
-        views: list[_SlideView] = []
-        for row in alt_blocks.scan_slides_raw():
-            slide_hash = alt_images.slide_context_hash(row.path)
-            state = _slide_state(row, self._entries, slide_hash)
-            views.append(_SlideView(row=row, state=state, slide_hash=slide_hash))
-        self._rows = views
+        self._rows = views = image_review.scan_views(self._entries)
         self._find_slide_model.setStringList(sorted(
             view.row.path.name[: -len("-current.tex")] for view in views))
         self._populate_list(preserve, allow_dirty=allow_dirty)
         return True
 
-    def _visible_rows(self) -> list[_SlideView]:
-        _, states = _FILTERS[self.filter_combo.currentIndex()]
-        rows = self._rows if states is None else [
-            view for view in self._rows if view.state in states
-        ]
-        # See self._pin_visible_path's own comment for why this exists --
-        # forces one specific slide to stay visible/selectable through a
-        # reload even if its own state no longer matches the active
-        # filter, without touching the filter itself.
-        if self._pin_visible_path is not None and not any(
-            view.row.path == self._pin_visible_path for view in rows
-        ):
-            pinned = next(
-                (view for view in self._rows if view.row.path == self._pin_visible_path),
-                None,
-            )
-            if pinned is not None:
-                rows = [pinned, *rows]
-        if self._sort_order:
-            # Stable sort (Python's own guarantee): every slide missing
-            # from the chosen deck shares the same fallback key
-            # (len(self._sort_order), one past the last real position) and
-            # so keeps whatever relative order it already had -- "listed
-            # at the end" without needing a second explicit tiebreaker.
-            rows = sorted(
-                rows,
-                key=lambda view: self._sort_order.get(view.row.slide_id, len(self._sort_order)),
-            )
-        return rows
+    def _visible_rows(self) -> list[image_review.SlideView]:
+        _, states = image_review.FILTERS[self.filter_combo.currentIndex()]
+        # See self._pin_visible_path's own comment for why the pin exists -- it keeps one
+        # specific slide visible/selectable through a reload even if its own state no longer
+        # matches the active filter, without touching the filter itself.
+        return image_review.visible_views(
+            self._rows, states, pin=self._pin_visible_path, order=self._sort_order)
 
     def _on_sort_deck_selected(self, index: int) -> None:
         if index <= 0:
             self._sort_order = {}
         else:
             deck = self._sort_decks[index - 1]  # -1: combo index 0 is "(no sort)"
-            self._sort_order = {
-                call.id: position for position, call in enumerate(parse_slide_calls(deck))
-            }
+            self._sort_order = image_review.sort_order(deck)
         self._populate_list()
 
     def _populate_list(
@@ -1669,7 +1581,7 @@ class TranscriptTab(QWidget):
     def _has_in_flight_translation(self) -> bool:
         return any(editor.translating for editor in self._editors)
 
-    def _show_slide(self, view: _SlideView | None) -> None:
+    def _show_slide(self, view: image_review.SlideView | None) -> None:
         # Reset scroll position only on an actual switch to a *different*
         # slide (2026-08-26, direct report) -- this runs after every save
         # too (reload(preserve=...) re-lands here even when nothing about
@@ -1893,7 +1805,7 @@ class TranscriptTab(QWidget):
         if mark_reviewed:
             missing = [
                 editor.reference for editor in self._editors
-                if editor.role == alt_images.ROLE_INFORMATIVE and not editor.long
+                if image_review.needs_long_description(editor.role, editor.long)
             ]
             if missing:
                 QMessageBox.warning(
@@ -1904,114 +1816,10 @@ class TranscriptTab(QWidget):
                 )
                 return
 
-        # The hash is recomputed here rather than reused from the scan: the
-        # slide file may have been edited since the list was last populated,
-        # and stamping a stale hash would mark the slide reviewed against
-        # content nobody actually looked at.
-        current_hash = alt_images.slide_context_hash(target_path)
-        today = _dt.date.today().isoformat()
-
-        def mutate(entries: dict[str, alt_images.ImageEntry]) -> bool:
-            for editor in self._editors:
-                entry = entries.get(editor.reference)
-                if entry is None:
-                    entry = alt_images.ImageEntry(image=editor.reference)
-                    entries[editor.reference] = entry
-                baseline = editor._form_baseline
-                # The store can change while this form is open (draft and
-                # translation workers write each image as they finish). Only
-                # copy fields the person changed in this form; every untouched
-                # value stays at its newest persisted value.
-                if editor.role != baseline["role"]:
-                    entry.role = editor.role
-                if editor.short != baseline["short"]:
-                    entry.short = editor.short
-                if editor.long != baseline["long"]:
-                    entry.long = editor.long
-                if editor.source != baseline["source"]:
-                    entry.source = editor.source
-
-                use = entry.used_on.setdefault(slide_id, alt_images.SlideUse())
-                typed = editor.takeaway_text
-                if typed != baseline["takeaway"]:
-                    if typed == entry.takeaway_default:
-                        use.takeaway = ""            # follows the latest default
-                    elif not entry.takeaway_default and typed:
-                        entry.takeaway_default = typed
-                        use.takeaway = ""
-                    else:
-                        use.takeaway = typed         # a real slide-specific override
-
-                german_changed = (
-                    editor.short_de != baseline["short_de"]
-                    or editor.long_de != baseline["long_de"]
-                    or editor.takeaway_de_text != baseline["takeaway_de"]
-                )
-                if editor.short_de != baseline["short_de"]:
-                    entry.short_de = editor.short_de
-                if editor.long_de != baseline["long_de"]:
-                    entry.long_de = editor.long_de
-                if editor.source_de != baseline["source_de"]:
-                    entry.source_de = editor.source_de
-
-                typed_de = editor.takeaway_de_text
-                if typed_de != baseline["takeaway_de"]:
-                    if typed_de == entry.takeaway_default_de:
-                        use.takeaway_de = ""
-                    elif not entry.takeaway_default_de and typed_de:
-                        entry.takeaway_default_de = typed_de
-                        use.takeaway_de = ""
-                    else:
-                        use.takeaway_de = typed_de
-
-                provenance = editor._translation_provenance
-                provenance_fields = provenance.get("fields", {}) if provenance else {}
-                provenance_matches = (
-                    bool(provenance)
-                    and provenance_fields.get("short_de") == entry.short_de
-                    and provenance_fields.get("long_de") == entry.long_de
-                    and provenance_fields.get("takeaway_de") == entry.takeaway_for_de(slide_id)
-                    and provenance.get("source_hash") == alt_images.en_text_hash(entry)
-                )
-                if provenance_matches:
-                    entry.translated_from_hash = str(provenance["source_hash"])
-                elif german_changed:
-                    if not entry.short_de and not entry.long_de:
-                        entry.translated_from_hash = ""
-                    elif alt_images.en_text_hash(entry) == editor._form_baseline_en_hash:
-                        # A manual German edit can be considered in sync
-                        # only while the latest English source still matches
-                        # the form's original source.
-                        entry.translated_from_hash = alt_images.en_text_hash(entry)
-                    else:
-                        # The user edited German against an older form, but
-                        # the live English text has since changed (possibly
-                        # alongside a worker translation). Do not retain that
-                        # worker's current hash: it would falsely bless the
-                        # human-edited German as matching the newer English.
-                        # An empty source hash keeps the pair visibly stale.
-                        entry.translated_from_hash = ""
-                if mark_reviewed:
-                    entry.status = alt_images.STATUS_REVIEWED
-                    use.reviewed = today
-                    use.stored_hash = current_hash
-                else:
-                    # "Save draft" now explicitly un-reviews this slide's
-                    # own use of the image (2026-08-25, direct instruction)
-                    # -- previously left review status untouched, so a
-                    # by-hand edit via "Save draft" could silently keep
-                    # showing as "Reviewed" against text nobody had
-                    # actually re-checked. Only this slide's own SlideUse
-                    # is cleared, not entry.status (shared across every
-                    # slide using this image) -- another slide that
-                    # already reviewed the same image is unaffected;
-                    # slide_use_state() already returns STATE_DRAFT purely
-                    # from use.reviewed being empty, regardless of
-                    # entry.status.
-                    use.reviewed = ""
-            return True
-
-        alt_images.update_store(mutate)
+        image_review.save_slide_forms(
+            slide_id, target_path, [editor.form_edit() for editor in self._editors],
+            reviewed=mark_reviewed,
+        )
         for editor in self._editors:
             editor.dirty = False
         self.app.log(
@@ -2065,20 +1873,7 @@ class TranscriptTab(QWidget):
         one image, i.e. everything scan_slides_raw() found), so a slide
         with no images correctly reports as not found here rather than
         silently doing nothing."""
-        candidate_id = text.split("-", 1)[0].strip().lower()
-        match = next(
-            (view for view in self._rows if view.row.slide_id.lower() == candidate_id),
-            None,
-        )
-        if match is None:
-            # Fallback for anything that didn't parse as "id-rest" cleanly
-            # (a bare slug fragment, stray whitespace, ...) -- match against
-            # the slide file's own "<id>-<slug>" stem instead.
-            match = next(
-                (view for view in self._rows
-                 if view.row.path.name.lower().startswith(text.lower())),
-                None,
-            )
+        match = image_review.find_slide(self._rows, text)
         if match is None:
             QMessageBox.information(
                 self, "Find slide",
@@ -2087,11 +1882,11 @@ class TranscriptTab(QWidget):
                 "image -- there's nothing here to show for one that doesn't.",
             )
             return
-        # Force "All slides with images" (index 1 in _FILTERS) so the match
+        # Force "All slides with images" so the match
         # is guaranteed visible regardless of whatever Show:/Sort: filter
         # is currently active, without otherwise touching the sort order.
         self.filter_combo.blockSignals(True)
-        self.filter_combo.setCurrentIndex(1)
+        self.filter_combo.setCurrentIndex(image_review.FILTER_ALL)
         self.filter_combo.blockSignals(False)
         self._populate_list(preserve=match.row.path)
 
@@ -2131,8 +1926,7 @@ class TranscriptTab(QWidget):
         if new_stem is None:
             return
         new_name = f"{new_stem}{extension}"
-        media_dir = PROJECT_ROOT / "media"
-        dest_path = media_dir / new_name
+        dest_path = PROJECT_ROOT / "media" / new_name
         if dest_path.exists():
             confirm = QMessageBox.question(
                 self, "Replace image",
@@ -2148,6 +1942,7 @@ class TranscriptTab(QWidget):
         # unconditionally: "used on 12 slides" is exactly the case where
         # silently repointing all of them without asking would be a
         # surprise, not a convenience.
+        rows_by_id = {v.row.slide_id: v.row for v in self._rows}
         other_slide_ids = sorted(sid for sid in editor._entry.used_on if sid != editor.slide_id)
         targets = {editor.slide_id: view.row.path}
         if other_slide_ids:
@@ -2162,52 +1957,19 @@ class TranscriptTab(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if confirm == QMessageBox.StandardButton.Yes:
-                by_id = {v.row.slide_id: v.row for v in self._rows}
                 for sid in other_slide_ids:
-                    row = by_id.get(sid)
-                    if row is not None:
-                        targets[sid] = row.path
+                    if sid in rows_by_id:
+                        targets[sid] = rows_by_id[sid].path
 
         try:
-            media_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(source_path), str(dest_path))
+            image_review.copy_into_media(source_path, new_name)
         except OSError as exc:
             QMessageBox.critical(self, "Replace image", f"Could not copy the file: {exc}")
             return
         self.app.log(f"Copied {source_path} to media/{new_name}")
 
-        changed_slides: list[str] = []
-        failures: list[str] = []
-        rows_by_id = {v.row.slide_id: v.row for v in self._rows}
-        for sid, path in targets.items():
-            # The raw text this *specific* slide actually spells the old
-            # reference as (extension present or not) can differ from
-            # editor.reference, which only reflects the currently-shown
-            # slide's own spelling -- resolved the same way _show_slide()
-            # matched a raw reference to this entry in the first place.
-            raw_reference = old_reference
-            row = rows_by_id.get(sid)
-            if row is not None:
-                for candidate in row.images:
-                    candidate_entry = alt_images.lookup(self._entries, candidate)
-                    if candidate_entry is not None and candidate_entry.image == editor._entry.image:
-                        raw_reference = candidate
-                        break
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError as exc:
-                failures.append(f"{sid}: {exc}")
-                continue
-            new_text, count = alt_blocks.replace_image_reference(text, raw_reference, new_reference)
-            if count == 0:
-                failures.append(f"{sid}: reference not found in {path.name} as written")
-                continue
-            try:
-                path.write_text(new_text, encoding="utf-8")
-            except OSError as exc:
-                failures.append(f"{sid}: {exc}")
-                continue
-            changed_slides.append(sid)
+        changed_slides, failures = image_review.repoint_slides(
+            editor._entry, self._entries, targets, rows_by_id, old_reference, new_reference)
 
         if changed_slides:
             self.app.log(
@@ -2235,13 +1997,8 @@ class TranscriptTab(QWidget):
 
         # Is the old image now unused everywhere? Only then does its stored
         # description actually still describe a picture something shows.
-        remaining_uses = set(editor._entry.used_on) - set(changed_slides)
-        if not remaining_uses:
-            has_content = bool(
-                editor._entry.short or editor._entry.long
-                or editor._entry.takeaway_default or editor._entry.source
-            )
-            if has_content:
+        if image_review.is_unused_after(editor._entry, changed_slides):
+            if image_review.has_text(editor._entry):
                 confirm = QMessageBox.question(
                     self, "Replace image",
                     f"\"{old_reference}\" is no longer used on any slide. "
@@ -2260,15 +2017,7 @@ class TranscriptTab(QWidget):
         self.reload(preserve=view.row.path)
 
     def _update_summary(self) -> None:
-        counts = {state: 0 for state in _STATE_COLORS}
-        for view in self._rows:
-            counts[view.state] += 1
-        self.summary_label.setText(
-            f"{counts[alt_images.STATE_REVIEWED]} reviewed · "
-            f"{counts[alt_images.STATE_STALE]} need re-check · "
-            f"{counts[alt_images.STATE_DRAFT]} draft · "
-            f"{counts[alt_images.STATE_NONE]} undescribed"
-        )
+        self.summary_label.setText(image_review.summary_text(self._rows))
 
     def _any_editor_dirty(self) -> bool:
         return any(editor.dirty for editor in self._editors)
@@ -2290,7 +2039,7 @@ class TranscriptTab(QWidget):
         for view in self._rows:
             if image not in view.row.images:
                 continue
-            view.state = _slide_state(view.row, self._entries, view.slide_hash)
+            view.state = image_review.slide_state(view.row, self._entries, view.slide_hash)
             touched_paths.add(view.row.path)
 
         for index in range(self.slide_list.count()):
@@ -2464,7 +2213,7 @@ class TranscriptTab(QWidget):
             target=self._draft_one_bg, args=(view, backend), daemon=True
         ).start()
 
-    def _draft_one_bg(self, view: _SlideView, backend) -> None:
+    def _draft_one_bg(self, view: image_review.SlideView, backend) -> None:
         summary = alt_draft.BatchSummary()
         pairs = alt_draft.draftable_images(view.row, self._entries)
         try:

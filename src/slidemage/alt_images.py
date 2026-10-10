@@ -747,26 +747,49 @@ def slide_use_state(entry: ImageEntry, slide_id: str, slide_hash: str) -> str:
     return STATE_REVIEWED
 
 
+def stamp_review(entry: ImageEntry, use: SlideUse, reviewed: bool, slide_hash: str) -> None:
+    """Review stamp of one slide's use of an image: `reviewed` confirms the image and this use of
+    it, stamped with today and the slide's current text `slide_hash`; otherwise only this slide's
+    use is un-reviewed, since another slide may have reviewed the same image."""
+    if reviewed:
+        entry.status = STATUS_REVIEWED
+        use.reviewed, use.stored_hash = date.today().isoformat(), slide_hash
+    else:
+        use.reviewed = ""
+
+
+def set_takeaway_default(image: str, slide_id: str, text: str) -> ImageEntry | None:
+    """Make `text` the image's takeaway default; this slide then follows it instead of holding an
+    override of its own. Returns the updated entry, None if the image has no entry."""
+    found: list[ImageEntry] = []
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        entry = entries.get(image)
+        if entry is None:
+            return False
+        entry.takeaway_default = text
+        use = entry.used_on.get(slide_id)
+        if use is not None:
+            use.takeaway = ""
+        found.append(entry)
+        return True
+
+    update_store(mutate)
+    return found[0] if found else None
+
+
 def save_slide_image(
     image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
 ) -> None:
     """Store what was written for one image on one slide: its role and English short and long
-    description (an entry is made if the image has none yet). `reviewed` confirms the image and
-    this slide's use of it, stamped with today and the slide's current text; saving as a draft
-    un-reviews this slide's use only, since another slide may have reviewed the same image.
-    Everything else of the entry (takeaway, German text, source) is left as it is."""
-    today = date.today().isoformat()
+    description (an entry is made if the image has none yet), reviewed or as a draft as in
+    stamp_review(). Everything else of the entry (takeaway, German text, source) is left as it is."""
     slide_hash = slide_context_hash(slide_path)
 
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         entry = entries.setdefault(image, ImageEntry(image=image))
         entry.role, entry.short, entry.long = role, short, long
-        use = entry.used_on.setdefault(slide_id, SlideUse())
-        if reviewed:
-            entry.status = STATUS_REVIEWED
-            use.reviewed, use.stored_hash = today, slide_hash
-        else:
-            use.reviewed = ""
+        stamp_review(entry, entry.used_on.setdefault(slide_id, SlideUse()), reviewed, slide_hash)
         return True
 
     update_store(mutate)

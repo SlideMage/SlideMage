@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit
 
-from .... import alt_blocks, alt_draft, alt_images
+from .... import alt_blocks, alt_draft, alt_images, image_review
 from ....qt_ai_models import provider_for_task
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
@@ -130,7 +130,7 @@ class ImageDescriptions(SidePanel):
             slide_hash = alt_images.slide_context_hash(path)
             for reference in references:
                 entry = alt_images.lookup(entries, reference)
-                state = alt_images.slide_use_state(entry, slide_id, slide_hash) if entry else alt_images.STATE_NONE
+                state = image_review.image_state(entries, reference, slide_id, slide_hash)
                 form = ImageForm(layout, reference, entry, state)
                 form.roles.changed.connect(lambda _role: self._edited())
                 form.short_edit.textChanged.connect(self._edited)
@@ -150,7 +150,7 @@ class ImageDescriptions(SidePanel):
 
     def _save(self, form: ImageForm, *, reviewed: bool) -> None:
         role, short, long = form.values()
-        if reviewed and role == alt_images.ROLE_INFORMATIVE and not long:
+        if reviewed and image_review.needs_long_description(role, long):
             QMessageBox.warning(self, "Nothing to review yet",
                                 "An informative image needs a long description before it can be reviewed. "
                                 "Write one, or set the role to decorative.")
