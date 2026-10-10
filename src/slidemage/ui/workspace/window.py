@@ -147,6 +147,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
+        # Ctrl+S saves the file open in the Source view whichever view has the focus.
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.source.save)
         # Ctrl+Shift+F, the old project-wide text search, opens the palette, where that search is now.
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 

@@ -17,7 +17,7 @@ from conftest import SLIDE_TEXT, build_window, make_project
 from fake_claude import make_fake_claude
 from mcp_client import Client
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
@@ -315,6 +315,19 @@ def test_a_clean_buffer_is_reloaded_and_our_own_save_is_not_a_change(watch, monk
     file.reload = lambda: reloaded.append(1)
     watch.sync.poll()                                   # the save changed the file on disk
     assert reloaded == [] and file.disk_changed() == SAME and "% mine" in file.editor.text()
+
+
+def test_ctrl_s_saves_the_open_file_from_the_window_whichever_view_has_the_focus(watch, monkeypatch):
+    file = open_slide(watch)
+    monkeypatch.setattr(source_file, "PROJECT_ROOT", watch.root)
+    monkeypatch.setattr(source_file, "prompt_version_choice", lambda *a: "overwrite")
+    file.editor.replace_selection("% saved from afar\n")
+    assert file.dirty
+    watch.window.centre.preview.setFocus()                     # not the editor
+    shortcuts = [s for s in watch.window.findChildren(QShortcut) if s.key() == QKeySequence("Ctrl+S")]
+    assert len(shortcuts) == 1 and shortcuts[0].context() == Qt.ShortcutContext.WindowShortcut
+    shortcuts[0].activated.emit()
+    assert not file.dirty and "% saved from afar" in watch.path.read_text()
 
 
 def test_a_dirty_buffer_is_not_overwritten_and_reload_from_disk_takes_claudes_version(watch):

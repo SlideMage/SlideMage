@@ -71,9 +71,10 @@ class SourcePane(Surface):
         self._stack.addWidget(self._empty)
         layout.addWidget(self._stack, 1)
 
-        # Scoped to this view's widgets: Ctrl+S saves the file shown here.
+        # Scoped to this view's widgets. Ctrl+S is the window's (window.py): it saves the file shown here
+        # from every view.
         shortcuts = [
-            ("Ctrl+S", self.save), ("Ctrl+/", lambda: self._edit(lambda e: e.toggle_comment())),
+            ("Ctrl+/", lambda: self._edit(lambda e: e.toggle_comment())),
             ("Ctrl+I", lambda: self._wrap("textit")), ("Ctrl+B", lambda: self._wrap("textbf")),
             ("Ctrl+U", lambda: self._wrap("underline")), ("Ctrl+R", self.render_requested.emit),
         ]
