@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–8 and 9a done (see
+Status: in progress on branch `ui-redesign`. Steps 1–8, 9a and 9b done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
-8.8 s; ruff clean.
+Last updated 2026-10-09. Suite after step 9b: 989 passed, 4 skipped; ruff clean. Suite time
+varies with machine load (9–16 s for the same commit).
 
 | Step | Commit | State |
 |---|---|---|
@@ -62,7 +62,7 @@ Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
 | 7. Compile flow | (see git log) | done |
 | 8. Command palette | (see git log) | done |
 | 9a. Add slide sheet | (see git log) | done |
-| 9b. Project picker, compat, No decks/First run, Housekeeping, Snapshots, deck group dialog, Info | | not started |
+| 9b. Project picker, compat, No decks/First run, Housekeeping, Snapshots, deck group dialog, About | (see git log) | done |
 | 9c. Settings + Deck settings sheets | | not started |
 | 9d. Images page (`qt_transcript_tab.py`, 2,849 lines) | | not started |
 | 10–11 | | not started |
@@ -127,6 +127,15 @@ Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
   `ModalSheet.add_footer_note`; `assets/frames/*.png`. Removed:
   `qt_add_slide_dialog.py`, `qt_duplicate_slide_dialog.py`,
   `qt_import_dialog.py` (it was PPTX/ODP import, kept as its own sheet).
+- Step 9b: `ui/dialogs/open_project.py` (`OpenProjectSheet` = start
+  screen + `open_project` command, `NewerProjectSheet`),
+  `project_compat.py`, `housekeeping.py` (+ `housekeeping` command),
+  `snapshot.py`, `deck_group.py`, `about.py` (`version_history`
+  command); `ui/pages/no_decks.py`; backend `housekeeping.py`,
+  `app_info.py`, `project.recent_projects`/`project_status` (recent list
+  in `config_dir()/recent_projects.json`). Removed: `qt_compat_dialog`,
+  `qt_archive_unused_dialog`, `qt_snapshot_dialog`, `qt_deck_group_dialog`,
+  `qt_version_history_dialog`.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -140,13 +149,8 @@ Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
   `media/alt-text.json`; the review stamp is duplicated in
   `qt_transcript_tab._save` (fold into `alt_images.save_slide_image` in
   step 9).
-- `qt_version_history_dialog.py` is the app's Info dialog (release
-  history, license), not a slide-version viewer; step 6 left it. Decide
-  its home in step 9.
 - "Add reference to .bib…" (Cite ▾ footer) still opens
   `qt_citation_dialog` (until step 6 Citations).
-- `qt_deck_group_dialog.py` kept for ⋮ "Tags…" and "Duplicate deck…"
-  (until step 9).
 
 ### Carried over to later steps
 - Preview chip "course note" has no slide-level backend data (not
@@ -157,6 +161,12 @@ Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
   scrollbars in the new sheets use the legacy app theme; "Appears in"
   uses plain checkboxes, not the prototype's view chips; Existing list
   has no thumbnails.
+- 9b leftovers: No decks has no "New deck" (no backend to create a deck
+  from a name + template); the newer-project guard can prompt twice
+  (picker chip, then cli guard after relaunch; hypothetical while
+  `PROJECT_FORMAT` is 1); a few confirms are still `QMessageBox`
+  (Empty pdf, Remove temp, Update previews, Update project results,
+  newer framework/manual offer).
 - Citations panel doesn't refresh after a hand edit of Slidemaster.bib;
   no "update translation" action yet (only Open); Image descriptions
   panel path label wraps awkwardly; some unused imports in `ui/`
@@ -208,6 +218,12 @@ Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
   `\omitslide`, `\omitslideversion` are only in the row's "Call as"
   menu; new slides start from a frame skeleton (standard frame = the
   project's `slide-template.tex`).
+- Step 9b: no "Switch to X?" confirm (picker footer says it restarts);
+  a non-project folder from "Open folder…" opens the New project form;
+  Archive unused lets you untick files and runs on a thread; no "Run all"
+  in Housekeeping; snapshot questions/summary are sheets; recent
+  projects are remembered per machine; the first-run picker is dark by
+  default (app_settings can't load before a project exists).
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as
