@@ -8,7 +8,7 @@ SlideMage venv's Python. Rerun the step whose input changed.
 | Images | Made by | Rerun when |
 |---|---|---|
 | `illustration-*.pdf`, `chapter-logo-building-blocks.pdf` | `python tools/manual/make_illustrations.py` (vector, from `illustrations.tex`) | the illustrations change |
-| `screenshot-slidemage-*.png` | `python tools/manual/make_screenshots.py` (offscreen Qt, the real widgets, light theme; also refreshes the manual's slide previews from `example/decks/slidemage-manual.pdf`) | SlideMage's UI changes |
+| `screenshot-slidemage-*.png` | `python tools/manual/make_screenshots.py OUT_DIR` (offscreen Qt, the real widgets of the workspace window, light theme, on a throwaway copy of `example/`; `--list` names the shots, `--only NAME…` makes some) -- the images go to `OUT_DIR`, not into `example/media/`: pick by hand which ones replace the manual's | SlideMage's UI changes |
 | `screenshot-slide-gallery-*.png` | `python tools/manual/make_crops.py gallery example/decks/slidemage-manual.pdf` | a frame-type demo slide changes |
 | `screenshot-slide-version-*.png` | `python tools/manual/make_crops.py versions <instructor.pdf> <during-course.pdf> <after-course.pdf>` -- the manual compiled as each version (a wrapper deck with `\def\deckversionoverride{during-course}` before `\input{slidemage-manual.tex}`) | slide `1th` changes |
 | `screenshot-slide-presenter.png` | `make_crops.py one <presenter.pdf> 1y3 presenter` -- the manual compiled with `\def\SMPresenterModeOverride{1}` | slide `1y3` or the presenter layout changes |
@@ -23,14 +23,7 @@ screen readers would pick that up.
 Compile the manual twice after its slides change (`latexmk` does): the chapter
 agendas and the footer navigation are built from the previous pass's `.aux`.
 
-`make_screenshots.py` adds three placeholder decks for its run (`#workdeck`,
-`course-example-2027s`, `talk-example-seminar`, one per deck group) so the
-deck table shows the grouping (slide `1d8`) and full rows (slide `1ub`), and
-deletes them again; it unfolds every deck group for the run without touching
-the project's settings. It also prints the centres of the elements slide
-`1ub`'s numbered callouts point at, as fractions of the screenshot: after a
-UI change, place each `\callout` just beside its element (never past the
-picture's edge -- that widens the column). Most footer numbers in the crops
+`make_screenshots.py` works on a copy of `example/` and `latex/` in a temporary folder (with three placeholder decks, one per deck group, so the deck menu shows the grouping), uses a fixed list of Ollama models and no network, and leaves the repository alone. Most footer numbers in the crops
 are page numbers of the manual: when slides are added or removed earlier in
 the deck, rerun the crops too.
 

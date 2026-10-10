@@ -14,7 +14,7 @@ from typing import Optional
 from PySide6.QtWidgets import QCheckBox, QMessageBox
 
 from ... import alt_draft, alt_images
-from ...qt_ai_models import provider_from_combo
+from ..ai_models import provider_from_combo
 from .. import background
 from .image_dialogs import PromptTuningSheet
 from .image_form import ImageForm

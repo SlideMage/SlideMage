@@ -673,7 +673,7 @@ def test_side_panels_can_take_more_than_the_first_three_panels():
 
 def test_the_reference_form_can_start_from_a_missing_key(qapp, project, monkeypatch):
     from slidemage.ai.providers import OllamaProvider
-    from slidemage.qt_citation_dialog import CitationDialog
+    from slidemage.ui.dialogs.citation import CitationDialog
 
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
     parent = QWidget()

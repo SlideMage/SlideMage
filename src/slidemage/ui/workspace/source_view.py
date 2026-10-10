@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from ... import bibliography, latex_edit
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
-from ...qt_citation_dialog import CitationDialog
+from ..dialogs.citation import CitationDialog
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, IconButton, Popover, PopoverMenu, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
@@ -394,7 +394,6 @@ class SourcePane(Surface):
         self._popup(menu, self._tools_button)
 
     def _on_tool_chosen(self, key: str) -> None:
-        file = self._current
         if key == "reindent":
             self.reindent()
         elif key == "chat":

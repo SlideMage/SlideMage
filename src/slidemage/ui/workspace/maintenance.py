@@ -1,5 +1,4 @@
-"""Project and application maintenance of the main window, moved out of
-qt_gui.py (step 3 of docs/UI_REDESIGN_PLAN.md) with the logic unchanged:
+"""Project and application maintenance of the main window:
 
 * checks that run shortly after start -- project compatibility (compat.py),
   the project's copies of the framework and the manual (bundled_copies.py)
@@ -29,7 +28,6 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from ... import bundled_copies, compat, housekeeping, open_path, project, slide_rename, updater
 from ... import version as version_mod
-from ...compiler import PDF_DIR
 from ...deck_scan import PROJECT_ROOT
 from ..dialogs.about import AboutSheet
 from ..dialogs.housekeeping import ARCHIVE_PAGE, HousekeepingSheet

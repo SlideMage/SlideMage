@@ -437,8 +437,7 @@ def render_slide_to_pdf(
     the preamble itself would otherwise default to (see _deck_version_line).
 
     frame_number, when given (the slide's own 1-based position among its
-    deck's \\slide{}-family calls -- see qt_deck_editor_tab.py's own
-    per-row Render button), makes the footer show that same page number
+    deck's \\slide{}-family calls), makes the footer show that same page number
     instead of always "1" (see _frame_number_line).
 
     reuse_build retains dependency-checked auxiliary state between requests.

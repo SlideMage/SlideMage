@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from ... import alt_draft, alt_images, image_review, slide_language
 from ...ai.providers import OllamaProvider
-from ...qt_ai_models import fill_model_combo
+from ..ai_models import fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Card, Field, IconButton, SegmentedControl, Surface, caption

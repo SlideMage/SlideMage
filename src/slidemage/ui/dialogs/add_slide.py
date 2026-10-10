@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 from ... import alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_versioning
 from ...ai.providers import ChatProvider, OllamaProvider
 from ...deck_scan import Deck
-from ...qt_ai_models import fill_model_combo, provider_from_combo
+from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, set_property

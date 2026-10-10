@@ -1,29 +1,15 @@
-"""The Source view's own "Add reference to .bib…" entry (2026-09-23, direct
-instruction; renamed from "Add citation" 2026-09-25, direct instruction,
-once the "Cite" popover (insert_popovers.py) gave the word "citation" a
-second, different meaning in the same toolbar -- this one
-only ever *creates* a new .bib entry, never inserts a citation call for
-one) -- a small form for adding a new entry to Slidemaster.bib
-without leaving the app or hand-writing BibTeX. Picking a source type
-(Article/Book/Online/Report) swaps in that type's own fields below the
-three shared ones (author/title/year, present for every type this file
-uses -- confirmed by a direct field-frequency survey of the existing 126
-entries). Every field carries a tooltip and a placeholder example
-explaining what belongs in it, since not everyone filling this in knows
-BibTeX field conventions by heart.
+"""The sheet behind the Source view's "Add reference to .bib…" and the Cite menu's footer: a
+small form for adding a new entry to Slidemaster.bib without hand-writing BibTeX. It only ever
+*creates* a .bib entry; it never inserts a citation call for one. Picking a source type
+(Article/Book/Online/Report) swaps in that type's own fields below the three shared ones
+(author/title/year). Every field carries a tooltip and a placeholder example.
 
-The citation key (this file's own "lowercase first author's surname +
-year" convention, per its header comment) is suggested live from the
-author/year fields and re-suggested as they change, but only until the
-user edits the key field directly -- editing it by hand opts out of the
-auto-suggestion for the rest of this dialog's life, same as a filename
-field would. Either way it's checked against every existing key
-(case-insensitively) before the entry can be added, so a duplicate ID
-is never silently created.
+The citation key (lowercase first author's surname + year, per the file's header comment) is
+suggested live from the author and year fields until the key is edited by hand; either way it is
+checked against every existing key (case-insensitively) before the entry can be added.
 
-All the actual parsing/writing/sorting logic lives in bibliography.py
-(TYPE_FIELDS, suggest_key, format_entry, add_entry) -- this module is
-purely the Qt form around it.
+Parsing, writing and sorting live in bibliography.py (TYPE_FIELDS, suggest_key, format_entry,
+add_entry); this module is the Qt form around it.
 """
 from __future__ import annotations
 
@@ -31,20 +17,18 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from . import bibliography
-from .ui.kit.theme import MUTED_LABEL
+from ... import bibliography
+from ..kit import kit_qss as q
+from ..kit.widgets import ModalSheet, Surface
 
 # label shown in the "Type:" combo -> bibliography.TYPE_FIELDS key
 _TYPE_LABELS: dict[str, str] = {
@@ -110,17 +94,15 @@ def _make_field(name: str) -> QLineEdit:
     return entry
 
 
-class CitationDialog(QDialog):
+class CitationDialog(ModalSheet):
     def __init__(self, app, key: str = "") -> None:
         """`key`: a key that is missing from the file (a slide cites it), to be added as it is
         written -- not replaced by the suggestion from author and year."""
-        super().__init__(app)
+        super().__init__("Add reference to .bib", app, width=560)
         self.app = app
         self._key_manually_edited = bool(key)
         self.new_key: Optional[str] = None
 
-        self.setWindowTitle("Add reference to .bib")
-        self.setModal(True)
         self._build()
         self._on_type_change()
         if key:
@@ -130,8 +112,13 @@ class CitationDialog(QDialog):
     # -- widgets ------------------------------------------------------------------
 
     def _build(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Add a new entry to Slidemaster.bib. Fields marked * are required."))
+        body = Surface()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        intro = QLabel("Add a new entry to Slidemaster.bib. Fields marked * are required.")
+        intro.setObjectName(q.PANEL_CAPTION)
+        layout.addWidget(intro)
 
         type_form = QFormLayout()
         self.type_combo = QComboBox()
@@ -183,18 +170,15 @@ class CitationDialog(QDialog):
         layout.addLayout(key_form)
 
         self.key_status_label = QLabel("")
-        self.key_status_label.setObjectName(MUTED_LABEL)
+        self.key_status_label.setObjectName(q.PANEL_CAPTION)
+        self.key_status_label.setWordWrap(True)
         layout.addWidget(self.key_status_label)
 
-        button_row = QHBoxLayout()
-        button_row.addStretch(1)
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(self.reject)
-        self.add_button = QPushButton("Add reference to .bib")
-        self.add_button.clicked.connect(self._on_submit)
-        button_row.addWidget(cancel_button)
-        button_row.addWidget(self.add_button)
-        layout.addLayout(button_row)
+        self.add_tab("", body)
+        self.add_button("Cancel", role="reject")
+        submit = self.add_button("Add reference to .bib", kind="primary")
+        submit.setDefault(True)
+        submit.clicked.connect(self._on_submit)
 
     # -- live behavior --------------------------------------------------------------
 

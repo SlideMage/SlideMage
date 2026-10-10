@@ -19,7 +19,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit
 
 from .... import alt_blocks, alt_draft, alt_images, image_review
-from ....qt_ai_models import provider_for_task
+from ...ai_models import provider_for_task
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl

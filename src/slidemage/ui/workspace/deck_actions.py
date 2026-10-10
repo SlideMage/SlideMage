@@ -1,7 +1,5 @@
-"""Actions on a deck, moved out of qt_gui.py (step 3 of docs/UI_REDESIGN_PLAN.md):
-what the old deck table's per-deck buttons (Open pdf, Settings, Source, Duplicate,
-Tags, Archive) and its Create Transcript button did. The top bar's menus
-(menus.py) now start them for the current deck.
+"""Actions on a deck: Open pdf, Settings, Source, Duplicate, Tags, Archive and Create Transcript.
+The top bar's menus (menus.py) start them for the current deck.
 
 `DeckActionsMixin` is mixed into WorkspaceWindow (window.py), which provides
 `state`, `compiling`, `_log` and `reload_decks()`.

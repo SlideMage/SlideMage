@@ -247,7 +247,7 @@ def test_relaunch_with_project_saves_and_spawns(monkeypatch, tmp_path):
     chain (env var / upward search / last project) can silently reuse a
     stale last-project pointer left over from unrelated testing, so the
     user never sees the folder picker they expected. The fix adds an
-    explicit "Open Project..." action (qt_gui.py); this covers its
+    explicit "Open Project..." action; this covers its
     underlying relaunch mechanism, since a live in-process project switch
     isn't possible (PROJECT_ROOT and everything derived from it are fixed
     at import time across the whole package)."""
@@ -395,7 +395,7 @@ def test_init_project_seeds_from_example_and_compiles(tmp_path):
     first startup, meant to become a brand-new project, and got only
     "has no slide_ids.csv" with no way to actually create one there.
     init_project() (wired into both cli.py's first-run picker and
-    qt_gui.py's "Open Project...") fixes that -- verifies the seeded copy
+    the "Open Project..." action) fixes that -- verifies the seeded copy
     is not just a valid project by marker, but an actually compilable one."""
     from slidemage import project
 

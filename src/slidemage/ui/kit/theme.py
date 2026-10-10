@@ -18,7 +18,6 @@ set them via `label.setObjectName(LINK_LABEL)` and the QSS rules below apply
 automatically. Unlike a DOM id, a Qt objectName is not required to be
 unique, so many labels can share one.
 
-Moved here from slidemage/qt_theme.py on 2026-10-09 (UI redesign, step 1).
 The palette above still styles the old widgets; the redesign's design tokens
 (tokens.py) are exposed as `ThemeManager.tokens` and turned into QSS for the
 kit widgets by kit_qss.py, appended to the same application stylesheet.

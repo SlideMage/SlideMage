@@ -58,8 +58,8 @@ def sort_entries(path: Path | None = None) -> bool:
     return True
 
 
-# Per-entry-type field order for newly written entries (qt_citation_dialog.py's
-# "Add citation" form) -- author/title/year always first, matching every
+# Per-entry-type field order for newly written entries (ui/dialogs/citation.py's
+# "Add reference" form) -- author/title/year always first, matching every
 # existing entry of every type in this file; the rest follows each type's
 # own most common existing ordering (see the field-frequency survey this was
 # based on: 96 article/23 book/3 online/4 report entries, measured directly).

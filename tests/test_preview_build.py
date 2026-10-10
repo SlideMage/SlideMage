@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
+import os
 import re
+import time
 
 import pytest
 
@@ -52,6 +54,25 @@ def test_cached_build_retains_aux_and_rejects_stale_pdf(tmp_path, monkeypatch):
     fail = True
     with pytest.raises(RuntimeError, match='Bad edit'):
         preview_build.compile_cached(two + '%broken', 'abc', print, **kwargs)
+
+
+def test_unused_preview_wrappers_are_pruned(tmp_path):
+    build = tmp_path / '.build'
+    decks = tmp_path / 'decks'
+    decks.mkdir()
+    old = time.time() - (preview_build.UNUSED_DAYS + 1) * 86400
+    for key, age in (('fresh', None), ('stale', old), ('nocache', 'none')):
+        (decks / f'_slidemage_preview-{key}.tex').write_text('x')
+        if age != 'none':
+            lock = build / 'preview-cache' / key / 'build.lock'
+            lock.parent.mkdir(parents=True)
+            lock.touch()
+            if age:
+                os.utime(lock, (age, age))
+    (decks / 'deck.tex').write_text('x')
+    preview_build.prune_unused(tmp_path, build)
+    assert sorted(p.name for p in decks.iterdir()) == ['_slidemage_preview-fresh.tex', 'deck.tex']
+    assert (build / 'preview-cache' / 'fresh').exists() and not (build / 'preview-cache' / 'stale').exists()
 
 
 def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):

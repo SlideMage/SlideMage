@@ -212,7 +212,7 @@ def start(monkeypatch, tmp_path, choose):
     monkeypatch.setattr(project, "discover", lambda: None)
     monkeypatch.setattr(cli, "_prepare_gui", lambda root: None)
     monkeypatch.setattr(OpenProjectSheet, "exec", choose)
-    monkeypatch.setattr("slidemage.qt_gui.main", lambda: started.append(os.environ[project.ENV_VAR]))
+    monkeypatch.setattr("slidemage.ui.app.main", lambda: started.append(os.environ[project.ENV_VAR]))
     return started
 
 

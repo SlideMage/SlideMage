@@ -1,6 +1,6 @@
 # Build a one-file SlideMage executable, for whichever OS this actually
 # runs on -- PyInstaller never cross-compiles. From the repo root, with
-# pyinstaller installed (pip install pyinstaller):
+# pyinstaller installed (pip install -e ".[build]"):
 #     pyinstaller packaging/slidemage.spec
 # Output lands in dist/SlideMage(.exe). The exe finds its project via
 # --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
@@ -8,8 +8,18 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules
+
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
+
+# The whole assets/ folder is data: the fonts (assets/fonts), the Claude Code terminal's page and scripts
+# (assets/terminal, loaded by QtWebEngine from a file), the frame thumbnails (assets/frames) and the icons.
+# Everything else the app needs is code: PyInstaller follows the imports. Not the Anthropic SDK, which
+# loads its resource modules lazily, and not QtWebEngine's helper process and resources, which the PySide6
+# hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
+# ptyprocess (pywinpty on Windows) is imported inside a function and found that way.
+HIDDEN_IMPORTS = collect_submodules("anthropic")
 
 # Bundled so a project created via "Open Project..."'s "not a project
 # yet -- create one?" offer (project.py's init_project()) can be seeded
@@ -61,6 +71,7 @@ a = Analysis(
     [str(ROOT / "packaging" / "launch_slidemage.py")],
     pathex=[str(ROOT / "src")],
     datas=[(str(ASSETS), "slidemage/assets"), *TEMPLATE_DATAS],
+    hiddenimports=HIDDEN_IMPORTS,
 )
 pyz = PYZ(a.pure)
 

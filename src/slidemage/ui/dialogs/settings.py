@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
 
 from ... import app_settings, slide_snapshot, updater
 from ...ai import credentials, resolver

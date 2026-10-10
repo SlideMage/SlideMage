@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
-from . import app_settings
-from .ai import resolver
-from .ai.providers import ChatProvider, ProviderError
+from .. import app_settings
+from ..ai import resolver
+from ..ai.providers import ChatProvider, ProviderError
 
 
 def fill_model_combo(

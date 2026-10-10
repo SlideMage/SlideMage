@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> None:
 
     project.save_last_project(root)
 
-    from .qt_gui import main as gui_main
+    from .ui.app import main as gui_main
 
     gui_main()
 

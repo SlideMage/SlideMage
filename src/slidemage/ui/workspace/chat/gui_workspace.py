@@ -25,7 +25,7 @@ from ....ai.tools import undo_edit
 from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
 from ....deck_scan import PROJECT_ROOT, Deck
-from ....qt_ai_models import confirm_cloud_request
+from ...ai_models import confirm_cloud_request
 
 POLL_S = 0.05      # how often a waiting call looks whether the window has closed
 CLOUD_SENDS = ("the slide you are working on, the project files the model reads and rendered previews "

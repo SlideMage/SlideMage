@@ -11,7 +11,7 @@ overwritten (see syntax_check.py). Applying edits the editor (one undo step
 per fix); everything stays reviewable against the editor, which is never
 locked. The check runs on a worker thread; Esc or Stop ends it. The model
 comes from Settings -> "AI models" (local or cloud; the first cloud request in
-a project asks for consent, qt_ai_models.provider_from_combo), and the
+a project asks for consent, ui/ai_models.provider_from_combo), and the
 answering model is named in the panel.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 
 from ... import syntax_check
 from ...ai.providers import OllamaProvider
-from ...qt_ai_models import fill_model_combo, provider_from_combo
+from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface

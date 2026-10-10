@@ -3,7 +3,7 @@ direct instruction): per deck, move on to the new version or stay on the
 previous one -- see slide_usage.py for what each choice does to the deck.
 Also names the slide's translations, which this save leaves unchanged.
 
-Moved here from qt_slide_usage_dialog.py: it is a question that a save (the Source
+It is a question that a save (the Source
 view) and "Freeze as" (the Slide versions panel) put, not a viewer; the "Used in
 decks" panel shows the same facts without asking anything.
 ask_deck_versions() and apply_deck_versions() are the two halves of that question

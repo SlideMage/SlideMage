@@ -13,7 +13,7 @@ from typing import Callable
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
-from ... import alt_draft, alt_images
+from ... import alt_draft
 from ...ai.providers import ChatProvider
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel

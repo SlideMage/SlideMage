@@ -1,8 +1,5 @@
-"""Application bootstrap, started via cli.main() (`slidemage`): the
-QApplication, the bundled fonts, the theme and the main window
-(ui/workspace/window.py). PYSIDE6_MIGRATION.md has the history of the Qt
-port; docs/UI_REDESIGN_PLAN.md the plan for the window itself.
-"""
+"""Application start, called by cli.main() (`slidemage`) once the project is chosen: the
+QApplication, the bundled fonts, the theme and the main window (workspace/window.py)."""
 from __future__ import annotations
 
 import sys
@@ -11,12 +8,12 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from . import splash
-from .ui.kit.fonts import load_fonts
-from .ui.kit.theme import ThemeManager
-from .ui.workspace.window import WorkspaceWindow
+from .. import splash
+from .kit.fonts import load_fonts
+from .kit.theme import ThemeManager
+from .workspace.window import WorkspaceWindow
 
-ICON_PATH = Path(__file__).resolve().parent / "assets" / "icon.ico"
+ICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "icon.ico"
 
 
 def main() -> None:
@@ -33,6 +30,3 @@ def main() -> None:
     window.schedule_bundled_copies_check()
     sys.exit(app.exec())
 
-
-if __name__ == "__main__":
-    main()

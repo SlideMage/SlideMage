@@ -32,10 +32,10 @@ def test_scan_finds_demo_decks():
 
 
 @pytest.mark.parametrize(
-    "name", [m.name for m in pkgutil.iter_modules(slidemage.__path__)]
+    "name", [m.name for m in pkgutil.walk_packages(slidemage.__path__, "slidemage.") if not m.ispkg]
 )
 def test_module_imports(name):
-    importlib.import_module(f"slidemage.{name}")
+    importlib.import_module(name)
 
 
 def test_main_window_builds(monkeypatch):

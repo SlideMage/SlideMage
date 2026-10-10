@@ -17,7 +17,7 @@ from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
-from .state import MODES, UI_LANGUAGES, VIEWS, WorkspaceState
+from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
 LOGO_SIZE = 32

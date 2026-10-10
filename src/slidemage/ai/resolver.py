@@ -19,7 +19,7 @@ surfaces for a stale selection.
 Consent: the first cloud request in a project must be confirmed once. The
 flag lives in app_settings.json, which already sits inside the project
 folder, so it is per project; the prompt itself is the UI's job
-(qt_ai_models.confirm_cloud_request).
+(ui/ai_models.confirm_cloud_request).
 """
 from __future__ import annotations
 

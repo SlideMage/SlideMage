@@ -48,6 +48,25 @@ def build_lock(path: Path):
                 fcntl.flock(stream, fcntl.LOCK_UN)
 
 
+WRAPPER_PREFIX = '_slidemage_preview-'
+UNUSED_DAYS = 14
+
+
+def prune_unused(project_root, build_dir):
+    """Delete the wrappers in decks/ (and build caches) of previews not rendered for UNUSED_DAYS,
+    and wrappers whose cache is gone. A cached job leaves its wrapper in decks/ so latexmk's
+    dependency check keeps working, one per slide and preamble, so without this they pile up."""
+    cache_root = build_dir / 'preview-cache'
+    limit = time.time() - UNUSED_DAYS * 86400
+    for wrapper in (project_root / 'decks').glob(WRAPPER_PREFIX + '*.tex'):
+        cache = cache_root / wrapper.stem[len(WRAPPER_PREFIX):]
+        lock = cache / 'build.lock'
+        if lock.exists() and lock.stat().st_mtime > limit:
+            continue
+        wrapper.unlink(missing_ok=True)
+        shutil.rmtree(cache, ignore_errors=True)
+
+
 def compile_cached(wrapper_text, id_slug, log, *, project_root, build_dir, env,
                    fatal_error_re):
     preamble = wrapper_text.partition(r'\begin{document}')[0]
@@ -62,6 +81,8 @@ def compile_cached(wrapper_text, id_slug, log, *, project_root, build_dir, env,
     key = hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()[:24]
     cache = build_dir / 'preview-cache' / key
     cache.mkdir(parents=True, exist_ok=True)
+    (cache / 'build.lock').touch()
+    prune_unused(project_root, build_dir)
     jobname = 'preview-' + key
     wrapper = project_root / 'decks' / ('_slidemage_' + jobname + '.tex')
     wrapper.parent.mkdir(parents=True, exist_ok=True)

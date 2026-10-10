@@ -42,7 +42,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from . import compat_bibliography, project
 from .updater import parse_version

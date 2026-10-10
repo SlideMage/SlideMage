@@ -5,7 +5,7 @@ with the compile log underneath. The shared WorkspaceState (state.py) holds
 the current deck, view and language; the top bar and the columns read and
 write it instead of each other.
 
-The window replaces qt_gui.py's tabbed window. The left column is the slide
+The left column is the slide
 list (slide_list.py), the centre the Preview / Source / Split / Details views
 of the focused slide (centre.py), or the Images page (pages/images.py), which
 takes the width of all three columns while it is shown. The window's other
