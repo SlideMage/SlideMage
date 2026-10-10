@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–8 done (see
+Status: in progress on branch `ui-redesign`. Steps 1–8 and 9a done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 8: 922 passed, 4 skipped, about
-8.5 s; ruff clean.
+Last updated 2026-10-09. Suite after step 9a: 956 passed, 4 skipped, about
+8.8 s; ruff clean.
 
 | Step | Commit | State |
 |---|---|---|
@@ -61,7 +61,11 @@ Last updated 2026-10-09. Suite after step 8: 922 passed, 4 skipped, about
 | 6b. Citations, Language, Images, Transcript, Notes panels | (see git log) | done |
 | 7. Compile flow | (see git log) | done |
 | 8. Command palette | (see git log) | done |
-| 9–11 | | not started |
+| 9a. Add slide sheet | (see git log) | done |
+| 9b. Project picker, compat, No decks/First run, Housekeeping, Snapshots, deck group dialog, Info | | not started |
+| 9c. Settings + Deck settings sheets | | not started |
+| 9d. Images page (`qt_transcript_tab.py`, 2,849 lines) | | not started |
+| 10–11 | | not started |
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
@@ -116,6 +120,13 @@ Last updated 2026-10-09. Suite after step 8: 922 passed, 4 skipped, about
   `palette.py` (Ctrl+K / Ctrl+Shift+F). Menus in `menus.py` are lists of
   command ids (`add_commands`). New dialogs and pages in step 9 should
   register commands there. Removed: `qt_slide_search_dialog.py`.
+- Step 9a: `ui/dialogs/add_slide.py` (`AddSlideSheet`, opened by
+  `window.open_add_slide_dialog(deck, insert_at, indent, **start)`),
+  `ui/dialogs/import_presentation.py`; backend `slide_add.py`,
+  `slide_ids.slide_body`/`read_template`; kit `Field`, `ThumbnailGrid`,
+  `ModalSheet.add_footer_note`; `assets/frames/*.png`. Removed:
+  `qt_add_slide_dialog.py`, `qt_duplicate_slide_dialog.py`,
+  `qt_import_dialog.py` (it was PPTX/ODP import, kept as its own sheet).
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -142,6 +153,10 @@ Last updated 2026-10-09. Suite after step 8: 922 passed, 4 skipped, about
   built); "outdated translation" is wired (`translation_link`: original
   saved via SlideMage after the translation was written, not a content
   check). The slide list's lint dot follows the saved file.
+- Kit restyle pass still open: line edits, combos, checkboxes and
+  scrollbars in the new sheets use the legacy app theme; "Appears in"
+  uses plain checkboxes, not the prototype's view chips; Existing list
+  has no thumbnails.
 - Citations panel doesn't refresh after a hand edit of Slidemaster.bib;
   no "update translation" action yet (only Open); Image descriptions
   panel path label wraps awkwardly; some unused imports in `ui/`
@@ -185,6 +200,14 @@ Last updated 2026-10-09. Suite after step 8: 922 passed, 4 skipped, about
   Slidemaster.bib from 3 characters; the empty palette lists all
   commands (prototype caps at 9); "Ask the chat" is a disabled row until
   step 10; some labels changed ("Pages of the selected slides").
+- Step 9a: Duplicate/Translate add the copy to the open deck right after
+  the original (before: a loose slide); a failed machine translation
+  creates nothing (error in the sheet); translation runs on a thread
+  with Cancel; inline validation instead of message boxes; copying a
+  slide with unsaved edits is refused inline; `\slidefinal`,
+  `\omitslide`, `\omitslideversion` are only in the row's "Call as"
+  menu; new slides start from a frame skeleton (standard frame = the
+  project's `slide-template.tex`).
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as
