@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–8, 9a–9c and 9d-1 done (see
+Status: in progress on branch `ui-redesign`. Steps 1–8, 9a–9c and 9d-1 done; next is 9d-2 (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,52 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 9d-1: 1058 passed, 4 skipped; ruff clean. Suite time
-varies with machine load (9–16 s for the same commit).
+Last updated 2026-10-10. Suite after step 9d-1: 1058 passed, 4 skipped;
+ruff clean. Suite time varies with machine load (9–18 s for the same
+commit; compare against HEAD in a `git worktree` before blaming a step).
+
+### Resume here (next session)
+1. Read this section, then `git log --oneline -15` on `ui-redesign`
+   (latest step commit: 9d-1 `52a7551`). Working tree should be clean
+   apart from untracked `uv.lock` and `.claude/` (both left untracked on
+   purpose; don't commit them).
+2. Re-fetch the prototype into the new session's scratchpad (see "How
+   the work is run"); old scratchpad paths are gone.
+3. Next step: **9d-2, the Images page.** Brief for the agent:
+   - Build `ui/pages/images.py` (kit widgets) on `image_review.py` /
+     `alt_images` / `alt_draft` (see 9d-1 under "What exists now"), shown
+     by the existing `images` command / top bar Images button in the
+     window's centre/body stack; delete `qt_transcript_tab.py` (2,598
+     lines) and `qt_transcript_preview_tab.py` (46) and port their tests.
+   - Keep every feature of the old page: the six filters, sort by a
+     deck's slide order, summary line, find slide, per-image editing of
+     role / short / long / source / takeaway / German fields, Save draft
+     and Save + mark reviewed (refused when a long description is
+     missing), Set takeaway as default, translate one / translate all,
+     draft one slide / draft all (worker threads with Stop; Ollama slot
+     via provider), Replace image (+ other slides, offer to delete the
+     orphaned description), image preview (png/jpg/pdf/tikz via
+     `alt_blocks.resolve_image`/`media_render`), open slide in editor,
+     prompt tuning dialog. The transcript preview tab's job (rendered
+     transcript preview, `open_transcript_preview`) needs a home too —
+     check its callers (Render ▾ "Render transcript", Transcript entry
+     panel).
+   - Open decision for the user: keep the real page's filters (Needs
+     attention, All slides with images, No description, Draft
+     unreviewed, Needs re-check, Reviewed) and add only "No German"
+     (small predicate over `alt_images.translation_state`)?
+     Orchestrator recommendation: yes; ask before briefing if unsure.
+   - Same rules/report as every brief (see "How the work is run").
+   - Expected size ~250–350k agent tokens (≈13–18% of the user's 5-hour
+     window).
+4. After 9d-2: step 10 (AI chat, right column lower part; replaces
+   `qt_ai_draft_dialog.py`; enables the palette's "Ask the chat" row and
+   could take over Citations "Add to .bib with chat"), then step 11
+   (finish the switch-over: leftover `qt_*` modules incl.
+   `qt_ai_models.py`, `qt_citation_dialog.py`, `qt_gui.py`; docs,
+   manual, screenshots tool, 6.0 version bump). Consider a kit restyle
+   pass (see "Carried over") before or within step 11. Size each before
+   starting and split if over ~350k tokens.
 
 | Step | Commit | State |
 |---|---|---|
@@ -104,10 +148,6 @@ varies with machine load (9–16 s for the same commit).
   `lint_errors`, `footer_timestamp`.
 - Removed in step 5: `qt_slide_source_tab.py`, `qt_slide_preview_popup.py`,
   `qt_syntax_check_dialog.py`, `qt_insert_citation_dialog.py`.
-
-### Temporary hosts still in place
-- Centre stack in `window.py`: `TranscriptPreviewTab` / `TranscriptTab`
-  for Images (until step 9).
 - Step 7: `compile_jobs.py` holds `CompileSignals` and all compile
   orchestration (`_init_compile`); `job_panel.py` (floating run card),
   `log_drawer.py` (Ctrl+L, ⋮ Log), `render_check.py` (pre-check sheet,
@@ -166,15 +206,14 @@ varies with machine load (9–16 s for the same commit).
   `transcript_entry.py`, `notes.py`; registry `PANELS` in
   `panels/__init__.py`). Panels have `dirty`/`flush()`; the close prompt
   counts them; Notes edits go into the Source buffer (versioned save).
+
+### Temporary hosts still in place
+- Images page: old `qt_transcript_tab.TranscriptTab` /
+  `qt_transcript_preview_tab.TranscriptPreviewTab` in the window's centre
+  stack (until 9d-2); it already calls `image_review`.
 - Details view: slug, frame, language fact, Duplicate / Rename / Delete.
 - Citations "Add to .bib…" and Cite ▾ footer open `qt_citation_dialog`
   (the add-entry form, kept; step 10 chat may take over).
-- Image descriptions panel and the Images page both edit
-  `media/alt-text.json`; the review stamp is duplicated in
-  `qt_transcript_tab._save` (fold into `alt_images.save_slide_image` in
-  step 9).
-- "Add reference to .bib…" (Cite ▾ footer) still opens
-  `qt_citation_dialog` (until step 6 Citations).
 
 ### Carried over to later steps
 - Preview chip "course note" has no slide-level backend data (not
@@ -198,11 +237,13 @@ varies with machine load (9–16 s for the same commit).
 - Build options is still a dialog (a toggle row in `PopoverMenu` would
   let it become a menu). "Retry failed" re-runs the pre-check and the
   "Nothing changed" question.
-- Step 9: "Move to section" menu can be long (13 entries on the manual).
-- Step 11: (`qt_render_check.py` is already gone.)
-  `tools/manual/make_screenshots.py` still uses the old window API
-  (broken); `docs/SlideMage.md` still describes `qt_deck_table.py`;
-  stale comment mentions of removed modules in `slide_preview.py`.
+- "Move to section" menu can be long (13 entries on the manual).
+- Step 11: `tools/manual/make_screenshots.py` still uses the old window
+  API and imports removed dialogs (broken); `docs/SlideMage.md`, the
+  README and `version.py` release-note text mention removed modules;
+  stale comment mentions in `slide_preview.py`; `example/.slidemage/
+  project.json` (gitignored) was reset to `{}` by a 9c screenshot run
+  (harmless; rewritten on open).
 
 ### Behaviour changes made so far (user may reverse)
 - Single click selects a slide; double-click/Enter opens its source.
@@ -265,8 +306,17 @@ varies with machine load (9–16 s for the same commit).
   then commits on `ui-redesign` with only that step's files. The user asked
   for no extra whole-branch review at the end.
 - Agents: Sonnet at high effort, via `.claude/agents/ui-step-implementer.md`
-  (earlier steps ran at medium). Step 5 was split into 5a and 5b,
-  run by one agent resumed with SendMessage.
+  (`subagent_type: ui-step-implementer`; earlier steps ran at medium).
+  Background agents; corrections go to the same agent with SendMessage
+  (it keeps its context), a new step usually gets a fresh agent. Haiku
+  (Explore) is fine for read-only inventories.
+- Usage: about 5% of the user's 5-hour window per ~100k agent tokens
+  (9d-1: ~96k ≈ 5%). Typical steps were 270–725k agent tokens. If the
+  limit hits mid-step, the tree stays consistent: check `git status`,
+  run the suite, and resume the agent with what is left.
+- Commit hygiene: `git add -A src tests` (plus docs touched by the step),
+  never `uv.lock` / `.claude/`; agents sometimes `git rm --cached`
+  deleted files, which is fine. CRLF warnings on commit are normal here.
 - Each brief contains: read the plan (Decisions, Approach, the step),
   the relevant modules and tests, the prototype; the step's tasks; tests
   `uv run --extra dev python -m pytest -q` and `uv run --extra dev ruff
@@ -278,14 +328,20 @@ varies with machine load (9–16 s for the same commit).
 - Review checklist that caught real problems so far: test suite time
   (step 1), workflows lost with removed widgets (step 3: multi-deck
   compile), guessed data instead of backend truth (step 4: frame numbers),
-  flaky exit crashes (step 4).
+  flaky exit crashes (step 4), lost unsaved edits on close (5a summary),
+  widgets reaching into widgets (5a footer timestamp), worker threads
+  outliving the window (5b, 7), dark-mode contrast and white
+  placeholders (7), hidden rows after "go to" (8), agents writing into
+  the example project from screenshot scripts (9c), plan text based on
+  the prototype instead of the real code (6a, 9d-1).
 - Prototype: re-fetch with the DesignSync tool (project
   `3e2dd21f-cbd5-4329-a0d7-d3e1779450aa`, `get_file` on
   `SlideMage Prototype v3.dc.html`; needs `/design-login`). Reads are
   capped at 256 KiB, so the last ~5 KB of script are missing. Save it to
-  the session scratchpad and point agents at that path. Prototype path in
-  the 2026-10-09 evening session:
-  `/tmp/claude-1000/-home-juergen-github-SlideMage/846a66b3-5695-49c8-8ed3-dad860494bc8/scratchpad/prototype-v3.html`.
+  the session scratchpad and point agents at that path. If the tool asks
+  for login, the user runs `/design-login`. Save with: parse the
+  persisted tool result JSON and write its `content` field to
+  `<scratchpad>/prototype-v3.html`.
 
 ## Approach
 
