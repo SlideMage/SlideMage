@@ -293,16 +293,24 @@ class SourceFile(Surface):
             self.reload()
             self.app.log(f"Reverted {self.path.name} to the saved version")
 
+    def _fresh(self, previous_text: str) -> bool:
+        """Whether the file on disk is still the text the buffer was loaded from; if not, say so and show
+        the conflict bar (or reload a clean buffer)."""
+        try:
+            slide_source.check_fresh(self.path, previous_text)
+        except slide_source.StaleFileError as exc:
+            QMessageBox.critical(self.app, "Save failed", str(exc))
+            self.disk_changed()
+            return False
+        return True
+
     def save(self) -> bool:
         """Returns whether the file was saved: False when the version prompt or the
         usage dialog was cancelled, or the file changed on disk meanwhile."""
         raw_text = self.editor.text()
         new_text = raw_text
         previous_text = self.text
-        try:        # before anything is frozen or asked: a stale file loses neither
-            slide_source.check_fresh(self.path, previous_text)
-        except slide_source.StaleFileError as exc:
-            QMessageBox.critical(self.app, "Save failed", str(exc))
+        if not self._fresh(previous_text):      # before anything is frozen or asked: a stale file loses neither
             return False
         versions = DeckVersions({}, None)
         frozen_version = None
@@ -320,6 +328,8 @@ class SourceFile(Surface):
                 if asked is None:
                     return False
                 versions = asked
+                if not self._fresh(previous_text):      # the dialogs took time: freeze only what is still there
+                    return False
                 frozen = slide_versioning.freeze_slide(self.path, self.id_slug, freeze_as)
                 if frozen is not None:
                     self.app.log(f"    (froze outgoing v{slide_versioning.format_dot(freeze_as)} -> {frozen.name})")
@@ -334,6 +344,7 @@ class SourceFile(Surface):
             backup_path = slide_source.save_slide_source(self.path, new_text, self.eol, expected_text=previous_text)
         except slide_source.StaleFileError as exc:
             QMessageBox.critical(self.app, "Save failed", str(exc))
+            self.disk_changed()
             return False
         self.text = new_text
         if new_text != raw_text:

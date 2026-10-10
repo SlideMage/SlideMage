@@ -3,6 +3,10 @@
 `ChatSession.start()` runs one `Agent` (ai/agent.py) on a worker thread; everything the agent reports
 arrives as the `event` signal on the GUI thread, `Done` last. The history list is extended by the agent
 in place and stays valid after Stop or an error, so the conversation goes on with the next request.
+
+The session owns the app-wide Ollama slot of a local model for the life of the run: taken in `start()`,
+given back once the agent thread has really ended (after Done, or after the window closed), never
+earlier.
 """
 from __future__ import annotations
 
@@ -69,13 +73,16 @@ class _AgentThread(QThread):
 class ChatSession(QObject):
     event = Signal(object)      # an AgentEvent, on the GUI thread
 
-    def __init__(self, workspace: GuiWorkspace, parent: QObject | None = None) -> None:
+    def __init__(self, workspace: GuiWorkspace, app, parent: QObject | None = None) -> None:
+        """`app` is the window: it hands out the Ollama slot (try_start_ollama_task / end_ollama_task)."""
         super().__init__(parent)
         self.workspace = workspace
+        self._app = app
         self.history: list[AgentMessage] = []
         self.mode = EDIT_ASK
         self._agent: Agent | None = None
         self._thread: _AgentThread | None = None
+        self._provider: ChatProvider | None = None
         self._closed = False
         self.event.connect(self._watch)     # first in line: the thread is released before the chat hears Done
 
@@ -83,11 +90,22 @@ class ChatSession(QObject):
     def running(self) -> bool:
         return self._thread is not None
 
-    def start(self, provider: ChatProvider, request: str, scope: str) -> None:
-        self.workspace.begin_request()
-        self._agent = Agent(provider, self.workspace, on_event=self._emit, mode=self.mode)
-        self._thread = _AgentThread(self._agent, self.history, request, scope)
-        self._thread.start()
+    def start(self, provider: ChatProvider, request: str, scope: str) -> bool:
+        """Answer `request` with `provider` on a thread of its own. False (the window says why) when a
+        local model's Ollama slot is taken by another task."""
+        if not self._app.try_start_ollama_task("answering in the chat", provider):
+            return False
+        try:
+            self.workspace.begin_request()
+            self._agent = Agent(provider, self.workspace, on_event=self._emit, mode=self.mode)
+            self._thread = _AgentThread(self._agent, self.history, request, scope)
+            self._provider = provider
+            self._thread.start()
+        except BaseException:
+            self._agent = self._thread = self._provider = None
+            self._app.end_ollama_task(provider)
+            raise
+        return True
 
     def set_mode(self, mode: str) -> None:
         """"ask" / "auto"; a run under way takes it for its next edit."""
@@ -111,9 +129,13 @@ class ChatSession(QObject):
         self._closed = True
         self.workspace.close()
         thread, agent = self._thread, self._agent
-        self._thread = self._agent = None
         if thread is not None:
-            background.stop_worker(thread, agent.stop, wait_ms=500)
+            background.stop_worker(thread, agent.stop, wait_ms=500, on_done=self._release(self._provider))
+        self._thread = self._agent = self._provider = None
+
+    def _release(self, provider: ChatProvider | None):
+        """What gives the Ollama slot of `provider` back, to run once its thread has ended."""
+        return lambda: self._app.end_ollama_task(provider)
 
     def _emit(self, event: AgentEvent) -> None:
         """The agent's callback, on its thread."""
@@ -125,5 +147,6 @@ class ChatSession(QObject):
 
     def _watch(self, event: AgentEvent) -> None:
         if isinstance(event, Done) and self._thread is not None:
-            thread, self._thread, self._agent = self._thread, None, None
-            background.stop_worker(thread, wait_ms=500)
+            thread, provider = self._thread, self._provider
+            self._thread = self._agent = self._provider = None
+            background.stop_worker(thread, wait_ms=500, on_done=self._release(provider))

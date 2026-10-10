@@ -44,15 +44,20 @@ class DiskSync(QObject):
         self._known = project_watch.scan(self.root)
         self._timer.start()
 
-    def stop(self) -> None:
-        self._timer.stop()
+    def stop(self, *, last_look: bool = True) -> None:
+        """Stop watching. While it ran, one last look at what changed since the last poll (the process may
+        have written a file in its final second), unless the window is closing (`last_look` False)."""
+        if self._timer.isActive():
+            if last_look:
+                self.poll()
+            self._timer.stop()
 
     def poll(self) -> None:
         now = project_watch.scan(self.root)
         changes = project_watch.diff(self._known, now)
-        self._known = now
         if changes:
             self._apply(changes)
+        self._known = now           # only once the window took the changes in: a failure is tried again
 
     def _apply(self, changes: project_watch.Changes) -> None:
         window = self.window

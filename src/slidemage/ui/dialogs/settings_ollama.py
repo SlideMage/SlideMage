@@ -3,25 +3,45 @@ update (pull) and delete, as `ollama pull` and `ollama rm` would (ai/ollama_admi
 
 Deleting removes a model from Ollama's own store, not from a list SlideMage keeps. Both actions take
 the app-wide Ollama slot (`app.try_start_ollama_task`), so a model is not deleted or re-pulled under
-a drafting or translation batch that is using it. An update runs on a thread that is not tied to the
-sheet: it ends, and frees the slot, even when the sheet is closed meanwhile.
+a drafting or translation batch that is using it. Both run on a thread (ui/background) that is not
+tied to the sheet: it ends, and frees the slot, even when the sheet is closed meanwhile.
 """
 from __future__ import annotations
 
-import threading
+from typing import Callable
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QAbstractItemView, QApplication, QLineEdit, QListWidget, QListWidgetItem, QMessageBox
+from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QListWidget, QListWidgetItem, QMessageBox
 
 from ... import app_settings, deck_snapshot
 from ...ai import ollama_admin
 from ...ai.providers import InstalledModel
+from .. import background
 from ..kit.widgets import Button, Field, Page, caption, row
+
+Results = list[tuple[str, bool, str]]      # (model, ok, error)
+
+
+class _AdminWorker(QThread):
+    """Runs `work()` (model administration calls, which can take minutes) and reports what it returned; the
+    tab hears back whatever happens."""
+
+    done = Signal(object)
+
+    def __init__(self, work: Callable[[], Results]) -> None:
+        super().__init__()
+        self._work = work
+
+    def run(self) -> None:
+        try:
+            results = self._work()
+        except Exception as exc:  # noqa: BLE001 -- the list must be enabled again
+            results = [("the request", False, f"{type(exc).__name__}: {exc}")]
+        self.done.emit(results)
 
 
 class OllamaTab(Page):
     changed = Signal()            # the host or the installed models changed: ask Ollama again
-    _update_done = Signal(object)  # [(model, ok, error)], from the update thread
 
     def __init__(self, app) -> None:
         super().__init__()
@@ -49,7 +69,6 @@ class OllamaTab(Page):
             "its refreshed base). Delete removes the files from disk and cannot be undone short of "
             "pulling the model again."), self.update_button, self.delete_button))
         self.body.addStretch(1)
-        self._update_done.connect(self._on_update_finished)
         self._sync_buttons()
 
     def fill(self, installed: list[InstalledModel]) -> None:
@@ -88,38 +107,31 @@ class OllamaTab(Page):
         what = f"deleting {len(models)} model(s)" if len(models) > 1 else f"deleting {models[0]}"
         if not self.app.try_start_ollama_task(what):
             return
-        try:
-            detail = (f'"{models[0]}"' if len(models) == 1 else
-                      f"these {len(models)} models:\n\n" + "\n".join(f"  • {m}" for m in models))
-            confirm = QMessageBox.question(
-                self, "Delete Ollama model" + ("s" if len(models) > 1 else ""),
-                f"Permanently delete {detail} from Ollama's local model store? This removes the file(s) from "
-                "disk and cannot be undone short of pulling the model again.\n\n"
-                "Safe even if another installed model was created from one of these (ollama create) and "
-                "shares its files: like \"ollama rm\", Ollama only removes files no other installed model "
-                "still references.")
-            if confirm != QMessageBox.StandardButton.Yes:
-                return
-            self.delete_button.setEnabled(False)
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            try:
-                failures = []
-                for model in models:
-                    ok, error = ollama_admin.delete_model(model)
-                    if ok:
-                        self.app.log(f"Deleted Ollama model {model}")
-                    else:
-                        failures.append((model, error or "Unknown error"))
-            finally:
-                QApplication.restoreOverrideCursor()
-        finally:
+        detail = (f'"{models[0]}"' if len(models) == 1 else
+                  f"these {len(models)} models:\n\n" + "\n".join(f"  • {m}" for m in models))
+        confirm = QMessageBox.question(
+            self, "Delete Ollama model" + ("s" if len(models) > 1 else ""),
+            f"Permanently delete {detail} from Ollama's local model store? This removes the file(s) from "
+            "disk and cannot be undone short of pulling the model again.\n\n"
+            "Safe even if another installed model was created from one of these (ollama create) and "
+            "shares its files: like \"ollama rm\", Ollama only removes files no other installed model "
+            "still references.")
+        if confirm != QMessageBox.StandardButton.Yes:
             self.app.end_ollama_task()
-        if failures:
-            QMessageBox.critical(
-                self, "Delete failed",
-                f"Deleted {len(models) - len(failures)} of {len(models)}. Failed:\n\n"
-                + "\n".join(f"{model}: {error}" for model, error in failures))
-        self.changed.emit()
+            return
+        self._run(lambda: self._delete_models(models), "Deleted", "Delete failed")
+
+    def _delete_models(self, models: list[str]) -> Results:
+        results: Results = []
+        try:
+            for model in models:
+                ok, error = ollama_admin.delete_model(model)
+                results.append((model, ok, error or "Unknown error"))
+                if ok:
+                    self.app.signals.log.emit(f"Deleted Ollama model {model}")
+        finally:
+            self.app.end_ollama_task()      # freed here, so closing the sheet cannot keep the slot
+        return results
 
     def _on_update(self) -> None:
         models = self.selected()
@@ -137,13 +149,10 @@ class OllamaTab(Page):
         if not self.app.try_start_ollama_task(
                 f"updating {len(models)} model(s)" if len(models) > 1 else f"updating {models[0]}"):
             return
-        self.update_button.setEnabled(False)
-        self.delete_button.setEnabled(False)
-        self.models_list.setEnabled(False)
-        threading.Thread(target=self._update_models, args=(models,), daemon=True).start()
+        self._run(lambda: self._update_models(models), "Updated", "Update failed")
 
-    def _update_models(self, models: list[str]) -> None:
-        results: list[tuple[str, bool, str]] = []
+    def _update_models(self, models: list[str]) -> Results:
+        results: Results = []
         try:
             for model in models:
                 self.app.signals.log.emit(f"Updating Ollama model {model}…")
@@ -152,18 +161,25 @@ class OllamaTab(Page):
                 self.app.signals.log.emit(
                     f"Updated Ollama model {model}" if ok else f"Failed to update {model}: {error}")
         finally:
-            self.app.end_ollama_task()      # freed here, so closing the sheet cannot keep the slot
-        try:
-            self._update_done.emit(results)
-        except RuntimeError:
-            pass        # the sheet was closed before the update finished; the result is in the log
+            self.app.end_ollama_task()
+        return results
 
-    def _on_update_finished(self, results: list[tuple[str, bool, str]]) -> None:
+    def _run(self, work: Callable[[], Results], done: str, failed_title: str) -> None:
+        """Start `work` on a thread of its own with the list locked; `done` ("Deleted") and `failed_title`
+        word the message about the models it failed for."""
+        self.update_button.setEnabled(False)
+        self.delete_button.setEnabled(False)
+        self.models_list.setEnabled(False)
+        worker = _AdminWorker(work)
+        worker.done.connect(lambda results: self._on_finished(results, done, failed_title))
+        background.start_detached(worker)
+
+    def _on_finished(self, results: Results, done: str, failed_title: str) -> None:
         self.models_list.setEnabled(True)
         self.changed.emit()
         failures = [(model, error) for model, ok, error in results if not ok]
         if failures:
             QMessageBox.critical(
-                self, "Update failed",
-                f"Updated {len(results) - len(failures)} of {len(results)}. Failed:\n\n"
+                self, failed_title,
+                f"{done} {len(results) - len(failures)} of {len(results)}. Failed:\n\n"
                 + "\n".join(f"{model}: {error}" for model, error in failures))

@@ -8,6 +8,7 @@ import os
 import shlex
 import stat
 import sys
+from pathlib import Path
 
 from slidemage import cli
 from slidemage.ai import claude_launch
@@ -75,6 +76,13 @@ def test_the_token_goes_to_the_child_by_environment_only(tmp_path):
     assert env["TERM"] == "xterm-256color" and env["COLORTERM"] == "truecolor" and env["HOME"] == "/h"
     assert env["PATH"].split(os.pathsep) == [str(claude.parent), "/usr/bin"]
     assert "s3cret" not in " ".join(claude_launch.build_command(claude, URL))
+
+
+def test_the_hook_finds_this_slidemage_even_when_it_is_not_installed(tmp_path):
+    here = str(Path(claude_launch.__file__).resolve().parents[2])
+    env = claude_launch.environment("t", tmp_path, tmp_path / "claude", {"PATH": "/usr/bin", "PYTHONPATH": "/mine"})
+    assert env["PYTHONPATH"].split(os.pathsep) == [here, "/mine"] and (Path(here) / "slidemage").is_dir()
+    assert claude_launch.environment("t", tmp_path, tmp_path / "claude", {})["PYTHONPATH"] == here
 
 
 def test_the_child_uses_the_users_own_login_not_keys_or_inherited_sessions(tmp_path):

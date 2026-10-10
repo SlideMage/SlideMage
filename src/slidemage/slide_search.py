@@ -48,10 +48,11 @@ def project_files(root: Path) -> list[Path]:
 
 def search_project(
     query: str, root: Path | None = None, cancelled: Callable[[], bool] = lambda: False,
+    allow: Callable[[Path], bool] = lambda path: True,
 ) -> list[SearchHit]:
     """One hit per file that contains `query` (case-insensitive): "which file has
     this text" is the question, not how often it appears. [] for a blank query, and
-    whatever was found so far once `cancelled()` says so."""
+    whatever was found so far once `cancelled()` says so. Only files `allow` accepts are read."""
     query = query.strip()
     if not query:
         return []
@@ -61,6 +62,8 @@ def search_project(
     for path in project_files(root):
         if cancelled():
             break
+        if not allow(path):
+            continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):

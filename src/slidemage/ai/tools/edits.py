@@ -8,8 +8,8 @@
   changed since it was read. A slide saved that way keeps its tracked version (it is an
   "overwrite"); freezing a version stays the user's decision.
 * A slide's protected parts are never edited: the leading header comment, the
-  \\setSlideVersion line and \\vbox to 0pt{...} blocks -- the same parts ai_draft hides from a
-  rewrite -- and a frozen version (-vX-Y-Z.tex) is a historical record and read-only.
+  \\setSlideVersion line and \\vbox to 0pt{...} blocks -- the parts protected_regions masks
+  from a rewrite -- and a frozen version (-vX-Y-Z.tex) is a historical record and read-only.
 * Mode "ask": every change is shown (EditProposed, Workspace.confirm_edit) and waits for the
   user; a rejection is reported to the model. Mode "auto": applied at once. Either way an
   applied change is announced with its before and after text (EditApplied), which is what the
@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ... import slide_preview, slide_source
-from ...ai_draft import mask_protected_regions
+from ...protected_regions import mask_protected_regions
 from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
 from ..workspace import Workspace
 from .base import ToolContext, ToolError, tool
@@ -46,11 +46,17 @@ def slide_kind(path: Path) -> str | None:
 
 
 def protected_problem(before: str, after: str) -> str | None:
-    """The message to give the model when `after` differs from `before` in a protected part."""
-    def regions(text: str) -> list[str]:
-        return list(mask_protected_regions(text).placeholders.values())
+    """The message to give the model when `after` differs from `before` in a protected part.
+    Guaranteed: the protected texts are unchanged and in the same order, and a header comment
+    that started the file still does (BOM aside). Where a version line or overlay block sits
+    among the ordinary text is not checked."""
+    def parts(text: str) -> tuple[list[str], bool]:
+        masked = mask_protected_regions(text)
+        first = next(iter(masked.placeholders), None)
+        return list(masked.placeholders.values()), first is not None and \
+            masked.masked_text.lstrip("\ufeff").startswith(first)
 
-    return None if regions(before) == regions(after) else PROTECTED_MESSAGE
+    return None if parts(before) == parts(after) else PROTECTED_MESSAGE
 
 
 def _editable(ctx: ToolContext, arg: str) -> Path:
@@ -66,7 +72,7 @@ def _editable(ctx: ToolContext, arg: str) -> Path:
 def propose(ctx: ToolContext, path: Path, before: str, after: str, note: str = "") -> bool:
     """Announce a change; in mode "ask" wait for the user. False (EditRejected sent) when refused."""
     ctx.emit(EditProposed(ctx.call_id, path, before, after, note))
-    if ctx.mode != EDIT_ASK or ctx.workspace.confirm_edit(path, before, after):
+    if ctx.mode != EDIT_ASK or ctx.workspace.confirm_edit(ctx.call_id, path, before, after):
         return True
     ctx.emit(EditRejected(ctx.call_id, path))
     return False
@@ -142,7 +148,12 @@ def edit_file(ctx: ToolContext, args: dict) -> str:
         raise ToolError(problem)
     if not propose(ctx, path, text, after):
         raise ToolError("The user rejected this edit. Do not repeat it; ask what they would prefer.")
-    return _applied(ctx, path, text, after, write_text(ctx.workspace, path, text, after))
+    try:
+        via_buffer = write_text(ctx.workspace, path, text, after)
+    except ToolError:
+        ctx.emit(EditRejected(ctx.call_id, path))      # the card was waiting for the outcome of the user's Apply
+        raise
+    return _applied(ctx, path, text, after, via_buffer)
 
 
 @tool("write_file",
@@ -162,6 +173,8 @@ def write_file(ctx: ToolContext, args: dict) -> str:
         raise ToolError("The file is too large for write_file.")
     if not propose(ctx, path, "", content):
         raise ToolError("The user rejected this file. Do not repeat it; ask what they would prefer.")
+    if path.exists():       # the user took their time; the file may have appeared meanwhile
+        raise ToolError(f"{relative(ctx.root, path)} was created while the user was deciding; it was not overwritten.")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8", newline="\n")
     ctx.workspace.file_changed(path, None)

@@ -55,6 +55,11 @@ class TerminalBridge(QObject):
     def initial_theme(self) -> str:
         return self._theme
 
+    def set_theme(self, theme_text: str) -> None:
+        """A new theme: the page is told, and a page that loads later starts with it."""
+        self._theme = theme_text
+        self.theme.emit(theme_text)
+
     @Slot(int, int)
     def page_ready(self, cols: int, rows: int) -> None:
         self.ready.emit(cols, rows)
@@ -150,8 +155,7 @@ class TerminalWidget(QWidget):
         self.bridge.reset_terminal.emit()
 
     def set_tokens(self, tokens: Tokens) -> None:
-        self.bridge._theme = theme_json(tokens)
-        self.bridge.theme.emit(self.bridge._theme)
+        self.bridge.set_theme(theme_json(tokens))
 
     def focus_terminal(self) -> None:
         self.view.setFocus()
@@ -165,6 +169,8 @@ class TerminalWidget(QWidget):
         menu.exec(self.view.mapToGlobal(position))
 
     def shutdown(self) -> None:
-        """Free the page before its profile (Qt wants it in that order)."""
+        """Free the page before its profile (Qt wants it in that order), and take the widget out of its layout."""
         self.view.setPage(None)
         self._page.deleteLater()
+        self.setParent(None)
+        self.deleteLater()

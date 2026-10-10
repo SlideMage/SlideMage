@@ -27,6 +27,7 @@ class ReplaceImageSheet(ModalSheet):
     def __init__(self, parent: QWidget, reference: str, others: list[str]) -> None:
         super().__init__("Replace image", parent, width=560)
         self.source: Optional[Path] = None
+        self._auto_name = ""     # the name suggested last: replaced when another file is chosen, a typed one is not
         old_name = reference.rsplit("/", 1)[-1]
         self._suggested = old_name.rsplit(".", 1)[0] if "." in old_name else old_name
         page = Page()
@@ -75,22 +76,22 @@ class ReplaceImageSheet(ModalSheet):
         self.source = Path(picked)
         self.chosen.setText(self.source.name)
         self.extension.setText(self.source.suffix.lower() or ".png")
-        if not self.name_edit.text():
-            self.name_edit.setText(self._suggested)
+        if self.name_edit.text() in ("", self._auto_name):
+            self._auto_name = image_review.free_media_stem(self._suggested, self.extension.text())
+            self.name_edit.setText(self._auto_name)
         self._validate()
 
     def _validate(self) -> None:
-        problem, tone = "", "error"
+        problem = ""
         if self.source is not None:
             problem = image_review.media_name_problem(self.name_edit.text().strip())
             if not problem and image_review.media_destination(self.new_name).exists():
-                problem, tone = f"media/{self.new_name} already exists and will be overwritten.", "warning"
+                problem = f"media/{self.new_name} already exists: pick another name (an image is never overwritten)."
         self.problem.setText(problem)
-        self.problem.setProperty("tone", tone)
+        self.problem.setProperty("tone", "error")
         self.problem.style().unpolish(self.problem)
         self.problem.style().polish(self.problem)
-        self.replace_button.setEnabled(self.source is not None and not image_review.media_name_problem(
-            self.name_edit.text().strip()))
+        self.replace_button.setEnabled(self.source is not None and not problem)
 
 
 class PromptTuningSheet(ModalSheet):

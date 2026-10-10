@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import alt_blocks, alt_draft, alt_images, image_review
+from slidemage import alt_blocks, alt_draft, alt_images, image_review, slide_source
 from slidemage.image_review import FormEdit, SlideView
 
 IMG = "media/photo-a.png"
@@ -14,6 +14,7 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "media" / "alt-text.json")
     monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "media" / "alt-text.csv")
     monkeypatch.setattr(image_review, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(slide_source, "BACKUPS_DIR", tmp_path / ".backups")
     return tmp_path
 
 
@@ -56,15 +57,13 @@ def entries_of(**by_image):
     return {name: alt_images.ImageEntry(image=name, **fields) for name, fields in by_image.items()}
 
 
-def test_visible_views_filter_pin_and_order(store):
+def test_visible_views_filter_and_order(store):
     rows = [slide(store, f"{i}aaa") for i in range(4)]
     views = [view(rows[0], "none"), view(rows[1], "draft"), view(rows[2], "reviewed"), view(rows[3], "stale")]
     ids = lambda shown: [v.row.slide_id for v in shown]   # noqa: E731
     needs, everything = 0, image_review.FILTER_ALL
     assert ids(image_review.visible_views(views, {}, needs)) == ["0aaa", "1aaa", "3aaa"]
     assert len(image_review.visible_views(views, {}, everything)) == 4
-    assert ids(image_review.visible_views(views, {}, needs, pin=rows[2].path)) == ["2aaa", "0aaa", "1aaa", "3aaa"]
-    assert ids(image_review.visible_views(views, {}, needs, pin=rows[0].path)) == ["0aaa", "1aaa", "3aaa"]
     # slides missing from the order keep their place, at the end
     assert ids(image_review.visible_views(views, {}, everything, order={"3aaa": 0, "1aaa": 1})) == [
         "3aaa", "1aaa", "0aaa", "2aaa"]
@@ -213,6 +212,28 @@ def test_replace_image_copies_and_repoints_slides(store):
     assert image_review.has_text(entry) and not image_review.has_text(alt_images.ImageEntry(image=IMG))
 
 
+def test_copy_into_media_never_overwrites_and_free_names_count_up(store):
+    source = store / "picked.png"
+    source.write_bytes(b"new")
+    (store / "media").mkdir(exist_ok=True)
+    (store / "media" / "photo-a.png").write_bytes(b"old")
+    with pytest.raises(FileExistsError):
+        image_review.copy_into_media(source, "photo-a.png")
+    assert (store / "media" / "photo-a.png").read_bytes() == b"old"
+    assert image_review.free_media_stem("photo-a", ".png") == "photo-a-2"
+    assert image_review.free_media_stem("photo-a", ".jpg") == "photo-a"
+
+
+def test_repoint_keeps_the_line_ends_and_makes_a_backup(store):
+    entry = alt_images.ImageEntry(image=IMG, short="s")
+    row = slide(store, "1aaa", text="x")
+    row.path.write_bytes(f"a\r\n\\includegraphics{{{IMG}}}\r\n".encode())
+    changed, failures = image_review.repoint_slides(entry, {IMG: entry}, {"1aaa": row.path}, {}, IMG, "media/n.png")
+    assert (changed, failures) == (["1aaa"], [])
+    assert row.path.read_bytes() == b"a\r\n\\includegraphics{media/n.png}\r\n"
+    assert len(list((store / ".backups" / row.path.name).glob("*.tex"))) == 1
+
+
 def test_repoint_reports_unreadable_slide(store):
     entry = alt_images.ImageEntry(image=IMG)
     changed, failures = image_review.repoint_slides(entry, {}, {"1aaa": Path(store / "missing.tex")}, {}, IMG, "media/n.png")
@@ -232,6 +253,15 @@ def test_repoint_leaves_a_slide_with_unsaved_source_edits_alone(store):
     assert len(failures) == 1 and failures[0].startswith("1aaa:") and "unsaved edits" in failures[0]
     assert IMG in open_slide.path.read_text(encoding="utf-8")            # untouched
     assert "media/n.png" in other.path.read_text(encoding="utf-8")
+
+
+def test_a_tuned_draft_stores_the_hint_and_a_cleared_hint(store):
+    alt_images.update_store(lambda entries: bool(entries.update({IMG: alt_images.ImageEntry(image=IMG, hint="old")})) or True)
+    result = alt_draft.DraftResult(short="s", long="l", takeaway="t")
+    assert alt_draft.apply_one_draft(IMG, result, "m", hint="") and alt_images.load_store()[IMG].hint == ""
+    assert alt_draft.apply_one_draft(IMG, result, "m", hint="y axis max 6800")
+    assert alt_images.load_store()[IMG].hint == "y axis max 6800"
+    assert alt_draft.apply_one_draft(IMG, result, "m") and alt_images.load_store()[IMG].hint == "y axis max 6800"
 
 
 def test_media_names():

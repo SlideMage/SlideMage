@@ -105,6 +105,7 @@ class EditApplied:
 
 @dataclass(frozen=True)
 class EditRejected:
+    """The proposed edit was not made: the user refused it, or it could not be applied after all."""
     call_id: str
     path: Path
 

@@ -161,7 +161,7 @@ class ModelsTab(Page):
                     app_settings.MODEL_SETTINGS[t], c.itemData(i) or ""))       # "<provider>:<model>"
                 self.combos[task] = combo
                 fields.append(Field(label, combo))
-            layout.addWidget(columns(*fields, *([QWidget()] * (2 - len(fields)))))   # an odd last row keeps its column
+            layout.addWidget(columns(*fields))
         self.unreachable = caption("")
         layout.addWidget(self.unreachable)
         layout.addStretch(1)

@@ -135,20 +135,25 @@ class _HttpProvider:
         connection_class = (http.client.HTTPSConnection if parts.scheme == "https"
                             else http.client.HTTPConnection)
         conn = connection_class(parts.hostname or "localhost", parts.port, timeout=timeout)
+        connected = False
         try:
             if self._cancelled:
                 raise Cancelled("Aborted.")
+            conn.connect()
+            connected = True
+            self._sock = conn.sock      # published before anything is sent, so that abort() reaches an upload too;
+            if self._cancelled:         # kept here: a response that ends with the connection takes it from conn
+                raise Cancelled("Aborted.")
             body = None if payload is None else json.dumps(payload).encode("utf-8")
             conn.request(method, parts.path.rstrip("/") + endpoint, body=body, headers=headers)
-            self._sock = conn.sock      # kept here: a response that ends with the connection takes it from conn
-            if self._cancelled:         # abort() came before the socket was known
-                raise Cancelled("Aborted.")
             yield conn.getresponse()
         except (OSError, http.client.HTTPException) as exc:
             if self._cancelled:
                 raise Cancelled("Aborted.") from exc
-            if isinstance(exc, (ConnectionError, socket.gaierror)):
+            if not connected and isinstance(exc, (ConnectionError, socket.gaierror)):
                 raise ProviderError(f"{self.service} unreachable: {exc}") from exc
+            if isinstance(exc, (ConnectionError, http.client.RemoteDisconnected)):
+                raise ProviderError(f"{self.service} dropped the connection: {exc}") from exc
             raise ProviderError(f"{self.service} request failed: {exc}") from exc
         finally:
             self._sock = None
@@ -243,6 +248,7 @@ class OllamaProvider(_HttpProvider):
         # Resolved now rather than at import: a host saved later in Settings
         # must apply without a restart.
         self.host = host or app_settings.get_ollama_host()
+        self._capabilities: dict[str, tuple[str, ...]] = {}     # what /api/show said, by model
 
     @property
     def label(self) -> str:
@@ -373,14 +379,21 @@ class OllamaProvider(_HttpProvider):
 
     def capabilities(self, model: str | None = None) -> tuple[str, ...]:
         """What `model` (default: this provider's) can do -- "completion", "tools", "vision", ... --
-        according to /api/show; () when unknown (unreachable, or an Ollama too old to say)."""
+        according to /api/show; () when unknown (unreachable, or an Ollama too old to say). An answer is kept
+        for the life of this provider (the agent asks again on every turn)."""
+        model = model or self.model
+        if model in self._capabilities:
+            return self._capabilities[model]
         try:
             status, raw = self._send("POST", self.host, "/api/show", headers={"Content-Type": "application/json"},
-                                     payload={"model": model or self.model}, timeout=10)
+                                     payload={"model": model}, timeout=10)
             body = self._json(status, raw, lambda s, detail: detail)
         except ProviderError:
             return ()
-        return tuple(body.get("capabilities") or ())
+        found = tuple(body.get("capabilities") or ())
+        if found:
+            self._capabilities[model] = found
+        return found
 
     def tool_models(self) -> list[str]:
         """The installed models the agent chat can use: the ones that call tools."""
@@ -468,6 +481,7 @@ class AnthropicProvider:
         self._api_key = api_key
         self._cancelled = False
         self._stream = None     # the running request, for abort()
+        self._client = None     # its SDK client, for abort() while the request is still being made (or retried)
 
     @property
     def label(self) -> str:
@@ -510,12 +524,13 @@ class AnthropicProvider:
         """An SDK client for one request; every failure leaves as a ProviderError."""
         client = _sdk().Anthropic(
             api_key=self._key(), base_url=self.base_url, timeout=timeout, max_retries=self.max_retries)
+        self._client = client
         try:
             yield client
         except Exception as exc:  # noqa: BLE001 -- whatever the SDK or its HTTP layer raises
             raise self._translate(exc) from exc
         finally:
-            self._stream = None
+            self._stream = self._client = None
             client.close()
 
     def _stream_message(self, client, on_text: Callable[[str], None] | None, **request):
@@ -594,16 +609,19 @@ class AnthropicProvider:
     def abort(self) -> None:
         """Ends a running chat() / stream_turn() from another thread (it raises Cancelled)."""
         self._cancelled = True
-        stream = self._stream
-        if stream is None:
-            return
-        # The socket first: closing the response alone does not wake a read blocked in another thread.
-        network = stream.response.extensions.get("network_stream")
-        _shutdown_socket(network.get_extra_info("socket") if network is not None else None)
-        try:
-            stream.close()
-        except Exception:  # noqa: BLE001 -- the request is being torn down under the reader
-            pass
+        stream, client = self._stream, self._client
+        if stream is not None:
+            # The socket first: closing the response alone does not wake a read blocked in another thread.
+            network = stream.response.extensions.get("network_stream")
+            _shutdown_socket(network.get_extra_info("socket") if network is not None else None)
+        # Closing what is open also ends a request that has not started streaming yet: its connect or
+        # its retry then fails at once instead of going on to answer nobody.
+        for closable in (stream, client):
+            if closable is not None:
+                try:
+                    closable.close()
+                except Exception:  # noqa: BLE001 -- the request is being torn down under the reader
+                    pass
 
 
 def _message_text(message) -> str:

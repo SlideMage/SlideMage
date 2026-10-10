@@ -172,7 +172,8 @@ class ToolCard(QFrame):
 
 class DiffCard(QFrame):
     """An edit of a file as a diff. States: "proposed" (just announced), "asking" (Apply / Reject
-    wait for the user), "applied" (with Undo, when it can be undone), "rejected" and "undone" (greyed)."""
+    wait for the user), "working" (Apply was clicked), "applied" (with Undo, when it can be undone), "rejected"
+    (refused, or could not be applied) and "undone" (greyed)."""
 
     apply_clicked = Signal()
     reject_clicked = Signal()
@@ -230,7 +231,9 @@ class DiffCard(QFrame):
 
     def _fill(self) -> None:
         while (item := self._lines.takeAt(0)) is not None:
-            item.widget().setParent(None)
+            widget = item.widget()
+            widget.setParent(None)
+            widget.deleteLater()
         shown = self._rows if self._all_rows else self._rows[:DIFF_ROWS]
         for kind, line in shown:
             label = QLabel({"add": "+ ", "del": "− ", "ctx": "  ", "gap": "⋯"}[kind] + line)
@@ -262,6 +265,11 @@ class DiffCard(QFrame):
         self.state = "asking"
         self._show_state("Waiting for you", False, asking=True)
 
+    def working(self) -> None:
+        """Apply was clicked: the agent is making the change."""
+        self.state = "working"
+        self._show_state("Applying…", False)
+
     def applied(self, via_buffer: bool, undoable: bool, new_file: bool) -> None:
         self.state = "applied"
         text = ("Created" if new_file else "Applied in the editor, not saved yet" if via_buffer
@@ -270,7 +278,7 @@ class DiffCard(QFrame):
 
     def rejected(self) -> None:
         self.state = "rejected"
-        self._show_state("Rejected", False)
+        self._show_state("Not applied", False)
 
     def undone(self) -> None:
         self.state = "undone"

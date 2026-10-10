@@ -417,6 +417,27 @@ def test_an_unusable_keychain_stores_the_key_in_the_settings_file(monkeypatch, q
     assert credentials.get_api_key().source == "settings file"
 
 
+def test_a_keychain_entry_that_cannot_be_removed_is_reported_not_swallowed(monkeypatch, qapp):
+    keyring = FakeKeyring()
+    keyring.store[("SlideMage", "anthropic-api-key")] = "sk-ant-old"
+    monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
+
+    def refuse(service, user):
+        raise RuntimeError("locked")
+
+    keyring.delete_password = refuse
+    with pytest.raises(OSError, match="locked"):
+        credentials.set_api_key("")
+    assert credentials.get_api_key().value == "sk-ant-old"            # still there, and the caller was told
+    keyring.priority = 0                                              # the save fails; the old entry still shadows
+    with pytest.raises(OSError):
+        credentials.set_api_key("sk-ant-new")
+    assert app_settings.get(credentials.FILE_SETTING_KEY) == "sk-ant-new"
+    del keyring.delete_password                                       # a keychain that lets go: nothing shadows the file
+    assert credentials.set_api_key("sk-ant-newer") == credentials.SOURCE_FILE
+    assert credentials.get_api_key().value == "sk-ant-newer" and not keyring.store
+
+
 def test_an_empty_key_is_not_saved(qapp):
     sheet = open_sheet(qapp, tab=CLOUD)
     sheet.cloud.key_edit.setText("   ")
@@ -465,6 +486,8 @@ def test_selected_models_are_deleted_after_a_question_and_hold_the_ollama_slot(m
     tab.models_list.item(1).setSelected(True)
 
     tab._on_delete()
+    assert not tab.models_list.isEnabled() and not tab.delete_button.isEnabled()      # the GUI thread is not waiting
+    wait_for(qapp, lambda: changed)
 
     assert deleted == ["general-text", "translator"] and changed == [1]
     assert app.slots == ["deleting 2 model(s)", "end"]
@@ -481,6 +504,24 @@ def test_declining_the_delete_question_deletes_nothing(monkeypatch, qapp):
     tab.models_list.item(0).setSelected(True)
     tab._on_delete()
     assert deleted == [] and app.slots == ["deleting general-text", "end"]      # the slot is given back
+
+
+def test_a_request_that_blows_up_still_enables_the_list_again(monkeypatch, qapp):
+    app = FakeApp()
+    tab = open_sheet(qapp, app, tab=OLLAMA).ollama
+
+    def explode(model, on_progress=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ollama_admin, "update_model", explode)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    failures, changed = [], []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: failures.append(args[2]))
+    tab.changed.connect(lambda: changed.append(1))
+    tab.models_list.item(0).setSelected(True)
+    tab._on_update()
+    wait_for(qapp, lambda: changed)
+    assert tab.models_list.isEnabled() and app.slots[-1] == "end" and "boom" in failures[0]
 
 
 def test_a_busy_ollama_slot_stops_a_delete_and_an_update(monkeypatch, qapp):

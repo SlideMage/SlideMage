@@ -124,7 +124,62 @@ def test_abort_ends_a_running_request(server):
     assert isinstance(outcome[0], Cancelled)
 
 
+def test_the_socket_is_known_before_the_body_goes_out_and_a_reset_is_not_unreachable(monkeypatch):
+    marker = object()
+    seen = []
+
+    class Connection:
+        fail = None
+
+        def __init__(self, *_args, **_kwargs):
+            self.sock = None
+
+        def connect(self):
+            if self.fail == "connect":
+                raise ConnectionRefusedError("refused")
+            self.sock = marker
+
+        def request(self, *_args, **_kwargs):
+            seen.append(provider._sock)             # what abort() would shut down while the upload runs
+            raise ConnectionResetError("reset by peer")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("slidemage.ai.providers.http.client.HTTPConnection", Connection)
+    provider = OllamaProvider("m", host="http://ollama.test")
+    with pytest.raises(ProviderError, match="dropped the connection"):
+        provider.chat([{"role": "user", "content": "a"}])
+    assert seen == [marker] and provider._sock is None
+    Connection.fail = "connect"
+    with pytest.raises(ProviderError, match="Ollama unreachable"):
+        OllamaProvider("m", host="http://ollama.test").chat([{"role": "user", "content": "a"}])
+
+
+def test_capabilities_are_asked_once_per_model(server):
+    server.body = {"capabilities": ["completion", "vision"]}
+    provider = OllamaProvider("m", host=server.url)
+    assert provider.capabilities() == ("completion", "vision") and provider.capabilities() == ("completion", "vision")
+    assert len([r for r in server.requests if r["path"] == "/api/show"]) == 1
+    server.body = {}
+    assert provider.capabilities("other") == () and provider.capabilities("other") == ()      # not kept: asked again
+    assert len([r for r in server.requests if r["path"] == "/api/show"]) == 3
+
+
 # -- Anthropic ---------------------------------------------------------------
+
+def test_abort_closes_the_client_so_a_request_not_yet_streaming_ends_too():
+    class Closable:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    provider = AnthropicProvider("claude-sonnet-5-5", api_key="k")
+    provider._client = client = Closable()
+    provider.abort()
+    assert client.closed and provider._cancelled
+
 
 def test_anthropic_request_shape_with_image_and_json_mode(server):
     answer_with(server, [{"type": "text", "text": "{\"a\": 1}"}])

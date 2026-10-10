@@ -6,6 +6,7 @@ counterpart and stay out of ChatProvider)."""
 from __future__ import annotations
 
 import ast
+import http.client
 import json
 import math
 import re
@@ -14,6 +15,40 @@ import urllib.request
 from typing import Callable, Optional
 
 from .. import app_settings
+
+# What a call to the server can raise besides a refusal: no connection, a timeout (OSError), a cut-off or
+# malformed reply (HTTPException), a reply that is not UTF-8 text or JSON (ValueError).
+_CALL_ERRORS = (OSError, http.client.HTTPException, ValueError)
+
+
+def _open(host: str, path: str, payload: dict, timeout: float, method: str = "POST"):
+    """The open response of `method path` on the server at `host` with a JSON body (a context manager)."""
+    request = urllib.request.Request(
+        f"{host.rstrip('/')}{path}", data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method=method)
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
+def _failure(exc: Exception) -> str:
+    """The text to show for a failed call: the server's own message when it sent one."""
+    if isinstance(exc, urllib.error.HTTPError):
+        try:
+            body = json.loads(exc.read().decode("utf-8"))
+            if isinstance(body, dict) and isinstance(body.get("error"), str) and body["error"]:
+                return body["error"]
+        except _CALL_ERRORS:
+            pass
+    return str(exc) or type(exc).__name__
+
+
+def _simple_call(host: str, path: str, payload: dict, timeout: float, method: str = "POST") -> tuple[bool, str]:
+    """Run a call whose answer does not matter: (True, "") or (False, why) -- never raises."""
+    try:
+        with _open(host, path, payload, timeout, method) as response:
+            response.read()
+        return True, ""
+    except _CALL_ERRORS as exc:
+        return False, _failure(exc)
 
 
 def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
@@ -35,26 +70,7 @@ def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
     function to bypass that. The real, well-documented danger case is
     someone manually deleting files under Ollama's own blobs/ directory,
     which is not what this does."""
-    host = host or app_settings.get_ollama_host()
-    try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/delete",
-            data=json.dumps({"model": model}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="DELETE",
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            response.read()
-        return True, ""
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode("utf-8"))
-            message = body.get("error") or str(exc)
-        except (json.JSONDecodeError, OSError):
-            message = str(exc)
-        return False, message
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, str(exc)
+    return _simple_call(host or app_settings.get_ollama_host(), "/api/delete", {"model": model}, 30, "DELETE")
 
 
 # Custom models built with `ollama create <name> -f <modelfile>` -- FROM some
@@ -98,15 +114,8 @@ def pull_model(model: str, host: Optional[str] = None,
     show live progress instead of a frozen UI for what can be a many-GB,
     many-minute download. Returns (True, "") on success, (False, error)
     otherwise -- never raises, same contract as delete_model() above."""
-    host = host or app_settings.get_ollama_host()
     try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/pull",
-            data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=1800) as response:
+        with _open(host or app_settings.get_ollama_host(), "/api/pull", {"model": model, "stream": True}, 1800) as response:
             for raw_line in response:
                 line = raw_line.decode("utf-8").strip()
                 if not line:
@@ -115,26 +124,21 @@ def pull_model(model: str, host: Optional[str] = None,
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(event, dict):
+                    continue
                 if "error" in event:
-                    return False, event["error"]
+                    return False, str(event["error"])
                 status = event.get("status", "")
                 if on_progress and status:
-                    total = event.get("total")
-                    completed = event.get("completed")
-                    if total and completed:
+                    total, completed = event.get("total"), event.get("completed")
+                    if (isinstance(total, (int, float)) and isinstance(completed, (int, float))
+                            and total and completed):
                         on_progress(f"{model}: {status} ({completed / total * 100:.0f}%)")
                     else:
                         on_progress(f"{model}: {status}")
         return True, ""
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode("utf-8"))
-            message = body.get("error") or str(exc)
-        except (json.JSONDecodeError, OSError):
-            message = str(exc)
-        return False, message
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, str(exc)
+    except _CALL_ERRORS as exc:
+        return False, _failure(exc)
 
 
 def _get_model_show(model: str, host: Optional[str] = None) -> dict | None:
@@ -142,18 +146,11 @@ def _get_model_show(model: str, host: Optional[str] = None) -> dict | None:
     model doesn't exist, the server isn't reachable, or it returns invalid
     JSON. Keeping this response lets callers preserve model configuration
     through APIs that no longer accept a Modelfile string."""
-    host = host or app_settings.get_ollama_host()
     try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/show",
-            data=json.dumps({"model": model}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with _open(host or app_settings.get_ollama_host(), "/api/show", {"model": model}, 30) as response:
             data = json.loads(response.read().decode("utf-8"))
         return data if isinstance(data, dict) else None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+    except _CALL_ERRORS:
         return None
 
 
@@ -299,25 +296,7 @@ def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> t
     except ValueError as exc:
         return False, f"Could not preserve {model}'s current configuration: {exc}"
 
-    try:
-        request = urllib.request.Request(
-            f"{host.rstrip('/')}/api/create",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=120) as response:
-            response.read()
-        return True, ""
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode("utf-8"))
-            message = body.get("error") or str(exc)
-        except (json.JSONDecodeError, OSError):
-            message = str(exc)
-        return False, message
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, str(exc)
+    return _simple_call(host, "/api/create", payload, 120)
 
 
 def update_model(model: str, host: Optional[str] = None,

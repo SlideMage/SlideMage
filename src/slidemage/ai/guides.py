@@ -5,6 +5,8 @@ it costs context every time it is read, and the slides of the project (find_file
 read_file) are the better examples for anything not covered here."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .. import slide_add
 
 _SLIDES = """\
@@ -93,13 +95,13 @@ def _frames() -> str:
     return "\n".join(lines)
 
 
-GUIDES: dict[str, tuple[str, str]] = {
-    "slides": ("file names, versions, protected parts, deck calls", _SLIDES),
-    "frames": ("the frame types and their LaTeX skeletons", ""),     # built on demand
-    "layout": ("columns, tables, blocks, figures, spacing", _LAYOUT),
-    "reveals": ("\\pause, \\only, \\slidestep, deck versions", _REVEALS),
-    "citations": ("Slidemaster.bib, \\fullcite, \\textcite", _CITATIONS),
-    "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES),
+GUIDES: dict[str, tuple[str, Callable[[], str]]] = {
+    "slides": ("file names, versions, protected parts, deck calls", lambda: _SLIDES),
+    "frames": ("the frame types and their LaTeX skeletons", _frames),     # built on demand
+    "layout": ("columns, tables, blocks, figures, spacing", lambda: _LAYOUT),
+    "reveals": ("\\pause, \\only, \\slidestep, deck versions", lambda: _REVEALS),
+    "citations": ("Slidemaster.bib, \\fullcite, \\textcite", lambda: _CITATIONS),
+    "images_and_text": ("images, notes, code and text helpers, escaping", lambda: _NOTES_IMAGES),
 }
 TOPICS = tuple(GUIDES)
 
@@ -109,5 +111,4 @@ def topic_overview() -> str:
 
 
 def guide(topic: str) -> str:
-    text = GUIDES[topic][1]
-    return text or _frames()
+    return GUIDES[topic][1]()

@@ -20,9 +20,14 @@ function applyTheme(json) {
   if (term) term.options.theme = theme;
 }
 
+let reported = { cols: 0, rows: 0 };
+
 function refit() {
   if (!term || document.getElementById("term").clientWidth < 20) return;
   fit.fit();
+  // Only a change of size is news: the process is resized (SIGWINCH) when it really is.
+  if (term.cols === reported.cols && term.rows === reported.rows) return;
+  reported = { cols: term.cols, rows: term.rows };
   bridge.page_resized(term.cols, term.rows);
 }
 
@@ -62,6 +67,7 @@ function start() {
   bridge.initial_theme((json) => {
     applyTheme(json);
     fit.fit();
+    reported = { cols: term.cols, rows: term.rows };
     bridge.page_ready(term.cols, term.rows);
   });
 }

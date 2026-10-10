@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 
+from .alt_images import atomic_write_text
 from .deck_scan import PROJECT_ROOT
 
 STORE_PATH = PROJECT_ROOT / ".slidemage" / "draft_prompts.json"
@@ -33,12 +34,15 @@ KIND_IMAGE_DRAFT = "image_draft"
 
 
 def _load_raw() -> dict[str, str]:
-    if not STORE_PATH.is_file():
-        return {}
+    """The stored prompts; a file that cannot be read or is not the documented shape counts as empty,
+    and entries that are not text are dropped."""
     try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        data = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):    # a missing file, no permission, not UTF-8 (UnicodeDecodeError), bad JSON
         return {}
+    if not isinstance(data, dict):
+        return {}
+    return {kind: prompt for kind, prompt in data.items() if isinstance(prompt, str)}
 
 
 def get_custom_prompt(kind: str) -> str | None:
@@ -60,8 +64,4 @@ def set_custom_prompt(kind: str, prompt: str, default: str = "") -> None:
         raw[kind] = prompt
     else:
         raw.pop(kind, None)
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STORE_PATH.write_text(
-        json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_text(STORE_PATH, json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n")

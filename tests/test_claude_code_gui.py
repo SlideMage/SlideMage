@@ -160,6 +160,36 @@ def test_the_terminal_starts_when_the_view_is_first_shown_in_the_project_with_on
     assert not (env.root / ".claude").exists() and not (env.root / ".mcp.json").exists()
 
 
+def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, monkeypatch):
+    def busy(self):
+        raise OSError("port busy")
+
+    original = session_module.McpServer.start
+    monkeypatch.setattr(session_module.McpServer, "start", busy)
+    env.window.assistant.show_view(CLAUDE_CODE)
+    wait_until(lambda: env.view.status.text() == "Claude Code could not start")
+    wait_until(lambda: "could not be started" in terminal_text(env).replace("\n", " "))     # the terminal is narrow
+    assert not env.view.session.running
+    monkeypatch.setattr(session_module.McpServer, "start", original)      # the port is free again: Restart works
+    env.view.restart_button.click()
+    wait_until(lambda: env.view.session.running and env.view.status.text() == "Claude Code running")
+
+
+def test_a_late_report_of_an_old_process_is_ignored(env):
+    start_view(env)
+    session = env.view.session
+    old = session._generation
+    env.view.restart_button.click()
+    wait_until(lambda: session.running and session._generation > old)
+    session._ended.emit(old, 7)                         # queued before the restart, delivered after it
+    session._chunk.emit(old, b"stale output\r\n")
+    pump(0.3)
+    assert env.view.status.text() == "Claude Code running" and session._sync._timer.isActive()
+    assert "stale output" not in terminal_text(env)
+    env.window.assistant.shutdown()
+    env.view._on_exited(0)                              # an exit reported while the window closes: nothing to show
+
+
 def test_typing_resize_theme_exit_restart_and_shutdown(env):
     start_view(env)
     # what is typed reaches the process, its output the terminal
@@ -175,6 +205,11 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     assert cols > 20 and rows > 5
     env.view.terminal.resize(900, 300)
     wait_until(lambda: env.view._size != (cols, rows))
+    reported = []                                   # a refit that finds the same size tells nobody (no SIGWINCH)
+    env.view.terminal.resized.connect(lambda c, r: reported.append((c, r)))
+    env.view.terminal.view.page().runJavaScript("refit(); refit();")
+    pump(0.3)
+    assert reported == []
     # the colours follow the app theme
     seen = []
     env.view.terminal.bridge.theme.connect(seen.append)
@@ -248,6 +283,23 @@ def open_slide(env, dirty=False):
     if dirty:
         file.editor.replace_selection("% typed\n")
     return file
+
+
+def test_stopping_looks_once_more_and_a_failed_change_is_tried_again(watch, monkeypatch):
+    file = open_slide(watch)
+    rewrite(watch.path, LF.replace("First point", "Claude's last-second point"))
+    watch.sync.stop()                                   # the process ended: its final write is not missed
+    assert "last-second point" in file.editor.text() and not watch.sync._timer.isActive()
+    watch.sync.start()
+    rewrite(watch.path, LF.replace("First point", "Claude's point"))
+    applied = []
+    monkeypatch.setattr(watch.sync, "_apply", lambda changes: applied.append(changes) or (_ for _ in ()).throw(RuntimeError))
+    with pytest.raises(RuntimeError):
+        watch.sync.poll()
+    monkeypatch.undo()          # (the fixture's own patches go with it; the watch has all it needs)
+    watch.sync.poll()                                   # the window did not take the first one in: again
+    assert "Claude's point" in file.editor.text() and len(applied) == 1
+    watch.sync.stop(last_look=False)
 
 
 def test_a_clean_buffer_is_reloaded_and_our_own_save_is_not_a_change(watch, monkeypatch):

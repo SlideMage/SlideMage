@@ -18,7 +18,7 @@ deck or the page changes, and counts for the close prompt like the side panels' 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Collection, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -84,8 +84,8 @@ class ImagesPage(ImageRunsMixin, Surface):
 
         self.nav.selected.connect(self._on_selected)
         self.nav.find_entered.connect(self.show_slide)
-        self.nav.view_changed.connect(lambda: self._populate(self._current_path()))
-        self.nav.rescan_clicked.connect(lambda: self.reload(self._current_path()))
+        self.nav.view_changed.connect(lambda: self._populate(self._current_path(), row=self.nav.current_row()))
+        self.nav.rescan_clicked.connect(self._on_rescan)
         self.nav.back_clicked.connect(self.closed)
         state.deck_changed.connect(self._on_deck_changed)
         self._show_slide(None)
@@ -215,15 +215,19 @@ class ImagesPage(ImageRunsMixin, Surface):
             return {}
         return image_review.sort_order(deck)
 
-    def _populate(self, preserve: Optional[Path] = None, *, pin: Optional[Path] = None, row: int = 0) -> None:
-        """List the slides again and show the one at `preserve`, else the one now at `row`."""
+    def _populate(self, preserve: Optional[Path] = None, *, row: int = 0) -> None:
+        """List the slides again and show the one at `preserve`, else the one now at `row`. The slide
+        already on show stays as it is (a translation may be under way in its forms)."""
         self.flush()
-        view = self.nav.populate(self._views, self._entries, self._order(), preserve=preserve, pin=pin, row=row)
-        self._show_slide(view)
+        view = self.nav.populate(self._views, self._entries, self._order(), preserve=preserve, row=row)
+        if view is None or view is not self._current:
+            self._show_slide(view)
 
-    def _refresh_states(self, *, rebase_all: bool = False) -> None:
+    def _refresh_states(self, *, discard: Collection[str] = ()) -> None:
         """Read the store again and re-state every slide: a form was saved, or a worker wrote images.
-        Forms without edits show what is stored now; a form with edits keeps them."""
+        Forms without edits show what is stored now; a form with edits keeps them, except those of the
+        images in `discard`, whose edits are given up for what is stored (even while a translation is
+        on its way: the result is merged into whatever the form holds when it arrives)."""
         self._entries = alt_images.load_store()
         for view in self._views:
             view.state = image_review.slide_state(view.row, self._entries, view.slide_hash)
@@ -231,9 +235,11 @@ class ImagesPage(ImageRunsMixin, Surface):
         if self._current is not None:
             self._set_slide_note(self._current)
             for form in self._forms:
-                if (rebase_all or not form.changed) and not form.translating:
-                    entry = alt_images.lookup(self._entries, form.reference) or alt_images.ImageEntry(image=form.reference)
+                entry = alt_images.lookup(self._entries, form.reference) or alt_images.ImageEntry(image=form.reference)
+                if form.reference in discard or (not form.changed and not form.translating):
                     form.rebase(entry, self._current.slide_hash)
+                else:
+                    form.refresh_entry(entry)
         self._edited()
 
     # -- the slide on show -----------------------------------------------------------------------------
@@ -255,7 +261,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                 entry = alt_images.lookup(self._entries, reference) or alt_images.ImageEntry(image=reference)
                 form = ImageForm(self.app, reference, entry, row.slide_id, view.slide_hash)
                 form.set_language(self._language)
-                form.set_busy(self._job is not None)
+                form.set_availability(self._job is not None, self.translate_model.isEnabled())
                 form.edited.connect(self._edited)
                 form.replace_clicked.connect(self._replace_image)
                 form.tune_clicked.connect(self._tune)
@@ -274,14 +280,23 @@ class ImagesPage(ImageRunsMixin, Surface):
         """The user chose a slide in the list: leave the one on show."""
         if view is self._current:
             return
-        if self._translation_in_flight() and QMessageBox.question(
-                self, "Translation in progress",
-                "A German translation is still being generated for an image on this slide. Switching to another "
-                "slide now discards the result when it finishes. Switch anyway?") != QMessageBox.StandardButton.Yes:
+        if not self._may_leave_translation():
             self.nav.select(self._current)
             return
         self.flush()
         self._show_slide(view)
+
+    def _may_leave_translation(self) -> bool:
+        """False when a translation is on its way for a form on show and the user does not want to lose it
+        by leaving the slide."""
+        return not self._translation_in_flight() or QMessageBox.question(
+            self, "Translation in progress",
+            "A German translation is still being generated for an image on this slide. Switching to another "
+            "slide now discards the result when it finishes. Switch anyway?") == QMessageBox.StandardButton.Yes
+
+    def _on_rescan(self) -> None:
+        if self._may_leave_translation():
+            self.reload(self._current_path())
 
     def show_slide(self, text: str) -> None:
         """Jump to the slide `text` (an id or id-slug) whatever the filter shows."""
@@ -291,6 +306,8 @@ class ImagesPage(ImageRunsMixin, Surface):
                 self, "Find slide",
                 f"No slide matching \"{text}\" with any images was found. This page only lists slides that show "
                 "at least one image.")
+            return
+        if match is not self._current and not self._may_leave_translation():
             return
         self.nav.set_filter(image_review.FILTER_ALL)
         self._populate(match.row.path)
@@ -341,7 +358,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                                       reviewed=reviewed)
         self.app.log(f"{'Reviewed' if reviewed else 'Saved draft for'} {row.path.name}")
         view.slide_hash = alt_images.slide_context_hash(row.path)   # the slide may have changed since the scan
-        self._refresh_states(rebase_all=True)
+        self._refresh_states(discard=[form.reference for form in self._forms])
         if reviewed:   # on to the next slide that the filter lists
             self._populate(row.path, row=self.nav.current_row())
         return True
@@ -394,7 +411,7 @@ class ImagesPage(ImageRunsMixin, Surface):
 
         alt_images.update_store(mutate)
         self.app.log(f"Cleared draft(s) on {view.row.path.name}: {', '.join(clearable)}")
-        self._refresh_states()
+        self._refresh_states(discard=clearable)     # typed text would be saved again as a draft otherwise
 
     # -- replacing an image ----------------------------------------------------------------------------------
 
@@ -452,4 +469,4 @@ class ImagesPage(ImageRunsMixin, Surface):
         for button in (self.open_button, self.transcript_button, self.save_button, self.review_button):
             button.setEnabled(shown)
         for form in self._forms:
-            form.set_busy(busy)
+            form.set_availability(busy, self.translate_model.isEnabled())

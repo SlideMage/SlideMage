@@ -3,6 +3,7 @@ arrives in order, input reaches it, the exit code is reported, and stop() ends i
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 
@@ -87,6 +88,12 @@ def test_stop_ends_what_the_child_started_too(tmp_path):
     raise AssertionError("the grandchild is still running")
 
 
+def _alive(pid: int) -> bool:
+    """Whether `pid` runs (a zombie, waiting to be reaped, does not)."""
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return bool(state) and not state.startswith("Z")
+
+
 def test_the_fake_claude_runs_in_the_given_folder_with_the_given_environment(tmp_path):
     fake = make_fake_claude(tmp_path)
     log = tmp_path / "log.json"
@@ -97,3 +104,38 @@ def test_the_fake_claude_runs_in_the_given_folder_with_the_given_environment(tmp
     run.wait_for(lambda: run.codes)
     assert run.codes == [3] and "bye" in run.text
     assert '"--flag"' in log.read_text() and str(tmp_path) in log.read_text()
+
+
+def test_a_process_that_outlives_its_terminal_is_killed_with_what_it_started(tmp_path, monkeypatch):
+    import ptyprocess
+
+    monkeypatch.setattr("slidemage.pty_process.REAP_WAIT_S", 0.3)
+
+    def lost_terminal(self, size):      # the reader's view of a terminal that went away under a running program
+        raise EOFError
+
+    monkeypatch.setattr(ptyprocess.PtyProcess, "read", lost_terminal)
+    marker = tmp_path / "pids"
+    # the child ignores the hangup, so that only the kill of the whole group can end it
+    run = Run(sh(f"(trap '' HUP; exec sleep 60) > /dev/null 2>&1 < /dev/null & echo $$ $! > {marker}; sleep 60"),
+              tmp_path)
+    run.wait_for(lambda: run.codes, seconds=10)
+    assert run.codes == [-1] and not run.process.alive
+    leader, child = (int(pid) for pid in marker.read_text().split())
+    end = time.time() + 3
+    while time.time() < end and any(_alive(pid) for pid in (leader, child)):
+        time.sleep(0.05)
+    assert not _alive(leader) and not _alive(child)
+
+
+def test_stop_after_the_leader_ended_still_ends_what_it_started(tmp_path):
+    marker = tmp_path / "child.pid"
+    run = Run(sh(f"(trap '' HUP; exec sleep 60) > /dev/null 2>&1 < /dev/null & echo $! > {marker}; sleep 0.3; exit 0"), tmp_path)
+    run.wait_for(lambda: run.codes)
+    pid = int(marker.read_text())
+    assert _alive(pid)
+    run.process.stop()
+    end = time.time() + 3
+    while time.time() < end and _alive(pid):
+        time.sleep(0.05)
+    assert not _alive(pid)

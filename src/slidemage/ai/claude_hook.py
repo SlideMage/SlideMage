@@ -7,7 +7,7 @@ stdin; exit code 2 blocks the call and hands stderr to Claude as the reason, any
 
 The rules are the chat tools' (tools/edits.py): an edit that changes a slide's protected parts (header
 comment, \\setSlideVersion, \\vbox to 0pt{...} blocks) is refused, and a frozen version (-vX-Y-Z.tex) is read-only.
-Everything else, and anything this hook cannot work out, is allowed: it must never get in the way of a
+Everything else, and anything this hook cannot work out (except a slide that exists but cannot be read), is allowed: it must never get in the way of a
 call that is fine, and a crash is only a warning. It cannot see what a Bash command does to a file.
 """
 from __future__ import annotations
@@ -22,6 +22,8 @@ from .tools.edits import protected_problem, slide_kind
 BLOCK = 2
 FROZEN_MESSAGE = ("{name} is a frozen version of a slide: a historical record, read-only. "
                   "Edit the slide's -current.tex file instead.")
+UNREADABLE_MESSAGE = ("{name} cannot be read as UTF-8 text, so SlideMage cannot check that the edit leaves the "
+                      "slide's protected parts alone. Ask the user to look at the file.")
 FILE_TOOLS = ("Edit", "Write", "MultiEdit")
 
 
@@ -78,7 +80,11 @@ def blocked_reason(event: dict) -> str | None:
     if kind != "current":
         return None
     before = _read(path)
-    after = _result(tool, args, before) if before is not None else None
+    if before is None:
+        # A slide that exists but cannot be read (not UTF-8, no permission): its protected parts cannot be
+        # compared, so the call is refused rather than let through blind.
+        return UNREADABLE_MESSAGE.format(name=path.name) if path.exists() else None
+    after = _result(tool, args, before)
     return protected_problem(before, after) if after is not None else None
 
 

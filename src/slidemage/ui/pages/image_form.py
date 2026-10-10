@@ -69,6 +69,7 @@ class ImageForm(Surface):
         self.provenance: Optional[dict] = None   # of a translation applied to the form
         self.translating = False   # a translation of this form is under way
         self.busy = False          # the page runs a job: no second one is started from here
+        self.can_translate = True  # a translation model is available
         self._asked: Optional[tuple[dict[str, str], tuple[str, str, str]]] = None   # what a request was sent from
         self.fields: dict[str, QPlainTextEdit] = {}
         self._groups: dict[str, Surface] = {}
@@ -83,7 +84,7 @@ class ImageForm(Surface):
         name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         head.addWidget(name, 1)
         self.state_chip = Chip("", "neutral")
-        self.set_state(alt_images.slide_use_state(entry, slide_id, slide_hash))
+        self._state = alt_images.slide_use_state(entry, slide_id, slide_hash)     # of the stored description
         head.addWidget(self.state_chip)
         self.tune_button = Button("Tune prompt…", "ghost", compact=True)
         self.tune_button.setToolTip("Draft this image with an editable prompt until it reads right. Nothing is "
@@ -126,8 +127,9 @@ class ImageForm(Surface):
         self.fields["short"].textChanged.connect(self._english_edited)
         self.fields["long"].textChanged.connect(self._english_edited)
         self.fields["takeaway"].textChanged.connect(self._refresh_takeaway_state)
-        self._refresh_takeaway_state()
+        self.edited.connect(self._show_state)
         self._apply_role()
+        self._show_state()
         self.set_language("en")
 
     # -- building -------------------------------------------------------------------------------
@@ -206,13 +208,24 @@ class ImageForm(Surface):
         for key, group in self._groups.items():
             group.setVisible(key == language)
 
-    def set_state(self, state: str) -> None:
-        self.state_chip.set_text(STATE_TEXT[state])
-        self.state_chip.set_tone(STATE_TONES[state])
+    def _show_state(self) -> None:
+        """The chip says what is stored, or that this form differs from it."""
+        if self.changed:
+            self.state_chip.set_text("Changed, unsaved")
+            self.state_chip.set_tone("muted")
+        else:
+            self.state_chip.set_text(STATE_TEXT[self._state])
+            self.state_chip.set_tone(STATE_TONES[self._state])
 
-    def set_busy(self, busy: bool) -> None:
-        self.busy = busy
+    def set_availability(self, busy: bool, can_translate: bool) -> None:
+        """The page runs a job (no second one from here) / has a model to translate with."""
+        self.busy, self.can_translate = busy, can_translate
         self._apply_role()
+
+    def refresh_entry(self, entry: alt_images.ImageEntry) -> None:
+        """A worker wrote the store: take its entry as what is stored (what "Version on disk" translates)
+        without touching the fields or the baseline the next save compares with."""
+        self.entry = entry
 
     def rebase(self, entry: alt_images.ImageEntry, slide_hash: str) -> None:
         """Show what the store holds now (after a save, or when a worker wrote the image) and take
@@ -226,14 +239,12 @@ class ImageForm(Surface):
                 with QSignalBlocker(edit):
                     edit.setPlainText(self.baseline[key])
         self.roles.set_current(entry.role)
-        self.set_state(alt_images.slide_use_state(entry, self.slide_id, slide_hash))
+        self._state = alt_images.slide_use_state(entry, self.slide_id, slide_hash)
         self._show_translation_state(alt_images.translation_state(entry))
-        self._refresh_takeaway_state()
         self._apply_role()
+        self._show_state()
 
     def _on_role(self, _role: str) -> None:
-        self.state_chip.set_text("Changed, unsaved")
-        self.state_chip.set_tone("muted")
         self._apply_role()
         self.edited.emit()
 
@@ -243,10 +254,11 @@ class ImageForm(Surface):
         for key, edit in self.fields.items():
             if key not in ("source", "source_de"):   # the source is attribution, whatever the role
                 edit.setEnabled(not decorative)
-        can_translate = not decorative and not self.busy and not self.translating
+        can_translate = not decorative and self.can_translate and not self.busy and not self.translating
         self.translate_button.setEnabled(can_translate)
         self.save_translate_button.setEnabled(can_translate)
         self.tune_button.setEnabled(not self.busy)
+        self._refresh_takeaway_state()
 
     def _show_translation_state(self, state: str) -> None:
         self.translation_state.setText("German: " + TRANSLATION_TEXT[state])
@@ -258,11 +270,14 @@ class ImageForm(Surface):
 
     def _refresh_takeaway_state(self) -> None:
         current, default = self.fields["takeaway"].toPlainText().strip(), self.entry.takeaway_default
+        self.default_button.setEnabled(bool(current) and self.role != alt_images.ROLE_DECORATIVE)
         self.takeaway_state.setText(("(using the default)" if default else "(no default set yet)") if current == default
                                     else "(overridden on this slide)")
 
     def _set_default(self) -> None:
         text = self.fields["takeaway"].toPlainText().strip()
+        if not text:        # would clear the default of every slide that follows it
+            return
         entry = alt_images.set_takeaway_default(self.reference, self.slide_id, text)
         if entry is None:
             return

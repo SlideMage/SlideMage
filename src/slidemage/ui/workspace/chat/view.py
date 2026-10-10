@@ -91,7 +91,7 @@ class ChatView(Surface):
         self.app = app
         self.state = state
         self.workspace = GuiWorkspace(app)
-        self.session = ChatSession(self.workspace, self)
+        self.session = ChatSession(self.workspace, app, self)
         mode = app_settings.get(MODE_SETTING)
         self.session.set_mode(mode if mode in (EDIT_ASK, EDIT_AUTO) else EDIT_ASK)
         self._text: Optional[AssistantText] = None      # the answer being streamed
@@ -99,8 +99,8 @@ class ChatView(Surface):
         self._diffs: dict[str, DiffCard] = {}
         self._asking: dict[DiffCard, EditAsk] = {}      # the cards whose Apply / Reject the agent waits for
         self._stick = True                             # the list follows the newest content
-        self._provider: Optional[ChatProvider] = None  # the model of the run under way (holds the Ollama slot if local)
         self._local_models: Optional[list[str]] = None  # the tool-capable Ollama models; None until Ollama has answered
+        self._local_loader: Optional[LocalModels] = None  # the question to Ollama that is out, if any
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -182,7 +182,9 @@ class ChatView(Surface):
     def _fill_empty(self) -> None:
         """The first screen: what to ask, as buttons. Gone once the conversation has started."""
         while (item := self._ideas.takeAt(0)) is not None:
-            item.widget().setParent(None)
+            widget = item.widget()
+            widget.setParent(None)
+            widget.deleteLater()
         box, scope = self._ideas, self.scope.current()
         box.addWidget(caption("Describe a change to this slide, or try:" if scope == SCOPE_SLIDE
                               else "Ask about the whole deck, or try:"))
@@ -221,12 +223,12 @@ class ChatView(Surface):
     def ask(self, text: str, scope: str = "") -> None:
         """Put `text` to the agent now (a suggestion, the command palette); while it is busy the text
         waits in the message box instead."""
-        if scope:
-            self.scope.set_current(scope)
-            self._fill_empty()
         if self.session.running:
             self.composer.setPlainText(text)
             return
+        if scope:
+            self.scope.set_current(scope)
+            self._fill_empty()
         self.send(text)
 
     def focus_composer(self, scope: str) -> None:
@@ -241,11 +243,10 @@ class ChatView(Surface):
         if not text or self.session.running:
             return
         provider = self._provider_for_send()
-        if provider is None:
+        if provider is None or not self.session.start(provider, text, self.scope.current()):
             if self.composer.toPlainText().strip() != text:
                 self.composer.setPlainText(text)        # a suggestion that could not be sent is kept
             return
-        self._provider = provider
         self.composer.clear()
         self._begin_conversation()
         self._add(UserBubble(text))
@@ -253,34 +254,25 @@ class ChatView(Surface):
         self._stick = True
         self._set_running(True)
         self.status.run()
-        self.session.start(provider, text, self.scope.current())
 
     def _provider_for_send(self) -> Optional[ChatProvider]:
-        """The model that answers the next request, holding the Ollama slot if it is local; None (and the
-        reason shown) when it cannot be used now."""
+        """The model that answers the next request; None (and the reason shown) when it cannot be used now."""
         route = current_route()
         if route.problem:       # the note under the message box says why
             return None
         try:
-            provider = resolver.provider_for(route.spec)
+            return resolver.provider_for(route.spec)
         except ProviderError as exc:
             self._add(Notice(str(exc), "error"))
             return None
-        return provider if self.app.try_start_ollama_task("answering in the chat", provider) else None
 
     def stop(self) -> None:
         self.session.stop()
+        self._reject_asks()         # the edit cards stop waiting now, not when the run has ended
 
     def shutdown(self) -> None:
         self.status.stop()
         self.session.shutdown()
-        self._release_provider()
-
-    def _release_provider(self) -> None:
-        """The run is over: give the Ollama slot back (a cloud model never took it)."""
-        if self._provider is not None:
-            self.app.end_ollama_task(self._provider)
-            self._provider = None
 
     def _on_deck_changed(self, _deck) -> None:
         if self.session.running:
@@ -291,6 +283,7 @@ class ChatView(Surface):
         self.stop_button.setVisible(running)
         self.new_button.setEnabled(not running)
         self.scope.setEnabled(not running)
+        self.route_chip.setEnabled(not running)         # the model of a run under way does not change
         if not running:
             self.status.stop()
 
@@ -354,10 +347,8 @@ class ChatView(Surface):
             card.undone()
 
     def _on_edit_asked(self, ask: EditAsk) -> None:
-        """confirm_edit is waiting: the newest card of that file asks for Apply / Reject."""
-        title = self._title(ask.path)
-        card = next((c for c in reversed(self._diffs.values()) if c.state == "proposed" and c.title == title), None)
-        card = card or self._new_diff(f"ask{len(self._diffs)}", ask.path, ask.before, ask.after)
+        """confirm_edit is waiting: the card of that tool call asks for Apply / Reject."""
+        card = self._diffs.get(ask.call_id) or self._new_diff(ask.call_id, ask.path, ask.before, ask.after)
         card.ask()
         self._asking[card] = ask
         self.status.run("Waiting for your answer")
@@ -365,15 +356,21 @@ class ChatView(Surface):
     def _answer(self, card: DiffCard, approved: bool) -> None:
         if (ask := self._asking.pop(card, None)) is not None:
             ask.answer(approved)
+            if approved:
+                card.working()      # its buttons go now; EditApplied (or EditRejected) says how it ended
+            else:
+                card.rejected()
         self.status.run("Thinking")
 
-    def _done(self, event: Done) -> None:
-        self._set_running(False)
-        self._release_provider()
-        self._text = None
+    def _reject_asks(self) -> None:
         for card in self._asking:
             card.rejected()
         self._asking.clear()
+
+    def _done(self, event: Done) -> None:
+        self._set_running(False)
+        self._text = None
+        self._reject_asks()
         if event.reason == "stopped":
             self._add(Notice("Stopped."))
         elif event.reason == "max_turns":
@@ -411,9 +408,15 @@ class ChatView(Surface):
         self.mode_picker.set_text(next(text for key, text, _meta in MODES if key == self.session.mode))
 
     def _load_local_models(self) -> None:
-        loader = LocalModels()
-        loader.loaded.connect(lambda names: setattr(self, "_local_models", names))
+        """Ask Ollama which installed models can call tools (one question at a time)."""
+        if self._local_loader is not None:
+            return
+        self._local_loader = loader = LocalModels()
+        loader.loaded.connect(self._on_local_models)
         background.start_detached(loader)
+
+    def _on_local_models(self, names: list[str]) -> None:
+        self._local_models, self._local_loader = names, None
 
     def _open_route_menu(self) -> None:
         """The cloud models on offer, greyed with the reason while "Local AI only" is on or no key is set,

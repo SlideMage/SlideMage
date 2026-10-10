@@ -148,7 +148,7 @@ def test_stop_in_the_middle_of_a_streamed_answer(workspace):
     agent._on_event = events.append
     done = agent.run(history, "go")
     assert done.reason == "stopped" and events[-1] == done and provider.aborted
-    assert len(history) == 1                         # only the request; no half answer was kept
+    assert history == []                             # no half answer, and the unanswered request is taken out again
 
 
 def test_stop_between_tool_calls_still_answers_every_call(workspace):
@@ -187,9 +187,57 @@ def test_a_cut_off_or_declined_answer_is_an_error_and_not_replayed(workspace):
     cut = call("edit_file", path=SLIDE, old_text="x", new_text="y")
     done, _events, history = run(ScriptedProvider(reply("partial", cut, stop="max_tokens")), workspace)
     assert done.reason == "error" and "cut off" in done.message
-    assert [type(m).__name__ for m in history] == ["UserMessage"]       # a dangling tool call is not kept
+    assert history == []       # neither a dangling tool call nor the unanswered request is kept
     done, _events, _history = run(ScriptedProvider(reply("", stop="refusal")), workspace)
     assert done.reason == "error" and "declined" in done.message
+
+
+def test_a_failed_request_does_not_leave_its_context_in_the_history(workspace):
+    provider = ScriptedProvider(ProviderError("unreachable"), reply("Fine."))
+    history = []
+    run(provider, workspace, "first try", history=history)
+    run(provider, workspace, "second try", history=history)
+    assert [type(m).__name__ for m in history] == ["UserMessage", "AssistantMessage"]
+    assert history[0].shown == "second try" and "first try" not in provider.sent[-1][0].text
+
+
+def test_done_is_the_last_event_even_for_an_exit_that_is_not_an_exception(workspace):
+    events = []
+    agent = Agent(ScriptedProvider(KeyboardInterrupt()), workspace, on_event=events.append)
+    with pytest.raises(KeyboardInterrupt):
+        agent.run([], "go")
+    assert isinstance(events[-1], Done) and events[-1].reason == "error"
+
+
+def test_a_failure_in_reporting_a_tool_still_answers_every_call(workspace):
+    first, second = call("list_slides"), call("list_slides")
+    events = []
+
+    def report(event):
+        events.append(event)
+        if isinstance(event, ToolFinished):
+            raise RuntimeError("the UI broke")
+
+    agent = Agent(ScriptedProvider(reply("", first, second)), workspace, on_event=report)
+    history = []
+    done = agent.run(history, "go")
+    assert done.reason == "error" and "the UI broke" in done.message
+    results = history[-1]
+    assert isinstance(results, ToolResultsMessage) and [r.call_id for r in results.results] == [first.id, second.id]
+    assert results.results[1].is_error
+
+
+def test_stop_during_the_last_tokens_runs_no_tool(workspace):
+    holder = {}
+
+    def streamed_then_stopped(provider):
+        holder["agent"].stop()
+        return reply("", call("edit_file", path=SLIDE, old_text="First", new_text="1st"))
+
+    agent = Agent(ScriptedProvider(streamed_then_stopped), workspace, mode=EDIT_AUTO)
+    holder["agent"] = agent
+    done = agent.run([], "go")
+    assert done.reason == "stopped" and "First point" in (workspace.root / SLIDE).read_text()
 
 
 def test_a_conversation_continues_in_the_same_history(workspace):

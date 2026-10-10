@@ -162,3 +162,10 @@ def make_project_in(tmp_path):
     (root / project.MARKER).write_text("")
     (root / "slides" / CURRENT).write_bytes(SLIDE_TEXT.encode())
     return root.resolve()
+
+
+def test_a_slide_that_cannot_be_read_is_refused_not_waved_through(root):
+    (root / "slides" / CURRENT).write_bytes(b"\xff\xfe not utf-8 \x00")
+    for call in (edit(root, "not utf-8", "x"), event(root, "Write", content="\\begin{x}")):
+        reason = claude_hook.blocked_reason(call)
+        assert reason and CURRENT in reason and "UTF-8" in reason

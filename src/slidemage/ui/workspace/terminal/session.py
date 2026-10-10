@@ -28,6 +28,8 @@ from .sync import DiskSync
 class ClaudeCodeSession(QObject):
     output = Signal(bytes)         # on the GUI thread
     exited = Signal(int)           # the exit code, on the GUI thread
+    _chunk = Signal(int, bytes)    # generation, output: from the reader thread
+    _ended = Signal(int, int)      # generation, exit code: from the reader thread
 
     def __init__(self, window, claude: Path, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -38,7 +40,8 @@ class ClaudeCodeSession(QObject):
         self._generation = 0                        # which process the callbacks belong to
         self._lock = threading.Lock()
         self._sync = DiskSync(window, PROJECT_ROOT, self)
-        self.exited.connect(self._finished)
+        self._chunk.connect(self._on_chunk)
+        self._ended.connect(self._on_ended)
 
     @property
     def running(self) -> bool:
@@ -52,8 +55,9 @@ class ClaudeCodeSession(QObject):
         """(Re)start Claude Code in the project folder with a terminal of `cols` x `rows`."""
         self.stop()
         if self._server is None:
-            self._server = McpServer(self._toolbox)
-            self._server.start()
+            server = McpServer(self._toolbox)
+            server.start()              # kept only once it listens, so that a failed start can be retried
+            self._server = server
         command = claude_launch.build_command(self.claude, self._server.url)
         env = claude_launch.environment(self._server.token, PROJECT_ROOT, self.claude)
         with self._lock:
@@ -72,11 +76,11 @@ class ClaudeCodeSession(QObject):
         if self._process is not None:
             self._process.resize(cols, rows)
 
-    def stop(self) -> None:
+    def stop(self, *, last_look: bool = True) -> None:
         """End the process, if there is one; its late output and exit are not reported."""
         with self._lock:
             self._generation += 1
-        self._sync.stop()
+        self._sync.stop(last_look=last_look)
         process, self._process = self._process, None
         if process is not None:
             process.stop()
@@ -84,15 +88,10 @@ class ClaudeCodeSession(QObject):
     def shutdown(self) -> None:
         """The window closes: end everything, and release the MCP calls that wait for the GUI."""
         self._workspace.close()
-        self.stop()
+        self.stop(last_look=False)
         if self._server is not None:
             self._server.stop()
             self._server = None
-
-    def _finished(self, _code: int) -> None:
-        """The process ended by itself: one last look at the files it left changed."""
-        self._sync.poll()
-        self._sync.stop()
 
     def _toolbox(self) -> ToolBox:
         """The tools for one MCP call, looking at the window as it is now."""
@@ -100,17 +99,28 @@ class ClaudeCodeSession(QObject):
         return build_toolbox(self._workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO,
                              tools=CLAUDE_CODE_TOOLS)
 
+    # The reader thread's callbacks only name the process they come from. What arrives on the GUI thread
+    # (queued, so possibly after a Restart or the shutdown) is checked against the generation again.
+
     def _on_output(self, generation: int, data: bytes) -> None:
-        if generation == self._generation:
-            self._emit(self.output, data)
+        self._emit(self._chunk, generation, data)
 
     def _on_exit(self, generation: int, code: int) -> None:
+        self._emit(self._ended, generation, code)
+
+    def _on_chunk(self, generation: int, data: bytes) -> None:
         if generation == self._generation:
-            self._emit(self.exited, code)
+            self.output.emit(data)
+
+    def _on_ended(self, generation: int, code: int) -> None:
+        """The process ended by itself: one last look at the files it left changed."""
+        if generation == self._generation:
+            self._sync.stop()
+            self.exited.emit(code)
 
     @staticmethod
-    def _emit(signal, value) -> None:
+    def _emit(signal, *values) -> None:
         try:
-            signal.emit(value)
+            signal.emit(*values)
         except RuntimeError:       # this object is gone with the window
             pass

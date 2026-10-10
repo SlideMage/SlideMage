@@ -115,10 +115,10 @@ class SlideNav(Card):
     # -- showing ----------------------------------------------------------------------------------
 
     def populate(self, views: list[image_review.SlideView], entries, order: dict[str, int], *,
-                 preserve=None, pin=None, row: int = 0) -> Optional[image_review.SlideView]:
+                 preserve=None, row: int = 0) -> Optional[image_review.SlideView]:
         """List the slides of the filter; the one at path `preserve` is current, else the one now at
         `row` (the nearest). Returns it without announcing it."""
-        self.shown = image_review.visible_views(views, entries, self.filter_index, pin=pin, order=order)
+        self.shown = image_review.visible_views(views, entries, self.filter_index, order=order)
         self._counts = image_review.filter_counts(views, entries)
         self._show_filter()
         self.summary.setText(image_review.summary_text(views))

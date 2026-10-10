@@ -339,3 +339,46 @@ def test_update_does_not_look_for_a_base_after_other_pull_errors(monkeypatch):
     ok, error = ollama_admin.update_model("gemma4:latest", host="http://ollama.test")
 
     assert ok is False and "connection refused" in error
+
+
+def test_the_admin_calls_never_raise_whatever_the_server_does(monkeypatch):
+    import http.client
+
+    from slidemage.ai import ollama_admin
+
+    class Lines:
+        def __init__(self, lines):
+            self.lines = lines
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(self.lines)
+
+        def read(self):
+            return b""
+
+    failures = [http.client.IncompleteRead(b"par"), http.client.RemoteDisconnected("closed"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad"),
+                urllib.error.HTTPError("u", 500, "Server Error", hdrs=None, fp=io.BytesIO(b'["not", "a dict"]')),
+                urllib.error.HTTPError("u", 500, "Server Error", hdrs=None, fp=io.BytesIO(b"\xff\xfe"))]
+    for failure in failures:
+        def broken(request, timeout, failure=failure):
+            raise failure
+
+        monkeypatch.setattr(ollama_admin.urllib.request, "urlopen", broken)
+        for ok, error in (ollama_admin.delete_model("m", host="http://x"), ollama_admin.pull_model("m", host="http://x"),
+                          ollama_admin.relink_derived_model("m", "b", host="http://x")):
+            assert ok is False and isinstance(error, str) and error
+        assert ollama_admin.get_modelfile("m", host="http://x") is None
+
+    # a reply that stops half way, odd events in a pull stream
+    monkeypatch.setattr(ollama_admin.urllib.request, "urlopen", lambda request, timeout: Lines(
+        [b"[1]\n", b'{"status": "pulling", "total": "big", "completed": 3}\n', b"\xff\n"]))
+    progress = []
+    ok, error = ollama_admin.pull_model("m", host="http://x", on_progress=progress.append)
+    assert ok is False and error                         # the undecodable line ends the pull with a message
+    assert progress == ["m: pulling"]

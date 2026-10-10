@@ -129,9 +129,16 @@ class ClaudeCodeView(Surface):
             self.session.resize(cols, rows)
 
     def _spawn(self) -> None:
+        try:
+            self.session.start(*self._size)
+        except Exception as exc:  # noqa: BLE001 -- the MCP server could not bind, the program could not start
+            self.status.set_text("Claude Code could not start")
+            self.status.set_tone("error")
+            self.terminal.write(f"\r\n\x1b[31m[Claude Code could not be started: {exc}. "
+                                "Use Restart to try again.]\x1b[0m\r\n".encode("utf-8", "replace"))
+            return
         self.status.set_text("Claude Code running")
         self.status.set_tone("ok")
-        self.session.start(*self._size)
         self.terminal.focus_terminal()
 
     def restart(self) -> None:
@@ -141,6 +148,8 @@ class ClaudeCodeView(Surface):
             self._spawn()
 
     def _on_exited(self, code: int) -> None:
+        if self.terminal is None:       # reported while the window was closing
+            return
         self.status.set_text(f"Claude Code ended (exit code {code})")
         self.status.set_tone("muted" if code in (0, 143) else "warning")
         self.terminal.write(b"\r\n\x1b[2m[Claude Code ended. Use Restart to start it again.]\x1b[0m\r\n")

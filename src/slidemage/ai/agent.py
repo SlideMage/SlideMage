@@ -12,8 +12,9 @@ Done last). Events and Workspace calls happen on the thread that runs run().
 
 `history` belongs to the caller (the chat) and is extended in place, so a conversation continues by
 calling run() again with the same list. It always stays valid for the API: a model turn that asked
-for tools is followed by their results, even when Stop or an error ended the run in between. One
-Agent per request: Stop is one-shot, like the provider's abort().
+for tools is followed by their results, even when Stop or an error ended the run in between, and a
+request that got no answer at all is taken out again. One Agent per request: Stop is one-shot, like
+the provider's abort().
 """
 from __future__ import annotations
 
@@ -90,17 +91,18 @@ class Agent:
     def run(self, history: list[AgentMessage], request: str, scope: str = agent_context.SCOPE_SLIDE) -> Done:
         """Answer `request` (history is extended in place). Never raises: the last event, which
         is also the return value, says how it ended."""
-        reason, message = "error", ""
+        reason, message = "error", "The run was interrupted."      # what a BaseException leaves behind
         try:
             reason, message = self._run(history, request, scope)
         except Cancelled:
-            reason = "stopped"
+            reason, message = "stopped", ""
         except ProviderError as exc:
             message = str(exc)
         except Exception as exc:  # noqa: BLE001 -- the chat must survive a bug in the loop
             message = f"Unexpected error: {type(exc).__name__}: {exc}"
-        done = Done(reason, message, self._turns, dict(self._usage))
-        self._on_event(done)
+        finally:        # the chat waits for Done to take the composer out of "running", whatever happened
+            done = Done(reason, message, self._turns, dict(self._usage))
+            self._on_event(done)
         return done
 
     # -- the loop -------------------------------------------------------------------------------
@@ -108,7 +110,15 @@ class Agent:
     def _run(self, history: list[AgentMessage], request: str, scope: str) -> tuple[str, str]:
         """(reason, message) of the end of the run; provider errors and Stop leave as exceptions."""
         self._preflight()
-        history.append(UserMessage(f"{agent_context.build_context(self.workspace, scope)}\n\n{request}", request))
+        asked = UserMessage(f"{agent_context.build_context(self.workspace, scope)}\n\n{request}", request)
+        history.append(asked)
+        try:
+            return self._loop(history)
+        finally:
+            if history[-1] is asked:    # no answer was kept: a later request must not resend this one
+                history.pop()
+
+    def _loop(self, history: list[AgentMessage]) -> tuple[str, str]:
         while self._turns < self.max_turns:
             if self._cancel.is_set():
                 return "stopped", ""
@@ -118,6 +128,8 @@ class Agent:
                 lambda text: self._on_event(TextDelta(text)), max_tokens=MAX_TOKENS)
             for name, value in reply.usage.items():
                 self._usage[name] = self._usage.get(name, 0) + value
+            if self._cancel.is_set():       # Stop came while the answer was streaming: its tools do not run
+                return "stopped", ""
             if reply.stop == "max_tokens":
                 return "error", "The answer was cut off at the model's length limit. Ask for a smaller step."
             if reply.stop == "refusal":
@@ -125,20 +137,25 @@ class Agent:
             history.append(reply)
             if not reply.tool_calls:
                 return "end_turn", ""
-            history.append(ToolResultsMessage(self._run_tools(reply)))
+            results: list[ToolResult] = []
+            history.append(ToolResultsMessage(results))
+            try:
+                self._run_tools(reply, results)
+            finally:        # every tool call needs its result in the history, even if reporting one failed
+                results += [ToolResult(call.id, "Not run: the request failed.", True)
+                            for call in reply.tool_calls[len(results):]]
         return "max_turns", f"Stopped after {self.max_turns} steps without finishing. Say 'continue' to go on."
 
-    def _run_tools(self, reply: AssistantMessage) -> list[ToolResult]:
-        results = []
+    def _run_tools(self, reply: AssistantMessage, results: list[ToolResult]) -> None:
+        """Run the calls of `reply`, adding each result to `results` as soon as it exists."""
         for call in reply.tool_calls:
             if self._cancel.is_set():
                 results.append(ToolResult(call.id, "Stopped by the user before this ran.", True))
                 continue
             self._on_event(ToolStarted(call))
             result = self._tools.execute(call)
-            self._on_event(ToolFinished(call, result))
             results.append(result)
-        return results
+            self._on_event(ToolFinished(call, result))
 
     def _preflight(self) -> None:
         """Whether this provider may be used: for a cloud model "Local AI only" and the first-request

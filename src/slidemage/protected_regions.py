@@ -1,5 +1,5 @@
 """Protected regions of a slide: what a model must never rewrite (2026-08-31, direct instruction;
-the whole-slide rewrite dialog was replaced by the chat's edit tools, 2026-10-10).
+moved here from ai_draft.py when the whole-slide rewrite dialog was replaced by the chat's edit tools).
 
 An open rewrite has no ground truth to check against, so a model must not be able to touch what it
 cannot understand: mask_protected_regions() replaces the file's own leading header-comment block, its
@@ -27,18 +27,24 @@ _VBOX_OPEN_RE = re.compile(r"\\vbox\s+to\s+0pt\s*\{")
 
 
 def _find_matching_brace(text: str, open_pos: int) -> Optional[int]:
-    """Index of the '}' matching the '{' at `open_pos`, or None if
-    unbalanced. Same escaped-brace handling as latex_edit.matching_brace
-    (the source editor's brace matcher)."""
+    """Index of the '}' matching the '{' at `open_pos`, or None if unbalanced. A backslash escapes the
+    next character (`\\{`, `\\%`) and a '%' comment runs to the end of its line, as in TeX."""
     depth = 0
     i = open_pos
     while i < len(text):
-        if text[i] == "\\" and i + 1 < len(text):
+        char = text[i]
+        if char == "\\" and i + 1 < len(text):
             i += 2
             continue
-        if text[i] == "{":
+        if char == "%":
+            end = text.find("\n", i)
+            if end < 0:
+                return None
+            i = end
+            continue
+        if char == "{":
             depth += 1
-        elif text[i] == "}":
+        elif char == "}":
             depth -= 1
             if depth == 0:
                 return i
@@ -46,18 +52,16 @@ def _find_matching_brace(text: str, open_pos: int) -> Optional[int]:
     return None
 
 
-def _header_comment_end(text: str) -> int:
-    """End offset (exclusive) of the file's own leading %-comment block --
-    same rule as latex_edit.header_comment_lines:
-    consecutive lines starting with optional whitespace then '%', up to
-    the first line that isn't."""
-    offset = 0
-    for line in text.splitlines(keepends=True):
-        if _HEADER_COMMENT_LINE_RE.match(line):
-            offset += len(line)
-        else:
+def _header_comment_span(text: str) -> Optional[tuple[int, int]]:
+    """Start and end offset of the file's own leading %-comment block -- same rule as
+    latex_edit.header_comment_lines: consecutive lines starting with optional whitespace then '%', up to
+    the first line that isn't. A leading byte-order mark is not part of it."""
+    start = end = 1 if text.startswith("\ufeff") else 0
+    for line in text[start:].splitlines(keepends=True):
+        if not _HEADER_COMMENT_LINE_RE.match(line):
             break
-    return offset
+        end += len(line)
+    return (start, end) if end > start else None
 
 
 @dataclass
@@ -72,9 +76,9 @@ def mask_protected_regions(text: str) -> MaskResult:
     covers and why."""
     spans: list[list[int]] = []
 
-    header_end = _header_comment_end(text)
-    if header_end > 0:
-        spans.append([0, header_end])
+    header = _header_comment_span(text)
+    if header:
+        spans.append(list(header))
 
     for m in _SET_SLIDE_VERSION_RE.finditer(text):
         spans.append([m.start(), m.end()])

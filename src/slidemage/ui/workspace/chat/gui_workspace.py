@@ -35,8 +35,8 @@ CLOUD_SENDS = ("the slide you are working on, the project files the model reads 
 class EditAsk:
     """An edit waiting for Apply or Reject; answered on the GUI thread, awaited on the agent's."""
 
-    def __init__(self, path: Path, before: str, after: str) -> None:
-        self.path, self.before, self.after = path, before, after
+    def __init__(self, call_id: str, path: Path, before: str, after: str) -> None:
+        self.call_id, self.path, self.before, self.after = call_id, path, before, after
         self.approved = False
         self._answered = threading.Event()
 
@@ -93,7 +93,8 @@ class GuiWorkspace(Workspace):
         self.edit_asked = self._bridge.edit_asked
         self._gui_thread = threading.get_ident()
         self._closed = False
-        self._pending: list[EditAsk] = []
+        self._stopping = False                 # Stop was pressed: no edit is asked about until the next request
+        self._pending: EditAsk | None = None   # the tools run one after the other: at most one edit waits
 
     # -- crossing threads ----------------------------------------------------------------
 
@@ -122,15 +123,18 @@ class GuiWorkspace(Workspace):
         self.reject_pending()
 
     def reject_pending(self) -> None:
-        """Stop pressed (or closing): every edit that waits for an answer is rejected."""
-        for ask in self._pending:
-            ask.answer(False)
-        self._pending.clear()
+        """Stop pressed (or closing): the edit that waits for an answer is rejected, and so is any that is
+        asked about before the next request."""
+        self._stopping = True
+        if self._pending is not None:
+            self._pending.answer(False)
+            self._pending = None
 
     # -- the focus ----------------------------------------------------------------------------
 
     def begin_request(self) -> None:
         """Take the focus for the request about to start (GUI thread)."""
+        self._stopping = False
         window, state = self.window, self.window.state
         self._context = WorkspaceContext(
             deck=state.deck, slide_id=state.focused_slide, path=window.centre.path, view=state.view,
@@ -195,11 +199,14 @@ class GuiWorkspace(Workspace):
 
     # -- asking and telling the user ---------------------------------------------------------
 
-    def confirm_edit(self, path: Path, before: str, after: str) -> bool:
-        ask = EditAsk(path, before, after)
+    def confirm_edit(self, call_id: str, path: Path, before: str, after: str) -> bool:
+        ask = EditAsk(call_id, path, before, after)
 
         def show() -> None:
-            self._pending = [a for a in self._pending if not a.answered] + [ask]
+            if self._stopping:      # Stop came while this edit was on its way to the window
+                ask.answer(False)
+                return
+            self._pending = ask
             self.edit_asked.emit(ask)
 
         self.on_gui(show)

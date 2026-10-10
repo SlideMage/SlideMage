@@ -115,10 +115,9 @@ class CentreColumn(QFrame):
             file.sync()
 
     def file_written(self, path: Path) -> None:
-        """A file was written on disk outside the Source view (by the chat): a clean buffer shows it
-        again, and the Preview renders the slide if it is the one shown."""
-        self.sync_source(path)
-        if path == self._path:
+        """A file was written on disk outside the Source view (by the chat): an open buffer takes it in
+        (disk_changed), and the Preview renders the slide if it is the one shown and not open."""
+        if self.disk_changed(path) is None and path == self._path:
             self._on_saved(path)
 
     def disk_changed(self, path: Path) -> Optional[str]:

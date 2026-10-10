@@ -400,3 +400,22 @@ def test_a_stale_slide_is_refused_before_anything_is_frozen_or_asked(pane, slide
     assert not pane.save()
     assert "changed on disk" in told[0] and pane.current.dirty
     assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists()             # no outgoing version frozen
+    assert pane.current.conflict_bar.isVisibleTo(pane.current)         # the buffer's own edits get the choice
+
+
+def test_a_file_changed_while_the_deck_questions_were_open_is_not_frozen(pane, slides, monkeypatch):
+    path = slides / "abc-EN-Demo-current.tex"
+    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "minor")
+
+    def ask(*_args):
+        path.write_text("\\setSlideVersion{1-1-0}\nchanged while asking", encoding="utf-8")
+        return source_file.DeckVersions({}, None)
+
+    monkeypatch.setattr(source_file, "ask_deck_versions", ask)
+    pane.show_path(path)
+    pane.current.editor.insertPlainText("x")
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: told.append(args[2]))
+    assert not pane.save()
+    assert "changed on disk" in told[0] and pane.current.dirty and pane.current.conflict_bar.isVisibleTo(pane.current)
+    assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists() and "changed while asking" in path.read_text(encoding="utf-8")

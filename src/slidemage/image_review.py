@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import alt_blocks, alt_draft, alt_images, media_render, tikz_render
+from . import alt_blocks, alt_draft, alt_images, media_render, slide_source, tikz_render
 from .deck_editor import parse_slide_calls
 from .deck_scan import PROJECT_ROOT, Deck
 
@@ -91,13 +91,11 @@ def sort_order(deck: Deck) -> dict[str, int]:
 
 
 def visible_views(views: list[SlideView], entries: Entries, filter_index: int, *,
-                  pin: Path | None = None, order: dict[str, int] | None = None) -> list[SlideView]:
-    """The views FILTERS[filter_index] lists, plus the one at `pin` even if the filter excludes it,
-    ordered by `order` (slide id -> position; slides missing from it keep their order, at the end)."""
+                  order: dict[str, int] | None = None) -> list[SlideView]:
+    """The views FILTERS[filter_index] lists, ordered by `order` (slide id -> position; slides
+    missing from it keep their order, at the end)."""
     _, wanted = FILTERS[filter_index]
     shown = [view for view in views if wanted(view, entries)]
-    if pin is not None and not any(view.row.path == pin for view in shown):
-        shown = [view for view in views if view.row.path == pin] + shown
     if order:
         shown = sorted(shown, key=lambda view: order.get(view.row.slide_id, len(order)))
     return shown
@@ -274,9 +272,20 @@ def media_destination(name: str) -> Path:
     return PROJECT_ROOT / "media" / name
 
 
+def free_media_stem(stem: str, suffix: str) -> str:
+    """`stem`, or `stem-2`, `stem-3` ... : the first for which media/<it><suffix> does not exist yet."""
+    candidate, number = stem, 2
+    while media_destination(candidate + suffix).exists():
+        candidate, number = f"{stem}-{number}", number + 1
+    return candidate
+
+
 def copy_into_media(source: Path, name: str) -> Path:
-    """Copy `source` to media/`name`; OSError if that fails."""
+    """Copy `source` to media/`name`, which must not exist yet (an image is never overwritten);
+    OSError if that fails."""
     destination = media_destination(name)
+    if destination.exists():
+        raise FileExistsError(f"media/{name} already exists")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(source), str(destination))
     return destination
@@ -305,13 +314,13 @@ def repoint_slides(entry: alt_images.ImageEntry, entries: dict[str, alt_images.I
                         if (found := alt_images.lookup(entries, ref)) is not None and found.image == entry.image),
                        old_reference)
         try:
-            text = path.read_text(encoding="utf-8")
+            text, eol = slide_source.read_slide_source(path)
             new_text, count = alt_blocks.replace_image_reference(text, raw, new_reference)
             if count == 0:
                 failures.append(f"{slide_id}: reference not found in {path.name} as written")
                 continue
-            path.write_text(new_text, encoding="utf-8")
-        except OSError as exc:
+            slide_source.save_slide_source(path, new_text, eol, expected_text=text)    # line ends kept, backup made
+        except (OSError, UnicodeDecodeError, slide_source.StaleFileError) as exc:
             failures.append(f"{slide_id}: {exc}")
             continue
         changed.append(slide_id)

@@ -70,7 +70,7 @@ def list_slides(ctx: ToolContext, args: dict) -> str:
     context = ctx.workspace.context()
     outline = deck_outline.build_outline(deck, context.view, context.language)
     section, contains = args.get("section", "").lower(), args.get("contains", "").lower()
-    lines, shown, total = [], 0, 0
+    lines, shown, total, cut = [], 0, 0, False
     for part in outline:
         total += len(part.rows)
         if section and section not in part.title.lower():
@@ -78,9 +78,13 @@ def list_slides(ctx: ToolContext, args: dict) -> str:
         rows = [r for r in part.rows if contains in f"{r.call.id_slug} {r.title}".lower()]
         if not rows:
             continue
+        if shown >= LIST_LIMIT:         # no heading without a slide under it
+            cut = True
+            continue
         lines.append(f"§ {part.title}")
         for row in rows:
             if shown >= LIST_LIMIT:
+                cut = True
                 break
             shown += 1
             call = row.call
@@ -94,7 +98,7 @@ def list_slides(ctx: ToolContext, args: dict) -> str:
         return f"No slide matches in {deck.name}."
     head = f"Deck {deck.name} (decks/{deck.path.name}), viewed as {context.view}, {context.language}: {total} slides."
     return head + "\n" + "\n".join(lines) + (f"\n[Only the first {LIST_LIMIT}; filter with section or contains.]"
-                                             if shown >= LIST_LIMIT else "")
+                                             if cut else "")
 
 
 @tool("lint",
@@ -160,8 +164,6 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     language = args.get("language") or ctx.workspace.context().language
     if not slide_add.SLUG_RE.match(slug):
         raise ToolError("The slug may contain only letters, digits and single hyphens, e.g. 'Capital-Budgeting'.")
-    if language not in slide_language.LANGUAGES:
-        language = "EN"
     deck, insert_at, indent, where = None, 0, "", "not added to a deck"
     if args.get("add_to_deck", True):
         deck = open_deck(ctx)
@@ -179,7 +181,7 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
             insert_at, indent = deck_editor.append_position(deck)
             where = f"at the end of {deck.name}"
     body = slide_add.frame_body(frame, title).replace("\r\n", "\n")
-    planned = ctx.root / "slides" / f"(new id)-{language}-{slug}-current.tex"
+    planned = slide_add.slide_path(f"(new id)-{language}-{slug}")
     if not propose(ctx, planned, "", body, f"New slide {where}"):
         raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
     try:
@@ -226,9 +228,14 @@ def add_bib_entry(ctx: ToolContext, args: dict) -> str:
     bib = bibliography.DEFAULT_BIB
     if ctx.workspace.is_dirty(bib):
         raise ToolError(f"{bib.name} has unsaved edits in the editor, so an entry cannot be added. Ask the user to save it.")
+    if key.lower() in {k.lower() for k in bibliography.load(bib)}:
+        raise ToolError(f"The citation key '{key}' already exists in {bib.name}. Use it, or choose another key.")
     entry = bibliography.format_entry(kind, key, fields)
     if not propose(ctx, bib, "", entry, f"New entry in {bib.name}"):
         raise ToolError("The user rejected this entry. Do not repeat it; ask what they would prefer.")
+    if ctx.workspace.is_dirty(bib):         # the user may have started typing in it while deciding
+        raise ToolError(f"{bib.name} got unsaved edits in the editor meanwhile, so the entry was not added. "
+                        "Ask the user to save it.")
     previous = bib.read_text(encoding="utf-8") if bib.is_file() else ""
     try:
         bibliography.add_entry(kind, key, fields, bib)

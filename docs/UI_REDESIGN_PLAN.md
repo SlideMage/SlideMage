@@ -45,22 +45,23 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 10d-2: 1285 passed, 6 skipped (26 s);
-ruff clean. Suite time varies with machine load (9–18 s for the same
+Last updated 2026-10-10. Suite after the review fixes before 11: 1328 passed,
+6 skipped (29 s); ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
 ### Resume here (next session)
 1. Read this section, then `git log --oneline -15` on `ui-redesign`
-   (latest step commit: 10d-2, see the log). Working tree should be clean
-   apart from untracked `uv.lock` and `.claude/` (both left untracked on
-   purpose; don't commit them). Run the suite once (expect 1285 passed,
-   6 skipped). If a test fails with a git-checkout symptom
+   (latest step commit: 10d-2, see the log; the review fixes before 11 are
+   in the working tree until the orchestrator commits them). Working tree
+   should be clean apart from untracked `uv.lock` and `.claude/` (both left
+   untracked on purpose; don't commit them). Run the suite once (expect
+   1328 passed, 6 skipped). If a test fails with a git-checkout symptom
    (`test_bundled_copies`), look for a stray empty `/tmp/.git` left by
    an earlier agent run and remove it.
 2. Re-fetch the prototype into the new session's scratchpad only if a
    step needs it (neither the review nor 11 does; see "How the work is run").
-3. Next: a whole-code review before step 11 (12 Haiku reviewers, see
-   below; ~150–200k), then **step 11** (finish the switch-over: leftover
+3. Next is **step 11** (the whole-code review before it is done, see
+   "Review fixes (before 11)" below; finish the switch-over: leftover
    `qt_*` modules incl. `qt_ai_models.py`, `qt_citation_dialog.py`,
    `qt_gui.py`; PyInstaller bundle check with `anthropic`, `ptyprocess`
    and QtWebEngine (see 10c leftovers); docs, manual, screenshots tool,
@@ -85,7 +86,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~10c Claude Code terminal~~ | done (~380k actual) | | |
 | ~~10d-1 Cleanup~~ | done (~90k actual) | | |
 | ~~10d-2 Ollama tool calling~~ | done (~190k actual) | | |
-| Review before 11 | 12 Haiku reviewers + one Sonnet fix agent | 150–200k | 8–10% |
+| ~~Review before 11~~ | done: 12 Haiku reviewers + one Sonnet fix agent | | |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
 
@@ -124,7 +125,45 @@ Worth repeating before step 11.
 | 10c. Claude Code terminal (`ui/workspace/terminal/`, MCP server, hook) | (see git log) | done |
 | 10d-1. Remove `qt_ai_draft_dialog.py` (Tools ▾ "Ask the chat…"), chat takes the Ollama slot | (see git log) | done |
 | 10d-2. Ollama tool calling in the chat (`OllamaProvider.stream_turn`), tool-capable model pickers, dead AI-drafting settings removed | (see git log) | done |
+| Review fixes (before 11): 12 Haiku reviewers, one Sonnet fix agent; list A–E below | (see git log) | done |
 | 11 | | not started |
+
+### Review fixes (before 11)
+Applied from 12 read-only Haiku reviews of 9d-2 to 10d-2 (all A–E items; 43
+new tests, 1328 passed). Resume at step 11. What changed, by area:
+- Safety: the Claude Code hook refuses an unreadable current slide and gets
+  this SlideMage on `PYTHONPATH`; `protected_regions.py` (was the legacy
+  `ai_draft.py`, deleted) handles a BOM and `%` comments, and
+  `protected_problem` also keeps the header first; the chat tools' search,
+  find and get_focus use the same gate as read_file; `write_file` re-checks
+  after the ask; replacing an image never overwrites a media file and
+  repointing slides goes through `slide_source` (EOL, backup, stale check);
+  the Source save re-checks freshness before freezing; Images page fixes
+  (clear draft, reviewed save during a translation, set-default, hint,
+  translation in flight, state chip, per-form Translate availability);
+  `draft_prompts` robust and atomic; `ollama_admin` one error path and
+  Settings delete/update on a `ui/background` worker; `credentials` reports
+  a keychain entry it cannot remove.
+- Chat: `Agent` always emits Done, drops an unanswered request from the
+  history, answers every tool call, honours Stop right after a turn; edit
+  asks know their call id (`Workspace.confirm_edit(call_id, ...)`), Stop
+  disables the cards at once and refuses later asks, a failed Apply ends the
+  card; `ChatSession` owns the Ollama slot (freed when the thread ended);
+  route chip locked while running; one local-model probe at a time.
+- Providers: abort during connect or upload, "dropped connection" vs
+  "unreachable", capabilities cached; Anthropic `abort()` also closes the
+  client.
+- Terminal: final poll on stop, stale exit/output ignored by generation, a
+  failed start is shown (and retryable), orphaned process groups killed,
+  resize only when the size changed, `set_theme`, widget removed on shutdown.
+- Simplifications: `pin` removed, `confirm_cloud` default False, guides as
+  callables, dead padding, `_confirm_batch`, one preview refresh in
+  `centre.file_written`.
+Open: an Anthropic request that is in its retry back-off when Stop is pressed
+still waits that back-off out (the SDK has no hook; usually under 2 s, a
+`Retry-After` can make it longer); a translation still in flight is lost
+silently when the deck change moves the shown slide out of the list;
+Replace image while a translation runs is not gated.
 
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`

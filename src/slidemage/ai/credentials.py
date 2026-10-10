@@ -88,25 +88,34 @@ def set_api_key(key: str) -> str:
     """Store `key` (empty clears it from the keychain and the settings
     file; the environment variable is not ours to change). Returns where it
     was stored: SOURCE_KEYCHAIN or SOURCE_FILE, "" when cleared. The key is
-    kept in exactly one place, so clearing never leaves a stale copy."""
+    kept in exactly one place, so clearing never leaves a stale copy: an
+    older keychain entry is removed when the new key goes to the file, and
+    an OSError says so if the keychain refuses to let go of one (the file is
+    updated regardless)."""
     key = key.strip()
     module = _keyring()
     in_keychain = False
-    if module is not None:
+    if module is not None and key:
         try:
-            if key:
-                module.set_password(KEYRING_SERVICE, KEYRING_USER, key)
-            elif _keychain_get():
-                module.delete_password(KEYRING_SERVICE, KEYRING_USER)
-            in_keychain = bool(key)
+            module.set_password(KEYRING_SERVICE, KEYRING_USER, key)
+            in_keychain = True
         except Exception:  # noqa: BLE001 -- no usable backend: fall through to the settings file
-            in_keychain = False
+            pass
+    stuck: Exception | None = None
+    if module is not None and not in_keychain and _keychain_get():   # it would shadow the file's key
+        try:
+            module.delete_password(KEYRING_SERVICE, KEYRING_USER)
+        except Exception as exc:  # noqa: BLE001 -- keyring backends raise assorted errors
+            stuck = exc
     settings = app_settings.load()
     if key and not in_keychain:
         settings[FILE_SETTING_KEY] = key
     else:
         settings.pop(FILE_SETTING_KEY, None)
     app_settings.save(settings)
+    if stuck is not None:
+        raise OSError(f"the system keychain still holds an API key that could not be removed ({stuck}); "
+                      "it takes precedence over the settings file")
     if not key:
         return ""
     return SOURCE_KEYCHAIN if in_keychain else SOURCE_FILE

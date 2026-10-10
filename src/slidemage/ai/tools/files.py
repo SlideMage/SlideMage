@@ -28,7 +28,7 @@ SEARCH_LIMIT = 40
 
 
 def is_hidden(rel: Path) -> bool:
-    return any(part.startswith(".") for part in rel.parts) or bool(rel.parts and rel.parts[0] in HIDDEN_FOLDERS)
+    return any(part.startswith(".") for part in rel.parts) or bool(rel.parts and rel.parts[0].casefold() in HIDDEN_FOLDERS)
 
 
 def project_path(root: Path, arg: str) -> Path:
@@ -47,6 +47,15 @@ def project_path(root: Path, arg: str) -> Path:
     if is_hidden(rel):
         raise ToolError(f"'{arg}' is not available: SlideMage's own folders (.build, .slidemage, pdf ...) are off limits.")
     return resolved
+
+
+def may_touch(root: Path, path: Path) -> bool:
+    """Whether `path` passes project_path's gate (links resolved, dot-files and hidden folders out)."""
+    try:
+        project_path(root, str(path))
+    except ToolError:
+        return False
+    return True
 
 
 def relative(root: Path, path: Path) -> str:
@@ -129,7 +138,7 @@ def find_files(ctx: ToolContext, args: dict) -> str:
         subfolders[:] = sorted(d for d in subfolders if not is_hidden(rel_folder / d))
         for name in sorted(names):
             rel = (rel_folder / name).as_posix()
-            if _matches(rel, pattern):
+            if _matches(rel, pattern) and may_touch(ctx.root, ctx.root / rel):
                 found.append(rel)
     found.sort()
     if not found:
@@ -149,7 +158,8 @@ def search(ctx: ToolContext, args: dict) -> str:
     query = args["query"].strip()
     if len(query) < 2:
         raise ToolError("Give at least 2 characters to search for.")
-    hits = slide_search.search_project(query, ctx.root, cancelled=ctx.cancel.is_set)
+    hits = slide_search.search_project(
+        query, ctx.root, cancelled=ctx.cancel.is_set, allow=lambda path: may_touch(ctx.root, path))
     if not hits:
         return f"Nothing found for '{query}'."
     lines = [f"{relative(ctx.root, hit.path)}:{hit.line}: {hit.snippet}" for hit in hits[:SEARCH_LIMIT]]

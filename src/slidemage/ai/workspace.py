@@ -21,7 +21,6 @@ from pathlib import Path
 
 from .. import compiler
 from ..deck_scan import PROJECT_ROOT, Deck
-from . import resolver
 from .providers import ChatProvider
 
 
@@ -67,15 +66,16 @@ class Workspace:
 
     # -- asking and telling the user ---------------------------------------------------------------
 
-    def confirm_edit(self, path: Path, before: str, after: str) -> bool:
-        """Show the change (whole-file texts; a new file has `before` "") and wait for Apply or
-        Reject. Headless there is nobody to ask, so nothing is applied."""
+    def confirm_edit(self, call_id: str, path: Path, before: str, after: str) -> bool:
+        """Show the change of the tool call `call_id` (whole-file texts; a new file has `before` "") and
+        wait for Apply or Reject. Headless there is nobody to ask, so nothing is applied."""
         return False
 
     def confirm_cloud(self, provider: ChatProvider) -> bool:
         """The first cloud request in a project: say what leaves the machine (the focused slide,
-        files the model reads, rendered previews) and ask once. True to go ahead."""
-        return not resolver.needs_cloud_consent(provider)
+        files the model reads, rendered previews) and ask once. True to go ahead. Headless there is
+        nobody to ask, so nothing is sent."""
+        return False
 
     def file_changed(self, path: Path, previous_text: str | None) -> None:
         """A tool wrote `path` on disk (`previous_text` None: it is new). The application refreshes

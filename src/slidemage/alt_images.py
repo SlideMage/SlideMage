@@ -395,7 +395,7 @@ def update_slide_notes(mutate) -> bool:
         return changed
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
+def atomic_write_text(path: Path, text: str) -> None:
     """Write complete UTF-8 content beside its target, then replace it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(
@@ -427,7 +427,7 @@ def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
     # compile-time CSV mirror only ever holds image role/short_alt columns
     # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
-    _atomic_write_text(
+    atomic_write_text(
         STORE_PATH,
         json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
     )
@@ -448,7 +448,7 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
         },
         "slides": existing_slides,
     }
-    _atomic_write_text(
+    atomic_write_text(
         STORE_PATH,
         json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
     )

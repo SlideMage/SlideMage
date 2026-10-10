@@ -54,11 +54,6 @@ def translate_work(queue: list[str], backend: alt_draft.ModelTranslationBackend)
         queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image), should_stop=job.should_stop)
 
 
-def translate_one_work(backend: alt_draft.ModelTranslationBackend, entry: alt_images.ImageEntry) -> Callable[[Job], object]:
-    """The translation of one image's text (alt_draft.TranslationResult); the form applies it."""
-    return lambda job: backend.translate(entry)
-
-
 class JobCard(QFrame):
     """The running job: what it is, how far it is, and Stop. Hidden until `start()`."""
 

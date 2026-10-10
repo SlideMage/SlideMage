@@ -111,10 +111,14 @@ def _inherited(name: str) -> bool:
 def environment(token: str, project: Path, claude: Path, base: dict[str, str] | None = None) -> dict[str, str]:
     """The child's environment: the app's, without what would stop Claude Code using the user's own login (an
     API key or auth token in the environment, markers of a Claude Code session SlideMage was started from),
-    a terminal that does colour, the token, the project for the hook, and `claude`'s own folder on PATH (an
-    npm install runs through `node` found there)."""
+    a terminal that does colour, the token, the project for the hook, this SlideMage on PYTHONPATH for the hook,
+    and `claude`'s own folder on PATH (an npm install runs through `node` found there)."""
     env = {name: value for name, value in (os.environ if base is None else base).items() if _inherited(name)}
     env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", TOKEN_ENV: token,
                 "SLIDEMASTER_PROJECT": str(project)})
     env["PATH"] = os.pathsep.join([str(claude.parent), env.get("PATH", "")]) if env.get("PATH") else str(claude.parent)
+    if not getattr(sys, "frozen", False):
+        # `python -m slidemage.ai.claude_hook` must import this very SlideMage, also when it runs from a source
+        # tree that is not installed (a hook that fails to start is a warning, so it would let every edit through).
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(Path(__file__).resolve().parents[2]), env.get("PYTHONPATH")]))
     return env

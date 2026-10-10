@@ -18,7 +18,7 @@ from ...qt_ai_models import provider_from_combo
 from .. import background
 from .image_dialogs import PromptTuningSheet
 from .image_form import ImageForm
-from .image_jobs import Job, draft_work, translate_one_work, translate_work
+from .image_jobs import Job, draft_work, translate_work
 
 
 class ImageRunsMixin:
@@ -29,15 +29,17 @@ class ImageRunsMixin:
     def _start(self, job: Job, detail: str, steps: int, on_outcome) -> None:
         """Run `job` (its Ollama slot is taken); `on_outcome(summary or exception)` follows on this thread."""
         self._job, self._on_outcome = job, on_outcome
-        job.progress.connect(self._on_progress)
-        job.image_done.connect(self._on_image_done)
+        job.progress.connect(lambda index, total, image: self._on_progress(job, index, total, image))
+        job.image_done.connect(lambda image, written: self._on_image_done(job, image, written))
         job.result.connect(self._on_job_result)
         self.job_card.start(job.title, detail, steps)
         self.app.log(f"{job.title}: {detail}")
         self._update_buttons()
         job.start()
 
-    def _on_progress(self, index: int, total: int, image: str) -> None:
+    def _on_progress(self, job: Job, index: int, total: int, image: str) -> None:
+        if job is not self._job:      # stopped meanwhile (its thread may still report)
+            return
         self.job_card.set_progress(index, total, image)
         self.app.log(f"  [{index}/{total}] {image}")
 
@@ -82,9 +84,9 @@ class ImageRunsMixin:
         """The window closes: no worker thread outlives it."""
         self._abort_job()
 
-    def _on_image_done(self, image: str, written: bool) -> None:
+    def _on_image_done(self, job: Job, image: str, written: bool) -> None:
         """One image of a drafting run was written."""
-        if written:
+        if written and job is self._job:
             self._refresh_states()
 
     def _finished_batch(self, verb: str, outcome: object, summary_line: str) -> None:
@@ -99,6 +101,20 @@ class ImageRunsMixin:
             self._refresh_states()
         else:
             self.reload(self._current_path())
+
+    def _confirm_batch(self, title: str, text: str, details: str, also: str = "") -> tuple[bool, bool]:
+        """Ask before a run that takes long: (whether to start, whether the extra checkbox `also`, if there is
+        one, is ticked)."""
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(text)
+        box.setInformativeText(details)
+        checkbox = QCheckBox(also) if also else None
+        if checkbox is not None:
+            box.setCheckBox(checkbox)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.button(QMessageBox.StandardButton.Ok).setText("Start")
+        return box.exec() == QMessageBox.StandardButton.Ok, checkbox is not None and checkbox.isChecked()
 
     # drafting
 
@@ -135,22 +151,16 @@ class ImageRunsMixin:
                                     "Every describable image already has a draft or a reviewed description.")
             self.app.end_ollama_task(backend.provider)
             return
-        box = QMessageBox(self)
-        box.setWindowTitle("Draft all descriptions")
-        box.setText(f"Draft {len(queue)} image(s) using {backend.label}?")
-        box.setInformativeText("Each image is written to disk as it finishes, so you can stop any time and resume "
-                               "later: the queue is recomputed from the files.\n\nReviewed descriptions are never "
-                               "overwritten. Expect this to take hours; it runs in the background.")
-        again = None
-        if other_model:
-            again = QCheckBox(f"Also redraft {other_model} image(s) drafted by a different model")
-            box.setCheckBox(again)
-        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        box.button(QMessageBox.StandardButton.Ok).setText("Start")
-        if box.exec() != QMessageBox.StandardButton.Ok:
+        go, again = self._confirm_batch(
+            "Draft all descriptions", f"Draft {len(queue)} image(s) using {backend.label}?",
+            "Each image is written to disk as it finishes, so you can stop any time and resume later: the queue is "
+            "recomputed from the files.\n\nReviewed descriptions are never overwritten. Expect this to take hours; "
+            "it runs in the background.",
+            f"Also redraft {other_model} image(s) drafted by a different model" if other_model else "")
+        if not go:
             self.app.end_ollama_task(backend.provider)
             return
-        if again is not None and again.isChecked():
+        if again:
             queue = redraftable
         job = Job("Drafting image descriptions", backend.provider, draft_work(queue, backend))
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._drafted)
@@ -191,19 +201,10 @@ class ImageRunsMixin:
         result = sheet.result_draft
         # Written like any draft, so that the review state, the drafted-by marker and the guarantee that
         # a reviewed description is never overwritten are the same; only the prompt differed.
-        if not alt_draft.apply_one_draft(reference, result, result.model):
+        if not alt_draft.apply_one_draft(reference, result, result.model, hint=sheet.hint):
             QMessageBox.warning(self, "Not written", "This image is reviewed (or was reviewed while the sheet was "
                                 "open), so the draft was not written over it. Clear the review first to replace it.")
             return
-        if sheet.hint:
-            def mutate(store: dict[str, alt_images.ImageEntry]) -> bool:
-                target = store.get(reference)
-                if target is None:
-                    return False
-                target.hint = sheet.hint
-                return True
-
-            alt_images.update_store(mutate)
         self.app.log(f"Tuned draft written for {view.row.path.name} [{reference}]")
         self._refresh_states()
 
@@ -220,15 +221,12 @@ class ImageRunsMixin:
                                     "current (non-stale) German translation.")
             self.app.end_ollama_task(provider)
             return
-        box = QMessageBox(self)
-        box.setWindowTitle("Translate all images")
-        box.setText(f"Translate {len(queue)} image(s) into German using {backend.label}?")
-        box.setInformativeText("Each image is written to disk as it finishes, so you can stop any time and resume "
-                               "later: the queue is recomputed from the files.\n\nThese are unreviewed translations, "
-                               "like a drafted description: check them before relying on them.")
-        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        box.button(QMessageBox.StandardButton.Ok).setText("Start")
-        if box.exec() != QMessageBox.StandardButton.Ok:
+        go, _again = self._confirm_batch(
+            "Translate all images", f"Translate {len(queue)} image(s) into German using {backend.label}?",
+            "Each image is written to disk as it finishes, so you can stop any time and resume later: the queue is "
+            "recomputed from the files.\n\nThese are unreviewed translations, like a drafted description: check "
+            "them before relying on them.")
+        if not go:
             self.app.end_ollama_task(provider)
             return
         job = Job("Translating descriptions to German", provider, translate_work(queue, backend))
@@ -279,8 +277,8 @@ class ImageRunsMixin:
         entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
         form.begin_translation(english)
         self._translating = form
-        job = Job("Translating to German", provider,
-                  translate_one_work(alt_draft.ModelTranslationBackend(provider), entry))
+        backend = alt_draft.ModelTranslationBackend(provider)
+        job = Job("Translating to German", provider, lambda _job: backend.translate(entry))
         self._start(job, f"{form.reference} via {provider.label}", 1, lambda outcome: self._translated_one(form, outcome))
 
     def _translated_one(self, form: ImageForm, outcome: object) -> None:

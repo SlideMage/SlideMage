@@ -625,9 +625,9 @@ def slide_jobs(row: alt_blocks.SlideRow, entries: dict[str, "alt_images.ImageEnt
             for reference, resolved in draftable_images(row, entries)]
 
 
-def apply_one_draft(image: str, result: DraftResult, model_label: str) -> bool:
+def apply_one_draft(image: str, result: DraftResult, model_label: str, hint: str | None = None) -> bool:
     """Write one image's draft into the shared store as unreviewed. True if
-    written.
+    written. `hint`, when given (an empty one clears it), is stored with the draft.
 
     Goes through alt_images.update_store() for the whole load-check-save
     round trip, so a concurrent write (the review tab's own save, running on
@@ -655,6 +655,8 @@ def apply_one_draft(image: str, result: DraftResult, model_label: str) -> bool:
         if result.takeaway:
             entry.takeaway_default = result.takeaway
         entry.drafted_by = model_label
+        if hint is not None:
+            entry.hint = hint
         return True
 
     return alt_images.update_store(mutate)

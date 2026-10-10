@@ -18,7 +18,8 @@ from slidemage.ai.agent_types import (
     EditProposed,
     EditRejected,
 )
-from slidemage.ai.tools import build_toolbox, undo_edit
+from slidemage.ai.tools import build_toolbox, focus, undo_edit
+from slidemage.ai.tools import slidemage as slidemage_tools
 from slidemage.ai.workspace import Workspace, WorkspaceContext
 from slidemage.deck_scan import scan_decks
 
@@ -92,6 +93,28 @@ def test_hidden_folders_do_not_exist_for_the_model(box):
     assert "sk-secret" not in box.ok("find_files", pattern="**/*")
     assert "Nothing found" in box.ok("search", query="sk-secret")
     assert ".slidemage" not in box.ok("find_files", pattern="*.json")
+
+
+def test_find_and_search_skip_dot_files_and_links_into_hidden_folders(box):
+    slides = box.root / "slides"
+    (slides / ".hid-EN-Dot-current.tex").write_text("needle in a dot-file\n")
+    secret = box.root / ".slidemage" / "app_settings.json"
+    try:
+        os.symlink(secret, slides / "lnk-EN-Link-current.tex")
+        os.symlink(secret, box.root / "decks" / "linked.tex")
+    except OSError:
+        pytest.skip("no symlinks here")
+    listed = box.ok("find_files", pattern="**/*.tex")
+    assert "hid-EN-Dot" not in listed and "lnk-EN-Link" not in listed and "linked.tex" not in listed
+    assert "Nothing found" in box.ok("search", query="sk-secret")
+    assert "Nothing found" in box.ok("search", query="needle in a dot")
+
+
+def test_get_focus_does_not_name_a_file_the_model_may_not_see(box):
+    ws = FakeWorkspace(box.root, WorkspaceContext(path=box.root / ".slidemage" / "app_settings.json"))
+    toolbox = build_toolbox(ws, lambda event: None, compiler.CancelToken(), tools=[focus.get_focus])
+    result = toolbox.execute(call("get_focus"))
+    assert not result.is_error and "app_settings" not in result.text and "may see" in result.text
 
 
 # -- reading and finding ----------------------------------------------------------------------------
@@ -260,6 +283,13 @@ def test_write_file_creates_new_text_files_only(box, root):
     assert "outside" in box.error("write_file", path="../x.md", content="x")
 
 
+def test_write_file_does_not_overwrite_a_file_that_appeared_while_the_user_decided(box, root):
+    target = root / "notes.md"
+    box.ws.before_confirm = lambda: target.write_text("theirs")
+    assert "was created while" in box.error("write_file", path="notes.md", content="mine")
+    assert target.read_text() == "theirs" and not box.of_type(EditApplied)
+
+
 def test_undo_puts_the_old_text_back_unless_the_file_moved_on(box, root):
     box.box.ctx.mode = EDIT_AUTO
     box.ok("edit_file", path=SLIDE, old_text="First", new_text="1st")
@@ -285,6 +315,15 @@ def test_list_slides_shows_the_open_decks_slides(box):
     assert "abd" not in box.ok("list_slides", contains="hello")
     assert "No slide matches" in box.ok("list_slides", contains="zzz")
     assert "There is no deck 'nope'. Decks: test" in box.error("list_slides", deck="nope")
+
+
+def test_list_slides_cuts_at_the_limit_without_an_empty_heading_and_says_so_only_when_it_cut(box, monkeypatch):
+    monkeypatch.setattr(slidemage_tools, "LIST_LIMIT", 1)
+    out = box.ok("list_slides")
+    assert "abc" in out and "abd" not in out and "§ Main" not in out and "[Only the first 1;" in out
+    monkeypatch.setattr(slidemage_tools, "LIST_LIMIT", 2)
+    out = box.ok("list_slides")
+    assert "abc" in out and "abd" in out and "[Only the first" not in out
 
 
 def test_list_slides_without_an_open_deck_names_the_decks(root):
@@ -371,6 +410,16 @@ def test_add_bib_entry_writes_a_sorted_entry_with_a_suggested_key(box, root):
     assert box.ws.changed[-1][0] == root / "Slidemaster.bib"
     assert "already exists" in box.error("add_bib_entry", kind="book", key="old2000", fields={
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
+
+
+def test_add_bib_entry_refuses_a_taken_key_before_asking_and_a_buffer_that_got_edits_while_asking(box, root):
+    taken = dict(kind="book", key="old2000", fields={"author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
+    assert "already exists" in box.error("add_bib_entry", **taken) and not box.ws.asked          # ask mode: nobody was asked
+    bib = root / "Slidemaster.bib"
+    box.ws.before_confirm = lambda: box.ws.dirty.add(bib)
+    assert "meanwhile" in box.error("add_bib_entry", kind="book", key="new2001", fields={
+        "author": "A, B", "title": "T", "year": "2001", "publisher": "P"})
+    assert "new2001" not in bib.read_text()
 
 
 def test_add_bib_entry_validates(box):

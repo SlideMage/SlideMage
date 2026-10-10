@@ -22,6 +22,7 @@ from pathlib import Path
 WINDOWS = sys.platform == "win32"
 READ_SIZE = 65536
 POLL_S = 0.02
+REAP_WAIT_S = 5.0       # how long a process may outlive the closing of its terminal
 
 
 @contextlib.contextmanager
@@ -54,6 +55,7 @@ class PtyProcess:
         signal N."""
         self._on_output, self._on_exit = on_output, on_exit
         self._done = threading.Event()
+        self._signalled = False
         self.exit_code: int | None = None
         if WINDOWS:
             import winpty
@@ -66,6 +68,7 @@ class PtyProcess:
                 # a controlling terminal; the risk is the same as for every Python terminal widget.
                 warnings.simplefilter("ignore", DeprecationWarning)
                 self._proc = ptyprocess.PtyProcess.spawn(list(argv), cwd=str(cwd), env=env, dimensions=(rows, cols))
+        self._pgid = getattr(self._proc, "pid", 0)      # the child leads its own session and process group
         self._reader = threading.Thread(target=self._read_loop, name="pty-reader", daemon=True)
         self._reader.start()
 
@@ -88,22 +91,26 @@ class PtyProcess:
             except (OSError, ValueError):
                 pass
 
-    def stop(self, grace: float = 2.0) -> None:
-        """End the process (and what it started) and wait until the reader has seen it go."""
+    def stop(self, grace: float = 1.0) -> None:
+        """End the process (and what it started) and wait until the reader has seen it go. The wait is on
+        the caller's thread, the GUI's, hence short."""
         if not self._done.is_set():
             self._signal(signal.SIGTERM)
             if not self._done.wait(grace):
                 self._signal(signal.SIGKILL if not WINDOWS else signal.SIGTERM, force=True)
                 if not self._done.wait(grace):
                     self._close()
+        elif not self._signalled:
+            self._signal(signal.SIGTERM)    # the leader ended by itself; what it started may not have
         self._reader.join(grace)
 
     def _signal(self, number: int, force: bool = False) -> None:
+        self._signalled = True
         try:
             if WINDOWS:
                 self._proc.terminate(force=force)
             else:
-                os.killpg(self._proc.pid, number)      # the child leads its own session
+                os.killpg(self._pgid, number)
         except (OSError, ProcessLookupError):
             pass
 
@@ -129,11 +136,14 @@ class PtyProcess:
 
     def _reap(self) -> int:
         """The exit code, once the process has ended (it can outlive the closing of its terminal by
-        a moment)."""
-        end = time.time() + 5
+        a moment). One that still runs after that is killed with what it started: nobody is left to
+        read its output."""
+        end = time.time() + REAP_WAIT_S
         while self._proc.isalive() and time.time() < end:
             time.sleep(POLL_S)
         if self._proc.isalive():
+            self._signal(signal.SIGKILL if not WINDOWS else signal.SIGTERM, force=True)
+            self._close()
             return -1
         if WINDOWS:
             return self._proc.exitstatus or 0

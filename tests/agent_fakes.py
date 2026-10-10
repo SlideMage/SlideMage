@@ -61,7 +61,7 @@ class FakeWorkspace(Workspace):
         self.dirty.add(path)
         return None
 
-    def confirm_edit(self, path, before, after):
+    def confirm_edit(self, call_id, path, before, after):
         self.asked.append((path, before, after))
         if self.before_confirm:
             self.before_confirm()
@@ -104,7 +104,7 @@ class ScriptedProvider:
         step = self.script.pop(0)
         if callable(step):
             step = step(self)
-        if isinstance(step, Exception):
+        if isinstance(step, BaseException):
             raise step
         for piece in (step.text[:len(step.text) // 2], step.text[len(step.text) // 2:]):
             if piece:

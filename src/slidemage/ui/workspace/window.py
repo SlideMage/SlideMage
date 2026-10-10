@@ -228,7 +228,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if is_images:
             self.images_page.ensure_loaded()
         else:
-            self.images_page.flush()
+            try:
+                self.images_page.flush()
+            except Exception as exc:  # noqa: BLE001 -- the edits stay in the page (and in the close prompt)
+                QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
 
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)

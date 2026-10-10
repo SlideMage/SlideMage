@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ... import latex_lint
 from .base import ToolContext, ToolError, tool
-from .files import current_text, project_path, read_file, relative
+from .files import current_text, may_touch, project_path, read_file, relative
 
 LINT_SHOWN = 10
 
@@ -26,7 +26,11 @@ def get_focus(ctx: ToolContext, args: dict) -> str:
     if path is None:
         lines.append("The editor shows no file.")
         return "\n".join(lines)
-    name = relative(ctx.root, path) if path.is_relative_to(ctx.root) else path.name
+    if not may_touch(ctx.root, path):
+        lines.append("The editor shows a file that is not part of what you may see (outside the project, or one of "
+                     "SlideMage's own folders).")
+        return "\n".join(lines)
+    name = relative(ctx.root, path.resolve())
     is_open, dirty = ctx.workspace.is_open(path), ctx.workspace.is_dirty(path)
     lines.append(f"File shown: {name}" + (f" (unsaved edits in the editor: the file on disk is older; "
                                           f"read_buffer shows them)" if dirty else ""))

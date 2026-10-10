@@ -18,6 +18,7 @@ from slidemage.ai.providers import Cancelled
 from slidemage.deck_scan import scan_decks
 from slidemage.ui.workspace.chat import assistant as assistant_module
 from slidemage.ui.workspace.chat import gui_workspace
+from slidemage.ui.workspace.chat import view as chat_view
 from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE, AssistantArea
 from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, ToolCard, UserBubble
 from slidemage.ui.workspace.chat.format import diff_rows, summarize_call
@@ -294,6 +295,34 @@ def test_stop_rejects_an_edit_that_waits_for_an_answer(env):
     assert widgets(env, Notice)[-1].text() == "Stopped."
 
 
+def test_stop_takes_the_buttons_off_the_card_at_once_and_refuses_later_asks(env):
+    open_buffer(env)
+    script(env, reply("", call("edit_file", **EDIT)), reply("never asked"))
+    env.chat.send("go")
+    card = wait_for_card(env, "asking")
+    env.chat.stop()
+    assert card.state == "rejected" and not card.apply_button.isVisible() and not card.reject_button.isVisible()
+    # an edit that reaches the window after Stop is answered No without being shown
+    assert env.chat.workspace.confirm_edit("late", env.path, "a", "b") is False
+    wait_until(lambda: not env.chat.session.running)
+    env.chat.workspace.begin_request()                       # the next request asks again
+    assert env.chat.workspace._stopping is False
+
+
+def test_an_apply_that_cannot_be_carried_out_ends_the_card_and_tells_the_model(env):
+    file = open_buffer(env)
+    provider = script(env, reply("", call("edit_file", **EDIT)), reply("Understood."))
+    env.chat.send("go")
+    card = wait_for_card(env, "asking")
+    file.editor.replace_selection("% typed while the edit waited\n")      # the buffer is not what the edit was made on
+    card.apply_button.click()
+    assert card.state == "working" and not card.apply_button.isVisible()
+    wait_until(lambda: not env.chat.session.running)
+    pump()
+    assert card.state == "rejected" and "typed while" in file.editor.text()
+    assert "was not changed" in provider.sent[1][-1].results[0].text
+
+
 def test_closing_the_window_mid_run_does_not_hang_and_releases_a_pending_confirm(env):
     open_buffer(env)
     script(env, reply("", call("edit_file", **EDIT)), reply("never asked"))
@@ -360,6 +389,31 @@ def test_the_picker_lists_the_local_models_that_call_tools(env):
     menu.close()
     env.chat._set_route("ollama:qwen3:8b")
     assert app_settings.default_model("chat") == "ollama:qwen3:8b" and env.chat.route_chip.text() == "qwen3:8b · local"
+
+
+def test_while_a_run_is_going_the_model_and_the_scope_stay_as_they_are(env):
+    script(env, blocked())
+    env.chat.send("go")
+    assert not env.chat.route_chip.isEnabled()
+    env.chat.ask("Which slides have errors?", "deck")
+    assert env.chat.scope.current() == "slide" and env.chat.composer.toPlainText() == "Which slides have errors?"
+    env.chat.stop()
+    wait_until(lambda: not env.chat.session.running)
+    pump()
+    assert env.chat.route_chip.isEnabled()
+
+
+def test_only_one_question_to_ollama_about_local_models_is_out_at_a_time(env, monkeypatch):
+    started = []
+    monkeypatch.setattr(chat_view.background, "start_detached", started.append)
+    env.chat._local_loader = None
+    env.chat._load_local_models()
+    env.chat._load_local_models()
+    assert len(started) == 1
+    env.chat._on_local_models(["qwen3:8b"])
+    assert env.chat._local_models == ["qwen3:8b"]
+    env.chat._load_local_models()
+    assert len(started) == 2
 
 
 def test_the_picker_stores_the_choice_in_the_chat_assistant_setting(env):
@@ -444,6 +498,18 @@ def test_a_suggestion_that_a_busy_slot_blocks_stays_in_the_message_box(env, monk
     assert not env.chat.session.running and not widgets(env, UserBubble)
     assert env.chat.composer.toPlainText() == "Make this slide more concise"
     env.window.end_ollama_task()
+
+
+def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, monkeypatch):
+    script(env, reply("never"))
+
+    def broken():
+        raise RuntimeError("no focus")
+
+    monkeypatch.setattr(env.chat.workspace, "begin_request", broken)
+    with pytest.raises(RuntimeError):
+        env.chat.send("go")
+    assert slot(env) is None and not env.chat.session.running and not env.chat.stop_button.isVisible()
 
 
 def test_closing_the_window_mid_run_releases_the_slot(env):

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
-from slidemage import alt_blocks, alt_draft, alt_images, image_review
+from slidemage import alt_blocks, alt_draft, alt_images, image_review, slide_source
 from slidemage.ai.providers import OllamaProvider
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
@@ -66,6 +66,7 @@ def make_page(monkeypatch, qapp, tmp_path):
             row.path.write_text("slide text", encoding="utf-8")
         store = {reference: alt_images.ImageEntry(image=reference) for reference in image_refs}
         sync_calls = []
+        monkeypatch.setattr(slide_source, "BACKUPS_DIR", tmp_path / ".backups")     # repointing a slide makes a backup
         monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda: [first, second])
         monkeypatch.setattr(alt_blocks, "resolve_image", lambda _reference: None)
         monkeypatch.setattr(alt_draft, "draftable_images", lambda *_args: [])
@@ -305,6 +306,53 @@ def test_decorative_images_keep_only_the_source_editable(make_page):
     assert form.changed and page.dirty
 
 
+def test_the_state_chip_follows_the_typing_and_goes_back_with_it(make_page):
+    page = make_page()
+    form = page._forms[0]
+    assert form.state_chip.text() == "No description"
+    type_into(page, "short", "typed")
+    assert form.state_chip.text() == "Changed, unsaved"
+    type_into(page, "short", "")
+    assert form.state_chip.text() == "No description"
+
+
+def test_set_as_default_needs_a_takeaway_on_an_informative_image(make_page):
+    page = make_page()
+    form = page._forms[0]
+    assert not form.default_button.isEnabled()
+    type_into(page, "takeaway", "why it is here")
+    assert form.default_button.isEnabled()
+    form.roles.set_current(alt_images.ROLE_DECORATIVE)
+    form._on_role(alt_images.ROLE_DECORATIVE)
+    assert not form.default_button.isEnabled()
+    form.roles.set_current(alt_images.ROLE_INFORMATIVE)
+    form._on_role(alt_images.ROLE_INFORMATIVE)
+    type_into(page, "takeaway", "")
+    form._set_default()                      # also refused when called anyway
+    assert page.store[CHART].takeaway_default == ""
+
+
+def test_the_translate_buttons_of_a_form_follow_the_page_when_no_model_is_there(make_page):
+    page = make_page()
+    form = page._forms[0]
+    page.translate_model.setEnabled(True)
+    page._update_buttons()
+    assert form.translate_button.isEnabled() and form.save_translate_button.isEnabled()
+    page.translate_model.setEnabled(False)          # what fill_model_combo does with no model to offer
+    page._update_buttons()
+    assert not form.translate_button.isEnabled() and not form.save_translate_button.isEnabled()
+
+
+def test_a_worker_writing_the_store_updates_the_entry_of_a_form_with_edits_only(make_page):
+    page = make_page()
+    type_into(page, "short", "my edit")
+    page.store[CHART].long = "written by a worker"
+    page._refresh_states()
+    form = page._forms[0]
+    assert form.fields["short"].toPlainText() == "my edit" and form.fields["long"].toPlainText() == ""
+    assert form.saved_english()[1] == "written by a worker"          # what "Version on disk" translates
+
+
 def test_clear_draft_discards_unreviewed_text_only(make_page, monkeypatch):
     page = make_page()
     page.store[CHART].short, page.store[CHART].long, page.store[CHART].drafted_by = "s", "l", "model"
@@ -317,6 +365,19 @@ def test_clear_draft_discards_unreviewed_text_only(make_page, monkeypatch):
     monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
     page._clear_draft()
     assert "unreviewed" in told[0]
+
+
+def test_clear_draft_also_drops_what_was_typed_into_the_cleared_forms(make_page, monkeypatch):
+    page = make_page()
+    page.store[CHART].short, page.store[CHART].long, page.store[CHART].drafted_by = "s", "l", "model"
+    page.reload()
+    type_into(page, "short", "typed on top of the draft")
+    assert page.dirty
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page._clear_draft()
+    assert page._forms[0].fields["short"].toPlainText() == "" and not page.dirty
+    page.flush()
+    assert page.store[CHART].short == ""            # not written back as a new draft
 
 
 # -- the slide's own actions ---------------------------------------------------------------------------
@@ -609,6 +670,43 @@ def test_switching_slides_during_a_translation_asks_first(make_page, monkeypatch
     assert page._current.row.slide_id == "two"
 
 
+def start_translation(page, monkeypatch):
+    monkeypatch.setattr(Job, "start", lambda job: None)
+    choose_provider(monkeypatch)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeTranslator)
+    page._translate_image(page._forms[0], False)
+    return page._forms[0]
+
+
+def test_a_reviewed_save_during_a_translation_is_not_undone_by_a_draft_save(make_page, monkeypatch):
+    page = make_page()
+    page.nav.set_filter(image_review.FILTER_ALL)
+    page._populate(page._current_path())
+    form = start_translation(page, monkeypatch)
+    type_into(page, "short", "a short description")
+    type_into(page, "long", "a long description")
+    assert page._save(reviewed=True) and not page.dirty
+    assert page.store[CHART].status == alt_images.STATUS_REVIEWED
+    page.flush()
+    assert page.store[CHART].status == alt_images.STATUS_REVIEWED and form.translating
+
+
+def test_changing_the_filter_or_deck_keeps_the_translation_and_find_asks_first(make_page, monkeypatch):
+    page = make_page()
+    form = start_translation(page, monkeypatch)
+    page.nav.set_filter(image_review.FILTER_ALL)
+    page.nav.view_changed.emit()
+    page._on_deck_changed(None)
+    assert page._forms == [form] and page._translation_in_flight()
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+    page.show_slide("two")
+    page._on_rescan()
+    assert page._current.row.slide_id == "one" and page._forms == [form]
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page.show_slide("two")
+    assert page._current.row.slide_id == "two"
+
+
 def test_stop_on_a_single_translation_aborts_it_at_once(make_page, monkeypatch):
     page = make_page()
     release = threading.Event()
@@ -692,7 +790,7 @@ def test_replace_image_offers_to_delete_the_orphaned_description(make_page, monk
     assert deleted == [CHART]
 
 
-def test_the_replace_sheet_validates_the_name_and_warns_before_overwriting(qapp, monkeypatch, tmp_path):
+def test_the_replace_sheet_validates_the_name_and_refuses_to_overwrite(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(image_review, "PROJECT_ROOT", tmp_path)
     (tmp_path / "media").mkdir()
     (tmp_path / "media" / "taken.png").write_bytes(b"x")
@@ -707,7 +805,13 @@ def test_the_replace_sheet_validates_the_name_and_warns_before_overwriting(qapp,
     sheet.name_edit.setText("taken")
     sheet.extension.setText(".png")
     sheet._validate()
-    assert "already exists" in sheet.problem.text() and sheet.replace_button.isEnabled()
+    assert "already exists" in sheet.problem.text() and not sheet.replace_button.isEnabled()
+    # the suggestion is a free name even when the old file has the same stem and suffix
+    (tmp_path / "media" / "chart-old.jpg").write_bytes(b"x")
+    (tmp_path / "media" / "chart-old-2.jpg").write_bytes(b"x")
+    sheet.name_edit.setText("")
+    sheet._choose()
+    assert sheet.new_name == "chart-old-3.jpg" and sheet.replace_button.isEnabled()
 
 
 # -- tuning the prompt --------------------------------------------------------------------------------------
