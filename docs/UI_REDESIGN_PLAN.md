@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–6 done, step 7 in progress (see
+Status: in progress on branch `ui-redesign`. Steps 1–7 done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,8 +45,8 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
-7 s; ruff clean.
+Last updated 2026-10-09. Suite after step 7: 893 passed, 4 skipped, about
+7.5 s; ruff clean.
 
 | Step | Commit | State |
 |---|---|---|
@@ -59,7 +59,7 @@ Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
 | 5b. Lint, AI fix, Insert/Cite | `15a30ed` | done |
 | 6a. Panel host, Used in decks, Slide versions, Visibility | (see git log) | done |
 | 6b. Citations, Language, Images, Transcript, Notes panels | (see git log) | done |
-| 7. Compile flow | | in progress (one agent, started 2026-10-09 evening) |
+| 7. Compile flow | (see git log) | done |
 | 8–11 | | not started |
 
 ### What exists now
@@ -102,7 +102,13 @@ Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
 ### Temporary hosts still in place
 - Centre stack in `window.py`: `TranscriptPreviewTab` / `TranscriptTab`
   for Images (until step 9).
-- Log panel under the columns (until step 7's Log drawer).
+- Step 7: `compile_jobs.py` holds `CompileSignals` and all compile
+  orchestration (`_init_compile`); `job_panel.py` (floating run card),
+  `log_drawer.py` (Ctrl+L, ⋮ Log), `render_check.py` (pre-check sheet,
+  `confirm_render`, `open_issue_in_editor`); backend `compile_status.py`
+  (`RunStatus`, `LatexError`). `try_start_ollama_task`/`end_ollama_task`
+  take the provider (cloud tasks skip the slot). Removed:
+  `qt_render_check.py`, the log panel.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -133,11 +139,12 @@ Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
   no "update translation" action yet (only Open); Image descriptions
   panel path label wraps awkwardly; some unused imports in `ui/`
   (`window.py` `bare_id`, `gallery.py`, `theme.py`, `ai_fix.py`).
-- Step 7: `try_start_ollama_task`/`end_ollama_task` also serialise cloud
-  tasks (too strict); `deck_outline.forget_lint()` is not wired to "Refresh
-  decks"; deck switch rebuilds the list twice (harmless, ~75 ms).
+- Build options is still a dialog (a toggle row in `PopoverMenu` would
+  let it become a menu). "Retry failed" re-runs the pre-check and the
+  "Nothing changed" question.
 - Step 9: "Move to section" menu can be long (13 entries on the manual).
-- Step 11: `tools/manual/make_screenshots.py` still uses the old window API
+- Step 11: (`qt_render_check.py` is already gone.)
+  `tools/manual/make_screenshots.py` still uses the old window API
   (broken); `docs/SlideMage.md` still describes `qt_deck_table.py`;
   stale comment mentions of removed modules in `slide_preview.py`.
 
@@ -157,6 +164,13 @@ Last updated 2026-10-09. Suite after step 6: 865 passed, 4 skipped, about
   Image-descriptions edit is saved as a draft (un-reviewing it) on
   leaving the slide/deck/panel; pending Notes edits move into the
   Source buffer unsaved; Transcript entry has no per-step text.
+- Step 7: runs show in a floating card (bottom centre); the Log is a
+  drawer, closed by default, auto-opens on failure; Stop asks first;
+  a row's × skips or kills one job; ad-hoc renders (previews) show no
+  progress bar; closing mid-compile asks "Stop it and quit?";
+  "Selected pages…" is "Pages by number…"; new "Pages of the selected
+  slides" and "All decks except archive"; Snapshots, Update previews and
+  Export PPTX also show in the job panel (Export PPTX honours Stop).
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as
