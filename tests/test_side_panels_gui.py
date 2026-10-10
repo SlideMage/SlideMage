@@ -69,11 +69,11 @@ class FakeWindow:
         self.logged = []
         self.busy = None
 
-    def try_start_ollama_task(self, label):
+    def try_start_ollama_task(self, label, provider=None):
         self.busy = label
         return True
 
-    def end_ollama_task(self):
+    def end_ollama_task(self, provider=None):
         self.busy = None
 
     def refresh_open_deck_editors(self):

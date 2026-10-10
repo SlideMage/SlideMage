@@ -27,7 +27,7 @@ import shutil
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from PySide6.QtCore import QStringListModel, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
@@ -593,7 +593,7 @@ class _ImageEditor(QFrame):
             self, self._translation_model_combo, "this image's description text")
         if provider is None:
             return
-        if not self.app.try_start_ollama_task("translating this image"):
+        if not self.app.try_start_ollama_task("translating this image", provider):
             return
         self._translation_provenance = None
         self._translation_field_baseline = {
@@ -640,7 +640,7 @@ class _ImageEditor(QFrame):
             # editor regardless of whether the editor itself is still
             # around by the time this finishes, and the Ollama mutex must
             # never stay held just because the user navigated away.
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(provider)
         try:
             self.translation_done.emit(result)
         except RuntimeError:
@@ -1122,6 +1122,9 @@ class TranscriptTab(QWidget):
         self._drafting = False
         self._stop_requested = False
         self._translating = False
+        # The providers whose Ollama slot (window.try_start_ollama_task) the running batches hold.
+        self._draft_provider: Optional[ChatProvider] = None
+        self._translate_provider: Optional[ChatProvider] = None
         self._translate_stop_requested = False
         # Set before any widget is built: _populate_models and
         # _update_draft_button both read it during construction.
@@ -2453,8 +2456,9 @@ class TranscriptTab(QWidget):
         if view is None or self._drafting:
             return
         backend = self._backend()
-        if backend is None or not self.app.try_start_ollama_task("drafting descriptions"):
+        if backend is None or not self.app.try_start_ollama_task("drafting descriptions", backend.provider):
             return
+        self._draft_provider = backend.provider
         self._begin_drafting(f"Drafting {view.row.path.name} via {backend.label}…")
         threading.Thread(
             target=self._draft_one_bg, args=(view, backend), daemon=True
@@ -2496,7 +2500,7 @@ class TranscriptTab(QWidget):
             return
         provider = provider_from_combo(
             self, self.model_combo, "the slide's text and the image to describe")
-        if provider is None or not self.app.try_start_ollama_task("tuning a description prompt"):
+        if provider is None or not self.app.try_start_ollama_task("tuning a description prompt", provider):
             return
         try:
             pairs = alt_draft.draftable_images(view.row, self._entries)
@@ -2553,7 +2557,7 @@ class TranscriptTab(QWidget):
             self.app.log(f"Tuned draft written for {view.row.path.name} [{reference}]")
             self.reload(preserve=view.row.path)
         finally:
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(provider)
 
     # -- batch --------------------------------------------------------------
 
@@ -2575,7 +2579,7 @@ class TranscriptTab(QWidget):
             return
 
         backend = self._backend()
-        if backend is None or not self.app.try_start_ollama_task("drafting descriptions"):
+        if backend is None or not self.app.try_start_ollama_task("drafting descriptions", backend.provider):
             return
 
         queue = alt_draft.images_needing_drafts()
@@ -2588,7 +2592,7 @@ class TranscriptTab(QWidget):
                 self, "Nothing to draft",
                 "Every describable image already has a draft or a reviewed "
                 "description.")
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(backend.provider)
             return
 
         box = QMessageBox(self)
@@ -2609,13 +2613,14 @@ class TranscriptTab(QWidget):
         box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         box.button(QMessageBox.Ok).setText("Start")
         if box.exec() != QMessageBox.Ok:
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(backend.provider)
             return
 
         if checkbox is not None and checkbox.isChecked():
             queue = redraftable
 
         self._stop_requested = False
+        self._draft_provider = backend.provider
         self._begin_drafting(
             f"Drafting {len(queue)} image(s) via {backend.label}. "
             f"Stop any time — finished images stay on disk."
@@ -2667,7 +2672,7 @@ class TranscriptTab(QWidget):
 
         provider = provider_from_combo(
             self, self.translation_model_combo, "the descriptions of all untranslated images")
-        if provider is None or not self.app.try_start_ollama_task("translating images"):
+        if provider is None or not self.app.try_start_ollama_task("translating images", provider):
             return
 
         backend = alt_draft.ModelTranslationBackend(provider)
@@ -2677,7 +2682,7 @@ class TranscriptTab(QWidget):
                 self, "Nothing to translate",
                 "Every image with English text already has a current "
                 "(non-stale) German translation.")
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(provider)
             return
 
         box = QMessageBox(self)
@@ -2692,10 +2697,11 @@ class TranscriptTab(QWidget):
         box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         box.button(QMessageBox.Ok).setText("Start")
         if box.exec() != QMessageBox.Ok:
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(provider)
             return
 
         self._translate_stop_requested = False
+        self._translate_provider = provider
         self._translating = True
         self.translate_all_button.setText("Stop")
         self.app.log(
@@ -2725,7 +2731,7 @@ class TranscriptTab(QWidget):
         self._translating = False
         self._translate_stop_requested = False
         self.translate_all_button.setText("Translate all…")
-        self.app.end_ollama_task()
+        self.app.end_ollama_task(self._translate_provider)
 
         for line in summary.errors:
             self.app.log(f"    {line}")
@@ -2766,7 +2772,7 @@ class TranscriptTab(QWidget):
         self.draft_all_button.setObjectName("")
         self.draft_all_button.style().unpolish(self.draft_all_button)
         self.draft_all_button.style().polish(self.draft_all_button)
-        self.app.end_ollama_task()
+        self.app.end_ollama_task(self._draft_provider)
 
         for line in summary.errors:
             self.app.log(f"    {line}")

@@ -86,6 +86,19 @@ PANEL_MISSING = "kitPanelMissing"
 MATRIX_HEAD = "kitMatrixHead"
 MATRIX_SLOT = "kitMatrixSlot"
 MATRIX_CELL = "kitMatrixCell"
+# Compile job panel and Log drawer (ui/workspace/job_panel.py, log_drawer.py).
+LIST_BOX = "kitListBox"
+JOB_CARD = "kitJobCard"
+JOB_TITLE = "kitJobTitle"
+JOB_SUB = "kitJobSub"
+JOB_PCT = "kitJobPct"
+JOB_BAR = "kitJobBar"
+LOG_DRAWER = "kitLogDrawer"
+LOG_HEAD = "kitLogHead"
+LOG_TITLE = "kitLogTitle"
+LOG_TEXT = "kitLogText"
+LOG_ACTION = "kitLogAction"
+LOG_ERROR = "kitLogError"
 
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
@@ -165,7 +178,7 @@ def build_kit_qss(t: Tokens) -> str:
             font-size: 10px;
             font-weight: 700;
             color: #ffffff;
-            background-color: {t.error};
+            background-color: {t.error_solid};
             border-radius: 7px;
             padding: 0 4px;
             min-width: 8px;
@@ -272,6 +285,9 @@ def build_kit_qss(t: Tokens) -> str:
             background-color: transparent;
             color: {t.text_2};
         }}
+        QLabel#{ICON}[tone="error"] {{ color: {t.error}; }}
+        QLabel#{ICON}[tone="ok"] {{ color: {t.ok}; }}
+        QLabel#{ICON}[tone="muted"] {{ color: {t.text_4}; }}
         QToolButton#{ICON_BUTTON} {{
             background-color: transparent;
             color: {t.text};
@@ -355,7 +371,7 @@ def build_kit_qss(t: Tokens) -> str:
             border-radius: {RADIUS_MD}px;
         }}
         QFrame#{TOAST}[error="true"] {{
-            background-color: {t.error};
+            background-color: {t.error_solid};
         }}
         QFrame#{TOAST} QLabel {{
             color: {t.on_inverse};
@@ -678,6 +694,9 @@ def build_kit_qss(t: Tokens) -> str:
             font-size: 11.5px;
             color: {t.text_3};
         }}
+        QLabel#{PANEL_CAPTION}[tone="error"] {{
+            color: {t.error};
+        }}
         QFrame#{PANEL_BOX} QLabel#{PANEL_MISSING} {{
             color: {t.error};
         }}
@@ -707,4 +726,110 @@ def build_kit_qss(t: Tokens) -> str:
             border-color: {t.line};
         }}
         {matrix_cells}
+
+        /* A grey box of rows (job panel, pre-check sheet). Not PANEL_BOX: its
+           label rule would override the icon labels' font. */
+        QFrame#{LIST_BOX} {{
+            background-color: {t.bg};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{LIST_BOX} QLabel {{
+            font-size: 12.5px;
+            color: {t.text};
+        }}
+        QFrame#{LIST_BOX} QLabel#{PANEL_MONO} {{
+            {mono}
+            font-size: 12px;
+        }}
+        QFrame#{LIST_BOX} QLabel#{PANEL_CAPTION} {{
+            font-size: 11.5px;
+            color: {t.text_3};
+        }}
+        QFrame#{LIST_BOX} QLabel#{PANEL_CAPTION}[tone="error"] {{
+            color: {t.error};
+        }}
+
+        /* The compile job panel: a raised white card over the workspace. */
+        QFrame#{JOB_CARD} {{
+            {font}
+            background-color: {t.surface};
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{JOB_CARD} QLabel {{
+            background-color: transparent;
+            color: {t.text};
+        }}
+        QLabel#{JOB_TITLE} {{ font-size: 15px; font-weight: 500; }}
+        QFrame#{JOB_CARD} QLabel#{JOB_SUB} {{ font-size: 13px; color: {t.text_2}; }}
+        QLabel#{JOB_PCT} {{ font-size: 20px; font-weight: 500; }}
+        QProgressBar#{JOB_BAR} {{
+            background-color: {with_alpha(t.text, 0.15)};
+            border: none;
+            border-radius: 3px;
+            min-height: 6px;
+            max-height: 6px;
+        }}
+        QProgressBar#{JOB_BAR}::chunk {{
+            background-color: {t.inverse};
+            border-radius: 3px;
+        }}
+
+        /* The Log drawer: dark in both themes. */
+        QFrame#{LOG_DRAWER} {{
+            background-color: {t.log_bg};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{LOG_HEAD} {{
+            background-color: transparent;
+            border: none;
+            border-bottom: 1px solid {with_alpha(t.log_text, 0.1)};
+        }}
+        QFrame#{LOG_DRAWER} QLabel {{
+            {font}
+            font-size: 12px;
+            color: {with_alpha(t.log_text, 0.55)};
+            background-color: transparent;
+        }}
+        QFrame#{LOG_DRAWER} QLabel#{LOG_TITLE} {{ font-weight: 700; color: {t.log_text}; }}
+        QPlainTextEdit#{LOG_TEXT} {{
+            {mono}
+            font-size: 11.5px;
+            color: {t.log_text};
+            background-color: transparent;
+            border: none;
+            selection-background-color: {with_alpha(t.log_text, 0.25)};
+        }}
+        QPlainTextEdit#{LOG_TEXT} QScrollBar:vertical {{
+            background: transparent;
+            width: 10px;
+            margin: 0;
+        }}
+        QPlainTextEdit#{LOG_TEXT} QScrollBar::handle:vertical {{
+            background: {with_alpha(t.log_text, 0.25)};
+            border-radius: 4px;
+            min-height: 24px;
+        }}
+        QPlainTextEdit#{LOG_TEXT} QScrollBar::add-line:vertical, QPlainTextEdit#{LOG_TEXT} QScrollBar::sub-line:vertical {{
+            height: 0;
+        }}
+        QPushButton#{LOG_ACTION} {{
+            {font}
+            font-size: 12px;
+            color: {with_alpha(t.log_text, 0.6)};
+            background-color: transparent;
+            border: none;
+            padding: 4px 8px;
+        }}
+        QPushButton#{LOG_ACTION}:hover {{ color: {t.log_text}; }}
+        QPushButton#{LOG_ERROR} {{
+            {font}
+            font-size: 12px;
+            font-weight: 500;
+            color: #ffffff;
+            background-color: {t.error_solid};
+            border: none;
+            border-radius: {RADIUS_SM}px;
+            padding: 4px 10px;
+        }}
     """

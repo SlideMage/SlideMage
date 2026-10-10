@@ -8,7 +8,7 @@ menu renders the editor's buffer instead (Ctrl+R: the whole slide, or the
 selection as a frame or as a cropped element, optionally one reveal step), a
 presenter PDF, or a transcript. Rendering runs on a worker thread; what a
 render depends on is in preview_target.py. Every render is preceded by the
-quick static syntax check (latex_lint through qt_render_check), which asks
+quick static syntax check (latex_lint through render_check), which asks
 before rendering a slide that has errors.
 
 Chips say what the page is not showing at first sight: a version the deck
@@ -27,12 +27,14 @@ from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import latex_lint, preview_target, qt_render_check, slide_preview, slide_snapshot, slide_source, transcript
+from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, transcript
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
 from ...slide_language import TranslationLink, translation_link
 from ..kit import kit_qss as q
+from ..kit.tokens import Tokens
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface
+from . import render_check
 from .menus import VIEW_LABELS
 from .state import WorkspaceState
 
@@ -94,10 +96,12 @@ class _Job:
 
 class _Page(QWidget):
     """The page: a white 16:9 rectangle with a soft shadow, holding the slide's image,
-    or a message when there is none."""
+    or, when there is none, a surface-colored one with a message. `tokens()` gives the
+    theme's colors."""
 
-    def __init__(self) -> None:
+    def __init__(self, tokens: Callable[[], Tokens]) -> None:
         super().__init__()
+        self._tokens = tokens
         self.pixmap: Optional[QPixmap] = None
         self.message = ""
         self.setMinimumSize(320, 180)
@@ -140,12 +144,13 @@ class _Page(QWidget):
         for grow, alpha in ((6, 8), (3, 14), (1, 22)):   # a soft shadow, as the prototype's
             painter.setBrush(QColor(0, 0, 0, alpha))
             painter.drawRoundedRect(page.adjusted(-grow, -grow, grow, grow).translated(0, grow), 4 + grow, 4 + grow)
-        painter.setBrush(QColor("#ffffff"))
+        tokens = self._tokens()
+        painter.setBrush(QColor("#ffffff") if self.pixmap is not None else QColor(tokens.surface))
         painter.drawRoundedRect(page, 4, 4)
         if self.pixmap is not None:
             painter.drawPixmap(page, self.pixmap, QRectF(self.pixmap.rect()))
         elif self.message:
-            painter.setPen(QColor("#1d1d1d"))
+            painter.setPen(QColor(tokens.text))
             painter.drawText(page.adjusted(24, 24, -24, -24).translated(0, -18),
                              Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
                              self.message)
@@ -184,7 +189,7 @@ class PreviewPane(Surface):
         self._chips = QHBoxLayout()
         self._chips.setSpacing(6)
         layout.addLayout(self._chips)
-        self._page = _Page()
+        self._page = _Page(lambda: self.app.theme.tokens)
         self._page.render_button.clicked.connect(self.render_now)
         layout.addWidget(self._page, 1)
 
@@ -390,9 +395,9 @@ class PreviewPane(Surface):
         if target is None or self._busy:
             return
         path = target.source_path
-        if precheck and not qt_render_check.confirm_render(
+        if precheck and not render_check.confirm_render(
                 self, self.app, latex_lint.check_slide_files([path]), f"{path.name} (saved file)",
-                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self.app, issue)):
+                show_in_editor=lambda issue: render_check.open_issue_in_editor(self.app, issue)):
             return
         view, language = self.state.view, self.state.language
         self._start(lambda: preview_target.render(
@@ -418,7 +423,7 @@ class PreviewPane(Surface):
             QMessageBox.information(self, "Render the buffer", "Select some LaTeX to render first.")
             return
         path = target.source_path
-        if not qt_render_check.confirm_render(
+        if not render_check.confirm_render(
                 self, self.app, latex_lint.check_buffer(body, path.name, path), f"{path.name} (editor buffer)",
                 show_in_editor=lambda issue: self.app.open_slide_editor(path, line=issue.line)):
             return

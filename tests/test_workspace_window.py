@@ -223,12 +223,14 @@ def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
     full = items(build_compile_menu(None, COURSE, compiling=False))
     assert list(full) == [
         "compile:instructor", "compile:during-course", "compile:after-course", "compile:all",
-        "compile:chapters", "compile:presenter", "compile:several", "compile:pages", "transcript:during-course", "transcript:after-course",
-        "stop", "build_options"]
-    assert full["compile:chapters"] and not full["stop"]
+        "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
+        "compile:everything", "transcript:during-course", "transcript:after-course", "stop", "build_options"]
+    assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
+    assert items(build_compile_menu(None, COURSE, compiling=False, slides=2))["compile:slides"]
     plain = items(build_compile_menu(None, make_deck("plain", versions=False), compiling=False))
-    assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters",
-                           "compile:presenter", "compile:several", "compile:pages", "stop", "build_options"]
+    assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters", "compile:presenter",
+                           "compile:slides", "compile:pages", "compile:several", "compile:everything",
+                           "stop", "build_options"]
     assert not plain["compile:chapters"]                              # no \section chapters
     assert items(build_compile_menu(None, COURSE, compiling=True))["stop"]
 
@@ -252,7 +254,7 @@ def test_log_lines_keep_working_after_the_decks_are_reloaded(window):
     window.reload_decks()
     for line in ("==== Compiling a -> a ====", "==== PASS: a -> pdf ====", "==== Done: 1 passed ===="):
         window._log(line)
-    assert window.status_label.text() == "Done: 1 passed"
+    assert window.log_drawer.text.toPlainText().splitlines()[-1] == "==== Done: 1 passed ===="
 
 
 # -- Images and the pages ----------------------------------------------------------
@@ -518,7 +520,7 @@ def test_several_decks_write_the_ticked_transcripts_quietly(window, monkeypatch)
                                        ("slidemage-manual", "transcript:during-course")])
     assert jobs == []
     assert made == [("course", "after-course", True), ("slidemage-manual", "during-course", True)]
-    assert "2 of 2 transcript(s)" in window.log_text.toPlainText()
+    assert "2 of 2 transcript(s)" in window.log_drawer.text.toPlainText()
 
 
 # -- the centre column in the window ---------------------------------------------------
@@ -642,7 +644,7 @@ def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path
             held.set()
 
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["m"])
-    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m"})())
+    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m", "is_local": True})())
     monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
     window.open_slide_editor(path)
     file = window.centre.source.current

@@ -33,7 +33,7 @@ from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from ... import app_settings
-from ...palette import PALETTES, Mode
+from ...palette import PALETTES
 from .kit_qss import build_kit_qss
 from .tokens import Tokens, tokens_for
 

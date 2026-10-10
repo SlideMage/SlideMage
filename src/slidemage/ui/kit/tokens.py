@@ -89,6 +89,7 @@ class Tokens:
     error: str
     error_bg: str
     error_fg: str
+    error_solid: str   # fill behind white text (error toast, badges): the same in both themes
     warning: str
     warning_bg: str
     warning_fg: str
@@ -98,6 +99,9 @@ class Tokens:
     info: str
     info_bg: str
     info_fg: str
+    # The Log drawer is dark in both themes (prototype: #1d1d1d, #e8e6e1).
+    log_bg: str
+    log_text: str
 
     def view_color(self, view: str) -> str:
         """`view` is "instructor", "during" or "after"."""
@@ -120,12 +124,13 @@ LIGHT = Tokens(
     view_instructor="#3072c1", view_during="#00884b", view_after="#b2511e",
     view_instructor_tint="#e7f3ff", view_during_tint="#e3f8e9", view_after_tint="#ffece2",
     steps=("#1d1d1d", "#2563eb", "#d97706", "#059669", "#9333ea", "#db2777"),
-    error="#b91c1c", error_bg="#fef2f2", error_fg="#7f1d1d",
+    error="#b91c1c", error_bg="#fef2f2", error_fg="#7f1d1d", error_solid="#b91c1c",
     warning="#b45309", warning_bg="#fef3c7", warning_fg="#78350f",
     # The prototype has the green #059669 but no green tint; the tint and
     # text colors are the Tailwind 100/800 shades.
     ok="#059669", ok_bg="#d1fae5", ok_fg="#065f46",
     info="#2563eb", info_bg="#dbeafe", info_fg="#1e40af",
+    log_bg="#1d1d1d", log_text="#e8e6e1",
 )
 
 DARK = Tokens(
@@ -135,10 +140,11 @@ DARK = Tokens(
     view_instructor="#6aa7f4", view_during="#57bc80", view_after="#e7885d",
     view_instructor_tint="#1c2f46", view_during_tint="#173523", view_after_tint="#422518",
     steps=("#e0e0e0", "#60a5fa", "#fbbf24", "#34d399", "#c084fc", "#f472b6"),
-    error="#f87171", error_bg="#451a1a", error_fg="#fecaca",
+    error="#f87171", error_bg="#451a1a", error_fg="#fecaca", error_solid="#b91c1c",
     warning="#fbbf24", warning_bg="#422006", warning_fg="#fde68a",
     ok="#34d399", ok_bg="#064e3b", ok_fg="#a7f3d0",
     info="#60a5fa", info_bg="#1e3a5f", info_fg="#bfdbfe",
+    log_bg="#121212", log_text="#e8e6e1",
 )
 
 

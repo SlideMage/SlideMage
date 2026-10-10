@@ -157,7 +157,7 @@ class AiDraftDialog(QDialog):
             self, self.model_combo, "this slide's full LaTeX source and your request")
         if provider is None:
             return
-        if not self.app.try_start_ollama_task("drafting a slide revision"):
+        if not self.app.try_start_ollama_task("drafting a slide revision", provider):
             return
 
         self._proposed_text = None
@@ -178,7 +178,7 @@ class AiDraftDialog(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
             self.generate_button.setEnabled(True)
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(provider)
 
         if not result.ok:
             self.status_label.setText(f"Draft failed: {result.error}")

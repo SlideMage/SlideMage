@@ -60,7 +60,7 @@ def _repolish(widget: QWidget) -> None:
         w.update()
 
 
-def _set_property(widget: QWidget, name: str, value: object) -> None:
+def set_property(widget: QWidget, name: str, value: object) -> None:
     widget.setProperty(name, value)
     _repolish(widget)
 
@@ -77,6 +77,10 @@ class IconLabel(QLabel):
 
     def set_icon(self, name: str) -> None:
         self.setText(name)
+
+    def set_tone(self, tone: str) -> None:
+        """"error", "ok" or "muted" colors the icon; "" is the default grey."""
+        set_property(self, "tone", tone)
 
 
 class IconButton(QToolButton):
@@ -98,7 +102,7 @@ class IconButton(QToolButton):
         self.setText(name)
 
     def set_active(self, active: bool) -> None:
-        _set_property(self, "active", active)
+        set_property(self, "active", active)
 
 
 class DropdownButton(QFrame):
@@ -126,7 +130,7 @@ class DropdownButton(QFrame):
         self._label.setText(text)
 
     def set_active(self, active: bool) -> None:
-        _set_property(self, "active", active)
+        set_property(self, "active", active)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
@@ -284,7 +288,7 @@ class Chip(QFrame):
         self._label.setText(text)
 
     def set_tone(self, tone: str) -> None:
-        _set_property(self, "tone", tone)
+        set_property(self, "tone", tone)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
@@ -443,10 +447,10 @@ class PopoverMenu(Popover):
 
     def _set_current(self, index: int) -> None:
         if 0 <= self._current < len(self._rows):
-            _set_property(self._rows[self._current], "current", False)
+            set_property(self._rows[self._current], "current", False)
         self._current = index
         if 0 <= index < len(self._rows):
-            _set_property(self._rows[index], "current", True)
+            set_property(self._rows[index], "current", True)
 
     def _step(self, delta: int) -> None:
         enabled = [i for i, r in enumerate(self._rows) if r.isEnabled()]
@@ -550,7 +554,7 @@ class Toast(QFrame):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda _c=False, k=key: self._on_action(k))
             self._layout.addWidget(button)
-        _set_property(self, "error", error)
+        set_property(self, "error", error)
         self.adjustSize()
         self._reposition()
         self.show()

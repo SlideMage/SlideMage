@@ -14,10 +14,10 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from slidemage import alt_images, preview_target, qt_render_check, slide_snapshot
+from slidemage import alt_images, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, _parse_chapters
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.workspace import preview_view
+from slidemage.ui.workspace import preview_view, render_check
 from slidemage.ui.workspace.centre import CentreColumn
 from slidemage.ui.workspace.state import WorkspaceState
 
@@ -109,7 +109,7 @@ def renders(tmp_path, monkeypatch):
 
 @pytest.fixture
 def centre(qapp, project, deck, monkeypatch):
-    monkeypatch.setattr(qt_render_check, "confirm_render", lambda *a, **k: True)
+    monkeypatch.setattr(render_check, "confirm_render", lambda *a, **k: True)
     app = FakeApp()
     state = WorkspaceState()
     centre = CentreColumn(app, state)
@@ -330,7 +330,7 @@ def test_a_failed_render_is_reported_and_can_be_repeated(centre, renders, monkey
 def test_the_syntax_check_can_stop_a_render_whichever_button_starts_it(centre, renders, monkeypatch, button):
     centre.state.set_focused_slide("aaa")
     asked = []
-    monkeypatch.setattr(qt_render_check, "confirm_render", lambda *args, **kw: asked.append(args[3]) or False)
+    monkeypatch.setattr(render_check, "confirm_render", lambda *args, **kw: asked.append(args[3]) or False)
     preview = centre.preview
     if button == "status":                          # shown for a picture older than its source
         preview._status_button.setVisible(True)
@@ -526,7 +526,7 @@ def test_a_lint_issue_opens_its_file_at_its_line(centre, project):
     from slidemage import latex_lint
 
     issue = latex_lint.LintIssue(latex_lint.CHECKS[0][0], "m", 3, "ccc-DE-Drei-current.tex", project / "ccc-DE-Drei-current.tex")
-    qt_render_check.open_issue_in_editor(centre.app, issue)
+    render_check.open_issue_in_editor(centre.app, issue)
     assert centre.source.current.path == issue.path
     assert centre.source.current.editor.textCursor().blockNumber() == 2
 

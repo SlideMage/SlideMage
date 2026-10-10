@@ -65,11 +65,12 @@ def _add_deck(menu: PopoverMenu, deck: Deck, current: Optional[Deck]) -> None:
     menu.add_item(deck_key(deck), deck.name, icon="check" if is_current else "")
 
 
-def build_compile_menu(parent: QWidget, deck: Optional[Deck], compiling: bool) -> PopoverMenu:
+def build_compile_menu(parent: QWidget, deck: Optional[Deck], compiling: bool, slides: int = 0) -> PopoverMenu:
     """Every PDF the old deck table could ask for (its version, per-chapter
     and Presenter checkboxes), the transcripts of its Create Transcript
     button, the Pages field, Stop creation and the options row of the old
-    toolbar. Entries a deck cannot use are disabled instead of hidden."""
+    toolbar; the pages of the `slides` selected in the slide list; and every
+    active deck at once. Entries a deck cannot use are disabled instead of hidden."""
     menu = PopoverMenu(parent, min_width=300)
     menu.add_header("PDF")
     shown = VIEWS if deck is not None and deck.supports_version else VIEWS[:1]
@@ -79,8 +80,11 @@ def build_compile_menu(parent: QWidget, deck: Optional[Deck], compiling: bool) -
     menu.add_item("compile:chapters", "After course, one PDF per chapter",
                   enabled=deck is not None and deck.has_chapters)
     menu.add_item("compile:presenter", "Presenter", meta="speaker notes", enabled=deck is not None)
+    menu.add_item("compile:slides", "Pages of the selected slides", meta=f"{slides} slide{'s' if slides != 1 else ''}",
+                  enabled=deck is not None and slides > 0)
+    menu.add_item("compile:pages", "Pages by number…", meta="e.g. 4, 7-10", enabled=deck is not None)
     menu.add_item("compile:several", "Several decks…")
-    menu.add_item("compile:pages", "Selected pages…", meta="e.g. 4, 7-10", enabled=deck is not None)
+    menu.add_item("compile:everything", "All decks except archive", meta="every view")
     if deck is not None and deck.supports_version:
         menu.add_header("Accessible transcript · Markdown + HTML")
         for version in STUDENT_VERSIONS:
@@ -114,6 +118,7 @@ def build_more_menu(parent: QWidget, deck: Optional[Deck]) -> PopoverMenu:
     menu.add_header("Project")
     menu.add_item("go_to_slide", "Go to slide…")
     menu.add_item("search_text", "Search slide text…", meta="Ctrl+Shift+F")
+    menu.add_item("log", "Log", meta="Ctrl+L")
     menu.add_item("edit_bib", "Edit .bib")
     menu.add_item("edit_test_slides", "Edit test-slides.tex")
     menu.add_item("open_project", "Open project…")

@@ -272,7 +272,7 @@ class DuplicateSlideDialog(QDialog):
             self, self.model_combo, "the slide's LaTeX body")
         if provider is None:
             return  # no model, or cloud declined: the slide stays untranslated
-        if not self.app.try_start_ollama_task("translating a duplicated slide"):
+        if not self.app.try_start_ollama_task("translating a duplicated slide", provider):
             # Same graceful fallback as any other translation failure below
             # -- the slide itself was already created (as a same-language,
             # cross-referenced copy) by the time this runs; only the
@@ -302,7 +302,7 @@ class DuplicateSlideDialog(QDialog):
             QApplication.restoreOverrideCursor()
             self.create_button.setEnabled(True)
             self.status_label.setText("")
-            self.app.end_ollama_task()
+            self.app.end_ollama_task(provider)
 
         if error:
             QMessageBox.warning(

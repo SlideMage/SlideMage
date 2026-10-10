@@ -187,7 +187,7 @@ class DeckPdf:
     run_id: Optional[str] = None   # its /SlideMageRun (see CompileJob.run_id)
 
 
-def _job_label(job: CompileJob) -> str:
+def job_label(job: CompileJob) -> str:
     if job.presenter:
         return "Presenter"
     label = {"during-course": "During-course", "after-course": "After-course"}.get(
@@ -236,7 +236,7 @@ def deck_pdfs(deck: Deck) -> list[DeckPdf]:
             if key in found or not candidate.is_file():
                 continue
             found[key] = DeckPdf(
-                _job_label(job), candidate, candidate.stat().st_mtime,
+                job_label(job), candidate, candidate.stat().st_mtime,
                 preferred=_is_preferred(job),
                 run_id=compile_records.read_run_id(candidate))
     return sorted(found.values(), key=lambda pdf: pdf.mtime, reverse=True)
@@ -310,6 +310,8 @@ class CancelToken:
         self._event = threading.Event()
         self._lock = threading.Lock()
         self._proc: Optional[subprocess.Popen] = None
+        self._job_killed = False
+        self._skipped: set[str] = set()
 
     def is_set(self) -> bool:
         return self._event.is_set()
@@ -319,9 +321,41 @@ class CancelToken:
             self._proc = proc
 
     def request_stop(self) -> None:
+        """Stop the whole run: kill the job being compiled, skip the rest."""
         self._event.set()
         with self._lock:
             proc = self._proc
+        self._kill(proc)
+
+    def stop_current(self) -> None:
+        """Stop only the job being compiled (job_stopped() tells its runner);
+        the queue goes on with the next job. Nothing happens while no
+        compile process runs."""
+        with self._lock:
+            proc = self._proc
+            if proc is None or proc.poll() is not None:
+                return
+            self._job_killed = True
+        self._kill(proc)
+
+    def job_stopped(self) -> bool:
+        """Whether the job that just ended was stopped, by stop_current() or
+        by a stop of the whole run. Reads (and clears) the single-job flag."""
+        with self._lock:
+            killed, self._job_killed = self._job_killed, False
+        return killed or self._event.is_set()
+
+    def skip(self, jobname: str) -> None:
+        """Take a queued job out of the run."""
+        with self._lock:
+            self._skipped.add(jobname)
+
+    def is_skipped(self, jobname: str) -> bool:
+        with self._lock:
+            return jobname in self._skipped
+
+    @staticmethod
+    def _kill(proc: Optional[subprocess.Popen]) -> None:
         if proc is None or proc.poll() is not None:
             return
         if os.name == "nt":
@@ -732,7 +766,7 @@ def run_job(
             if cancel is not None:
                 cancel._set_process(None)
 
-        if cancel is not None and cancel.is_set():
+        if cancel is not None and cancel.job_stopped():
             log(f"*** FAIL: {jobname} -- stopped by user ***")
             return False
 
@@ -897,14 +931,17 @@ def run_jobs(
     {jobname: success} for a summary. If `cancel` is set partway through
     (the GUI's "Stop creation" button), the job in progress is killed
     (see run_job) and whatever's still queued is skipped rather than
-    started."""
+    started. Jobs the GUI took out of the queue (cancel.skip) are left out
+    one by one."""
     destinations = _disambiguated_destinations(jobs, log)
     results: dict[str, bool] = {}
-    for job in jobs:
+    for position, job in enumerate(jobs):
         if cancel is not None and cancel.is_set():
-            skipped = len(jobs) - len(results)
-            log(f"==== Stopped: {skipped} job(s) skipped ====")
+            log(f"==== Stopped: {len(jobs) - position} job(s) skipped ====")
             break
+        if cancel is not None and cancel.is_skipped(job.jobname):
+            log(f"==== Skipped: {job.jobname} ====")
+            continue
         results[job.jobname] = run_job(
             job, log, cancel=cancel, dest_override=destinations[id(job)]
         )

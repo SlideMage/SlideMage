@@ -163,8 +163,8 @@ def _make_transcript_tab(monkeypatch, qapp, tmp_path, *, image_refs=None):
     monkeypatch.setattr(alt_images, "slide_context_hash", lambda _path: "slide-hash")
     app = SimpleNamespace(
         log=lambda _line: None,
-        end_ollama_task=lambda: None,
-        try_start_ollama_task=lambda _label: True,
+        end_ollama_task=lambda _provider=None: None,
+        try_start_ollama_task=lambda _label, _provider=None: True,
     )
     tab = qt_transcript_tab.TranscriptTab(app)
     tab.reload()
@@ -463,8 +463,8 @@ def test_stale_ai_proposal_is_refused_after_source_edit(monkeypatch, qapp):
     monkeypatch.setattr(app_settings, "get", lambda _key, default=None: default)
 
     app = QWidget()
-    app.try_start_ollama_task = lambda _label: True
-    app.end_ollama_task = lambda: None
+    app.try_start_ollama_task = lambda _label, _provider=None: True
+    app.end_ollama_task = lambda _provider=None: None
     app.log = lambda _line: None
     editor = LatexPlainTextEdit(ThemeManager())
     editor.set_text("original source")
@@ -499,8 +499,8 @@ def test_an_accepted_ai_proposal_replaces_the_buffer_in_one_undo_step(monkeypatc
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["offline-test"])
     monkeypatch.setattr(app_settings, "get", lambda _key, default=None: default)
     app = QWidget()
-    app.try_start_ollama_task = lambda _label: True
-    app.end_ollama_task = lambda: None
+    app.try_start_ollama_task = lambda _label, _provider=None: True
+    app.end_ollama_task = lambda _provider=None: None
     app.log = lambda _line: None
     editor = LatexPlainTextEdit(ThemeManager())
     editor.set_text("original source")
@@ -545,4 +545,4 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
 
     assert not old_file.exists()
     assert not old_run.exists()
-    assert "2 build item(s)" in window.log_text.toPlainText()
+    assert "2 build item(s)" in window.log_drawer.text.toPlainText()

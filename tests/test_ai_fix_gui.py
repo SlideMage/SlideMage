@@ -35,11 +35,11 @@ class FakeApp:
     def open_slide_editor(self, path, **_kwargs):
         pass
 
-    def try_start_ollama_task(self, label):
+    def try_start_ollama_task(self, label, provider=None):
         self.started.append(label)
         return not self.busy
 
-    def end_ollama_task(self):
+    def end_ollama_task(self, provider=None):
         self.ended.append(True)
 
 

@@ -57,14 +57,15 @@ class WorkspaceState(QObject):
         self.footer_timestamp = False
         self.lint_errors = 0   # errors the static check finds in the source being edited
 
-    def set_deck(self, deck: Optional[Deck]) -> None:
+    def set_deck(self, deck: Optional[Deck]) -> bool:
         """Switch decks: the view and language come back from the settings
         and the focus and selection start empty. A fresh scan of the deck
         already open (same file) only replaces the stored object, so that
-        readers see the new text; it is not a switch and emits nothing."""
+        readers see the new text; it is not a switch and emits nothing.
+        Returns whether it was a switch."""
         if deck is not None and self.deck is not None and deck.path == self.deck.path:
             self.deck = deck
-            return
+            return False
         before = (self.focused_slide, self.selection, self.view, self.language, self.mode)
         self.deck = deck
         remembered = self._remembered(deck)
@@ -84,6 +85,7 @@ class WorkspaceState(QObject):
             self.language_changed.emit(self.language)
         if before[4] != self.mode:
             self.mode_changed.emit(self.mode)
+        return True
 
     def set_focused_slide(self, slide_id: Optional[str]) -> None:
         if slide_id != self.focused_slide:
@@ -124,6 +126,10 @@ class WorkspaceState(QObject):
 
     def set_footer_timestamp(self, enabled: bool) -> None:
         self.footer_timestamp = enabled
+
+    def selected_or_focused(self) -> tuple[str, ...]:
+        """The selected slides, else the focused one."""
+        return self.selection or ((self.focused_slide,) if self.focused_slide else ())
 
     def set_selection(self, slide_ids: tuple[str, ...]) -> None:
         slide_ids = tuple(slide_ids)

@@ -451,7 +451,7 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
             finally:
                 if cancel is not None:
                     cancel._set_process(None)
-            if cancel is not None and cancel.is_set():
+            if cancel is not None and cancel.job_stopped():
                 raise PartialError("stopped by user")
         pdf = build / f"{jobname}.pdf"
         log_path = build / f"{jobname}.log"

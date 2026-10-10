@@ -1,25 +1,23 @@
-"""Compile orchestration of the main window, moved out of qt_gui.py (step 3 of
-docs/UI_REDESIGN_PLAN.md) with the logic unchanged except for what the old
-deck table's rows used to carry: jobs now come from compiler.build_jobs() for
-the current deck and there are no per-row status dots, so progress shows in
-the status line, the progress bar and the log. Step 7 replaces this with the
-job panel and `compile_jobs.py` proper.
+"""Compile orchestration of the main window: the compile slot (one run at a
+time), the worker threads, the run's job panel (job_panel.py) and Log drawer
+(log_drawer.py), the pre-check before a build (render_check.py), what happens
+when a run ends (toasts, jumping to the failing line) and the other flows that
+use the slot (deck snapshots, Update previews, Export PPTX).
 
 `CompileJobsMixin` is mixed into WorkspaceWindow (window.py) and uses its
-attributes: `signals`, `_progress`, `progress_bar`, `status_label`, `log_text`,
-`topbar`, `build_options` and the `compiling` / `cancel_token` slot.
+attributes: `state`, `decks`, `topbar`, `build_options`, `stack` (the column
+the Log drawer covers) and the central widget it is built on.
 """
 from __future__ import annotations
 
-import re
 import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,7 +31,8 @@ from PySide6.QtWidgets import (
 
 from ... import app_settings, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
 from ... import pptx_export
-from ... import qt_render_check, qt_snapshot_dialog, slide_ids, slide_snapshot, update_all_previews
+from ... import qt_snapshot_dialog, slide_ids, slide_snapshot, update_all_previews
+from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, JobRow, RunStatus, job_title
 from ...compiler import (
     PDF_DIR,
     PDF_MOVE_RETRY_TOTAL_SECONDS,
@@ -46,18 +45,12 @@ from ...compiler import (
 )
 from ...deck_scan import PROJECT_ROOT, Deck
 from ...partial_compile import PartialError, parse_page_spec
+from ..kit.widgets import Toast
+from . import render_check
+from .job_panel import JobPanel
+from .log_drawer import LogDrawer
 from .multi_compile import MultiCompileSheet
 from .state import WorkspaceState
-
-RUNNING_LOG_RE = re.compile(r"^==== Compiling \S+ -> (\S+) ====")
-MOVING_LOG_RE = re.compile(r"^==== MOVING: (\S+) ->")
-PASS_LOG_RE = re.compile(r"^==== PASS: (\S+) ->")
-FAIL_LOG_RE = re.compile(r"^\*\*\* FAIL: (\S+) --")
-DONE_LOG_RE = re.compile(r"^==== Done: (.+) ====$")
-RENDER_START_RE = re.compile(r"^==== Rendering (\S+) -> \S+ ====")
-RENDER_PASS_RE = re.compile(r"^==== PASS: render of (\S+) ->")
-RENDER_FAIL_RE = re.compile(r"^\*\*\* FAIL: render of (\S+) --")
-RUN_NUMBER_RE = re.compile(r"^Run number (\d+) of rule '([^']+)'")
 
 
 class CompileSignals(QObject):
@@ -71,12 +64,6 @@ class CompileSignals(QObject):
 
     log = Signal(str)
     batch_done = Signal()
-    # For a background thread (e.g. the slide preview's Render now)
-    # that needs to re-enable a button once it's done -- setEnabled() is a
-    # widget mutation, so it has to run on the GUI thread same as
-    # everything else here. Signal(object) rather than Signal(QPushButton)
-    # so this can carry any widget type, not just buttons.
-    enable_button = Signal(object)
     # The startup update check's result (updater.UpdatePlan, or the
     # updater.UpdateError it failed with), from its background thread.
     update_check_done = Signal(object)
@@ -89,8 +76,7 @@ class BuildOptionsDialog(QDialog):
     """The four checkboxes that sat in the old window's bottom row, now behind
     Compile -> "Build options…". The checkboxes keep their state while the
     dialog is closed, which is what the compile code (and the editor tabs, for
-    the footer timestamp) read. Step 7 turns them into toggles of the Compile
-    menu."""
+    the footer timestamp) read."""
 
     def __init__(self, parent: QWidget, state: WorkspaceState) -> None:
         super().__init__(parent)
@@ -142,8 +128,158 @@ class BuildOptionsDialog(QDialog):
 
 
 class CompileJobsMixin:
+    def _init_compile(self, central: QWidget) -> None:
+        """Build the compile UI on the window's central widget and connect the
+        log. The Log drawer covers the bottom of `self.stack`."""
+        self.compiling = False
+        self.cancel_token: Optional[CancelToken] = None
+        self._worker: Optional[threading.Thread] = None
+        self._progress = compile_progress.BatchProgress()
+        # The run on show in the job panel and what it was made from.
+        self._run: Optional[RunStatus] = None
+        self._run_jobs: dict[str, CompileJob] = {}
+        self._run_opens_pdfs = True
+        self._run_over = False       # the worker thread has ended
+        self._run_settled = False    # ... and no PDF is left to move: the end has been reported
+        self._stop_requested = False
+        self._after_snapshots: Optional[Callable[[list], None]] = None
+
+        self.signals = CompileSignals()
+        self.signals.log.connect(self._log)
+        self.signals.batch_done.connect(self._on_batch_done)
+        self.signals.snapshots_done.connect(self._on_snapshots_done)
+
+        self.job_panel = JobPanel(central)
+        self.job_panel.stop_all.connect(self._stop_compilation)
+        self.job_panel.stop_job.connect(self._stop_job)
+        self.job_panel.retry_failed.connect(self._retry_failed)
+        self.job_panel.open_pdfs.connect(self._open_run_pdfs)
+        self.job_panel.show_source.connect(lambda name: self._show_error(self._run.rows[name]))
+        self.log_drawer = LogDrawer(central, self.stack)
+        self.job_panel.open_log.connect(self.log_drawer.open)
+        self.log_drawer.error_clicked.connect(lambda: self._show_error(self._run.failed[0]))
+        self.compile_toast = Toast(central)
+        self.compile_toast.action_triggered.connect(self._on_compile_toast_action)
+        QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self.log_drawer.toggle)
+
+    # -- the run on show -------------------------------------------------------------
+
+    def _begin_run(
+        self, labels: dict[str, str], specs: dict[str, compile_progress.JobSpec], *, verb: str = "",
+        jobs: Optional[list[CompileJob]] = None, pdfs: Optional[dict[str, Path]] = None,
+        opens_pdfs: bool = True,
+    ) -> None:
+        """Take the compile slot for a run of `labels` (jobname -> what to call it) and show its
+        job panel. `jobs`: the compile jobs behind it, which can be stopped one by one and
+        retried; `pdfs`: where each job's PDF will be."""
+        self._progress.reset(specs)
+        decks = {job.jobname: job.deck.path for job in jobs or []}
+        self._run = RunStatus(labels, root=PROJECT_ROOT, verb=verb, pdfs=pdfs, decks=decks)
+        self._run_jobs = {job.jobname: job for job in jobs or []}
+        self._run_opens_pdfs = opens_pdfs
+        self._run_over = self._run_settled = self._stop_requested = False
+        self.compile_toast.hide()
+        self.log_drawer.set_status("running")
+        self.job_panel.start(self._run, per_job_stop=bool(jobs), can_retry=bool(jobs))
+        self.compiling = True
+        self.cancel_token = CancelToken()
+        self.topbar.set_compiling(True)
+        self._refresh_job_panel()
+
+    def _start_worker(self, target: Callable, *args) -> None:
+        self._worker = threading.Thread(target=target, args=args, daemon=True)
+        self._worker.start()
+
+    def _refresh_job_panel(self) -> None:
+        if self._run is None or self._run_settled:   # an ad-hoc render is not a run
+            return
+        self.job_panel.refresh(self._progress.fraction, self._progress.text, over=self._run_over)
+        if self._run_over and self._run.settled:
+            self._run_settled = True
+            self._report_run_end(self._run)
+
     def _on_batch_done(self) -> None:
+        """The worker thread has ended: what never ran is stopped, and the run is over
+        once the last PDF has been moved into place (that goes on in the background)."""
         self.topbar.set_compiling(False)
+        if self._run is not None:
+            self._run.finish(self._stop_requested)
+            self._run_over = True
+            self._refresh_job_panel()
+
+    def _report_run_end(self, run: RunStatus) -> None:
+        """A single job is answered by a toast, a longer run stays on show in the panel. A
+        failure opens the Log drawer."""
+        failed = run.failed
+        if failed:
+            first = failed[0]
+            self.log_drawer.set_status(f"{first.label} failed", f"Show {first.error.where}" if first.error else "")
+            self.log_drawer.open()
+            self.job_panel.raise_()   # the card stays on top of the drawer
+        else:
+            self.log_drawer.set_status("last run ok")
+        if len(run.rows) > 1:
+            return
+        self.job_panel.hide()
+        row = next(iter(run.rows.values()))
+        if row.state == FAILED:
+            text = f"Compile failed in {row.error.slide_id or row.error.path.name}" if row.error \
+                else f"{row.label} failed"
+            actions = [("source", "Open in Source")] if row.error else []
+            self.compile_toast.show_message(text, actions + [("log", "Log")], error=True)
+        elif row.state == DONE:
+            actions = [("pdf", "Open PDF")] if row.pdf is not None else []
+            self.compile_toast.show_message(f"{row.label} ready", actions + [("log", "Log")])
+
+    def _on_compile_toast_action(self, key: str) -> None:
+        row = next(iter(self._run.rows.values()), None) if self._run is not None else None
+        if key == "log":
+            self.log_drawer.open()
+        elif key == "source" and row is not None:
+            self._show_error(row)
+        elif key == "pdf" and row is not None and row.pdf is not None:
+            self._open_pdf(row.pdf)
+
+    def _show_error(self, row: JobRow) -> None:
+        """Open the file a failed job stopped in, on the line of the error."""
+        error = row.error
+        if error is None:
+            return
+        if not error.path.is_file():
+            self._log(f"*** couldn't open {error.path}: the file is gone ***")
+            return
+        self.open_slide_editor(error.path, line=error.line)
+
+    def _stop_job(self, jobname: str) -> None:
+        """Stop one job of the run: a queued one is taken out of the queue, the running
+        one is killed and the run goes on with the next."""
+        row = self._run.rows.get(jobname) if self._run is not None else None
+        if row is None or self.cancel_token is None:
+            return
+        if row.state == RUNNING:
+            self.cancel_token.stop_current()
+        elif row.state == QUEUED:
+            self.cancel_token.skip(jobname)
+            self._run.stop_row(jobname)
+            self._refresh_job_panel()
+
+    def _retry_failed(self) -> None:
+        jobs = [self._run_jobs[row.jobname] for row in self._run.failed if row.jobname in self._run_jobs]
+        if jobs:
+            self._compile_jobs(jobs)
+
+    def _open_run_pdfs(self) -> None:
+        for row in self._run.rows.values():
+            if row.state in (DONE, MOVING) and row.pdf is not None:
+                self._open_pdf(row.pdf)
+
+    def _stop_worker(self) -> None:
+        """The window is closing: stop the run and wait for its thread."""
+        if self.cancel_token is not None:
+            self._stop_requested = True
+            self.cancel_token.request_stop()
+        if self._worker is not None:
+            self._worker.join(timeout=10)
 
     def _start_snapshots(
         self, decks: list[Deck], options: deck_snapshot.SnapshotOptions,
@@ -178,14 +314,9 @@ class CompileJobsMixin:
                 if options.verify:
                     key = deck_snapshot.progress_key(job.jobname, verify=True)
                     specs[key], texts[key] = spec, f"{prefix}: checking {job.jobname}"
-        self._job_progress_texts = texts
-        self._progress.reset(specs)
         self._after_snapshots = after
-        self.compiling = True
-        self.cancel_token = CancelToken()
-        self.topbar.set_compiling(True)
-        threading.Thread(target=self._run_snapshots_thread,
-                         args=(decks, options, delete_old), daemon=True).start()
+        self._begin_run(texts, specs)
+        self._start_worker(self._run_snapshots_thread, decks, options, delete_old)
         return True
 
     def _run_snapshots_thread(self, decks: list[Deck], options: deck_snapshot.SnapshotOptions,
@@ -206,8 +337,6 @@ class CompileJobsMixin:
         self.signals.snapshots_done.emit(results)
 
     def _on_snapshots_done(self, results: list) -> None:
-        self._progress.reset({})
-        self._clear_progress_if_idle()
         after, self._after_snapshots = self._after_snapshots, None
         if after is not None:
             after(results)
@@ -239,6 +368,16 @@ class CompileJobsMixin:
                            for deck, version in transcripts)
             self._log(f"==== Create Transcript: {len(transcripts) - failures} of "
                       f"{len(transcripts)} transcript(s) generated ====")
+
+    def _compile_everything(self) -> None:
+        """Compile -> "All decks except archive": every view of every active deck."""
+        decks = [deck for deck in self.decks if not deck.archived]
+        jobs = [job for deck in decks for job in compiler.build_jobs(deck, "all")]
+        if jobs and QMessageBox.question(
+                self, "Compile all decks",
+                f"Compile {len(jobs)} PDF(s) of {len(decks)} deck(s), every view of each? "
+                "The archive is left out.") == QMessageBox.StandardButton.Yes:
+            self._compile_jobs(jobs)
 
     def _compile_pages(self) -> None:
         """Compile menu -> "Selected pages…": the Pages field of the old deck
@@ -285,6 +424,7 @@ class CompileJobsMixin:
         replace_pages = self.build_options.replace_pages_checkbox.isChecked()
         # One id for everything this click compiles (PDF info /SlideMageRun).
         run_id = datetime.now().isoformat(timespec="seconds")
+        outputs: dict[str, Path] = {}   # jobname -> where its PDF lands (the deck's own \deckoutputfolder, or pdf/)
         for job in jobs:
             job.footer_timestamp = footer_timestamp
             # \deckappendixtoc in the deck: always, checkbox or not
@@ -292,7 +432,7 @@ class CompileJobsMixin:
             job.replace_pages = replace_pages
             job.run_id = run_id
             output_dir, output_stem = resolve_output_location(job)
-            self._job_output_paths[job.jobname] = output_dir / f"{output_stem}.pdf"
+            outputs[job.jobname] = output_dir / f"{output_stem}.pdf"
         jobs = order_jobs(jobs)   # version by version, then deck by deck
         jobs, empty_descriptions = self._drop_empty_jobs(jobs)
         if not jobs:
@@ -309,27 +449,34 @@ class CompileJobsMixin:
                 + "\n".join(f"  • {d}" for d in empty_descriptions)
                 + "\n\nCompiling the rest.",
             )
-        jobs = self._confirm_unchanged_jobs(jobs)
+        jobs = self._confirm_unchanged_jobs(jobs, outputs)
         if not jobs:
             return
         # Pre-render syntax check (2026-09-26), scoped to exactly what these
         # jobs read: the deck files plus the slides their versions/chapters
         # actually include.
-        if not qt_render_check.confirm_render(
-                self, self, latex_lint.check_jobs(jobs),
-                ", ".join(sorted({job.deck.name for job in jobs})),
-                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
+        if not self._confirm_build(latex_lint.check_jobs(jobs), ", ".join(sorted({job.deck.name for job in jobs}))):
             return
-        self._start_jobs(jobs)
+        self._begin_run(
+            {job.jobname: job_title(job) for job in jobs},
+            {job.jobname: compile_progress.spec_for_job(job) for job in jobs},
+            verb="Compiling", jobs=jobs, pdfs={job.jobname: outputs[job.jobname] for job in jobs})
+        self._start_worker(self._run_jobs_thread, jobs)
 
-    def _confirm_unchanged_jobs(self, jobs: list[CompileJob]) -> list[CompileJob]:
+    def _confirm_build(self, result: latex_lint.CheckResult, what: str) -> bool:
+        """The pre-render syntax check of a build: False when it found errors and the user cancelled."""
+        return render_check.confirm_render(
+            self, self, result, what, verb="Build",
+            show_in_editor=lambda issue: render_check.open_issue_in_editor(self, issue))
+
+    def _confirm_unchanged_jobs(self, jobs: list[CompileJob], outputs: dict[str, Path]) -> list[CompileJob]:
         """Versions that haven't changed since their last compile
         (compiler.unchanged_jobs) are only compiled again after asking
         (2026-10-08, direct instruction): Compile anyway / Skip unchanged /
         Cancel. Returns the jobs to compile ([] = nothing)."""
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            unchanged = compiler.unchanged_jobs(jobs, self._job_output_paths)
+            unchanged = compiler.unchanged_jobs(jobs, outputs)
         finally:
             QApplication.restoreOverrideCursor()
         if not unchanged:
@@ -394,7 +541,6 @@ class CompileJobsMixin:
             if job.version:
                 where += f" ({job.version})"
             descriptions.append(where)
-            self._job_output_paths.pop(job.jobname, None)
         return surviving, descriptions
 
     def _on_export_pptx(self, deck: Deck) -> None:
@@ -424,26 +570,23 @@ class CompileJobsMixin:
                 self, "Nothing to export", f"{deck.name} has no slides to typeset."
             )
             return
-        if not qt_render_check.confirm_render(
-                self, self, latex_lint.check_jobs([CompileJob(deck, version="instructor", chapter=None)]),
-                deck.name,
-                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
-            return
         pptx_job = CompileJob(deck, version="instructor", chapter=None)
-        self._progress.reset({pptx_job.jobname: compile_progress.spec_for_job(pptx_job)})
-        self.compiling = True
-        threading.Thread(target=self._export_pptx_bg, args=(deck,), daemon=True).start()
+        if not self._confirm_build(latex_lint.check_jobs([pptx_job]), deck.name):
+            return
+        self._begin_run({pptx_job.jobname: f"Export {deck.name} to PowerPoint"},
+                        {pptx_job.jobname: compile_progress.spec_for_job(pptx_job)})
+        self._start_worker(self._export_pptx_bg, deck)
 
     def _export_pptx_bg(self, deck: Deck) -> None:
         log = self.signals.log.emit
         job = CompileJob(deck, version="instructor", chapter=None)
         log(f"==== Exporting {deck.name} to PowerPoint (instructor version) ====")
+        cancel = self.cancel_token
         try:
             # run_job() itself already logs its own "==== PASS/FAIL:
-            # ... ====" lines (picked up by the same PASS_LOG_RE/
-            # FAIL_LOG_RE-driven log handler every other compile goes
-            # through, auto-opening the compiled PDF too if that
-            # checkbox is on) -- nothing extra needed here for the
+            # ... ====" lines (picked up by the same log handler every
+            # other compile goes through, auto-opening the compiled PDF too
+            # if that checkbox is on) -- nothing extra needed here for the
             # compile step itself, only for what happens after it.
             #
             # run_job() doesn't wait for the PDF's move into pdf/ (it
@@ -463,7 +606,7 @@ class CompileJobsMixin:
                 outcome["dest_pdf"] = dest_pdf
                 relocated.set()
 
-            if not run_job(job, log, on_relocated=_on_relocated):
+            if not run_job(job, log, cancel=cancel, on_relocated=_on_relocated):
                 log(f"*** FAIL: PowerPoint export of {deck.name} -- "
                    f"compile failed, see above ***")
                 return
@@ -493,17 +636,12 @@ class CompileJobsMixin:
                 log(f"*** couldn't auto-open {out_path.name}: {exc} ***")
         finally:
             self.compiling = False
-
-    def _start_jobs(self, jobs: list[CompileJob]) -> None:
-        self._job_progress_texts = compile_progress.build_progress_texts(jobs)
-        self._progress.reset({job.jobname: compile_progress.spec_for_job(job) for job in jobs})
-        self.compiling = True
-        self.cancel_token = CancelToken()
-        self.topbar.set_compiling(True)
-        threading.Thread(target=self._run_jobs_thread, args=(jobs,), daemon=True).start()
+            self.cancel_token = None
+            self.signals.batch_done.emit()
 
     def _stop_compilation(self) -> None:
-        if self.cancel_token is None or not self.compiling:
+        cancel = self.cancel_token
+        if cancel is None or not self.compiling:
             return
         reply = QMessageBox.question(
             self,
@@ -515,7 +653,8 @@ class CompileJobsMixin:
         if reply != QMessageBox.StandardButton.Yes:
             return
         self._log("==== Stop requested -- killing current job and skipping the rest ====")
-        self.cancel_token.request_stop()
+        self._stop_requested = True
+        cancel.request_stop()
 
     def _run_jobs_thread(self, jobs: list[CompileJob]) -> None:
         cancel = self.cancel_token
@@ -571,50 +710,37 @@ class CompileJobsMixin:
         # Pre-render syntax check (2026-09-26) of every slide about to be
         # compiled -- "everything" scope, still only a few tens of ms.
         all_slides = sorted({slug for slugs in needed.values() for slug in slugs})
-        if not qt_render_check.confirm_render(
-                self, self,
+        if not self._confirm_build(
                 latex_lint.check_slide_files(
                     slide_ids.SLIDES_DIR / f"{slug}-current.tex" for slug in all_slides),
-                f"{len(all_slides)} slides",
-                show_in_editor=lambda issue: qt_render_check.open_issue_in_editor(self, issue)):
+                f"{len(all_slides)} slides"):
             return
 
-        self.compiling = True
-        self.cancel_token = CancelToken()
-        self.topbar.set_compiling(True)
-        # _log()'s RUNNING_LOG_RE handling looks up a human-readable status
-        # line in self._job_progress_texts by jobname -- normally populated
-        # by _start_jobs() from the real compile queue, but this operation
-        # builds its own temp deck/CompileJob entirely inside
+        # This operation builds its own temp deck/CompileJob entirely inside
         # update_all_previews.run(), with no channel back to this class
-        # except the log stream. Without registering an entry here first,
-        # each template's own "==== Compiling ... ====" line still matches
-        # RUNNING_LOG_RE fine, but the lookup finds nothing and the status
-        # line by "Log:" just stays blank for the whole run. One jobname
-        # per template (there can be several, run one after another), all
-        # generated here rather than left to run() so both sides agree on
-        # the exact strings ahead of time. "-instructor" matches
+        # except the log stream, so the run's rows are registered here first:
+        # one jobname per template (there can be several, run one after
+        # another), generated here rather than left to run() so both sides
+        # agree on the exact strings ahead of time. "-instructor" matches
         # CompileJob.jobname's own "-{version}" suffix (compiler.py) --
         # update_all_previews.run() always compiles the instructor version.
         base_jobnames = {
             template: f"{update_all_previews.JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}"
             for template in needed
         }
-        self._job_progress_texts = {
-            f"{base_jobname}-instructor":
-                f"Update previews ({slide_snapshot.TEMPLATES.get(template, template)})"
-            for template, base_jobname in base_jobnames.items()
-        }
+        labels = {f"{base_jobname}-instructor":
+                  f"Update previews ({slide_snapshot.TEMPLATES.get(template, template)})"
+                  for template, base_jobname in base_jobnames.items()}
         # One throw-away megadeck per template (with a bibliography, so 4
-        # passes), each typesetting that template's own slides.
-        self._progress.reset({
-            f"{base_jobname}-instructor": compile_progress.JobSpec(
+        # passes), each typesetting that template's own slides. Nobody wants
+        # a 639-slide throwaway PDF popping open, whatever the auto-open checkbox says.
+        self._begin_run(
+            labels,
+            {f"{base_jobname}-instructor": compile_progress.JobSpec(
                 compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]), estimated=True)
-            for template, base_jobname in base_jobnames.items()
-        })
-        threading.Thread(
-            target=self._run_update_previews_thread, args=(needed, base_jobnames), daemon=True
-        ).start()
+             for template, base_jobname in base_jobnames.items()},
+            opens_pdfs=False)
+        self._start_worker(self._run_update_previews_thread, needed, base_jobnames)
 
     def _run_update_previews_thread(
         self, needed: dict[str, set[str]], base_jobnames: dict[str, str]
@@ -639,8 +765,7 @@ class CompileJobsMixin:
         # own use of it.
         self.signals.batch_done.emit()
 
-    def _open_pdf(self, jobname: str) -> None:
-        pdf_path = self._job_output_paths.get(jobname, PDF_DIR / f"{jobname}.pdf")
+    def _open_pdf(self, pdf_path: Path) -> None:
         if not pdf_path.exists():
             return
         try:
@@ -648,107 +773,20 @@ class CompileJobsMixin:
         except OSError as exc:
             self._log(f"*** couldn't auto-open {pdf_path.name}: {exc} ***")
 
-    def _apply_progress(self, update: tuple) -> None:
-        """Show a compile_progress.BatchProgress.feed() result: the thin bar
-        and, while a job is running, the position in the status label."""
-        fraction, text, finished = update
-        bar = self.progress_bar
-        if finished:
-            bar.setRange(0, 1000)
-            bar.setValue(1000)
-            # Leave the full bar visible for a moment, then clear it -- unless
-            # another batch has started meanwhile.
-            QTimer.singleShot(1200, self._clear_progress_if_idle)
-            return
-        if fraction is None:
-            if self._progress.active:
-                bar.setRange(0, 0)           # size unknown: busy animation
-            else:
-                bar.setRange(0, 1000)
-                bar.setValue(0)
-            return
-        bar.setRange(0, 1000)
-        bar.setValue(round(fraction * 1000))
-        if text and self._current_progress_base and self._progress.active:
-            self.status_label.setText(f"{self._current_progress_base}: {text}")
-
-    def _clear_progress_if_idle(self) -> None:
-        if not self._progress.active and not self.compiling:
-            self.progress_bar.setRange(0, 1000)
-            self.progress_bar.setValue(0)
-
-    def _copy_log(self) -> None:
-        QGuiApplication.clipboard().setText(self.log_text.toPlainText())
-
-    def _clear_log(self) -> None:
-        self.log_text.clear()
-
     def _log(self, line: str) -> None:
-        self.log_text.appendPlainText(line)
-
+        """Every log line: into the Log drawer, the progress and the run's rows (and a job whose
+        PDF has just landed may open it)."""
+        self.log_drawer.append(line)
         progress_update = self._progress.feed(line)
-        self._update_status_from_log(line)
-        if progress_update is not None:
-            self._apply_progress(progress_update)
-
-    def _update_status_from_log(self, line: str) -> None:
-        render_start = RENDER_START_RE.match(line)
-        if render_start:
-            self._current_progress_base = f"Rendering {render_start.group(1)}"
-            self.status_label.setText(f"{self._current_progress_base}: starting...")
-            return
-        render_pass = RENDER_PASS_RE.match(line)
-        if render_pass:
-            self.status_label.setText(f"Done: rendered {render_pass.group(1)}")
-            self._current_progress_base = ""
-            return
-        render_fail = RENDER_FAIL_RE.match(line)
-        if render_fail:
-            self.status_label.setText(f"Render failed: {render_fail.group(1)}")
-            self._current_progress_base = ""
-            return
-
-        for pattern, status in (
-            (RUNNING_LOG_RE, "running"),
-            (MOVING_LOG_RE, "moving"),
-            (PASS_LOG_RE, "pass"),
-            (FAIL_LOG_RE, "fail"),
-        ):
-            match = pattern.match(line)
-            if match:
-                jobname = match.group(1)
-                # "Update previews"' own temp megadeck (update_all_previews.py)
-                # shares this same PASS log line with no other channel back to
-                # the GUI -- excluded here unconditionally, not gated on the
-                # checkbox, since nobody wants a 639-slide throwaway PDF
-                # popping open regardless of their normal auto-open preference.
-                is_preview_all = jobname.startswith(update_all_previews.JOBNAME_PREFIX)
-                if status == "pass" and self.build_options.auto_open_checkbox.isChecked() and not is_preview_all:
-                    self._open_pdf(jobname)
-                if status in ("running", "moving"):
-                    base = self._job_progress_texts.get(jobname, "")
-                    if status == "running":
-                        self._current_progress_base = base
-                        if base:
-                            self.status_label.setText(f"{base}: starting...")
-                    elif base:
-                        self.status_label.setText(f"{base}: compiled, relocating PDF...")
-                break
-        else:
-            done_match = DONE_LOG_RE.match(line)
-            if done_match:
-                self.status_label.setText(f"Done: {done_match.group(1)}")
-                return
-            run_match = RUN_NUMBER_RE.match(line)
-            if run_match and self._current_progress_base and not self._progress.active:
-                # (with compile_progress tracking the job, _apply_progress()
-                # writes the richer "pass 2/4, slide 137/395" text instead)
-                run_number = run_match.group(1)
-                self.status_label.setText(f"{self._current_progress_base}: Compile {run_number}...")
+        changed = self._run.feed(line) if self._run is not None else None
+        if (changed is not None and changed.state == DONE and changed.pdf is not None
+                and self._run_opens_pdfs and self.build_options.auto_open_checkbox.isChecked()):
+            self._open_pdf(changed.pdf)
+        if progress_update is not None or changed is not None:
+            self._refresh_job_panel()
 
     def log(self, line: str) -> None:
         """Public entry point for the centre column's views and the dialogs
         to append to the log pane -- always called from the main thread (a
         button/dialog action)."""
         self._log(line)
-

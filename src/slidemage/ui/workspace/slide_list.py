@@ -20,7 +20,6 @@ from typing import Callable, Optional
 from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,

@@ -59,8 +59,8 @@ def test_per_task_model_defaults_reach_every_picker(tmp_path, monkeypatch, qapp)
             self.theme = ThemeManager()
             self.set_dark_mode = lambda _value: None
             self.set_tab_width_chars = lambda _value: None
-            self.try_start_ollama_task = lambda _label: True
-            self.end_ollama_task = lambda: None
+            self.try_start_ollama_task = lambda _label, _provider=None: True
+            self.end_ollama_task = lambda _provider=None: None
             self.log = lambda _message: None
 
     app = App()

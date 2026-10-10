@@ -45,6 +45,8 @@ _FAIL_RE = re.compile(r"^\*\*\* FAIL: (\S+) --")
 _RENDER_PASS_RE = re.compile(r"^==== PASS: render of (\S+) ->")
 _RENDER_FAIL_RE = re.compile(r"^\*\*\* FAIL: render of (\S+) --")
 _STOPPED_RE = re.compile(r"^==== (Stopped:|Stop requested)")
+# A queued job the user took out of the run.
+_SKIPPED_RE = re.compile(r"^==== Skipped: (\S+) ====")
 # A job that ends without publishing a PDF (deck_snapshot's reference and
 # verification compiles) says so explicitly.
 _FINISHED_RE = re.compile(r"^==== Finished: (\S+) ====")
@@ -109,26 +111,6 @@ def spec_for_job(job) -> JobSpec:
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
                    count_job_slides(job.deck, job.version, job.chapter),
                    estimated=not known)
-
-
-def build_progress_texts(jobs: list) -> dict[str, str]:
-    """One human-readable "what job is this" line per job, keyed by
-    jobname. The "Deck n/m" prefix counts compiles, not distinct decks
-    (2026-10-03, direct instruction): ten deck versions of four decks are
-    "Deck 1/10" ... "Deck 10/10", each version being a compile of its own."""
-    total = len(jobs)
-    texts: dict[str, str] = {}
-    for position, job in enumerate(jobs, start=1):
-        prefix = f"Deck {position}/{total} | " if total > 1 else ""
-        if job.chapter is None:
-            texts[job.jobname] = f"{prefix}Compiling {job.deck.name}"
-        else:
-            total_chapters = len(job.deck.chapters)
-            texts[job.jobname] = (
-                f"{prefix}Compiling {job.deck.name}: Chapter {job.chapter.order}/"
-                f"{total_chapters}"
-            )
-    return texts
 
 
 class BatchProgress:
@@ -242,6 +224,8 @@ class BatchProgress:
                     elif _STOPPED_RE.match(line):
                         self.reset({})      # stopped by the user: back to idle
                         self._announced = True
+                    elif m := _SKIPPED_RE.match(line):
+                        self._skip(m.group(1))
         elif line.startswith("*** FAIL"):
             if _FAIL_RE.match(line) or _RENDER_FAIL_RE.match(line):
                 self._finish_current()
@@ -254,6 +238,12 @@ class BatchProgress:
         if after == before:
             return None
         return (after[0], after[1], False)
+
+    def _skip(self, jobname: str) -> None:
+        """A queued job that will not run counts as done work."""
+        if jobname in self._specs and jobname not in self._finished:
+            self._finished.add(jobname)
+            self._done_units += self._specs[jobname].units
 
     def _begin(self, jobname: str, fallback: JobSpec, force: bool = False) -> None:
         """A job starts. Jobs announced up front (reset()) keep their spec;

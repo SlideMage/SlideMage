@@ -92,9 +92,8 @@ def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, bu
     seen: list = []
     press_on_exec(monkeypatch, button, seen)
     win = QWidget()
-    win._job_output_paths = {}
     win._log = lambda line: None
-    result = CompileJobsMixin._confirm_unchanged_jobs(win, jobs)
+    result = CompileJobsMixin._confirm_unchanged_jobs(win, jobs, {})
     assert [j.jobname for j in result] == expected
     assert "t-A-instructor (compiled 2026-10-08 07:51)" in seen[0][0]
 
@@ -104,8 +103,7 @@ def test_nothing_unchanged_no_question(qapp, monkeypatch):
     monkeypatch.setattr(compile_jobs.compiler, "unchanged_jobs", lambda jobs, dests: [])
     monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked"))
     win = QWidget()
-    win._job_output_paths = {}
-    assert CompileJobsMixin._confirm_unchanged_jobs(win, jobs) == jobs
+    assert CompileJobsMixin._confirm_unchanged_jobs(win, jobs, {}) == jobs
 
 
 # ---------------------------------------------------------------- dialog
@@ -203,8 +201,7 @@ def run_window(monkeypatch, settings, compiling=False):
     signal = lambda name: SimpleNamespace(emit=lambda *a: emitted.append((name, *a)))  # noqa: E731
     topbar = SimpleNamespace(set_compiling=lambda on: emitted.append(("compiling", on)))
     win = SimpleNamespace(
-        compiling=compiling, cancel_token=None, _after_snapshots=None,
-        _job_progress_texts={}, _progress=compile_progress.BatchProgress(),
+        compiling=compiling, cancel_token=None, _after_snapshots=None, begun=None, _worker=None,
         build_options=SimpleNamespace(
             footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
@@ -212,7 +209,13 @@ def run_window(monkeypatch, settings, compiling=False):
         signals=SimpleNamespace(log=signal("log"), batch_done=signal("batch_done"),
                                 snapshots_done=signal("snapshots_done")),
     )
-    for name in ("_start_snapshots", "_run_snapshots_thread"):
+
+    def begin_run(labels, specs, **kwargs):
+        win.begun = labels
+        win.compiling, win.cancel_token = True, object()
+
+    win._begin_run = begin_run
+    for name in ("_start_snapshots", "_run_snapshots_thread", "_start_worker"):
         setattr(win, name, getattr(CompileJobsMixin, name).__get__(win))
 
     class SyncThread:
@@ -244,7 +247,7 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
     assert seen["decks"] == ["t-A", "t-B"] and seen["delete_old"] == old
     assert seen["options"].footer_timestamp is True and seen["options"].appendix_toc is None
     # progress knows every reference and verification compile up front
-    assert set(win._job_progress_texts) == {
+    assert set(win.begun) == {
         "snapshot~t-A", "verify~t-A", "snapshot~t-A-presenter", "verify~t-A-presenter",
         "snapshot~t-B", "verify~t-B", "snapshot~t-B-presenter", "verify~t-B-presenter"}
     assert win.compiling is False and win.cancel_token is None       # slot freed again

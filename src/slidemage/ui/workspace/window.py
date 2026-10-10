@@ -31,17 +31,15 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
     QSplitter,
     QStackedWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ... import app_settings, bibliography, compile_progress, deck_headers, latex_edit, project, slide_ids, updater
+from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, slide_ids, updater
 from ... import version as version_mod
+from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
 from ...qt_add_slide_dialog import AddSlideDialog
 from ...qt_import_dialog import ImportPresentationDialog
@@ -50,11 +48,10 @@ from ...qt_slide_search_dialog import SlideSearchDialog
 from ...qt_transcript_preview_tab import TranscriptPreviewTab
 from ...qt_transcript_tab import TranscriptTab
 from ...slide_ids import SLIDES_DIR
-from ...slide_language import bare_id
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
 from .centre import CentreColumn
-from .compile_jobs import BuildOptionsDialog, CompileJobsMixin, CompileSignals
+from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
 from .side_panels import SidePanels
@@ -62,7 +59,6 @@ from .slide_list import SlideList
 from .state import WorkspaceState
 from .topbar import TopBar
 
-LOG_HEIGHT = 150
 # Settings key of the deck that was open when the app was last closed.
 LAST_DECK_KEY = "last_deck"
 
@@ -76,16 +72,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         if updater.can_self_update():
             updater.remove_leftover_binary(Path(sys.executable))
 
-        self.compiling = False
-        self.cancel_token = None
-        # Resolved once per job in _compile_jobs() (compiler.resolve_output_location()
-        # -- a deck's own \deckoutputfolder, or PDF_DIR/jobname) so
-        # _open_pdf() knows exactly where a job's PDF actually landed
-        # without re-deriving it, which is only ever correct for a deck
-        # with no override and no full-filename override either.
-        self._job_output_paths: dict[str, Path] = {}
-        self._job_progress_texts: dict[str, str] = {}
-        self._current_progress_base = ""
         # Open Project... relaunches the process only after the same dirty
         # editor resolution used by closeEvent. That path has already
         # recorded the user's Save/Discard choice, so the subsequent close
@@ -106,16 +92,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         # local Ollama server's own resource limit, not a bug this app can
         # fix). See try_start_ollama_task()/end_ollama_task() below.
         self._ollama_task_label: Optional[str] = None
-
-        self.signals = CompileSignals()
-        self.signals.log.connect(self._log)
-        self.signals.enable_button.connect(lambda w: w.setEnabled(True))
-        self.signals.batch_done.connect(self._on_batch_done)
-        self.signals.update_check_done.connect(self._on_startup_update_check_done)
-        self.signals.snapshots_done.connect(self._on_snapshots_done)
-        # What to do with a snapshot run's results instead of showing the
-        # summary (the archive flow archives the deck), see _start_snapshots().
-        self._after_snapshots: Optional[Callable[[list], None]] = None
 
         self.state = WorkspaceState(self)
         self.build_options = BuildOptionsDialog(self, self.state)
@@ -158,15 +134,19 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         body_layout.setContentsMargins(12, 12, 12, 12)
         body_layout.addWidget(self.splitter)
         outer.addWidget(body, 1)
-        outer.addWidget(self._build_log_panel())
         self.setCentralWidget(central)
+        self._init_compile(central)
+        self.signals.update_check_done.connect(self._on_startup_update_check_done)
 
         self._commands: dict[str, Callable[[], None]] = {
             "images": self._toggle_images,
             "stop": self._stop_compilation,
             "build_options": self.build_options.exec,
             "compile:pages": self._compile_pages,
+            "compile:slides": lambda: self._compile_slides(list(self.state.selected_or_focused())),
             "compile:several": self._compile_several,
+            "compile:everything": self._compile_everything,
+            "log": self.log_drawer.toggle,
             "open_pdf": self._for_deck(self._on_open_latest_pdf),
             "deck_settings": self._for_deck(self._on_deck_settings),
             "admin_slides": self._for_deck(self._on_admin_slides),
@@ -207,60 +187,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
         self.reload_decks()
 
-    # -- layout pieces ---------------------------------------------------------
-
-    def _build_log_panel(self) -> QWidget:
-        """The log under the columns -- replaced by the Log drawer in step 7."""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 0, 12, 8)
-        header = QHBoxLayout()
-        header.addWidget(QLabel("Log:"))
-        self.status_label = QLabel("")
-        self.status_label.setObjectName(WARNING_LABEL)
-        header.addWidget(self.status_label)
-        header.addStretch()
-        self.copy_log_button = QToolButton()
-        self.copy_log_button.setText("Copy log")
-        self.copy_log_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self.copy_log_button.setAutoRaise(True)
-        self.copy_log_button.setToolTip("Copy the entire log to the clipboard.")
-        self.copy_log_button.clicked.connect(self._copy_log)
-        header.addWidget(self.copy_log_button)
-        self.clear_log_button = QToolButton()
-        self.clear_log_button.setText("Clear log")
-        self.clear_log_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self.clear_log_button.setAutoRaise(True)
-        self.clear_log_button.setToolTip("Remove all lines from the log.")
-        self.clear_log_button.clicked.connect(self._clear_log)
-        header.addWidget(self.clear_log_button)
-        layout.addLayout(header)
-
-        # Compile progress (2026-09-27, direct instruction): a thin line
-        # right at the top edge of the log window, in the same blue as the
-        # "Create PDF" button. Its own zero-spacing box so it touches the
-        # log; it keeps its 3 px even when idle (transparent), so the log
-        # never jumps when a compile starts. Driven by compile_progress.py.
-        self._progress = compile_progress.BatchProgress()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(3)
-        self.progress_bar.setRange(0, 1000)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet(
-            "QProgressBar { border: 0; background: transparent; }"
-            " QProgressBar::chunk { background-color: #0066cc; }")
-        self.log_text = QPlainTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setFixedHeight(LOG_HEIGHT)
-        log_box = QVBoxLayout()
-        log_box.setSpacing(0)
-        log_box.setContentsMargins(0, 0, 0, 0)
-        log_box.addWidget(self.progress_bar)
-        log_box.addWidget(self.log_text)
-        layout.addLayout(log_box)
-        return panel
-
     # -- commands from the top bar ---------------------------------------------
 
     def _on_command(self, key: str) -> None:
@@ -290,10 +216,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         by_name = next((d for d in self.decks if current and d.name == current.name), None)
         last = next((d for d in self.decks if d.name == remembered), None)
         first_active = next((d for d in self.decks if not d.archived), None)
-        self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
-        self.slide_list.rebuild()   # a fresh scan of the open deck is no switch (state.set_deck)
-        self.centre.refresh()
-        self.side_panels.refresh()
+        switched = self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
+        if not switched:   # a fresh scan of the open deck is no switch (state.set_deck): nothing told the views
+            self.slide_list.rebuild()
+            self.centre.refresh()
+            self.side_panels.refresh()
 
     def _remember_deck(self, deck: Optional[Deck]) -> None:
         if deck is not None:
@@ -309,6 +236,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         just be noise) are unaffected."""
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
+            deck_outline.forget_lint()   # the bibliography or an image may have changed on disk
             self.reload_decks()
         finally:
             QApplication.restoreOverrideCursor()
@@ -420,11 +348,17 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         return next((deck for deck in self.decks if deck.path == deck_path), None)
 
     def closeEvent(self, event) -> None:
-        """Resolve unsaved source and image edits before application exit."""
+        """Resolve unsaved source and image edits before application exit; a compile run is stopped."""
+        if self.compiling and QMessageBox.question(
+                self, "Compile running", "A compile run is in progress. Stop it and quit?"
+        ) != QMessageBox.StandardButton.Yes:
+            event.ignore()
+            return
         if not self._dirty_edits_resolved_for_close and not self._resolve_dirty_edits():
             event.ignore()
             return
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
+        self._stop_worker()
         super().closeEvent(event)
 
     def _resolve_dirty_edits(self) -> bool:
@@ -586,7 +520,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         always does, as its own last step)."""
         self.reload_decks()
 
-    def try_start_ollama_task(self, label: str) -> bool:
+    def try_start_ollama_task(self, label: str, provider: Optional[ChatProvider] = None) -> bool:
         """Reserves the single app-wide Ollama slot for `label` (a short
         present-participle phrase, e.g. "drafting descriptions" --
         appears in the busy message below). Returns False, and shows why,
@@ -602,7 +536,13 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         crash (2026-08-25, direct report), almost certainly from two
         different models being loaded into VRAM simultaneously, which is a
         limit of the local Ollama server itself, not something this app can
-        negotiate around."""
+        negotiate around.
+
+        A task on a cloud `provider` needs no slot (and takes none, so it
+        neither waits for a local task nor makes one wait); every call
+        passes the provider to both calls. No provider means Ollama."""
+        if provider is not None and not provider.is_local:
+            return True
         if self._ollama_task_label is not None:
             QMessageBox.warning(
                 self, "Ollama busy",
@@ -615,8 +555,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self._ollama_task_label = label
         return True
 
-    def end_ollama_task(self) -> None:
-        self._ollama_task_label = None
+    def end_ollama_task(self, provider: Optional[ChatProvider] = None) -> None:
+        if provider is None or provider.is_local:
+            self._ollama_task_label = None
 
     def _regenerate_headers_bg(self) -> None:
         changed, n_decks = deck_headers.regenerate_headers()

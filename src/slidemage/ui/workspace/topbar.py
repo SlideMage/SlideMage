@@ -100,6 +100,8 @@ class TopBar(QWidget):
 
         state.deck_changed.connect(self._on_deck_changed)
         state.view_changed.connect(self._on_view_changed)
+        state.selection_changed.connect(lambda _ids: self._rebuild_compile_menu())
+        state.focused_slide_changed.connect(lambda _id: self._rebuild_compile_menu())
         state.language_changed.connect(self._languages.set_current)
         state.mode_changed.connect(self._modes.set_current)
         state.lint_errors_changed.connect(lambda count: self._modes.set_badge("source", count))
@@ -145,7 +147,8 @@ class TopBar(QWidget):
     def _rebuild_compile_menu(self) -> None:
         if self._compile_menu is not None:
             self._compile_menu.deleteLater()
-        self._compile_menu = build_compile_menu(self, self._state.deck, self._compiling)
+        self._compile_menu = build_compile_menu(
+            self, self._state.deck, self._compiling, len(self._state.selected_or_focused()))
         self._compile_menu.triggered.connect(self.command)
         self._compile.set_menu(self._compile_menu)
 

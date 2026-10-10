@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QScrollArea,
     QVBoxLayout,
-    QWidget,
 )
 
 from ... import syntax_check
@@ -150,6 +149,7 @@ class AiFixPanel(Surface):
         self.editor = editor
         self.filename = filename
         self._worker: Optional[_CheckWorker] = None
+        self._provider = None   # the running check's, whose Ollama slot it holds
         self._rows: list[_IssueRow] = []
         self._models_loaded = False
         self.setObjectName(q.AI_PANEL)
@@ -226,9 +226,10 @@ class AiFixPanel(Surface):
         if not self._models_loaded:
             self.refresh_model_preference()
         provider = provider_from_combo(self, self.model_combo, "this file's full LaTeX source")
-        if provider is None or not self.app.try_start_ollama_task("checking syntax"):
+        if provider is None or not self.app.try_start_ollama_task("checking syntax", provider):
             self._show_state()
             return
+        self._provider = provider   # whose Ollama slot stop() and _on_finished() give back
         self._clear_rows()
         self.status.setText(f"Checking with {provider.label}… (Esc to abort)")
         worker = _CheckWorker(syntax_check.SyntaxChecker(provider), self.editor.text())
@@ -254,7 +255,7 @@ class AiFixPanel(Surface):
             return
         worker.checker.abort()
         worker.wait(5000)
-        self.app.end_ollama_task()
+        self.app.end_ollama_task(self._provider)
         self.running_changed.emit(False)
         self._show_state()
 
@@ -268,7 +269,7 @@ class AiFixPanel(Surface):
             return
         self._worker = None
         worker.wait()
-        self.app.end_ollama_task()
+        self.app.end_ollama_task(self._provider)
         self.running_changed.emit(False)
         if result.cancelled:
             self.status.setText("Check aborted.")

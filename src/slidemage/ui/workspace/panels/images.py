@@ -105,6 +105,7 @@ class ImageDescriptions(SidePanel):
         super().__init__(app, state)
         self._forms: list[ImageForm] = []
         self._slide: Optional[tuple[str, Path]] = None   # (bare id, file) the forms belong to
+        self._slot_provider = None
         self.drafted.connect(self._on_drafted)
 
     def meta(self) -> str:
@@ -182,8 +183,9 @@ class ImageDescriptions(SidePanel):
                                     "it cannot render, or the file is missing.")
             return
         provider = provider_for_task(self, "image_description", "the slide's text and this image")
-        if provider is None or not self.app.try_start_ollama_task("drafting a description"):
+        if provider is None or not self.app.try_start_ollama_task("drafting a description", provider):
             return
+        self._slot_provider = provider   # whose Ollama slot _on_drafted gives back
         form.redraft_button.setEnabled(False)
         form.note.setText(f"Drafting with {provider.label}…")
         form.note.show()
@@ -195,7 +197,7 @@ class ImageDescriptions(SidePanel):
         self.drafted.emit(reference, backend.draft(resolved, context))
 
     def _on_drafted(self, reference: str, result) -> None:
-        self.app.end_ollama_task()
+        self.app.end_ollama_task(self._slot_provider)
         form = next((f for f in self._forms if f.reference == reference), None)
         if form is None:
             return   # the slide changed meanwhile

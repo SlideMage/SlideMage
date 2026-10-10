@@ -46,8 +46,9 @@ def test_main_window_builds(monkeypatch):
     window.show()
     app.processEvents()
     window._log("line one")
-    window.clear_log_button.click()
-    assert window.log_text.toPlainText() == ""
+    assert window.log_drawer.text.toPlainText() == "line one"
+    window.log_drawer.clear_button.click()
+    assert window.log_drawer.text.toPlainText() == ""
     window.close()
 
 

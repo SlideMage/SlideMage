@@ -149,3 +149,19 @@ def test_no_deck_leaves_the_settings_alone():
     state.set_view("after-course")               # nothing to remember it for
     state.set_deck(None)
     assert app_settings.get(SETTINGS_KEY) is None
+
+
+def test_set_deck_says_whether_it_switched_and_the_selection_falls_back_to_the_focus():
+    def make(name):
+        return Deck(name=name, path=Path(f"{name}.tex"), archived=False, text="", supports_version=True,
+                    uses_biblatex=False, preamble_end=0, chapters=[], output_folders={})
+
+    state = WorkspaceState()
+    assert state.set_deck(make("a")) is True
+    assert state.set_deck(make("a")) is False        # a rescan of the open deck
+    assert state.set_deck(make("b")) is True
+    assert state.selected_or_focused() == ()
+    state.set_focused_slide("1ab")
+    assert state.selected_or_focused() == ("1ab",)
+    state.set_selection(("2cd", "3ef"))
+    assert state.selected_or_focused() == ("2cd", "3ef")
