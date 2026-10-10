@@ -1,7 +1,8 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: **done** on branch `ui-redesign` (SlideMage 6.0.0). Steps 1–11 are done, including 11b (docs, manual,
-screenshots, the version bump); what stays open is listed under "After the redesign" in "Progress and handover".
+Status: **done** on branch `ui-redesign` (SlideMage 6.0.0, latest commit `b10c4e5`). Steps 1–11 and the
+optional kit restyle are done; not merged into `main`, not tagged. What stays open is listed under
+"Next actions" and "After the redesign" in "Progress and handover".
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
 (plus `sm-images.js`, `support.js`, `latex/slidemage-logo.svg`).
@@ -45,18 +46,29 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 11b: 1421 passed, 6 skipped (29 s; the
-rise from 1328 is `test_smoke.py` importing every module of the package, not only the top-level
-ones; one new preview-prune test); ruff clean. Suite time varies with machine load (9–18 s for the same
+Last updated 2026-10-10. Suite after the kit restyle: 1424 passed, 6 skipped (29 s; the
+rise from 1328 in 11a is `test_smoke.py` importing every module of the package, not only the
+top-level ones); `ruff check .` clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
 ### Resume here (next session)
 The redesign is finished: nothing in the steps below is left to do. Run the suite once
-(expect 1421 passed, 6 skipped), `git log --oneline -15` on `ui-redesign`, and see
-"After the redesign" for what is still open. Working tree should be clean apart from
+(expect 1424 passed, 6 skipped), `git log --oneline -15` on `ui-redesign` (latest:
+`b10c4e5` kit restyle), and start from "Next actions" below. Working tree should be clean apart from
 untracked `uv.lock` and `.claude/` (both left untracked on purpose; don't commit them). If a
 test fails with a git-checkout symptom (`test_bundled_copies`), look for a stray empty
 `/tmp/.git` left by an earlier agent run and remove it.
+
+### Next actions (in this order; each needs the user's go)
+1. **Screenshots and release note after the restyle** (~50–80k): regenerate the
+   `example/media/screenshot-slidemage-*` images that show sheets or form controls
+   (Settings, Deck settings, Add slide, Images page; `make_screenshots.py OUT --only ...`,
+   then copy the `MANUAL_IMAGES` crops), look at each, and add one line about the restyle to
+   the v6.0.0 entry in `version.py`.
+2. **CI libraries for QtWebEngine** in `.github/workflows/ci.yml` and `release.yml` (small;
+   see "CI and release runners" below); confirm with one CI run.
+3. **Merge `ui-redesign` into `main` and tag `v6.0.0`** (user decision; outward-facing).
+4. **User-side checks** (below) before or right after the release.
 
 ### After the redesign (open points)
 - **Merge decision:** the branch `ui-redesign` (6.0.0) is not merged into `main`; the release
@@ -76,7 +88,7 @@ test fails with a git-checkout symptom (`test_bundled_copies`), look for a stray
   them as examples only.
 - **Windows and macOS are untested:** the one-file build (294 MiB on Linux), pywinpty, `claude.cmd`
   and the frozen hook's stdin on Windows, QtWebEngine on both.
-- **Kit restyle: done** (~220k). `kit_qss.build_kit_qss(tokens, icons)` is now the whole
+- **Kit restyle: done** (~210k, commit `b10c4e5`). `kit_qss.build_kit_qss(tokens, icons)` is now the whole
   application stylesheet: a base (plain widgets, tooltips, menus), then line edits, text edits,
   spin boxes, combos, checkboxes, radio buttons, list widgets, progress bars and scroll bars
   in kit style for every dialog and page, with no per-widget code (a grey field with a line
@@ -109,14 +121,21 @@ test fails with a git-checkout symptom (`test_bundled_copies`), look for a stray
   versions as `v1-0-0`.
 - **Manual:** the slides carry their old `\setSlideVersion` numbers; the 11b rewrite was made in
   place without freezing the old text (frozen versions are made by SlideMage's Save or
-  Freeze as vX.Y.Z; the frozen `1ub`, `1ti`, `1b6`, `1b2`, `1d8`, `1ih` still name images that
-  were replaced or removed, which only matters if a deck pins them). Compile the manual
+  Freeze as vX.Y.Z). The four old screenshots that frozen versions still use
+  (`deck-editor-list`, `deck-table`, `images-tab`, `slide-editor-buttons`) were restored after
+  11b so those versions still compile; their alt-text entries were removed in 11b. Images
+  whose name was kept (`main-window`, `slide-editor`, `tags-dialog`, `transcript`) now show
+  the new UI in the frozen versions too. 11b also rewrote the free-text comment lines under
+  the header of the rewritten slides (the protected header lines are unchanged). Compile the manual
   twice; `latexmk` stops with "too many passes" (the Top Margin `.top` file keeps changing; the
   PDF is complete, and it did so before 6.0). `screenshot-slidemage-save-dialog.png` is the one
   screenshot `tools/manual/make_screenshots.py` does not make.
 
-### Remaining work and size (estimate 2026-10-10)
-About 5% of the user's 5-hour window per ~100k agent tokens.
+### Work done and its size (actuals 2026-10-10)
+About 5% of the user's 5-hour window per ~100k Sonnet agent tokens. Agents
+overshot their estimates (and stated caps) on most steps; a hard cap in the
+brief ("stop at ~N, report what is left") was respected only when phrased as
+a hard stop.
 
 | Work | Content | Agent tokens | ≈ window |
 |---|---|---|---|
@@ -126,21 +145,20 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~10c Claude Code terminal~~ | done (~380k actual) | | |
 | ~~10d-1 Cleanup~~ | done (~90k actual) | | |
 | ~~10d-2 Ollama tool calling~~ | done (~190k actual) | | |
-| ~~Review before 11~~ | done: 12 Haiku reviewers + one Sonnet fix agent | | |
-| ~~11a Finish switch-over, code~~ | done: no `qt_*` module left, screenshots tool, PyInstaller spec checked, stray preview wrappers | | |
-| ~~11b Finish switch-over, docs~~ | done: README, `docs/`, manual slides and screenshots, 6.0.0 | | |
-| ~~Kit restyle~~ | done: global kit-style controls, view chips, QSS colour tokens, panel helpers, `ClickFrame`, Add slide thumbnails (~220k actual) | | |
+| ~~Review before 11~~ | done: 12 Haiku reviewers (~800k Haiku) + one Sonnet fix agent (~400k; estimate was 150–200k in total) | | |
+| ~~11a Finish switch-over, code~~ | done: no `qt_*` module left, screenshots tool, PyInstaller spec checked, stray preview wrappers (~260k) | | |
+| ~~11b Finish switch-over, docs~~ | done: README, `docs/`, manual slides and screenshots, 6.0.0 (~540k; cap was 350k) | | |
+| ~~Kit restyle~~ | done: global kit-style controls, view chips, QSS colour tokens, panel helpers, `ClickFrame`, Add slide thumbnails (~210k) | | |
 
-Remaining after 10d-2 ≈ 350–600k agent tokens (≈ 18–30% of one
-window; recent steps landed at the top of their estimates). Pause after
-each committed step.
+Pause after each committed step.
 
 A cheap whole-code review that worked: 12 parallel read-only Haiku
 reviewers (Explore, `model: haiku`), each on a ~1–1.5k-line slice, max
 12 findings tagged bug/simplify/layering with file:line; the
 orchestrator spot-checks bug claims (one of ~120 was false) and hands
 the confirmed list to one Sonnet agent (review fixes: ~160k tokens).
-Worth repeating before step 11.
+Repeated before step 11 on ~7k new lines: ~120 findings, ~55 kept, fixes
+~400k Sonnet tokens (a list that long is better split over two fix agents).
 
 | Step | Commit | State |
 |---|---|---|
@@ -165,10 +183,11 @@ Worth repeating before step 11.
 | 10b. Chat UI + Chat \| Claude Code switch (`ui/workspace/chat/`) | (see git log) | done |
 | 10c. Claude Code terminal (`ui/workspace/terminal/`, MCP server, hook) | (see git log) | done |
 | 10d-1. Remove `qt_ai_draft_dialog.py` (Tools ▾ "Ask the chat…"), chat takes the Ollama slot | (see git log) | done |
-| 10d-2. Ollama tool calling in the chat (`OllamaProvider.stream_turn`), tool-capable model pickers, dead AI-drafting settings removed | (see git log) | done |
-| Review fixes (before 11): 12 Haiku reviewers, one Sonnet fix agent; list A–E below | (see git log) | done |
-| 11a. Finish switch-over (code): `qt_ai_models` → `ui/ai_models.py`, `qt_citation_dialog` → `ui/dialogs/citation.py` (kit sheet), `qt_gui.main` → `ui/app.py`; `make_screenshots.py` rewritten; PyInstaller spec; preview wrappers pruned | (see git log) | done |
-| 11b. Docs, manual, screenshots, 6.0 bump: README, `docs/SlideMage.md`, `PROJECT_OVERVIEW.md`, `SlidemasterManual.md`, `PYSIDE6_MIGRATION.md` (historical), 27 manual slides rewritten or edited and 3 new ones (Side panels, Find anything, The AI assistant), 13 new screenshots made by `make_screenshots.py` (`MANUAL_IMAGES`), `VERSION_NUMBER` v6.0.0 with its release notes and a `compat` entry | (see git log) | done |
+| 10d-2. Ollama tool calling in the chat (`OllamaProvider.stream_turn`), tool-capable model pickers, dead AI-drafting settings removed | `ddca27b` | done |
+| Review fixes (before 11): 12 Haiku reviewers, one Sonnet fix agent; list A–E below | `1c7e047` | done |
+| 11a. Finish switch-over (code): `qt_ai_models` → `ui/ai_models.py`, `qt_citation_dialog` → `ui/dialogs/citation.py` (kit sheet), `qt_gui.main` → `ui/app.py`; `make_screenshots.py` rewritten; PyInstaller spec; preview wrappers pruned | `0b9a57c` | done |
+| 11b. Docs, manual, screenshots, 6.0 bump: README, `docs/SlideMage.md`, `PROJECT_OVERVIEW.md`, `SlidemasterManual.md`, `PYSIDE6_MIGRATION.md` (historical), 27 manual slides rewritten or edited and 3 new ones (Side panels, Find anything, The AI assistant), 13 new screenshots made by `make_screenshots.py` (`MANUAL_IMAGES`), `VERSION_NUMBER` v6.0.0 with its release notes and a `compat` entry | `8eb822b` | done |
+| Kit restyle (optional): kit stylesheet for all controls, `ToggleChip`, colour tokens, `ClickFrame`, panel helpers, Add slide thumbnails | `b10c4e5` | done |
 
 ### Review fixes (before 11)
 Applied from 12 read-only Haiku reviews of 9d-2 to 10d-2 (all A–E items; 43
