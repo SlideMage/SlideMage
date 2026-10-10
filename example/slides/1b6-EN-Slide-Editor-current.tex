@@ -1,25 +1,24 @@
 %% Included in decks: slidemage-manual
 %%
 
-% SlideMage manual, chapter "Working in SlideMage": the slide editor, on the
-% standardframe demo slide (tools/manual/make_screenshots.py). Writing and
-% seeing the result here; slide 1b2 explains the slide-level buttons and the
-% AI buttons.
+% SlideMage manual, chapter "Working in SlideMage": the Source view, on the standardframe
+% demo slide (tools/manual/make_screenshots.py, shot workspace-source). Slide 1b2
+% explains the slide-level actions, 1cb the panels.
 \setSlideVersion{1-1-1}
-\begin{standardframe}{The slide editor}
+\begin{standardframe}{Preview, source and split}
 	\small
-	A slide's source opens in the slide editor, from the deck editor or from the \emph{Slide name search} in the main window. You write the LaTeX directly: the	source uses syntax highlighting, aided by toolbar buttons. To see the result you do not have to compile the whole deck.
+	The middle column shows the focused slide as \emph{Preview}, \emph{Split}, \emph{Source} or \emph{Details}, chosen above it. In \emph{Source} you write the LaTeX directly.
 	\par\smallskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.54\linewidth}
+		\begin{column}{0.52\linewidth}
 			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-slide-editor.png}}}
 		\end{column}
-		\begin{column}{0.42\linewidth}
-			\shrinklists{3}
+		\begin{column}{0.45\linewidth}
+			\shrinklists{2}
 			\begin{itemize}
-				\item \textbf{Writing.} The tinted buttons above the source insert styles, footnotes, colors, lists, blocks, commands and citations; \emph{Find}, \emph{Reindent} and \emph{Revert} search and replace, tidy indentation, and drop changes since the last save.
-				\item \textbf{Seeing the result.} \emph{Render to PDF} compiles the text in the editor, saved or not. \emph{Preview} shows the picture from the last compile of the saved slide (instant, maybe outdated). \emph{Render transcript} shows its transcript entry.
-				\item \textbf{Transcript summary.} An optional sentence at the head of the slide's transcript entry.
+				\item \textbf{Writing.} Buttons above the source insert styles, footnotes and colors; \emph{Insert} adds lists, blocks, commands, links and code files; \emph{Cite} searches the bibliography. \emph{Save} (\SMCode{Ctrl+S}) asks how big the change is.
+				\item \textbf{Checking.} A line below the toolbar names mistakes as you type; \emph{Ask AI to fix} hands them to the chat.
+				\item \textbf{Seeing the result.} \emph{Render} redraws the Preview; its arrow renders the editor's text, saved or not (\SMCode{Ctrl+R}). \emph{Split} shows both side by side.
 			\end{itemize}
 		\end{column}
 	\end{columns}

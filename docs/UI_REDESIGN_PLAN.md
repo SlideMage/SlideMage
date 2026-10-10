@@ -1,7 +1,7 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–9, 10a–10d, the review and 11a (code) done; next is 11b (docs, manual,
-screenshots, 6.0 bump; see "Progress and handover").
+Status: **done** on branch `ui-redesign` (SlideMage 6.0.0). Steps 1–11 are done, including 11b (docs, manual,
+screenshots, the version bump); what stays open is listed under "After the redesign" in "Progress and handover".
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
 (plus `sm-images.js`, `support.js`, `latex/slidemage-logo.svg`).
@@ -45,35 +45,59 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after 11a: 1421 passed, 6 skipped (29 s; the
+Last updated 2026-10-10. Suite after 11b: 1421 passed, 6 skipped (29 s; the
 rise from 1328 is `test_smoke.py` importing every module of the package, not only the top-level
 ones; one new preview-prune test); ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
 ### Resume here (next session)
-1. Read this section, then `git log --oneline -15` on `ui-redesign`
-   (latest step commit: 10d-2, see the log; the review fixes before 11 and
-   11a are in the working tree until the orchestrator commits them). Working tree
-   should be clean apart from untracked `uv.lock` and `.claude/` (both left
-   untracked on purpose; don't commit them). Run the suite once (expect
-   1328 passed, 6 skipped). If a test fails with a git-checkout symptom
-   (`test_bundled_copies`), look for a stray empty `/tmp/.git` left by
-   an earlier agent run and remove it.
-2. Re-fetch the prototype into the new session's scratchpad only if a
-   step needs it (neither the review nor 11 does; see "How the work is run").
-3. Next is **step 11b**: README, `docs/SlideMage.md`, `SlidemasterManual.md`
-   and the manual slides, the screenshots of the manual (11a made the tool
-   and a first set, see "11a leftovers for 11b" below), `PYSIDE6_MIGRATION.md`
-   marked historical, `version.py` release-note text that names removed
-   modules, the 6.0 version bump. Optional kit restyle before or after.
-   Size it before starting (est. 100–200k tokens).
-4. User-side checks still open (need the user's quota or key): try a local
-   tool-capable model in the Chat once on a real slide edit (the live test only
-   reads); try the
-   Claude Code tab once (focused slide visible via MCP; an edit of a
-   slide header must be blocked by the hook); the chat against real
-   Claude needs an API key (`ANTHROPIC_API_KEY`; the user has a Pro
-   subscription only, so the Claude Code tab is their main route).
+The redesign is finished: nothing in the steps below is left to do. Run the suite once
+(expect 1421 passed, 6 skipped), `git log --oneline -15` on `ui-redesign`, and see
+"After the redesign" for what is still open. Working tree should be clean apart from
+untracked `uv.lock` and `.claude/` (both left untracked on purpose; don't commit them). If a
+test fails with a git-checkout symptom (`test_bundled_copies`), look for a stray empty
+`/tmp/.git` left by an earlier agent run and remove it.
+
+### After the redesign (open points)
+- **Merge decision:** the branch `ui-redesign` (6.0.0) is not merged into `main`; the release
+  workflow needs a `v6.0.0` tag, whose notes are the `version.py` entry (it has the
+  `BREAKING:` paragraph and a `compat.CHANGES` entry, `workspace-redesign`, registered as an
+  appearance change: nothing in a project needs migrating).
+- **User-side checks** (need the user's quota or key): try a local tool-capable model in the
+  Chat on a real slide edit (the live test only reads); try the Claude Code tab once (the
+  focused slide visible via MCP; an edit of a slide header must be blocked by the hook; the
+  hook has not fired in a real session yet and `tools/call` from Claude Code is untested);
+  the chat against real Claude needs an API key (`ANTHROPIC_API_KEY`; the opt-in live test
+  `test_ai_live.py` with `SLIDEMAGE_LIVE_AI=1` has not run against the cloud).
+- **CI and release runners:** `release.yml` and `ci.yml` install only the Qt base libraries
+  (`libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1`); importing QtWebEngine needs more
+  on a bare Ubuntu (`libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6`,
+  `libasound2t64`, ...). Add them to both workflows once a run says which; the README names
+  them as examples only.
+- **Windows and macOS are untested:** the one-file build (294 MiB on Linux), pywinpty, `claude.cmd`
+  and the frozen hook's stdin on Windows, QtWebEngine on both.
+- **Optional kit restyle** (recommended, 150–250k tokens): inputs, combos, checkboxes and
+  scrollbars in kit style (the sheets and the Images page still use the legacy-themed ones),
+  the "Appears in" view chips, QSS colours through tokens (`#ffffff` ×6), panel boilerplate
+  helpers in `panels/base.py`, one click-frame base for the kit widgets, thumbnails in the
+  Add slide "Existing" list.
+- **Leftovers named in the sections below** (all small): preview chip "course note" has no
+  backend data; no "update translation" action; Citations panel does not refresh after a
+  hand edit of the `.bib`; Build options is still a dialog; a few confirms are still
+  `QMessageBox` (Empty pdf, Remove temp, Update previews, Update project results, the newer
+  framework/manual offer); "No decks" has no "New deck"; no chat history across sessions, a
+  static Claude model list, the 16384-token Ollama window without a warning, local thinking
+  output dropped, no reduced tool list for small models; plain URLs in the terminal are not
+  clickable; `repoint_slides`-style writers that bypass open Source buffers elsewhere;
+  backend modules that still build `-current.tex` names by hand; the slide list shows pinned
+  versions as `v1-0-0`.
+- **Manual:** the slides carry their old `\setSlideVersion` numbers; the 11b rewrite was made in
+  place without freezing the old text (frozen versions are made by SlideMage's Save or
+  Freeze as vX.Y.Z; the frozen `1ub`, `1ti`, `1b6`, `1b2`, `1d8`, `1ih` still name images that
+  were replaced or removed, which only matters if a deck pins them). Compile the manual
+  twice; `latexmk` stops with "too many passes" (the Top Margin `.top` file keeps changing; the
+  PDF is complete, and it did so before 6.0). `screenshot-slidemage-save-dialog.png` is the one
+  screenshot `tools/manual/make_screenshots.py` does not make.
 
 ### Remaining work and size (estimate 2026-10-10)
 About 5% of the user's 5-hour window per ~100k agent tokens.
@@ -88,7 +112,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~10d-2 Ollama tool calling~~ | done (~190k actual) | | |
 | ~~Review before 11~~ | done: 12 Haiku reviewers + one Sonnet fix agent | | |
 | ~~11a Finish switch-over, code~~ | done: no `qt_*` module left, screenshots tool, PyInstaller spec checked, stray preview wrappers | | |
-| 11b Finish switch-over, docs | README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 100–200k | 5–10% |
+| ~~11b Finish switch-over, docs~~ | done: README, `docs/`, manual slides and screenshots, 6.0.0 | | |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
 
 Remaining after 10d-2 ≈ 350–600k agent tokens (≈ 18–30% of one
@@ -128,7 +152,7 @@ Worth repeating before step 11.
 | 10d-2. Ollama tool calling in the chat (`OllamaProvider.stream_turn`), tool-capable model pickers, dead AI-drafting settings removed | (see git log) | done |
 | Review fixes (before 11): 12 Haiku reviewers, one Sonnet fix agent; list A–E below | (see git log) | done |
 | 11a. Finish switch-over (code): `qt_ai_models` → `ui/ai_models.py`, `qt_citation_dialog` → `ui/dialogs/citation.py` (kit sheet), `qt_gui.main` → `ui/app.py`; `make_screenshots.py` rewritten; PyInstaller spec; preview wrappers pruned | (see git log) | done |
-| 11b. Docs, manual, screenshots, 6.0 bump | | not started |
+| 11b. Docs, manual, screenshots, 6.0 bump: README, `docs/SlideMage.md`, `PROJECT_OVERVIEW.md`, `SlidemasterManual.md`, `PYSIDE6_MIGRATION.md` (historical), 27 manual slides rewritten or edited and 3 new ones (Side panels, Find anything, The AI assistant), 13 new screenshots made by `make_screenshots.py` (`MANUAL_IMAGES`), `VERSION_NUMBER` v6.0.0 with its release notes and a `compat` entry | (see git log) | done |
 
 ### Review fixes (before 11)
 Applied from 12 read-only Haiku reviews of 9d-2 to 10d-2 (all A–E items; 43
@@ -823,9 +847,10 @@ context and SlideMage tools, and makes the change itself.
 
 ### 11. Finish the switch-over
 - 11a (done): no `qt_*` module is left; nothing imports the old names.
-- 11b: update the README, `SlidemasterManual.md` and the manual slides, the
-  screenshots in `example/media/`, and `PYSIDE6_MIGRATION.md` (mark as
-  historical). Major version bump (SlideMage 6.0).
+- 11b (done): the README, `SlideMage.md`, `PROJECT_OVERVIEW.md`, `SlidemasterManual.md` and the
+  manual slides were updated, the screenshots in `example/media/` made again (the tool now also
+  cuts the manual's images), `PYSIDE6_MIGRATION.md` marked historical. Major version bump
+  (SlideMage 6.0.0, `BREAKING:` release notes, a `compat` entry).
 
 ### 12. ~~Paint reveal steps on the preview~~
 Not implemented (decision 5).

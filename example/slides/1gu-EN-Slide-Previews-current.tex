@@ -1,23 +1,24 @@
 %% Included in decks: slidemage-manual
 %%
 
-% SlideMage manual, chapter "Working in SlideMage": slide previews, with the
-% deck editor's Grid view of this manual (tools/manual/make_screenshots.py).
+% SlideMage manual, chapter "Working in SlideMage": slide previews, with the Preview view
+% (tools/manual/make_screenshots.py, shot workspace-preview).
 \setSlideVersion{1-0-0}
 \begin{standardframe}{Slide previews}
 	\small
-	SlideMage keeps a small picture of every slide, taken from its last compile, so you recognize slides at a glance in the deck editor and the dialogs. Previews belong to a template: a slide compiled in two templates has two.
+	SlideMage keeps a small picture of every slide, taken from its last compile, so you recognize slides at a glance: as thumbnails in the slide list and in \emph{Preview}. Previews belong to a template: a slide compiled in two templates has two.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.56\linewidth}
-			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-editor-grid.png}}}
+		\begin{column}{0.37\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-slide-preview.png}}}
 		\end{column}
-		\begin{column}{0.41\linewidth}
-			\shrinklists{1}
+		\begin{column}{0.60\linewidth}
+			\shrinklists{2}
 			\begin{itemize}
-				\item Shown on hover, in \emph{Preview} (with \emph{Render now}), and in the \emph{Thumbnail} and \emph{Grid} views
-				\item Refreshed by every compile that includes the slide: a cache, not a live view
-				\item Housekeeping $\rightarrow$ \emph{Update slide previews} compiles every slide once and removes outdated previews
+				\item \emph{Preview} shows the saved picture at once; chips say what it is not showing: a pinned version, another language, a missing translation, a view that skips the slide
+				\item A list row says \emph{preview old} when the source is newer; \emph{Render} makes a fresh one in the chosen view and language
+				\item Every compile that includes the slide refreshes it: a cache, not a live view
+				\item Three-dot menu $\rightarrow$ \emph{Housekeeping} $\rightarrow$ \emph{Update slide previews} compiles every slide once
 			\end{itemize}
 		\end{column}
 	\end{columns}

@@ -4,11 +4,13 @@
 
 Writes OUT_DIR/screenshot-slidemage-<name>.png for the main views: the workspace in Preview, Source,
 Split and Details, each side panel, the chat, the command palette, the deck and compile menus, the
-compile job card, the Images page, and the Settings, Deck settings, Add slide and About sheets.
-Nothing is written into the repository: the run works on a throwaway copy of `example/` (with the
-sibling `latex/` framework), in the light theme, with a fixed Ollama model list and no network. Which
-of these images replace the manual's old ones (example/media/screenshot-slidemage-*.png) is decided
-by hand.
+compile job card, the Images page, the slide list with a selection, and the Settings, Deck settings,
+Add slide, Tags, transcript preview and About sheets. Nothing is written into the repository: the run
+works on a throwaway copy of `example/` (with the sibling `latex/` framework), in the light theme,
+with a fixed Ollama model list and no network.
+
+The manual's own images (MANUAL_IMAGES: crops of these shots, reduced to 256 colours) are written to
+OUT_DIR/manual/ under the names the manual's slides use; copy them into example/media/.
 
 Windows keep their logical size (WINDOW) but are rendered at --scale times the pixels (a device pixel
 ratio of 2: crisp text instead of a stretched picture). Modal sheets are never exec()'d (that would
@@ -29,12 +31,32 @@ PREFIX = "screenshot-slidemage-"
 MANUAL = "slidemage-manual"   # the deck every shot is taken in
 WINDOW = (1700, 950)
 # Slides of the example project the shots are taken on: a plain frame, one that cites, one with
-# pictures, one with a translation-free header.
+# a picture (a chart that does not change with the UI), the slide whose transcript is shown.
 SLIDE = "1y8"
 CITING_SLIDE = "1nz"
-PICTURE_SLIDE = "1ub"
+PICTURE_SLIDE = "1rb"
+TRANSCRIPT_FILE = "1ub-EN-Main-Window-current.tex"
 # Placeholder decks, one per deck group, so the deck menu shows the grouping.
 PLACEHOLDER_DECKS = {"#workdeck": "work", "course-example-2027s": "course", "talk-example-seminar": "research"}
+
+
+# The manual's images (example/media/screenshot-slidemage-<name>.png): name -> (shot, crop). The crop
+# is (left, top, right, bottom) as fractions of the shot, None for all of it.
+MANUAL_IMAGES = {
+    "main-window": ("workspace-preview", None),
+    "slide-list": ("slide-list", (0.004, 0.128, 0.172, 1.0)),
+    "slide-editor": ("workspace-source", None),
+    "slide-details": ("workspace-details", (0.19, 0.09, 0.78, 0.4)),
+    "slide-preview": ("workspace-preview", (0.185, 0.085, 0.79, 0.99)),
+    "side-panel": ("panel-visibility", (0.795, 0.08, 0.995, 0.22)),
+    "deck-switcher": ("menu-deck", (0.0, 0.0, 0.235, 0.268)),
+    "tags-dialog": ("deck-group", None),
+    "images-page": ("images-page", None),
+    "images-toolbar": ("images-page", (0.0, 0.815, 0.235, 0.99)),
+    "transcript": ("transcript", None),
+    "chat": ("chat", (0.793, 0.425, 0.995, 0.78)),
+    "palette": ("palette-search", (0.3175, 0.116, 0.6825, 0.509)),
+}
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -153,6 +175,25 @@ def shot_chat(shooter: Shooter) -> None:
     shooter.window_shot("chat")
 
 
+def shot_slide_list(shooter: Shooter) -> None:
+    """The slide list in a short window, with three slides selected (the bulk bar shows)."""
+    from PySide6.QtWidgets import QAbstractItemView
+
+    window = shooter.window
+    shooter.focus("1gu")
+    window.resize(WINDOW[0], 530)
+    shooter.settle(10)
+    tree = window.slide_list.tree
+    wanted = [item for item in tree.slide_items() if tree.data_of(item).call.id in ("1gu", "1kg", "1tb")]
+    for item in wanted:
+        item.setSelected(True)
+    tree.scrollToItem(wanted[0], QAbstractItemView.ScrollHint.PositionAtTop)
+    shooter.window_shot("slide-list")
+    tree.clearSelection()
+    window.resize(*WINDOW)
+    shooter.settle(10)
+
+
 def shot_palette(shooter: Shooter) -> None:
     shooter.focus(SLIDE)
     palette = shooter.window.palette
@@ -217,10 +258,13 @@ def shot_images_page(shooter: Shooter) -> None:
 
 
 def shot_sheets(shooter: Shooter) -> None:
+    from slidemage import transcript
     from slidemage.ui.dialogs.about import AboutSheet
     from slidemage.ui.dialogs.add_slide import AddSlideSheet
+    from slidemage.ui.dialogs.deck_group import DeckGroupSheet
     from slidemage.ui.dialogs.deck_settings import DeckSettingsSheet
     from slidemage.ui.dialogs.settings import SettingsSheet
+    from slidemage.ui.dialogs.transcript_preview import TranscriptPreviewSheet
 
     window = shooter.window
     shooter.focus(SLIDE)
@@ -240,18 +284,47 @@ def shot_sheets(shooter: Shooter) -> None:
     sheet = AboutSheet(window)
     shooter.sheet_shot("about", sheet)
     sheet.close()
+    sheet = DeckGroupSheet(window, "Tags", "course")
+    shooter.sheet_shot("deck-group", sheet)
+    sheet.close()
+    path = Path(os.environ["SLIDEMASTER_PROJECT"]) / "slides" / TRANSCRIPT_FILE
+    entry = transcript.generate_single_slide(path.read_text(encoding="utf-8"), TRANSCRIPT_FILE[:3], "during-course", "en")
+    sheet = TranscriptPreviewSheet(window, f"Transcript: {TRANSCRIPT_FILE[:3]}", transcript.to_html(entry, "Transcript preview"))
+    shooter.sheet_shot("transcript", sheet)
+    sheet.close()
 
 
 SHOTS = {
     "workspace": shot_workspace,       # workspace-preview / -source / -split / -details
     "panels": shot_panels,             # panel-<key> for each of the 8 side panels
     "chat": shot_chat,                 # chat-empty, chat
+    "slide-list": shot_slide_list,     # slide-list
     "palette": shot_palette,           # palette, palette-search
     "menus": shot_menus,               # menu-deck, menu-compile
     "compile-job": shot_compile_job,   # compile-job, compile-job-done
     "images-page": shot_images_page,   # images-page
-    "sheets": shot_sheets,             # settings-*, add-slide, deck-settings-*, about
+    "sheets": shot_sheets,             # settings-*, add-slide, deck-settings-*, about, deck-group, transcript
 }
+
+
+def make_manual_images(out_dir: Path) -> None:
+    """The manual's images, cut from the shots that exist in `out_dir`, into out_dir/manual/."""
+    from PIL import Image
+
+    target = out_dir / "manual"
+    target.mkdir(exist_ok=True)
+    for name, (shot, crop) in MANUAL_IMAGES.items():
+        source = out_dir / f"{PREFIX}{shot}.png"
+        if not source.exists():
+            continue
+        image = Image.open(source).convert("RGB")
+        if crop:
+            width, height = image.size
+            image = image.crop((round(crop[0] * width), round(crop[1] * height),
+                                round(crop[2] * width), round(crop[3] * height)))
+        path = target / f"{PREFIX}{name}.png"
+        image.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE).save(path, optimize=True)
+        print(f"manual/{path.name}  {image.width} x {image.height}")
 
 
 # -- the run ------------------------------------------------------------------------------------
@@ -319,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="slidemage-shots-") as work:
         run(args, Path(work))
+    make_manual_images(args.out_dir)
     return 0
 
 

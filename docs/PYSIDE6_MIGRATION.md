@@ -1,3 +1,10 @@
+> **Historical (SlideMage 6.0).** This is the log of the 2026-08 move from Tkinter to
+> PySide6. The `qt_*` modules it names (`qt_gui.py`, `qt_deck_table.py`,
+> `qt_deck_editor_tab.py`, `qt_slide_source_tab.py`, ...) no longer exist: SlideMage 6.0
+> replaced that window of tabs and tables with one workspace per deck (`src/slidemage/ui/`;
+> see `UI_REDESIGN_PLAN.md` for the redesign and `SlideMage.md` for how the app is built
+> now). Read this file only for why the app left Tkinter and how that move went.
+
 # SlideMage: migrating the GUI from Tkinter/ttk to PySide6
 
 **Status (2026-08-09): Migration complete, all 10 phases done.** `__main__.py`

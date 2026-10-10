@@ -2,22 +2,22 @@
 %%
 
 % SlideMage manual, chapter "Decks and deck versions": the tagging system,
-% with SlideMage's deck table and Tags dialog (tools/manual/make_screenshots.py).
+% with SlideMage's deck switcher and Tags sheet (tools/manual/make_screenshots.py).
 \setSlideVersion{1-1-1}
 \begin{standardframe}{Deck tags and groups}
 	\small
-	The main window sorts your decks into groups -- course decks, research talks, test decks, with the workdeck at the top -- so a long list stays easy to scan. A deck's group is a tag kept in the deck file itself, so it travels with the deck.
+	The deck switcher sorts your decks into groups -- course decks, research talks, test decks, the workdeck on top. A deck's group is a tag kept in the deck file itself, so it travels with the deck.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.52\linewidth}
-			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-table.png}}}\par\smallskip
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.8\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-switcher.png}}}\par\smallskip
 			{\footnotesize\SMCmd{decktags}\SMCode{\{course\}}, just before \SMCode{\textbackslash begin\{document\}}; LaTeX ignores it\par}
 		\end{column}
 		\begin{column}{0.45\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item The tags \SMCode{work}, \SMCode{course}, \SMCode{research}, \SMCode{test} choose the group; click a group's heading to fold it
-				\item Set it with the row's \emph{Tags} button:
+				\item The tags \SMCode{work}, \SMCode{course}, \SMCode{research}, \SMCode{test} choose the group; archived decks wait at the foot of the list
+				\item Set it with the three-dot menu $\rightarrow$ \emph{Tags\ldots}:
 			\end{itemize}
 			\hspace*{\SMItemStep}\includegraphics[width=0.45\linewidth]{media/screenshot-slidemage-tags-dialog.png}
 			\begin{itemize}

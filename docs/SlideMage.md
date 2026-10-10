@@ -1,8 +1,9 @@
 # SlideMage
 
-A PySide6 (Qt) GUI for compiling and archiving this project's `decks/`
-(originally a Tkinter GUI, built 2026-07-19, before the full migration --
-see `PYSIDE6_MIGRATION.md`). This file is the "what and why" for future
+A PySide6 (Qt) app for compiling, editing and archiving this project's `decks/`
+and `slides/`: since 6.0 one workspace window per open deck, with an AI assistant
+(see `UI_REDESIGN_PLAN.md` for how it was built; it was a Tkinter GUI until
+2026-08, see `PYSIDE6_MIGRATION.md`, and a window of tabs and tables until 6.0). This file is the "what and why" for future
 sessions working on this code -- the module docstrings cover the "how" at
 the code level.
 
@@ -38,52 +39,48 @@ Windows/macOS, so a desktop entry needs its own icon file alongside it).
 It opens the project given by `--project`,
 `$SLIDEMASTER_PROJECT`, the nearest folder above the current directory
 that holds `slide_ids.csv`, or the last project opened, else it asks.
-Three permanent tabs:
-**Active decks**, **Archived decks** and **Images** (the
-green one -- see "Images tab" below). The two deck tabs are
-each a table: one row per deck, checkboxes for `Instructor` /
-`During-course` / `After-course` (each an independent *whole-deck* compile
-of that version) plus `After-course, per chapter` (independent of the
-other three -- always the after-course version, split into one PDF per
-`\section{}` chapter, since that's what students get for post-course
-review), a `Create PDF` button, and (Active tab only) `Archive`,
-`Edit`, and `Duplicate` buttons per row -- `Edit` opens that deck's own
-`.tex` straight into a source-editor tab (the same one a slide's own
-source uses), `Duplicate` asks for a name and copies the deck's `.tex`
-file under it (`deck_duplicate.py`; no content rewriting needed, since a
-deck's name is just its filename stem, never embedded in the file
-itself). Both replaced a `Quick compile` button (2026-08-16, direct
-instruction) that ignored a row's own checkboxes entirely and always
-compiled the instructor version -- `Create PDF` with just that
-checkbox ticked already covered the same need. Any combination of the
-four checkboxes can be ticked at
-once. A status dot next to each checkbox tracks its job through four
-states as a batch runs: animated blue dots while actively compiling, a
-static orange arrow while the PDF itself has compiled fine and it's now
-trying to relocate it into `pdf/` in the background (see
-`_relocate_pdf_and_finish()` below -- this no longer blocks anything else
-in the app, including the next queued job), green on success, or red on
-failure -- for `After-course, per chapter`, that one shared dot reflects
-the whole set of per-chapter jobs, and a fail is sticky (a later chapter
-starting/moving/passing won't paint over an earlier one's failure). A
-status bar above the log pane shows which
-specific job is running right now -- `Compiling <deck>: Compile 2/4 in
-progress...` for whole-deck jobs (counted against the whole batch's
-whole-deck job total) or `Compiling <deck>: Chapter 5/12 in progress...`
-for per-chapter jobs (counted against that one deck's own chapter total,
-since batch-wide chapter position wouldn't mean anything); it also reflects
-the "moving" wording during a PDF relocation retry, and shows the final
-`Done: N passed, M failed` line once the whole batch finishes. A toolbar
-above that has `Empty pdf/ folder`, `Empty .build/ folder`, and `Archive
-unused content` buttons (each asks for confirmation first; the first two
-for clearing out generated output, `.build/` refused mid-compile;
-`Archive unused content` refused mid-compile too, since a running compile
-could still need a file it would move -- see `unused_content.py` below for
-what it actually scans). A shared log pane at the bottom streams live
-`latexmk` output; compiles run on a background thread so the GUI stays
-responsive, one job at a time, and one job failing doesn't stop the rest.
-Archiving a deck (see below) also asks for confirmation before moving
-anything.
+The window is one workspace for the deck that is open (the last one used, else the
+deck switcher offers the rest). From top to bottom and left to right:
+
+- **Top bar** (`ui/workspace/topbar.py`, menus in `menus.py`): the **deck switcher**
+  (active decks under their group headings, archived decks at the foot), *View as*
+  **Instructor / During course / After course** and **EN / DE** (the version and language
+  the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
+  **Preview | Split | Source | Details**, the **Compile PDF** split button, **Images**, and
+  the **⋮** menu (This deck, Decks, Project, Housekeeping, Info -- what the old menu bar
+  and the deck table's per-row buttons held).
+- **Compile PDF** compiles the deck for the view chosen in the top bar; its arrow lists
+  every version the old deck table's checkboxes made (Instructor, During course, After
+  course, *All views*, *After course, one PDF per chapter*, *Presenter*), the pages of the
+  selected slides, *Pages by number…*, *Several decks…*, *All decks except archive*, the
+  accessible transcripts, *Stop compilation* and *Build options…* (footer timestamp,
+  appendix TOC, pages replace theirs, auto-open). Runs show as a floating **card** (one
+  line per job with its state, a progress bar, Stop, *Retry failed*, *Open PDFs*); the
+  **log drawer** (Ctrl+L) streams the `latexmk` output and opens by itself on a failure,
+  with *Open in Source* on the failed line. Compiles still run on background threads, one job
+  at a time, and one job failing doesn't stop the rest.
+- **Left, the slide list** (`slide_list.py`, `slide_tree.py`; backend `deck_outline.py`):
+  the deck's slides in sections, with thumbnails, status notes and the call variant;
+  find-as-you-type, drag and drop, multi-select with a bulk bar, undo, right-click menus.
+  Every edit goes through `deck_editor` and rescans the decks.
+- **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
+  on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
+  line, Insert, Cite, Tools and the conflict bar when a file changes on disk under unsaved
+  edits), **Split**, **Details** (`details_view.py`), and the **Images page**
+  (`ui/pages/images.py`) as a sibling that replaces the columns.
+- **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
+  versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker
+  notes. **Lower:** the **AI assistant** (`chat/`, `terminal/`): *Chat* and *Claude Code*.
+- **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
+  entry is a registered command.
+- Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck
+  settings (with Admin slides), Housekeeping, Snapshots, Tags, Import PPTX/ODP, About and
+  the project-compatibility sheets.
+
+Archiving a deck (see below) asks for confirmation before moving anything; so do the
+Housekeeping tools that empty `pdf/` or `.build/` (refused mid-compile, since a running
+compile could still need a file) and **Archive unused slides and media files** (see
+`unused_content.py` below for what it scans).
 
 It replaces things that were previously manual: hand-editing the `DECKS=`
 line in `compile-all.bat`/`compile-all-versions.bat`, hand-crafting a
@@ -96,7 +93,7 @@ way without deleting them.
 
 ## Updates
 
-**Info → Check for updates…** compares this copy's version with the
+**⋮ → Info → Check for updates…** compares this copy's version with the
 releases of `stpalan/SlideMage` on GitHub. When a newer one
 exists, the packaged app offers to download that platform's release zip,
 unpacks it into the folder the running app lives in, and restarts. The
@@ -105,7 +102,7 @@ until the next start deletes it. A copy running from source only reports
 the new version -- update it with `git pull`.
 
 Since v4.1.0 the packaged app also checks by itself, three seconds after
-it starts, as chosen under **System → Preferences… → General → Updates**:
+it starts, as chosen under **⋮ → Settings… → General → Updates**:
 *Don't check for updates*, *Check for updates and ask before installing*
 (the default; the question also offers "Always install automatically" and
 "Stop checking for updates") or *Check for updates and install them
@@ -138,7 +135,7 @@ check reports that no release was found.
    (`github_pat_…`) -- GitHub shows it only once. When it expires, the
    update check reports that no release was found until a new one is
    saved.
-2. **Add it in SlideMage.** System → Preferences… → General → Updates:
+2. **Add it in SlideMage.** ⋮ → Settings… → General → Updates:
    paste the token into "GitHub token" and press Enter. It's saved for
    your user account only -- in `~/.config/slidemage/github_token`
    (readable only by you) or `%APPDATA%\SlideMage\github_token` -- never
@@ -170,25 +167,33 @@ publish the releases from a public repository (it can hold nothing but the
 release zips) and point `REPO` in `src/slidemage/updater.py` at it, or make
 this repository public -- then no token is needed.
 
-## Images tab
+## Images page
 
-The third permanent tab, added 2026-08-14 (labelled "Image descriptions"
-until 2026-08-15, renamed once slide-level summaries -- unrelated to any
-one image -- also landed on it). It is where every image in the
-project gets described for screen-reader users, and where per-deck accessible
-transcripts are generated. The design, the decisions and the measured
-findings are in `ALT_TEXT_NOTES.md` (not part of this copy); the
+Since 6.0 a full-window page (`ui/pages/images.py`; opened by the top bar's **Images**
+button, `Ctrl+K`, or a slide row's *Images* entry, and closed by **Close images**) that
+replaces the workspace's columns -- before, the third permanent tab (added 2026-08-14,
+labelled "Image descriptions" until 2026-08-15). It is where every image in the
+project gets described for screen-reader users. The design, the decisions and the
+measured findings are in `ALT_TEXT_NOTES.md` (not part of this copy); the
 user-facing workflow is in the main README's "Describing images" section.
 What matters when touching *this code*:
 
-- **The tab is built at startup but its first scan is deferred** until it is
-  actually opened (`qt_gui.py`'s `_on_tab_changed` -> `ensure_loaded()`).
-  That scan walks every slide, hashes the bytes of every image they
+- **The page's first scan is deferred** until it is actually opened
+  (`ensure_loaded()`). That scan walks every slide, hashes the bytes of every image they
   reference, and *writes* new rows to `media/alt-text.json` -- none of which
   belongs in the startup path of an app usually opened to compile a deck.
-- **Drafting and batch runs happen on a `threading.Thread(daemon=True)`** and
-  come back over a `Signal`, the same pattern `qt_slide_source_tab.py` uses
-  for its render button. One image takes 10-60s; a full batch takes hours.
+- **What a form means for the store is `image_review.py`'s** (filters, ordering,
+  `FormEdit`, `save_slide_forms`, `copy_into_media`, `repoint_slides`, ...): no Qt, so the
+  page (`images.py`, with `image_nav.py` for the left column, `image_form.py`,
+  `image_preview.py`, `image_dialogs.py` for *Replace image* and *Tune prompt*) only
+  draws it. The page is slide-centric (the left column lists the slides that show
+  images, with their review state); `repoint_slides` refuses slides with unsaved Source
+  edits.
+- **Drafting and batch runs happen on a worker thread** (`image_runs.py`'s
+  `ImageRunsMixin`, `image_jobs.py`'s `Job`/`JobCard`; one job at a time, Stop works at
+  once on a single image) and come back over a `Signal`. The thread holds the Ollama
+  slot (`try_start_ollama_task`) -- a cloud model needs none. One image takes 10-60s;
+  a full batch takes hours. Use `ui/background.stop_worker` for any new worker thread.
 - **Drafts are written to the shared store per image as they finish**, not
   buffered to the end, and the batch queue is *derived* from the store and
   the slide files rather than kept anywhere of its own -- which is what
@@ -203,25 +208,30 @@ What matters when touching *this code*:
   of this wrong once already caused a save to land in the wrong slide's
   file; see ALT_TEXT_NOTES.md.
 - **Modal dialogs block forever under `QT_QPA_PLATFORM=offscreen`**, with no
-  one to click them. Any GUI test here must stub `QMessageBox` and run
-  Python with `-u`; the first attempt hung silently with no output at all.
-- **This tab is only for image descriptions -- a slide's transcript
-  *summary* and its compile-time *preview* are edited elsewhere**
-  (`qt_slide_source_tab.py`), deliberately: this tab's own slide list only
+  one to click them. Any GUI test here must stub `QMessageBox` and the kit sheets'
+  `exec()`, and run Python with `-u`; the first attempt hung silently with no output
+  at all. (`tools/manual/make_screenshots.py` shows and grabs sheets instead.)
+- **The page is only for image descriptions -- a slide's transcript
+  *summary* and its compile-time *preview* are edited elsewhere** (the Transcript
+  entry panel, `preview_view.py`), deliberately: the page's own slide list only
   shows slides that reference at least one image (the whole point of the
   list), and both of those features need to work for *any* slide. They
-  still share this tab's underlying store and lock (`alt_images.py`,
+  still share the page's underlying store and lock (`alt_images.py`,
   `slide_snapshot.py`) -- see those modules' own entries in the module map
-  below.
+  below. The Image descriptions *panel* and the page are the only writers of the
+  image forms.
 - **A hand-drawn tikz illustration (`\tikzillustration{ID}`,
   Slidemaster_preamble_base.tex) shows up in this same per-slide list as a
   synthetic `tikz:ID` reference (2026-09-07)** -- see ALT_TEXT_NOTES.md's
   own "Phase 9" section for the full design. It has no file on disk at
-  all, so this tab's own preview panel and the drafting pipeline's image
+  all, so the page's own preview panel and the drafting pipeline's image
   resolution are the only two places with a tikz-specific branch
-  (`tikz_render.py`, below); every other piece of this tab (role radios,
+  (`tikz_render.py`, below); every other piece of the page (role choice,
   short/long/takeaway/source fields, Draft/Tune prompt) is built generically
   from `(reference, ImageEntry)` and needed no changes at all.
+- The transcript preview (`ui/dialogs/transcript_preview.py`,
+  `show_transcript_preview()`) is a sheet over the window, from the page's header and
+  the Preview's *Render ▾*.
 
 ## Module map
 
@@ -267,8 +277,8 @@ What matters when touching *this code*:
   and `_save_slide_notes()` each read-preserve the other's section before
   writing, so an image save can never silently wipe out a summary and vice
   versa (both go through the same `_store_lock`). Edited from the
-  slide-source editor tab, not the Images tab -- a summary makes sense for
-  a slide with no images at all, which the Images tab's list never shows.
+  Transcript entry panel, not the Images page -- a summary makes sense for
+  a slide with no images at all, which the Images page's list never shows.
 - [`alt_blocks.py`](../src/slidemage/alt_blocks.py) -- slide-scanning utilities shared by the
   rest of the accessibility system: which images a slide references
   (`referenced_images()`), its id/title (`_slide_title()`), and the
@@ -324,7 +334,7 @@ What matters when touching *this code*:
   [`translation_prompts.get_effective_prompt()`](../src/slidemage/translation_prompts.py),
   not a hardcoded string -- see that module. `list_all_models()` (every
   installed Ollama model, not just vision-capable ones -- translation is
-  text-only) backs the Images tab's own "Translation model:" picker.
+  text-only) backs the Images page's own "Translate with" picker.
   `images_needing_translation()` checks `entry.short or entry.long` (real
   text present), not `entry.has_content` (which also counts a decorative
   role alone) -- the latter produced spurious "failed" batch entries: an
@@ -380,8 +390,8 @@ What matters when touching *this code*:
   comment (alongside `deck_headers.py`'s existing `%% Included in decks:`
   block) to find its translation partner's language. `LanguageBadge`/
   `badge_for()` build the one shared "what should this row's language chip
-  say" fact for `qt_deck_editor_tab.py`, `qt_add_slide_dialog.py`, and
-  `qt_slide_source_tab.py` to each render in their own widget style --
+  say" fact for the slide list, the Add slide sheet and the Source view to each
+  render in their own widget style --
   `both` (own language *and* a cross-referenced translation into a
   *different* language) is the case meant to be visually highlighted. A
   slide with no language segment at all (any of the ~665 not yet migrated)
@@ -409,16 +419,14 @@ What matters when touching *this code*:
   apply), and reports (rather than silently drops) any link whose target
   bare ID no longer resolves to a `-current.tex` file, same as
   `alt_images.SyncReport.missing`. Wired in three places: automatically
-  after a rename, automatically after `AddSlideDialog`'s "base on existing
-  slide" flow, and as **Housekeeping → Reestablish broken translation
+  after a rename, automatically after the Add slide sheet's "Translate"
+  flow, and as **⋮ → Housekeeping → Reestablish broken translation
   links** (a plain toolbar button until 2026-08-25) for running by hand
   any time.
 - [`translation_prompts.py`](../src/slidemage/translation_prompts.py) -- per-(model, source
   language, target language) prompt configuration for
-  `alt_draft.OllamaTranslationBackend`, editable from **Settings →
-  Preferences… → AI prompts → Translation** (`qt_translation_prompts_panel.py`;
-  a tab of its own until 2026-09-27, then a dialog behind a button on the
-  AI models tab until v4.1.0, when it joined the other AI prompts). Different
+  `alt_draft.OllamaTranslationBackend`, editable from **⋮ → Settings…
+  → Prompts** (`ui/dialogs/settings_prompts.py`). Different
   Ollama models expect very different prompt shapes -- a dedicated MT model
   wants a short bare instruction with an exact blank-line count before the
   text, a general instruction-tuned model tolerates a longer one -- so each
@@ -449,10 +457,10 @@ What matters when touching *this code*:
   machine the way a file inside it does). Gitignored but *not*
   sync-ignored -- carried across
   machines by the project folder's own cloud-sync client, not git.
-- [`compile_progress.py`](../src/slidemage/compile_progress.py) -- the thin blue progress bar at
-  the top edge of the log (2026-09-27), the same blue as the Create PDF button.
-  `BatchProgress.feed(line)` is called by `qt_gui.py`'s `_log()` for every log
-  line: pass K comes from `Run number K of rule 'lualatex'`, the position inside
+- [`compile_progress.py`](../src/slidemage/compile_progress.py) -- the progress bar of the compile card
+  (2026-09-27: the thin blue bar at the top edge of the log).
+  `BatchProgress.feed(line)` is called by the workspace's compile jobs
+  (`ui/workspace/compile_jobs.py`) for every log line: pass K comes from `Run number K of rule 'lualatex'`, the position inside
   the pass from the `(…/slides/<id>-…` lines LaTeX prints when it starts reading
   a slide file. `fraction = ((pass-1) + slides_seen/slides_total) / passes`, with
   4 passes for a deck that uses biblatex and 3 without; held at 99% until the job
@@ -464,49 +472,35 @@ What matters when touching *this code*:
   read, so it moves per pass), Update previews (one 4-pass megadeck per template)
   and Export PPTX; a job of unknown size shows the busy animation. The status
   label shows e.g. "pass 2/4, slide 137/395".
-- [`qt_settings_dialog.py`](../src/slidemage/qt_settings_dialog.py) -- the **Settings →
-  Preferences…** dialog (this app's first menu bar, added 2026-08-25). A
-  General tab (dark mode, moved off the main toolbar), an **AI models** tab
-  (2026-09-26: the default Ollama model for Syntax check, AI drafting, Image
-  descriptions and Translation -- every model picker preselects it, and
-  picking another one there applies to that dialog only; nothing is
-  remembered as "last used" any more) and, below a divider, the Ollama models
-  section (2026-09-27; since v4.0.0 headed by the Ollama host URL). Since
-  v4.0.0 also an **Updates** group on the General tab (since v4.1.0 the
-  update mode -- three radio buttons, saved immediately -- above the GitHub
-  token for update checks; both stored per user in `project.config_dir()`,
-  never in the project folder) and an **AI prompts** tab, since v4.1.0 with
-  three pages: Image descriptions and Slide rewrite (editable system
-  prompts, stored by `draft_prompts.py`) and Translation
-  (`qt_translation_prompts_panel.py` below). The per-task model pickers are refilled by
-  `_reload_ollama_models()` whenever the host changes or a model is
-  deleted/updated; `qt_gui.py`'s `_on_open_settings()` then passes the
-  dialog's `available_models`/`vision_models` to every open picker's
-  `refresh_model_preference(s)()`, so a changed default reaches them
-  without another Ollama round trip. Close-only dialog -- every field
-  saves immediately, except the AI prompt texts (including the Translation
-  page's two forms), which have their own Save buttons and an
-  unsaved-changes check in `reject()`.
-- [`qt_translation_prompts_panel.py`](../src/slidemage/qt_translation_prompts_panel.py) --
-  `TranslationPromptsPanel` (v4.1.0), the Translation page of Settings →
-  AI prompts; replaces `qt_translation_prompts_dialog.py`'s
-  `TranslationPromptsDialog` (2026-09-27 to v4.0.0), same content: a
-  "Default prompt" group plus a "Per-model overrides" group -- a
-  per-(model, source, target) list/editor backed by
-  `translation_prompts.py`, with the model combo populated from
-  `alt_draft.list_all_models()` (editable, so a not-yet-installed model
-  name can still be pre-configured). `dirty_descriptions()`/`save_dirty()`
-  feed `SettingsDialog.reject()`'s unsaved-changes question.
-- [`qt_archive_unused_dialog.py`](../src/slidemage/qt_archive_unused_dialog.py) --
-  `ArchiveUnusedDialog` (2026-09-27, direct instruction, after a real batch
-  run archived far more than expected -- see `unused_content.py`'s own
-  entry above for the two bugs that caused it): lists every file
-  `find_unused_media()`/`find_unused_slides()` found, with Cancel (the
-  default button) or "Archive N file(s)"; `qt_gui.py`'s
-  `_on_archive_unused_content` runs both scans on the GUI thread (fast
-  enough not to need a background thread) and shows this dialog before
-  starting the actual move, which still runs on a background thread as
-  before.
+- [`ui/dialogs/settings.py`](../src/slidemage/ui/dialogs/settings.py) -- the **⋮ → Settings…**
+  sheet (step 9c of the redesign; first a Preferences dialog, 2026-08-25). Tabs:
+  **General** (dark mode, the Source editor's tab width, the template single slides render
+  with, and the **Updates** group -- since v4.1.0 the update mode and the GitHub token for
+  update checks, both stored per user in `project.config_dir()`, never in the project
+  folder), **AI models** (the default model of each task -- Syntax check, Image
+  descriptions, Translation and the Chat assistant -- a local Ollama model or a Claude
+  one; every model picker preselects it, and picking another there applies to that use
+  only; the chat assistant lists only local models that can call tools, image
+  descriptions only vision models), **Cloud** ("Local AI only" for every project, with a
+  per-project override, and the Anthropic API key with where it is stored), **Ollama**
+  (`settings_ollama.py`: the host URL and the installed models, update and delete) and
+  **Prompts** (`settings_prompts.py`: the editable system prompt of image descriptions,
+  stored by `draft_prompts.py`, and the translation prompts of `translation_prompts.py`:
+  a "Default prompt" group plus per-(model, source, target) overrides, the model combo
+  filled from `alt_draft.list_all_models()` and editable, so a not-yet-installed model
+  can be pre-configured). Every control saves when it changes; only a prompt has its own
+  Save button, and closing the sheet asks about prompt text not yet saved. The model lists
+  load on a thread (`AnthropicProvider`/`OllamaProvider`), so opening the sheet never
+  waits on the network; the window refreshes the open pickers when the sheet closes. The
+  "Slide rewrite" prompt page and the "AI drafting" model went away with the old AI draft
+  dialog: whole-slide changes are the chat's job now (`ai/`, below).
+- [`ui/dialogs/housekeeping.py`](../src/slidemage/ui/dialogs/housekeeping.py) --
+  the **Housekeeping…** sheet and the *Archive unused slides and media files* sheet
+  (2026-09-27, direct instruction, after a real batch run archived far more than expected --
+  see `unused_content.py`'s own entry below for the two bugs that caused it): lists every
+  file `find_unused_media()`/`find_unused_slides()` found, with unticking, Cancel (the
+  default) or "Archive N file(s)"; the scans run before the sheet opens and the move runs
+  on a thread.
 - [`transcript.py`](../src/slidemage/transcript.py) -- per-deck accessible transcripts,
   Markdown source and HTML delivery. Resolves deck versions exactly as the
   PDF compile does and keeps PDF slide numbering. Student versions only.
@@ -607,8 +601,8 @@ What matters when touching *this code*:
   own display names) whose (template, bare id) isn't in that scan's
   result any more -- skipped if the run was cancelled partway through, so
   an aborted "Stop creation" doesn't delete caches based on a scan
-  that never got to run its compiles. Wired into `qt_gui.py`'s toolbar,
-  reusing the same `self.compiling` busy-state machine (detached thread,
+  that never got to run its compiles. Wired into the Housekeeping
+  commands (*Update slide previews*), reusing the same `self.compiling` busy-state machine (detached thread,
   `CancelToken`, log signal) every real compile already goes through,
   since underneath each template is still just one `CompileJob`.
   `run()` accepts an optional `base_jobnames` dict (one entry per
@@ -622,67 +616,21 @@ What matters when touching *this code*:
   `_job_progress_texts` lookup finds nothing, since that dict is normally
   only populated by `_start_jobs()` for the real compile queue, which
   this ad-hoc job never goes through.
-- [`qt_slide_preview_popup.py`](../src/slidemage/qt_slide_preview_popup.py) -- the small
-  in-app dialog that shows a slide_snapshot.py PNG, shared by
-  `qt_deck_editor_tab.py`'s per-row "Preview" button and
-  `qt_slide_source_tab.py`'s own "Preview" button. Deliberately dumb about
-  *how* to render -- the caller passes a zero-argument `render_fn` closure
-  (raises on failure) for the popup's "Render now" fallback when nothing's
-  cached yet, since a deck row and the source editor need different
-  compile calls (own preamble/frame number vs. the saved file's own
-  macro/version) but the popup itself only needs to know how to display
-  the result. Also surfaces staleness (`slide_snapshot.is_fresh()`): a
-  snapshot older than the slide's own source file is flagged, not hidden.
-  `qt_deck_editor_tab.py`'s hover tooltip points at the cached
-  `THUMB_SIZE` file directly (not the full-size one scaled down by Qt's
-  rich-text `<img width=N>`, which was the actual source of the "not
-  crisp" complaint), and its toolbar's "View: List / Thumbnail / Grid"
-  radio trio (a `QButtonGroup`, exclusive by default) picks between them.
-  Each is a genuinely different tradeoff, not three names for the same
-  thing:
-  - **List** and **Thumbnail** share one widget tree -- the per-slide row
-    grid `_build_row` builds. Thumbnail just flips a `_show_thumbnails`
-    flag and rebuilds; `_build_thumbnail_row` then inserts one extra grid
-    row directly under a slide's controls, holding just the cached image
-    in the id link's own column, so every row control (variant, remove,
-    +before/+after, Preview) stays exactly where List puts it (2026-08-15,
-    direct instruction: thumbnail view should "resemble the list view --
-    same buttons and options", after an earlier version made it a
-    separate read-only card browser and lost every row control).
-  - **Grid** is a real second widget tree (`self.view_stack`, a
-    `QStackedWidget`) -- a fixed-column `QGridLayout` of plain cards
-    (image + id caption, click to open, no row controls at all). This
-    was that same earlier card-browser design, reinstated by direct
-    request once Thumbnail stopped covering that "quick visual scan,
-    nothing else" use case -- recovered from this conversation's own
-    transcript (the file as read immediately before being rewritten),
-    since nothing had been committed yet to `git log` it back from.
-  Since a 3-way exclusive group can't tell *which* option just became
-  active purely from "the button that turned true" (the 2-way trick List/
-  Thumbnail used), all three radios connect to the same
-  `_on_view_toggled`, which ignores the `checked=False` calls and reads
-  `.isChecked()` off `thumbnail_view_radio`/`grid_view_radio` directly.
-  A chapter combo between Undo and Close jumps straight to a chapter in
-  both List/Thumbnail and Grid at once (so whichever the user is looking
-  at is already lined up, and switching to the other stays lined up too),
-  computing each view's own header's y position relative to its own
-  scrolled widget (`header.mapTo(inner, QPoint(0, 0))`) and setting that
-  view's vertical scrollbar to exactly that value -- `QScrollArea.
-  ensureWidgetVisible` was tried first but only guarantees the heading
-  becomes visible *somewhere* in the viewport, which could leave it at
-  the bottom edge instead of the top depending on scroll direction
-  (direct instruction: land it at the top, always). Chapter-header dicts
-  (one per view) are keyed by occurrence index rather than title text,
-  since two chapters sharing an exact title would otherwise collide on
-  the same dict key. (A preview-template dropdown next to "View:" briefly
-  existed here -- letting a user browse a deck's cached snapshots under a
-  *different* institution's template -- but was removed the same day,
-  direct instruction: "I forgot that each deck has a specific template
-  linked to it... Remove the template dropdown again." Every deck already
-  carries exactly one real template; there was nothing meaningful to
-  switch between.)
-- [`deck_duplicate.py`](../src/slidemage/deck_duplicate.py) -- the Active decks table's own
-  "Duplicate" button. A plain `shutil.copy2` under a new filename stem, no
+- [`ui/workspace/preview_view.py`](../src/slidemage/ui/workspace/preview_view.py) -- the
+  Preview view (the redesign's replacement of the old preview popup and the deck editor's
+  List / Thumbnail / Grid views, hover tooltip and chapter dropdown, all gone): the
+  `slide_snapshot.py` PNG of the focused slide (instructor view; other views render on
+  demand) with chips for what it is not showing (`preview_target.py`, `deck_outline`
+  facts: pinned version, language, missing translation, hidden in this view) and
+  staleness (`slide_snapshot.is_fresh()`: a snapshot older than the slide's own source is
+  flagged, not hidden). **Render** compiles the saved slide; its menu renders the editor
+  buffer instead (Ctrl+R: whole slide, selection as frame or element, one reveal step),
+  a presenter PDF or a transcript. The slide list's thumbnails read the cached
+  `THUMB_SIZE` file directly (not the full-size one scaled down, which was the source of
+  an early "not crisp" complaint). Single-slide renders run on a worker thread through
+  `preview_build.py`'s cached latexmk graph (see "Interactive preview builds" in the
+  README).
+- [`deck_duplicate.py`](../src/slidemage/deck_duplicate.py) -- **Duplicate deck…** (⋮ menu, *This deck*). A plain `shutil.copy2` under a new filename stem, no
   content rewriting needed (unlike `archive.py`'s `archive_deck()`): a
   deck's name is derived purely from its filename, never embedded in the
   `.tex` content itself. `is_valid_deck_name()` is exposed separately from
@@ -691,11 +639,12 @@ What matters when touching *this code*:
   message; `duplicate_deck()` re-checks it anyway rather than trusting the
   caller blindly.
 - [`slide_versioning.py`](../src/slidemage/slide_versioning.py) -- the automatic freeze-then-
-  bump workflow behind `qt_slide_source_tab.py`'s own Save button for a
+  bump workflow behind the Source view's own Save button for a
   slide's `current.tex` (2026-08-20, direct instruction), replacing manual
   `slide.archive()` as the everyday path. Pure logic, no Qt/file-path
-  assumptions beyond a `Path` -- `qt_slide_source_tab.py`'s own
-  `_prompt_version_choice()` is the only place that shows a dialog.
+  assumptions beyond a `Path` -- `ui/workspace/source_file.py`'s own
+  `prompt_version_choice()` is the only place that shows a prompt (the Slide versions
+  panel's *Freeze as vX.Y.Z* calls `freeze_current()` directly).
   `parse_version()` reads a `\setSlideVersion{X-Y-Z}` line embedded near
   the top of `current.tex` (mirrors the `%% Included in decks: ...` header
   `add_deck_headers.py` maintains -- another tool-managed line nobody
@@ -717,7 +666,9 @@ What matters when touching *this code*:
   in transcripts read as references rather than keys. Hand-written rather
   than a dependency because this project declares exactly one and the data
   is well behaved (89 entries, no `crossref`, no `@string`).
-- [`qt_transcript_tab.py`](../src/slidemage/qt_transcript_tab.py) -- the tab itself.
+- [`ui/dialogs/transcript_preview.py`](../src/slidemage/ui/dialogs/transcript_preview.py) --
+  the sheet that shows one slide's transcript entry (`generate_single_slide()` and
+  `to_html()`); the deck-wide transcripts are built from the Compile menu.
 - [`deck_scan.py`](../src/slidemage/deck_scan.py) -- finds every deck (`decks/*.tex` and
   `decks/archive/*.tex`) and parses it. A "deck" is any `.tex` file
   containing `\documentclass` -- the same heuristic README.md already uses
@@ -767,25 +718,76 @@ What matters when touching *this code*:
   `media/alt-text.json`/`.csv` outright: they're read directly by
   `Slidemaster_alt.lua`, never `\includegraphics{}`-ed, so the media scan
   could never see them as "used." **Housekeeping → Archive unused slides
-  and media files** (`qt_gui.py`'s `_on_archive_unused_content`,
-  `qt_archive_unused_dialog.py`) now runs both scans up front and shows
-  every file in `ArchiveUnusedDialog` before moving anything -- Cancel
+  and media files** (`ui/dialogs/housekeeping.py`) now runs both scans up front and shows
+  every file in a sheet before moving anything -- Cancel
   (the default button) leaves the folders untouched, "Archive N file(s)"
   is the only action that starts the actual move.
-- [`qt_gui.py`](../src/slidemage/qt_gui.py) -- the main window (the Tk
-  `gui.py` it replaced has been removed). `DeckRow`
-  ([`qt_deck_table.py`](../src/slidemage/qt_deck_table.py)) owns one row's
-  checkboxes and turns them into a list of `CompileJob`s.
+- **The `ui/` package** (everything with Qt; there is no `qt_*` module any more; the
+  application starts in `ui/app.py`'s `main()`):
+  - `ui/kit/` -- the widget kit and the look: `tokens.py` (light and dark tokens), `kit_qss.py`,
+    `theme.py` (`ThemeManager`), `fonts.py` (Roboto, Roboto Mono and Material Icons from
+    `assets/fonts/`, loaded at start-up), `widgets.py` (SegmentedControl, Chip, SplitButton,
+    IconButton, Button, PopoverMenu, Popover, Toast, Card, ModalSheet, Field, Page,
+    ThumbnailGrid, ...); `python -m slidemage.ui.kit.gallery` shows them all.
+  - `ui/commands.py` -- `Command`, `CommandRegistry`, `bind_shortcuts`; the ~95 commands
+    are registered in `ui/workspace/actions.py` (`build_registry()`), and the menus in
+    `menus.py` are lists of command ids, so the top bar, the ⋮ menu, the context menus and the
+    palette share one definition (`slide:*`, `section:*`, `compile:*`, ...). A new feature
+    registers its command there.
+  - `ui/workspace/` -- `window.py` (`WorkspaceWindow`) with `state.py` (`WorkspaceState`: the
+    deck, focused and selected slides, view, language, mode, lint state), the top bar, the
+    mixins `compile_jobs.py` (`CompileSignals` and all compile orchestration), `deck_actions.py`,
+    `maintenance.py` and `multi_compile.py`, the floating `job_panel.py` and `log_drawer.py`,
+    `render_check.py` (the pre-render lint sheet), and the views listed under "What it does".
+  - `ui/dialogs/`, `ui/pages/` -- the sheets and full-window pages (`ui/pages/no_decks.py`
+    for a project without decks); `ui/background.py` has `start_detached` and `stop_worker` for
+    threads that must not outlive the window.
+  - `ui/workspace/chat/` -- the Chat view: `session.py` (`ChatSession`: the history and the
+    agent thread), `view.py`, `cards.py` (text, tool and diff cards with Apply / Reject /
+    Undo), `gui_workspace.py` (`GuiWorkspace`: runs the agent's workspace calls on the GUI
+    thread and waits for them). `assistant.py` holds the Chat | Claude Code switch.
+  - `ui/workspace/terminal/` -- the Claude Code tab: xterm.js (vendored under
+    `assets/terminal/`) in a `QWebEngineView` with a `QWebChannel`, on a pty
+    (`pty_process.py`: `ptyprocess`, `pywinpty` on Windows). QtWebEngine is what makes the
+    one-file build about 300 MB.
+- **The `ai/` package** (no Qt): `providers.py` (`ChatProvider`, `OllamaProvider`,
+  `AnthropicProvider`; both stream a tool-using turn, `ProviderError`, `Cancelled`),
+  `resolver.py` (`provider_for_task`: the model chosen for a task, "Local AI only", the
+  once-per-project cloud consent), `credentials.py` (API key: environment, then the keychain
+  through the optional `keyring`, then the settings file), `ollama_admin.py`; the agent
+  (`agent.py`: `Agent(...).run()` on a worker thread, one per request, events in
+  `agent_types.py`; `agent_context.py`: the fixed system prompt plus the per-request
+  context; `workspace.py`: the `Workspace` the GUI implements; `guides.py`: the guides
+  `read_guide` loads) and its tools (`tools/`: `read_file`, `find_files`, `search`,
+  `edit_file`, `write_file`, `list_slides`, `lint`, `render_preview`, `add_slide`,
+  `add_bib_entry`, `compile_deck`, `read_guide`, `undo_edit`; the dot-folders and `pdf/` are
+  invisible, edits that touch a protected region -- `protected_regions.py` -- or a frozen
+  version are refused, a file open in a buffer is edited in the buffer). The Claude Code
+  tab's side: `mcp_server.py` (a small MCP server on `http.server`, 127.0.0.1, bearer
+  token: `get_focus`, `read_buffer`, `list_slides`, `lint`, `render_preview`,
+  `read_guide`, `add_slide`), `claude_launch.py` (finds `claude`, passes the MCP config, a
+  PreToolUse hook and the system prompt; the child environment drops the API key
+  variables so the user's own login is used), `claude_hook.py` (exit code 2 blocks an edit
+  of a protected region or a frozen version; `python -m slidemage.ai.claude_hook`, or
+  `<exe> --claude-hook` in the frozen app) and `project_watch.py` (a 1 s poll that lets
+  the Source buffers notice files Claude Code changed).
+- Task logic that is not UI stays in its modules: `ai_draft.py` (only
+  `mask_protected_regions` now), `syntax_check.py`, `alt_draft.py` (image descriptions and
+  translation backends), `image_review.py`, `slide_add.py`, `deck_outline.py`,
+  `latex_edit.py`, `preview_target.py`, `snippets.py`, `compile_status.py`, `housekeeping.py`,
+  `app_info.py`, `admin_slides.py`.
 
-## GUI framework: PySide6 (Qt), migrated from Tkinter/ttk
+## GUI framework: PySide6 (Qt)
 
-The app now runs on PySide6 (`qt_gui.py` and the other `qt_*.py` modules) --
-`__main__.py` launches it. See [`PYSIDE6_MIGRATION.md`](PYSIDE6_MIGRATION.md)
-for the full history: why (permanent ttk limitations -- no per-tab colors,
+The app runs on PySide6 (`ui/`, with `ui/app.py` as the application start) --
+`__main__.py` launches it. Since 6.0 the window is the workspace described under "What it
+does"; the `qt_*` modules of the Tkinter migration are gone. The terminal tab needs
+QtWebEngine (`PySide6-Addons`), which the PyInstaller spec bundles; QtWebEngine runs with
+`--disable-gpu`. See [`PYSIDE6_MIGRATION.md`](PYSIDE6_MIGRATION.md) (historical)
+for the Tkinter-to-Qt history: why (permanent ttk limitations -- no per-tab colors,
 no native tab scrolling, dark mode only working via a hand-rolled
-widget-registration workaround), the file-by-file/widget-by-widget mapping,
-and the phased implementation log. The original Tk implementation has
-since been removed. Install for development with `pip install -e ".[dev]"`
+widget-registration workaround), and the phased implementation log. The original Tk
+implementation has since been removed. Install for development with `pip install -e ".[dev]"`
 from the repo root and run `slidemage` (or `python -m slidemage`).
 
 ## Non-obvious things worth knowing before touching this code
@@ -944,7 +946,7 @@ real retry loop safe to bring back.
 entirely on its own detached daemon thread that `run_job()` fires and does
 **not** wait for -- `run_job()` returns `True` (compile succeeded) the
 moment latexmk itself is done, logging the fixed `MOVING` line (parsed by
-`qt_gui.py`'s `MOVING_LOG_RE` for the row's status dot, so that wiring
+`compile_progress.py`'s `_MOVING_RE` for the job card, so that wiring
 didn't need to change) with extra context appended, then moves on. Inside
 that detached thread: fire a fresh attempt every `PDF_MOVE_RETRY_INTERVAL_SECONDS`
 (10s) regardless of whether an earlier attempt ever returned (abandoned
@@ -1071,10 +1073,14 @@ directly inside `decks/`/`decks/archive/` (skipping only SlideMage's own
   catches the specific "bare `\input{X}` where `X.tex` sits next to the
   deck" shape. A deck depending on something else decks/-local in a
   different way wouldn't be caught the same way.
-- No real GUI tooltips (Tkinter has none built in) -- disabled-checkbox
-  reasoning is instead a static caption line under each table.
-- No scrollable table -- fine at the current ~8-deck scale; would need a
-  canvas+scrollbar if the deck count grows a lot.
+- The AI assistant (6.0): no chat history across sessions (New chat forgets
+  the conversation, and so does closing the app); the Claude model list is the
+  static `ANTHROPIC_FALLBACK_MODELS`, not the live list; every local model gets
+  all the tools and the same system prompt, and a long conversation can outgrow
+  the 16384-token window asked of Ollama (`providers.AGENT_NUM_CTX`) without a
+  warning; a local model's "thinking" output is dropped, not shown.
+- The Claude Code tab (6.0): URLs in the terminal are not clickable; Windows
+  (`pywinpty`, `claude.cmd`, the frozen hook's stdin) and macOS are untested.
 - ~~`unused_content.py`'s scans don't strip LaTeX comments before
   matching~~ -- fixed 2026-08-25, direct instruction: both scans now strip
   every unescaped `%...` comment tail first (`_strip_comments()`), so a
@@ -1110,7 +1116,10 @@ it) -- never the real course decks
   care about.
 - GUI launched and screenshotted (via a PowerShell `System.Drawing`
   screen-capture, since there's no browser-based way to inspect a native
-  Tkinter window here) -- table renders with the right tabs/columns.
+  Tkinter window here) -- table renders with the right tabs/columns. (Since 6.0 the
+  screenshots are made offscreen by `tools/manual/make_screenshots.py`; the 6.0
+  one-file build was started on Linux with the example project, and
+  `SlideMage --claude-hook` blocked a header edit and a frozen version.)
 - Whole-deck compile of `test.tex`: PASS, `pdf/test.pdf` produced,
   `.build/test.*` cleaned up, no leftover wrapper file.
 - Per-chapter compile of `t-Uni-IA2-2026w-preview.tex`'s one chapter:

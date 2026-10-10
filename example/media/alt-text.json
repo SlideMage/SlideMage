@@ -295,76 +295,76 @@
         "1rv": {}
       }
     },
-    "media/screenshot-slidemage-deck-editor-grid.png": {
+    "media/screenshot-slidemage-chat.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The deck editor in Grid view: previews of this manual's slides, grouped by chapter.",
-      "long": "SlideMage's deck editor in Grid view: cards with a picture of each slide and its number and id-slug, such as \"1. 1jh-EN-Title-Slide\" and \"2. 1r2-EN-Contents\", under the heading \"(before first chapter)\", followed by the chapter heading \"The big picture\" and the first slides of that chapter.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "The Grid view shows the slides' previews.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
+      "short": "The AI assistant with a short conversation about editing a slide.",
+      "long": "The assistant under the side panels: the tabs Chat (selected) and Claude Code, the scope choice This slide (selected) and Whole deck, a new-chat button, a dark message from the user, Make the second bullet shorter and say what the frame is for, the reply of Claude Sonnet 5.5 beginning I'll read the slide first, a tool card read_file for the slide's file, and the final answer proposing a shorter bullet.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The assistant reads the slide, runs tools and answers in a conversation.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
-        "1gu": {}
+        "1wk": {}
       }
     },
-    "media/screenshot-slidemage-deck-editor-list.png": {
+    "media/screenshot-slidemage-deck-switcher.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The top of the deck editor's List view, with ten numbered callouts.",
-      "long": "The top of SlideMage's deck editor for slidemage-manual, showing the main window's search row, the tab strip and the editor's toolbar: Refresh, Source, Transcript, Add section, Undo, Select all, a Quick navigation dropdown, a Find slide in deck field, Close and the view choice List, Thumbnail, Grid. Below, the first rows of the list: the heading \"(before first chapter)\", two slide rows (a checkbox, the slide's number, up and down arrows, the slide's id-slug such as 1jh-EN-Title-Slide, a dropdown reading \"\\slide (current)\", and the buttons + before, + section, + after, Remove, Preview and Images), then the section row \"Section: The big picture\" with up and down arrows, Rename, + section before, + slide here and Remove, and the start of the next slide row. Numbered badges 1 to 10 point at the toolbar, Quick navigation, the view choice, a row's checkbox, number and arrows, id-slug, dropdown, + before group, Remove group and the section row.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "Ten numbered elements of the deck editor: toolbar, navigation, views and the parts of a slide row and a section row.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
-      "used_on": {
-        "1ti": {}
-      }
-    },
-    "media/screenshot-slidemage-deck-table.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "SlideMage's deck table, with one deck in each group.",
-      "long": "The deck table of SlideMage's main window: column headings Deck, Instructor, During-course, After-course, After-course per chapter and Presenter. #workdeck sits on top without a heading; below it the open groups \"Course decks (1)\" with course-example-2027s, \"Research presentations (1)\" with talk-example-seminar and \"SlideMage manual (1)\" with slidemage-manual, each row with its checkboxes and the buttons Open pdf, Settings, Source, Duplicate, Tags, Export PPTX and Archive (in the manual's row Settings and Tags are greyed out).",
-      "source": "Screenshot of SlideMage 5.26.",
+      "short": "The deck switcher open: decks by group, the current deck ticked.",
+      "long": "The top left of the workspace with the deck switcher menu open under slidemage-manual: #workdeck without a heading; the heading Course decks with course-example-2027s; Research presentations with talk-example-seminar; SlideMage manual with slidemage-manual, ticked.",
+      "source": "Screenshot of SlideMage 6.0.",
       "takeaway_default": "Decks appear under the group their tag names.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1d8": {}
       }
     },
-    "media/screenshot-slidemage-images-tab-toolbar.png": {
+    "media/screenshot-slidemage-images-page.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The drafting buttons of SlideMage's Images tab.",
-      "long": "A strip of the Images tab's toolbar: the label Model: with a dropdown set to gemma4:12b, and the buttons Draft descriptions, Draft all..., Tune prompt... and Clear draft.",
-      "source": "Screenshot of SlideMage 5.27.",
-      "takeaway_default": "The model picker and the four drafting buttons sit side by side in the toolbar.",
+      "short": "The Images page with the correlation chart of the figure slide selected.",
+      "long": "The Images page, which replaces the workspace's columns. Left: the heading Image descriptions with a back arrow and a refresh button, the counts of reviewed, draft and undescribed images, the choice Show (All slides with images, 25 slides), the order Deck order or File order, a field Find slide by id or id-slug, the list of slides (1d8 Deck tags and groups to 1vh Side image: sideimageframe, 1rb Figure only: figureframe selected), the model pickers Describe images with and Translate with, both qwen3:8b, and the buttons Draft all and Translate all. Right: the heading 1rb Figure only: figureframe with its file name and the state Draft, unreviewed, the buttons Draft this slide, Clear draft, Save draft and Save and mark reviewed, the image media/correlation-matrix-example.png at full size with the state Saved, not reviewed and the buttons Tune prompt and Replace image, the choice Informative or Decorative, and the text fields Short description (alt text) and Long description. The top bar shows the button Close images and an EN or DE switch for the texts.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "Images are described on the Images page.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1ih": {}
+      }
+    },
+    "media/screenshot-slidemage-images-toolbar.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The model pickers and the drafting buttons of the Images page.",
+      "long": "A strip of the Images page's left column: the label Describe images with and a picker reading qwen3:8b, the label Translate with and a picker reading qwen3:8b, and the buttons Draft all and Translate all.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The model pickers and the batch buttons sit under the slide list.",
       "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1be": {}
       }
     },
-    "media/screenshot-slidemage-images-tab.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "The Images tab with the figure slide's correlation chart selected.",
-      "long": "SlideMage's Images tab in a tall window. A toolbar with the drafting model, Draft descriptions, Draft all, Tune prompt, Clear draft, the translation model, Translate all, the transcript version and Generate transcript, and a second row with Show, Sort, Rescan, a Find slide field and Open slide source. On the left a list of slides with images, such as \"1rb -- Figure only: figureframe\" (selected). On the right that slide's entry: the role choice informative or decorative, the buttons Replace image, Save draft and Save and mark reviewed, the image media/correlation-matrix-example.png at full size, and below it the text fields \"Short alt\" (one locating sentence), \"Long description\", \"Takeaway\" (why the image is on this slide) and \"Source\", each with its text.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "Images are described in the Images tab.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
-      "used_on": {
-        "1ih": {}
-      }
-    },
     "media/screenshot-slidemage-main-window.png": {
       "role": "informative",
       "status": "auto",
-      "short": "SlideMage's main window with the Active decks table.",
-      "long": "SlideMage's main window. At the top the menus System, Tabs, Housekeeping and Info, and on the right a \"Slide name search:\" field and a \"Project-wide full-text search...\" button. The Active decks tab lists four decks in their groups: #workdeck on top, then \"Course decks (1)\" with course-example-2027s, \"Research presentations (1)\" with talk-example-seminar and \"SlideMage manual (1)\" with slidemage-manual. Each row has checkboxes for Instructor, During-course, After-course, After-course per chapter (only where the deck has chapters) and Presenter, and the buttons Open pdf, Settings, Source, Duplicate, Tags, Export PPTX and Archive; in the manual's row Settings and Tags are greyed out. Below the table the buttons Create PDF, Create Transcript, ?, Clear selection and Refresh decks; under them the checkboxes Include footer timestamp, Generate appendix TOC and Auto-open generated PDFs (ticked), and at the bottom the empty Log pane with Copy log and Clear log.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "The main window lists the decks and compiles them.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
+      "short": "SlideMage's workspace with the manual deck open, with eleven numbered callouts.",
+      "long": "SlideMage's workspace window, light theme. Top bar: the logo, the deck switcher reading slidemage-manual, the label View as with the choices Instructor (selected), During course and After course, the language choice EN (selected) and DE, the status Saved, the choice Preview (selected), Split, Source and Details, the dark button Compile PDF Instructor with an arrow, the button Images and a three-dot button. Left column: a field Find slide by id or title, the slide list with a thumbnail, number, ID, language and title per row and the section headings Accessibility and Frame types, the slide 1y8 The default frame: standardframe highlighted, and the buttons + Slide and + Section. Middle: the page of that slide, with a title bar, two paragraphs, a bullet list and its LaTeX source, and below it the slide's ID and title and the button Render Instructor EN with an arrow. Right column: the panel Used in decks, listing slidemage-manual with the note that edits to the current version reach every deck that follows it, and under it the AI assistant with the tabs Chat and Claude Code, the scope choice This slide and Whole deck, three suggestions, a message field, the choice Ask before edits, the button Send and the label of the model, qwen3:8b local.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The workspace shows one deck: slide list, focused slide, panel and assistant.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1ub": {}
+      }
+    },
+    "media/screenshot-slidemage-palette.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The command palette after typing source.",
+      "long": "A search box with the focused slide's ID 1y8 and the text source, and the entries found, in groups: View and build, Show Source; Slide 1y8, Open source; Deck, Edit deck source; Go to slide, 1nz Footnotes, sources, citations; Chat, Ask the chat source with the model qwen3:8b local. At the foot the hints up and down move, enter run, esc close.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The palette finds commands, slides and text with one search box.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1fg": {}
       }
     },
     "media/screenshot-slidemage-save-dialog.png": {
@@ -379,13 +379,25 @@
         "1an": {}
       }
     },
-    "media/screenshot-slidemage-slide-editor-buttons.png": {
+    "media/screenshot-slidemage-side-panel.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The two rows of controls at the top of SlideMage's slide editor, including versions list and language.",
-      "long": "A strip with two rows of controls. The first row: the buttons Save, Revert (greyed out), Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide and Delete slide, a versions dropdown reading \"No previous versions\", the language badge [EN], the label Language: with a dropdown set to EN, and the button Set. The second row: Preview, the label Render version: with a dropdown set to Instructor, and the buttons Render to PDF and Render transcript.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "The first row manages the slide as a whole; the second row renders it.",
+      "short": "The Visibility panel: one slide, ticked for the three deck versions.",
+      "long": "The panel picker reading Visibility with the note Instructor highlighted, and a table with the columns Instructor, During and After and the row Whole slide (backslash slide, number 44) with a ticked box in each column.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "A side panel acts on the focused slide; here it ticks the views the slide appears in.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1cb": {}
+      }
+    },
+    "media/screenshot-slidemage-slide-details.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The Details view of a slide: its file, frame, version, language and slug, with buttons to rename, duplicate and delete.",
+      "long": "A card headed Slide with the rows File (1y8-EN-Standardframe-current.tex), Frame (standardframe), Version (v1.0.0), Language (EN) and Slug (Standardframe, with the button Rename), and below it the buttons Duplicate slide and Delete slide. Above the card the slide's title, The default frame: standardframe, and its ID 1y8.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The Details view holds the slide-level actions: rename, duplicate, delete.",
       "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1b2": {}
@@ -394,23 +406,47 @@
     "media/screenshot-slidemage-slide-editor.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The slide editor with the source of the standardframe demo slide.",
-      "long": "SlideMage's slide editor for 1y8-EN-Standardframe-current.tex. Two toolbar rows: Save, Revert, Find, Reindent, Check syntax, AI draft, Duplicate slide, Rename slide, Delete slide, a versions dropdown, the language EN with a Set button, Close and Close and save; then Preview, a Render version dropdown, Render to PDF and Render transcript. Below, a Transcript summary field, a formatting toolbar (italic, bold, underline, monospace, Source, Footnote, Text color, Insert list, Insert block, Insert command, Add reference to .bib, Insert citation), and the LaTeX source with line numbers and syntax coloring.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "The slide editor edits, renders and versions one slide.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
+      "short": "The Source view with the LaTeX source of the standardframe demo slide.",
+      "long": "The workspace with Source chosen at the top. In the middle column: the file name 1y8-EN-Standardframe-current.tex, a magnifier button, the buttons Revert (greyed out) and Save, a row of formatting buttons (italic, bold, underline, monospace, percent sign, Source, Footnote, Color, Insert, Cite, Tools), the lint line No problems found with the button Ask AI to fix, the folded line Show 2-line header comment, and the LaTeX source with line numbers and syntax colouring. Slide list on the left, panel and AI assistant on the right.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The Source view edits the slide's LaTeX with a toolbar and a lint line.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1b6": {}
+      }
+    },
+    "media/screenshot-slidemage-slide-list.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The slide list with three slides selected and the selection bar below it.",
+      "long": "The left column of the workspace: the field Find slide by id or title, then rows of slides, each with a thumbnail, the number, the ID and language, such as 32 1gu EN, and the title, such as Slide previews. Three rows (Slide previews, Getting slides out, Compiling single pages) are highlighted as selected, the first with an outline. Below them Options and other formats, Safety nets, the section heading Accessibility with the count 5 and the slide Accessibility. At the bottom the selection bar: 3 slides selected, Select all, a close button, the dark button Hide in Instructor, the button More and a bin button. Four numbered callouts mark the find field, a row, the selection bar and a section heading.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "The slide list: find, rows with their status, selection and sections.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1ti": {}
+      }
+    },
+    "media/screenshot-slidemage-slide-preview.png": {
+      "role": "informative",
+      "status": "auto",
+      "short": "The Preview view: a rendered slide, with its ID and the Render button below.",
+      "long": "The middle column in Preview: a chip EN at the top left, the rendered slide The default frame: standardframe with its explanatory text, bullet list and LaTeX source, and below it the slide's ID 1y8, its title and the dark button Render Instructor EN with an arrow.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "Preview shows the slide as a picture; Render makes a fresh one.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
+      "used_on": {
+        "1gu": {}
       }
     },
     "media/screenshot-slidemage-tags-dialog.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The Tags dialog: four choices for a deck's group.",
-      "long": "A small dialog: \"Group (the tag decides which section of the deck table it appears in):\" with four radio buttons -- Workdeck (pinned to the top of the table), Course deck, Research presentation, and the selected Test deck -- and the note \"Stored in the deck's own file as \\decktags{...}, so it stays with the deck.\", with OK and Cancel buttons.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "A deck's group is chosen in the Tags dialog.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
+      "short": "The Tags sheet: four choices for a deck's group.",
+      "long": "A small sheet titled Tags: Group (decides the section of the deck switcher) with four radio buttons, Workdeck (pinned to the top of the deck switcher), Course deck (selected), Research presentation and Test deck, the note Stored in the deck's own file as backslash decktags, so it stays with the deck, and the buttons Cancel and Save.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "A deck's group is chosen in the Tags sheet.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1d8": {}
       }
@@ -418,11 +454,11 @@
     "media/screenshot-slidemage-transcript.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The start of this manual's accessible transcript, as SlideMage shows it.",
-      "long": "SlideMage's transcript view: the heading \"slidemage-manual -- accessible transcript\", the deck and version (during-course), the number of slides, an introduction saying that the transcript reproduces the text of every slide with a description of every image, a warning about images not described yet, and the beginning of the entries \"Slide 1 -- SlideMage\" and \"Slide 2 -- Contents\", each with its slide ID.",
-      "source": "Screenshot of SlideMage 5.26.",
-      "takeaway_default": "A transcript is the deck's text and image descriptions for screen readers.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
+      "short": "One slide's transcript entry in the preview sheet.",
+      "long": "A sheet titled Transcript: 1ub with a Close button. It shows the entry Slide 1, The main window, its slide ID, the slide's text as a numbered list of the eleven callouts, a heading Figure with the image's short description, and the start of its full description.",
+      "source": "Screenshot of SlideMage 6.0.",
+      "takeaway_default": "A transcript entry is a slide's text and image descriptions in reading order.",
+      "drafted_by": "claude-sonnet-5.5 (manual build)",
       "used_on": {
         "1az": {}
       }

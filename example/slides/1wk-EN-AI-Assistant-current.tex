@@ -1,0 +1,39 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": the AI assistant (the lower part of the
+% workspace's right column) (tools/manual/make_screenshots.py, shot chat).
+\setSlideVersion{1-0-0}
+\begin{standardframe}{The AI assistant}
+	\small
+	Below the panels sits an assistant that reads your slides and changes them. It sees the focused slide, including text you have not saved.
+	\par\smallskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.25\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-chat.png}}}
+		\end{column}
+		\begin{column}{0.37\linewidth}
+			\textbf{Chat}
+			\shrinklists{3}
+			\begin{itemize}
+				\item Scope \emph{This slide} or \emph{Whole deck}; a label names the model and says whether it runs locally (Ollama) or in the cloud (Claude)
+				\item It reads, searches and edits project files, lints, renders, adds slides, compiles
+				\item \emph{Ask before edits} shows a diff to \emph{Apply} or \emph{Reject}; \emph{Edit automatically} applies it, with \emph{Undo}
+				\item Header comments, \SMCmd{setSlideVersion} lines, \SMCode{vbox to 0pt} blocks and frozen versions are off limits
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.34\linewidth}
+			\textbf{Claude Code}
+			\shrinklists{3}
+			\begin{itemize}
+				\item A terminal tab running your own, logged-in \SMCode{claude} in the project; offered only when it is installed
+				\item It sees the focused slide and meets the same limits; a file with unsaved changes asks which version to keep
+			\end{itemize}
+			\textbf{Cloud models}
+			\shrinklists{3}
+			\begin{itemize}
+				\item Need an API key; \emph{Local AI only} (Settings, Cloud) turns them off; the first request in a project asks what will be sent
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

@@ -2,8 +2,9 @@
 
 LaTeX/beamer setup for research and teaching slides, built on the
 [Gotham beamer theme](https://github.com/) with a Uni Graz color/logo
-customization, plus SlideMage, a PySide6 GUI for compiling decks and
-managing slide IDs, image descriptions, and accessible transcripts.
+customization, plus SlideMage, a PySide6 desktop app (one workspace per deck, with an
+AI assistant) for compiling decks and managing slide IDs, image descriptions, and
+accessible transcripts.
 
 > **This repository is self-contained**: the framework, the app and a small
 > demo project (`example/`: the SlideMage manual,
@@ -31,7 +32,7 @@ merged with that fork's history).
 | --- | --- |
 | `latex/` | The framework: Gotham beamer theme (`beamer*themegotham.sty`, `gotham.dtx`), `Slidemaster_preamble_base.tex`, `Slidemaster_alt.lua`. Institution-independent. |
 | `example/` | A complete Slidemaster project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`Slidemaster_preamble_uni-graz.tex`, `schemes/`), `Slidemaster.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
-| `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`). |
+| `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
 | `.github/workflows/` | `release.yml` builds the Windows and Linux executables for every version tag; `ci.yml` (run by hand) runs the tests and compiles the demo decks. |
 | `docs/` | Project overview, deck-version manual, SlideMage internals. |
@@ -46,7 +47,7 @@ repo.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-slidemage --project example          # the GUI
+slidemage --project example          # the app
 cd example/decks && latexmk test.tex # or compile directly
 ```
 
@@ -63,6 +64,57 @@ No Python install needed: build a stand-alone executable once
 ./dist/SlideMage --project example       # Linux/macOS
 dist\SlideMage.exe --project example     # Windows
 ```
+
+The one-file build is about 300 MB: besides Qt it carries QtWebEngine (the Claude Code
+tab's terminal is xterm.js in a web view), the bundled fonts and the `anthropic` client.
+It was built and started on Linux (Python 3.14); Windows and macOS builds are untested. On
+a bare Linux QtWebEngine needs more system libraries than Qt's base set (for instance
+`libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6` and an ALSA
+library); install them with the package manager. The **Claude Code** tab is optional: it
+runs the user's own `claude` command (installed and logged in) and is offered only when
+that is found; everything else works without it. A cloud model in the chat needs an
+Anthropic API key (`ANTHROPIC_API_KEY`, else the system keychain through the optional
+`keyring` package, else the settings file); local models need Ollama.
+
+## The workspace
+
+SlideMage (6.0) opens one deck at a time in a single workspace window; the full reference
+is [docs/SlideMage.md](docs/SlideMage.md), the SlideMage manual (`example/`) shows it with
+screenshots.
+
+- **Top bar:** deck switcher (decks grouped by their tag), *View as* Instructor / During
+  course / After course and EN / DE (what the Preview shows and the slide list marks as
+  hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
+  offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
+  options), **Images** and the ⋮ menu (this deck, decks, project, housekeeping, info).
+- **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
+  variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
+  Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
+  **right:** one side panel for the slide (used in decks, versions, visibility,
+  citations, language, image descriptions, transcript entry, speaker notes) above the AI
+  assistant.
+- **Ctrl+K** (or Ctrl+Shift+F) opens the command palette: every command, every slide, and
+  full-text search over slides, deck files and the bibliography.
+- **Compile card and log:** a compile run shows as a card at the bottom of the window (one
+  line per job, Stop, Retry failed, Open PDFs); **Ctrl+L** opens the log drawer, which
+  opens by itself on a failure.
+- **Images page:** a full-window page for describing, drafting, translating and reviewing
+  image descriptions (see "Describing images").
+- **AI assistant** (under the side panels): *Chat* is an agent that works on the focused
+  slide or the whole deck with tools (read, search, edit, lint, render a preview, add a
+  slide or a bibliography entry, compile). Edits wait for **Apply** / **Reject** in
+  *Ask before edits* mode, or apply at once with **Undo** in *Edit automatically* mode; a
+  slide's header comment, `\setSlideVersion` line, `\vbox to 0pt` blocks and frozen
+  versions can never be edited. The model is a local Ollama model that can call tools or,
+  with an Anthropic API key, a Claude model; **Local AI only** (Settings → Cloud; per
+  project too) turns the cloud off, and the first cloud request in a project says what
+  will be sent. *Claude Code* is a terminal tab running the user's own installed `claude`
+  in the project folder; SlideMage serves it the focused slide over a local MCP server
+  and blocks edits to protected parts with a hook (the tab is only offered when `claude`
+  is found).
+- **Settings** (⋮ → Project): General, AI models (a model per task: syntax check, image
+  descriptions, translation, chat), Cloud (Local AI only, API key), Ollama (models,
+  updating, deleting), Prompts (image-description and translation prompts).
 
 ## Releases and updates
 
@@ -86,7 +138,7 @@ history entry in `version.py` gets a paragraph of its own starting
 workflow refuses a major bump without that paragraph. Try it before
 tagging: `python packaging/release_notes.py vX.Y.Z`.
 
-A downloaded executable can update itself. **Settings → General →
+A downloaded executable can update itself. **⋮ → Settings… → General →
 Updates** chooses what happens when SlideMage starts (per user and
 machine, stored next to the token, not in the project):
 
@@ -102,7 +154,7 @@ the log. A breaking release -- a `BREAKING:` paragraph in its notes, or a
 higher major number -- is **always asked about, even in automatic mode**:
 the dialog shows the `BREAKING:` paragraphs and offers *Install anyway*,
 *Stay on vN.x* (installs the newest non-breaking release instead, if there
-is one) or *Not now*. **Info → Check for updates…** works in every mode.
+is one) or *Not now*. **Check for updates…** (⋮ menu, *Info*) works in every mode.
 Because the repository is private, all of this needs a GitHub token with
 read access to it (Settings → General → Updates, or
 `$SLIDEMAGE_GITHUB_TOKEN`). A source checkout is updated with `git pull`
@@ -157,7 +209,7 @@ registry with the version whose changes you have dealt with (kept in
   **Show report**, **Not now** (nothing is recorded, so the dialog is back the next time
   the project is opened) and **Don't ask again** (remembered per change).
 - Changes that only make slides **look different** never open a dialog; they are
-  listed under Info → Project compatibility… (**Mark all as read** stops listing them).
+  listed under ⋮ → Info → Project compatibility… (**Mark all as read** stops listing them).
 - A change with a detector is pending only while the detector finds something in the
   project, so fixing it by hand makes it disappear. Where no automatic fix exists, the
   report says what to do.
@@ -187,7 +239,7 @@ framework next to the project has the new command.
 
 A snapshot is a self-contained copy of a deck that compiles exactly as the deck
 compiles today, whatever later happens to the project, the framework or SlideMage.
-**Decks → Create deck snapshot…** takes one or more decks (each gets its own
+**⋮ → Decks → Create deck snapshot…** takes one or more decks (each gets its own
 snapshot; they are made one after the other), **Folder** or **.zip file**, and whether
 to **include the LaTeX package files** and **the SlideMage app**. Archiving a deck asks
 first: **Snapshot, then archive** / **Archive only** / Cancel (the snapshot uses the
@@ -232,13 +284,13 @@ on record", ...). Only the verification render then runs. A compile during which
 of its files changed, or whose bibliography failed, is not recorded; "Remove temp files"
 keeps the records. `--recompile` ignores them.
 
-The same records spare needless compiles from the deck table: when a checked version
+The same records spare needless compiles from **Compile PDF**: when a version
 hasn't changed since its last compile, and that PDF is still where this compile would
 put it, SlideMage asks first -- **Compile anyway**, **Skip unchanged** (the default) or
 Cancel.
 
 A snapshot's `<project>/` folder can be opened in SlideMage as a project: a line above
-the tabs says it is a snapshot, SlideMage never changes it by itself (no compatibility
+the workspace says it is a snapshot, SlideMage never changes it by itself (no compatibility
 migrations, no framework or manual updates, no `project.json` bookkeeping), and compiles
 use the snapshot's framework, PDF dates and footer timestamps, with PDFs in its own
 `pdf/` (its `\deckoutputfolder` paths belong to the original project). Edits made there
@@ -292,7 +344,7 @@ copied package files in `texmf/` record the exact originals.
   the institutions' (template name "SlideMage"); the manual,
   `decks/slidemage-manual.tex`, is the demo deck in it.
   **Default render template** (since v5.8.0): a slide rendered outside a
-  deck -- the slide editor's "Render to PDF" and "Preview", tikz
+  deck -- the Source view's Render menu and the Preview, tikz
   illustration renders -- uses the template chosen under Settings → General
   → Slide rendering, which lists every template a deck of the project can
   find: the project's own `Slidemaster_preamble_<name>.tex` files plus the
@@ -312,7 +364,7 @@ copied package files in `texmf/` record the exact originals.
   project: role (`decorative`/`informative`), confirmation status, short/long
   description, a default takeaway, and per-slide state (which slides use it,
   each with its own takeaway override and reviewed stamp). Edited through
-  SlideMage's "Images" tab. See "Screen-reader accessibility" below.
+  SlideMage's Images page. See "Screen-reader accessibility" below.
 - `media/alt-text.csv` — a **generated** compile-time projection of the JSON
   store above (image, role, status, short alt only), rewritten automatically
   every time the store saves. Exists only because `Slidemaster_alt.lua` reads
@@ -332,8 +384,8 @@ copied package files in `texmf/` record the exact originals.
   `22s-UniGraz-1920-1080.png` and `22s-UniGraz-304-171.png` — bare id
   first, to sort/glob-match by slide before institution), refreshed as
   a side effect of any compile that touches that slide, or in bulk via
-  SlideMage's "Update previews" button. A best-effort cache for
-  SlideMage's own Preview button/hover tooltip/thumbnail grid, not a
+  SlideMage's "Update slide previews" (⋮ menu, *Housekeeping*). A best-effort cache for
+  SlideMage's own Preview view and slide-list thumbnails, not a
   guaranteed-fresh one. Gitignored, same category as `transcripts/`.
 - `slide_ids.csv` — registry of all slide IDs in use, so new IDs never collide.
 - `.scripts/R_Slidemaster/inst/templates/slide-template.tex` — the starter
@@ -352,14 +404,16 @@ copied package files in `texmf/` record the exact originals.
 - [SlidemasterManual.md](docs/SlidemasterManual.md) — concise reference for core
   functionality, including the deck version system for instructor/during-course/
   after-course decks.
-- `src/slidemage/` — SlideMage, a PySide6 (Qt) GUI for compiling decks (any
-  combination of instructor/during-course/after-course, whole deck or one
-  PDF per chapter), for archiving a finished deck's `.tex` file into
-  `decks/archive/` while keeping it compilable, and for describing images
-  and generating accessible transcripts. Install with `pip install -e .`,
-  start with `slidemage`; see [docs/SlideMage.md](docs/SlideMage.md) for
-  how it works and [docs/PYSIDE6_MIGRATION.md](docs/PYSIDE6_MIGRATION.md)
-  for why it is no longer Tkinter.
+- `src/slidemage/` — SlideMage, a PySide6 (Qt) app: one workspace per deck
+  (slide list, Preview/Source/Split/Details, side panels, an AI assistant)
+  for compiling decks (any combination of instructor/during-course/
+  after-course, whole deck or one PDF per chapter), for archiving a finished
+  deck's `.tex` file into `decks/archive/` while keeping it compilable, and
+  for describing images and generating accessible transcripts. Install with
+  `pip install -e .`, start with `slidemage`; see
+  [docs/SlideMage.md](docs/SlideMage.md) for how it works and
+  [docs/PYSIDE6_MIGRATION.md](docs/PYSIDE6_MIGRATION.md) for why it is no
+  longer Tkinter (historical).
 - `decks/slidemage-manual.tex` — the SlideMage manual: how SlideMage
   works, and a working demo of every frame type and feature, compiled in
   every deck version (since v5.16.0; it replaced the `test.tex`/
@@ -425,8 +479,8 @@ compatibility for its own sake.
 
 ### Compiling without TeXstudio (SlideMage)
 
-`slidemage` compiles any deck via `latexmk` directly, through a GUI table
-of checkboxes rather than a hand-edited `DECKS=` line -- see
+`slidemage` compiles any deck via `latexmk` directly, through the workspace's
+**Compile PDF** button and its menu rather than a hand-edited `DECKS=` line -- see
 [docs/SlideMage.md](docs/SlideMage.md) for the full picture. It
 exists specifically so compiling doesn't depend on TeXstudio's own local
 settings at all (see "TeXstudio setup" below for how much those drift
@@ -438,7 +492,7 @@ per-machine setup.
 This project previously had a `compile-all.bat` for the same command-line
 purpose (plus a `compile-all-versions.bat` for compiling all three deck
 versions in one go) -- both retired once SlideMage covered the same
-ground with a GUI on top, and neither is needed alongside it.
+ground with an app on top, and neither is needed alongside it.
 
 Two non-obvious things `src/slidemage/compiler.py` does, both confirmed
 necessary by hitting the failure directly rather than assumed (carried over
@@ -475,18 +529,18 @@ from those retired scripts, which hit the same two problems first):
 
 ### Compiling only some pages (since v5.34.0)
 
-A deck row's **Pages** field takes the numbers printed in the slide footers, e.g.
-`4, 5, 7-10, 15`; empty means the whole deck. The checked versions (and the presenter
-PDF) then compile only the slides with those numbers, each slide whole with all its
-reveal steps, numbered exactly as in the whole deck. It builds on the version's last
-whole-deck compile (`src/slidemage/partial_compile.py`):
+In the arrow menu of **Compile PDF**, **Pages of the selected slides** takes the slides
+selected in the slide list, and **Pages by number…** the numbers printed in the slide
+footers, e.g. `4, 5, 7-10, 15`. The view being compiled (or the presenter PDF) then
+compiles only those slides, each slide whole with all its reveal steps, numbered exactly
+as in the whole deck. It builds on the version's last whole-deck compile (`src/slidemage/partial_compile.py`):
 
 - that compile's PDF says which slide each number is, and its auxiliary files (kept in
   `.build/compile-records/<jobname>/`, see "Deck snapshots") supply the contents slide,
   chapter agendas, citations and links of the whole deck;
 - the deck is compiled without the other slide calls, with the frame and page counters
   set before each kept slide, in two single passes;
-- with **Pages replace theirs in the full PDF** (toolbar, on by default) the new pages
+- with **Pages replace theirs in the full PDF** (Build options, on by default) the new pages
   are drawn onto the old ones in that PDF -- bookmarks and links into them keep working,
   links on them are re-targeted. Otherwise they go to `<pdf>-pages-<numbers>.pdf`.
 
@@ -501,15 +555,16 @@ its own reveal steps. It doesn't update other pages
 that show something of the changed slides (a new title in the contents slide, an
 appendix thumbnail); the log lists slides that changed but weren't asked for.
 
-Before an ordinary compile, SlideMage asks when a checked version hasn't changed since its
+Before an ordinary compile, SlideMage asks when a version hasn't changed since its
 last compile (see "Deck snapshots").
 
-Every PDF of one click on **Create PDF** carries the moment of that click in its PDF info
+Every PDF of one click on **Compile PDF** carries the moment of that click in its PDF info
 dictionary (`/SlideMageRun`; a page compile that swaps pages in stamps its own). **Open
-pdf** opens the deck's usual PDF -- the instructor version, or another one chosen in the
-deck's **Settings** ("Open pdf opens", stored as `%% SlideMage open PDF: <version>` in the
-preamble) -- unless a newer PDF of the deck comes from a later click (or carries no stamp,
-i.e. predates v5.34.0); then it asks which one to open.
+latest PDF** (⋮ menu, *This deck*) opens the deck's usual PDF -- the instructor version, or
+another one chosen in the **Deck settings** ("Open pdf opens", stored as
+`%% SlideMage open PDF: <version>` in the preamble) -- unless a newer PDF of the deck comes
+from a later click (or carries no stamp, i.e. predates v5.34.0); then it asks which one to
+open.
 
 ### Custom output folder (`\deckoutputfolder`)
 
@@ -565,9 +620,8 @@ too):
 
 ### Exporting to PowerPoint
 
-Each active deck's row in SlideMage has an **Export PPTX** button:
-compiles the deck (instructor version) and writes a real `.pptx` next to
-its PDF in `pdf/`. Every beamer overlay/reveal step belonging to one
+**Export PPTX…** (⋮ menu, *This deck*) compiles the open deck (instructor version)
+and writes a real `.pptx` next to its PDF in `pdf/`. Every beamer overlay/reveal step belonging to one
 `\slide{}` call is stacked full-page onto a *single* PowerPoint slide
 (topmost = first reveal step) instead of getting its own slide, with each
 image but the last given a click-triggered "Fade" ("Verblassen") exit
@@ -586,10 +640,9 @@ installation (see the module's own docstring for how).
 
 ### Deck tags (`\decktags`)
 
-SlideMage's deck tables group decks under separators -- the workdeck on top,
+SlideMage's deck switcher (top left) groups decks under headings -- the workdeck on top,
 then "Course decks", "Research presentations", "SlideMage manual" and
-"Test decks" -- and click
-a heading to collapse or expand that group. Which group a deck is in is
+"Test decks", with the archived decks at the foot. Which group a deck is in is
 decided by its own tag, never by its filename:
 
 ```latex
@@ -601,21 +654,21 @@ defines it as an inert no-op like `\deckoutputfolder`). The group tags are
 `work`, `course`, `research` and `test`; a deck with none of them is a
 course deck, and if it carries several the first in that order wins. Other
 tags are allowed and ignored for now. Set it from SlideMage rather than by
-hand: the **Tags** button on a deck row, or the group choice in the
-**Duplicate** dialog when creating a copy.
+hand: **Tags…** in the ⋮ menu (*This deck*), or the group choice in the
+**Duplicate deck…** sheet when creating a copy.
 
 The SlideMage manual (`decks/slidemage-manual.tex`) carries a fifth group
 tag, `manual` (since v5.18.0): it always sits in its own "SlideMage manual"
 section (above the test decks), wins over any other group tag, is never offered in
-the Tags or Duplicate dialogs, and the manual's own **Tags** button is
-disabled -- the manual can't be moved into another group by accident. A copy
-made with **Duplicate** starts out as a course deck.
+the Tags or Duplicate sheets, and **Tags…** is disabled for the manual -- the
+manual can't be moved into another group by accident. A copy made with
+**Duplicate deck…** starts out as a course deck.
 
 ### Deck settings and course links
 
-The **Settings** button on a deck row (Active or Archived decks table) opens
-a dialog with the deck-wide settings. They are written into the deck's own
-.tex file, all in one go when you press OK, so they stay with the deck when
+**Deck settings…** (⋮ menu, *This deck*) opens a sheet with the deck-wide settings
+(General, PDF output and Admin slides tabs). They are written into the deck's own
+.tex file, all in one go when you press **Save**, so they stay with the deck when
 it is moved, copied or archived:
 
 - **Template**: the institution template the deck loads
@@ -630,8 +683,8 @@ it is moved, copied or archived:
   name ending in `.pdf` fixes the file name).
 - **Always add the slide-preview appendix**: `\deckappendixtoc`.
 
-The group is still chosen with the **Tags** button. The SlideMage manual's
-own Settings button is disabled: app updates replace the manual.
+The group is still chosen with **Tags…**. **Deck settings…** is disabled for the
+SlideMage manual: app updates replace the manual.
 
 SlideMage stores the course URL just before \begin{document}, as a LaTeX
 comment:
@@ -641,11 +694,11 @@ comment:
 The comment does not change the compiled slides. The link stays with the
 deck when it is moved or archived.
 
-For a linked Uni Graz course, open the deck editor and click **Import
-sessions…**. SlideMage reads the course's
-Abhaltungstermine page, asks which group to use when several are listed,
-and previews the LaTeX table. Choose a deck position and click **Insert
-slide** to create an editable schedule slide.
+For a linked Uni Graz course, open the **Admin slides** tab of the Deck settings.
+SlideMage reads the course's Abhaltungstermine page when the tab is first shown, asks
+which group to use when several are listed (**Course sessions**), and previews the LaTeX
+table. Choose a deck position and click **Insert slides** to create an editable schedule
+slide.
 
 The table follows the deck's `\decklanguage`: a German deck gets
 "Abhaltungstermine" with Datum/Zeit/Ort/Termin, an English deck (also one
@@ -943,7 +996,7 @@ the revision itself. A version file is a point-in-time snapshot, never
 touched again once written; `current.tex` is the only file that changes day
 to day. This means old versions stay usable: you can pin a specific version
 in one deck (e.g. an older lecture you don't want to silently change) while
-another deck follows whatever is current. SlideMage's own Save button
+another deck follows whatever is current. SlideMage's own Save (in the Source view)
 does this freeze-then-bump step automatically (see "Creating and revising a
 slide" below) -- R's `slide.archive()` is still there for anyone editing
 outside SlideMage.
@@ -1069,12 +1122,14 @@ was on disk immediately before the save as `<id>-<slug>-v<old-version>.tex`
 (byte-for-byte, same as the manual R workflow above) and moves
 `current.tex`'s own tracked version forward; **Overwrite** just saves, with
 no freeze and no version change. A slide that has never been through this
-dialog with a real bump choice has no tracked version at all -- its footer
+prompt with a real bump choice has no tracked version at all -- its footer
 shows no `v...` segment, and its first bump treats the untracked content as
 if it were already `1.0.0` (so a first-ever Minor save freezes `v1-0-0` and
 leaves `current.tex` at `1.1.0`). `current.tex` itself is never renamed --
 only the frozen snapshot gets the `-v<version>.tex` suffix, exactly as in
-the manual workflow.
+the manual workflow. The **Slide versions** panel adds **Freeze as vX.Y.Z** (Major,
+Minor or Patch): it freezes the current content under its own version and moves the slide
+on, without a change to the text.
 
 ## Multi-language (EN/DE) slides
 
@@ -1107,22 +1162,22 @@ A German translation of a slide with real body text gets its **own,
 new slide ID** — not a shared ID, not an inline conditional — since the
 content genuinely differs and this project's whole versioning model
 assumes one ID's `current.tex` is one evolving content stream. In
-SlideMage's "Add slide" dialog (from a deck editor tab's `+ before`/
-`+ after` buttons), choose **Create new slide**, set **Language: DE**,
-tick **Base on existing slide** and pick the English original: this
-seeds the new file from the English slide's own body (a starting point
-to translate from, not a finished translation) and writes both
+SlideMage, choose **Translate slide…** in the slide's right-click menu in the slide
+list (or **+ Slide**, source **Translate**), pick **DE** and the English original: this
+seeds the new file from the English slide's own body (machine-translated by a local or
+cloud model if you choose one, else a starting point to translate from, not a finished
+translation), adds the copy to the open deck right after the original, and writes both
 cross-reference header comments automatically —
 `%% Translation of: <english id-slug>` on the new file, `%% DE
 translation: <german id-slug>` back on the English one. Then just edit
 the new slide's body directly, same as any other slide.
 
 If a slide's language needs to change later (including migrating an
-older, not-yet-tagged slide), open it in the slide-source editor and use
-its **Language:** control — this renames the file (and any frozen
+older, not-yet-tagged slide), select it and use the
+**Language** panel's language choice — this renames the file (and any frozen
 versions) and rewrites every deck reference for you; it asks for
-confirmation first, naming how many references will change. "Sync
-translation links" (main toolbar) refreshes every `Translation
+confirmation first, naming how many references will change. **Reestablish broken
+translation links** (⋮ menu, *Housekeeping*) refreshes every `Translation
 of:`/`... translation:` comment from current disk state — safe to run
 any time, e.g. after a manual rename elsewhere.
 
@@ -1132,8 +1187,8 @@ A slide whose only per-language difference is a short title or caption
 (a figure-only slide, say) doesn't need a second file: give it the
 `mult` language segment and switch its text with
 `\multilingualtext{English text}{German text}`, which reads whichever
-language the *deck* is compiling as. Pick **Multilingual** in the Add
-slide dialog's language radio to create one directly.
+language the *deck* is compiling as. Pick **Multilingual** as the language in the Add
+slide sheet to create one directly.
 
 For more than two languages, or just for readability, use the keyed form:
 `\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}`. One `key={text}`
@@ -1147,31 +1202,30 @@ is unchanged: English, then German.)
 
 ### Translating image descriptions/citations
 
-The Images tab's per-image editor has a **German** section (short/long
-description, source, takeaway) below the English one, with a **Translate
-now** button that machine-translates the current English text via a
-local Ollama model — review and edit before saving, same as any drafted
+The Images page's per-image form has a **DE** side (short/long
+description, source, takeaway; the **EN | DE** switch at the page's top right) with a
+**Translate** button that machine-translates the current English text via a
+local or cloud model — review and edit before saving, same as any drafted
 description. A German source citation is optional: leave it blank to
 reuse the English one (most citations are proper nouns/publication names
 that don't need translating), or fill it in only where it should read
 differently.
 
-The Images tab's toolbar also has a **Translation model:** picker (any
+The page's **Translate with** picker (any
 model installed in Ollama, not just vision-capable ones — translation is
-text-only) and a **Translate all…** button that batch-translates every
+text-only) and its **Translate all…** button that batch-translates every
 image whose English text is new or has changed since its last German
 translation, same resumable/no-persisted-job-state design as **Draft
 all…**. As of 2026-08-25 every existing image has a German translation.
 
 Exactly what gets sent to the model — the instruction text, and how many
 blank lines separate it from the text to translate — is configurable per
-model and per language pair from **System → Preferences… → Translation
-prompts**, since different models expect different prompt shapes (a
+model and per language pair from **⋮ → Settings… → Prompts**, since different models expect different prompt shapes (a
 dedicated MT model wants a short bare instruction; a general
 instruction-tuned model tolerates a longer one). A model/pair with no
-specific entry there falls back to that same dialog's single editable
-**default prompt**. The same Preferences dialog also holds the dark-mode
-toggle (moved off the main toolbar) and an **Ollama models** tab for
+specific entry there falls back to that same tab's single editable
+**default prompt**. The same Settings sheet also holds the dark-mode
+toggle (General) and an **Ollama** tab for
 freeing disk space — lists every installed model with its on-disk size
 and can delete one via Ollama's own reference-counted deletion, which
 only removes files no other installed model still shares.
@@ -2160,7 +2214,7 @@ own `.tex` sets `\setbeameroption{show notes}`/`{show notes on second
 screen=...}` itself, so `\note{}` content sits harmlessly in the source
 until a compile explicitly turns one of those on (see "Presenting live"
 below for the one way that happens: SlideMage's own "Presenter"
-checkbox, never a deck file's own hardcoded setting). That also means it
+entry, never a deck file's own hardcoded setting). That also means it
 doesn't need any special handling to keep it out of the student deck — it's
 already out of *every* deck by default; only that one specific, separate
 compile output ever shows it.
@@ -2175,8 +2229,8 @@ by default (skip slides where the notes are *only* that).
 ## Presenting live (dual-screen presenter mode)
 
 For actually giving a lecture — projector on one screen, your own notes on
-another — check **Presenter** in SlideMage's Active decks table (any
-deck, independent of every other checkbox there) and compile. It produces
+another — choose **Presenter** in the arrow menu of **Compile PDF** (any
+deck, independent of the view chosen at the top) and compile. It produces
 a separate `<deck>-instructor-presenter.pdf` in `pdf/` alongside whatever
 else you compiled in the same run; the plain Instructor PDF, if you also
 compile it, is completely unaffected.
@@ -2192,8 +2246,8 @@ template is customized (`Slidemaster_preamble_base.tex`'s own
 thumbnail-of-the-current-slide and printed compile-date from that
 panel — redundant since presenter software already shows the current
 slide on its own — leaving the panel almost entirely for note text.
-Always instructor-version content, regardless of which other version
-checkboxes happen to be ticked in the same batch: full `\pause` reveals
+Always instructor-version content, regardless of the view chosen at the top
+or other versions compiled in the same run: full `\pause` reveals
 and every authored note only make sense against the instructor's own
 content, so there's no During-course/After-course Presenter variant to
 choose.
@@ -2249,7 +2303,7 @@ and a link lands on whichever occurrence is *last* in the document —
 inherent to any permanent-id-based target scheme, not something to design
 around.
 
-**"Generate appendix TOC"** (SlideMage's Active decks toolbar, next to
+**"Generate appendix TOC"** (SlideMage's Build options, next to
 "Include footer timestamp") adds a clickable appendix to every whole-deck
 compile — Presenter, Instructor, During-course and After-course (since
 v5.5.0; before, the Instructor/version-less and Presenter compiles only) —
@@ -2263,7 +2317,7 @@ appendix slides (a `\section{Appendix}`, say). It is an agenda slide —
 one entry per chapter plus a leading "Front matter" entry for whatever
 comes before the first `\section{}` — followed by a 4×5 thumbnail grid per
 chapter (paginated "(2/3)"-style once a chapter exceeds 20 slides), using
-the same cached preview PNGs the deck editor's own hover tooltips already
+the same cached preview PNGs the slide list's thumbnails already
 rely on. Clicking a chapter on the agenda jumps to that chapter's own grid;
 clicking a thumbnail jumps straight to the real slide. The institute logo
 on every slide becomes an invisible link back to the appendix agenda, but
@@ -2299,7 +2353,7 @@ link):
   chapter's slides with their numbers.
 - **`\deckappendixtoc`** (deck preamble, inert for LaTeX like `\decktags`)
   makes SlideMage generate the appendix for that deck on every whole-deck
-  compile, whatever the toolbar checkbox says -- so the "Slide previews"
+  compile, whatever the Build options checkbox says -- so the "Slide previews"
   link always has a target.
 
 The grid's own size isn't a fixed cm value — it's computed in LaTeX from
@@ -2444,7 +2498,7 @@ SlideMage writes it.
 **Source** is independent of role: a decorative illustration still needs
 attribution even though it carries no alt text (Midjourney-generated
 images are a real example). It's a plain free-text citation field in the
-Images tab, automatically pulled into a compiled slide's own footnote —
+Images page, automatically pulled into a compiled slide's own footnote —
 every distinct source among a frame's images, de-duplicated, prefixed
 "Image source(s):" — so a hand-authored `\source{}` is no longer needed
 for image attribution specifically (it still is for anything else, e.g.
@@ -2469,22 +2523,26 @@ embedded Markdown table. JSON has no such limit, so the split no longer
 earns its complexity. `media/alt-text.csv` still exists, but only as a
 generated compile-time projection — see "Repository layout" above.)
 
-**The workflow**, all in SlideMage's green **Images** tab:
+**The workflow**, all on SlideMage's **Images** page (the **Images** button in the top
+bar, or **Image descriptions** in the ⋮ menu and the palette; the list on its left is
+slide-centric, filtered by state, and **Close images** returns to the deck):
 
-1. **Draft all…** runs a local vision model (Ollama) over every image that
+1. **Draft all…** runs a vision model (a local Ollama model, or a Claude model when cloud
+   use is allowed) over every image that
    still needs a description — once per image, not once per slide it appears
    on. It writes each one as it finishes and derives its queue from the
    store, so it is resumable — stop it, close the app, come back tomorrow.
    The list updates as it goes, so you can review the early ones while the
    rest run.
-2. **Review each one against the image**, which the tab shows at full size.
+2. **Review each one against the image**, which the page shows at full size.
    This is not optional; see the warnings below.
 3. **Save and mark reviewed** stamps the slide — both the image's
    description and this slide's own use of it (its takeaway). Editing the
    slide's own `.tex` afterwards moves it to "needs re-check" rather than
    silently keeping the old description; editing the description *itself*
    and clicking plain **Save draft** un-reviews this slide's use of it
-   immediately (2026-08-25) — a hand-edited description shouldn't keep
+   immediately (2026-08-25; leaving the slide, the filter or the page saves a pending edit as
+   such a draft) — a hand-edited description shouldn't keep
    showing as reviewed against text nobody has actually re-checked. On a
    slide with more than one image the button itself relabels to **Save and
    mark all images reviewed** (underlined in the app, 2026-09-15) — a
@@ -2540,10 +2598,10 @@ used as one `\node`'s content), or when its only content is a single
 — a decorative border around one real image, which already has its own
 alt-text entry; wrapping the border too would just duplicate it.
 
-It shows up in the Images tab's per-slide list exactly like a real image (as
-`tikz:ID`), with the same role radios, short/long/takeaway/source fields,
+It shows up on the Images page's per-slide list exactly like a real image (as
+`tikz:ID`), with the same role choice, short/long/takeaway/source fields,
 and **Draft…**/**Tune prompt…** buttons — none of that UI needed to change,
-since the tab already treats "which images does this slide reference" as
+since the page already treats "which images does this slide reference" as
 one flat list of opaque reference strings.
 
 Two things work differently under the hood, both because there is no
@@ -2575,10 +2633,9 @@ file behind a tikz illustration for the rest of the system to read:
 
 The transcript is the delivery route that is **known** to work — the
 invisible-text layer above is likely but unverified against a real screen
-reader. Generate a whole deck's transcript from either the deck-editor
-tab's own **Transcript** button (next to **Source**) or the main deck
-table's **Create Transcript** button (next to **Stop creation**, which
-also asks which deck) — either way, pick a **version** when prompted and
+reader. Generate a whole deck's transcript from the arrow menu of **Compile PDF** (**Accessible
+transcript → Write transcript · During course** or **After course**; **Several decks…**
+covers more than one deck) and
 Markdown + HTML land in `transcripts/` (or the deck's own
 `\deckoutputfolder[transcript]{...}`, see above).
 
@@ -2604,25 +2661,24 @@ Markdown + HTML land in `transcripts/` (or the deck's own
   omitted, so a half-described deck produces an honest transcript.
 - A slide can also carry a free-text **summary**, independent of any image
   — shown at the top of that slide's transcript entry, before its own body.
-  Set it from the **slide-source editor** ("Transcript summary" field, its
-  own "Save summary" button), not the Images tab: it needs to work for any
-  slide, including ones with no images at all, which the Images tab's own
+  Set it in the **Transcript entry** panel ("Summary", its own **Save summary**
+  button), not on the Images page: it needs to work for any
+  slide, including ones with no images at all, which the Images page's own
   list never shows.
-- **Previewing one slide's own entry** (no deck, no file written): the
-  Images tab's own **Transcript version** dropdown + **Generate transcript**
-  button (also on the slide-source editor's own "Render transcript"
-  button) renders just the currently-selected slide and opens it in its
-  own preview tab — nothing is saved to `transcripts/`, or anywhere else.
+- **Previewing one slide's own entry** (no deck, no file written): the Images page's
+  transcript button, or **Render → Render transcript** in the Preview, renders just the
+  selected slide (from the text in the Source view) and opens it in a sheet of its
+  own — nothing is saved to `transcripts/`, or anywhere else.
 
 ## Pre-render syntax check
 
 Every path that starts a PDF render first runs a fast static check (`src/slidemage/latex_lint.py`,
-GUI in `qt_render_check.py`) over exactly the LaTeX that render will read, and only asks
+GUI in `ui/workspace/render_check.py`) over exactly the LaTeX that render will read, and only asks
 before rendering when it finds an **error**:
 
-- **Slide editor -- Render to PDF:** the editor buffer (unsaved edits included).
-- **Preview popup -- Render now** (slide editor and deck editor): the saved slide file.
-- **Create PDF** (any selection of decks, versions, chapters, presenter) and **Export PPTX**:
+- **Render ▾ → Render the buffer** (Source view): the editor buffer (unsaved edits included).
+- **Render** in the Preview: the saved slide file.
+- **Compile PDF** (any view, all views, chapters, presenter, pages, several decks) and **Export PPTX**:
   the deck file (for a per-chapter job only its preamble and that chapter) plus the slide
   files its `\slide`-family calls load in that version -- a `\conditionalslide` or
   `\slidestep` left out of the version is not checked -- plus any `\input`ed deck fragment
@@ -2630,8 +2686,10 @@ before rendering when it finds an **error**:
 - **Update slide previews:** every slide any deck uses.
 
 No findings: the render simply starts (one log line). Warnings only: listed in the log, the
-render starts. Errors: a dialog lists them; **Cancel** (the default), **Show in editor**
-(opens the file at that line) or **Render anyway**. It is lexical -- no macro is expanded --
+render starts. Errors: a sheet lists them; **Cancel** (the default), **Show in editor**
+(opens the file at that line) or **Render anyway**. The Source view runs the same check on
+its text as you type (a status line, a red badge on **Source**, and **Ask AI to fix**, which
+hands the findings to the chat). It is lexical -- no macro is expanded --
 so it only reports things that are wrong whatever the project's own macros do. Cost: about
 0.1 ms per slide file (a 395-slide deck: ~300 ms cold including reading the files, ~65 ms
 when nothing changed); it was run over all ~930 slide/deck files and tuned until it was quiet
@@ -2693,34 +2751,27 @@ it last looked (full-size and thumbnail, see below), so you can glance at
 a slide without paying a LaTeX compile to do it. Previews are specific to
 the institution template that produced them: a Uni Graz deck and a Uni
 Innsbruck deck compiling the same slide keep separate caches, and each
-deck's editor always shows its own template's previews. Several ways to
-see them, all reading the same cache:
+deck's workspace always shows its own template's previews. Two ways to
+see them, both reading the same cache:
 
-- **Hover** over a slide's id in the deck editor (or the deck table) for an
-  instant preview tooltip.
-- Click **Preview** (deck editor's per-row button, or the slide-source
-  editor's own button next to "Render to PDF") for a larger look, with a
-  "Render now" fallback if nothing's cached yet for that slide.
-- Switch **View: List / Thumbnail / Grid** (radio buttons, top right of
-  the deck editor's toolbar). **Thumbnail** shows a rendered thumbnail
-  below each slide's id — every other control (variant, remove,
-  +before/+after, Preview) stays exactly where it is; this only adds an
-  image, it doesn't replace the row. **Grid** is a separate, purely
-  visual browsing view: a card per slide, grouped by chapter, click to
-  open — no row controls, for a quick overview rather than editing.
-- The **chapter dropdown** (top toolbar, between Undo and Close) jumps
-  straight to a chapter in whichever view you're in, its heading landing
-  at the top of the view,
-  without hunting for it by scrolling.
+- The **slide list** shows a thumbnail on every row; a row says "preview old" when the
+  slide's source is newer than its preview.
+- The **Preview** view (and the right half of **Split**) shows the cached page at once,
+  with chips for what it is not showing (a pinned version, another language, a missing
+  translation, a view that does not typeset the slide) and a **Render** button that makes
+  a fresh one in the View as / language chosen at the top. (The cache holds the instructor
+  view only; the other views render on demand.)
+
+The old deck editor's hover tooltip, Thumbnail and Grid views, and chapter dropdown are
+gone: the slide list's sections and its **Find slide** field replace the dropdown.
 
 This is a best-effort cache, not a guaranteed-fresh one — it only updates
 when something actually compiles that slide, so it can lag behind an
-unsaved (or even a saved but never recompiled) edit. The slide-source
-editor's own "Render to PDF" always compiles your current buffer directly
-and is unaffected by any of this.
+unsaved (or even a saved but never recompiled) edit. **Render ▾ → Render the buffer**
+always compiles your current text directly and is unaffected by any of this.
 
 To refresh every slide's preview in one pass (e.g. after a preamble/theme
-change), click **Update previews** in the main toolbar and confirm — no
+change), choose **Update slide previews** (⋮ menu, *Housekeeping*) and confirm — no
 institution to pick any more: it scans every deck (active and archived)
 for which slides it actually uses under which template, compiles one
 throwaway deck per template containing exactly that template's own
@@ -2767,11 +2818,12 @@ deck decides where it appears and which steps show, per deck version:
   slide numbers after it agree across versions.
 - The first `\slidestep` of an id defines its `\hypertarget` (`\hyperlink{egk}{...}`
   lands there); later ones do not, so there is no "multiply defined" warning.
-- SlideMage: the deck editor lists the calls (with their versions), `Included in decks`
-  headers count them, a transcript numbers them like `\conditionalslide`, the appendix
-  TOC shows the slide once, and slide rename follows the id. Since 2026-09-26 the variant
-  dropdown (deck editor rows and the "Add slide" dialog) offers `\slidestep`, with the
-  version checkboxes and a "steps" field (`1,2`, `2-`, `1-2,4`) next to it.
+- SlideMage: the slide list shows the calls (with their versions and steps as a chip),
+  `Included in decks` headers count them, a transcript numbers them like
+  `\conditionalslide`, the appendix TOC shows the slide once, and slide rename follows the
+  id. Since 2026-09-26 the way a slide is called (a row's **Call as** menu and the **Add
+  slide** sheet) offers `\slidestep`, with the version choice and a "steps" field
+  (`1,2`, `2-`, `1-2,4`) next to it.
 
 ### List labels: where they start
 
@@ -2806,7 +2858,7 @@ preamble are serialized; each caller gets its own temporary PDF. Failed edits
 never return a previously successful PDF. “Remove temp files” clears these
 builds and their `_slidemage_preview-*` wrappers.
 
-The slide editor's render controls also offer **Selection as frame** (a complete
+The Source view's **Render** menu also offers **Selection as frame** (a complete
 frame, or self-contained text wrapped in a frame) and **Selection as element**
 (a cropped formula, graphic or text fragment using `preview.sty`). Select the
 source before rendering. An overlay value of zero renders all overlays; a

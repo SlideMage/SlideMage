@@ -64,7 +64,20 @@ BACKUP_DIR = Path(".slidemage") / "backups"
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
 # work (detect/migrate) live in modules of their own, e.g. compat_bibliography.
-CHANGES: list[Change] = [compat_bibliography.CHANGE]
+CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
+    id="workspace-redesign",
+    since="v6.0.0",
+    severity=APPEARANCE,
+    title="SlideMage's window was rebuilt as one workspace per deck",
+    description=(
+        "Version 6.0 replaced the window of tabs, the deck table and the deck editor by a "
+        "workspace (slide list, Preview / Source / Split / Details, side panels, an AI "
+        "assistant, a command palette). Projects, decks, slides and settings files are "
+        "unchanged and compile as before; what changed is how you work with them."),
+    fix=(
+        "Nothing to do in the project. Compile the other versions from the arrow of Compile PDF "
+        "(they were the deck table's checkboxes), and use the chat instead of AI drafting."),
+)]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
