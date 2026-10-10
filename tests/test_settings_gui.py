@@ -291,14 +291,24 @@ def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch,
     assert refreshed == []
 
 
-def test_an_answer_to_an_earlier_request_is_dropped(qapp):
-    sheet = open_sheet(qapp)
+def test_a_reload_while_one_is_running_waits_for_its_answer_instead_of_stacking(qapp):
+    sheet = SettingsSheet(FakeApp())
     first = sheet._loader
     sheet.reload_models()
-    sheet._on_models(first, [InstalledModel("stale", 1, "")], [])        # the superseded loader
-    assert "stale" not in sheet.available_models
+    sheet.reload_models()
+    assert sheet._loader is first and sheet._reload_pending      # no second loader yet
+    first.wait()
+    qapp.processEvents()                                         # the answer arrives and starts the rerun
+    second = sheet._loader
+    assert second is not None and second is not first and not sheet._reload_pending
     loaded(sheet, qapp)
-    assert sheet.available_models == [m.name for m in INSTALLED]
+    assert sheet.available_models == [m.name for m in INSTALLED] and sheet._loader is None
+
+
+def test_an_answer_that_is_not_the_current_loaders_is_dropped(qapp):
+    sheet = open_sheet(qapp)
+    sheet._on_models(object(), [InstalledModel("stale", 1, "")], [])
+    assert "stale" not in sheet.available_models
 
 
 # -- Cloud -------------------------------------------------------------------------------------

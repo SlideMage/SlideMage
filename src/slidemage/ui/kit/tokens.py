@@ -24,41 +24,27 @@ RADIUS_SM = 4
 RADIUS_MD = 8
 RADIUS_PILL = 999
 
-# Font sizes in px that the prototype uses most (13 body, 12.5 compact,
-# 12 secondary, 11.5 captions, 14 emphasis, 18/20 headings and icons).
-FONT_SIZE_BODY = 13
-FONT_SIZE_SMALL = 12
-FONT_SIZE_CAPTION = 11.5
-FONT_SIZE_TITLE = 18
-
-# Spacing unit; the prototype lays out on 2/4/6/8/12/14/24 px gaps.
-SPACE_XS = 4
-SPACE_SM = 8
-SPACE_MD = 12
-SPACE_LG = 24
-
 
 @dataclass(frozen=True)
 class Shadow:
     """One Qt drop shadow (QGraphicsDropShadowEffect takes a single layer).
 
     The prototype stacks several CSS layers per elevation; `blur` and `alpha`
-    here approximate the sum, and `css` records the original for reference.
+    here approximate the sum.
     """
 
     dy: int
     blur: int
     alpha: int  # 0-255
-    css: str
 
 
 SHADOWS: dict[str, Shadow] = {
     # Cards, menus and chips (Material elevation 2).
-    "raised": Shadow(2, 8, 50, "0 1px 5px rgba(0,0,0,.2),0 2px 2px rgba(0,0,0,.14),0 3px 1px -2px rgba(0,0,0,.12)"),
+    "raised": Shadow(2, 8, 50),
     # Toast.
-    "toast": Shadow(12, 32, 51, "0 12px 32px rgba(0,0,0,.2)"),
+    "toast": Shadow(12, 32, 51),
     # Modal sheets and dialogs (Material elevation 24).
-    "modal": Shadow(16, 44, 70, "0 11px 15px -7px rgba(0,0,0,.2),0 24px 38px 3px rgba(0,0,0,.14),0 9px 46px 8px rgba(0,0,0,.12)"),
+    "modal": Shadow(16, 44, 70),
 }
 
 
@@ -106,12 +92,6 @@ class Tokens:
     def view_color(self, view: str) -> str:
         """`view` is "instructor", "during" or "after"."""
         return getattr(self, f"view_{view}")
-
-    def view_tint(self, view: str) -> str:
-        return getattr(self, f"view_{view}_tint")
-
-    def step_color(self, index: int) -> str:
-        return self.steps[index % len(self.steps)]
 
 
 VIEWS = ("instructor", "during", "after")

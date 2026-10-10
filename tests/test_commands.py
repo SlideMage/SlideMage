@@ -22,14 +22,12 @@ def qapp():
 
 # -- the registry ---------------------------------------------------------------------
 
-def test_commands_are_found_by_id_and_by_group_and_an_id_is_used_once():
+def test_commands_are_found_by_id_and_an_id_is_used_once():
     registry = CommandRegistry()
     registry.add(Command("a", "A", "First", lambda ctx: None))
     registry.add(Command("b", "B", "Second", lambda ctx: None))
     registry.add(Command("c", "C", "First", lambda ctx: None))
     assert "a" in registry and "z" not in registry and registry["b"].label == "B"
-    assert registry.groups() == ["First", "Second"]
-    assert [c.id for c in registry.in_group("First")] == ["a", "c"]
     with pytest.raises(ValueError):
         registry.add(Command("a", "again", "First", lambda ctx: None))
 
@@ -106,7 +104,7 @@ def test_every_command_a_menu_lists_exists_and_every_command_is_in_a_menu_or_the
     context = command_context()
     assert {k for menu in (build_more_menu(None, context), build_compile_menu(None, context))
             for k in (e[1] for e in menu._entries if e[0] == "item")} <= {c.id for c in registry}
-    assert registry.groups() == ["View & build", "Slide", "Section", "Deck", "Project"]
+    assert list(dict.fromkeys(c.group for c in registry)) == ["View & build", "Slide", "Section", "Deck", "Project"]
 
 
 def test_ids_are_unique_and_every_command_has_a_label(qapp):

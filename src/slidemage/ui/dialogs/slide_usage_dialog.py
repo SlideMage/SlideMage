@@ -79,7 +79,7 @@ class SlideUsageDialog(QDialog):
                     combo.addItem(f"Keep {old}", KEEP)
                 if usage.pinned_versions:
                     combo.addItem("Stay on " + ", ".join(
-                        "v" + v.replace("-", ".") for v in usage.pinned_versions), KEEP)
+                        slide_versioning.version_label(v) for v in usage.pinned_versions), KEEP)
             self._combos[usage.deck.name] = combo
             grid.addWidget(combo, row, 2)
         layout.addLayout(grid)

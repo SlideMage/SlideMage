@@ -126,12 +126,11 @@ class CodeFilePopover(_FormPopover):
         self.note.setText("" if exists else "This file does not exist yet.")
 
     def build(self) -> str:
-        text = latex_edit.code_file_call(self.path.currentText(), self.keys.text())
         path = self.path.currentText().strip()
         snippets.resolve(path)       # a ValueError if it lies outside snippets/
         if self.create.isChecked():
             snippets.create(path)
-        return text
+        return latex_edit.code_file_call(path, self.keys.text())
 
 
 class CitationPopover(Popover):

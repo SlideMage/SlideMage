@@ -111,8 +111,8 @@ class DeckActionsMixin:
             return
         chosen = pdf_to_open(pdfs)
         if chosen is None:
-            labels = [f"{pdf.label} -- {datetime.fromtimestamp(pdf.mtime):%Y-%m-%d %H:%M}"
-                      for pdf in pdfs]
+            labels = [f"{pdf.label} -- {datetime.fromtimestamp(pdf.mtime):%Y-%m-%d %H:%M} ({pdf.path.name})"
+                      for pdf in pdfs]       # the file name keeps two PDFs of one label apart
             default = next((i for i, pdf in enumerate(pdfs) if pdf.preferred), 0)
             label, ok = QInputDialog.getItem(
                 self, "Open pdf",

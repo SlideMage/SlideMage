@@ -20,7 +20,7 @@ from typing import Optional
 
 from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename
 from .ai.providers import ChatProvider
-from .slide_import import escape_latex, slug_from_title
+from .slide_import import escape_latex
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$")
 FRAMES_DIR = Path(__file__).resolve().parent / "assets" / "frames"
@@ -54,14 +54,6 @@ NEEDS_IMAGE = ("sideimageframe", "fullbleedframe")
 
 # A slide body of a few screens, translated as one block: leave room for the answer.
 TRANSLATION_MAX_TOKENS = 4096
-
-LOADS = ("live", "frozen", "step")
-
-
-def slugify(title: str) -> str:
-    """"Growth of R&D" -> "Growth-of-R-D": the words of a title joined by hyphens ("" without any)."""
-    return slug_from_title(title, "")
-
 
 def slide_path(id_slug: str) -> Path:
     """The live file of a slide."""
@@ -163,7 +155,7 @@ class CallSpec:
 
 
 def call_spec(load: str, views: list[str], version: Optional[str] = None, steps: str = "") -> CallSpec:
-    """The deck call for loading a slide as `load` (LOADS) in the deck versions `views`
+    """The deck call for loading a slide as `load` ("live", "frozen" or "step") in the deck versions `views`
     (deck_editor.DEFAULT_CONDITIONS): \\slide, or \\conditionalslide when it leaves some out;
     \\slideversion of a frozen `version` (which has no per-version form); \\slidestep of `steps`
     (a beamer overlay list, "2" or "1-2,4"). ValueError says what is missing."""

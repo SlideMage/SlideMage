@@ -31,6 +31,7 @@ from ...qt_ai_draft_dialog import AiDraftDialog
 from ...slide_language import bare_id
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from ..kit.widgets import Button, Chip, PopoverMenu, Surface
+from ..text import plural
 from .ai_fix import AiFixPanel
 from .source_editor import FindBar, LatexPlainTextEdit
 
@@ -178,8 +179,7 @@ class SourceFile(Surface):
             return
         errors, warnings = len(self.lint.errors), len(self.lint.warnings)
         if errors or warnings:
-            parts = ([f"{errors} error{'s' if errors != 1 else ''}"] if errors else []) \
-                + ([f"{warnings} warning{'s' if warnings != 1 else ''}"] if warnings else [])
+            parts = ([plural(errors, "error")] if errors else []) + ([plural(warnings, "warning")] if warnings else [])
             self.lint_chip.set_text(" · ".join(parts))
             self.lint_chip.set_tone("error" if errors else "warning")
             self.lint_chip.setToolTip("Click for the list; click an entry to go to its line.")
@@ -246,6 +246,11 @@ class SourceFile(Surface):
         raw_text = self.editor.text()
         new_text = raw_text
         previous_text = self.text
+        try:        # before anything is frozen or asked: a stale file loses neither
+            slide_source.check_fresh(self.path, previous_text)
+        except slide_source.StaleFileError as exc:
+            QMessageBox.critical(self.app, "Save failed", str(exc))
+            return False
         versions = DeckVersions({}, None)
         frozen_version = None
         if self.is_current_slide:

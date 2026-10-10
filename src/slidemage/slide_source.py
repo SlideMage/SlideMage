@@ -57,6 +57,14 @@ def _unique_backup_path(backup_dir: Path) -> Path:
     return candidate
 
 
+def check_fresh(path: Path, expected_text: str) -> None:
+    """Raise StaleFileError unless the file is as `expected_text` says (or does not exist yet)."""
+    if path.exists() and read_slide_source(path)[0] != expected_text:
+        raise StaleFileError(
+            f"{path.name} changed on disk since it was last loaded -- reload the slide and retry."
+        )
+
+
 def save_slide_source(
     path: Path, new_text: str, eol: str, expected_text: str | None = None
 ) -> Path:
@@ -92,22 +100,10 @@ def save_slide_source(
     Left as None (the default) for a caller that hasn't been ported to the
     stale-check yet, which always saves last-write-wins as before.
     """
-    if expected_text is not None and path.exists():
-        current, _ = read_slide_source(path)
-        if current != expected_text:
-            raise StaleFileError(
-                f"{path.name} changed on disk since it was last loaded -- "
-                "reload the slide and retry."
-            )
+    if expected_text is not None:
+        check_fresh(path, expected_text)
     backup_path = None
     if path.exists():
-        if expected_text is not None:
-            current_text, _ = read_slide_source(path)
-            if current_text != expected_text:
-                raise StaleFileError(
-                    f"{path.name} changed on disk since it was last loaded -- "
-                    "reload this slide's editor tab and retry."
-                )
         backup_dir = BACKUPS_DIR / path.name
         backup_dir.mkdir(parents=True, exist_ok=True)
         backup_path = _unique_backup_path(backup_dir)

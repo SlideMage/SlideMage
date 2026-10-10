@@ -47,6 +47,7 @@ from ..dialogs.settings import SettingsSheet
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
 from ..pages.no_decks import NoDecksPage
+from ..text import plural
 from .actions import build_registry
 from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
@@ -291,7 +292,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             event.ignore()
             return
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
-        self.palette.stop_search()
+        self.palette.stop_search(5000)
         self._stop_worker()
         super().closeEvent(event)
 
@@ -300,7 +301,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         dirty_files = self.centre.source.dirty_files()
         panels = self.side_panels.dirty_panels()
         if dirty_files or panels:
-            unsaved = [f"{len(dirty_files)} unsaved file{'s' if len(dirty_files) != 1 else ''}"] if dirty_files else []
+            unsaved = [plural(len(dirty_files), "unsaved file")] if dirty_files else []
             if panels:
                 unsaved.append("edits in the " + " and ".join(p.title for p in panels) + " panel"
                                + ("s" if len(panels) > 1 else ""))

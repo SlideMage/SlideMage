@@ -32,10 +32,10 @@ def next_snippet(slide_id: str) -> str:
 
 
 def resolve(path: str) -> Path:
-    """The file a project-relative `path` names, which must lie inside snippets/."""
+    """The file a project-relative `path` names, which must lie inside snippets/ (not the folder itself)."""
     target = (SNIPPETS_DIR.parent / path).resolve()
-    if not target.is_relative_to(SNIPPETS_DIR.resolve()):
-        raise ValueError(f"{path} is not in the {SNIPPETS_DIR.name}/ folder.")
+    if target == SNIPPETS_DIR.resolve() or target.is_dir() or not target.is_relative_to(SNIPPETS_DIR.resolve()):
+        raise ValueError(f"{path} is not a file in the {SNIPPETS_DIR.name}/ folder.")
     return target
 
 

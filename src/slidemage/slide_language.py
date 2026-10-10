@@ -62,6 +62,16 @@ def own_language(id_slug: str) -> Optional[str]:
     return None
 
 
+def current_name(id_slug: str) -> str:
+    """The file name of a slide's current file ("1ab-EN-Demo-current.tex")."""
+    return f"{id_slug}{CURRENT_SUFFIX}"
+
+
+def is_current_file(path: Path) -> bool:
+    """Whether `path` is a slide's current file (not one of its frozen versions)."""
+    return path.name.endswith(CURRENT_SUFFIX)
+
+
 def current_path_for_bare_id(bare_id_: str) -> Optional[Path]:
     """The slides/<bare_id_>-...-current.tex path on disk right now, or
     None if that ID has no current file any more (renamed again, or
@@ -86,7 +96,7 @@ def cross_referenced_language(id_slug: str, path: Optional[Path] = None) -> Opti
     search over one already-short header block), but does read the file,
     unlike own_language() which is pure string parsing."""
     if path is None:
-        path = SLIDES_DIR / f"{id_slug}{CURRENT_SUFFIX}"
+        path = SLIDES_DIR / current_name(id_slug)
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError:
@@ -125,7 +135,7 @@ def translation_link(id_slug: str, path: Optional[Path] = None) -> Optional[Tran
     (slide_source.last_saved(): its newest backup) later than the translation was last written
     (the later of its own newest backup and its file's mtime). It is not a comparison of
     content, and an edit made outside SlideMage is not noticed."""
-    path = path or SLIDES_DIR / f"{id_slug}{CURRENT_SUFFIX}"
+    path = path or SLIDES_DIR / current_name(id_slug)
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError:

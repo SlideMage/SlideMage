@@ -649,6 +649,14 @@ def test_a_section_is_renamed_in_place(make_list, qapp):
     assert "\\section{One}" in _read(path)
 
 
+def test_a_closed_section_stays_closed_when_it_is_renamed(make_list):
+    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
+    slide_list.tree.collapsed.add("Two")
+    slide_list._rename_section(slide_list.tree.data_of(head_of(slide_list, "Two")), "Second")
+    assert "\\section{Second}" in _read(path)
+    assert slide_list.tree.collapsed == {"Second"}
+
+
 def test_sections_are_added_removed_and_get_slides(make_list, monkeypatch):
     slide_list, window, path = make_list(FRONT_AND_SECTIONS)
     monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("New", True))

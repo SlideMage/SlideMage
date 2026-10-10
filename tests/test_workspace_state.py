@@ -133,7 +133,17 @@ def test_view_language_and_mode_are_remembered_per_deck():
     reopened = WorkspaceState()
     reopened.set_deck(first)
     assert (reopened.view, reopened.language, reopened.mode) == ("after-course", "DE", "split")
-    assert app_settings.get(SETTINGS_KEY)["first"] == {"view": "after-course", "language": "DE", "mode": "split"}
+    assert app_settings.get(SETTINGS_KEY)[str(first.path)] == {"view": "after-course", "language": "DE", "mode": "split"}
+
+
+def test_decks_with_one_name_in_different_folders_are_remembered_apart():
+    state = WorkspaceState()
+    live, archived = make_deck("same"), make_deck("same")
+    archived.path = Path("decks/archive/same.tex")
+    state.set_deck(live)
+    state.set_view("after-course")
+    state.set_deck(archived)
+    assert state.view == "instructor"
 
 
 def test_a_deck_without_a_saved_language_starts_in_its_own():

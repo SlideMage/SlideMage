@@ -27,6 +27,14 @@ def toast_texts(toast):
             [button.text() for button in toast.findChildren(QPushButton)])
 
 
+def show_buttons(sheet):
+    return [b for b in sheet.findChildren(QPushButton) if b.text() == "Show in editor"]
+
+
+def press(drawer, text):
+    next(b for b in drawer.findChildren(QPushButton) if b.text() == text).click()
+
+
 def wait_until(condition, timeout=5.0):
     end = time.monotonic() + timeout
     while not condition():
@@ -269,7 +277,7 @@ def test_a_build_with_errors_waits_for_build_anyway(env, monkeypatch):
         if answer == "anyway":
             sheet._on_anyway()
         elif answer == "show":
-            sheet.show_buttons[0].click()
+            show_buttons(sheet)[0].click()
         else:
             sheet.reject()
 
@@ -290,8 +298,8 @@ def test_the_check_sheet_lists_errors_before_warnings_and_confirm_logs_a_clean_c
     error = latex_lint.LintIssue(latex_lint.CHECKS[0][0], "y", 2, "b.tex", None)
     result = latex_lint.CheckResult(issues=[warning, error], files_checked=2)
     sheet = render_check.RenderCheckSheet(None, result, "deck", "Build", None)
-    assert sheet.windowTitle() == "1 error found" and len(sheet.show_buttons) == 2
-    assert not any(b.isEnabled() for b in sheet.show_buttons)            # no editor, no file
+    assert sheet.windowTitle() == "1 error found" and len(show_buttons(sheet)) == 2
+    assert not any(b.isEnabled() for b in show_buttons(sheet))            # no editor, no file
     logged = []
     app = type("App", (), {"log": staticmethod(logged.append)})
     assert render_check.confirm_render(None, app, latex_lint.CheckResult(files_checked=3), "deck") is True
@@ -329,9 +337,9 @@ def test_the_log_drawer_is_closed_until_asked_and_takes_every_writer(env):
     assert drawer.text.toPlainText().splitlines() == ["from the window", "from a thread"]
     window.topbar.command.emit("log")
     assert not drawer.isHidden()
-    drawer.copy_button.click()
+    press(drawer, "Copy log")
     assert QApplication.clipboard().text() == "from the window\nfrom a thread"
-    drawer.clear_button.click()
+    press(drawer, "Clear log")
     assert drawer.text.toPlainText() == ""
     window.topbar.command.emit("log")
     assert drawer.isHidden()

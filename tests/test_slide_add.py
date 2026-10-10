@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import alt_blocks, deck_editor, slide_add, slide_ids
+from slidemage import alt_blocks, deck_editor, slide_add, slide_ids, slide_import
 from slidemage.ai.providers import ChatReply, ProviderError
 
 from conftest import TEMPLATE, use_new_slide_files
@@ -115,8 +115,8 @@ def test_the_languages_a_slide_can_be_translated_into(files):
 
 
 def test_slugs():
-    assert slide_add.slugify("Growth of R&D spend (50% YoY)") == "Growth-of-R-D-spend-50-YoY"
-    assert slide_add.slugify("???") == ""
+    assert slide_import.slug_from_title("Growth of R&D spend (50% YoY)", "") == "Growth-of-R-D-spend-50-YoY"
+    assert slide_import.slug_from_title("???", "") == ""
     assert all(slide_add.SLUG_RE.match(s) for s in ("MM-Theorem", "a", "A1-b2"))
     assert not any(slide_add.SLUG_RE.match(s) for s in ("", "-a", "a-", "a--b", "a b", "ä"))
 

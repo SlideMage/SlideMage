@@ -36,6 +36,12 @@ def test_a_snippet_must_lie_inside_the_folder_and_is_created_once(folder):
         snippets.resolve("snippets/../Slidemaster.bib")
     with pytest.raises(ValueError):
         snippets.resolve("slides/x.tex")
+    for folder_itself in ("snippets", "snippets/", "snippets/."):
+        with pytest.raises(ValueError):
+            snippets.resolve(folder_itself)
+    (folder / "sub").mkdir(exist_ok=True)
+    with pytest.raises(ValueError):
+        snippets.resolve("snippets/sub")
     assert snippets.create("snippets/new/a.tex") and (folder / "new" / "a.tex").is_file()
     (folder / "new" / "a.tex").write_text("kept", encoding="utf-8")
     assert not snippets.create("snippets/new/a.tex")

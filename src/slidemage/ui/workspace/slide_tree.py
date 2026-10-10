@@ -46,7 +46,7 @@ def variant_label(call: SlideCall) -> str:
         "slidefinal": "final",
         "omitslide": "omit",
         "conditionalslide": views,
-        "slidestep": f"step {call.steps} · {views}",
+        "slidestep": " · ".join(filter(None, (f"step {call.steps}", views))),
         "slideversion": f"v{call.version}",
         "omitslideversion": f"omit v{call.version}",
     }[call.macro]

@@ -386,3 +386,17 @@ def test_buffer_gives_the_text_and_selection_of_a_slide_only(pane, slides, tmp_p
     deck.write_text("x", encoding="utf-8")
     pane.show_path(deck)
     assert pane.buffer() is None
+
+
+def test_a_stale_slide_is_refused_before_anything_is_frozen_or_asked(pane, slides, monkeypatch):
+    path = slides / "abc-EN-Demo-current.tex"
+    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "minor")
+    monkeypatch.setattr(source_file, "ask_deck_versions", lambda *_a: pytest.fail("nothing to ask for a stale file"))
+    pane.show_path(path)
+    pane.current.editor.insertPlainText("x")
+    path.write_text("\\setSlideVersion{1-1-0}\nsomeone else's text", encoding="utf-8")
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: told.append(args[2]))
+    assert not pane.save()
+    assert "changed on disk" in told[0] and pane.current.dirty
+    assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists()             # no outgoing version frozen

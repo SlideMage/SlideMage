@@ -199,8 +199,11 @@ class CompileJobsMixin:
             self._report_run_end(self._run)
 
     def _on_batch_done(self) -> None:
-        """The worker thread has ended: what never ran is stopped, and the run is over
-        once the last PDF has been moved into place (that goes on in the background)."""
+        """The worker thread has ended (the threads only emit): the compile slot is free, what never
+        ran is stopped, and the run is over once the last PDF has been moved into place (that goes on
+        in the background)."""
+        self.compiling = False
+        self.cancel_token = None
         self.topbar.refresh_compile_menu()
         if self._run is not None:
             self._run.finish(self._stop_requested)
@@ -331,8 +334,6 @@ class CompileJobsMixin:
                        for d in decks]
         created = sum(1 for r in results if r.ok)
         self.signals.log.emit(f"==== Done: {created} of {len(results)} snapshot(s) created ====")
-        self.compiling = False
-        self.cancel_token = None
         self.signals.batch_done.emit()
         self.signals.snapshots_done.emit(results)
 
@@ -635,8 +636,6 @@ class CompileJobsMixin:
             except OSError as exc:
                 log(f"*** couldn't auto-open {out_path.name}: {exc} ***")
         finally:
-            self.compiling = False
-            self.cancel_token = None
             self.signals.batch_done.emit()
 
     def _stop_compilation(self) -> None:
@@ -658,16 +657,16 @@ class CompileJobsMixin:
 
     def _run_jobs_thread(self, jobs: list[CompileJob]) -> None:
         cancel = self.cancel_token
-        results = run_jobs(jobs, self.signals.log.emit, cancel=cancel)
-        passed = sum(1 for ok in results.values() if ok)
-        failed = len(results) - passed
-        self.signals.log.emit(f"==== Done: {passed} passed, {failed} failed ====")
-        self.compiling = False
-        self.cancel_token = None
-        # refresh_compile_menu() touches widgets -- runs via this signal (queued
-        # onto the GUI thread automatically, same as the log signal above)
-        # rather than being called directly from this worker thread.
-        self.signals.batch_done.emit()
+        try:
+            results = run_jobs(jobs, self.signals.log.emit, cancel=cancel)
+            passed = sum(1 for ok in results.values() if ok)
+            failed = len(results) - passed
+            self.signals.log.emit(f"==== Done: {passed} passed, {failed} failed ====")
+        except Exception as exc:  # noqa: BLE001 -- reported, the slot must still be freed
+            self.signals.log.emit(f"*** Compile run failed: {exc} ***")
+        finally:
+            # refresh_compile_menu() touches widgets: this signal is queued onto the GUI thread
+            self.signals.batch_done.emit()
 
     def _on_update_previews(self) -> None:
         """No template picker any more (2026-08-16, direct instruction:
@@ -758,11 +757,6 @@ class CompileJobsMixin:
             "==== Update previews: compile finished ====" if ok
             else "==== Update previews: FAILED ===="
         )
-        self.compiling = False
-        self.cancel_token = None
-        # refresh_compile_menu() touches widgets -- runs via this signal (queued
-        # onto the GUI thread automatically), same as _run_jobs_thread's
-        # own use of it.
         self.signals.batch_done.emit()
 
     def _open_pdf(self, pdf_path: Path) -> None:

@@ -24,8 +24,9 @@ from PySide6.QtCore import QEvent, QObject, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
-from ... import slide_ids, slide_search
+from ... import slide_ids, slide_language, slide_search
 from ...deck_editor import SLIDES_DIR
+from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Chip, MenuRow, apply_shadow, set_property
 
@@ -101,7 +102,7 @@ def slide_entries(window, words: list[str], project_slugs: list[str]) -> list[En
     for id_slug in project_slugs:
         if id_slug not in in_deck and matches(words, id_slug):
             entries.append(Entry(GO_TO_SLIDE, id_slug,
-                                 lambda s=id_slug: window.open_slide_editor(SLIDES_DIR / f"{s}-current.tex"),
+                                 lambda s=id_slug: window.open_slide_editor(SLIDES_DIR / slide_language.current_name(s)),
                                  GROUP_ICONS[GO_TO_SLIDE], "not in this deck"))
     return entries[:MAX_SLIDES]
 
@@ -124,8 +125,8 @@ class _SearchWorker(QThread):
 
     found = Signal(str, list)
 
-    def __init__(self, query: str, parent: QObject) -> None:
-        super().__init__(parent)
+    def __init__(self, query: str) -> None:
+        super().__init__()
         self.query = query
 
     def run(self) -> None:
@@ -227,14 +228,13 @@ class CommandPalette(QWidget):
         if self._previous_focus is not None and shiboken6.isValid(self._previous_focus):
             self._previous_focus.setFocus()
 
-    def stop_search(self) -> None:
-        """No search thread outlives the palette (the window calls this on close, too)."""
+    def stop_search(self, wait_ms: int = 0) -> None:
+        """Stop the search thread, which is kept until it has ended; typing does not wait for that, the
+        window (which calls this on close, too) gives it a moment."""
         self._debounce.stop()
         worker, self._worker = self._worker, None
         if worker is not None:
-            worker.requestInterruption()
-            worker.wait()
-            worker.deleteLater()
+            background.stop_worker(worker, wait_ms=wait_ms)
 
     def _place(self) -> None:
         window = self._window
@@ -363,7 +363,7 @@ class CommandPalette(QWidget):
         if len(query) < MIN_TEXT_QUERY:
             return
         self.stop_search()
-        self._worker = _SearchWorker(query, self)
+        self._worker = _SearchWorker(query)
         self._worker.found.connect(self._on_found)
         self._worker.start()
 

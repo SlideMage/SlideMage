@@ -14,7 +14,7 @@ from typing import Optional
 
 from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit
 
-from .... import slide_source
+from .... import slide_language, slide_source
 from ...kit import kit_qss as q
 from ...kit.widgets import Button
 from .base import Row, SidePanel, box, text
@@ -46,7 +46,7 @@ class SpeakerNotes(SidePanel):
         self._path = self.slide_path()
         calls = slide_source.note_calls(self.slide_text())
         self._shown = [c.content for c in calls]
-        editable = self._path is not None and self._path.name.endswith("-current.tex")
+        editable = self._path is not None and slide_language.is_current_file(self._path)
         frame, layout = box()
         for number, call in enumerate(calls, start=1):
             row = Row(layout)
@@ -110,8 +110,10 @@ class SpeakerNotes(SidePanel):
 
     def flush(self) -> None:
         if self.dirty and self._path is not None:
-            self.set_dirty(False)
-            self._apply()
+            if self._apply():
+                self.set_dirty(False)
+            else:
+                self.app.log(f"The typed notes of {self._path.name} could not be applied.")
 
     def _save_notes(self) -> None:
         if self._apply():

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import deck_editor, slide_language
+from . import deck_editor, slide_language, slide_versioning
 from .deck_scan import Deck, scan_decks
 
 PINNED = {"slideversion": "slide", "omitslideversion": "omitslide"}
@@ -55,7 +55,7 @@ class DeckUsage:
     def state_text(self) -> str:
         parts = []
         if self.pinned_versions:
-            parts.append("pinned to " + ", ".join("v" + v.replace("-", ".") for v in self.pinned_versions))
+            parts.append("pinned to " + ", ".join(slide_versioning.version_label(v) for v in self.pinned_versions))
         if self.following:
             parts.append("follows the current version")
         if self.only_unpinnable:
@@ -68,7 +68,7 @@ def call_text(call: deck_editor.SlideCall) -> str:
     r"""How a deck calls the slide: "\slide, follows the current version", "\slideversion,
     frozen v1.0.0", "\slidestep, steps 2"."""
     if call.macro in PINNED:
-        how = "frozen v" + call.version.replace("-", ".")
+        how = "frozen " + slide_versioning.version_label(call.version)
     elif call.macro in PINNABLE:
         how = "follows the current version"
     else:
@@ -163,6 +163,6 @@ def apply_choices(id_slug: str, choices: dict[str, str], frozen_version: Optiona
         calls = [c for c in usage.calls if c.editable and c.macro in wanted]
         if calls:
             set_pin(usage.deck.path, usage.deck.text, calls, version)
-            verb = "now uses the new version" if choice == "current" else f"stays on v{frozen_version.replace('-', '.')}"
+            verb = "now uses the new version" if choice == "current" else f"stays on {slide_versioning.version_label(frozen_version)}"
             log.append(f"    {usage.deck.name}: {len(calls)} call(s) changed -- {verb}")
     return log

@@ -26,10 +26,6 @@ CURRENT = "current"   # the pin menu's key for "follow the current version"
 LEVELS = (("major", "Major"), ("minor", "Minor"), ("patch", "Patch"))
 
 
-def dotted(version: str) -> str:
-    return "v" + version.replace("-", ".")
-
-
 class SlideVersions(SidePanel):
     key = "versions"
     title = "Slide versions"
@@ -60,7 +56,7 @@ class SlideVersions(SidePanel):
         for version in frozen:
             path = current.parent / f"{id_slug}-v{version}.tex"
             when = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d") if path.is_file() else "?"
-            self._add_version(layout, dotted(version), path, f"frozen {when}" + self._used_by(users.get(version)))
+            self._add_version(layout, slide_versioning.version_label(version), path, f"frozen {when}" + self._used_by(users.get(version)))
         self.body.addWidget(frame)
 
         frame, layout = box()
@@ -91,11 +87,11 @@ class SlideVersions(SidePanel):
         head.addWidget(text(label, q.PANEL_MONO))
         head.addStretch(1)
         open_button = Button("Open", "secondary", compact=True)
-        open_button.setToolTip("Look at this version in the Source view" + ("" if path.name.endswith("-current.tex")
+        open_button.setToolTip("Look at this version in the Source view" + ("" if slide_language.is_current_file(path)
                                                                           else " (read-only)."))
         open_button.clicked.connect(lambda: self._open(path))
         head.addWidget(open_button)
-        if not path.name.endswith("-current.tex"):
+        if not slide_language.is_current_file(path):
             make_current = Button("Make current", "secondary", compact=True)
             make_current.setToolTip("Make this the current version: what is current now is archived first, and "
                                     "the restored content gets a new, higher version number.")
@@ -129,7 +125,7 @@ class SlideVersions(SidePanel):
             return
         pins = {c.version for c in calls if c.macro in slide_usage.PINNED}
         following = any(c.macro in slide_usage.PINNABLE for c in calls)
-        shown = CURRENT if not pins else dotted(next(iter(pins))) if len(pins) == 1 and not following else "mixed"
+        shown = CURRENT if not pins else slide_versioning.version_label(next(iter(pins))) if len(pins) == 1 and not following else "mixed"
         line = QHBoxLayout()
         line.addWidget(text(f"{deck.name} uses", q.DETAILS_VALUE), 1)
         button = Button(shown + " ▾", "secondary", compact=True)
@@ -139,7 +135,7 @@ class SlideVersions(SidePanel):
 
     def _open_pin_menu(self, anchor, id_slug: str, frozen: list[str], shown: str) -> None:
         menu = PopoverMenu(self, min_width=180)
-        for key, label in [(CURRENT, CURRENT)] + [(v, dotted(v)) for v in frozen]:
+        for key, label in [(CURRENT, CURRENT)] + [(v, slide_versioning.version_label(v)) for v in frozen]:
             menu.add_item(key, label, icon="check" if label == shown else "")
         menu.triggered.connect(lambda key: self._set_pin(id_slug, None if key == CURRENT else key))
         menu.closed.connect(menu.deleteLater)
@@ -149,7 +145,7 @@ class SlideVersions(SidePanel):
         calls = self._pinnable()
         self.app.slide_list.edit(
             "Change failed",
-            f"{id_slug} in {self.state.deck.name} " + (f"now uses {dotted(version)}" if version else "follows the current version"),
+            f"{id_slug} in {self.state.deck.name} " + (f"now uses {slide_versioning.version_label(version)}" if version else "follows the current version"),
             lambda path, deck_text: slide_usage.set_pin(path, deck_text, calls, version))
 
     # -- freezing ------------------------------------------------------------------------

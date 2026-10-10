@@ -122,11 +122,11 @@ def centre(qapp, project, deck, monkeypatch):
 
 def wait_idle(centre):
     deadline = time.monotonic() + 5
-    while centre.preview.busy and time.monotonic() < deadline:
+    while centre.preview._busy and time.monotonic() < deadline:
         QApplication.processEvents()
         time.sleep(0.01)
     QApplication.processEvents()
-    assert not centre.preview.busy
+    assert not centre.preview._busy
 
 
 def page(centre):
@@ -266,7 +266,7 @@ def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_resu
     state.set_focused_slide("aaa")
     assert "No preview" in page(centre).message and not page(centre).render_button.isHidden()
     page(centre).render_button.click()
-    assert centre.preview.busy
+    assert centre.preview._busy
     wait_idle(centre)
     kind, id_slug, args, kwargs = renders[0]
     assert (kind, id_slug, args[:2]) == ("saved", "aaa-EN-One", ("instructor", "EN"))
@@ -338,7 +338,7 @@ def test_the_syntax_check_can_stop_a_render_whichever_button_starts_it(centre, r
         preview._status_button.setVisible(True)
     {"page": page(centre).render_button, "status": preview._status_button,
      "footer": preview._render._main}[button].click()
-    assert asked == ["aaa-EN-One-current.tex (saved file)"] and renders == [] and not preview.busy
+    assert asked == ["aaa-EN-One-current.tex (saved file)"] and renders == [] and not preview._busy
 
 
 def test_the_render_menu_offers_scope_reveal_step_presenter_transcript_and_the_last_pdf(centre, renders):

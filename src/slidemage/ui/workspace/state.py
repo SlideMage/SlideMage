@@ -28,7 +28,7 @@ MODES = ("preview", "split", "source", "details")
 # "mult" marks a slide that is the same in every language: not a language to edit in.
 UI_LANGUAGES = tuple(lang for lang in LANGUAGES if lang != "mult")
 
-# {deck name: {"view": ..., "language": ..., "mode": ...}} in app_settings.json.
+# {deck path: {"view": ..., "language": ..., "mode": ...}} in app_settings.json.
 SETTINGS_KEY = "workspace_decks"
 
 
@@ -143,7 +143,7 @@ class WorkspaceState(QObject):
     def _remembered(deck: Optional[Deck]) -> dict:
         if deck is None:
             return {}
-        return app_settings.get(SETTINGS_KEY, {}).get(deck.name, {})
+        return app_settings.get(SETTINGS_KEY, {}).get(str(deck.path), {})
 
     @staticmethod
     def _deck_language(deck: Optional[Deck]) -> str:
@@ -155,5 +155,5 @@ class WorkspaceState(QObject):
         if self.deck is None:
             return
         saved = app_settings.get(SETTINGS_KEY, {})
-        saved.setdefault(self.deck.name, {})[field] = value
+        saved.setdefault(str(self.deck.path), {})[field] = value
         app_settings.set(SETTINGS_KEY, saved)

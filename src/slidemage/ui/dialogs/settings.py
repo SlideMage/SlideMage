@@ -11,7 +11,7 @@
 
 Every control applies when it changes and is saved at once, as before; only a prompt has its own
 Save button, and closing the sheet asks about prompt text not yet saved. The model lists come from
-Ollama and Claude on a thread (`models_loaded`), so opening the sheet never waits on the network;
+Ollama and Claude on a thread, so opening the sheet never waits on the network;
 the window refreshes the pickers that are open from `available_models` and `vision_models` when the
 sheet closes with `loaded` set.
 """
@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QGridLayout, QLineEdit, QMessageBox, QSpinBox
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
 
 from ... import app_settings, slide_snapshot, updater
 from ...ai import credentials, resolver
@@ -264,28 +264,31 @@ class CloudTab(Page):
         key = self.key_edit.text().strip()
         if not key:
             return
-        credentials.set_api_key(key)
-        self.key_edit.clear()
-        self._on_cloud_changed()
+        self._store_key(key)
 
     def _on_key_remove(self) -> None:
-        credentials.set_api_key("")
+        self._store_key("")
+
+    def _store_key(self, key: str) -> None:
+        try:
+            credentials.set_api_key(key)
+        except OSError as exc:
+            QMessageBox.warning(self, "API key", f"Couldn't save the API key: {exc}")
+            return
         self.key_edit.clear()
         self._on_cloud_changed()
 
 
 class SettingsSheet(ModalSheet):
-    models_loaded = Signal()
-
     def __init__(self, app, tab: int = GENERAL) -> None:
         """`app` is the window (its theme, tab width, log and the Ollama slot)."""
         super().__init__("Settings", app, width=760)
         self.app = app
         self.available_models: list[str] = []
         self.vision_models: list[str] = []
-        self.cloud_models: list[str] = []
         self.loaded = False
         self._loader: QThread | None = None
+        self._reload_pending = False
         self.general = GeneralTab(app)
         self.models = ModelsTab()
         self.cloud = CloudTab()
@@ -301,7 +304,10 @@ class SettingsSheet(ModalSheet):
         self.reload_models()
 
     def reload_models(self) -> None:
-        """Ask Ollama and Claude again; an answer to an earlier request is dropped."""
+        """Ask Ollama and Claude again; while a request is out, the next one waits for its answer."""
+        if self._loader is not None:
+            self._reload_pending = True
+            return
         loader = _ModelLoader()
         loader.loaded.connect(self._on_models)
         self._loader = loader
@@ -312,15 +318,18 @@ class SettingsSheet(ModalSheet):
             return
         self.available_models = [model.name for model in installed]
         self.vision_models = [model.name for model in installed if "vision" in model.capabilities]
-        self.cloud_models = cloud
+        self._loader = None
         self.loaded = True
         self.models.fill(self.available_models, self.vision_models, cloud)
         self.ollama.fill(installed)
         self.prompts.translation.set_models(self.available_models)
-        self.models_loaded.emit()
+        if self._reload_pending:
+            self._reload_pending = False
+            self.reload_models()
 
     def done(self, result: int) -> None:
         """Closing asks first about prompt text that is not saved."""
         if self.prompts.confirm_close():
             self._loader = None          # a late answer is not for this sheet any more
+            self._reload_pending = False
             super().done(result)

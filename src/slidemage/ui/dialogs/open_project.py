@@ -65,8 +65,8 @@ class OpenProjectSheet(ModalSheet):
             self.add_footer_note(caption("Opening another project restarts SlideMage."))
         if not first_run:
             self.add_button("Cancel", role="reject")
-        self.new_button = self.add_button("New project…")
-        self.new_button.clicked.connect(lambda: self._show_form(self._base / NEW_FOLDER_NAME))
+        new_project = self.add_button("New project…")
+        new_project.clicked.connect(lambda: self._show_form(self._base / NEW_FOLDER_NAME))
         open_folder = self.add_button("Open folder…", kind="primary")
         open_folder.clicked.connect(self._on_open_folder)
 

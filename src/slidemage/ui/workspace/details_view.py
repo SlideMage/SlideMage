@@ -69,7 +69,7 @@ class DetailsPane(Surface):
 
     @property
     def current_path(self) -> Path:
-        return SLIDES_DIR / f"{self._id_slug}-current.tex"
+        return SLIDES_DIR / slide_language.current_name(self._id_slug)
 
     def show_slide(self, id_slug: str, row: Optional[SlideRow], message: str = "") -> None:
         """Show the slide `id_slug` ("" with a `message`: no slide), in the open deck as `row`."""

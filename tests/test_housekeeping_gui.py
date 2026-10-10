@@ -177,10 +177,10 @@ def test_select_none_leaves_nothing_to_archive_and_cancel_goes_back(folders, qap
     assert sheet.pages.currentIndex() == sheet_module.LIST_PAGE and sheet.windowTitle() == "Housekeeping"
 
 
-def test_closing_the_sheet_waits_for_a_running_move(folders, qapp):
+def test_closing_the_sheet_lets_a_running_move_finish(folders, qapp):
     sheet = HousekeepingSheet(Window(), ARCHIVE_PAGE)
     sheet.archive_button.click()
-    sheet.reject()                                   # the move is short, but the sheet must wait for it
-    assert sheet._worker is not None and sheet._worker.isFinished()
+    sheet.reject()                                   # the move is short: the sheet gives it a moment, then lets go
+    assert sheet._worker is None
     QApplication.processEvents()
     assert (Path(folders) / "media" / "archive" / "gone.png").is_file()

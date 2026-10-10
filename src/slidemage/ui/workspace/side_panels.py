@@ -59,7 +59,6 @@ class SidePanels(QSplitter):
         outer.addWidget(scroll, 1)
         self.addWidget(card)
 
-        self._state = state
         for panel in self.panels.values():
             panel.dirty_changed.connect(lambda _dirty: state.set_dirty(bool(self.dirty_panels()), "panels"))
         for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed):

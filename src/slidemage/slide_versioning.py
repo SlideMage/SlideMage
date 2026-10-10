@@ -71,6 +71,11 @@ def format_dot(version: Version) -> str:
     return ".".join(str(part) for part in version)
 
 
+def version_label(version: str) -> str:
+    """"v1.2.3" for a version in its file-name form ("1-2-3")."""
+    return "v" + version.replace("-", ".")
+
+
 def bump(version: Version, level: BumpLevel) -> Version:
     major, minor, patch = version
     if level == "major":

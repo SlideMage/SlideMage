@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from ... import syntax_check
 from ...ai.providers import OllamaProvider
 from ...qt_ai_models import fill_model_combo, provider_from_combo
+from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
 from .source_editor import SourceEditor
@@ -248,14 +249,13 @@ class AiFixPanel(Surface):
         return True
 
     def stop(self) -> None:
-        """Abort a running check and wait for its worker thread, which must not outlive the
-        panel it reports to (closing the panel, the window or the project)."""
+        """Abort a running check (closing the panel, the window or the project); its worker thread
+        is kept until it has ended."""
         worker, self._worker = self._worker, None
         if worker is None:
             return
-        worker.checker.abort()
-        worker.wait(5000)
-        self.app.end_ollama_task(self._provider)
+        provider = self._provider      # its Ollama slot is given back once the worker is really over
+        background.stop_worker(worker, worker.checker.abort, on_done=lambda: self.app.end_ollama_task(provider))
         self.running_changed.emit(False)
         self._show_state()
 
@@ -269,6 +269,7 @@ class AiFixPanel(Surface):
             return
         self._worker = None
         worker.wait()
+        worker.deleteLater()
         self.app.end_ollama_task(self._provider)
         self.running_changed.emit(False)
         if result.cancelled:

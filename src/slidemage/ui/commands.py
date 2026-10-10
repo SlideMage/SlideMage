@@ -69,13 +69,6 @@ class CommandRegistry:
     def __iter__(self) -> Iterator[Command]:
         return iter(self._commands.values())
 
-    def groups(self) -> list[str]:
-        """The group names in the order the commands were registered."""
-        return list(dict.fromkeys(c.group for c in self))
-
-    def in_group(self, group: str) -> list[Command]:
-        return [c for c in self if c.group == group]
-
     def run(self, command_id: str, ctx: Context) -> bool:
         """Run a command if it is visible and enabled now; returns whether it ran."""
         command = self._commands[command_id]

@@ -23,6 +23,7 @@ from ....qt_ai_models import provider_for_task
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
+from ...text import plural
 from .base import Row, SidePanel, box, text
 
 ROLES = ((alt_images.ROLE_INFORMATIVE, "Informative"), (alt_images.ROLE_DECORATIVE, "Decorative"))
@@ -99,18 +100,17 @@ class ImageDescriptions(SidePanel):
     key = "images"
     title = "Image descriptions"
 
-    drafted = Signal(str, object)   # reference, alt_draft.DraftResult: from the drafting thread
+    drafted = Signal(str, object, object)   # reference, whose Ollama slot to give back, alt_draft.DraftResult: from the drafting thread
 
     def __init__(self, app, state) -> None:
         super().__init__(app, state)
         self._forms: list[ImageForm] = []
         self._slide: Optional[tuple[str, Path]] = None   # (bare id, file) the forms belong to
-        self._slot_provider = None
         self.drafted.connect(self._on_drafted)
 
     def meta(self) -> str:
         count = len(alt_blocks.referenced_images(self.slide_text()))
-        return f"{count} image{'s' if count != 1 else ''}"
+        return plural(count, "image")
 
     def refresh(self) -> None:
         self._forms.clear()
@@ -185,19 +185,22 @@ class ImageDescriptions(SidePanel):
         provider = provider_for_task(self, "image_description", "the slide's text and this image")
         if provider is None or not self.app.try_start_ollama_task("drafting a description", provider):
             return
-        self._slot_provider = provider   # whose Ollama slot _on_drafted gives back
         form.redraft_button.setEnabled(False)
         form.note.setText(f"Drafting with {provider.label}…")
         form.note.show()
         context = alt_draft.build_context(path, form.reference)
-        threading.Thread(target=self._draft_bg, args=(form.reference, alt_draft.ModelBackend(provider), found[0][1],
-                                                      context), daemon=True).start()
+        threading.Thread(target=self._draft_bg, args=(form.reference, provider, alt_draft.ModelBackend(provider),
+                                                      found[0][1], context), daemon=True).start()
 
-    def _draft_bg(self, reference: str, backend, resolved: Path, context) -> None:
-        self.drafted.emit(reference, backend.draft(resolved, context))
+    def _draft_bg(self, reference: str, provider, backend, resolved: Path, context) -> None:
+        try:
+            result = backend.draft(resolved, context)
+        except Exception as exc:  # noqa: BLE001 -- shown on the form; the slot must still be given back
+            result = alt_draft.DraftResult(error=str(exc) or type(exc).__name__)
+        self.drafted.emit(reference, provider, result)
 
-    def _on_drafted(self, reference: str, result) -> None:
-        self.app.end_ollama_task(self._slot_provider)
+    def _on_drafted(self, reference: str, provider, result) -> None:
+        self.app.end_ollama_task(provider)
         form = next((f for f in self._forms if f.reference == reference), None)
         if form is None:
             return   # the slide changed meanwhile

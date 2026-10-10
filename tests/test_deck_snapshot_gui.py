@@ -252,7 +252,7 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
     assert set(win.begun) == {
         "snapshot~t-A", "verify~t-A", "snapshot~t-A-presenter", "verify~t-A-presenter",
         "snapshot~t-B", "verify~t-B", "snapshot~t-B-presenter", "verify~t-B-presenter"}
-    assert win.compiling is False and win.cancel_token is None       # slot freed again
+    assert ("batch_done",) in emitted               # the GUI thread frees the compile slot on this
     assert ("log", "==== Done: 2 of 2 snapshot(s) created ====") in emitted
     assert emitted[-1][0] == "snapshots_done"
 
@@ -310,3 +310,19 @@ def test_summary_sheet_counts_and_lists_the_results(qapp, monkeypatch, tmp_path)
     assert "1 of 2 snapshot(s) created." in shown["texts"]
     assert any("✗  t-B: t-B did not compile" in text for text in shown["texts"])
     assert shown["buttons"] == ["Open folder", "Close"]
+
+
+def test_a_crashing_compile_run_still_ends_the_batch(qapp, monkeypatch):
+    emitted: list = []
+    signal = lambda name: SimpleNamespace(emit=lambda *a: emitted.append((name, *a)))  # noqa: E731
+    win = SimpleNamespace(cancel_token=None, signals=SimpleNamespace(log=signal("log"), batch_done=signal("batch_done")))
+    monkeypatch.setattr(compile_jobs, "run_jobs", lambda *a, **k: 1 / 0)
+    CompileJobsMixin._run_jobs_thread(win, [])
+    assert emitted[-1] == ("batch_done",) and emitted[0][0] == "log"
+
+
+def test_the_batch_end_frees_the_compile_slot_on_the_gui_thread(qapp):
+    win = SimpleNamespace(compiling=True, cancel_token=object(), _run=None,
+                          topbar=SimpleNamespace(refresh_compile_menu=lambda: None))
+    CompileJobsMixin._on_batch_done(win)
+    assert win.compiling is False and win.cancel_token is None

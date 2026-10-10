@@ -22,13 +22,14 @@ from ... import latex_lint
 from ...latex_lint import CheckResult, LintIssue
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, ModalSheet
+from ..text import plural
 
 
 class RenderCheckSheet(ModalSheet):
     def __init__(self, parent, result: CheckResult, what: str, verb: str = "Render",
                  show_in_editor: Optional[Callable[[LintIssue], None]] = None) -> None:
         errors = len(result.errors)
-        super().__init__(f"{errors} error{'s' if errors != 1 else ''} found", parent, width=720)
+        super().__init__(f"{plural(errors, 'error')} found", parent, width=720)
         self._show_in_editor = show_in_editor
         self.proceed = False
         issues = sorted(result.issues, key=lambda i: (i.severity != latex_lint.ERROR, i.source, i.line))
@@ -43,7 +44,6 @@ class RenderCheckSheet(ModalSheet):
         rows = QVBoxLayout(box)
         rows.setContentsMargins(4, 4, 4, 4)
         rows.setSpacing(0)
-        self.show_buttons: list[Button] = []
         for issue in issues:
             rows.addWidget(self._row(issue))
         scroll = QScrollArea()
@@ -86,7 +86,6 @@ class RenderCheckSheet(ModalSheet):
         button.setEnabled(self._show_in_editor is not None and issue.path is not None)
         button.clicked.connect(lambda _c=False, i=issue: self._on_show(i))
         layout.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
-        self.show_buttons.append(button)
         return row
 
     def _on_show(self, issue: LintIssue) -> None:

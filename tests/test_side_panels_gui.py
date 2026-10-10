@@ -531,9 +531,41 @@ def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, 
     monkeypatch.setattr(images, "provider_for_task", lambda *args: None)           # declined, or no model
     panel._forms[0].redraft_button.click()
     assert window.busy is None
-    panel._on_drafted("media/pic.png", alt_draft.DraftResult(error="timed out"))
+    panel._on_drafted("media/pic.png", None, alt_draft.DraftResult(error="timed out"))
     assert "The draft failed: timed out" in panel._forms[0].note.text()
-    panel._on_drafted("media/gone.png", alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
+    panel._on_drafted("media/gone.png", None, alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
+
+
+def test_redraft_that_raises_still_ends_with_an_error_and_gives_back_its_slot(content, monkeypatch, paths):
+    from slidemage import alt_draft
+    from slidemage.ui.workspace.panels import images
+
+    panels, _state, window = content
+    panel = shown(panels, "images")
+    provider = SimpleNamespace(label="qwen3 · local")
+    monkeypatch.setattr(images, "provider_for_task", lambda *args: provider)
+    monkeypatch.setattr(alt_draft, "draftable_images", lambda row, entries: [(row.images[0], paths.path)])
+
+    class Failing:
+        def __init__(self, given):
+            pass
+
+        def draft(self, resolved, context):
+            raise ValueError("boom")
+
+    class Now:
+        def __init__(self, target, args, daemon):
+            self.run = lambda: target(*args)
+
+        def start(self):
+            self.run()
+
+    ended = []
+    monkeypatch.setattr(window, "end_ollama_task", ended.append)
+    monkeypatch.setattr(alt_draft, "ModelBackend", Failing)
+    monkeypatch.setattr(images.threading, "Thread", Now)
+    panel._forms[0].redraft_button.click()
+    assert ended == [provider] and "The draft failed: boom" in panel._forms[0].note.text()
 
 
 def test_transcript_entry_renders_student_versions_only(content):

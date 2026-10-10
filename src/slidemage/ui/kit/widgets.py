@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
@@ -680,8 +681,13 @@ class SplitButton(QFrame):
         self._main.setText(text)
 
     def set_menu(self, menu: PopoverMenu) -> None:
+        if self._menu is not None and shiboken6.isValid(self._menu):
+            self._menu.closed.disconnect(self._on_menu_closed)
         self._menu = menu
-        menu.closed.connect(lambda: self._caret.setText("expand_more"))
+        menu.closed.connect(self._on_menu_closed)
+
+    def _on_menu_closed(self) -> None:
+        self._caret.setText("expand_more")
 
     def _open_menu(self) -> None:
         if self._menu is not None:

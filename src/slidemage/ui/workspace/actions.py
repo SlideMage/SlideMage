@@ -19,6 +19,7 @@ from __future__ import annotations
 from ...deck_scan import TAG_COURSE, TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
+from ..text import plural
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from .state import MODES, UI_LANGUAGES, VIEWS
@@ -52,10 +53,6 @@ def _versioned(w) -> bool:
 
 def _admin_slides_possible(w) -> bool:
     return _active_deck(w) and w.state.deck.group == TAG_COURSE and bool(w.state.deck.course_url)
-
-
-def _plural(count: int, what: str) -> str:
-    return f"{count} {what}{'' if count == 1 else 's'}"
 
 
 def _current(is_current: bool) -> str:
@@ -140,7 +137,7 @@ def build_registry() -> CommandRegistry:
         meta="speaker notes", enabled=_has_deck)
     add("compile:slides", "Pages of the selected slides", VIEW_AND_BUILD,
         lambda w: w._compile_slides(list(w.state.selected_or_focused())),
-        meta=lambda w: _plural(len(w.state.selected_or_focused()), "slide"),
+        meta=lambda w: plural(len(w.state.selected_or_focused()), "slide"),
         enabled=lambda w: _has_deck(w) and bool(w.state.selected_or_focused()))
     add("compile:pages", "Pages by number…", VIEW_AND_BUILD, _window("_compile_pages"),
         meta="e.g. 4, 7-10", enabled=_has_deck)

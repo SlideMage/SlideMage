@@ -84,8 +84,6 @@ def test_tokens_are_complete_for_both_modes():
         assert len(tokens.steps) == 6
         for view in ("instructor", "during", "after"):
             assert tokens.view_color(view).startswith("#")
-            assert tokens.view_tint(view).startswith("#")
-        assert tokens.step_color(7) == tokens.steps[1]
     assert LIGHT.bg == "#f3f4f6" and LIGHT.text == "#1d1d1d" and LIGHT.error == "#b91c1c"
     assert tokens_for(True) is DARK and tokens_for(False) is LIGHT
     assert with_alpha("#ffffff", 0.25) == "rgba(255,255,255,0.25)"
@@ -166,6 +164,18 @@ def test_split_button_main_and_caret(theme):
     split._caret.click()
     assert menu.isVisible() and split._caret.text() == "expand_less"
     menu.close()
+    assert split._caret.text() == "expand_more"
+
+
+def test_split_button_follows_only_its_current_menu(theme):
+    split = SplitButton("Compile")
+    old, new = PopoverMenu(), PopoverMenu()
+    split.set_menu(old)
+    split.set_menu(new)
+    split._caret.setText("expand_less")
+    old.closed.emit()
+    assert split._caret.text() == "expand_less"            # the replaced menu no longer counts
+    new.closed.emit()
     assert split._caret.text() == "expand_more"
 
 

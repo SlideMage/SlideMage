@@ -27,7 +27,7 @@ from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, transcript
+from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning, transcript
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
 from ...slide_language import TranslationLink, translation_link
@@ -56,12 +56,12 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
     chips = []
     if row is None:
         if target.version:
-            chips.append(("lock", f"Frozen v{target.version.replace('-', '.')}", "muted",
+            chips.append(("lock", f"Frozen {slide_versioning.version_label(target.version)}", "muted",
                           "A past version of the slide, shown on its own."))
     else:
         call = row.call
         if call.version:
-            chips.append(("push_pin", f"Deck stays on v{call.version.replace('-', '.')}", "info",
+            chips.append(("push_pin", f"Deck stays on {slide_versioning.version_label(call.version)}", "info",
                           "The deck pins this version; changes to the current slide don't show here."))
         if not call.editable:
             chips.append(("lock", "Read-only in the deck", "muted", call.readonly_reason or ""))
@@ -357,8 +357,8 @@ class PreviewPane(Surface):
         try:
             job.pdf = work()
             job.png = slide_snapshot.page_png(job.pdf)
-        except (RuntimeError, ValueError) as exc:
-            job.error = str(exc)
+        except Exception as exc:  # noqa: BLE001 -- shown as the error; the render must always end
+            job.error = str(exc) or type(exc).__name__
         self._finished.emit(job)
 
     def _on_finished(self, job: _Job) -> None:
@@ -456,10 +456,6 @@ class PreviewPane(Surface):
         if result.undescribed:
             self.app.log(f"Transcript preview for {target.id_slug}: still has an undescribed image; "
                          "flagged in place in the preview.")
-
-    @property
-    def busy(self) -> bool:
-        return self._busy
 
 
 def _mtime(path: Path) -> int:

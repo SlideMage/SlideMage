@@ -25,16 +25,14 @@ from PySide6.QtWidgets import (
 )
 
 from ... import deck_snapshot, housekeeping, unused_content
+from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, ModalSheet, Surface
+from ..text import plural
 
 LIST_PAGE, ARCHIVE_PAGE = 0, 1
 WORKER_WAIT_MS = 10000
 BUSY_NOTE = "A compile run is in progress."
-
-
-def _plural(count: int, what: str) -> str:
-    return f"{count} {what}{'' if count == 1 else 's'}"
 
 
 class _ArchiveWorker(QThread):
@@ -160,17 +158,17 @@ class HousekeepingSheet(ModalSheet):
         compiling = self.app.compiling
         pdfs = housekeeping.pdf_files()
         self.pdf.show_state(
-            f"{_plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(sum(p.stat().st_size for p in pdfs))}"
+            f"{plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(sum(p.stat().st_size for p in pdfs))}"
             " · they come back with the next build" if pdfs else "pdf/ is empty", enabled=bool(pdfs))
         temp = housekeeping.find_temp_files()
         self.temp.show_state(
-            f"{_plural(len(temp.build), 'item')} in .build/, {_plural(len(temp.wrappers), 'leftover wrapper file')} "
-            f"in decks/, {_plural(len(temp.scratch), 'item')} in .temp/ (the workflow scratch folder)"
+            f"{plural(len(temp.build), 'item')} in .build/, {plural(len(temp.wrappers), 'leftover wrapper file')} "
+            f"in decks/, {plural(len(temp.scratch), 'item')} in .temp/ (the workflow scratch folder)"
             if temp else "Nothing to remove", enabled=bool(temp) and not compiling)
         self._unused = (unused_content.find_unused_media(), unused_content.find_unused_slides())
         media, slides = self._unused
         self.archive.show_state(
-            f"{_plural(len(slides), 'slide')} and {_plural(len(media), 'media file')} nothing uses"
+            f"{plural(len(slides), 'slide')} and {plural(len(media), 'media file')} nothing uses"
             if media or slides else "No unused slides or media files",
             enabled=bool(media or slides) and not compiling and self._worker is None)
         self.previews.show_state(
@@ -204,7 +202,7 @@ class HousekeepingSheet(ModalSheet):
 
     def _on_links(self) -> None:
         changed = self.app._on_sync_translation_links()
-        self.links.show_state(f"{_plural(changed, 'file')} updated", enabled=True)
+        self.links.show_state(f"{plural(changed, 'file')} updated", enabled=True)
 
     # -- archive unused content --------------------------------------------------------------
 
@@ -235,10 +233,10 @@ class HousekeepingSheet(ModalSheet):
     def _update_archive_button(self) -> None:
         count = len(self._checked())
         self.archive_intro.setText(
-            f"<b>{_plural(self.files.count(), 'file')}</b> would be moved into media/archive/ or "
+            f"<b>{plural(self.files.count(), 'file')}</b> would be moved into media/archive/ or "
             "slides/archive/. Untick what should stay." if self.files.count()
             else "No unused slides or media files.")
-        self.archive_button.setText(f"Archive {_plural(count, 'file')}")
+        self.archive_button.setText(f"Archive {plural(count, 'file')}")
         self.archive_button.setEnabled(count > 0 and self._worker is None and not self.app.compiling)
 
     def _on_archive(self) -> None:
@@ -256,17 +254,18 @@ class HousekeepingSheet(ModalSheet):
 
     def _on_archived(self, media: int, slides: int) -> None:
         worker, self._worker = self._worker, None
-        if worker is None:      # the sheet was closed meanwhile
-            return
         worker.wait()
+        worker.deleteLater()
         self.back_button.setEnabled(True)
         self._show_page(LIST_PAGE)
         self.refresh()
-        self.archive.sub.setText(f"Moved {_plural(media, 'media file')} to media/archive/ and "
-                                 f"{_plural(slides, 'slide')} to slides/archive/")
+        self.archive.sub.setText(f"Moved {plural(media, 'media file')} to media/archive/ and "
+                                 f"{plural(slides, 'slide')} to slides/archive/")
 
     def done(self, result: int) -> None:
-        """Closing the sheet waits for a running move: its thread must not outlive the sheet."""
-        if self._worker is not None:
-            self._worker.wait(WORKER_WAIT_MS)
+        """Closing the sheet gives a running move a moment; its thread is kept until it has ended."""
+        worker, self._worker = self._worker, None
+        if worker is not None:
+            worker.finished_with.disconnect(self._on_archived)
+            background.stop_worker(worker, wait_ms=WORKER_WAIT_MS)
         super().done(result)

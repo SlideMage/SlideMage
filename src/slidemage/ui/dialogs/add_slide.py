@@ -33,24 +33,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import alt_draft, deck_editor, slide_add, slide_language
+from ... import alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_versioning
 from ...ai.providers import ChatProvider, OllamaProvider
 from ...deck_scan import Deck
 from ...qt_ai_models import fill_model_combo, provider_from_combo
+from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, set_property
+from ..workspace.menus import VIEW_LABELS
 
 SOURCES = (("new", "New"), ("existing", "Existing"), ("duplicate", "Duplicate"), ("translate", "Translate"))
 LOAD_LABELS = (("live", "Live slide"), ("frozen", "Frozen version"), ("step", "One reveal step"))
 LOAD_TIPS = {"live": "Follows every edit of the slide.", "frozen": "Stays as it was when it was frozen.",
              "step": "One reveal step of the slide, as a slide of its own."}
 LANGUAGE_LABELS = {"EN": "EN", "DE": "DE", "mult": "Multilingual"}
-VIEW_LABELS = {"instructor": "Instructor", "during-course": "During course", "after-course": "After course"}
 SLUG_HINT = "The slug is letters and digits with single hyphens between words, e.g. MM-Theorem."
 PICKER_LABELS = {"existing": "Slide", "duplicate": "Slide to duplicate", "translate": "Slide to translate"}
 TRANSLATION_WARNING = ("Sends the whole slide text to the model as one block. LaTeX commands are not "
                        "guaranteed to survive untouched: review the result before you rely on it.")
-WORKER_WAIT_MS = 5000
 WIDTH = 720
 MARGINS = 48     # of the sheet
 
@@ -365,7 +365,7 @@ class AddSlideSheet(ModalSheet):
         self.version.clear()
         if slide:
             for version in deck_editor.available_versions(slide):
-                self.version.addItem("v" + version.replace("-", "."), version)
+                self.version.addItem(slide_versioning.version_label(version), version)
         self.version.blockSignals(False)
         self.target.blockSignals(True)
         self.target.clear()
@@ -383,7 +383,7 @@ class AddSlideSheet(ModalSheet):
 
     def _on_title(self, title: str) -> None:
         if not self._slug_edited:
-            self.slug_edit.setText(slide_add.slugify(title))
+            self.slug_edit.setText(slide_import.slug_from_title(title, ""))
 
     def _on_slug_edited(self, _text: str) -> None:
         self._slug_edited = True
@@ -510,6 +510,7 @@ class AddSlideSheet(ModalSheet):
             return
         self._worker = None
         worker.wait()
+        worker.deleteLater()
         self.app.end_ollama_task(self._provider)
         self._busy("")
         if error:
@@ -537,7 +538,6 @@ class AddSlideSheet(ModalSheet):
         """Closing the sheet ends a running translation: its thread must not outlive the sheet."""
         worker, self._worker = self._worker, None
         if worker is not None:
-            worker.provider.abort()
-            worker.wait(WORKER_WAIT_MS)
-            self.app.end_ollama_task(self._provider)
+            provider = self._provider
+            background.stop_worker(worker, worker.provider.abort, on_done=lambda: self.app.end_ollama_task(provider))
         super().done(result)

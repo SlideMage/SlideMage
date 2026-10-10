@@ -638,8 +638,16 @@ class SlideList(QWidget):
 
     def _rename_section(self, section: SectionRow, title: str) -> None:
         if title.strip() and title.strip() != section.title:
-            self.edit("Rename section failed", f"Renamed section {section.title} in {self.deck.name}",
-                       lambda path, text: deck_editor.rename_section(path, text, section.chapter, title))
+            collapsed = self.tree.collapsed
+            was_closed = section.title in collapsed
+            if was_closed:          # the rebuild after the edit must find the new title closed
+                collapsed.discard(section.title)
+                collapsed.add(title.strip())
+            if not self.edit("Rename section failed", f"Renamed section {section.title} in {self.deck.name}",
+                              lambda path, text: deck_editor.rename_section(path, text, section.chapter, title)) \
+                    and was_closed:
+                collapsed.discard(title.strip())
+                collapsed.add(section.title)
 
     def _move_to_section(self, rows: list[SlideRow], section: SectionRow) -> None:
         try:
