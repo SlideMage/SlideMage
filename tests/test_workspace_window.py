@@ -281,11 +281,11 @@ def test_log_lines_keep_working_after_the_decks_are_reloaded(window):
 # -- Images and the pages ----------------------------------------------------------
 
 def test_images_button_toggles_the_images_page(window, monkeypatch):
-    monkeypatch.setattr(window.transcript_tab, "ensure_loaded", lambda: None)
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     bar = window.topbar
     assert bar._images.text() == "Images"
     bar._images.click()
-    assert window.stack.currentWidget() is window.transcript_tab and bar._images.text() == "Close images"
+    assert window.stack.currentWidget() is window.images_page and bar._images.text() == "Close images"
     bar._images.click()
     assert window.stack.currentWidget() is window.centre and bar._images.text() == "Images"
 
@@ -545,12 +545,75 @@ def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_pat
 
 
 def test_the_images_page_hides_the_centre_and_comes_back_to_it(window, monkeypatch):
-    monkeypatch.setattr(window.transcript_tab, "ensure_loaded", lambda: None)
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     window.state.set_mode("source")
     window._toggle_images()
-    assert window.stack.currentWidget() is window.transcript_tab
+    assert window.stack.currentWidget() is window.images_page
     window._toggle_images()
     assert window.stack.currentWidget() is window.centre
+
+
+def test_the_images_page_takes_the_room_of_the_slide_list_and_the_side_panels(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.show()
+    assert window.slide_list.isVisible() and window.side_panels.isVisible()
+    window._toggle_images()
+    assert not window.slide_list.isVisible() and not window.side_panels.isVisible()
+    window.images_page.closed.emit()                 # the page's back arrow
+    assert window.stack.currentWidget() is window.centre
+    assert window.slide_list.isVisible() and window.side_panels.isVisible()
+
+
+def test_a_view_mode_button_leaves_the_images_page(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window._toggle_images()
+    window.topbar._modes.changed.emit(window.state.mode)         # a click on the mode that is already set
+    assert window.stack.currentWidget() is window.centre
+
+
+def test_leaving_the_images_page_saves_a_pending_edit_and_opening_a_slide_leaves_it(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    flushed = []
+    monkeypatch.setattr(window.images_page, "flush", lambda: flushed.append(True))
+    window._toggle_images()
+    assert flushed == []
+    window._toggle_images()
+    assert flushed == [True]
+    window._toggle_images()
+    window.open_slide_editor(Path(__file__))          # the Source view replaces the page
+    assert window.stack.currentWidget() is window.centre and flushed == [True, True]
+
+
+def test_the_slide_lists_images_entry_lands_on_that_slides_images(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    shown = []
+    monkeypatch.setattr(window.images_page, "show_slide", shown.append)
+    window.open_images_for_slide("1an-EN-Slide-Versions")
+    assert window.stack.currentWidget() is window.images_page and shown == ["1an-EN-Slide-Versions"]
+
+
+def test_closing_asks_about_unsaved_image_edits_and_stops_the_page_s_job(window, monkeypatch):
+    page, saved, stopped = window.images_page, [], []
+    page.dirty = True                                  # what a form with a pending edit sets
+    monkeypatch.setattr(page, "flush", lambda: (saved.append(True), setattr(page, "dirty", False)))
+    monkeypatch.setattr(page, "shutdown", lambda: stopped.append(True))
+    asked = []
+
+    def answer(choice):
+        def question(_parent, _title, text, *_args):
+            asked.append(text)
+            return choice
+        return question
+
+    monkeypatch.setattr(QMessageBox, "question", answer(QMessageBox.StandardButton.Cancel))
+    assert window._resolve_dirty_edits() is False and saved == []
+    assert asked == ["Save changes in edits in the Image descriptions panel before closing?"]
+    monkeypatch.setattr(QMessageBox, "question", answer(QMessageBox.StandardButton.No))
+    assert window._resolve_dirty_edits() is True and saved == []        # discarded: closing goes on
+    monkeypatch.setattr(QMessageBox, "question", answer(QMessageBox.StandardButton.Yes))
+    assert window._resolve_dirty_edits() is True and saved == [True]
+    window.close()
+    assert stopped == [True]                                           # no worker thread outlives the window
 
 
 def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, monkeypatch):
@@ -592,7 +655,6 @@ def test_closing_asks_about_a_pending_side_panel_edit_too(window, monkeypatch):
     assert window._resolve_dirty_edits() is False
     assert asked == ["Save changes in edits in the Transcript entry panel before closing?"] and saved == []
     monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr(window.transcript_tab, "_any_editor_dirty", lambda: False)
     assert window._resolve_dirty_edits() is True and saved == [True]
 
 

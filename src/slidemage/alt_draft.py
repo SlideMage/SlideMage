@@ -619,6 +619,12 @@ def draftable_images(row: alt_blocks.SlideRow,
     return out
 
 
+def slide_jobs(row: alt_blocks.SlideRow, entries: dict[str, "alt_images.ImageEntry"]) -> list[ImageJob]:
+    """The drafting queue for one slide's own images (run_batch() drafts it like any other)."""
+    return [ImageJob(reference, resolved, row.slide_id, row.path)
+            for reference, resolved in draftable_images(row, entries)]
+
+
 def apply_one_draft(image: str, result: DraftResult, model_label: str) -> bool:
     """Write one image's draft into the shared store as unreviewed. True if
     written.
@@ -779,6 +785,8 @@ def run_batch(
             summary.errors.append(
                 f"{job.image}: value table removed — the numbers looked "
                 f"interpolated, not measured")
+        elif result.role_suggestion == alt_images.ROLE_DECORATIVE:
+            summary.errors.append(f"{job.image}: model suggests this image is decorative")
 
         written = apply_one_draft(job.image, result, backend.label)
         if written:
@@ -818,16 +826,13 @@ def run_batch(
 # chat model or a model fine-tuned specifically for machine translation
 # alike.
 #
-# Default model, changeable via the Images tab's own "Translation model:"
+# Default model, changeable via the Images page's own "Translate with"
 # picker (2026-08-25, direct instruction): sun_leaf/HY-MT (Tencent
 # Hunyuan-MT, 7B) -- a dedicated MT model, not a general instruction-
 # following LLM (Ollama reports its own capabilities as ["completion"]
-# only, no "tools"). Both translation-model combos (qt_transcript_tab.py's
-# own, and the Add slide sheet's translation) now
-# remember the user's last pick in app_settings.json's "translation_model"
-# key -- this constant is still needed underneath that as the very first
-# preselection on a fresh install (nothing remembered yet), and as the
-# fallback if the remembered model is no longer installed here.
+# only, no "tools"). The default per task is Settings -> AI models; this
+# constant is the preselection on a fresh install (nothing chosen yet), and
+# the fallback if the chosen model is no longer installed here.
 DEFAULT_TRANSLATION_MODEL = "sun_leaf/HY-MT:7b"
 
 # Three separate, simple per-field calls -- NOT one combined call asking

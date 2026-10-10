@@ -32,6 +32,7 @@ def _repolish(widget: QWidget) -> None:
 
 class TopBar(QWidget):
     command = Signal(str)
+    mode_clicked = Signal()   # the user clicked Preview / Split / Source / Details (whatever it changed)
 
     def __init__(self, window, parent: QWidget | None = None) -> None:
         """`window` is the command context: its `state`, `commands` and `compiling`."""
@@ -88,6 +89,7 @@ class TopBar(QWidget):
 
         self._modes = SegmentedControl([(mode, mode.capitalize()) for mode in MODES], current=state.mode)
         self._modes.changed.connect(state.set_mode)
+        self._modes.changed.connect(lambda _mode: self.mode_clicked.emit())
         add(self._modes)
 
         self._compile = SplitButton("")

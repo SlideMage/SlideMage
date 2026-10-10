@@ -25,12 +25,13 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning, transcript
+from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
 from ...slide_language import TranslationLink, translation_link
+from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface
@@ -435,27 +436,13 @@ class PreviewPane(Surface):
             self._job(target, external=presenter, note="Rendered from the editor buffer, not the saved file"))
 
     def render_transcript(self) -> None:
-        """A one-slide transcript preview of the buffer (regex-only Markdown assembly:
-        fast enough to run here with a wait cursor); nothing is written to disk."""
+        """A one-slide transcript preview of the buffer (nothing is written to disk)."""
         target = self._target
         if target is None:
             return
         buffer = self._buffer()
         text = buffer[0] if buffer else slide_source.read_slide_source(target.source_path)[0]
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            result = transcript.generate_single_slide(
-                text, target.bare_id, self.state.view, self.state.language.lower())
-        except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
-            QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Transcript render failed", str(exc))
-            return
-        QApplication.restoreOverrideCursor()
-        html = transcript.to_html(result, f"Transcript preview: {target.id_slug}")
-        self.app.open_transcript_preview(target.bare_id, f"Transcript: {target.id_slug}").set_html(html)
-        if result.undescribed:
-            self.app.log(f"Transcript preview for {target.id_slug}: still has an undescribed image; "
-                         "flagged in place in the preview.")
+        show_transcript_preview(self.app, text, target.bare_id, target.id_slug, self.state.view, self.state.language)
 
 
 def _mtime(path: Path) -> int:

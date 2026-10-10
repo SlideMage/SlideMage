@@ -106,6 +106,11 @@ JOB_TITLE = "kitJobTitle"
 JOB_SUB = "kitJobSub"
 JOB_PCT = "kitJobPct"
 JOB_BAR = "kitJobBar"
+# Text inputs of the Images page: a grey field with a line under it (prototype v3).
+INPUT = "kitInput"
+IMAGE_LIST = "kitImageList"
+# An image on its white background (a slide's), with a thin outline that shows where it ends.
+IMAGE_PREVIEW = "kitImagePreview"
 LOG_DRAWER = "kitLogDrawer"
 LOG_HEAD = "kitLogHead"
 LOG_TITLE = "kitLogTitle"
@@ -788,6 +793,9 @@ def build_kit_qss(t: Tokens) -> str:
         QLabel#{PANEL_CAPTION}[tone="error"] {{
             color: {t.error};
         }}
+        QLabel#{PANEL_CAPTION}[tone="warning"] {{
+            color: {t.warning};
+        }}
         QFrame#{PANEL_BOX} QLabel#{PANEL_MISSING} {{
             color: {t.error};
         }}
@@ -851,6 +859,67 @@ def build_kit_qss(t: Tokens) -> str:
         }}
         QFrame#{LIST_BOX} QLabel#{PANEL_CAPTION}[tone="error"] {{
             color: {t.error};
+        }}
+
+        QPlainTextEdit#{INPUT}, QLineEdit#{INPUT} {{
+            {font}
+            font-size: 13.5px;
+            background-color: {t.bg};
+            color: {t.text};
+            border: none;
+            border-bottom: 1px solid {t.text_4};
+            border-radius: {RADIUS_SM}px;
+            padding: 6px 10px;
+            selection-background-color: {t.info};
+            selection-color: #ffffff;
+            placeholder-text-color: {t.text_3};
+        }}
+        QPlainTextEdit#{INPUT}:focus, QLineEdit#{INPUT}:focus {{
+            border-bottom: 1px solid {t.text};
+        }}
+        QPlainTextEdit#{INPUT}:disabled, QLineEdit#{INPUT}:disabled {{
+            color: {t.text_4};
+            border-bottom: 1px solid {t.line};
+        }}
+        QListWidget#{IMAGE_LIST} {{
+            {font}
+            font-size: 13px;
+            background-color: transparent;
+            color: {t.text};
+            border: none;
+            outline: none;
+        }}
+        QListWidget#{IMAGE_LIST}::item {{
+            padding: 7px 8px;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QListWidget#{IMAGE_LIST}::item:hover {{
+            background-color: {t.hover};
+        }}
+        QListWidget#{IMAGE_LIST}::item:selected {{
+            background-color: {t.bg};
+            color: {t.text};
+        }}
+        QListWidget#{IMAGE_LIST} QScrollBar:vertical {{
+            background: transparent;
+            width: 8px;
+            margin: 0;
+        }}
+        QListWidget#{IMAGE_LIST} QScrollBar::handle:vertical {{
+            background: {t.text_4};
+            border-radius: 4px;
+            min-height: 24px;
+        }}
+        QListWidget#{IMAGE_LIST} QScrollBar::add-line:vertical,
+        QListWidget#{IMAGE_LIST} QScrollBar::sub-line:vertical {{
+            height: 0;
+        }}
+        QLabel#{IMAGE_PREVIEW}, QFrame#{IMAGE_PREVIEW} {{
+            background-color: #ffffff;
+            color: #4b5563;
+        }}
+        QLabel#{IMAGE_PREVIEW} {{
+            border: 1px solid #ff00ff;
         }}
 
         /* The compile job panel: a raised white card over the workspace. */

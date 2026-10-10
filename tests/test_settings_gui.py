@@ -191,7 +191,7 @@ def test_choosing_a_default_saves_it_for_that_task_only(qapp):
 
 def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
     from slidemage.qt_ai_draft_dialog import AiDraftDialog
-    from slidemage.qt_transcript_tab import TranscriptTab
+    from slidemage.ui.pages.images import ImagesPage
     from slidemage.syntax_check import SyntaxCheckResult
     from slidemage.ui.workspace import ai_fix
     from slidemage.ui.workspace import window as window_module
@@ -228,10 +228,9 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     assert draft.model_combo.currentText() == "translator"
     assert requests == [("general-text", "http://ollama.example:11434")]
 
-    tab = SimpleNamespace(model_combo=QComboBox(), translation_model_combo=QComboBox())
-    TranscriptTab._populate_models(tab)
-    TranscriptTab._populate_translation_models(tab)
-    assert tab.model_combo.currentText() == "vision-2" and tab.translation_model_combo.currentText() == "translator"
+    tab = SimpleNamespace(draft_model=QComboBox(), translate_model=QComboBox(), _update_buttons=lambda: None)
+    ImagesPage.refresh_model_preferences(tab)
+    assert tab.draft_model.currentText() == "vision-2" and tab.translate_model.currentText() == "translator"
 
     # Picking another model in a dialog applies to that dialog only.
     draft.model_combo.setCurrentText("vision")
@@ -245,17 +244,15 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     file.ai_dialog = draft
     app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
 
-    class OpenTranscript:
-        _populate_models = TranscriptTab._populate_models
-        _populate_translation_models = TranscriptTab._populate_translation_models
-        refresh_model_preferences = TranscriptTab.refresh_model_preferences
+    class OpenImages:
+        refresh_model_preferences = ImagesPage.refresh_model_preferences
 
         def __init__(self):
-            self.model_combo = QComboBox()
-            self.translation_model_combo = QComboBox()
-            self._update_draft_button = lambda: None
+            self.draft_model = QComboBox()
+            self.translate_model = QComboBox()
+            self._update_buttons = lambda: None
 
-    app.transcript_tab = OpenTranscript()
+    app.images_page = OpenImages()
     monkeypatch.setattr(window_module, "SettingsSheet", lambda _app: sheet)
     monkeypatch.setattr(sheet, "exec", lambda: None)
 
@@ -268,8 +265,8 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     window_module.WorkspaceWindow._on_open_settings(app)
     assert syntax.model_combo.currentText() == "vision"
     assert draft.model_combo.currentText() == "general-text"
-    assert app.transcript_tab.model_combo.currentText() == "vision"
-    assert app.transcript_tab.translation_model_combo.currentText() == "translator"
+    assert app.images_page.draft_model.currentText() == "vision"
+    assert app.images_page.translate_model.currentText() == "translator"
 
 
 def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch, qapp):
@@ -284,7 +281,7 @@ def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch,
 
     refreshed = []
     app = SimpleNamespace(
-        transcript_tab=SimpleNamespace(refresh_model_preferences=lambda *args: refreshed.append(args)),
+        images_page=SimpleNamespace(refresh_model_preferences=lambda *args: refreshed.append(args)),
         centre=SimpleNamespace(refresh_model_preferences=lambda *args: refreshed.append(args)))
     monkeypatch.setattr(window_module, "SettingsSheet", lambda _app: SimpleNamespace(exec=lambda: 0, loaded=False))
     window_module.WorkspaceWindow._on_open_settings(app)

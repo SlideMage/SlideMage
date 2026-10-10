@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import alt_blocks, alt_images, image_review
+from slidemage import alt_blocks, alt_draft, alt_images, image_review
 from slidemage.image_review import FormEdit, SlideView
 
 IMG = "media/photo-a.png"
@@ -52,18 +52,47 @@ def test_scan_views_hash_and_state(store, monkeypatch):
     assert only.slide_hash == alt_images.slide_context_hash(row.path)
 
 
+def entries_of(**by_image):
+    return {name: alt_images.ImageEntry(image=name, **fields) for name, fields in by_image.items()}
+
+
 def test_visible_views_filter_pin_and_order(store):
     rows = [slide(store, f"{i}aaa") for i in range(4)]
     views = [view(rows[0], "none"), view(rows[1], "draft"), view(rows[2], "reviewed"), view(rows[3], "stale")]
-    needs = image_review.FILTERS[0][1]
     ids = lambda shown: [v.row.slide_id for v in shown]   # noqa: E731
-    assert ids(image_review.visible_views(views, needs)) == ["0aaa", "1aaa", "3aaa"]
-    assert len(image_review.visible_views(views, None)) == 4
-    assert ids(image_review.visible_views(views, needs, pin=rows[2].path)) == ["2aaa", "0aaa", "1aaa", "3aaa"]
-    assert ids(image_review.visible_views(views, needs, pin=rows[0].path)) == ["0aaa", "1aaa", "3aaa"]
+    needs, everything = 0, image_review.FILTER_ALL
+    assert ids(image_review.visible_views(views, {}, needs)) == ["0aaa", "1aaa", "3aaa"]
+    assert len(image_review.visible_views(views, {}, everything)) == 4
+    assert ids(image_review.visible_views(views, {}, needs, pin=rows[2].path)) == ["2aaa", "0aaa", "1aaa", "3aaa"]
+    assert ids(image_review.visible_views(views, {}, needs, pin=rows[0].path)) == ["0aaa", "1aaa", "3aaa"]
     # slides missing from the order keep their place, at the end
-    assert ids(image_review.visible_views(views, None, order={"3aaa": 0, "1aaa": 1})) == ["3aaa", "1aaa", "0aaa", "2aaa"]
-    assert [label for label, _ in image_review.FILTERS][image_review.FILTER_ALL] == "All slides with images"
+    assert ids(image_review.visible_views(views, {}, everything, order={"3aaa": 0, "1aaa": 1})) == [
+        "3aaa", "1aaa", "0aaa", "2aaa"]
+    labels = [label for label, _ in image_review.FILTERS]
+    assert labels[everything] == "All slides with images"
+    assert labels[1:] == ["All slides with images", "No description", "Draft, unreviewed", "Needs re-check",
+                          "Reviewed", "No German"]
+    assert image_review.filter_counts(views, {}) == [3, 4, 1, 1, 1, 1, 0]
+
+
+def test_no_german_filter_lists_slides_with_an_english_only_informative_image(store):
+    german = "media/german.png"
+    entries = entries_of(**{
+        IMG: dict(short="en"),                                       # English only: no German
+        "media/b.png": dict(long="en", short_de="de"),               # has German (stale or not, it exists)
+        "media/c.png": dict(role=alt_images.ROLE_DECORATIVE),        # decorative: nothing to translate
+        "media/d.png": dict(),                                       # nothing written yet
+        german: dict(short="en", short_de="de"),
+    })
+    assert image_review.lacks_german(entries[IMG])
+    assert not any(image_review.lacks_german(entries[name]) for name in ("media/b.png", "media/c.png", "media/d.png", german))
+    stale = entries["media/b.png"]
+    assert alt_images.translation_state(stale) == alt_images.STATE_STALE   # a stale German is not "no German"
+    views = [view(slide(store, "1aaa", images=(IMG, "media/c.png")), "none"),
+             view(slide(store, "2bbb", images=("media/b.png",)), "none"),
+             view(slide(store, "3ccc", images=("media/c.png", "media/d.png", "media/missing.png")), "none")]
+    no_german = [label for label, _ in image_review.FILTERS].index("No German")
+    assert [v.row.slide_id for v in image_review.visible_views(views, entries, no_german)] == ["1aaa"]
 
 
 def test_counts_and_summary(store):
@@ -188,3 +217,72 @@ def test_repoint_reports_unreadable_slide(store):
     entry = alt_images.ImageEntry(image=IMG)
     changed, failures = image_review.repoint_slides(entry, {}, {"1aaa": Path(store / "missing.tex")}, {}, IMG, "media/n.png")
     assert changed == [] and failures[0].startswith("1aaa:")
+
+
+def test_repoint_leaves_a_slide_with_unsaved_source_edits_alone(store):
+    """The Source buffer's own save would fail as stale if the file changed under it, and writing into the
+    buffer would leave the slide on disk pointing at the old image: such a slide is refused, the rest go on."""
+    entry = alt_images.ImageEntry(image=IMG, short="s")
+    open_slide = slide(store, "1aaa", text=f"\\includegraphics{{{IMG}}}")
+    other = slide(store, "2bbb", text=f"\\includegraphics{{{IMG}}}")
+    targets = {"1aaa": open_slide.path, "2bbb": other.path}
+    changed, failures = image_review.repoint_slides(
+        entry, {IMG: entry}, targets, {}, IMG, "media/n.png", unsaved=lambda path: path == open_slide.path)
+    assert changed == ["2bbb"]
+    assert len(failures) == 1 and failures[0].startswith("1aaa:") and "unsaved edits" in failures[0]
+    assert IMG in open_slide.path.read_text(encoding="utf-8")            # untouched
+    assert "media/n.png" in other.path.read_text(encoding="utf-8")
+
+
+def test_media_names():
+    assert image_review.media_name_problem("chart-sales") == ""
+    assert image_review.media_name_problem("") and image_review.media_name_problem("a/b") and image_review.media_name_problem("a\\b")
+
+
+def test_apply_translation_merges_only_untouched_fields_and_proves_provenance():
+    result = alt_draft.TranslationResult(short_de="S", long_de="L", takeaway_de="T",
+                                         source_hash=image_review.source_hash("en", "long", "take"))
+    asked = {"short_de": "", "long_de": "", "takeaway_de": ""}
+    english = ("en", "long", "take")
+    applied = image_review.apply_translation(result, asked, english, dict(asked), english)
+    assert applied.fields == {"short_de": "S", "long_de": "L", "takeaway_de": "T"}
+    assert applied.in_sync and applied.provenance == {"source_hash": result.source_hash, "fields": applied.fields}
+    # German typed since the request is kept, and then no provenance can be proved
+    typed = {**asked, "long_de": "mine"}
+    kept = image_review.apply_translation(result, asked, english, typed, english)
+    assert kept.fields == {"short_de": "S", "takeaway_de": "T"} and kept.provenance is None
+    # English edited since the request: the translation is stale
+    newer = image_review.apply_translation(result, asked, english, dict(asked), ("en", "newer", "take"))
+    assert not newer.in_sync and newer.provenance is not None
+    # a result of other English than was asked for proves nothing
+    wrong = alt_draft.TranslationResult(short_de="S", long_de="L", takeaway_de="T", source_hash="other")
+    assert image_review.apply_translation(wrong, asked, english, dict(asked), english).provenance is None
+
+
+def test_preview_for_names_the_file_a_page_or_the_reason(store, monkeypatch):
+    png = store / "media" / "photo-a.png"
+    png.parent.mkdir(parents=True)
+    png.write_bytes(b"png")
+    eps = store / "media" / "figure.eps"
+    eps.write_bytes(b"eps")
+    pdf = store / "media" / "figure.pdf"
+    pdf.write_bytes(b"pdf")
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda reference: store / reference)
+    assert image_review.preview_for(IMG) == image_review.Preview(png, png)
+    assert image_review.preview_for("media/figure.eps").image is None
+    assert image_review.preview_for("media/figure.eps").original == eps
+    rendered = store / "rendered.png"
+    monkeypatch.setattr(image_review.media_render, "ensure_rendered", lambda path: rendered)
+    assert image_review.preview_for("media/figure.pdf") == image_review.Preview(rendered, pdf)
+
+    def broken(path):
+        raise RuntimeError("cannot render")
+
+    lines = []
+    monkeypatch.setattr(image_review.media_render, "ensure_rendered", broken)
+    shown = image_review.preview_for("media/figure.pdf", lines.append)
+    assert shown.image is None and shown.original == pdf and "cannot render" in lines[0]
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda reference: None)
+    assert "not found" in image_review.preview_for(IMG).problem
+    monkeypatch.setattr(image_review.tikz_render, "ensure_rendered", lambda reference, log=None: rendered)
+    assert image_review.preview_for("tikz:abc") == image_review.Preview(rendered)

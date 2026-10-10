@@ -2,7 +2,7 @@
 review state, editable here.
 
 A save goes through alt_images.save_slide_image() (the same store, media/alt-text.json, as the
-Images page, which stays until step 9): "Save draft" keeps the text unreviewed for this slide,
+Images page, which has all the fields and the batch drafting): "Save draft" keeps the text unreviewed for this slide,
 "Mark reviewed" confirms the image and this slide's use of it. Redraft asks the vision model
 chosen under Settings -> AI models for a new description (local or cloud, with the one-time
 cloud consent) and puts it into the fields; nothing is stored until it is saved. A pending edit is
@@ -23,12 +23,10 @@ from ....qt_ai_models import provider_for_task
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
+from ...pages.image_form import ROLES, STATE_TONES
 from ...text import plural
 from .base import Row, SidePanel, box, text
 
-ROLES = ((alt_images.ROLE_INFORMATIVE, "Informative"), (alt_images.ROLE_DECORATIVE, "Decorative"))
-TONES = {alt_images.STATE_NONE: "error", alt_images.STATE_DRAFT: "info",
-         alt_images.STATE_STALE: "warning", alt_images.STATE_REVIEWED: "ok"}
 THUMBNAIL = 56
 PIXMAP_SUFFIXES = (".png", ".jpg", ".jpeg")
 
@@ -53,7 +51,7 @@ class ImageForm(Row):
         info = text(reference, q.PANEL_MONO)
         info.setToolTip(reference)
         head.addWidget(info, 1)
-        self.state_chip = Chip(alt_images.STATE_LABELS[state], TONES[state])
+        self.state_chip = Chip(alt_images.STATE_LABELS[state], STATE_TONES[state])
         head.addWidget(self.state_chip, 0, Qt.AlignmentFlag.AlignTop)
         self.body.addLayout(head)
 

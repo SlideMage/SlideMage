@@ -203,7 +203,7 @@ def build_registry() -> CommandRegistry:
 
     # Project --------------------------------------------------------------------------
     add("palette", "Find anything…", PROJECT, lambda w: w.palette.toggle(), icon="search", shortcut="Ctrl+K")
-    add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="all images · this deck")
+    add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))

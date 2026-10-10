@@ -7,11 +7,10 @@ write it instead of each other.
 
 The window replaces qt_gui.py's tabbed window. The left column is the slide
 list (slide_list.py), the centre the Preview / Source / Split / Details views
-of the focused slide (centre.py). Steps 9 and 10 replace the old pages the
-centre column's stack still hosts, each marked "replaced in step N" below:
-the Images page and the transcript previews. The window's other duties live
-in mixins next to it: compile orchestration (compile_jobs.py), deck actions
-(deck_actions.py) and project maintenance (maintenance.py).
+of the focused slide (centre.py), or the Images page (pages/images.py), which
+takes the width of all three columns while it is shown. The window's other
+duties live in mixins next to it: compile orchestration (compile_jobs.py),
+deck actions (deck_actions.py) and project maintenance (maintenance.py).
 """
 from __future__ import annotations
 
@@ -38,14 +37,13 @@ from ... import app_settings, bibliography, deck_headers, deck_outline, latex_ed
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
-from ...qt_transcript_preview_tab import TranscriptPreviewTab
-from ...qt_transcript_tab import TranscriptTab
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
 from ..dialogs.settings import SettingsSheet
 from ..kit.theme import WARNING_LABEL, ThemeManager
 from ..kit.widgets import Toast
+from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
 from .actions import build_registry
@@ -78,11 +76,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         # must not ask a second time.
         self._dirty_edits_resolved_for_close = False
         self.decks: list[Deck] = []
-        # Keyed by slide bare id, not path -- a transcript preview has no
-        # file of its own to dedupe on, and re-clicking "Render transcript"
-        # for the same slide should refresh its existing page rather than
-        # piling up duplicates.
-        self._transcript_preview_tabs: dict[str, TranscriptPreviewTab] = {}
         # Global mutual-exclusion for anything that calls Ollama (image
         # drafting, image translation, and the "Duplicate slide" dialog's
         # auto-translate option) -- None when idle, else a short label of
@@ -112,18 +105,16 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
         self.side_panels = SidePanels(self, self.state)
-        # Centre: the views of the focused slide, or one of the pages below
-        # (replaced in step 9: the Images page).
+        # Centre: the views of the focused slide, or the Images page. Its first scan reads every
+        # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
+        # deferred to the first time the page is shown (_on_page_changed) rather than paid on every
+        # launch, and deliberately not a launch-time *write* to media/alt-text.json.
         self.stack = QStackedWidget()
         self.centre = CentreColumn(self, self.state)
         self.stack.addWidget(self.centre)
-        # Its own first scan reads every slide that includes an image and
-        # hashes those images' bytes (~1s) and syncs the store -- deferred to
-        # the first time the page is shown (_on_page_changed) rather than
-        # paid on every launch, and deliberately not a launch-time *write* to
-        # media/alt-text.json.
-        self.transcript_tab = TranscriptTab(self)
-        self.stack.addWidget(self.transcript_tab)
+        self.images_page = ImagesPage(self, self.state)
+        self.images_page.closed.connect(self._toggle_images)
+        self.stack.addWidget(self.images_page)
         self.stack.currentChanged.connect(self._on_page_changed)
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
@@ -144,6 +135,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
         self.topbar.command.connect(self._on_command)
+        self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         self.state.deck_changed.connect(self._remember_deck)
         self.state.dirty_changed.connect(self._on_dirty_changed)
         self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
@@ -204,30 +196,25 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     # -- the centre column's pages ---------------------------------------------
 
-    def _discard(self, page: QWidget) -> None:
-        self.stack.removeWidget(page)
-        page.deleteLater()
-
     def _on_page_changed(self, index: int) -> None:
-        """Run the image-description page's first (expensive) scan only once
-        it's actually shown, and tell the top bar whether Images is open."""
-        is_images = self.stack.widget(index) is self.transcript_tab
+        """Tell the top bar whether Images is open; the page takes the room of the slide list and the
+        side panels, and scans the slides when it is first shown. Leaving it saves a pending edit."""
+        is_images = self.stack.widget(index) is self.images_page
         self.topbar.set_images_open(is_images)
+        self.slide_list.setVisible(not is_images)
+        self.side_panels.setVisible(not is_images)
         if is_images:
-            self.transcript_tab.ensure_loaded()
+            self.images_page.ensure_loaded()
+        else:
+            self.images_page.flush()
 
     def _toggle_images(self) -> None:
-        self.stack.setCurrentWidget(
-            self.centre if self.stack.currentWidget() is self.transcript_tab else self.transcript_tab)
+        self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)
 
     def open_images_for_slide(self, id_slug: str) -> None:
-        """The slide list's "Images" entry (2026-09-19, direct instruction):
-        opens (or reveals) the Images page and lands on that slide's images. ensure_loaded() first because the page's first scan
-        is deferred until it's shown -- _find_and_show_slide() only searches
-        rows a scan has already produced."""
-        self.stack.setCurrentWidget(self.transcript_tab)
-        self.transcript_tab.ensure_loaded()
-        self.transcript_tab._find_and_show_slide(id_slug)
+        """The slide list's "Images" entry: opens the Images page and lands on that slide's images."""
+        self.stack.setCurrentWidget(self.images_page)
+        self.images_page.show_slide(id_slug)
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
@@ -244,28 +231,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         sort_bib.py run."""
         if path == bibliography.DEFAULT_BIB:
             bibliography.sort_entries()
-
-    def open_transcript_preview(self, key: str, title: str) -> TranscriptPreviewTab:
-        """The Preview's "Render transcript" (2026-08-25) --
-        `key` is the slide's bare id, so re-rendering the same slide
-        refreshes its existing page (via the caller's own set_html() call
-        right after this returns) instead of piling up duplicates."""
-        existing = self._transcript_preview_tabs.get(key)
-        if existing is not None:
-            self.stack.setCurrentWidget(existing)
-            return existing
-        tab = TranscriptPreviewTab(self, title)
-        self._transcript_preview_tabs[key] = tab
-        self.stack.addWidget(tab)
-        self.stack.setCurrentWidget(tab)
-        return tab
-
-    def close_transcript_preview_tab(self, tab: TranscriptPreviewTab) -> None:
-        for key, existing in list(self._transcript_preview_tabs.items()):
-            if existing is tab:
-                del self._transcript_preview_tabs[key]
-        self.stack.setCurrentWidget(self.centre)
-        self._discard(tab)
 
     def _on_dirty_changed(self, dirty: bool) -> None:
         if not dirty:
@@ -292,6 +257,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             event.ignore()
             return
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
+        self.images_page.shutdown()
         self.palette.stop_search(5000)
         self._stop_worker()
         super().closeEvent(event)
@@ -299,7 +265,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
     def _resolve_dirty_edits(self) -> bool:
         """Return False when the user cancels or any requested save fails."""
         dirty_files = self.centre.source.dirty_files()
-        panels = self.side_panels.dirty_panels()
+        panels = self.side_panels.dirty_panels() + ([self.images_page] if self.images_page.dirty else [])
         if dirty_files or panels:
             unsaved = [plural(len(dirty_files), "unsaved file")] if dirty_files else []
             if panels:
@@ -317,6 +283,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
                 return False
             if choice == QMessageBox.StandardButton.Yes:
                 self.side_panels.flush()   # speaker notes go into their file's buffer, saved below
+                try:
+                    self.images_page.flush()
+                except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
+                    QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
+                    return False
                 for file in self.centre.source.dirty_files():
                     try:
                         saved = file.save()
@@ -330,29 +301,6 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
                     # stale disk content, or any other handled save failure.
                     if not saved or file.dirty:
                         return False
-
-        # Image descriptions have their own Save draft action and shared
-        # alt-text store. Resolve those edits before the window disappears.
-        image_tab = self.transcript_tab
-        if image_tab._any_editor_dirty():
-            choice = QMessageBox.question(
-                self,
-                "Unsaved image edits",
-                "Save the current image description edits as a draft before closing?",
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-            )
-            if choice == QMessageBox.StandardButton.Cancel:
-                return False
-            if choice == QMessageBox.StandardButton.Yes:
-                try:
-                    image_tab._save(mark_reviewed=False)
-                except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
-                    QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
-                    return False
-                if image_tab._any_editor_dirty():
-                    return False
         return True
 
     def _on_open_project(self) -> None:
@@ -388,7 +336,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         sheet = SettingsSheet(self)
         sheet.exec()
         if sheet.loaded:        # the model pickers that are open follow a changed default
-            self.transcript_tab.refresh_model_preferences(sheet.available_models, sheet.vision_models)
+            self.images_page.refresh_model_preferences(sheet.available_models, sheet.vision_models)
             self.centre.refresh_model_preferences(sheet.available_models)
 
     def set_dark_mode(self, checked: bool) -> None:
@@ -437,9 +385,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         present-participle phrase, e.g. "drafting descriptions" --
         appears in the busy message below). Returns False, and shows why,
         if another Ollama-dependent task already holds it -- every call
-        site (qt_transcript_tab.py's single/batch drafting, single/batch
-        translation, and its "Tune prompt…" dialog; the Add slide sheet's
-        translation) must call this before issuing its own first
+        site (the Images page's drafting, translating and prompt tuning; the
+        Add slide sheet's and the Ask AI to fix panel's requests) must call this before issuing its own first
         Ollama request and end_ollama_task() when that request (or batch of
         them) is fully done, whether it ran on a background thread or
         blocked the GUI thread synchronously. This is deliberately a single

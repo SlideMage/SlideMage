@@ -101,6 +101,12 @@ class CentreColumn(QFrame):
         file = self.source.file_for(path)
         return file is not None and file.dirty
 
+    def sync_source(self, path: Path) -> None:
+        """Show the file again if it changed on disk elsewhere in the app, unless it has unsaved edits."""
+        file = self.source.file_for(path)
+        if file is not None:
+            file.sync()
+
     def slide_text(self, path: Path) -> str:
         """The text of a slide file as the Source view has it, unsaved edits included, else the saved file."""
         file = self.source.file_for(path)

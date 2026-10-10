@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import alt_images, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view, render_check
 from slidemage.ui.workspace.centre import CentreColumn
@@ -41,7 +42,6 @@ class FakeApp:
     def __init__(self):
         self.theme = ThemeManager()
         self.logged = []
-        self.transcripts = []
         self.added = []
         self.slide_list = SimpleNamespace(add_slide=lambda *start: self.added.append(start))
         self.signals = SimpleNamespace(log=SimpleNamespace(emit=lambda line: None))
@@ -51,10 +51,6 @@ class FakeApp:
 
     def open_slide_editor(self, path, on_saved=None, line=None):
         self.centre.open_file(path, on_saved, line)
-
-    def open_transcript_preview(self, key, title):
-        self.transcripts.append((key, title))
-        return SimpleNamespace(set_html=lambda html: self.transcripts.append(html))
 
     def refresh_open_deck_editors(self):
         pass
@@ -443,14 +439,29 @@ def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monk
     assert renders == []
 
 
-def test_the_transcript_of_the_buffer_opens_in_its_own_page(centre, monkeypatch):
+def test_the_transcript_of_the_buffer_opens_in_a_preview_sheet(centre, monkeypatch):
     centre.state.set_focused_slide("aaa")
-    monkeypatch.setattr(preview_view.transcript, "generate_single_slide",
-                        lambda text, bare, view, language: SimpleNamespace(undescribed=True, args=(bare, view, language)))
-    monkeypatch.setattr(preview_view.transcript, "to_html", lambda result, title: f"<h1>{title}</h1>")
+    asked = []
+
+    def generate(text, bare, view, language):
+        asked.append((bare, view, language))
+        return SimpleNamespace(undescribed=True)
+
+    monkeypatch.setattr(transcript_preview.transcript, "generate_single_slide", generate)
+    monkeypatch.setattr(transcript_preview.transcript, "to_html", lambda result, title: f"<h1>{title}</h1>")
+    shown = []
+
+    class Sheet:
+        def __init__(self, parent, title, html):
+            shown.append((title, html))
+
+        def exec(self):
+            shown.append("exec")
+
+    monkeypatch.setattr(transcript_preview, "TranscriptPreviewSheet", Sheet)
     centre.preview.render_transcript()
-    assert centre.app.transcripts[0] == ("aaa", "Transcript: aaa-EN-One")
-    assert centre.app.transcripts[1] == "<h1>Transcript preview: aaa-EN-One</h1>"
+    assert asked == [("aaa", centre.state.view, "en")]
+    assert shown == [("Transcript: aaa-EN-One", "<h1>Transcript preview: aaa-EN-One</h1>"), "exec"]
     assert any("undescribed image" in line for line in centre.app.logged)
 
 

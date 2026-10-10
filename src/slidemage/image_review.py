@@ -9,21 +9,13 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
-from . import alt_blocks, alt_images
+from . import alt_blocks, alt_draft, alt_images, media_render, tikz_render
 from .deck_editor import parse_slide_calls
 from .deck_scan import PROJECT_ROOT, Deck
 
-# (label, states shown; None shows every slide)
-FILTERS = [
-    ("Needs attention", (alt_images.STATE_NONE, alt_images.STATE_DRAFT, alt_images.STATE_STALE)),
-    ("All slides with images", None),
-    ("No description", (alt_images.STATE_NONE,)),
-    ("Draft, unreviewed", (alt_images.STATE_DRAFT,)),
-    ("Needs re-check", (alt_images.STATE_STALE,)),
-    ("Reviewed", (alt_images.STATE_REVIEWED,)),
-]
-FILTER_ALL = 1   # index of "All slides with images"
+FILTER_ALL = 1   # index of "All slides with images" in FILTERS
 
 # Worst first, as alt_images.STATE_LABELS is ordered.
 _STATE_RANK = {alt_images.STATE_NONE: 0, alt_images.STATE_DRAFT: 1,
@@ -38,6 +30,38 @@ class SlideView:
     row: alt_blocks.SlideRow
     state: str
     slide_hash: str
+
+
+Entries = dict[str, alt_images.ImageEntry]
+
+
+def lacks_german(entry: alt_images.ImageEntry) -> bool:
+    """An informative image with English text and no German text at all (a stale translation is
+    translation_state() STALE, not NONE: the German exists, it only needs another look)."""
+    return (not entry.is_decorative and bool(entry.short or entry.long)
+            and alt_images.translation_state(entry) == alt_images.STATE_NONE)
+
+
+def _in_states(*states: str) -> Callable[[SlideView, Entries], bool]:
+    return lambda view, entries: view.state in states
+
+
+def _lacks_german(view: SlideView, entries: Entries) -> bool:
+    """Whether some image of the slide has no German text yet."""
+    found = (alt_images.lookup(entries, reference) for reference in view.row.images)
+    return any(entry is not None and lacks_german(entry) for entry in found)
+
+
+# (label, whether a slide is listed: (view, store entries) -> bool)
+FILTERS = [
+    ("Needs attention", _in_states(alt_images.STATE_NONE, alt_images.STATE_DRAFT, alt_images.STATE_STALE)),
+    ("All slides with images", lambda view, entries: True),
+    ("No description", _in_states(alt_images.STATE_NONE)),
+    ("Draft, unreviewed", _in_states(alt_images.STATE_DRAFT)),
+    ("Needs re-check", _in_states(alt_images.STATE_STALE)),
+    ("Reviewed", _in_states(alt_images.STATE_REVIEWED)),
+    ("No German", _lacks_german),
+]
 
 
 def image_state(entries: dict[str, alt_images.ImageEntry], reference: str, slide_id: str, slide_hash: str) -> str:
@@ -66,16 +90,22 @@ def sort_order(deck: Deck) -> dict[str, int]:
     return {call.id: position for position, call in enumerate(parse_slide_calls(deck))}
 
 
-def visible_views(views: list[SlideView], states: tuple[str, ...] | None, *,
+def visible_views(views: list[SlideView], entries: Entries, filter_index: int, *,
                   pin: Path | None = None, order: dict[str, int] | None = None) -> list[SlideView]:
-    """The views in `states` (None: all), plus the one at `pin` even if its state is not among them,
+    """The views FILTERS[filter_index] lists, plus the one at `pin` even if the filter excludes it,
     ordered by `order` (slide id -> position; slides missing from it keep their order, at the end)."""
-    shown = views if states is None else [view for view in views if view.state in states]
+    _, wanted = FILTERS[filter_index]
+    shown = [view for view in views if wanted(view, entries)]
     if pin is not None and not any(view.row.path == pin for view in shown):
         shown = [view for view in views if view.row.path == pin] + shown
     if order:
         shown = sorted(shown, key=lambda view: order.get(view.row.slide_id, len(order)))
     return shown
+
+
+def filter_counts(views: list[SlideView], entries: Entries) -> list[int]:
+    """How many slides each of FILTERS lists."""
+    return [sum(1 for view in views if wanted(view, entries)) for _, wanted in FILTERS]
 
 
 def state_counts(views: list[SlideView]) -> dict[str, int]:
@@ -198,12 +228,55 @@ def source_hash(short: str, long: str, takeaway: str) -> str:
     return alt_images.en_text_hash(alt_images.ImageEntry(image="", short=short, long=long, takeaway_default=takeaway))
 
 
+@dataclass
+class TranslationApplied:
+    """What a finished translation changes in a form: `fields` are the German values to put in (only
+    the fields nobody typed into since the request), `provenance` the FormEdit.provenance that lets a
+    later save prove the German still matches the English it was made from (None: it cannot), and
+    `in_sync` whether the English in the form is still what was sent."""
+
+    fields: dict[str, str]
+    provenance: dict | None
+    in_sync: bool
+
+
+GERMAN_FIELDS = ("short_de", "long_de", "takeaway_de")
+
+
+def apply_translation(result: alt_draft.TranslationResult, asked_fields: dict[str, str],
+                      asked_english: tuple[str, str, str], fields: dict[str, str],
+                      english: tuple[str, str, str]) -> TranslationApplied:
+    """Merge a translation into a form. `asked_fields` (GERMAN_FIELDS) and `asked_english` (short,
+    long, takeaway) are what the form held when the request went out, `fields` and `english` what it
+    holds now: a result never overwrites newer typing."""
+    translated = dict(zip(GERMAN_FIELDS, (result.short_de, result.long_de, result.takeaway_de)))
+    applied = {key: value for key, value in translated.items() if fields[key] == asked_fields[key]}
+    provenance = None
+    if len(applied) == len(GERMAN_FIELDS) and result.source_hash == source_hash(*asked_english):
+        # The save may come after the English was edited in this form: keep the worker's exact source
+        # hash and the German values applied, so that it can prove the merged record still matches.
+        provenance = {"source_hash": result.source_hash,
+                      "fields": {key: value.strip() for key, value in applied.items()}}
+    return TranslationApplied(applied, provenance, english == asked_english)
+
+
 # -- replacing an image ------------------------------------------------------------------------------
+
+
+def media_name_problem(stem: str) -> str:
+    """Why `stem` cannot be the name of a file in media/ ("" when it can)."""
+    if not stem or "/" in stem or "\\" in stem:
+        return "Enter a name with no path separators: the file always goes directly into media/."
+    return ""
+
+
+def media_destination(name: str) -> Path:
+    return PROJECT_ROOT / "media" / name
 
 
 def copy_into_media(source: Path, name: str) -> Path:
     """Copy `source` to media/`name`; OSError if that fails."""
-    destination = PROJECT_ROOT / "media" / name
+    destination = media_destination(name)
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(source), str(destination))
     return destination
@@ -211,12 +284,20 @@ def copy_into_media(source: Path, name: str) -> Path:
 
 def repoint_slides(entry: alt_images.ImageEntry, entries: dict[str, alt_images.ImageEntry],
                    targets: dict[str, Path], rows: dict[str, alt_blocks.SlideRow],
-                   old_reference: str, new_reference: str) -> tuple[list[str], list[str]]:
+                   old_reference: str, new_reference: str, *,
+                   unsaved: Callable[[Path], bool] = lambda path: False) -> tuple[list[str], list[str]]:
     """Point the slide files in `targets` (slide id -> file) from `entry`'s image to `new_reference`.
     Returns (ids changed, failure messages). A slide may spell the old reference differently
-    (extension or not) from `old_reference`, so it is looked up among the slide's own images."""
+    (extension or not) from `old_reference`, so it is looked up among the slide's own images.
+    A slide for which `unsaved(path)` holds (edits in the Source view) is left alone and reported:
+    writing the file would make that buffer's own save fail as stale, and routing the change through
+    the buffer would leave the slide on disk pointing at the old image."""
     changed, failures = [], []
     for slide_id, path in targets.items():
+        if unsaved(path):
+            failures.append(f"{slide_id}: {path.name} has unsaved edits in the Source view; "
+                            "save or revert them, then replace the image again")
+            continue
         raw = old_reference
         row = rows.get(slide_id)
         if row is not None:
@@ -245,3 +326,51 @@ def is_unused_after(entry: alt_images.ImageEntry, changed: list[str]) -> bool:
 def has_text(entry: alt_images.ImageEntry) -> bool:
     """Whether the entry holds any text worth asking about before it is deleted."""
     return bool(entry.short or entry.long or entry.takeaway_default or entry.source)
+
+
+# -- showing an image -------------------------------------------------------------------------------
+
+# Formats Qt paints directly; a .pdf is rendered to a cached PNG, a tikz illustration from the slide.
+VIEWABLE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
+
+
+@dataclass
+class Preview:
+    """`image` is a raster file to paint, or None with `problem` saying why not; `original` is the
+    media file itself where there is one (to open in its own application)."""
+
+    image: Path | None
+    original: Path | None = None
+    problem: str = ""
+
+
+def _first_line(error: Exception, limit: int = 160) -> str:
+    """A render error is a LaTeX log of dozens of lines: the page shows its first, the log has it all."""
+    line = (str(error).strip().splitlines() or [""])[0]
+    return line if len(line) <= limit else line[:limit - 1] + "…"
+
+
+def preview_for(reference: str, log: Callable[[str], None] | None = None) -> Preview:
+    """What to show for an image reference: the file itself, its rendered page (.pdf) or the rendered
+    tikz illustration. `log` receives the reason a render failed."""
+    if reference.startswith(alt_blocks.TIKZ_PREFIX):
+        try:
+            return Preview(tikz_render.ensure_rendered(reference, log=log))
+        except RuntimeError as exc:
+            if log is not None:
+                log(f"*** {exc} ***")
+            return Preview(None, problem=f"Could not render the tikz illustration: {_first_line(exc)}")
+    resolved = alt_blocks.resolve_image(reference)
+    if resolved is None:
+        return Preview(None, problem=f"Image not found on disk: {reference}")
+    suffix = resolved.suffix.lower()
+    if suffix == ".pdf":
+        try:
+            return Preview(media_render.ensure_rendered(resolved), resolved)
+        except RuntimeError as exc:
+            if log is not None:
+                log(f"*** {exc} ***")
+            return Preview(None, resolved, f"{resolved.suffix} image: not previewable here.")
+    if suffix not in VIEWABLE_SUFFIXES:
+        return Preview(None, resolved, f"{resolved.suffix} image: not previewable here.")
+    return Preview(resolved, resolved)

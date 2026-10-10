@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–8, 9a–9c and 9d-1 done; next is 9d-2 (see
+Status: in progress on branch `ui-redesign`. Steps 1–9 done; next is 10, the AI chat (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,7 +45,7 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-10. Suite after the review fixes: 1071 passed, 4 skipped;
+Last updated 2026-10-10. Suite after 9d-2: 1106 passed, 4 skipped;
 ruff clean. Suite time varies with machine load (9–18 s for the same
 commit; compare against HEAD in a `git worktree` before blaming a step).
 
@@ -56,34 +56,9 @@ commit; compare against HEAD in a `git worktree` before blaming a step).
    purpose; don't commit them).
 2. Re-fetch the prototype into the new session's scratchpad (see "How
    the work is run"); old scratchpad paths are gone.
-3. Next step: **9d-2, the Images page.** Brief for the agent:
-   - Build `ui/pages/images.py` (kit widgets) on `image_review.py` /
-     `alt_images` / `alt_draft` (see 9d-1 under "What exists now"), shown
-     by the existing `images` command / top bar Images button in the
-     window's centre/body stack; delete `qt_transcript_tab.py` (2,598
-     lines) and `qt_transcript_preview_tab.py` (46) and port their tests.
-   - Keep every feature of the old page: the six filters, sort by a
-     deck's slide order, summary line, find slide, per-image editing of
-     role / short / long / source / takeaway / German fields, Save draft
-     and Save + mark reviewed (refused when a long description is
-     missing), Set takeaway as default, translate one / translate all,
-     draft one slide / draft all (worker threads with Stop; Ollama slot
-     via provider), Replace image (+ other slides, offer to delete the
-     orphaned description), image preview (png/jpg/pdf/tikz via
-     `alt_blocks.resolve_image`/`media_render`), open slide in editor,
-     prompt tuning dialog. The transcript preview tab's job (rendered
-     transcript preview, `open_transcript_preview`) needs a home too —
-     check its callers (Render ▾ "Render transcript", Transcript entry
-     panel).
-   - Open decision for the user: keep the real page's filters (Needs
-     attention, All slides with images, No description, Draft
-     unreviewed, Needs re-check, Reviewed) and add only "No German"
-     (small predicate over `alt_images.translation_state`)?
-     Orchestrator recommendation: yes; ask before briefing if unsure.
-   - Same rules/report as every brief (see "How the work is run").
-   - Expected size ~250–350k agent tokens (≈13–18% of the user's 5-hour
-     window).
-4. After 9d-2: step 10 (AI chat, right column lower part; replaces
+3. 9d-2 (Images page) is done: ~500k agent tokens (≈25%), above the
+   250–350k estimate.
+4. Next: step 10 (AI chat, right column lower part; replaces
    `qt_ai_draft_dialog.py`; enables the palette's "Ask the chat" row and
    could take over Citations "Add to .bib with chat"), then step 11
    (finish the switch-over: leftover `qt_*` modules incl.
@@ -97,7 +72,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 
 | Work | Content | Agent tokens | ≈ window |
 |---|---|---|---|
-| 9d-2 Images page | kit page on `image_review`; delete `qt_transcript_tab.py` + `qt_transcript_preview_tab.py`; fix `repoint_slides` vs open buffers; use `stop_worker` | 250–350k | 13–18% |
+| ~~9d-2 Images page~~ | done (~500k actual) | | |
 | 10 AI chat | right column lower part (slide/deck scope, chips, inline diffs, Apply/Discard, local/cloud); replaces `qt_ai_draft_dialog.py`; enables palette "Ask the chat"; may split 10a/10b | 300–450k | 15–23% |
 | 11 Finish switch-over | delete leftover `qt_*` (`qt_ai_models`, `qt_citation_dialog`, `qt_gui`), fix screenshots tool, README/manual/`docs/SlideMage.md`/screenshots, 6.0 bump | 200–300k | 10–15% |
 | Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
@@ -130,7 +105,7 @@ Worth repeating before step 11.
 | 9c. Settings + Deck settings sheets | (see git log) | done |
 | 9d-1. Images page logic → `image_review.py` (backend only) | (see git log) | done |
 | Review fixes (12 Haiku reviewers, Sonnet fixes) | (see git log) | done |
-| 9d-2. New kit Images page under `ui/pages/`, delete `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | | not started |
+| 9d-2. Kit Images page under `ui/pages/`, transcript preview sheet; deleted `qt_transcript_tab.py` / `qt_transcript_preview_tab.py` | (see git log) | done |
 | 10–11 | | not started |
 
 ### What exists now
@@ -221,6 +196,19 @@ Worth repeating before step 11.
   German" needs a small predicate over `alt_images.translation_state`).
   Drafting/translation batches are in `alt_draft`; image preview uses
   `alt_blocks.resolve_image`/`media_render`.
+- Step 9d-2: `ui/pages/images.py` (`ImagesPage`: sibling in the centre
+  stack; hides slide list and side panels while shown; `dirty`/`flush()`
+  joins the close prompt), `image_nav.py` (filters, order, find, model
+  pickers, Draft all / Translate all), `image_form.py`, `image_runs.py`
+  (`ImageRunsMixin`; one job at a time, `stop_worker`, Ollama slot),
+  `image_jobs.py` (`Job`, `JobCard`), `image_dialogs.py`
+  (`ReplaceImageSheet`, `PromptTuningSheet`), `image_preview.py`;
+  `ui/dialogs/transcript_preview.py` (`show_transcript_preview()`, from
+  Render ▾ and the Images page header). Backend: `image_review.lacks_german`
+  ("No German" filter), `apply_translation`, `preview_for`,
+  `repoint_slides(unsaved=…)` refuses slides with unsaved Source edits;
+  `alt_draft.slide_jobs`; `CentreColumn.sync_source`, `TopBar.mode_clicked`.
+  Removed: `qt_transcript_tab`, `qt_transcript_preview_tab`.
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -229,9 +217,6 @@ Worth repeating before step 11.
   counts them; Notes edits go into the Source buffer (versioned save).
 
 ### Temporary hosts still in place
-- Images page: old `qt_transcript_tab.TranscriptTab` /
-  `qt_transcript_preview_tab.TranscriptPreviewTab` in the window's centre
-  stack (until 9d-2); it already calls `image_review`.
 - Details view: slug, frame, language fact, Duplicate / Rename / Delete.
 - Citations "Add to .bib…" and Cite ▾ footer open `qt_citation_dialog`
   (the add-entry form, kept; step 10 chat may take over).
@@ -249,6 +234,11 @@ Worth repeating before step 11.
   versions as `v1-0-0` (could use `version_label`); larger refactors
   not done: panel boilerplate helpers in `panels/base.py`, one click-frame
   base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
+- 9d-2 leftovers: the Images page uses legacy-themed combos, checkboxes
+  and some scrollbars; first paint of a slide's forms can be squeezed for
+  one event-loop turn; Draft all / Translate all show no counts;
+  `docs/SlideMage.md` and `make_screenshots.py` (`window.transcript_tab`)
+  still name the old tab (step 11).
 - Kit restyle pass still open: line edits, combos, checkboxes and
   scrollbars in the new sheets use the legacy app theme; "Appears in"
   uses plain checkboxes, not the prototype's view chips; Existing list
@@ -329,6 +319,15 @@ Worth repeating before step 11.
   Cancel with inline errors, and Admin slides' "Insert slides" is
   disabled while the form has unsaved changes; Build options stays a
   dialog (two options are per launch).
+
+- Step 9d-2: leaving a slide/filter/order/deck/the page saves a pending
+  image edit as a draft (old: asked to discard); one draft/translate job
+  at a time; Stop on a single-image run aborts at once; Replace image is
+  one sheet and refuses slides with unsaved Source edits; page-level
+  EN/DE switch instead of stacked EN and DE blocks; model pickers in the
+  left column's footer; "Tune prompt…" per image; deck order follows the
+  open deck (no "any deck" combo); the transcript preview is a sheet,
+  not a tab; new filter "No German".
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as
