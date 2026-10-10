@@ -3,6 +3,9 @@ light and dark mode. No golden screenshots: the checks are structural
 (non-empty render, fonts registered, icon ligatures draw a glyph)."""
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
@@ -29,6 +32,7 @@ from slidemage.ui.kit.widgets import (
     Surface,
     ThumbnailGrid,
     Toast,
+    ToggleChip,
     caption,
     columns,
     row,
@@ -95,6 +99,29 @@ def test_kit_qss_follows_the_theme(theme):
     theme.dark = True
     sheet = theme._build_qss()
     assert f"QFrame#{kit_qss.CARD}" in sheet and DARK.surface in sheet
+
+
+@pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])
+def test_form_controls_draw_their_images_from_files(theme, dark):
+    """The arrows and ticks of combos, spin boxes, checkboxes and radio buttons are PNG files QSS points to."""
+    theme.dark = dark
+    sheet = theme._build_qss()
+    urls = re.findall(r"url\(([^)]+)\)", sheet)
+    assert {Path(u).name.split("-")[0] for u in urls} == set(kit_qss.KIT_ICONS)
+    assert all(Path(u).is_file() and Path(u).with_name(Path(u).stem + "@2x.png").is_file() for u in urls)
+
+
+def test_toggle_chip_is_a_checkable_button_that_follows_its_view(theme):
+    chip = ToggleChip("During course", "during")
+    styled(chip, theme, False)
+    seen = []
+    chip.toggled.connect(seen.append)
+    chip.show()
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    assert chip.isChecked() and seen == [True] and chip.property("tone") == "during"
+    chip.setEnabled(False)
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    assert chip.isChecked()
 
 
 def test_segmented_control_emits_only_for_user_clicks(theme):

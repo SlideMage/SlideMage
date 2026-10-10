@@ -75,7 +75,7 @@ class Tokens:
     error: str
     error_bg: str
     error_fg: str
-    error_solid: str   # fill behind white text (error toast, badges): the same in both themes
+    error_solid: str   # fill behind on_solid text (error toast, badges): the same in both themes
     warning: str
     warning_bg: str
     warning_fg: str
@@ -85,6 +85,13 @@ class Tokens:
     info: str
     info_bg: str
     info_fg: str
+    # Text on a solid color fill (error badges, the active "View as" segment, the toast): white in both themes.
+    on_solid: str
+    # A slide's page and the picture on it: white in both themes, with dark text and an outline that
+    # shows where the picture ends.
+    paper: str
+    paper_text: str
+    paper_outline: str
     # The Log drawer is dark in both themes (prototype: #1d1d1d, #e8e6e1).
     log_bg: str
     log_text: str
@@ -92,6 +99,9 @@ class Tokens:
     def view_color(self, view: str) -> str:
         """`view` is "instructor", "during" or "after"."""
         return getattr(self, f"view_{view}")
+
+    def view_tint(self, view: str) -> str:
+        return getattr(self, f"view_{view}_tint")
 
 
 VIEWS = ("instructor", "during", "after")
@@ -110,6 +120,7 @@ LIGHT = Tokens(
     # text colors are the Tailwind 100/800 shades.
     ok="#059669", ok_bg="#d1fae5", ok_fg="#065f46",
     info="#2563eb", info_bg="#dbeafe", info_fg="#1e40af",
+    on_solid="#ffffff", paper="#ffffff", paper_text="#4b5563", paper_outline="#ff00ff",
     log_bg="#1d1d1d", log_text="#e8e6e1",
 )
 
@@ -124,6 +135,7 @@ DARK = Tokens(
     warning="#fbbf24", warning_bg="#422006", warning_fg="#fde68a",
     ok="#34d399", ok_bg="#064e3b", ok_fg="#a7f3d0",
     info="#60a5fa", info_bg="#1e3a5f", info_fg="#bfdbfe",
+    on_solid="#ffffff", paper="#ffffff", paper_text="#4b5563", paper_outline="#ff00ff",
     log_bg="#121212", log_text="#e8e6e1",
 )
 

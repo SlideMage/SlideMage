@@ -41,7 +41,8 @@ from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
 from ..dialogs.settings import SettingsSheet
-from ..kit.theme import WARNING_LABEL, ThemeManager
+from ..kit.kit_qss import WARNING_LABEL
+from ..kit.theme import ThemeManager
 from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage

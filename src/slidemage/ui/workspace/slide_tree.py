@@ -194,7 +194,7 @@ class SlideDelegate(QStyledItemDelegate):
         thumb = QRectF(rect.left() + 6, rect.center().y() - THUMB_H / 2, THUMB_W, THUMB_H)
         pixmap = self._thumbnail(row.thumbnail)
         painter.setPen(QPen(QColor(0, 0, 0, 20), 1))
-        painter.setBrush(QColor("#ffffff") if pixmap is not None else QColor(t.line))
+        painter.setBrush(QColor(t.paper) if pixmap is not None else QColor(t.line))
         painter.drawRoundedRect(thumb, 3, 3)
         if pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)

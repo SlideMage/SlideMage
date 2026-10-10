@@ -1,5 +1,4 @@
-"""QSS for the kit widgets, appended to the application stylesheet by
-ThemeManager (theme.py).
+"""The application stylesheet, built from the tokens by ThemeManager (theme.py).
 
 The widgets in widgets.py carry only object names and dynamic properties
 (`tone`, `kind`, `current`, ...); every color lives here and comes from the
@@ -7,11 +6,15 @@ tokens, so a light/dark toggle restyles them with the rest of the app and no
 widget needs to know the theme. The object names are constants so the two
 files cannot drift apart.
 
-Rules are ID- or property-qualified on purpose: the app-wide rules in
-theme.py (`QWidget`, `QPushButton`, `QTabBar::tab`, ...) have lower
-specificity and are overridden here without touching the old UI.
+The first rules are the base: plain widgets and the form controls (line edits,
+combos, spin boxes, checkboxes, scroll bars, ...) look the same everywhere
+without any per-widget code. The kit's own rules after them are ID- or
+property-qualified on purpose: they have the higher specificity and override
+the base where a widget needs to differ.
 """
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from .tokens import (
     FONT_ICONS,
@@ -27,6 +30,7 @@ from .tokens import (
 CARD = "kitCard"
 SEGMENTED = "kitSegmented"
 CHIP = "kitChip"
+TOGGLE_CHIP = "kitToggleChip"
 SEGMENT_BADGE = "kitSegmentBadge"
 SPLIT = "kitSplit"
 SPLIT_DIVIDER = "kitSplitDivider"
@@ -106,8 +110,6 @@ JOB_TITLE = "kitJobTitle"
 JOB_SUB = "kitJobSub"
 JOB_PCT = "kitJobPct"
 JOB_BAR = "kitJobBar"
-# Text inputs of the Images page: a grey field with a line under it (prototype v3).
-INPUT = "kitInput"
 IMAGE_LIST = "kitImageList"
 # An image on its white background (a slide's), with a thin outline that shows where it ends.
 IMAGE_PREVIEW = "kitImagePreview"
@@ -130,6 +132,17 @@ CHAT_DIFF_LINE = "kitChatDiffLine"
 CHAT_NOTICE = "kitChatNotice"
 CHAT_SUGGESTION = "kitChatSuggestion"
 
+WARNING_LABEL = "warningLabel"
+
+# Images the form controls draw (QSS has no glyphs): name -> (Material Icons name, token that colors it,
+# glyph size in px, image size in px).
+KIT_ICONS = {
+    "check": ("check", "on_inverse", 15, 13),
+    "radio": ("fiber_manual_record", "inverse", 11, 13),
+    "chevron_down": ("expand_more", "text_3", 18, 18),
+    "chevron_up": ("expand_less", "text_3", 18, 18),
+}
+
 CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
 
 
@@ -145,7 +158,8 @@ def _chip_colors(t: Tokens, tone: str) -> tuple[str, str]:
     }[tone]
 
 
-def build_kit_qss(t: Tokens) -> str:
+def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
+    """`icons` maps the names in KIT_ICONS to image files, for the arrows and ticks of the controls."""
     font = f'font-family: "{FONT_SANS}";'
     mono = f'font-family: "{FONT_MONO}";'
     chips = "\n".join(
@@ -153,10 +167,16 @@ def build_kit_qss(t: Tokens) -> str:
             QFrame#{CHIP}[tone="{tone}"] QLabel {{ color: {fg}; }}"""
         for tone, (bg, fg) in ((n, _chip_colors(t, n)) for n in CHIP_TONES)
     )
+    toggle_chips = "\n".join(
+        f"""QPushButton#{TOGGLE_CHIP}[tone="{view}"]:checked:enabled {{
+                background-color: {t.view_tint(view)}; color: {t.view_color(view)};
+                border-color: {t.view_color(view)}; }}"""
+        for view in ("instructor", "during", "after")
+    )
     # Active segment of the "View as" control: solid view color, white text.
     view_segments = "\n".join(
         f"""QPushButton[kitSegment="true"][tone="{view}"]:checked {{
-                background-color: {t.view_color(view)}; color: #ffffff; border-bottom-color: transparent; }}"""
+                background-color: {t.view_color(view)}; color: {t.on_solid}; border-bottom-color: transparent; }}"""
         for view in ("instructor", "during", "after")
     )
     strips = "\n".join(
@@ -171,6 +191,248 @@ def build_kit_qss(t: Tokens) -> str:
         for view in ("instructor", "during", "after")
     )
     return f"""
+        /* The base: widgets the kit has no rule for (message boxes, file
+           dialogs, plain labels and buttons). The kit's own rules below are
+           ID- or property-qualified and win over these. */
+        QMainWindow, QWidget {{
+            background-color: {t.bg};
+            color: {t.text};
+        }}
+        QDialog {{
+            background-color: {t.bg};
+        }}
+        QLabel {{
+            background-color: transparent;
+        }}
+        QLabel#{WARNING_LABEL} {{
+            color: {t.error};
+        }}
+        QPushButton {{
+            {font}
+            font-size: 13px;
+            background-color: {t.surface};
+            color: {t.text};
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_SM}px;
+            padding: 4px 10px;
+        }}
+        QPushButton:hover {{
+            background-color: {t.hover};
+        }}
+        QPushButton:disabled {{
+            color: {t.text_4};
+        }}
+        QToolTip {{
+            {font}
+            font-size: 12px;
+            background-color: {t.inverse};
+            color: {t.on_inverse};
+            border: none;
+            padding: 4px 8px;
+        }}
+        QMenu {{
+            {font}
+            font-size: 13px;
+            background-color: {t.surface};
+            color: {t.text};
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_SM}px;
+            padding: 4px;
+        }}
+        QMenu::item {{
+            padding: 5px 24px 5px 12px;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QMenu::item:selected {{
+            background-color: {t.hover};
+        }}
+        QMenu::item:disabled {{
+            color: {t.text_4};
+        }}
+        QMenu::separator {{
+            height: 1px;
+            background-color: {t.line};
+            margin: 4px 6px;
+        }}
+
+        /* Form controls, everywhere: a field on the page color with a line
+           under it (prototype v3), a ring when it has the focus. */
+        QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+            {font}
+            font-size: 13.5px;
+            background-color: {t.bg};
+            color: {t.text};
+            border: 1px solid transparent;
+            border-bottom-color: {t.text_4};
+            border-radius: {RADIUS_SM}px;
+            padding: 5px 9px;
+            selection-background-color: {t.info};
+            selection-color: {t.on_solid};
+            placeholder-text-color: {t.text_3};
+        }}
+        QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+        QComboBox:focus, QComboBox:on {{
+            border-color: {t.info};
+        }}
+        QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled, QSpinBox:disabled,
+        QDoubleSpinBox:disabled, QComboBox:disabled {{
+            color: {t.text_4};
+            border-bottom-color: {t.line};
+        }}
+        QComboBox {{
+            padding-right: 28px;
+        }}
+        QComboBox::drop-down {{
+            subcontrol-origin: padding;
+            subcontrol-position: center right;
+            width: 26px;
+            border: none;
+        }}
+        QComboBox::down-arrow {{
+            image: url({icons["chevron_down"]});
+            width: 18px;
+            height: 18px;
+        }}
+        QComboBox QAbstractItemView {{
+            {font}
+            font-size: 13px;
+            background-color: {t.surface};
+            color: {t.text};
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_SM}px;
+            padding: 4px;
+            outline: none;
+            selection-background-color: {t.hover};
+            selection-color: {t.text};
+        }}
+        QComboBox QAbstractItemView::item {{
+            min-height: 22px;
+            padding: 2px 8px;
+        }}
+        QSpinBox, QDoubleSpinBox {{
+            padding-right: 24px;
+        }}
+        QSpinBox::up-button, QDoubleSpinBox::up-button {{
+            subcontrol-origin: border;
+            subcontrol-position: top right;
+            width: 20px;
+            border: none;
+        }}
+        QSpinBox::down-button, QDoubleSpinBox::down-button {{
+            subcontrol-origin: border;
+            subcontrol-position: bottom right;
+            width: 20px;
+            border: none;
+        }}
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+            image: url({icons["chevron_up"]});
+            width: 14px;
+            height: 14px;
+        }}
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+            image: url({icons["chevron_down"]});
+            width: 14px;
+            height: 14px;
+        }}
+        QCheckBox, QRadioButton {{
+            {font}
+            font-size: 13px;
+            background-color: transparent;
+            color: {t.text};
+            spacing: 8px;
+        }}
+        QCheckBox:disabled, QRadioButton:disabled {{
+            color: {t.text_4};
+        }}
+        QCheckBox::indicator, QRadioButton::indicator {{
+            width: 16px;
+            height: 16px;
+            border: 1.5px solid {t.text_3};
+            background-color: transparent;
+        }}
+        QCheckBox::indicator {{
+            border-radius: {RADIUS_SM - 1}px;
+        }}
+        QRadioButton::indicator {{
+            border-radius: 9px;
+        }}
+        QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
+            border-color: {t.text};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {t.inverse};
+            border-color: {t.inverse};
+            image: url({icons["check"]});
+        }}
+        QRadioButton::indicator:checked {{
+            border-color: {t.inverse};
+            image: url({icons["radio"]});
+        }}
+        QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+            border-color: {t.line};
+        }}
+        QCheckBox::indicator:checked:disabled {{
+            background-color: {t.text_4};
+            border-color: {t.text_4};
+        }}
+        QListWidget {{
+            {font}
+            font-size: 13px;
+            background-color: {t.bg};
+            color: {t.text};
+            border: none;
+            border-radius: {RADIUS_MD}px;
+            padding: 4px;
+            outline: none;
+        }}
+        QListWidget::item {{
+            padding: 5px 8px;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QListWidget::item:hover {{
+            background-color: {t.hover};
+        }}
+        QListWidget::item:selected {{
+            background-color: {t.surface};
+            color: {t.text};
+        }}
+        QProgressBar {{
+            background-color: {with_alpha(t.text, 0.15)};
+            border: none;
+            border-radius: 3px;
+            text-align: center;
+        }}
+        QProgressBar::chunk {{
+            background-color: {t.inverse};
+            border-radius: 3px;
+        }}
+        QScrollBar:vertical {{
+            background: transparent;
+            width: 8px;
+            margin: 0;
+        }}
+        QScrollBar:horizontal {{
+            background: transparent;
+            height: 8px;
+            margin: 0;
+        }}
+        QScrollBar::handle {{
+            background: {t.text_4};
+            border-radius: 4px;
+            min-height: 24px;
+            min-width: 24px;
+        }}
+        QScrollBar::handle:hover {{
+            background: {t.text_3};
+        }}
+        QScrollBar::add-line, QScrollBar::sub-line {{
+            width: 0;
+            height: 0;
+        }}
+        QScrollBar::add-page, QScrollBar::sub-page {{
+            background: transparent;
+        }}
+
         QFrame#{CARD} {{
             background-color: {t.surface};
             border-radius: {RADIUS_MD}px;
@@ -207,7 +469,7 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 10px;
             font-weight: 700;
-            color: #ffffff;
+            color: {t.on_solid};
             background-color: {t.error_solid};
             border-radius: 7px;
             padding: 0 4px;
@@ -234,6 +496,31 @@ def build_kit_qss(t: Tokens) -> str:
             border-radius: {RADIUS_PILL}px;
         }}
         {chips}
+
+        /* A chip that switches on and off; on, it takes the colors of its view. */
+        QPushButton#{TOGGLE_CHIP} {{
+            {font}
+            font-size: 12px;
+            font-weight: 500;
+            background-color: transparent;
+            color: {t.text_3};
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_PILL}px;
+            padding: 4px 12px;
+        }}
+        QPushButton#{TOGGLE_CHIP}:hover {{
+            background-color: {t.hover};
+        }}
+        QPushButton#{TOGGLE_CHIP}:checked {{
+            background-color: {t.bg};
+            color: {t.text};
+            border-color: {t.text_3};
+        }}
+        {toggle_chips}
+        QPushButton#{TOGGLE_CHIP}:disabled {{
+            color: {t.text_4};
+            border-color: {t.line};
+        }}
 
         /* Buttons. "primary" is the dark/inverse fill, "secondary" a bordered
            surface button, "ghost" a flat one. */
@@ -407,7 +694,7 @@ def build_kit_qss(t: Tokens) -> str:
             color: {t.on_inverse};
         }}
         QFrame#{TOAST}[error="true"] QLabel {{
-            color: #ffffff;
+            color: {t.on_solid};
         }}
         QPushButton#{TOAST_ACTION} {{
             {font}
@@ -424,8 +711,8 @@ def build_kit_qss(t: Tokens) -> str:
             color: {t.on_inverse};
         }}
         QFrame#{TOAST}[error="true"] QPushButton#{TOAST_ACTION} {{
-            background-color: rgba(255,255,255,0.18);
-            color: #ffffff;
+            background-color: {with_alpha(t.on_solid, 0.18)};
+            color: {t.on_solid};
         }}
 
         QWidget#{PALETTE} {{
@@ -448,6 +735,7 @@ def build_kit_qss(t: Tokens) -> str:
             color: {t.text};
             background-color: transparent;
             border: none;
+            padding: 0;
         }}
         QFrame#{PALETTE_FOOT} {{
             border-top: 1px solid {t.line};
@@ -473,26 +761,6 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 18px;
             font-weight: 500;
-            color: {t.text};
-        }}
-        QDialog#{SHEET} QListWidget {{
-            {font}
-            font-size: 13px;
-            background-color: {t.bg};
-            border: none;
-            border-radius: {RADIUS_MD}px;
-            padding: 4px;
-            outline: none;
-        }}
-        QDialog#{SHEET} QListWidget::item {{
-            padding: 5px 8px;
-            border-radius: {RADIUS_SM}px;
-        }}
-        QDialog#{SHEET} QListWidget::item:hover {{
-            background-color: {t.hover};
-        }}
-        QDialog#{SHEET} QListWidget::item:selected {{
-            background-color: {t.surface};
             color: {t.text};
         }}
         QLabel#{FIELD_LABEL} {{
@@ -604,20 +872,6 @@ def build_kit_qss(t: Tokens) -> str:
             border: none;
             outline: none;
         }}
-        QTreeWidget#{SLIDES_TREE} QScrollBar:vertical {{
-            background: transparent;
-            width: 8px;
-            margin: 0;
-        }}
-        QTreeWidget#{SLIDES_TREE} QScrollBar::handle:vertical {{
-            background: {t.text_4};
-            border-radius: 4px;
-            min-height: 24px;
-        }}
-        QTreeWidget#{SLIDES_TREE} QScrollBar::add-line:vertical,
-        QTreeWidget#{SLIDES_TREE} QScrollBar::sub-line:vertical {{
-            height: 0;
-        }}
         QLabel#{SLIDES_NOTE} {{
             {font}
             font-size: 12.5px;
@@ -646,20 +900,7 @@ def build_kit_qss(t: Tokens) -> str:
             background-color: {t.surface};
             color: {t.text};
             border: none;
-        }}
-        QPlainTextEdit#{SOURCE} QScrollBar:vertical {{
-            background: transparent;
-            width: 8px;
-            margin: 0;
-        }}
-        QPlainTextEdit#{SOURCE} QScrollBar::handle:vertical {{
-            background: {t.text_4};
-            border-radius: 4px;
-            min-height: 24px;
-        }}
-        QPlainTextEdit#{SOURCE} QScrollBar::add-line:vertical,
-        QPlainTextEdit#{SOURCE} QScrollBar::sub-line:vertical {{
-            height: 0;
+            padding: 0;
         }}
         QFrame#{AI_PANEL} {{
             background-color: transparent;
@@ -727,20 +968,6 @@ def build_kit_qss(t: Tokens) -> str:
             font-size: 18px;
             font-weight: 500;
             color: {t.text};
-        }}
-        QScrollArea#{SURFACE} QScrollBar:vertical {{
-            background: transparent;
-            width: 8px;
-            margin: 0;
-        }}
-        QScrollArea#{SURFACE} QScrollBar::handle:vertical {{
-            background: {t.text_4};
-            border-radius: 4px;
-            min-height: 24px;
-        }}
-        QScrollArea#{SURFACE} QScrollBar::add-line:vertical,
-        QScrollArea#{SURFACE} QScrollBar::sub-line:vertical {{
-            height: 0;
         }}
         QFrame#{DETAILS_PANEL} {{
             background-color: {t.bg};
@@ -826,7 +1053,7 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 11px;
             font-weight: 700;
-            color: #ffffff;
+            color: {t.on_solid};
             background-color: {t.surface};
             border: 1px solid {t.text_4};
             border-radius: {RADIUS_SM}px;
@@ -873,26 +1100,6 @@ def build_kit_qss(t: Tokens) -> str:
             color: {t.error};
         }}
 
-        QPlainTextEdit#{INPUT}, QLineEdit#{INPUT} {{
-            {font}
-            font-size: 13.5px;
-            background-color: {t.bg};
-            color: {t.text};
-            border: none;
-            border-bottom: 1px solid {t.text_4};
-            border-radius: {RADIUS_SM}px;
-            padding: 6px 10px;
-            selection-background-color: {t.info};
-            selection-color: #ffffff;
-            placeholder-text-color: {t.text_3};
-        }}
-        QPlainTextEdit#{INPUT}:focus, QLineEdit#{INPUT}:focus {{
-            border-bottom: 1px solid {t.text};
-        }}
-        QPlainTextEdit#{INPUT}:disabled, QLineEdit#{INPUT}:disabled {{
-            color: {t.text_4};
-            border-bottom: 1px solid {t.line};
-        }}
         QListWidget#{IMAGE_LIST} {{
             {font}
             font-size: 13px;
@@ -912,26 +1119,12 @@ def build_kit_qss(t: Tokens) -> str:
             background-color: {t.bg};
             color: {t.text};
         }}
-        QListWidget#{IMAGE_LIST} QScrollBar:vertical {{
-            background: transparent;
-            width: 8px;
-            margin: 0;
-        }}
-        QListWidget#{IMAGE_LIST} QScrollBar::handle:vertical {{
-            background: {t.text_4};
-            border-radius: 4px;
-            min-height: 24px;
-        }}
-        QListWidget#{IMAGE_LIST} QScrollBar::add-line:vertical,
-        QListWidget#{IMAGE_LIST} QScrollBar::sub-line:vertical {{
-            height: 0;
-        }}
         QLabel#{IMAGE_PREVIEW}, QFrame#{IMAGE_PREVIEW} {{
-            background-color: #ffffff;
-            color: #4b5563;
+            background-color: {t.paper};
+            color: {t.paper_text};
         }}
         QLabel#{IMAGE_PREVIEW} {{
-            border: 1px solid #ff00ff;
+            border: 1px solid {t.paper_outline};
         }}
 
         /* The compile job panel: a raised white card over the workspace. */
@@ -949,15 +1142,8 @@ def build_kit_qss(t: Tokens) -> str:
         QFrame#{JOB_CARD} QLabel#{JOB_SUB} {{ font-size: 13px; color: {t.text_2}; }}
         QLabel#{JOB_PCT} {{ font-size: 20px; font-weight: 500; }}
         QProgressBar#{JOB_BAR} {{
-            background-color: {with_alpha(t.text, 0.15)};
-            border: none;
-            border-radius: 3px;
             min-height: 6px;
             max-height: 6px;
-        }}
-        QProgressBar#{JOB_BAR}::chunk {{
-            background-color: {t.inverse};
-            border-radius: 3px;
         }}
 
         /* The Log drawer: dark in both themes. */
@@ -983,6 +1169,7 @@ def build_kit_qss(t: Tokens) -> str:
             color: {t.log_text};
             background-color: transparent;
             border: none;
+            padding: 0;
             selection-background-color: {with_alpha(t.log_text, 0.25)};
         }}
         QPlainTextEdit#{LOG_TEXT} QScrollBar:vertical {{
@@ -995,8 +1182,8 @@ def build_kit_qss(t: Tokens) -> str:
             border-radius: 4px;
             min-height: 24px;
         }}
-        QPlainTextEdit#{LOG_TEXT} QScrollBar::add-line:vertical, QPlainTextEdit#{LOG_TEXT} QScrollBar::sub-line:vertical {{
-            height: 0;
+        QPlainTextEdit#{LOG_TEXT} QScrollBar::handle:vertical:hover {{
+            background: {with_alpha(t.log_text, 0.4)};
         }}
         QPushButton#{LOG_ACTION} {{
             {font}
@@ -1011,7 +1198,7 @@ def build_kit_qss(t: Tokens) -> str:
             {font}
             font-size: 12px;
             font-weight: 500;
-            color: #ffffff;
+            color: {t.on_solid};
             background-color: {t.error_solid};
             border: none;
             border-radius: {RADIUS_SM}px;

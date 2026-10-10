@@ -50,15 +50,15 @@ class SpeakerNotes(SidePanel):
         frame, layout = box()
         for number, call in enumerate(calls, start=1):
             row = Row(layout)
-            row.body.addWidget(text(f"Note {number}" + (f" · {call.overlay}" if call.overlay else ""), q.PANEL_MONO))
+            row.add_text(f"Note {number}" + (f" · {call.overlay}" if call.overlay else ""), q.PANEL_MONO)
             self._edits.append(self._editor(row, call.content, "", editable))
         row = Row(layout)
         if editable:
-            row.body.addWidget(text("New note" if calls else "No notes on this slide.", q.DETAILS_LABEL))
+            row.add_text("New note" if calls else "No notes on this slide.", q.DETAILS_LABEL)
             self._new = self._editor(row, "", "What the instructor says here…", True)
         else:
-            row.body.addWidget(text("This is a frozen version: its notes are read-only.", q.DETAILS_LABEL)
-                               if calls else text("No notes on this slide.", q.DETAILS_LABEL))
+            row.add_text("This is a frozen version: its notes are read-only." if calls else "No notes on this slide.",
+                         q.DETAILS_LABEL)
         self.body.addWidget(frame)
         if editable:
             line = QHBoxLayout()

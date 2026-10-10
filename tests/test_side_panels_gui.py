@@ -204,11 +204,11 @@ def test_clicking_a_call_opens_that_deck_at_that_slide(column):
     state.set_focused_slide("abc")
     used = panels.panels["used"]
     talk = next(r for r in rows(used) if r.findChildren(QLabel)[0].text() == "talk")
-    talk.activated.emit()
+    talk.clicked.emit()
     assert state.deck.name == "talk" and state.focused_slide == "abc"
     state.set_focused_slide(None)
     state.set_focused_slide("abc")
-    next(r for r in rows(panels.panels["used"]) if r.findChildren(QLabel)[0].text() == "course").activated.emit()
+    next(r for r in rows(panels.panels["used"]) if r.findChildren(QLabel)[0].text() == "course").clicked.emit()
     assert state.deck.name == "course" and state.focused_slide == "abc"
 
 
@@ -387,7 +387,7 @@ def test_citations_resolve_the_keys_and_mark_the_missing_ones(content, paths):
     assert lines[2:4] == ["ghost1999", "Not in Slidemaster.bib"]
     assert panel.meta() == "2"
     assert next(l for l in panel.findChildren(QLabel) if l.text() == "Not in Slidemaster.bib").objectName() == "kitPanelMissing"
-    next(r for r in rows(panel) if r.findChildren(QLabel)[0].text() == "smith2020").activated.emit()
+    next(r for r in rows(panel) if r.findChildren(QLabel)[0].text() == "smith2020").clicked.emit()
     assert window.opened[-1] == (paths.bib, {"line": 1})
     buttons(panel, "Add to .bib…")[0].click()
     assert window.centre.references == ["ghost1999"]

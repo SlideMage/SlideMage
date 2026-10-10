@@ -15,11 +15,11 @@ from ....deck_editor import VISIBILITY_MACROS, SlideCall, set_calls_visibility
 from ...kit import kit_qss as q
 from ..menus import VIEW_LABELS
 from ..state import VIEWS
+from ..topbar import VIEW_TONES
 from .base import Row, SidePanel, box, text
 
 # The matrix has room for the short names; the kit's view tones are "instructor", "during", "after".
 HEADS = {"instructor": "Instructor", "during-course": "During", "after-course": "After"}
-TONES = {"instructor": "instructor", "during-course": "during", "after-course": "after"}
 
 
 class Visibility(SidePanel):
@@ -43,7 +43,7 @@ class Visibility(SidePanel):
         for column, view in enumerate(VIEWS, start=1):
             head = QLabel(HEADS[view])
             head.setObjectName(q.MATRIX_HEAD)
-            head.setProperty("view", TONES[view])
+            head.setProperty("view", VIEW_TONES[view])
             head.setProperty("current", view == self.state.view)
             head.setAlignment(Qt.AlignmentFlag.AlignCenter)
             head.setMinimumWidth(64)
@@ -53,10 +53,8 @@ class Visibility(SidePanel):
             for column, view in enumerate(VIEWS, start=1):
                 grid.addWidget(self._cell(call, view), line, column)
         row.body.addLayout(grid)
-        self.body.addWidget(frame)
-        self.body.addWidget(text("A slide has to stay in at least one view. Pinned versions and the final "
-                                 "overlay state cannot be hidden per view.", q.PANEL_CAPTION))
-        self.body.addStretch(1)
+        self.place(frame, "A slide has to stay in at least one view. Pinned versions and the final "
+                          "overlay state cannot be hidden per view.")
 
     def _label(self, call: SlideCall, position: int) -> QGridLayout:
         grid = QGridLayout()
@@ -76,7 +74,7 @@ class Visibility(SidePanel):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cell = QPushButton("✓" if call.included_in(view) else "")
         cell.setObjectName(q.MATRIX_CELL)
-        cell.setProperty("view", TONES[view])
+        cell.setProperty("view", VIEW_TONES[view])
         cell.setCheckable(True)
         cell.setChecked(call.included_in(view))
         cell.setFixedSize(18, 18)

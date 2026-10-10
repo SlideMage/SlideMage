@@ -18,7 +18,7 @@ from ....slide_language import bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Button
 from ..menus import VIEW_LABELS
-from .base import Row, SidePanel, box, text
+from .base import Row, SidePanel, box, empty_row, text
 
 
 class TranscriptEntry(SidePanel):
@@ -53,29 +53,24 @@ class TranscriptEntry(SidePanel):
                 self.body.addWidget(text(str(exc), q.PANEL_MISSING))
         frame, layout = box()
         if view not in transcript.STUDENT_VERSIONS:
-            row = Row(layout)
-            row.body.addWidget(text("Transcripts are made for During course and After course only. Switch "
-                                    "View as to see this slide's entry, or build them from the Compile menu.",
-                                    q.DETAILS_LABEL))
+            empty_row(layout, "Transcripts are made for During course and After course only. Switch "
+                              "View as to see this slide's entry, or build them from the Compile menu.")
         elif entry is not None:
             row = Row(layout)
-            row.body.addWidget(text(f"Slide {slide_id} · {VIEW_LABELS[view]} · {self.state.language}", q.PANEL_MONO))
-            row.body.addWidget(text(entry.title, q.PREVIEW_TITLE))
+            row.add_text(f"Slide {slide_id} · {VIEW_LABELS[view]} · {self.state.language}", q.PANEL_MONO)
+            row.add_text(entry.title, q.PREVIEW_TITLE)
         self._add_summary(layout, entry.summary if entry is not None else self._stored_summary(slide_id))
         if entry is not None:
             row = Row(layout)
-            row.body.addWidget(text(entry.body or "(no text)", q.DETAILS_VALUE))
+            row.add_text(entry.body or "(no text)", q.DETAILS_VALUE)
             for image in entry.images:
                 state = ("decorative" if image.role == alt_images.ROLE_DECORATIVE
                          else "described" if image.described else "no description yet")
-                row.body.addWidget(text(f"Image {image.reference}: {state}", q.PANEL_CAPTION))
+                row.add_text(f"Image {image.reference}: {state}", q.PANEL_CAPTION)
             if entry.source:
-                row.body.addWidget(text(entry.source, q.PANEL_CAPTION))
-        self.body.addWidget(frame)
-        if entry is not None and entry.missing_description:
-            self.body.addWidget(text("Some images have no description yet: write them in Image descriptions.",
-                                     q.PANEL_CAPTION))
-        self.body.addStretch(1)
+                row.add_text(entry.source, q.PANEL_CAPTION)
+        self.place(frame, "Some images have no description yet: write them in Image descriptions."
+                   if entry is not None and entry.missing_description else "")
         self.set_dirty(False)
 
     @staticmethod
@@ -84,7 +79,7 @@ class TranscriptEntry(SidePanel):
 
     def _add_summary(self, layout, summary: str) -> None:
         row = Row(layout)
-        row.body.addWidget(text("Summary", q.DETAILS_LABEL))
+        row.add_text("Summary", q.DETAILS_LABEL)
         self._summary = QPlainTextEdit(summary)
         self._summary.setFixedHeight(64)
         self._summary.setPlaceholderText("Optional: shown at the top of this slide's transcript entry, "

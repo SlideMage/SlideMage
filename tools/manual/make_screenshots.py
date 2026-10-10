@@ -6,7 +6,7 @@ Writes OUT_DIR/screenshot-slidemage-<name>.png for the main views: the workspace
 Split and Details, each side panel, the chat, the command palette, the deck and compile menus, the
 compile job card, the Images page, the slide list with a selection, and the Settings, Deck settings,
 Add slide, Tags, transcript preview and About sheets. Nothing is written into the repository: the run
-works on a throwaway copy of `example/` (with the sibling `latex/` framework), in the light theme,
+works on a throwaway copy of `example/` (with the sibling `latex/` framework), in the light theme (--dark: the dark one),
 with a fixed Ollama model list and no network.
 
 The manual's own images (MANUAL_IMAGES: crops of these shots, reduced to 256 colours) are written to
@@ -64,6 +64,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("out_dir", type=Path, nargs="?", help="folder the PNG files go to (created)")
     parser.add_argument("--only", nargs="+", metavar="NAME", help="make only these shots (see --list)")
     parser.add_argument("--scale", type=int, default=2, help="device pixel ratio of the shots (default 2)")
+    parser.add_argument("--dark", action="store_true", help="the dark theme instead of the light one")
     parser.add_argument("--list", action="store_true", help="print the names of the shots and exit")
     return parser.parse_args(argv)
 
@@ -276,6 +277,9 @@ def shot_sheets(shooter: Shooter) -> None:
     sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8")
     shooter.sheet_shot("add-slide", sheet)
     sheet.close()
+    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", source="existing")
+    shooter.sheet_shot("add-slide-existing", sheet)
+    sheet.close()
     templates = [(key, key) for key in ("gotham", "uni-graz")]
     sheet = DeckSettingsSheet(window, deck, templates)
     for index, name in enumerate(("general", "output")):
@@ -361,7 +365,7 @@ def run(args: argparse.Namespace, work: Path) -> None:
     app_settings.set("chat_model", "ollama:qwen3:8b")
 
     load_fonts()
-    theme = ThemeManager(dark=False)
+    theme = ThemeManager(dark=args.dark)
     theme.apply()
     window = WorkspaceWindow(theme)
     window.resize(*WINDOW)

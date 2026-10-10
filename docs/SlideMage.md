@@ -726,7 +726,7 @@ What matters when touching *this code*:
   application starts in `ui/app.py`'s `main()`):
   - `ui/kit/` -- the widget kit and the look: `tokens.py` (light and dark tokens), `kit_qss.py`,
     `theme.py` (`ThemeManager`), `fonts.py` (Roboto, Roboto Mono and Material Icons from
-    `assets/fonts/`, loaded at start-up), `widgets.py` (SegmentedControl, Chip, SplitButton,
+    `assets/fonts/`, loaded at start-up), `widgets.py` (SegmentedControl, Chip, ToggleChip, SplitButton,
     IconButton, Button, PopoverMenu, Popover, Toast, Card, ModalSheet, Field, Page,
     ThumbnailGrid, ...); `python -m slidemage.ui.kit.gallery` shows them all.
   - `ui/commands.py` -- `Command`, `CommandRegistry`, `bind_shortcuts`; the ~95 commands

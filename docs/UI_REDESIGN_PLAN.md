@@ -76,11 +76,27 @@ test fails with a git-checkout symptom (`test_bundled_copies`), look for a stray
   them as examples only.
 - **Windows and macOS are untested:** the one-file build (294 MiB on Linux), pywinpty, `claude.cmd`
   and the frozen hook's stdin on Windows, QtWebEngine on both.
-- **Optional kit restyle** (recommended, 150–250k tokens): inputs, combos, checkboxes and
-  scrollbars in kit style (the sheets and the Images page still use the legacy-themed ones),
-  the "Appears in" view chips, QSS colours through tokens (`#ffffff` ×6), panel boilerplate
-  helpers in `panels/base.py`, one click-frame base for the kit widgets, thumbnails in the
-  Add slide "Existing" list.
+- **Kit restyle: done** (~220k). `kit_qss.build_kit_qss(tokens, icons)` is now the whole
+  application stylesheet: a base (plain widgets, tooltips, menus), then line edits, text edits,
+  spin boxes, combos, checkboxes, radio buttons, list widgets, progress bars and scroll bars
+  in kit style for every dialog and page, with no per-widget code (a grey field with a line
+  under it, an info-coloured focus ring, text_4 for disabled and placeholders in text_3);
+  the legacy palette rules are gone from `theme.py` (the palette only feeds the source
+  editor's syntax colours). The arrows and ticks are drawn once from Material Icons into PNG
+  files in the temp folder (`theme._icon_files`, `@2x` too). "Appears in" uses `ToggleChip`s,
+  the Add slide "Existing" list shows the cached slide previews, `ClickFrame` is the base of
+  Chip, DropdownButton, RowButton, the thumbnail tiles and the panel `Row`, `panels/base.py`
+  has `Row.add_text`, `empty_row` and `SidePanel.place`. QSS colours all come from tokens
+  (new: `on_solid`, `paper`, `paper_text`, `paper_outline`); only the palette scrim
+  (`black` at 40 %) and the split button's hover wash stay literal. Checked in light and dark
+  with the gallery and `make_screenshots.py [--dark]`.
+  Left: the manual's screenshots in `example/media/` and the README images are from before
+  the restyle (inputs, combos, checkboxes and the Add slide sheet look different now; the
+  workspace itself hardly changed): regenerate them with `make_screenshots.py` when wanted;
+  the magenta outline of the Images page picture is still the old explicit choice
+  (`paper_outline`); the read-only text views (About, transcript preview) are
+  `QTextEdit`s and so show the field padding and ring; message boxes and file dialogs get only
+  the base rules.
 - **Leftovers named in the sections below** (all small): preview chip "course note" has no
   backend data; no "update translation" action; Citations panel does not refresh after a
   hand edit of the `.bib`; Build options is still a dialog; a few confirms are still
@@ -113,7 +129,7 @@ About 5% of the user's 5-hour window per ~100k agent tokens.
 | ~~Review before 11~~ | done: 12 Haiku reviewers + one Sonnet fix agent | | |
 | ~~11a Finish switch-over, code~~ | done: no `qt_*` module left, screenshots tool, PyInstaller spec checked, stray preview wrappers | | |
 | ~~11b Finish switch-over, docs~~ | done: README, `docs/`, manual slides and screenshots, 6.0.0 | | |
-| Kit restyle (optional, recommended) | inputs/combos/checkboxes/scrollbars in kit style, view chips, QSS colour tokens, review leftovers (panel helpers, click-frame base) | 150–250k | 8–12% |
+| ~~Kit restyle~~ | done: global kit-style controls, view chips, QSS colour tokens, panel helpers, `ClickFrame`, Add slide thumbnails (~220k actual) | | |
 
 Remaining after 10d-2 ≈ 350–600k agent tokens (≈ 18–30% of one
 window; recent steps landed at the top of their estimates). Pause after
@@ -194,8 +210,8 @@ Replace image while a translation runs is not gated.
 ### What exists now
 - `ui/kit/`: `tokens.py` (light/dark tokens), `kit_qss.py`, `theme.py`
   (moved from `qt_theme.py`), `fonts.py` (`load_fonts()`), `widgets.py`
-  (SegmentedControl, Chip, SplitButton, IconButton, IconLabel, Button,
-  PopoverMenu, Toast, Card, ModalSheet, `apply_shadow`), `gallery.py`
+  (SegmentedControl, Chip, ToggleChip, ClickFrame, SplitButton, IconButton,
+  IconLabel, Button, PopoverMenu, Toast, Card, ModalSheet, `apply_shadow`), `gallery.py`
   (`python -m slidemage.ui.kit.gallery`). Fonts in `assets/fonts/` (Roboto
   and Roboto Mono SIL OFL 1.1, Material Icons Apache 2.0).
 - Step 10d-2: `OllamaProvider.stream_turn()` (stdlib `/api/chat` NDJSON,
@@ -380,9 +396,8 @@ Replace image while a translation runs is not gated.
   directly, bypassing open Source buffers (fix in 9d-2); backend still
   builds `-current.tex` names by hand in several modules
   (`slide_language.current_name` exists); slide list shows pinned
-  versions as `v1-0-0` (could use `version_label`); larger refactors
-  not done: panel boilerplate helpers in `panels/base.py`, one click-frame
-  base for kit widgets, QSS colours via tokens (`#ffffff` ×6).
+  versions as `v1-0-0` (could use `version_label`). (The panel helpers, the
+  click-frame base and the QSS colour tokens were done in the kit restyle.)
 - 10d-2 leftovers: no reduced tool list for small local models (the
   chat sends all 12 tools and the same system prompt; `Agent(tools=...)`
   allows it, but nothing says yet which models need it); the agent asks
@@ -405,14 +420,10 @@ Replace image while a translation runs is not gated.
   not the live list; no chat history persistence/search.
 - 10a leftovers: run the live agent test once with a key;
   `add_slide` header regeneration relies on the GUI's `file_changed`.
-- 9d-2 leftovers: the Images page uses legacy-themed combos, checkboxes
-  and some scrollbars; first paint of a slide's forms can be squeezed for
+- 9d-2 leftovers: first paint of a slide's forms can be squeezed for
   one event-loop turn; Draft all / Translate all show no counts;
   `docs/SlideMage.md` still names the old tab (11b).
-- Kit restyle pass still open: line edits, combos, checkboxes and
-  scrollbars in the new sheets use the legacy app theme; "Appears in"
-  uses plain checkboxes, not the prototype's view chips; Existing list
-  has no thumbnails.
+- Kit restyle pass: done, see "After the redesign".
 - 9b leftovers: No decks has no "New deck" (no backend to create a deck
   from a name + template); the newer-project guard can prompt twice
   (picker chip, then cli guard after relaunch; hypothetical while

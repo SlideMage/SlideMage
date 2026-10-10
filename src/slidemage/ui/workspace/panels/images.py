@@ -25,7 +25,7 @@ from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
 from ...pages.image_form import ROLES, STATE_TONES
 from ...text import plural
-from .base import Row, SidePanel, box, text
+from .base import Row, SidePanel, box, empty_row, text
 
 THUMBNAIL = 56
 PIXMAP_SUFFIXES = (".png", ".jpg", ".jpeg")
@@ -121,8 +121,7 @@ class ImageDescriptions(SidePanel):
         self._slide = (slide_id, path) if path is not None else None
         frame, layout = box()
         if not references:
-            row = Row(layout)
-            row.body.addWidget(text("No images on this slide.", q.DETAILS_LABEL))
+            empty_row(layout, "No images on this slide.")
         else:
             entries = alt_images.load_store()
             slide_hash = alt_images.slide_context_hash(path)
@@ -137,8 +136,7 @@ class ImageDescriptions(SidePanel):
                 form.save_button.clicked.connect(lambda _=False, f=form: self._save(f, reviewed=False))
                 form.review_button.clicked.connect(lambda _=False, f=form: self._save(f, reviewed=True))
                 self._forms.append(form)
-        self.body.addWidget(frame)
-        self.body.addStretch(1)
+        self.place(frame)
         self.set_dirty(False)
 
     # -- saving --------------------------------------------------------------------------

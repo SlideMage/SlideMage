@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QEvent, QThread, Qt, Signal
+from PySide6.QtCore import QEvent, QSize, QThread, Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -33,14 +34,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_versioning
+from ... import alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
 from ...ai.providers import ChatProvider, OllamaProvider
 from ...deck_scan import Deck
 from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
-from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, set_property
+from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, set_property
 from ..workspace.menus import VIEW_LABELS
+from ..workspace.topbar import VIEW_TONES
 
 SOURCES = (("new", "New"), ("existing", "Existing"), ("duplicate", "Duplicate"), ("translate", "Translate"))
 LOAD_LABELS = (("live", "Live slide"), ("frozen", "Frozen version"), ("step", "One reveal step"))
@@ -52,6 +54,7 @@ PICKER_LABELS = {"existing": "Slide", "duplicate": "Slide to duplicate", "transl
 TRANSLATION_WARNING = ("Sends the whole slide text to the model as one block. LaTeX commands are not "
                        "guaranteed to survive untouched: review the result before you rely on it.")
 WIDTH = 720
+THUMB = (56, 32)   # the preview of a slide in the Existing list
 MARGINS = 48     # of the sheet
 
 
@@ -87,6 +90,7 @@ class AddSlideSheet(ModalSheet):
         self._worker: Optional[_TranslateWorker] = None
         self._provider: Optional[ChatProvider] = None
         self._slides = slide_add.project_slides()
+        self._template = slide_snapshot.detect_template(deck.preamble_text)
 
         body = Surface()
         self._layout = QVBoxLayout(body)
@@ -129,7 +133,8 @@ class AddSlideSheet(ModalSheet):
         self.search.setPlaceholderText("Find a slide in the project by id or title")
         self.search.textChanged.connect(self._fill_list)
         self.listbox = QListWidget()
-        self.listbox.setFixedHeight(168)
+        self.listbox.setFixedHeight(204)
+        self.listbox.setIconSize(QSize(*THUMB))
         self.listbox.currentItemChanged.connect(lambda *_: self._on_picked())
         layout.addWidget(self.search)
         layout.addWidget(self.listbox)
@@ -230,13 +235,13 @@ class AddSlideSheet(ModalSheet):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
-        self.views: dict[str, QCheckBox] = {}
+        self.views: dict[str, ToggleChip] = {}
         for view in deck_editor.DEFAULT_CONDITIONS:
-            box = QCheckBox(VIEW_LABELS[view])
-            box.setChecked(True)
-            box.toggled.connect(lambda _on: self._sync())
-            layout.addWidget(box)
-            self.views[view] = box
+            chip = ToggleChip(VIEW_LABELS[view], VIEW_TONES[view])
+            chip.setChecked(True)
+            chip.toggled.connect(lambda _on: self._sync())
+            layout.addWidget(chip)
+            self.views[view] = chip
         layout.addStretch(1)
         self.views_field = Field("Appears in", row)
         self._add(self.views_field)
@@ -346,6 +351,10 @@ class AddSlideSheet(ModalSheet):
             item = QListWidgetItem(f"{slide_language.bare_id(slide.id_slug)}   {slide.title}   {slide.badge}".rstrip())
             item.setData(Qt.ItemDataRole.UserRole, slide.id_slug)
             item.setToolTip(slide.id_slug)
+            png = slide_snapshot.snapshot_path(slide_language.bare_id(slide.id_slug), self._template,
+                                               slide_snapshot.THUMB_SIZE, slide.id_slug)
+            if png.is_file():   # the cached preview, loaded by the icon when the row is painted
+                item.setIcon(QIcon(str(png)))
             self.listbox.addItem(item)
         if keep:
             self._select(keep)
@@ -403,8 +412,8 @@ class AddSlideSheet(ModalSheet):
         self.steps_field.setVisible(load == "step")
         frozen = source == "existing" and load == "frozen"
         self.views_field.label.setText("Appears in" if not frozen else "Appears in (a frozen version has no choice)")
-        for box in self.views.values():
-            box.setEnabled(not frozen)
+        for chip in self.views.values():
+            chip.setEnabled(not frozen)
         slide = self.picked()
         can_translate = slide is not None and self.chosen_target() is not None \
             and slide_add.can_machine_translate(slide, self.chosen_target())

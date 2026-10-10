@@ -60,7 +60,6 @@ class Composer(QPlainTextEdit):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setObjectName(q.INPUT)
         self.document().documentLayout().documentSizeChanged.connect(lambda _size: self._fit())
         self._fit()
 

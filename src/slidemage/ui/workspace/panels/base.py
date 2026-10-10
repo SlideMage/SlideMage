@@ -20,13 +20,12 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout
 
 from ....deck_editor import SLIDES_DIR, SlideCall, parse_slide_calls
 from ....slide_language import current_id_slug_for_bare_id, current_path_for_bare_id
 from ...kit import kit_qss as q
-from ...kit.widgets import Surface
+from ...kit.widgets import ClickFrame, Surface
 from ..state import WorkspaceState
 
 
@@ -48,11 +47,9 @@ def box() -> tuple[QFrame, QVBoxLayout]:
     return frame, layout
 
 
-class Row(QFrame):
-    """One row of a box: a QVBoxLayout with the prototype's padding. Clickable when `activated` is
-    connected (the pointer shows it)."""
-
-    activated = Signal()
+class Row(ClickFrame):
+    """One row of a box: a QVBoxLayout with the prototype's padding. Clickable after `make_clickable`
+    (the pointer shows it)."""
 
     def __init__(self, layout: QLayout) -> None:
         super().__init__()
@@ -63,14 +60,19 @@ class Row(QFrame):
         self.body = inner
         layout.addWidget(self)
 
+    def add_text(self, string: str, name: str = q.DETAILS_VALUE) -> QLabel:
+        label = text(string, name)
+        self.body.addWidget(label)
+        return label
+
     def make_clickable(self, on_click: Callable[[], None]) -> None:
-        self.activated.connect(on_click)
+        self.clicked.connect(on_click)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.activated.emit()
-        super().mouseReleaseEvent(event)
+
+def empty_row(layout: QLayout, string: str) -> None:
+    """A row that says there is nothing to show ("No images on this slide.")."""
+    Row(layout).add_text(string, q.DETAILS_LABEL)
 
 
 def clear(layout: QLayout) -> None:
@@ -115,6 +117,13 @@ class SidePanel(Surface):
     def flush(self) -> None:
         """Save the pending edits, if the panel has any (called before the slide, the deck or the
         panel changes)."""
+
+    def place(self, frame: QFrame, caption: str = "") -> None:
+        """Put a finished box into the panel, with a grey line under it, and push the rest up."""
+        self.body.addWidget(frame)
+        if caption:
+            self.body.addWidget(text(caption, q.PANEL_CAPTION))
+        self.body.addStretch(1)
 
     def refresh(self) -> None:
         clear(self.body)

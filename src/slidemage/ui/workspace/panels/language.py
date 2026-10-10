@@ -86,7 +86,7 @@ class Language(SidePanel):
             open_button.clicked.connect(lambda: self.app.open_slide_editor(path))
             line.addWidget(open_button)
         row.body.addLayout(line)
-        row.body.addWidget(text(caption, q.PANEL_CAPTION))
+        row.add_text(caption, q.PANEL_CAPTION)
 
     # -- Translate -----------------------------------------------------------------------
 

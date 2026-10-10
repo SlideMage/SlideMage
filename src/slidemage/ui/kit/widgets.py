@@ -69,6 +69,18 @@ def set_property(widget: QWidget, name: str, value: object) -> None:
     _repolish(widget)
 
 
+class ClickFrame(QFrame):
+    """A frame that emits `clicked` when the left button is released over it: the base of the kit's
+    clickable rows, chips and tiles."""
+
+    clicked = Signal()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
 class IconLabel(QLabel):
     """A Material icon drawn as text, by name ("more_vert", "lock", ...)."""
 
@@ -109,12 +121,10 @@ class IconButton(QToolButton):
         set_property(self, "active", active)
 
 
-class DropdownButton(QFrame):
+class DropdownButton(ClickFrame):
     """A label with a chevron that opens a menu: the deck switcher, the side panel picker.
     `name` is the object name its QSS rules are written for; `clicked` is emitted on
     release, `set_active` shows the menu is open."""
-
-    clicked = Signal()
 
     def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -135,11 +145,6 @@ class DropdownButton(QFrame):
 
     def set_active(self, active: bool) -> None:
         set_property(self, "active", active)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
 
     def event(self, event: QEvent) -> bool:
         # The :hover rule needs a repolish of this frame, not just of the label under the pointer.
@@ -309,11 +314,9 @@ class SegmentedControl(QFrame):
         return super().eventFilter(obj, event)
 
 
-class Chip(QFrame):
+class Chip(ClickFrame):
     """Small pill with an optional icon, e.g. "pinned 1-0-0" or "outdated".
     tone: neutral, muted, info, warning, error, ok. Emits `clicked`."""
-
-    clicked = Signal()
 
     def __init__(self, text: str, tone: str = "neutral", icon: str | None = None,
                  parent: QWidget | None = None) -> None:
@@ -338,17 +341,23 @@ class Chip(QFrame):
     def set_tone(self, tone: str) -> None:
         set_property(self, "tone", tone)
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
+
+class ToggleChip(QPushButton):
+    """A pill that switches on and off, e.g. one of the views a slide "Appears in". `tone` is a view
+    ("instructor", "during", "after"): on, the chip takes that view's colors. It is a checkable
+    button: `isChecked`, `setChecked` and `toggled` as usual."""
+
+    def __init__(self, text: str, tone: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setObjectName(q.TOGGLE_CHIP)
+        self.setProperty("tone", tone)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
 
-class RowButton(QFrame):
+class RowButton(ClickFrame):
     """A clickable row for a choice with a name and a second line: a project of the picker, an action
     of the "No decks" page. Emits `clicked` unless disabled; `chip` is (text, tone) or empty."""
-
-    clicked = Signal()
 
     def __init__(self, icon: str, title: str, sub: str = "", *, mono_sub: bool = False,
                  chip: tuple[str, str] = ("", ""), parent: QWidget | None = None) -> None:
@@ -373,12 +382,6 @@ class RowButton(QFrame):
             layout.addWidget(self.chip)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if (self.isEnabled() and event.button() == Qt.MouseButton.LeftButton
-                and self.rect().contains(event.position().toPoint())):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
-
 
 class Field(Surface):
     """A control under its label: the form row of sheets ("Title", "Load as")."""
@@ -392,15 +395,6 @@ class Field(Surface):
         self.label.setObjectName(q.FIELD_LABEL)
         layout.addWidget(self.label)
         layout.addWidget(control)
-
-
-class _Tile(QFrame):
-    clicked = Signal()
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
 
 
 class ThumbnailGrid(Surface):
@@ -419,9 +413,9 @@ class ThumbnailGrid(Surface):
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(8)
-        self._tiles: dict[str, _Tile] = {}
+        self._tiles: dict[str, ClickFrame] = {}
         for index, (key, caption, image) in enumerate(items):
-            tile = _Tile()
+            tile = ClickFrame()
             tile.setObjectName(q.THUMB)
             tile.setCursor(Qt.CursorShape.PointingHandCursor)
             tile.setToolTip(caption)

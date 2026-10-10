@@ -150,7 +150,6 @@ class ImageForm(Surface):
         column.setSpacing(10)
         for key, label, tip, height, placeholder in specs:
             edit = QPlainTextEdit(self.baseline[key])
-            edit.setObjectName(q.INPUT)
             edit.setFixedHeight(height)
             edit.setPlaceholderText(placeholder)
             edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)   # the text wraps

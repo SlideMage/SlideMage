@@ -58,13 +58,10 @@ class SlideVersions(SidePanel):
             when = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d") if path.is_file() else "?"
             self._add_version(layout, slide_versioning.version_label(version), path, f"frozen {when}" + self._used_by(users.get(version)))
         self.body.addWidget(frame)
-
         frame, layout = box()
         self._add_pin(layout, id_slug, frozen)
         self._add_freeze(layout, id_slug, source)
-        self.body.addWidget(frame)
-        self.body.addWidget(text("Edits are saved to the current version.", q.PANEL_CAPTION))
-        self.body.addStretch(1)
+        self.place(frame, "Edits are saved to the current version.")
 
     # -- the version list --------------------------------------------------------------
 
@@ -98,7 +95,7 @@ class SlideVersions(SidePanel):
             make_current.clicked.connect(lambda: self.app.centre.restore_version(path))
             head.addWidget(make_current)
         row.body.addLayout(head)
-        row.body.addWidget(text(caption, q.PANEL_CAPTION))
+        row.add_text(caption, q.PANEL_CAPTION)
 
     def _open(self, path: Path) -> None:
         if path.is_file():
@@ -117,11 +114,11 @@ class SlideVersions(SidePanel):
         deck = self.state.deck
         calls = self._pinnable()
         if not self.deck_calls():
-            row.body.addWidget(text(f"{deck.name if deck else 'The open deck'} does not call this slide.", q.DETAILS_LABEL))
+            row.add_text(f"{deck.name if deck else 'The open deck'} does not call this slide.", q.DETAILS_LABEL)
             return
         if not calls:
-            row.body.addWidget(text(f"{deck.name} always uses the current version of this slide "
-                                    "(its calls have no pinned form).", q.DETAILS_LABEL))
+            row.add_text(f"{deck.name} always uses the current version of this slide "
+                         "(its calls have no pinned form).", q.DETAILS_LABEL)
             return
         pins = {c.version for c in calls if c.macro in slide_usage.PINNED}
         following = any(c.macro in slide_usage.PINNABLE for c in calls)

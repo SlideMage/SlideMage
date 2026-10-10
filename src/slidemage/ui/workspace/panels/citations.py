@@ -12,7 +12,7 @@ from .... import bibliography
 from ....latex_lint import cited_keys
 from ...kit import kit_qss as q
 from ...kit.widgets import Button
-from .base import Row, SidePanel, box, text
+from .base import Row, SidePanel, box, empty_row, text
 
 
 class Citations(SidePanel):
@@ -31,27 +31,25 @@ class Citations(SidePanel):
         entries = bibliography.load()
         frame, layout = box()
         if not keys:
-            row = Row(layout)
-            row.body.addWidget(text("No citations on this slide.", q.DETAILS_LABEL))
+            empty_row(layout, "No citations on this slide.")
         for key in keys:
             row = Row(layout)
             known = key in entries
             if known:
                 row.make_clickable(lambda k=key: self._show(k))
                 row.setToolTip("Show this entry in Slidemaster.bib")
-            row.body.addWidget(text(key, q.PANEL_MONO))
+            row.add_text(key, q.PANEL_MONO)
             if known:
-                row.body.addWidget(text(bibliography.format_citation(key, entries, "full"), q.DETAILS_VALUE))
+                row.add_text(bibliography.format_citation(key, entries, "full"), q.DETAILS_VALUE)
             else:
-                row.body.addWidget(text("Not in Slidemaster.bib", q.PANEL_MISSING))
+                row.add_text("Not in Slidemaster.bib", q.PANEL_MISSING)
                 add = Button("Add to .bib…", "primary", compact=True)
                 add.clicked.connect(lambda _=False, k=key: self._add(k))
                 line = QHBoxLayout()
                 line.addStretch(1)
                 line.addWidget(add)
                 row.body.addLayout(line)
-        self.body.addWidget(frame)
-        self.body.addStretch(1)
+        self.place(frame)
 
     def _show(self, key: str) -> None:
         self.app.open_slide_editor(bibliography.DEFAULT_BIB, line=bibliography.entry_line(key))

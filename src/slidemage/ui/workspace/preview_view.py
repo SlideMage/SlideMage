@@ -146,7 +146,7 @@ class _Page(QWidget):
             painter.setBrush(QColor(0, 0, 0, alpha))
             painter.drawRoundedRect(page.adjusted(-grow, -grow, grow, grow).translated(0, grow), 4 + grow, 4 + grow)
         tokens = self._tokens()
-        painter.setBrush(QColor("#ffffff") if self.pixmap is not None else QColor(tokens.surface))
+        painter.setBrush(QColor(tokens.paper) if self.pixmap is not None else QColor(tokens.surface))
         painter.drawRoundedRect(page, 4, 4)
         if self.pixmap is not None:
             painter.drawPixmap(page, self.pixmap, QRectF(self.pixmap.rect()))

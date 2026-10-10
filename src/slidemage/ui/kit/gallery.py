@@ -12,16 +12,21 @@ import sys
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QPlainTextEdit,
+    QRadioButton,
     QScrollArea,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from .fonts import FONT_DIR, load_fonts
+from .kit_qss import FIELD_LABEL
 from .theme import ThemeManager
 from .tokens import VIEWS
 from .widgets import (
@@ -37,6 +42,7 @@ from .widgets import (
     SplitButton,
     ThumbnailGrid,
     Toast,
+    ToggleChip,
 )
 
 VIEW_TONES = {"instructor": "instructor", "during": "during", "after": "after"}
@@ -65,6 +71,7 @@ class KitGallery(QWidget):
         self._section("Segmented control", self._segmented())
         self._section("Chips", self._chips())
         self._section("Buttons, split button, icon buttons", self._buttons())
+        self._section("Form controls", self._controls())
         self._section("Field, thumbnail grid", self._thumbnails())
         self._section("Card", self._card())
         self._section("Palette", self._swatches())
@@ -81,7 +88,7 @@ class KitGallery(QWidget):
 
     def _section(self, title: str, content: QWidget) -> None:
         heading = QLabel(title)
-        heading.setObjectName("mutedLabel")
+        heading.setObjectName(FIELD_LABEL)
         self._root.addWidget(heading)
         self._root.addWidget(content)
 
@@ -109,6 +116,52 @@ class KitGallery(QWidget):
                  Chip("EN", "muted"), Chip("outdated translation", "warning", "warning"),
                  Chip("2 lint errors", "error", "error"), Chip("reviewed", "ok", "check")]
         return self._row(*chips)
+
+    def _controls(self) -> QWidget:
+        line = QLineEdit()
+        line.setPlaceholderText("Placeholder")
+        filled = QLineEdit("Some text")
+        off = QLineEdit("Disabled")
+        off.setEnabled(False)
+        combo = QComboBox()
+        combo.addItems(["SlideMage", "Beamer", "Plain"])
+        combo_off = QComboBox()
+        combo_off.addItem("Disabled")
+        combo_off.setEnabled(False)
+        spin = QSpinBox()
+        spin.setValue(2)
+        checks = [QCheckBox("Checked"), QCheckBox("Unchecked"), QCheckBox("Checked, disabled"),
+                  QCheckBox("Disabled")]
+        checks[0].setChecked(True)
+        checks[2].setChecked(True)
+        checks[2].setEnabled(False)
+        checks[3].setEnabled(False)
+        radios = [QRadioButton("Selected"), QRadioButton("Other"), QRadioButton("Disabled")]
+        radios[0].setChecked(True)
+        radios[2].setEnabled(False)
+        chips = [ToggleChip("Instructor", "instructor"), ToggleChip("During course", "during"),
+                 ToggleChip("After course", "after"), ToggleChip("Frozen", "after")]
+        for chip in chips[:3]:
+            chip.setChecked(True)
+        chips[3].setChecked(True)
+        chips[3].setEnabled(False)
+        text = QPlainTextEdit("A multi-line field,\nwith a second line.")
+        text.setFixedHeight(64)
+        items = QListWidget()
+        items.addItems([f"List item {n}" for n in range(1, 12)])
+        items.setFixedHeight(90)
+        items.setCurrentRow(1)
+        return self._rows(self._row(line, filled, off), self._row(combo, combo_off, spin), self._row(*checks),
+                          self._row(*radios), self._row(*chips), text, items)
+
+    @staticmethod
+    def _rows(*rows: QWidget) -> QWidget:
+        column = QWidget()
+        layout = QVBoxLayout(column)
+        layout.setContentsMargins(0, 0, 0, 0)
+        for r in rows:
+            layout.addWidget(r)
+        return column
 
     def _buttons(self) -> QWidget:
         split = SplitButton("Compile PDF · During")

@@ -8,7 +8,7 @@ from ....slide_usage import DeckUsage, call_text, find_usage
 from ...kit import kit_qss as q
 from ..menus import VIEW_LABELS
 from ..state import VIEWS
-from .base import Row, SidePanel, box, text
+from .base import Row, SidePanel, box, empty_row, text
 
 
 class UsedInDecks(SidePanel):
@@ -19,25 +19,22 @@ class UsedInDecks(SidePanel):
         usages = find_usage(id_slug)
         frame, layout = box()
         if not usages:
-            row = Row(layout)
-            row.body.addWidget(text("No deck calls this slide.", q.DETAILS_LABEL))
+            empty_row(layout, "No deck calls this slide.")
         for usage in usages:
             for call, position in zip(usage.calls, usage.positions):
                 self._add_call(layout, usage, call, position)
-        self.body.addWidget(frame)
-        self.body.addWidget(text("Edits to the current version reach every deck that follows it.", q.PANEL_CAPTION))
-        self.body.addStretch(1)
+        self.place(frame, "Edits to the current version reach every deck that follows it.")
 
     def _add_call(self, layout, usage: DeckUsage, call, position: int) -> None:
         row = Row(layout)
         row.make_clickable(lambda: self._open(usage, call))
         row.setToolTip("Open this deck at this slide")
-        row.body.addWidget(text(usage.deck.name + (" (archived)" if usage.deck.archived else ""), q.PANEL_MONO))
+        row.add_text(usage.deck.name + (" (archived)" if usage.deck.archived else ""), q.PANEL_MONO)
         how = f"{call_text(call)} · slide {position} of {usage.total}"
         hidden = [VIEW_LABELS[v] for v in VIEWS if not call.included_in(v)]
         if hidden:
             how += " · hidden in " + ", ".join(hidden)
-        row.body.addWidget(text(how, q.PANEL_CAPTION))
+        row.add_text(how, q.PANEL_CAPTION)
 
     def _open(self, usage: DeckUsage, call) -> None:
         self.state.set_deck(usage.deck)
