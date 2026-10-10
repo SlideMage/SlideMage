@@ -1,6 +1,6 @@
 # SlideMage UI redesign (Prototype v3)
 
-Status: in progress on branch `ui-redesign`. Steps 1–8, 9a and 9b done (see
+Status: in progress on branch `ui-redesign`. Steps 1–8 and 9a–9c done (see
 "Progress and handover").
 Date: 2026-10-09 (decisions settled the same day).
 Source: Claude Design project "SlideMage", file `SlideMage Prototype v3.dc.html`
@@ -45,7 +45,7 @@ Images page. The prototype has one workspace for each open deck:
 
 ## Progress and handover
 
-Last updated 2026-10-09. Suite after step 9b: 989 passed, 4 skipped; ruff clean. Suite time
+Last updated 2026-10-09. Suite after step 9c: 1042 passed, 4 skipped; ruff clean. Suite time
 varies with machine load (9–16 s for the same commit).
 
 | Step | Commit | State |
@@ -63,7 +63,7 @@ varies with machine load (9–16 s for the same commit).
 | 8. Command palette | (see git log) | done |
 | 9a. Add slide sheet | (see git log) | done |
 | 9b. Project picker, compat, No decks/First run, Housekeeping, Snapshots, deck group dialog, About | (see git log) | done |
-| 9c. Settings + Deck settings sheets | | not started |
+| 9c. Settings + Deck settings sheets | (see git log) | done |
 | 9d. Images page (`qt_transcript_tab.py`, 2,849 lines) | | not started |
 | 10–11 | | not started |
 
@@ -136,6 +136,16 @@ varies with machine load (9–16 s for the same commit).
   in `config_dir()/recent_projects.json`). Removed: `qt_compat_dialog`,
   `qt_archive_unused_dialog`, `qt_snapshot_dialog`, `qt_deck_group_dialog`,
   `qt_version_history_dialog`.
+- Step 9c: `ui/dialogs/settings.py` (+ `settings_ollama.py`,
+  `settings_prompts.py`; tabs General, AI models, Cloud, Ollama,
+  Prompts), `deck_settings.py` (General, PDF output, Admin slides tab
+  from `admin_slides.py`); backend `admin_slides.py`,
+  `deck_settings.from_form`; `ui/background.py` (`start_detached`); kit
+  `Page`, `caption()`, `row()`, `columns()`. Tests: autouse fixture in
+  `conftest.py` redirects prompt stores and `resolver.PROJECT_ROOT`.
+  Removed: `qt_settings_dialog`, `qt_deck_settings_dialog`,
+  `qt_admin_slides_dialog`, `qt_translation_prompts_panel`.
+  `qt_ai_models.py` remains (move under `ui/` in step 11).
 - Right column: `side_panels.py` (vertical `QSplitter`, chat goes below
   in step 10) and `panels/` (`base.py`, `used.py`, `versions.py`,
   `visibility.py`, `citations.py`, `language.py`, `images.py`,
@@ -224,6 +234,14 @@ varies with machine load (9–16 s for the same commit).
   in Housekeeping; snapshot questions/summary are sheets; recent
   projects are remembered per machine; the first-run picker is dark by
   default (app_settings can't load before a project exists).
+- Step 9c: command `preferences`/"Preferences…" is `settings`/
+  "Settings…"; per-project "Local AI only" lives in Settings → Cloud
+  ("This project"), since it is per project, not per deck; prompts stay
+  in Settings (stored per project); AI settings span AI models / Cloud /
+  Ollama tabs; model lists load on a thread; Deck settings uses Save /
+  Cancel with inline errors, and Admin slides' "Insert slides" is
+  disabled while the form has unsaved changes; Build options stays a
+  dialog (two options are per launch).
 
 ### How the work is run (to resume)
 - The user wants a pause after each committed step (sub-steps such as
