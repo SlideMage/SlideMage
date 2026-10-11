@@ -32,10 +32,13 @@ def test_sheet_has_the_history_newest_first_and_the_license(qapp):
 
 
 def test_a_toggle_link_expands_one_entry_in_place(qapp):
+    # The newest entry with something to collapse (a short entry gets no toggle).
+    index = next(i for i, e in enumerate(reversed(version_mod.parse_history()))
+                 if app_info.summary(e.description) != e.description)
     sheet = AboutSheet()
-    assert sheet._expanded == set() and "toggle:0" in sheet._build_html()
-    sheet._on_anchor_clicked(QUrl("toggle:0"))
-    assert sheet._expanded == {0} and "[show less]" in sheet._build_html()
-    sheet._on_anchor_clicked(QUrl("toggle:0"))
+    assert sheet._expanded == set() and f"toggle:{index}" in sheet._build_html()
+    sheet._on_anchor_clicked(QUrl(f"toggle:{index}"))
+    assert sheet._expanded == {index} and "[show less]" in sheet._build_html()
+    sheet._on_anchor_clicked(QUrl(f"toggle:{index}"))
     assert sheet._expanded == set()
     sheet._on_anchor_clicked(QUrl("https://example.org"))      # other links do nothing
