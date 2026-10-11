@@ -149,6 +149,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+S saves the file open in the Source view whichever view has the focus.
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.source.save)
+        # Ctrl+Enter renders the editor's buffer, saved or not, and shows the page (Ctrl+R in the Source view too).
+        for sequence in ("Ctrl+Return", "Ctrl+Enter"):
+            QShortcut(QKeySequence(sequence), self).activated.connect(self.centre.render_buffer)
         # Ctrl+Shift+F, the old project-wide text search, opens the palette, where that search is now.
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 

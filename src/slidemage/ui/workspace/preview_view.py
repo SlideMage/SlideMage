@@ -4,7 +4,7 @@ During course / After course) and language the top bar says.
 Without compiling anything it shows the slide's cached snapshot
 (slide_snapshot.py; the instructor view only) or what this session rendered.
 "Render" compiles the saved slide in the view and language, and the Render
-menu renders the editor's buffer instead (Ctrl+R: the whole slide, or the
+menu renders the editor's buffer instead (Ctrl+Enter: the whole slide, or the
 selection as a frame or as a cropped element, optionally one reveal step), a
 presenter PDF, or a transcript. Rendering runs on a worker thread; what a
 render depends on is in preview_target.py. Every render is preceded by the
@@ -252,7 +252,8 @@ class PreviewPane(Surface):
         self._status_chip = Chip("", "muted")
         status.addWidget(self._status_chip)
         self._status_button = Button("Render now", "secondary", compact=True)
-        self._status_button.clicked.connect(self.render_now)
+        self._status_button.clicked.connect(self._status_clicked)
+        self._status_draft = False   # the button renders the unsaved buffer, not the saved file
         status.addWidget(self._status_button)
         self._error_label = QLabel()
         self._error_label.setObjectName(q.SOURCE_NOTE)
@@ -379,6 +380,18 @@ class PreviewPane(Surface):
             tone, icon, can_render = "info", "autorenew", False
         elif self._error:
             status, tone, icon, can_render = "Render failed", "error", "error_outline", target is not None
+        # An unsaved draft is not in a page rendered from the file; offer to render the buffer.
+        shown = target is not None and not (row is not None and row.hidden)
+        draft = shown and not busy_here and self._is_draft(target)
+        current = shown and self._adhoc is not None and self._adhoc[0] == (
+            target.key, view, language, self._footer_timestamp()) and self._buffer() is not None \
+            and self._buffer()[0] == self._adhoc_text
+        self._status_draft = bool(draft and not current)
+        if self._status_draft:
+            if not status:
+                status, tone, icon = "Unsaved edits are not in this preview", "warning", "edit_note"
+            can_render = True
+        self._status_button.setText("Render draft · Ctrl+Enter" if self._status_draft else "Render now")
         self._status_chip.setVisible(bool(status))
         self._status_chip.set_text(status)
         self._status_chip.set_tone(tone)
@@ -392,7 +405,7 @@ class PreviewPane(Surface):
         menu = PopoverMenu(self, min_width=260)
         has_buffer = self._target is not None
         menu.add_header("Editor buffer, as it is now")
-        menu.add_item(BUFFER, "Render the buffer", meta="Ctrl+R", enabled=has_buffer)
+        menu.add_item(BUFFER, "Render the buffer", meta="Ctrl+Enter", enabled=has_buffer)
         for scope, label in SCOPES:
             menu.add_item(f"scope:{scope}", label, icon="check" if scope == self._scope else "")
         menu.add_item(OVERLAY, f"Reveal step: {self._overlay or 'all'}…", enabled=self._scope != "element")
@@ -553,6 +566,22 @@ class PreviewPane(Surface):
     def render_now(self) -> None:
         """Compile the saved slide in the view and language being edited."""
         self._render_saved(precheck=True)
+
+    def _status_clicked(self) -> None:
+        if self._status_draft:
+            self.render_buffer()
+        else:
+            self.render_now()
+
+    def _is_draft(self, target: PreviewTarget) -> bool:
+        """The editor holds text that is not in the saved file."""
+        buffer = self._buffer()
+        if buffer is None:
+            return False
+        try:
+            return buffer[0] != slide_source.read_slide_source(target.source_path)[0]
+        except OSError:
+            return False
 
     def _render_saved(self, precheck: bool, *, debounce: bool = False) -> None:
         target = self._target

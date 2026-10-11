@@ -69,7 +69,7 @@ class CentreColumn(QFrame):
         self.source.buffer_changed.connect(self.preview.buffer_changed)
         self.source.lint_errors_changed.connect(state.set_lint_errors)
         self.source.saved.connect(self._on_saved)
-        self.source.render_requested.connect(self._render_buffer)
+        self.source.render_requested.connect(self.render_buffer)
         self.source.restore_requested.connect(self.restore_version)
         self.source.file_requested.connect(self.open_file)
         state.deck_changed.connect(self._on_deck_changed)
@@ -234,7 +234,8 @@ class CentreColumn(QFrame):
             self.preview.render_after_save()
         self.refresh()
 
-    def _render_buffer(self) -> None:
+    def render_buffer(self) -> None:
+        """Render the editor's buffer, saved or not (Ctrl+Enter, Ctrl+R in the Source view)."""
         if self.state.mode == "source":
             self.state.set_mode("split")   # the page is where the render shows
         self.preview.render_buffer()

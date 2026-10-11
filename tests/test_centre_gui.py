@@ -578,3 +578,20 @@ def test_an_already_dirty_buffer_marks_its_preview_older_after_another_edit(cent
     QTest.qWait(200)
     assert 'Older than the editor buffer' in centre.preview._status_chip.text()
     assert len(renders) == 1  # status refresh never compiles on a keystroke
+
+
+def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(centre, renders):
+    centre.state.set_focused_slide('aaa')
+    centre.state.set_mode('split')
+    centre.source.current.editor.insertPlainText('% a draft, never saved\n')
+    QTest.qWait(300)
+    preview = centre.preview
+    assert 'Unsaved edits' in preview._status_chip.text()
+    assert preview._status_button.text().startswith('Render draft')
+    assert not preview._status_button.isHidden()
+    assert not renders  # noticing a draft never compiles
+    preview._status_button.click()
+    wait_idle(centre)
+    assert 'Rendered from the editor buffer' in preview._status_chip.text()
+    assert preview._status_button.isHidden() and not preview._status_draft
+    assert len(renders) == 1 and 'a draft, never saved' in str(renders[0])

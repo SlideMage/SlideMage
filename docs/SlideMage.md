@@ -624,7 +624,7 @@ What matters when touching *this code*:
   facts: pinned version, language, missing translation, hidden in this view) and
   staleness (`slide_snapshot.is_fresh()`: a snapshot older than the slide's own source is
   flagged, not hidden). **Render** compiles the saved slide; its menu renders the editor
-  buffer instead (Ctrl+R: whole slide, selection as frame or element, one reveal step),
+  buffer instead (Ctrl+Enter, or Ctrl+R in the Source view: whole slide, selection as frame or element, one reveal step),
   a presenter PDF or a transcript. The slide list's thumbnails read the cached
   `THUMB_SIZE` file directly (not the full-size one scaled down, which was the source of
   an early "not crisp" complaint). Single-slide renders run on a worker thread through
