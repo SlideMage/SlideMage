@@ -39,6 +39,8 @@ SLIDES_DIR = PROJECT_ROOT / "slides"
 # Keep in sync with Slidemaster_preamble_base.tex's own
 # \setSlideLanguageFromSlug@aux fixed keyword set.
 LANGUAGES = ("EN", "DE", "mult")
+# Excludes "mult", which is not a translation target.
+TRANSLATION_LANGUAGES = ("EN", "DE")
 
 TRANSLATION_OF_RE = re.compile(r"^%% Translation of: (\S+)", re.MULTILINE)
 LANG_TRANSLATION_RE = re.compile(r"^%% (EN|DE|mult) translation: (\S+)", re.MULTILINE)

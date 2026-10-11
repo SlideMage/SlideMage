@@ -49,6 +49,7 @@ import re
 import threading
 
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .slide_language import TRANSLATION_LANGUAGES
 
 # regenerate_headers() does a read-modify-write over every slides/*-current
 # .tex file; the GUI runs it on a background thread per edit (see gui.py's
@@ -105,7 +106,7 @@ def _regenerate_headers_impl() -> tuple[int, int]:
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
         for call in calls:
             id_to_decks.setdefault(call.id, set()).add(deck_name)
-        for language in ("EN", "DE"):
+        for language in TRANSLATION_LANGUAGES:
             for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
 

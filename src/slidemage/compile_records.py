@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .processes import no_console_kwargs
+from .slide_language import TRANSLATION_LANGUAGES
 
 RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
@@ -264,7 +265,7 @@ def write_record(
             if deck is not None:
                 # Include dependencies in either language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.
-                for language in ("EN", "DE"):
+                for language in TRANSLATION_LANGUAGES:
                     _resolved, inputs = deck_language.compile_deck(deck, language)
                     inline_inputs.extend(inputs)
         for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:

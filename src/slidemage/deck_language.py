@@ -39,7 +39,7 @@ class _Links:
     def partner(self, ref: str) -> str | None:
         path = self.paths.get(slide_language.bare_id(ref))
         partner = path.name[:-len(slide_language.CURRENT_SUFFIX)] if path else None
-        return partner if partner and slide_language.own_language(partner) in ("EN", "DE") else None
+        return partner if partner and slide_language.own_language(partner) in slide_language.TRANSLATION_LANGUAGES else None
 
     def header(self, id_slug: str) -> str:
         if id_slug not in self.headers:
@@ -63,7 +63,7 @@ class _Links:
             for file in self.paths.values():
                 slug = file.name[:-len(slide_language.CURRENT_SUFFIX)]
                 own = slide_language.own_language(slug)
-                if own not in ("EN", "DE"):
+                if own not in slide_language.TRANSLATION_LANGUAGES:
                     continue
                 header = self.header(slug)
                 refs = [m.group(1) for m in slide_language.TRANSLATION_OF_RE.finditer(header)]
@@ -130,7 +130,7 @@ def slots(calls: list[SlideCall], language: str, *, slides_dir: Path | None = No
     owners = {child: owner for child, owner in owners.items() if owner not in owners}
     return [SlideSlot(c, resolve_call(c, language, _links=links),
                      tuple(p for p in calls if owners.get(p.id) == c.id),
-                     tuple(slide_language.bare_id(partner) for lang in ("EN", "DE")
+                     tuple(slide_language.bare_id(partner) for lang in slide_language.TRANSLATION_LANGUAGES
                            if (partner := links.find(c.id_slug, lang))))
             for c in calls if c.id not in owners]
 

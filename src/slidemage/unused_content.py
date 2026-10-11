@@ -62,7 +62,7 @@ from pathlib import Path
 from typing import Callable
 
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
-from .slide_language import current_name
+from .slide_language import TRANSLATION_LANGUAGES, current_name
 from .tex_source import COMMENT_RE
 
 MEDIA_DIR = PROJECT_ROOT / "media"
@@ -119,7 +119,7 @@ def find_used_slide_filenames() -> set[str]:
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
         # Keep explicit pins even when a translation call is folded into another slot.
         used.update(call.source_filename for call in calls)
-        for language in ("EN", "DE"):
+        for language in TRANSLATION_LANGUAGES:
             for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
                 used.add(slot.call.source_filename)
                 if slot.related_ids:

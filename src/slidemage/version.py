@@ -1984,6 +1984,8 @@ v8.0.14 (2026-10-11, code review cleanup B5): Internal: removed 11 unused functi
 
 v8.0.15 (2026-10-11, code review cleanup C1): Internal: slide_language owns the slide file names -- current_name(), frozen_name() and one pattern for frozen versions (-vX-Y-Z.tex, three parts as the naming convention says) replace names assembled by hand in about 20 places and two patterns that disagreed. No change in behaviour for files SlideMage writes.
 
+v8.0.16 (2026-10-11, code review cleanup C2): Internal: the three deck views are defined once in deck_editor (they lived in transcript.py, imported from there by the workspace, and were written out in four more modules); the translation languages EN/DE are one constant beside the slide languages. No change in behaviour.
+
 """
 from __future__ import annotations
 
@@ -1994,7 +1996,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.15"
+VERSION_NUMBER = "v8.0.16"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -21,6 +21,7 @@ from ... import (
     slide_language,
     slide_snapshot,
 )
+from ...deck_editor import VIEWS
 from ...deck_scan import Deck
 from .. import guides
 from ..agent_types import EditApplied
@@ -33,7 +34,6 @@ PREVIEW_WIDTH = 1280
 LOG_TAIL = 15
 ERROR_LIMIT = 5
 _BARE_ID = re.compile(r"^[A-Za-z0-9]{3}$")
-VIEWS = ("instructor", "during-course", "after-course")
 
 
 def slide_or_file(ctx: ToolContext, arg: str | None) -> Path:

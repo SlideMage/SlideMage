@@ -98,7 +98,7 @@ def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str
     path = SLIDES_DIR / call.source_filename
     png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
     badge = slide_language.badge_for(call.id_slug, path)
-    if slot.related_ids and badge.own in ("EN", "DE"):
+    if slot.related_ids and badge.own in slide_language.TRANSLATION_LANGUAGES:
         badge.cross_referenced = "DE" if badge.own == "EN" else "EN"
     lint_error, title = _source_facts(call)
     return SlideRow(
@@ -111,7 +111,7 @@ def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str
         lint_error=lint_error,
         stale_preview=png.is_file() and _older(png, path),
         hidden=not call.included_in(view),
-        missing_translation=badge.own in ("EN", "DE") and badge.own != language,
+        missing_translation=badge.own in slide_language.TRANSLATION_LANGUAGES and badge.own != language,
         original_call=slot.original,
         folded_calls=slot.folded,
         related_ids=slot.related_ids,

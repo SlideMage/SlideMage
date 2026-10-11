@@ -66,6 +66,7 @@ from .compile_records import (
     parse_fls,
     sha256 as _sha256,
 )
+from .deck_editor import VIEWS
 from .deck_scan import PROJECT_ROOT, Deck
 from .processes import no_console_kwargs
 
@@ -389,7 +390,7 @@ def snapshot_jobs(deck: Deck, options: SnapshotOptions) -> list[CompileJob]:
     """The compiles a snapshot captures: every version of the deck (or the one
     version-less compile) and, by default, the presenter PDF."""
     appendix = deck.appendix_toc if options.appendix_toc is None else options.appendix_toc
-    versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
+    versions = list(VIEWS) if deck.supports_version else [None]
     jobs = [CompileJob(deck, v, None, footer_timestamp=options.footer_timestamp,
                        appendix_toc=appendix) for v in versions]
     if options.presenter:

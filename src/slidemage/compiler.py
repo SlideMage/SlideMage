@@ -41,6 +41,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
+from .deck_editor import VIEWS
 from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
 from .processes import no_console_kwargs
 
@@ -221,7 +222,7 @@ def deck_pdfs(deck: Deck) -> list[DeckPdf]:
     \\deckoutputfolder declarations resolve to and the default pdf/ folder --
     so a PDF compiled before an output folder was declared (or after it was
     changed) still counts. Newest is by file modification time."""
-    versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
+    versions = list(VIEWS) if deck.supports_version else [None]
     jobs: list[CompileJob] = []
     for version in versions:
         jobs.append(CompileJob(deck, version, None))
@@ -948,7 +949,7 @@ def build_jobs(deck: Deck, kind: str, pages: Optional[list[int]] = None) -> list
     the one job with no version. `pages` (partial_compile.py) restricts a
     view or the presenter PDF to those frames; chapters are always whole."""
     if kind == "all":
-        views = ("instructor", "during-course", "after-course") if deck.supports_version else (None,)
+        views = VIEWS if deck.supports_version else (None,)
         return [CompileJob(deck, view, None, pages=pages) for view in views]
     if kind == "chapters":
         version = "after-course" if deck.supports_version else None

@@ -17,9 +17,8 @@ from pathlib import Path
 from typing import Optional
 
 from . import slide_preview, slide_language, slide_snapshot
-from .deck_editor import SLIDES_DIR, SlideCall
+from .deck_editor import SLIDES_DIR, VIEW_INSTRUCTOR, SlideCall
 from .deck_scan import Deck
-from .transcript import VERSION_INSTRUCTOR
 
 
 @dataclass(frozen=True)
@@ -116,7 +115,7 @@ def render_text(
     A presenter render is the instructor version with beamer's second screen."""
     return slide_preview.render_slide_text_to_pdf(
         target.id_slug, text,
-        deck_version=VERSION_INSTRUCTOR if presenter else view, deck_language=language.lower(),
+        deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
         frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,
         capture_snapshot=capture_snapshot and not target.is_frozen_alone)

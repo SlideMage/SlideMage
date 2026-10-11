@@ -58,7 +58,11 @@ ALL_MACROS = {
     "omitslideversion", "conditionalslide", "slidestep",
 }
 DEFAULT_STEPS = "1"
-DEFAULT_CONDITIONS = ["instructor", "during-course", "after-course"]
+VIEW_INSTRUCTOR = "instructor"
+VIEW_DURING = "during-course"
+VIEW_AFTER = "after-course"
+VIEWS = (VIEW_INSTRUCTOR, VIEW_DURING, VIEW_AFTER)
+DEFAULT_CONDITIONS = list(VIEWS)
 
 # Display order for the GUI's variant pickers (slide_list.py,
 # add_slide_dialog.py) -- the four macros with no separate version file.

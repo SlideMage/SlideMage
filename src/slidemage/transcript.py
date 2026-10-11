@@ -28,29 +28,24 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
 from .deck_scan import PROJECT_ROOT, Deck
 from .tex_source import COMMENT_RE
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
-VERSION_DURING = "during-course"
-VERSION_AFTER = "after-course"
-VERSION_INSTRUCTOR = "instructor"
-
 # Only the student versions are generated. See the module docstring.
-STUDENT_VERSIONS = (VERSION_DURING, VERSION_AFTER)
+STUDENT_VERSIONS = (VIEW_DURING, VIEW_AFTER)
 
 VERSION_LABELS = {
-    VERSION_DURING: "during-course version",
-    VERSION_AFTER: "after-course version",
+    VIEW_DURING: "during-course version",
+    VIEW_AFTER: "after-course version",
 }
 VERSION_LABELS_DE = {
-    VERSION_DURING: "Semesterbegleitende Version",
-    VERSION_AFTER: "Version nach Kursende",
+    VIEW_DURING: "Semesterbegleitende Version",
+    VIEW_AFTER: "Version nach Kursende",
 }
 _VERSION_LABELS_BY_LANGUAGE = {"en": VERSION_LABELS, "de": VERSION_LABELS_DE}
-
-_ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 
 # How each slide-inclusion command behaves, mirrored from the preamble:
 #
@@ -160,8 +155,8 @@ _DECK_ITEM_RE = re.compile(r"\\deckitem(?![a-zA-Z])\s*(?:<[^>]*>)?")
 # \ifSMInstructorVersion / \ifSMDuringCourseVersion / \ifSMAfterCourseVersion
 _VERSION_IF_RE = re.compile(r"\\ifSM(Instructor|DuringCourse|AfterCourse)Version(?![a-zA-Z])")
 _TEX_IF_TOKEN_RE = re.compile(r"\\(if[a-zA-Z@]*|else|fi)(?![a-zA-Z@])")
-_VERSION_OF_IF = {"Instructor": VERSION_INSTRUCTOR, "DuringCourse": VERSION_DURING,
-                  "AfterCourse": VERSION_AFTER}
+_VERSION_OF_IF = {"Instructor": VIEW_INSTRUCTOR, "DuringCourse": VIEW_DURING,
+                  "AfterCourse": VIEW_AFTER}
 
 
 @dataclass
@@ -457,8 +452,8 @@ def resolve_deck_conditionals(text: str, version: str) -> str:
             out.append(text[match.start():])
             return "".join(out)
 
-        versions = _versions_from(match.group("versions"), _ALL_VERSIONS)
-        keep = version == VERSION_INSTRUCTOR or version in versions
+        versions = _versions_from(match.group("versions"), VIEWS)
+        keep = version == VIEW_INSTRUCTOR or version in versions
         if keep:
             # Recurse: the content may itself contain conditionals.
             out.append(resolve_deck_conditionals(content, version))
@@ -1582,7 +1577,7 @@ def generate_single_slide(
     -- one slide's transcript entry, independent of any real deck (no
     numbering/deck title/undescribed-image-count context beyond this one
     slide), rendered exactly as generate() would render it inside a real
-    deck. `version` silently falls back to VERSION_DURING when it isn't a
+    deck. `version` silently falls back to VIEW_DURING when it isn't a
     student version (e.g. "instructor", picked from the same Render-bar
     combo used for PDF rendering) -- transcripts genuinely don't exist for
     that version at all, so refusing outright would just be an extra click
@@ -1598,7 +1593,7 @@ def generate_single_slide(
     file would silently produce a transcript for a slide with no identity
     at all -- no takeaway overrides, no summary, wrong image lookups."""
     if version not in STUDENT_VERSIONS:
-        version = VERSION_DURING
+        version = VIEW_DURING
 
     entries = alt_images.load_store()
     slide_notes = alt_images.load_slide_notes()
