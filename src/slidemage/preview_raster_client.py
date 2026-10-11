@@ -10,6 +10,8 @@ import subprocess
 import sys
 import threading
 
+from .processes import no_console_kwargs
+
 _lock = threading.RLock()
 _process = None
 REQUEST_TIMEOUT = 15.0
@@ -45,11 +47,7 @@ def render(data, sizes, full_size):
             env = dict(os.environ)
             env["PYINSTALLER_SUPPRESS_SPLASH_SCREEN"] = "1"
             env.pop("PYINSTALLER_RESET_ENVIRONMENT", None)
-            kwargs = (
-                {"creationflags": subprocess.CREATE_NO_WINDOW}
-                if os.name == "nt"
-                else {}
-            )
+            kwargs = no_console_kwargs()
             _process = subprocess.Popen(
                 command,
                 stdin=subprocess.PIPE,

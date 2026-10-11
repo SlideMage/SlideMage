@@ -30,7 +30,6 @@ add_deck_headers.py's own add-only caution.
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -39,6 +38,7 @@ from typing import Optional
 
 from . import alt_images, deck_headers, slide_ids, slide_language, slide_snapshot
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .processes import is_git_repo, is_git_tracked, no_console_kwargs
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 WORKDECK_PATH = DECKS_DIR / "#workdeck.tex"
@@ -47,7 +47,7 @@ _REFERENCE_DIRS = (DECKS_DIR, ARCHIVE_DIR)
 
 # the slidemage GUI script runs with no console of its own -- same
 # fix, same reason, as compiler.py's/archive.py's own subprocess calls.
-_NO_CONSOLE_KWARGS: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+_NO_CONSOLE_KWARGS: dict = no_console_kwargs()
 
 # Mirrors deck_headers.SLIDE_CALL_RE's own macro set, plus conditionalslide
 # (deck_headers.py's own regex omits it -- a pre-existing gap unrelated to
@@ -61,20 +61,8 @@ _MACROS = (
 )
 
 
-def _is_git_repo() -> bool:
-    return (PROJECT_ROOT / ".git").exists()
-
-
-def _is_git_tracked(path: Path) -> bool:
-    result = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(path.relative_to(PROJECT_ROOT))],
-        cwd=PROJECT_ROOT, capture_output=True, **_NO_CONSOLE_KWARGS,
-    )
-    return result.returncode == 0
-
-
 def _move(src: Path, dest: Path) -> None:
-    if _is_git_repo() and _is_git_tracked(src):
+    if is_git_repo(PROJECT_ROOT) and is_git_tracked(src, PROJECT_ROOT):
         subprocess.run(
             ["git", "mv", str(src.relative_to(PROJECT_ROOT)), str(dest.relative_to(PROJECT_ROOT))],
             cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,
@@ -563,7 +551,7 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
 
     files = sorted(SLIDES_DIR.glob(f"{id_slug}-*.tex"))
     for path in files:
-        if _is_git_repo() and _is_git_tracked(path):
+        if is_git_repo(PROJECT_ROOT) and is_git_tracked(path, PROJECT_ROOT):
             subprocess.run(
                 ["git", "rm", "-q", str(path.relative_to(PROJECT_ROOT))],
                 cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,

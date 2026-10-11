@@ -1976,16 +1976,19 @@ v8.0.10 (2026-10-11, code review cleanup B1b): Internal: every helper one module
 
 v8.0.11 (2026-10-11, code review cleanup B2): Internal: the compile status lines ("==== Compiling ...", "==== PASS: ...", "*** FAIL: ...") are written and recognised in one module, compile_log.py, instead of f-strings in five modules and two copies of the patterns in the progress bar and the job list. The log text is unchanged.
 
+v8.0.12 (2026-10-11, code review cleanup B4): Internal: copy-pasted helpers merged -- the Windows no-console subprocess option (11 copies) and the git checks of archiving and renaming live in processes.py; the slide id helpers bare_id and slide_id_of exist once. No change in behaviour.
+
 """
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.11"
+from .processes import no_console_kwargs
+
+VERSION_NUMBER = "v8.0.12"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
@@ -2035,9 +2038,7 @@ def parse_history() -> list[HistoryEntry]:
 
 
 def run_git(*args: str) -> str | None:
-    popen_kwargs: dict = {}
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    popen_kwargs: dict = no_console_kwargs()
     try:
         result = subprocess.run(
             # The app's own checkout, not the project: since v4.0.0 the two

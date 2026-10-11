@@ -65,7 +65,7 @@ def rename_project(project, monkeypatch):
     monkeypatch.setattr(slide_rename, "PROJECT_ROOT", project)
     monkeypatch.setattr(slide_rename, "_REFERENCE_DIRS", (decks,))
     monkeypatch.setattr(slide_rename, "WORKDECK_PATH", decks / "#workdeck.tex")
-    monkeypatch.setattr(slide_rename, "_is_git_repo", lambda: False)
+    monkeypatch.setattr(slide_rename, "is_git_repo", lambda _root: False)
     monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: None)
     monkeypatch.setattr(deck_headers, "regenerate_headers", lambda: None)
     monkeypatch.setattr(alt_images, "update_store", lambda fn: None)

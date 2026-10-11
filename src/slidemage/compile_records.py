@@ -47,6 +47,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from .processes import no_console_kwargs
+
 RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
 # The auxiliary files kept with a record (aux_dir()).
@@ -177,17 +179,13 @@ def version_lines(log_text: str) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-def _popen_kwargs() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-
-
 @functools.lru_cache(maxsize=1)
 def engine_version() -> str:
     """lualatex's version line ("This is LuaHBTeX, Version 1.22.0 (MiKTeX
     25.4)"), once per run of SlideMage; "" if it can't be run."""
     try:
         result = subprocess.run(["lualatex", "--version"], capture_output=True, text=True,
-                                errors="replace", timeout=30, **_popen_kwargs())
+                                errors="replace", timeout=30, **no_console_kwargs())
     except (OSError, subprocess.SubprocessError):
         return ""
     lines = result.stdout.splitlines() if result.returncode == 0 else []

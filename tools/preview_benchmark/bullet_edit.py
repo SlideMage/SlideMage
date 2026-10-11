@@ -48,7 +48,7 @@ def signature(path, width=None):
 
 
 def child(base, label, deadline, case_name):
-    from slidemage import deck_editor, deck_scan, slide_preview, slide_snapshot
+    from slidemage import deck_editor, deck_scan, slide_preview, slide_language, slide_snapshot
     try:
         from slidemage.preview_metrics import PreviewMetrics
     except ImportError:
@@ -108,7 +108,7 @@ def child(base, label, deadline, case_name):
                         capture_snapshot=not cached, log=log)
                     if cached:
                         _, images = slide_snapshot.prepare_preview(pdf, True)
-                        slide_snapshot.publish_preview(images, slide_snapshot.bare_id(case["slide"]),
+                        slide_snapshot.publish_preview(images, slide_language.bare_id(case["slide"]),
                             slide_snapshot.detect_template(deck.preamble_text))
                     else:
                         slide_snapshot.page_png(pdf)

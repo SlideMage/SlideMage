@@ -21,7 +21,7 @@ from experiment import (SCHEMA, EDIT_VERSION, atomic_json, bind, digest,
                         tree_hashes, validate_record, observed_rules)
 
 import pymupdf
-from slidemage import deck_editor, deck_scan, slide_preview, slide_snapshot
+from slidemage import deck_editor, deck_scan, slide_preview, slide_language, slide_snapshot
 from slidemage.preview_build import build_lock
 
 
@@ -285,7 +285,7 @@ def main():
                                         if images:
                                             slide_snapshot.publish_preview(
                                                 images,
-                                                slide_snapshot.bare_id(call.id_slug),
+                                                slide_language.bare_id(call.id_slug),
                                                 slide_snapshot.detect_template(
                                                     deck.preamble_text
                                                 ),

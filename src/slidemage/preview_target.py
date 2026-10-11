@@ -16,7 +16,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 
-from . import slide_preview, slide_snapshot
+from . import slide_preview, slide_language, slide_snapshot
 from .deck_editor import SLIDES_DIR, SlideCall
 from .deck_scan import Deck
 from .transcript import VERSION_INSTRUCTOR
@@ -34,7 +34,7 @@ class PreviewTarget:
 
     @property
     def bare_id(self) -> str:
-        return slide_snapshot.bare_id(self.id_slug)
+        return slide_language.bare_id(self.id_slug)
 
     @property
     def source_path(self) -> Path:

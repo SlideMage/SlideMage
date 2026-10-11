@@ -53,6 +53,7 @@ from typing import Callable, Optional
 from . import compile_log, compile_records, compiler, deck_scan
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .deck_editor import SlideCall
+from .processes import no_console_kwargs
 
 LogCallback = Callable[[str], None]
 
@@ -449,7 +450,7 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
                f"-jobname={jobname}", f"-auxdir={out}", f"-outdir={out}",
                os.path.relpath(wrapper, project_root)]
         env = compiler.build_env()
-        kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+        kwargs = no_console_kwargs()
         for number in (1, 2):
             if number == 2:
                 _restore_full_aux(plan, build, build)

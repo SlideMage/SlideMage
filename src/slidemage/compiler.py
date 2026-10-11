@@ -42,6 +42,7 @@ PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
 from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
+from .processes import no_console_kwargs
 
 BUILD_DIR = PROJECT_ROOT / ".build"
 PDF_DIR = PROJECT_ROOT / "pdf"
@@ -762,9 +763,7 @@ def run_job(
         ]
         compile_started = time.time()
         env = build_env()
-        popen_kwargs: dict = {}
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        popen_kwargs: dict = no_console_kwargs()
 
         try:
             proc = subprocess.Popen(

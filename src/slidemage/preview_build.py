@@ -21,6 +21,7 @@ import threading
 import errno
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import preview_format
+from .processes import no_console_kwargs
 
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
@@ -285,7 +286,7 @@ def _compile_reserved(wrapper_text, id_slug, log, *, project_root, env, fatal_er
     previous_pdf = pdf.stat().st_mtime_ns if pdf.exists() else None
     output_tail = deque(maxlen=200)
     log(f'==== Rendering {id_slug} (reusable build) ====')
-    kwargs = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
+    kwargs = no_console_kwargs()
     with stage('latexmk'):
         try:
             proc = subprocess.Popen(cmd, cwd=project_root, env=env,

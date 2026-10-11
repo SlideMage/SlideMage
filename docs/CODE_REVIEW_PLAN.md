@@ -92,3 +92,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | B1a TeX text helpers in tex_source.py | Done, v8.0.9: implemented by Codex, reviewed by Claude (lint-only masking moved back to latex_lint). |
 | B1b Public names for shared helpers | Done, v8.0.10: implemented by Codex, reviewed by Claude. |
 | B2 Compile status lines in compile_log.py | Done, v8.0.11: implemented by Codex, reviewed by Claude. Keeps the log text; not full structured events (smaller change, same effect on the duplication). |
+| B4 Copy-pasted helpers | Done, v8.0.12: implemented by Codex, reviewed by Claude. Atomic writes left separate (they differ in fsync, temp names and cleanup). |

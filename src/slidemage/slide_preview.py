@@ -12,7 +12,6 @@ duplicating them.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime
 import re
 import shutil
@@ -23,10 +22,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import compile_log, open_path
-from . import slide_snapshot
+from . import slide_language, slide_snapshot
 from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env
 from .deck_editor import VERSION_FILE_RE, format_call
 from .deck_scan import PROJECT_ROOT
+from .processes import no_console_kwargs
 from .preview_metrics import measure, record_line, finish_rules
 
 DECKS_DIR = PROJECT_ROOT / "decks"
@@ -272,7 +272,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
         if snapshot_template is not None:
             try:
                 slide_snapshot.capture_single_slide(
-                    dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
+                    dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
             except Exception as exc:
                 log(f"    (preview snapshot not updated: {exc})")
         log(compile_log.render_passed(id_slug, dest_pdf))
@@ -337,9 +337,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             str(rel_wrapper),
         ]
         env = build_env()
-        popen_kwargs: dict = {}
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        popen_kwargs: dict = no_console_kwargs()
 
         log(compile_log.rendering(id_slug, jobname))
         try:
@@ -408,7 +406,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                 # nomenclature") from every "Preview -> Render now" render,
                 # not just this project's own recently-touched slides.
                 slide_snapshot.capture_single_slide(
-                    dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
+                    dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
             except Exception as exc:
                 log(f"    (preview snapshot not updated: {exc})")
 

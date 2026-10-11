@@ -319,7 +319,7 @@ class SlideNotes:
     top of that slide's section (before its body text) so a reader gets
     oriented before the bullet points. Keyed by the same bare slide id
     used everywhere else (alt_blocks.scan_slides_raw()'s SlideRow.slide_id,
-    slide_snapshot.bare_id()) -- unlike ImageEntry, this has nothing to do
+    slide_language.bare_id()) -- unlike ImageEntry, this has nothing to do
     with any particular image, so it lives in its own top-level "slides"
     section of the same JSON file rather than inside `used_on`.
     """

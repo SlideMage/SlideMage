@@ -67,6 +67,7 @@ from .compile_records import (
     sha256 as _sha256,
 )
 from .deck_scan import PROJECT_ROOT, Deck
+from .processes import no_console_kwargs
 
 SNAPSHOTS_DIRNAME = "snapshots"
 SNAPSHOT_FORMAT = 1
@@ -245,16 +246,12 @@ def _dir_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
-def _popen_kwargs() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-
-
 def _run_text(cmd: list[str], cwd: Optional[Path] = None, any_exit_code: bool = False) -> str:
     """A command's stdout ("" if it can't run, or exits with an error unless
     `any_exit_code`) -- for version strings and kpsewhich lookups."""
     try:
         result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                                errors="replace", timeout=30, **_popen_kwargs())
+                                errors="replace", timeout=30, **no_console_kwargs())
     except (OSError, subprocess.SubprocessError):
         return ""
     return result.stdout if result.returncode == 0 or any_exit_code else ""
@@ -468,7 +465,7 @@ def run_recorded_compile(
     try:
         proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, errors="replace",
-                                bufsize=1, **_popen_kwargs())
+                                bufsize=1, **no_console_kwargs())
     except FileNotFoundError as exc:
         raise SnapshotError("latexmk not found on PATH -- is a TeX distribution installed?") from exc
     if cancel is not None:
@@ -799,7 +796,7 @@ def environment_differences(recorded: dict, current: dict) -> list[str]:
 def _git(root: Path, *args: str) -> Optional[str]:
     try:
         result = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
-                                text=True, errors="replace", timeout=30, **_popen_kwargs())
+                                text=True, errors="replace", timeout=30, **no_console_kwargs())
     except (OSError, subprocess.SubprocessError):
         return None
     return result.stdout if result.returncode == 0 else None

@@ -33,6 +33,7 @@ import shutil
 import subprocess
 
 from .preview_metrics import stage
+from .processes import no_console_kwargs
 
 SCHEMA = 2
 ENGINE = 'lualatex'
@@ -187,7 +188,7 @@ def _build(preamble, directory, *, project_root, env, fatal_error_re, log):
     cwd.mkdir(parents=True, exist_ok=True)
     cmd = [ENGINE, '-ini', '-recorder', '-interaction=nonstopmode', '-file-line-error',
            f'-jobname={NAME}', f'-output-directory={directory}', '&' + ENGINE, str(source)]
-    kwargs = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
+    kwargs = no_console_kwargs()
     log('==== Precompiling preamble (once per preamble) ====')
     with stage('format_build'):
         try:
