@@ -230,10 +230,24 @@ class SlideDelegate(QStyledItemDelegate):
         left = thumb.right() + 9
         meta_font = self._font(FONT_MONO, 10.5)
         painter.setFont(meta_font)
-        painter.setPen(view_color if current else QColor(t.text_3))
-        meta = QFontMetrics(meta_font).elidedText(
-            meta_text(row, self._state.language), Qt.TextElideMode.ElideRight, int(right - left))
-        painter.drawText(QRectF(left, rect.center().y() - 15, right - left, 14), Qt.AlignmentFlag.AlignVCenter, meta)
+        meta_color = view_color if current else QColor(t.text_3)
+        metrics = QFontMetrics(meta_font)
+        full_meta = meta_text(row, self._state.language)
+        meta = metrics.elidedText(full_meta, Qt.TextElideMode.ElideRight, int(right - left))
+        spans = [(meta, meta_color)]
+        if row.missing_translation:
+            warning = f"no {self._state.language}"
+            start = full_meta.index(warning)
+            if start < len(meta):
+                end = start + len(warning)
+                spans = [(meta[:start], meta_color), (meta[start:end], QColor(t.error)),
+                         (meta[end:], meta_color)]
+        meta_left = left
+        for text, color in spans:
+            painter.setPen(color)
+            painter.drawText(QRectF(meta_left, rect.center().y() - 15, right - meta_left, 14),
+                             Qt.AlignmentFlag.AlignVCenter, text)
+            meta_left += metrics.horizontalAdvance(text)
         title_font = self._font(FONT_SANS, 12.5, QFont.Weight.DemiBold if current else QFont.Weight.Normal)
         title_font.setStrikeOut(row.hidden)
         painter.setFont(title_font)

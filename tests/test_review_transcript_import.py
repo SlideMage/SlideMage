@@ -161,17 +161,22 @@ def test_resolve_deck_reports_missing_and_cyclic_includes(
 
 def test_shipped_manual_resolves_every_slide_in_both_student_versions(monkeypatch):
     # The SlideMage manual (the shipped demo deck since the ZZ* demo slides
-    # and test.tex/test-student.tex were retired): 78 slides, the \slidestep
+    # and test.tex/test-student.tex were retired): every current call, the \slidestep
     # demo 1mu at both of its places, none left out of a student version.
     repo_root = Path(__file__).resolve().parents[1]
     project_root = repo_root / "example"
     monkeypatch.setattr(transcript, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(transcript, "SLIDES_DIR", project_root / "slides")
 
+    from slidemage import deck_editor, deck_scan
+    deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
+    calls = [c for c in deck_editor.parse_slide_calls(deck) if not deck_editor.is_commented_out(deck.text, c)]
+
     for version in transcript.STUDENT_VERSIONS:
         slides = transcript.resolve_deck(
             project_root / "decks" / "slidemage-manual.tex", version
         )
         included = [slide for slide in slides if slide.included]
-        assert len(included) == len(slides) == 78
+        expected = sum(c.macro != 'slidestep' or not c.conditions or version in c.conditions for c in calls)
+        assert len(included) == len(slides) == expected
         assert [slide.slide_id for slide in included].count("1mu") == 2

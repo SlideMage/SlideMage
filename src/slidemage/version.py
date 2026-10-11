@@ -1946,6 +1946,8 @@ v7.0.0 (2026-10-11, direct instruction: BIG CHANGE 1, the language switch follow
 
 BREAKING: linked translations are one logical row and one typeset slot in SlideMage, even when older decks list both language calls. EN / DE now selects the file to edit as well as the render language. Existing deck and slide files need no migration. To typeset both linked files as separate bilingual slides, use independent, unlinked copies. An English pin does not pin the German translation; each slide has its own version history. Compiling raw deck source outside SlideMage retains its literal calls.
 
+v7.0.1 (2026-10-11, direct instruction): The slide list's "no DE" and "no EN" indicators use the app's red warning colour in both themes, including the focused row. The rest of the row keeps its usual colours.
+
 """
 from __future__ import annotations
 
@@ -1955,7 +1957,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v7.0.0"
+VERSION_NUMBER = "v7.0.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
