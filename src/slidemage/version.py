@@ -1960,6 +1960,8 @@ v8.0.2 (2026-10-11, code review fix A3): Slide calls with spaces or a line break
 
 v8.0.3 (2026-10-11, code review fix A2a): Slides in a fragment pulled into a deck with \\include (not only \\input) are resolved to the selected language when compiling, counted in the progress bar and checked by the lint.
 
+v8.0.4 (2026-10-11, code review fix A2b): Transcripts find a deck's slides as the compile does -- with the deck parser and the translation resolution -- instead of their own pattern. A German deck's transcript now describes the linked German slides the PDF shows, not the English originals; a translation partner the deck also calls explicitly is one entry (as in the PDF), not two; and slide calls inside \\iffalse...\\fi, verbatim or a \\note are no longer counted. Fragments are looked up as TeX does: from the deck's folder first, then the project folder.
+
 """
 from __future__ import annotations
 
@@ -1969,7 +1971,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.3"
+VERSION_NUMBER = "v8.0.4"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -220,13 +220,14 @@ def _delimited_group_end(text: str, open_index: int, opening: str, closing: str)
     return None
 
 
-def extract_note_calls(text: str) -> tuple[str, list[str]]:
+def extract_note_calls(text: str, *, mask: bool = False) -> tuple[str, list[str]]:
     r"""Remove Beamer \note commands with optional overlay/options.
 
     Supported forms include \note {...}, \note<2>{...}, and
     \note<2>[item]{...}. The argument uses the same nested-brace parser
     as other slide macros. Control-sequence tokenization avoids matching
     longer names such as \noteworthy or escaped/stringified examples.
+    With `mask=True`, replace notes with spaces while preserving offsets and newlines.
     """
     remainder: list[str] = []
     arguments: list[str] = []
@@ -260,6 +261,8 @@ def extract_note_calls(text: str) -> tuple[str, list[str]]:
             continue
 
         remainder.append(text[copied_through:found])
+        if mask:
+            remainder.append(re.sub(r"[^\n]", " ", text[found:after]))
         arguments.append(content)
         copied_through = after
         index = after

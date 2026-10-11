@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import alt_blocks, transcript
+from slidemage import alt_blocks, deck_language, deck_scan, slide_language, transcript
 
 
 def test_note_parser_removes_complete_commands_without_matching_literals():
@@ -68,6 +68,10 @@ def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(tmp_path:
             ("aaa", 1), ("ccc", 3), ("eee", 4)]
     assert [s.slide_id for s in transcript.resolve_deck(deck, "instructor") if s.included] == [
         "aaa", "ccc", "eee", "fff", "ggg"]
+    assert [(s.slide_id, s.number, s.included) for s in slides] == [
+        ("aaa", 1, True), ("bbb", 2, False), ("ccc", 3, True),
+        ("eee", 4, True), ("fff", 5, False), ("ggg", 6, False)]
+    assert slides[-1].path.name == "ggg-EN-Instructor-v1-0-0.tex"
     assert transcript.deck_version_of(r"\deckversion[]") == "instructor"
 
 
@@ -174,6 +178,10 @@ def test_resolve_deck_reports_missing_and_cyclic_includes(
     monkeypatch.setattr(transcript, "PROJECT_ROOT", project)
     monkeypatch.setattr(transcript, "SLIDES_DIR", project / "slides")
 
+    scanned = deck_scan.read_deck(deck)
+    # Compilation retains its existing permissive default.
+    assert deck_language.compile_deck(scanned, "EN")[0].text == scanned.text
+
     with pytest.raises(error_type, match=message):
         transcript.resolve_deck(deck, "during-course")
 
@@ -182,20 +190,129 @@ def test_shipped_manual_resolves_every_slide_in_both_student_versions(monkeypatc
     # The SlideMage manual (the shipped demo deck since the ZZ* demo slides
     # and test.tex/test-student.tex were retired): every current call, the \slidestep
     # demo 1mu at both of its places, none left out of a student version.
+    # Explicit language partners count only in their original logical slot.
     repo_root = Path(__file__).resolve().parents[1]
     project_root = repo_root / "example"
     monkeypatch.setattr(transcript, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(transcript, "SLIDES_DIR", project_root / "slides")
 
-    from slidemage import deck_editor, deck_scan
     deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
-    calls = [c for c in deck_editor.parse_slide_calls(deck) if not deck_editor.is_commented_out(deck.text, c)]
+    calls = [slot.call for slot in deck_language.deck_slots(
+        deck, transcript.deck_language_of(deck.text).upper())]
 
     for version in transcript.STUDENT_VERSIONS:
         slides = transcript.resolve_deck(
             project_root / "decks" / "slidemage-manual.tex", version
         )
         included = [slide for slide in slides if slide.included]
-        expected = sum(c.macro != 'slidestep' or not c.conditions or version in c.conditions for c in calls)
+        expected = sum(c.included_in(version) for c in calls)
         assert len(included) == len(slides) == expected
         assert [slide.slide_id for slide in included].count("1mu") == 2
+
+
+@pytest.fixture
+def translated_project(tmp_path: Path, monkeypatch):
+    (tmp_path / "decks").mkdir()
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    (slides / "aaa-EN-One-current.tex").write_text(
+        "%% DE translation: ddd-DE-Eins\n", encoding="utf-8")
+    (slides / "ddd-DE-Eins-current.tex").write_text(
+        "%% Translation of: aaa-EN-One\n", encoding="utf-8")
+    monkeypatch.setattr(transcript, "SLIDES_DIR", slides)
+    monkeypatch.setattr(slide_language, "SLIDES_DIR", slides)
+    return tmp_path
+
+
+@pytest.mark.parametrize("call", [r"\slide{aaa-EN-One}", r"\slideversion{aaa-EN-One}{1-0-0}"])
+@pytest.mark.parametrize("command", ["input", "include"])
+def test_resolve_german_deck_uses_linked_partner(translated_project: Path, call, command):
+    decks = translated_project / "decks"
+    (decks / "list.tex").write_text(call, encoding="utf-8")
+    deck = decks / "deck.tex"
+    deck.write_text(
+        r"\documentclass{beamer}\decklanguage[de]\begin{document}"
+        + rf"\{command}{{list}}" + r"\end{document}", encoding="utf-8")
+
+    slides = transcript.resolve_deck(deck, "after-course")
+
+    assert [(s.number, s.slide_id, s.path, s.included, s.chapter) for s in slides] == [
+        (1, "ddd", translated_project / "slides/ddd-DE-Eins-current.tex", True, 0)]
+
+
+@pytest.mark.parametrize(("language", "slide_id", "filename"), [
+    ("en", "aaa", "aaa-EN-One-current.tex"),
+    ("de", "ddd", "ddd-DE-Eins-current.tex"),
+])
+def test_resolve_deck_folds_explicit_partner_in_original_slot(
+    translated_project: Path, language, slide_id, filename
+):
+    deck = translated_project / "decks/deck.tex"
+    deck.write_text(
+        r"\documentclass{beamer}" + rf"\decklanguage[{language}]"
+        r"\begin{document}\section{First}\slide{aaa-EN-One}"
+        r"\section{Last}\slide{ddd-DE-Eins}\slide{bbb-EN-Two}\end{document}",
+        encoding="utf-8")
+
+    slides = transcript.resolve_deck(deck, "after-course")
+
+    assert [(s.number, s.slide_id, s.chapter) for s in slides] == [
+        (1, slide_id, 1), (2, "bbb", 2)]
+    assert slides[0].path == translated_project / "slides" / filename
+
+
+@pytest.mark.parametrize("inactive", [
+    "\\iffalse\n\\slide{bbb-EN-Hidden}\n\\fi\n",
+    "\\begin{verbatim}\n\\slide{bbb-EN-Hidden}\n\\end{verbatim}\n",
+    "% \\slide{bbb-EN-Hidden}\n",
+    r"\note{outer {\slide{bbb-EN-Hidden}}}",
+])
+def test_resolve_deck_ignores_inactive_and_note_calls(tmp_path: Path, inactive):
+    deck = tmp_path / "deck.tex"
+    deck.write_text(
+        r"\documentclass{beamer}\begin{document}\slide{aaa-EN-First}"
+        + inactive + r"\slide{ccc-EN-Last}\end{document}", encoding="utf-8")
+
+    scanned = deck_scan.read_deck(deck)
+    assert [c.id for c in deck_language.active_calls(scanned)] == ["aaa", "ccc"]
+    slides = transcript.resolve_deck(deck, "after-course")
+
+    assert [(s.number, s.slide_id) for s in slides] == [(1, "aaa"), (2, "ccc")]
+
+
+def test_resolve_deck_ignores_note_calls_and_includes_in_fragments(translated_project: Path):
+    decks = translated_project / "decks"
+    fragment = decks / "list.tex"
+    fragment.write_text(
+        "\\note<2>[item]{outer {\\slide{aaa-EN-One}}\n"
+        "\\input{missing-note-list}}\n\\slide{ddd-DE-Eins}\n", encoding="utf-8")
+    deck = decks / "deck.tex"
+    deck.write_text(
+        r"\documentclass{beamer}\decklanguage[de]\begin{document}"
+        r"\input{list}\end{document}", encoding="utf-8")
+
+    slides = transcript.resolve_deck(deck, "after-course")
+
+    assert [(s.number, s.slide_id) for s in slides] == [(1, "ddd")]
+    scanned = deck_scan.read_deck(deck)
+    resolved, _dependencies = deck_language.expand_fragments(scanned, strict_includes=True)
+    call, = deck_language.active_calls(resolved)
+    assert resolved.text[call.call_start:call.call_end] == r"\slide{ddd-DE-Eins}"
+    assert call.call_start > resolved.text.index(r"\input{missing-note-list}")
+
+
+def test_read_deck_accepts_fragments_without_changing_discovery(tmp_path: Path):
+    fragment = tmp_path / "fragment.tex"
+    text = "\\section{Body}\r\n\\slide{aaa-EN-One}\r\n"
+    fragment.write_bytes(text.encode())
+    wrapper = tmp_path / "_wrapper.tex"
+    wrapper.write_text(r"\documentclass{beamer}\begin{document}\end{document}")
+    deck = tmp_path / "deck.tex"
+    deck.write_bytes(wrapper.read_bytes())
+
+    read = deck_scan.read_deck(fragment, archived=True)
+
+    assert read.path == fragment and read.archived and read.text == text
+    assert read.preamble_end is None and read.chapters[0].title == "Body"
+    assert [d.path for d in deck_scan._scan_dir(tmp_path, False)] == [deck]
+    assert deck_scan.read_deck(wrapper).name == "_wrapper"

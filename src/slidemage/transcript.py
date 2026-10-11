@@ -19,16 +19,15 @@ Three requirements from the design, each of which is a correctness trap:
 """
 from __future__ import annotations
 
-import bisect
 import html as _html
 import itertools
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan
 from .deck_scan import PROJECT_ROOT, Deck
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -69,13 +68,6 @@ _ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 # other command it does NOT advance the frame counter when the version is not in [vs]:
 # two \slidestep calls at one position are alternatives, exactly one of which exists
 # in any given deck version (see \slidestep in Slidemaster_preamble_base.tex).
-_SLIDE_CALL_RE = re.compile(
-    r"\\slidestep\s*\{(?P<ss_id>[^}]*)\}(?:\s*\[(?P<ss_versions>[^\]]*)\])?\s*\{[^}]*\}"
-    r"|\\(?P<cmd>slidefinal|slideversion|slide|omitslideversion|omitslide"
-    r"|conditionalslide)\s*(?:\[(?P<versions>[^\]]*)\])?\s*\{(?P<id>[^}]*)\}"
-    r"(?:\s*\{(?P<second>[^}]*)\})?"
-)
-
 _SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
 _DECK_VERSION_RE = re.compile(r"\\deckversion\s*\[([^\]]*)\]")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
@@ -380,55 +372,27 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     -- so the numbers a transcript prints keep matching the numbers a student
     sees.
     """
-    source = deck_path.read_text(encoding="utf-8")
-    deck_dir = deck_path.parent.resolve()
-    text = _expand_literal_includes(source, deck_path, deck_dir, (deck_path.resolve(),))
+    deck = deck_scan.read_deck(deck_path)
+    language = deck_language_of(deck.text).upper()
+    # Preamble definitions and text after the document are not slide placements.
+    body = _document_body(deck.text)
+    deck = replace(deck, text=body, preamble_end=0)
+    deck, _dependencies = deck_language.expand_fragments(deck, strict_includes=True)
     slides: list[DeckSlide] = []
     number = 0
-    section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
 
-    for match in _SLIDE_CALL_RE.finditer(text):
-        chapter = bisect.bisect_left(section_starts, match.start())
-        if match.group("ss_id") is not None:
-            step_id = match.group("ss_id").strip()
-            if not step_id or version not in _versions_from(match.group("ss_versions"), _ALL_VERSIONS):
-                continue
-            number += 1
-            slides.append(DeckSlide(
-                number=number,
-                slide_id=step_id.partition("-")[0],
-                path=SLIDES_DIR / f"{step_id}-current.tex",
-                included=True,
-                chapter=chapter,
-            ))
-            continue
-        command = match.group("cmd")
-        slide_id = match.group("id").strip()
-        if not slide_id:
+    for slot in deck_language.deck_slots(deck, language):
+        call = slot.call
+        included = call.included_in(version)
+        if call.macro == "slidestep" and not included:
             continue
         number += 1
-
-        if command in ("omitslide", "omitslideversion"):
-            included = version == VERSION_INSTRUCTOR
-        elif command == "conditionalslide":
-            included = version in _versions_from(match.group("versions"),
-                                                 _ALL_VERSIONS)
-        else:
-            included = True
-
-        if command == "slideversion" and match.group("second"):
-            filename = f"{slide_id}-v{match.group('second').strip()}.tex"
-        elif command == "omitslideversion" and match.group("second"):
-            filename = f"{slide_id}-v{match.group('second').strip()}.tex"
-        else:
-            filename = f"{slide_id}-current.tex"
-
         slides.append(DeckSlide(
             number=number,
-            slide_id=slide_id.partition("-")[0],
-            path=SLIDES_DIR / filename,
+            slide_id=call.id,
+            path=SLIDES_DIR / call.source_filename,
             included=included,
-            chapter=chapter,
+            chapter=call.chapter.order if call.chapter else 0,
         ))
     return slides
 

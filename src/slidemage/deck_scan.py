@@ -283,6 +283,36 @@ def parse_open_pdf(text: str) -> str | None:
     return value if value in OPEN_PDF_CHOICES else None
 
 
+def read_deck(path: Path, archived: bool = False) -> Deck:
+    """Read one deck or body fragment, preserving its literal line endings."""
+    # newline="" passes CRLF through untouched, matching every other
+    # reader in this package (archive.py, slide_source.py, ...) --
+    # without it, Path.read_text()'s universal-newlines default silently
+    # normalizes this project's CRLF files to bare "\n", so deck.text
+    # never byte-matches archive._read()'s raw re-read of the same file
+    # in deck_editor.py's stale-file check, which then raises
+    # StaleFileError on every single edit, even immediately after a
+    # fresh restart.
+    with open(path, encoding="utf-8", errors="replace", newline="") as f:
+        text = f.read()
+    doc_begin_match = DOCUMENT_BEGIN_RE.search(text)
+    return Deck(
+        name=path.stem,
+        path=path,
+        archived=archived,
+        text=text,
+        supports_version=bool(DECKVERSIONOVERRIDE_RE.search(text)),
+        uses_biblatex=bool(ADDBIBRESOURCE_RE.search(text)),
+        preamble_end=doc_begin_match.end() if doc_begin_match else None,
+        chapters=_parse_chapters(text),
+        output_folders=_parse_output_folders(text),
+        tags=parse_tags(text),
+        course_url=parse_course_url(text),
+        appendix_toc=parse_appendix_toc(text),
+        open_pdf=parse_open_pdf(text),
+    )
+
+
 def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
     decks: list[Deck] = []
     if not directory.is_dir():
@@ -291,36 +321,10 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
         if path.name.startswith("_"):
             continue  # SlideMage's / compile-all-versions.bat's own
             # generated wrapper files, never a real deck
-        # newline="" passes CRLF through untouched, matching every other
-        # reader in this package (archive.py, slide_source.py, ...) --
-        # without it, Path.read_text()'s universal-newlines default silently
-        # normalizes this project's CRLF files to bare "\n", so deck.text
-        # never byte-matches archive._read()'s raw re-read of the same file
-        # in deck_editor.py's stale-file check, which then raises
-        # StaleFileError on every single edit, even immediately after a
-        # fresh restart.
-        with open(path, encoding="utf-8", errors="replace", newline="") as f:
-            text = f.read()
-        if not DOCUMENTCLASS_RE.search(text):
+        deck = read_deck(path, archived)
+        if not DOCUMENTCLASS_RE.search(deck.text):
             continue  # a fragment (e.g. test-slides.tex), not a deck
-        doc_begin_match = DOCUMENT_BEGIN_RE.search(text)
-        decks.append(
-            Deck(
-                name=path.stem,
-                path=path,
-                archived=archived,
-                text=text,
-                supports_version=bool(DECKVERSIONOVERRIDE_RE.search(text)),
-                uses_biblatex=bool(ADDBIBRESOURCE_RE.search(text)),
-                preamble_end=doc_begin_match.end() if doc_begin_match else None,
-                chapters=_parse_chapters(text),
-                output_folders=_parse_output_folders(text),
-                tags=parse_tags(text),
-                course_url=parse_course_url(text),
-                appendix_toc=parse_appendix_toc(text),
-                open_pdf=parse_open_pdf(text),
-            )
-        )
+        decks.append(deck)
     return decks
 
 

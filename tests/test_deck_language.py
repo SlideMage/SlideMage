@@ -302,3 +302,29 @@ def test_header_sync_lists_decks_that_use_a_partner_implicitly(project, monkeypa
     deck_headers.regenerate_headers()
     assert "%% Included in decks: course" in (project / "slides/ddd-DE-Eins-current.tex").read_text()
     assert d.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("location", ["deck", "project", "fragment"])
+@pytest.mark.parametrize("command", ["input", "include"])
+def test_fragment_expansion_keeps_compiler_sources_and_tex_lookup_order(project, location, command):
+    nested = project / "decks/nested"
+    nested.mkdir()
+    fragment = nested / "list.tex"
+    fragment.write_text(rf"\{command}{{choice}}" + "\n")
+    candidates = [project / "decks/choice.tex", project / "choice.tex", nested / "choice.tex"]
+    locations = ["deck", "project", "fragment"]
+    for title, path in zip(locations, candidates):
+        if locations.index(title) >= locations.index(location):
+            path.write_text(rf"\section{{{title}}}\slide{{bbb-EN-Two}}" + "\n")
+    d = deck(project, "\\slide{ccc-mult-Three}\n" + rf"\{command}{{nested/list}}" + "\n")
+
+    expanded, dependencies = deck_language.expand_fragments(d, strict_includes=True)
+    calls = deck_language.active_calls(expanded)
+
+    assert [(c.id, c.chapter.title if c.chapter else None) for c in calls] == [
+        ("ccc", None), ("bbb", location)]
+    assert set(dependencies) == {fragment, candidates[locations.index(location)]}
+    resolved, dependencies = deck_language.compile_deck(d, "EN")
+    assert resolved is d and dependencies == []
+    wrapper = compiler._wrapper_text(compiler.CompileJob(d, "after-course", None))
+    assert r"\input{course.tex}" in wrapper and r"\slide{bbb-EN-Two}" not in wrapper

@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 import re
 
-from . import deck_editor, slide_language
+from . import alt_blocks, deck_editor, slide_language
 from .deck_editor import SlideCall
 from .deck_scan import Deck
 
@@ -143,7 +143,7 @@ def _masked(text: str) -> str:
     from . import latex_lint
     for pattern in (latex_lint._VERBATIM_ENV_RE, latex_lint._IFFALSE_RE, latex_lint._VERB_RE):
         text = pattern.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
-    return latex_lint._masked_same_length(text)
+    return alt_blocks.extract_note_calls(latex_lint._masked_same_length(text), mask=True)[0]
 
 
 def active_calls(deck: Deck) -> list[SlideCall]:
@@ -177,12 +177,13 @@ def resolved_text(deck: Deck, language: str) -> str:
     return text
 
 
-def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
-    """Resolve calls in local body fragments too, without rewriting their files.
+def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck, list[Path]]:
+    """Expand local body fragments without rewriting their files.
 
     Only fragments containing slide calls are expanded. Their original files
     are returned as compile-record dependencies, because TeX reads the inline
-    copy instead of opening them itself.
+    copy instead of opening them itself. `strict_includes` raises for missing
+    literal includes and cycles instead of leaving them for TeX.
     """
     from . import latex_lint
     from .deck_scan import _parse_chapters
@@ -193,10 +194,18 @@ def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
         edits = []
         for match in latex_lint._INPUT_RE.finditer(_masked(text)):
             name = match.group(1).strip()
+            if not name or "\\" in name or "#" in name:
+                continue  # Macro-valued paths require TeX expansion.
             name = name if name.endswith(".tex") else name + ".tex"
-            candidates = (directory / name, deck.path.parent / name, deck.path.parent.parent / name)
+            candidates = (deck.path.parent / name, deck.path.parent.parent / name, directory / name)
             path = next((p for p in candidates if p.is_file()), None)
-            if path is None or path.resolve() in seen:
+            if path is None:
+                if strict_includes:
+                    raise FileNotFoundError(f"Literal deck include {name!r} from {directory} was not found.")
+                continue
+            if path.resolve() in seen:
+                if strict_includes:
+                    raise ValueError(f"Deck include cycle detected at {path}")
                 continue
             # Themes, media and slide sources keep their normal input behavior.
             if not path.resolve().is_relative_to(deck.path.parent.parent.resolve()):
@@ -217,7 +226,17 @@ def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
         return deck, []
     expanded = deck.preamble_text + expand(deck.text[deck.preamble_end:], deck.path.parent,
                                          frozenset({deck.path.resolve()}))
-    candidate = replace(deck, text=expanded, chapters=_parse_chapters(expanded))
+    return replace(deck, text=expanded, chapters=_parse_chapters(expanded)), sorted(set(dependencies))
+
+
+def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
+    """Resolve calls, inlining fragments only when language resolution changes them."""
+    from .deck_scan import _parse_chapters
+
+    if deck.preamble_end is None:
+        return deck, []
+    candidate, dependencies = expand_fragments(deck)
+    expanded = candidate.text
     resolved = resolved_text(candidate, language)
     links = _Links()
     header_inputs = {links.paths[slide_id] for slot in deck_slots(candidate, language)
