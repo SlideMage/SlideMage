@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import alt_blocks, deck_editor, project, slide_add, slide_ids, slide_import
+from slidemage import alt_blocks, deck_editor, project, slide_add, slide_ids, slide_import, slide_versioning
 from slidemage.ai.providers import ChatReply, ProviderError
 
 from conftest import TEMPLATE, use_new_slide_files
@@ -132,6 +132,26 @@ def test_a_translation_is_linked_both_ways(files, relinked):
     assert relinked == [True]
     translated = slide_add.create_copy("abc-EN-Demo", "Demo-2", "DE", body="Text auf Deutsch\r\n")
     assert translated.path.read_bytes().decode("utf-8").endswith("\r\n\r\nText auf Deutsch\r\n")
+
+
+@pytest.mark.parametrize("language", [None, "DE"])
+@pytest.mark.parametrize("supplied_body", [False, True])
+def test_copies_start_untracked_like_new_slides_without_changing_the_source_body(files, language, supplied_body):
+    source = files / "abc-EN-Demo-current.tex"
+    source_body = "\\setSlideVersion{1-1-0}\r\nText\r\n"
+    source_bytes = (slide_ids.build_new_slide_header() + source_body).encode("utf-8")
+    source.write_bytes(source_bytes)
+    new = slide_add.create_new("New", "EN")
+    copied = slide_add.create_copy("abc-EN-Demo", "Copy", language,
+                                   body=source_body if supplied_body else None)
+
+    assert slide_versioning.parse_version(new.path.read_text()) is None
+    assert slide_versioning.parse_version(copied.path.read_text()) is None
+    assert slide_ids.slide_body(copied.path) == "Text\r\n"
+    assert slide_ids.slide_body(source) == source_body
+    assert slide_versioning.parse_version(source.read_text()) == (1, 1, 0)
+    if language is None:
+        assert source.read_bytes() == source_bytes
 
 
 def test_the_languages_a_slide_can_be_translated_into(files):

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename
+from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename, slide_versioning
 from .ai.providers import ChatProvider
 from .slide_import import escape_latex
 
@@ -95,6 +95,8 @@ def create_copy(
     source = slide_path(source_id_slug)
     if body is None:
         body = slide_ids.slide_body(source)
+    # A fresh id starts its own version history, just like a template-seeded slide.
+    body = slide_versioning.strip_marker(body)
     if language is None:
         return _create(slug, slide_language.own_language(source_id_slug) or "EN", body)
     created = _create(slug, language, body, translation_of=source_id_slug)

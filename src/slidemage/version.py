@@ -1988,6 +1988,8 @@ v8.0.16 (2026-10-11, code review cleanup C2): Internal: the three deck views are
 
 v8.0.17 (2026-10-11, code review fix C3): The language badges ("EN + DE"), the Language panel and the preview's "translation outdated" notice find a slide's translation partner by the same rules as the slide list, preview and compile -- also when the link is recorded on only one of the two slides, and not at all when two translations claim the same original. Before, they read only the slide's own first header comment and could disagree.
 
+v8.0.18 (2026-10-11, code review fix C4): A translation or duplicate of a slide starts its own version history like any new slide (no version until its first tracked save, counted from 1.0.0); before, it carried over the original's \\setSlideVersion, e.g. a German translation of a slide at 1.1.0 started at 1.1.0.
+
 """
 from __future__ import annotations
 
@@ -1998,7 +2000,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.17"
+VERSION_NUMBER = "v8.0.18"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
