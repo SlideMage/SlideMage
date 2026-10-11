@@ -2285,10 +2285,14 @@ class SlideSourceTab(QWidget):
                 deck_version=deck_version, deck_language=deck_language,
                 footer_timestamp=footer_timestamp, presenter=presenter, log=log,
             )
+            slide_preview.open_pdf(pdf_path)
         except RuntimeError as exc:
             log(f"*** Render failed: {exc} ***")
-        else:
-            slide_preview.open_pdf(pdf_path)
+        except Exception as exc:  # noqa: BLE001 -- any other failure must still end the render
+            # 2026-10-11: an OSError (a locked build file) used to kill this
+            # thread without a word -- no PASS/FAIL line, so the status bar
+            # kept showing the render as running ("SlideMage gets stuck").
+            log(f"*** FAIL: render of {id_slug} -- unexpected error: {exc!r} ***")
         finally:
             self.app.signals.enable_button.emit(self.render_button)
 

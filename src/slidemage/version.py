@@ -1953,6 +1953,12 @@ v5.35.6 (2026-10-11, direct report: "When I select a different view in the Image
 NEW: Fixed: the "Show:" and "Sort:" dropdowns on the Images tab no longer jump to another slide.
 - Choosing another view in "Show:" (or another deck in "Sort:") keeps you on the slide you are working on whenever that slide is still in the list, with its translation and unsaved edits intact.
 - When the chosen view would no longer list your slide while a translation is running, you are asked "Switch anyway?" first, as when you click another slide; answering No puts the dropdown back.
+
+v5.35.7 (2026-10-11, direct report: "When compiling individual slides multiple times, SlideMage often gets stuck", with a log that ends with latexmk's last line and no "==== PASS" line): the compile itself had finished (four passes, "All targets are up-to-date"); what failed was the cleanup after it. .build/ still held the files of those preview jobs (a .fls, .log, .nav ... each), i.e. deleting or moving a file there raised PermissionError (WinError 32 -- a freshly written file in the cloud-synced folder, still open in the sync client or lualatex), an OSError that the render thread (qt_slide_source_tab._render_bg(), which only caught RuntimeError) let kill it without a log line, so the status bar went on showing the render as running. slide_preview._compile_and_extract() now copies the finished PDF out (retrying while the file is locked), deletes the job's build files best-effort (retrying; a file that stays locked is reported and swept by a later render once it is an hour old) and never fails a finished render over them; _render_bg() ends every failure with a "*** FAIL: render of ... ***" line. Tests in tests/test_slide_preview_cleanup.py. Not changed: every render still leaves its PDF in its own folder under %TEMP%\slidemage_preview_*.
+
+NEW: Fixed: single-slide renders no longer get stuck after the compile.
+- A render whose build files are still locked for a moment (cloud sync, antivirus) now finishes normally instead of silently hanging in the status bar; leftovers in .build/ are cleaned up by a later render.
+- Any other unexpected error during a render is shown as a failed render.
 """
 from __future__ import annotations
 
@@ -1962,7 +1968,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.6"
+VERSION_NUMBER = "v5.35.7"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

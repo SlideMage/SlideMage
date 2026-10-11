@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Callable, Optional
@@ -30,6 +31,59 @@ from .deck_scan import PROJECT_ROOT
 DECKS_DIR = PROJECT_ROOT / "decks"
 
 LogCallback = Callable[[str], None]
+
+# A file just written by latexmk/lualatex can stay locked for a moment on
+# Windows (the cloud-sync client and the search indexer open new files in a
+# synced project folder; lualatex's own handle on the .fls/.synctex files may
+# outlive latexmk by a few ms). Deleting or moving it then raises
+# PermissionError (WinError 32).
+_LOCK_RETRIES = 8
+_LOCK_RETRY_DELAY = 0.25
+# Leftovers of earlier previews that never got cleaned up are swept once they
+# are this old (seconds).
+_STALE_PREVIEW_AGE = 3600
+
+
+def _retry_on_lock(action: Callable[[], None]) -> bool:
+    """Run `action`, retrying while the OS reports the file is locked.
+    True when it eventually worked, False when it never did (the caller
+    decides whether that matters)."""
+    for attempt in range(_LOCK_RETRIES):
+        try:
+            action()
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            if attempt + 1 < _LOCK_RETRIES:
+                time.sleep(_LOCK_RETRY_DELAY)
+    return False
+
+
+def _remove_build_files(jobname: str) -> int:
+    """Delete every .build/<jobname>.* file; returns how many stayed behind.
+    Never raises: a build file that cannot be deleted right now is not a
+    reason to fail a render that has already succeeded."""
+    left = 0
+    for aux in BUILD_DIR.glob(f"{jobname}.*"):
+        if not _retry_on_lock(lambda aux=aux: aux.unlink(missing_ok=True)):
+            left += 1
+    return left
+
+
+def _sweep_stale_previews() -> None:
+    """Best-effort removal of .build/preview-* files left behind by renders
+    that were interrupted (or whose cleanup hit a locked file)."""
+    cutoff = time.time() - _STALE_PREVIEW_AGE
+    try:
+        for stale in BUILD_DIR.glob("preview-*.*"):
+            try:
+                if stale.stat().st_mtime < cutoff:
+                    stale.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 # Standalone preamble for previewing a slide with no owning deck context
 # (the slide-source editor's own "Render to PDF" button) -- same
@@ -332,7 +386,7 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     except FileNotFoundError:
         raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")
     finally:
-        wrapper_path.unlink(missing_ok=True)
+        _retry_on_lock(lambda: wrapper_path.unlink(missing_ok=True))
 
     log_path = BUILD_DIR / f"{jobname}.log"
     build_pdf_path = BUILD_DIR / f"{jobname}.pdf"
@@ -358,9 +412,20 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     # title/taskbar entry.
     out_dir = Path(tempfile.mkdtemp(prefix="slidemage_preview_"))
     dest_pdf = out_dir / f"{id_slug}.pdf"
-    shutil.move(str(build_pdf_path), str(dest_pdf))
-    for aux in BUILD_DIR.glob(f"{jobname}.*"):
-        aux.unlink(missing_ok=True)
+    try:
+        # Not shutil.move(): a locked source makes its copy-then-delete
+        # fallback fail after the copy, and the PDF is what matters here.
+        if not _retry_on_lock(lambda: shutil.copyfile(build_pdf_path, dest_pdf)):
+            raise OSError(f"could not read {build_pdf_path}")
+    except OSError as exc:
+        log(f"*** FAIL: render of {id_slug} -- the finished PDF could not be "
+            f"copied out of .build/ ({exc}) ***")
+        raise RuntimeError(f"Render failed for {id_slug}: {exc}") from exc
+    left = _remove_build_files(jobname)
+    if left:
+        log(f"    ({left} build file(s) of this render could not be deleted yet "
+            f"-- they will be swept with a later render)")
+    _sweep_stale_previews()
 
     if snapshot_template is not None:
         try:
