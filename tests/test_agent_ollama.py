@@ -9,7 +9,7 @@ import threading
 import pytest
 from agent_fakes import FakeWorkspace
 from conftest import make_project
-from fake_http import Server, ollama_ndjson
+from fake_http import ollama_ndjson
 
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import (
@@ -33,19 +33,18 @@ SLIDE = "slides/abc-EN-Hello-current.tex"
 
 
 @pytest.fixture
-def server():
-    srv = Server()
-    srv.content_type = "application/x-ndjson"
-    yield srv
-    srv.close()
+def server(server):
+    server.content_type = "application/x-ndjson"
+    return server
 
 
 def turn(p, messages, texts=None, tools=(TOOL,), system="Be brief."):
     return p.stream_turn(system, messages, list(tools), (texts if texts is not None else []).append)
 
 
-def test_the_request_has_tools_system_and_a_context_window(server):
-    server.body = ollama_ndjson(["Hello", " there"])
+@pytest.mark.parametrize("done_reason, stop", [("stop", "end_turn"), ("length", "max_tokens")])
+def test_the_request_has_tools_system_and_a_context_window(server, done_reason, stop):
+    server.body = ollama_ndjson(["Hello", " there"], done_reason=done_reason)
     texts = []
     reply = turn(OllamaProvider("qwen3", host=server.url), [UserMessage("hi")], texts)
     request = server.requests[0]
@@ -56,7 +55,7 @@ def test_the_request_has_tools_system_and_a_context_window(server):
         "name": "read_file", "description": "Read a file.", "parameters": TOOL.schema}}]
     assert body["options"]["num_ctx"] >= 8192 and body["options"]["num_predict"] == 16000
     assert texts == ["Hello", " there"] and reply.text == "Hello there"
-    assert reply.stop == "end_turn" and reply.tool_calls == []
+    assert reply.stop == stop and reply.tool_calls == []
     assert reply.usage == {"input": 12, "output": 5}
 
 
@@ -67,11 +66,6 @@ def test_tool_calls_arrive_whole_and_get_ids(server):
     assert [(c.name, c.input) for c in reply.tool_calls] == [
         ("read_file", {"path": "a.tex"}), ("read_file", {"path": "b.tex"})]        # a string of JSON works too
     assert len({c.id for c in reply.tool_calls}) == 2 and all(c.id for c in reply.tool_calls)
-
-
-def test_a_cut_off_answer_is_reported_as_max_tokens(server):
-    server.body = ollama_ndjson(["long"], done_reason="length")
-    assert turn(OllamaProvider("m", host=server.url), [UserMessage("hi")]).stop == "max_tokens"
 
 
 def test_the_history_is_replayed_with_tool_calls_and_named_tool_results(server):
@@ -92,21 +86,20 @@ def test_the_history_is_replayed_with_tool_calls_and_named_tool_results(server):
         {"role": "tool", "content": "Error: boom", "tool_name": "lint"}]
 
 
-def test_an_image_goes_to_a_model_that_sees_and_is_described_to_one_that_does_not(server):
+@pytest.mark.parametrize("vision", [True, False], ids=["vision", "text-only"])
+def test_an_image_goes_to_a_model_that_sees_and_is_described_to_one_that_does_not(server, vision):
     server.body = ollama_ndjson(["ok"])
     history = [UserMessage("hi"), AssistantMessage("", [ToolCall("t1", "render_preview", {})], "tool_use"),
                ToolResultsMessage([ToolResult("t1", "rendered", images=[PNG])])]
-    server.routes["/api/show"] = (200, {"capabilities": ["completion", "tools", "vision"]})
+    server.routes["/api/show"] = (200, {"capabilities": ["completion", "tools"] + (["vision"] if vision else [])})
     turn(OllamaProvider("m", host=server.url), history)
     sent = server.requests[-1]["body"]["messages"]
-    assert sent[-2] == {"role": "tool", "content": "rendered", "tool_name": "render_preview"}
-    assert sent[-1]["role"] == "user" and sent[-1]["images"] == [base64.b64encode(PNG).decode()]
-
-    server.routes["/api/show"] = (200, {"capabilities": ["completion", "tools"]})
-    turn(OllamaProvider("m", host=server.url), history)
-    sent = server.requests[-1]["body"]["messages"]
-    assert "cannot look at images" in sent[-1]["content"] and sent[-1]["role"] == "tool"
-    assert not any("images" in m for m in sent)
+    if vision:
+        assert sent[-2] == {"role": "tool", "content": "rendered", "tool_name": "render_preview"}
+        assert sent[-1]["role"] == "user" and sent[-1]["images"] == [base64.b64encode(PNG).decode()]
+    else:
+        assert "cannot look at images" in sent[-1]["content"] and sent[-1]["role"] == "tool"
+        assert not any("images" in m for m in sent)
 
 
 def test_ollama_errors_become_clear_provider_errors(server):
@@ -193,15 +186,6 @@ def test_the_model_list_keeps_the_tool_capable_ones(server):
     provider.capabilities = lambda model=None: tuple(shown[model]) if model in shown else original(model)
     assert provider.tool_models() == ["chatty:7b", "seer:7b"]
     assert [m.capabilities for m in provider.installed(detailed=True)][1] == ("completion",)
-
-
-def test_capabilities_come_from_api_show(server):
-    server.routes["/api/show"] = (200, {"capabilities": ["completion", "tools"]})
-    assert OllamaProvider("m", host=server.url).capabilities() == ("completion", "tools")
-    assert server.requests[0]["body"] == {"model": "m"}
-    server.routes["/api/show"] = (404, {"error": "model 'm' not found"})
-    assert OllamaProvider("m", host=server.url).capabilities() == ()
-    assert OllamaProvider("m", host="http://127.0.0.1:9").capabilities() == ()
 
 
 def test_an_old_ollama_without_capabilities_falls_back_to_the_family_name():

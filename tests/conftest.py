@@ -215,6 +215,22 @@ def make_project(monkeypatch, root):
     return root.resolve()
 
 
+@pytest.fixture
+def root(tmp_path, monkeypatch):
+    """The shared throwaway project for agent tools, MCP and the Claude hook."""
+    return make_project(monkeypatch, tmp_path / "project")
+
+
+@pytest.fixture
+def server():
+    """A local provider API; streaming tests override its content type."""
+    from fake_http import Server
+
+    srv = Server()
+    yield srv
+    srv.close()
+
+
 def wait_until(condition, seconds=5.0):
     """Wait for background work while keeping Qt signals and events moving."""
     from PySide6.QtWidgets import QApplication

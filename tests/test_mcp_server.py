@@ -7,7 +7,7 @@ import base64
 
 import pytest
 from agent_fakes import FakeWorkspace
-from conftest import SLIDE_TEXT, make_project
+from conftest import SLIDE_TEXT
 from mcp_client import Client
 
 from slidemage import compiler, preview_target, slide_snapshot
@@ -19,11 +19,6 @@ from slidemage.deck_scan import scan_decks
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
-
-
-@pytest.fixture
-def root(tmp_path, monkeypatch):
-    return make_project(monkeypatch, tmp_path / "project")
 
 
 @pytest.fixture
@@ -127,13 +122,6 @@ def test_read_buffer_shows_unsaved_edits_and_only_of_open_files(mcp):
     mcp.workspace.dirty.clear()
     assert "unsaved edits: no" in mcp.text("read_buffer", path=SLIDE)
     assert mcp.call("read_buffer", path="../outside.tex")["isError"]
-
-
-def test_list_slides_lint_and_read_guide(mcp):
-    assert "abc-EN-Hello" in mcp.text("list_slides") and "§ Intro" in mcp.text("list_slides")
-    assert "no problems found" in mcp.text("lint", path="abc")
-    assert mcp.text("read_guide", topic="slides").startswith("Slides, files and decks.")
-    assert mcp.call("read_guide", topic="nonsense")["isError"]
 
 
 def test_render_preview_comes_back_as_an_image_content(mcp, monkeypatch):

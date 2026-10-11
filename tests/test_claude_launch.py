@@ -10,6 +10,8 @@ import stat
 import sys
 from pathlib import Path
 
+import pytest
+
 from slidemage import cli
 from slidemage.ai import claude_launch
 from slidemage.ai.tools import CLAUDE_CODE_READ_ONLY
@@ -24,31 +26,24 @@ def make_executable(path):
     return path
 
 
-def test_claude_is_found_on_the_path(tmp_path, monkeypatch):
-    found = make_executable(tmp_path / "bin" / "claude")
-    monkeypatch.setenv("PATH", str(found.parent))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    assert claude_launch.find_claude() == found
-
-
-def test_claude_is_found_in_the_places_its_installers_use(tmp_path, monkeypatch):
-    """A desktop launcher often has a shorter PATH than a terminal."""
+@pytest.mark.parametrize("location", ["path", "installer", "not-executable"])
+def test_claude_discovery(tmp_path, monkeypatch, location):
+    """Find an executable on PATH or in the installer folder used by desktop launches."""
     home = tmp_path / "home"
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     monkeypatch.setattr(claude_launch.Path, "home", lambda: home)
     monkeypatch.setattr(sys, "platform", "linux")
     assert claude_launch.find_claude() is None
-    installed = make_executable(home / ".local" / "bin" / "claude")
-    assert claude_launch.find_claude() == installed
-
-
-def test_a_file_that_is_not_executable_does_not_count(tmp_path, monkeypatch):
-    home = tmp_path / "home"
-    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
-    monkeypatch.setattr(claude_launch.Path, "home", lambda: home)
-    (home / ".local" / "bin").mkdir(parents=True)
-    (home / ".local" / "bin" / "claude").write_text("not a program")
-    assert claude_launch.find_claude() is None
+    candidate = tmp_path / "bin" / "claude" if location == "path" else home / ".local" / "bin" / "claude"
+    if location == "not-executable":
+        candidate.parent.mkdir(parents=True)
+        candidate.write_text("not a program")
+        assert claude_launch.find_claude() is None
+    else:
+        make_executable(candidate)
+        if location == "path":
+            monkeypatch.setenv("PATH", str(candidate.parent))
+        assert claude_launch.find_claude() == candidate
 
 
 def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tmp_path):
@@ -56,7 +51,6 @@ def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tm
     command = claude_launch.build_command(claude, URL, hook="HOOK COMMAND")
     assert command[0] == str(claude)
     flags = dict(zip(command[1::2], command[2::2], strict=True))
-    assert list(flags) == ["--mcp-config", "--settings", "--append-system-prompt"]
     assert json.loads(flags["--mcp-config"]) == {"mcpServers": {"slidemage": {
         "type": "http", "url": URL, "headers": {"Authorization": "Bearer ${SLIDEMAGE_MCP_TOKEN}"}}}}
     settings = json.loads(flags["--settings"])

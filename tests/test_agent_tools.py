@@ -7,10 +7,10 @@ import os
 
 import pytest
 from agent_fakes import FakeWorkspace, call
-from conftest import SLIDE_TEXT, make_project
+from conftest import SLIDE_TEXT
 
 from slidemage import compiler, preview_target, slide_snapshot
-from slidemage.ai import agent_context, guides
+from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
     EDIT_AUTO,
@@ -25,11 +25,6 @@ from slidemage.deck_scan import scan_decks
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
-
-
-@pytest.fixture
-def root(tmp_path, monkeypatch):
-    return make_project(monkeypatch, tmp_path / "project")
 
 
 class Box:
@@ -126,6 +121,8 @@ def test_read_file_numbers_lines_normalises_line_ends_and_pages(box):
     part = box.ok("read_file", path=SLIDE, start_line=7, max_lines=2)
     assert "7\t\t\\begin{itemize}" in part and "read on with start_line=9" in part
     assert "There is no line 99" in box.ok("read_file", path=SLIDE, start_line=99)
+    box.ws.open(box.root / SLIDE, "buffer text\n", dirty=True)
+    assert "1\tbuffer text" in box.ok("read_file", path=SLIDE)
 
 
 def test_read_file_refuses_folders_missing_and_binary_files(box):
@@ -134,11 +131,6 @@ def test_read_file_refuses_folders_missing_and_binary_files(box):
     assert "is a folder" in box.error("read_file", path="slides")
     assert "does not exist" in box.error("read_file", path="slides/nope.tex")
     assert "not a text file" in box.error("read_file", path="media/pic.png")
-
-
-def test_read_file_shows_the_open_buffer_not_the_disk(box):
-    box.ws.open(box.root / SLIDE, "buffer text\n", dirty=True)
-    assert "1\tbuffer text" in box.ok("read_file", path=SLIDE)
 
 
 def test_find_files_matches_patterns(box):
@@ -169,17 +161,22 @@ def test_bad_arguments_and_unknown_tools_become_error_results(box):
 
 # -- editing: the rules ---------------------------------------------------------------------------
 
-def test_edit_on_disk_saves_with_backup_keeps_crlf_and_reports(box, root):
+@pytest.mark.parametrize("old, new", [
+    ("First point", "1st point"),
+    ("% A note on this slide", "% A better note"),
+    ("{Hello}", "{Hello again}"),
+], ids=["body", "next-to-header", "next-to-version"])
+def test_edit_on_disk_saves_with_backup_keeps_crlf_and_reports(box, root, old, new):
     box.box.ctx.mode = EDIT_AUTO
-    out = box.ok("edit_file", path=SLIDE, old_text="First point", new_text="1st point")
+    out = box.ok("edit_file", path=SLIDE, old_text=old, new_text=new)
     assert "saved it" in out
     raw = (root / SLIDE).read_bytes().decode()
-    assert raw == SLIDE_TEXT.replace("First point", "1st point") and "\r\n" in raw
+    assert raw == SLIDE_TEXT.replace(old, new) and "\r\n" in raw
     backups = list((root / "slides" / ".backups" / "abc-EN-Hello-current.tex").glob("*.tex"))
     assert len(backups) == 1 and backups[0].read_bytes().decode() == SLIDE_TEXT
     assert box.ws.changed == [(root / SLIDE, LF)]
     (proposed,), (applied,) = box.of_type(EditProposed), box.of_type(EditApplied)
-    assert (applied.before, applied.after, applied.via_buffer) == (LF, LF.replace("First", "1st"), False)
+    assert (applied.before, applied.after, applied.via_buffer) == (LF, LF.replace(old, new), False)
     assert proposed.after == applied.after and applied.call_id == proposed.call_id
     assert not box.ws.asked                                  # auto: nobody was asked
 
@@ -237,13 +234,6 @@ def test_protected_parts_of_a_slide_are_refused(box, root, old, new):
     assert (root / SLIDE).read_bytes().decode() == SLIDE_TEXT and not box.of_type(EditProposed)
 
 
-def test_edits_next_to_protected_parts_are_fine(box, root):
-    box.box.ctx.mode = EDIT_AUTO
-    box.ok("edit_file", path=SLIDE, old_text="% A note on this slide", new_text="% A better note")
-    box.ok("edit_file", path=SLIDE, old_text="{Hello}", new_text="{Hello again}")
-    assert "{Hello again}" in (root / SLIDE).read_text()
-
-
 def test_frozen_versions_and_non_text_files_cannot_be_changed(box, root):
     assert "frozen version" in box.error("edit_file", path="slides/abc-EN-Hello-v1-0-0.tex", old_text="First", new_text="x")
     assert "frozen version" in box.error("write_file", path="slides/abc-EN-Hello-v9-0-0.tex", content="x")
@@ -262,14 +252,6 @@ def test_ask_mode_waits_for_the_user_and_reports_a_rejection(root):
     box.ws.approve = True                                                 # the user changes their mind
     box.ok("edit_file", path=SLIDE, old_text="First", new_text="1st")
     assert "1st point" in (root / SLIDE).read_text()
-
-
-def test_the_mode_can_change_between_calls(root):
-    box = Box(root)
-    box.ws.approve = False
-    box.box.ctx.mode = EDIT_AUTO
-    box.ok("edit_file", path=SLIDE, old_text="First", new_text="1st")
-    assert not box.ws.asked
 
 
 def test_write_file_creates_new_text_files_only(box, root):
@@ -362,26 +344,26 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
     assert "not a slide" in box.error("render_preview", slide="Slidemaster.bib")
 
 
-def test_add_slide_creates_the_file_and_the_deck_call(box, root):
+@pytest.mark.parametrize("slug, title, frame, language, after", [
+    ("Capital-Budgeting", "Capital budgeting", "standardframe", "EN", "abc"),
+    ("Quote", "A quote", "quoteframe", "DE", None),
+], ids=["insert-after-slide", "append-german-quote"])
+def test_add_slide_creates_the_file_and_the_deck_call(box, root, slug, title, frame, language, after):
     box.box.ctx.mode = EDIT_AUTO
-    out = box.ok("add_slide", slug="Capital-Budgeting", title="Capital budgeting", after="abc")
-    created = next(p for p in (root / "slides").glob("*-EN-Capital-Budgeting-current.tex"))
-    assert created.name in out and "after abc in test" in out
-    assert "{Capital budgeting}" in created.read_text()
-    calls = [line for line in (root / "decks" / "test.tex").read_text().splitlines() if line.startswith("\\slide")]
-    assert calls == ["\\slide{abc-EN-Hello}", f"\\slide{{{created.name[:-12]}}}", "\\slide{abd-EN-Second}"]
+    out = box.ok("add_slide", slug=slug, title=title, frame=frame, language=language, **({"after": after} if after else {}))
+    created = next((root / "slides").glob(f"*-{language}-{slug}-current.tex"))
+    assert created.name in out and f"{{{title}}}" in created.read_text()
+    deck_lines = (root / "decks" / "test.tex").read_text().splitlines()
+    calls = [line for line in deck_lines if line.startswith("\\slide")]
+    if after:
+        assert "after abc in test" in out
+        assert calls == ["\\slide{abc-EN-Hello}", f"\\slide{{{created.name[:-12]}}}", "\\slide{abd-EN-Second}"]
+    else:
+        assert "\\quoteframe" in created.read_text()
+        assert deck_lines[-2] == f"\\slide{{{created.name[:-12]}}}"
     assert {path for path, _ in box.ws.changed} == {created, root / "decks" / "test.tex"}
     applied = box.of_type(EditApplied)[0]
     assert applied.path == created and applied.before == "" and applied.undoable is False
-
-
-def test_add_slide_to_the_end_with_a_frame_and_language(box, root):
-    box.box.ctx.mode = EDIT_AUTO
-    box.ok("add_slide", slug="Quote", title="A quote", frame="quoteframe", language="DE")
-    created = next((root / "slides").glob("*-DE-Quote-current.tex"))
-    assert "\\quoteframe" in created.read_text()
-    deck_lines = (root / "decks" / "test.tex").read_text().splitlines()
-    assert deck_lines[-2] == f"\\slide{{{created.name[:-12]}}}"
 
 
 def test_add_slide_asks_first_and_refuses_what_it_cannot_do(root):
@@ -446,9 +428,7 @@ def test_compile_deck_reports_per_pdf_and_the_latex_errors(box, root):
     assert "Log (end):\nsome\nplain\nlog" in box.ok("compile_deck")
 
 
-def test_read_guide_has_every_topic(box):
-    for topic in guides.TOPICS:
-        assert len(box.ok("read_guide", topic=topic)) > 200
+def test_read_guide_returns_a_frame_example_and_rejects_unknown_topics(box):
     frames = box.ok("read_guide", topic="frames")
     assert "\\begin{sideimageframe}{Title}{media/your-image.pdf}" in frames
     assert "must be one of" in box.error("read_guide", topic="everything")

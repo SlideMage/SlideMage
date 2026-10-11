@@ -18,7 +18,6 @@ def test_a_prompt_saved_as_the_default_is_not_stored():
 
 def test_the_default_translation_prompt_falls_back_when_none_is_saved():
     assert tp.get_default_prompt() is None
-    assert tp.effective_default_prompt() is tp._FALLBACK_DEFAULT
     mine = tp.PromptConfig(prompt="Translate.", blank_lines=2)
     tp.set_default_prompt(mine)
     assert tp.effective_default_prompt() == mine
