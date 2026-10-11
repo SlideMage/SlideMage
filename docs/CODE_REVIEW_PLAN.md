@@ -101,3 +101,22 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | C4 Translation versions | Done, v8.0.18: implemented by Codex, reviewed by Claude. The pinned-version display part was dropped (the documented contract stays). C5 dropped: a cleanup action would add code without removing the folding. |
 | D3 Release history in CHANGELOG.md | Done, v8.0.19: implemented by Codex, reviewed by Claude; all 216 entries and the release notes verified identical. |
 | D4 palette.py / D5a missing notes references / D6 lint rules | Done, v8.0.20: implemented by Codex, reviewed by Claude. Template move, preview-wrapper move, docs sorting and comment rewrites deliberately not done (see summary). |
+| D5b Tests on a copy of example/ | Done (tests only, no version bump): implemented by Codex, reviewed by Claude; a full run leaves example/ untouched. |
+
+## Not done, and why
+
+- C5 (Housekeeping action to remove explicit partner calls): adds code without letting the folding go.
+- C6 ("Included in decks" headers): needs a decision -- removing them rewrites every slide file of every
+  project (opt-in compat update with backups) and ends a long-standing convention. Recommended: remove;
+  nothing in the app reads them.
+- C7 (deck version -> view in the code): high churn, no behaviour or size gain.
+- D1 (project paths object) and D2 (subpackages): large refactors that need a design decision; no
+  user-visible bug depends on them.
+- D4 template move and preview wrappers out of decks/: risk without enough gain (A6 covers the real problem).
+- D5 sorting docs/: open, uncommitted edits in docs/; do it after committing them.
+- D6 comment rewrites: needs a judgment per comment block; a bulk pass would lose real rationale.
+- D7 (typed host interface for the window mixins): low value; the attributes are documented.
+- Found on the way, not fixed: the opt-in real-compile test of the manual's deck snapshot
+  (SLIDEMAGE_TEX_TESTS=1, test_real_snapshot_of_manual) fails before and after these changes; the
+  verification compile references a file by an absolute path into the repository. Likely the import-time
+  project root (D1) leaking into the test; not investigated further.

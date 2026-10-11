@@ -1,10 +1,24 @@
+import atexit
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "example"
+# project.py imports nothing else from the package, so this is safe before the variable below is set.
+from slidemage.project import _ignore_template_build_output
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SESSION_DIR = Path(tempfile.mkdtemp(prefix="slidemage-tests-"))
+atexit.register(shutil.rmtree, _SESSION_DIR, ignore_errors=True)
+EXAMPLE = _SESSION_DIR / "example"
+shutil.copytree(_REPO_ROOT / "example", EXAMPLE, ignore=_ignore_template_build_output)
 
 # Must be set before any slidemage module computes PROJECT_ROOT at import.
 os.environ["SLIDEMASTER_PROJECT"] = str(EXAMPLE)
+# Both .latexmkrc files and preview discovery honor this; no framework copy or
+# symlink is needed, including on Windows where symlinks may need privileges.
+os.environ["SLIDEMASTER_LATEX"] = str(_REPO_ROOT / "latex")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
