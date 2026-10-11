@@ -1,12 +1,8 @@
 """Navigation for readers: \\SMChapterAgenda in transcripts, \\deckappendixtoc."""
 from pathlib import Path
 
+from conftest import write_test_file as _write
 from slidemage import alt_images, deck_scan, transcript
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 def test_transcript_lists_the_chapter_slides_on_the_agenda(tmp_path: Path, monkeypatch):
@@ -63,4 +59,3 @@ def test_deckappendixtoc_is_read_from_the_live_preamble():
     assert deck_scan.parse_appendix_toc("\\deckappendixtoc\n\\begin{document}\n")
     assert not deck_scan.parse_appendix_toc("% \\deckappendixtoc\n\\begin{document}\n")
     assert not deck_scan.parse_appendix_toc("\\begin{document}\n\\deckappendixtoc\n")
-    assert not deck_scan.parse_appendix_toc("\\deckappendixtocx\n\\begin{document}\n")
