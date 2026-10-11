@@ -1,18 +1,12 @@
 """The About sheet: the release history of version.py, and the license."""
 from __future__ import annotations
 
-import pytest
 from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import QApplication, QPlainTextEdit
+from PySide6.QtWidgets import QPlainTextEdit
 
 from slidemage import app_info
 from slidemage import version as version_mod
 from slidemage.ui.dialogs.about import AboutSheet
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def test_summary_is_the_first_sentence_or_a_cut_at_a_word():
@@ -23,22 +17,20 @@ def test_summary_is_the_first_sentence_or_a_cut_at_a_word():
     assert cut.endswith("…") and len(cut) <= app_info.SUMMARY_MAX_CHARS + 1 and " …" not in cut
 
 
-def test_sheet_has_the_history_newest_first_and_the_license(qapp):
+def test_sheet_shows_history_license_and_expands_an_entry(qapp):
     sheet = AboutSheet()
     html = sheet.browser.toHtml()
     newest = version_mod.parse_history()[-1].version
     assert version_mod.VERSION in html and newest in html
+    # Regression: the license used to be looked up in the project folder.
+    assert "Slidemaster" in app_info.license_text()
     assert "Slidemaster" in sheet.findChild(QPlainTextEdit).toPlainText()
-
-
-def test_a_toggle_link_expands_one_entry_in_place(qapp):
-    # The newest entry with something to collapse (a short entry gets no toggle).
-    index = next(i for i, e in enumerate(reversed(version_mod.parse_history()))
-                 if app_info.summary(e.description) != e.description)
-    sheet = AboutSheet()
-    assert sheet._expanded == set() and f"toggle:{index}" in sheet._build_html()
-    sheet._on_anchor_clicked(QUrl(f"toggle:{index}"))
-    assert sheet._expanded == {index} and "[show less]" in sheet._build_html()
-    sheet._on_anchor_clicked(QUrl(f"toggle:{index}"))
-    assert sheet._expanded == set()
-    sheet._on_anchor_clicked(QUrl("https://example.org"))      # other links do nothing
+    entries = list(reversed(version_mod.parse_history()))
+    index = next(i for i, e in enumerate(entries) if app_info.summary(e.description) != e.description)
+    description = entries[index].description
+    assert f"toggle:{index}" in html and description not in sheet.browser.toPlainText()
+    sheet.browser.anchorClicked.emit(QUrl(f"toggle:{index}"))
+    assert description in sheet.browser.toPlainText() and "[show less]" in sheet.browser.toPlainText()
+    sheet.browser.anchorClicked.emit(QUrl(f"toggle:{index}"))
+    assert description not in sheet.browser.toPlainText()
+    sheet.browser.anchorClicked.emit(QUrl("https://example.org"))

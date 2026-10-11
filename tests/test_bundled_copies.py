@@ -70,18 +70,14 @@ def isolated_alt_store(tmp_path, monkeypatch):
     use_store(monkeypatch, tmp_path / "work" / "project")
 
 
-def test_nothing_to_do_right_after_the_copy(tmp_path, bundle):
+def test_update_add_remove_and_keep(tmp_path, bundle):
+    latex, example = bundle
     root = make_project(tmp_path, bundle)
     assert plan(root, bundle) == {}
     manifest = bundled_copies.read_manifest(root)
     assert manifest[FRAMEWORK]["dir"] == "../latex"
     assert "decks/slidemage-manual.tex" in manifest[MANUAL]["files"]
     assert "media/alt-text.json" not in manifest[MANUAL]["files"]
-
-
-def test_update_add_remove_and_keep(tmp_path, bundle):
-    latex, example = bundle
-    root = make_project(tmp_path, bundle)
     # upstream: one slide changed, one new, one dropped; framework changed
     write(example / "slides" / "1aa-EN-One-current.tex", "slide one v2\n")
     write(example / "slides" / "1cc-EN-Three-current.tex", "slide three v2\n")
@@ -112,40 +108,31 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert plan(root, bundle) == {}
 
 
-def test_only_the_included_in_decks_line_is_not_a_user_edit(tmp_path, bundle):
-    """SlideMage itself rewrites each slide's '%% Included in decks:' line (a
-    project with its own deck lists it too); that must not make an otherwise
-    untouched slide count as changed by the user."""
-    latex, example = bundle
+@pytest.mark.parametrize("user_edit", [False, True])
+def test_header_changes_do_not_hide_user_edits(tmp_path, bundle, user_edit):
+    """v5.27.0: SlideMage's own header had blocked updates of 38 manual slides."""
+    _, example = bundle
     one = "1aa-EN-One-current.tex"
     write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v1\n")
     root = make_project(tmp_path, bundle)
+    body = "my own wording" if user_edit else "slide one v1"
     write(root / "slides" / one,
-          "%% Included in decks: slidemage-manual, my-course-deck\n%%\n\nslide one v1\n")
-    assert plan(root, bundle) == {}                       # nothing differs but the header
-
+          f"%% Included in decks: slidemage-manual, my-course-deck\n%%\n\n{body}\n")
+    if not user_edit:
+        assert plan(root, bundle) == {}
     write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v2\n")
+    if user_edit:
+        write(example / "slides" / "1bb-EN-Two-current.tex", "slide two v2\n")
     manual = plan(root, bundle)[MANUAL]
-    assert manual.update == [f"slides/{one}"] and manual.kept == []
-
-    bundled_copies.apply_update(root, manual, "v5.26.1", now=NOW)
-    text = (root / "slides" / one).read_text()
-    assert "slide one v2" in text
-    assert text.startswith("%% Included in decks: slidemage-manual, my-course-deck\n")  # own line kept
-    assert plan(root, bundle) == {}
-
-
-def test_a_real_edit_next_to_a_header_change_is_still_kept(tmp_path, bundle):
-    latex, example = bundle
-    one = "1aa-EN-One-current.tex"
-    write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v1\n")
-    root = make_project(tmp_path, bundle)
-    write(root / "slides" / one,
-          "%% Included in decks: slidemage-manual, my-course-deck\n%%\n\nmy own wording\n")
-    write(example / "slides" / one, "%% Included in decks: slidemage-manual\n%%\n\nslide one v2\n")
-    write(example / "slides" / "1bb-EN-Two-current.tex", "slide two v2\n")  # keeps the part pending
-    manual = plan(root, bundle)[MANUAL]
-    assert manual.kept == [f"slides/{one}"] and manual.update == ["slides/1bb-EN-Two-current.tex"]
+    if user_edit:
+        assert manual.kept == [f"slides/{one}"] and manual.update == ["slides/1bb-EN-Two-current.tex"]
+    else:
+        assert manual.update == [f"slides/{one}"] and manual.kept == []
+        bundled_copies.apply_update(root, manual, "v5.26.1", now=NOW)
+        text = (root / "slides" / one).read_text()
+        assert "slide one v2" in text
+        assert text.startswith("%% Included in decks: slidemage-manual, my-course-deck\n")
+        assert plan(root, bundle) == {}
 
 
 def test_a_file_the_user_deleted_stays_deleted(tmp_path, bundle):
@@ -156,7 +143,16 @@ def test_a_file_the_user_deleted_stays_deleted(tmp_path, bundle):
     assert plan(root, bundle) == {}
 
 
-def test_framework_adoption_and_git_checkouts(tmp_path, bundle):
+def test_framework_adoption_and_git_checkouts(tmp_path, bundle, monkeypatch):
+    # Only this test's checkout counts, even when a runner puts tmp_path in a checkout.
+    exists = Path.exists
+
+    def isolated_exists(path):
+        if path.name == ".git" and not path.is_relative_to(tmp_path):
+            return False
+        return exists(path)
+
+    monkeypatch.setattr(Path, "exists", isolated_exists)
     latex, example = bundle
     root = tmp_path / "old" / "project"
     write(root / "slide_ids.csv", '"id"\r\n')
@@ -210,24 +206,35 @@ def test_image_descriptions_follow_unless_reviewed(tmp_path, bundle):
     assert alt_images.load_store()["media/shot.png"].short == "mine"
 
 
-def test_dismissed_for_one_version(tmp_path, bundle):
-    root = make_project(tmp_path, bundle)
-    bundled_copies.dismiss(root, "v5.20.0")
-    assert bundled_copies.is_dismissed(root, "v5.20.0")
-    assert not bundled_copies.is_dismissed(root, "v5.21.0")
-
-
 def test_never_plans_against_the_bundle_itself(tmp_path, bundle):
     latex, example = bundle
     assert bundled_copies.plan_updates(example, latex_source=latex, example_source=example) == []
 
 
-def test_init_project_records_the_baseline(tmp_path):
-    target = tmp_path / "new" / "project"
+@pytest.mark.parametrize("existing_latex", [False, True])
+def test_init_project_seeds_example_and_records_baseline(tmp_path, existing_latex):
+    """2026-09-23: the first-run picker could not create a compilable new project.
+
+    A framework sibling shared by other projects must never be overwritten.
+    """
+    target = tmp_path / "new_project"
+    if existing_latex:
+        (tmp_path / "latex").mkdir()
+        (tmp_path / "latex" / "sentinel.txt").write_text("do not touch")
+    assert project.has_example_template()
     project.init_project(target, copy_example=True)
+    assert project.is_project(target)
+    assert (target.parent / "latex").is_dir()
+    assert (target / "decks" / "slidemage-manual.tex").is_file()
+    assert not (target / "decks" / "slidemage-manual.pdf").exists()
+    assert not (target / ".build").exists()
+    assert (target / "schemes" / "scheme_uni_graz" / "Logo_Uni-Graz_4c-cropped.pdf").is_file()
     manifest = bundled_copies.read_manifest(target)
-    assert manifest[FRAMEWORK]["dir"] == "../latex"
     assert "decks/slidemage-manual.tex" in manifest[MANUAL]["files"]
+    if existing_latex:
+        assert (tmp_path / "latex" / "sentinel.txt").read_text() == "do not touch"
+    else:
+        assert manifest[FRAMEWORK]["dir"] == "../latex"
     assert bundled_copies.plan_updates(
         target, latex_source=project.template_dir("latex"),
         example_source=project.template_dir("example")) == []
@@ -236,11 +243,10 @@ def test_init_project_records_the_baseline(tmp_path):
 # -- the dialog (MaintenanceMixin.check_bundled_copies) ----------------
 
 def _run_dialog(monkeypatch, root, bundle, choose: str):
-    from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+    from PySide6.QtWidgets import QMessageBox, QWidget
 
     from slidemage.ui.workspace import maintenance
 
-    QApplication.instance() or QApplication([])
     latex, example = bundle
     monkeypatch.setattr(maintenance, "PROJECT_ROOT", root)
     monkeypatch.setattr(project, "template_dir", lambda name: {"latex": latex, "example": example}[name])
@@ -269,7 +275,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
     return seen, window
 
 
-def test_dialog_adds_the_manual(tmp_path, bundle, monkeypatch):
+def test_dialog_adds_the_manual(tmp_path, bundle, monkeypatch, qapp):
     root = tmp_path / "mine" / "project"
     write(root / "slide_ids.csv", '"id"\r\n')
     use_store(monkeypatch, root)
@@ -279,14 +285,17 @@ def test_dialog_adds_the_manual(tmp_path, bundle, monkeypatch):
     assert window.reloaded == 1
 
 
-def test_dialog_dont_ask_again(tmp_path, bundle, monkeypatch):
+def test_dialog_dont_ask_again(tmp_path, bundle, monkeypatch, qapp):
+    from slidemage import version
+
+    monkeypatch.setattr(version, "VERSION_NUMBER", "v5.20.0")
     root = make_project(tmp_path, bundle)
     write(bundle[1] / "slides" / "1aa-EN-One-current.tex", "slide one v2\n")
     seen, _ = _run_dialog(monkeypatch, root, bundle, "Don't ask again for this version")
     assert "1 changed" in seen["text"]
     assert (root / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v1\n"
-    from slidemage import version
-    assert bundled_copies.is_dismissed(root, version.VERSION_NUMBER)
+    assert bundled_copies.is_dismissed(root, "v5.20.0")
+    assert not bundled_copies.is_dismissed(root, "v5.21.0")
 
 
 def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):

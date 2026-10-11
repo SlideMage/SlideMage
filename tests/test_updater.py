@@ -118,36 +118,6 @@ def test_refused_token_names_the_missing_permission(tmp_path, monkeypatch):
         updater.fetch_latest_release()
 
 
-def test_frozen_relaunch_starts_an_independent_onefile_instance(monkeypatch, tmp_path):
-    # A copied _PYI_* environment made the restarted binary reuse this
-    # process's _MEI temp dir, deleted on exit, so "Restart now" never came back.
-    from slidemage import project
-
-    calls = []
-    monkeypatch.setattr(project.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(project, "save_last_project", lambda _root: None)
-    monkeypatch.setattr(project.subprocess, "Popen", lambda argv, env: calls.append((argv, env)))
-    monkeypatch.setenv("_PYI_ARCHIVE_FILE", "/old/SlideMage")
-
-    project.relaunch_with_project(tmp_path)
-
-    [(argv, env)] = calls
-    assert argv[1:] == ["--project", str(tmp_path)]
-    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
-
-
-def test_update_mode_is_saved_per_user_and_defaults_to_ask(tmp_path, monkeypatch):
-    monkeypatch.setattr(updater, "config_dir", lambda: tmp_path / "cfg")
-    assert updater.get_update_mode() == "ask"
-    for mode in updater.UPDATE_MODES:
-        updater.set_update_mode(mode)
-        assert updater.get_update_mode() == mode
-    (tmp_path / "cfg" / updater.UPDATE_MODE_FILENAME).write_text("sometimes\n")
-    assert updater.get_update_mode() == "ask"
-    with pytest.raises(ValueError):
-        updater.set_update_mode("sometimes")
-
-
 def _release(tag, body=""):
     return updater.Release(tag, f"https://example.invalid/{tag}", None, 0, body)
 

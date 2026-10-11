@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from slidemage import cli, project
 
 
@@ -16,7 +18,11 @@ def _write(root, data):
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def test_missing_file_is_written(tmp_path, monkeypatch):
+@pytest.mark.parametrize("previous", [None, "v4.0.0"])
+def test_project_format_is_recorded_and_upgraded(tmp_path, monkeypatch, previous):
+    if previous is not None:
+        _write(tmp_path, {"format": project.PROJECT_FORMAT - 1, "last_app_version": previous})
+
     def no_dialog(*_args):
         raise AssertionError("no dialog expected")
 
@@ -24,15 +30,7 @@ def test_missing_file_is_written(tmp_path, monkeypatch):
     assert cli.check_project_format(tmp_path, "v4.1.0")
     assert _info(tmp_path) == {
         "format": project.PROJECT_FORMAT, "last_app_version": "v4.1.0",
-        "highest_app_version": "v4.1.0", "compat": {"checked_version": "v4.1.0"}}
-
-
-def test_older_format_is_brought_up_to_date(tmp_path):
-    _write(tmp_path, {"format": project.PROJECT_FORMAT - 1, "last_app_version": "v4.0.0"})
-    assert cli.check_project_format(tmp_path, "v4.1.0")
-    assert _info(tmp_path) == {
-        "format": project.PROJECT_FORMAT, "last_app_version": "v4.1.0",
-        "highest_app_version": "v4.1.0", "compat": {"checked_version": "v4.0.0"}}
+        "highest_app_version": "v4.1.0", "compat": {"checked_version": previous or "v4.1.0"}}
 
 
 def test_newer_format_asks_and_is_left_alone(tmp_path, monkeypatch):

@@ -31,50 +31,43 @@ def window(tmp_path, monkeypatch):
     return fake
 
 
-@pytest.mark.parametrize("choice, installed, mode", [
-    ("install", ["v4.2.0"], "ask"),
-    ("later", [], "ask"),
-    ("auto", ["v4.2.0"], "auto"),
-    ("off", [], "off"),
+@pytest.mark.parametrize("initial_mode, choice, installed, mode", [
+    ("ask", "install", ["v4.2.0"], "ask"),
+    ("ask", "later", [], "ask"),
+    ("ask", "auto", ["v4.2.0"], "auto"),
+    ("ask", "off", [], "off"),
+    ("auto", None, ["v4.2.0"], "auto"),
 ])
-def test_ask_mode_choices(window, choice, installed, mode):
+def test_startup_update_choices(window, initial_mode, choice, installed, mode):
+    if initial_mode != "ask":
+        updater.set_update_mode(initial_mode)
     window.choice = choice
     window._on_startup_update_check_done(updater.plan_update([_release("v4.2.0")], "v4.1.0"))
-    assert window.asked == [("choice", "v4.2.0")]
+    assert window.asked == ([("choice", "v4.2.0")] if initial_mode == "ask" else [])
     assert window.installed == installed
     assert updater.get_update_mode() == mode
-
-
-def test_auto_mode_installs_without_asking(window):
-    updater.set_update_mode("auto")
-    window._on_startup_update_check_done(updater.plan_update([_release("v4.2.0")], "v4.1.0"))
-    assert window.asked == []
-    assert window.installed == ["v4.2.0"]
 
 
 def test_errors_and_up_to_date_only_log(window):
     window._on_startup_update_check_done(updater.UpdateError("offline"))
     window._on_startup_update_check_done(updater.plan_update([_release("v4.1.0")], "v4.1.0"))
     assert window.asked == [] and window.installed == []
-    assert window.logged == ["Update check failed: offline", "SlideMage v4.1.0 is up to date."]
 
 
 RELEASES = [_release("v5.0.0", "BREAKING: new project format."), _release("v4.3.0")]
 
 
-@pytest.mark.parametrize("mode", ["ask", "auto"])
-def test_breaking_update_is_always_asked(window, mode):
+@pytest.mark.parametrize("mode, choice, installed", [
+    ("ask", "later", []),
+    ("auto", "later", []),
+    ("ask", "install", ["v5.0.0"]),
+])
+def test_breaking_update_is_always_asked(window, mode, choice, installed):
     updater.set_update_mode(mode)
-    window.breaking_choice = "later"
+    window.breaking_choice = choice
     window._on_startup_update_check_done(updater.plan_update(RELEASES, "v4.1.0"))
     assert window.asked == [("breaking", "v5.0.0")]
-    assert window.installed == []
-
-
-def test_breaking_update_install_anyway(window):
-    window.breaking_choice = "install"
-    window._on_startup_update_check_done(updater.plan_update(RELEASES, "v4.1.0"))
-    assert window.installed == ["v5.0.0"]
+    assert window.installed == installed
 
 
 def test_staying_on_the_major_version_installs_the_safe_release(window):

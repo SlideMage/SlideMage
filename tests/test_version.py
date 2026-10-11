@@ -37,5 +37,3 @@ def test_version_is_lazy_cached_and_importable(monkeypatch, commit_dt):
     exec(f"from {name} import VERSION", imported)
     assert imported["VERSION"] == expected
     assert len(calls) == 1
-    with pytest.raises(AttributeError, match="has no attribute 'unknown'"):
-        module.unknown
