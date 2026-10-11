@@ -63,6 +63,7 @@ from pathlib import Path
 
 from . import alt_blocks
 from .deck_scan import PROJECT_ROOT
+from .tex_source import COMMENT_RE
 
 STORE_PATH = PROJECT_ROOT / "media" / "alt-text.json"
 FORMAT_VERSION = 2
@@ -685,7 +686,7 @@ def slide_context_hash(slide_path: Path) -> str:
     nothing describing an image lives in the slide file at all now.
     """
     text = slide_path.read_text(encoding="utf-8")
-    stripped = alt_blocks.COMMENT_RE.sub("", text)
+    stripped = COMMENT_RE.sub("", text)
     normalized = "\n".join(
         line.strip() for line in stripped.splitlines() if line.strip()
     )

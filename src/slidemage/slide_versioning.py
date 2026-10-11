@@ -28,7 +28,7 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
-from .deck_scan import is_commented
+from .tex_source import is_commented
 
 Version = tuple[int, int, int]
 BumpLevel = Literal["major", "minor", "patch"]

@@ -32,6 +32,7 @@ from typing import Optional, Protocol
 from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .deck_scan import PROJECT_ROOT
+from .tex_source import COMMENT_RE
 
 # Formats Ollama's vision path can read directly.
 DRAFTABLE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
@@ -296,7 +297,7 @@ def build_context(slide_path: Path, reference: str) -> SlideContext:
     stronger guarantee than instructing the model not to repeat them.
     """
     source_text = slide_path.read_text(encoding="utf-8")
-    stripped = alt_blocks.COMMENT_RE.sub("", source_text)
+    stripped = COMMENT_RE.sub("", source_text)
 
     slide_id, title = alt_blocks._slide_title(source_text, slide_path)
 

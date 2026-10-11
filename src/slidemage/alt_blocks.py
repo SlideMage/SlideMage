@@ -17,13 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from .deck_scan import PROJECT_ROOT
-
-# Same approximation deck_headers.py's neighbours use: an unescaped "%"
-# through end of line, "unescaped" taken as "not immediately preceded by a
-# single backslash". The classic even/odd-backslash case ("\\%") is not
-# handled -- see source_editor.py's COMMENT_RE for the full reasoning; it
-# matters even less here, where the result is only ever hashed or scanned.
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
+from .tex_source import COMMENT_RE
 
 INCLUDEGRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
 

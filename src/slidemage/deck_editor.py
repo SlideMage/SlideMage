@@ -28,7 +28,6 @@ from urllib.parse import urlsplit
 
 from .archive import _read, _write
 from .deck_scan import (
-    COMMENT_RE,
     COURSE_URL_RE,
     DOCUMENT_BEGIN_LINE_RE,
     DOCUMENT_END_RE,
@@ -38,8 +37,8 @@ from .deck_scan import (
     _parse_chapters,
     SECTION_RE,
     find_decktags,
-    is_commented,
 )
+from .tex_source import COMMENT_RE, is_commented
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 

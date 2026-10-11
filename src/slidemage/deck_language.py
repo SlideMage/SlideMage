@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import SimpleNamespace
 import re
 
 from . import alt_blocks, deck_editor, slide_language
 from .deck_editor import SlideCall
-from .deck_scan import Deck
+from .deck_scan import Chapter, Deck
+from .tex_source import IFFALSE_RE, INPUT_RE, VERBATIM_ENV_RE, VERB_RE, masked_same_length
 
 
 def _header(id_slug: str, path: Path | None = None) -> str:
@@ -139,16 +141,22 @@ def slots(calls: list[SlideCall], language: str, *, slides_dir: Path | None = No
             for c in calls if c.id not in owners]
 
 
-def _masked(text: str) -> str:
-    from . import latex_lint
-    for pattern in (latex_lint._VERBATIM_ENV_RE, latex_lint._IFFALSE_RE, latex_lint._VERB_RE):
+def masked(text: str) -> str:
+    """Blank verbatim, inactive blocks, comments and notes, preserving offsets."""
+    for pattern in (VERBATIM_ENV_RE, IFFALSE_RE, VERB_RE):
         text = pattern.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
-    return alt_blocks.extract_note_calls(latex_lint._masked_same_length(text), mask=True)[0]
+    return alt_blocks.extract_note_calls(masked_same_length(text), mask=True)[0]
+
+
+def calls_in(text: str, chapters: list[Chapter]) -> list:
+    """Slide calls with only comments masked, preserving offsets and chapters."""
+    shim = SimpleNamespace(text=masked_same_length(text), chapters=chapters)
+    return deck_editor.parse_slide_calls(shim)  # type: ignore[arg-type]
 
 
 def active_calls(deck: Deck) -> list[SlideCall]:
     """Executable calls, with original character offsets and chapter objects."""
-    return deck_editor.parse_slide_calls(replace(deck, text=_masked(deck.text)))
+    return deck_editor.parse_slide_calls(replace(deck, text=masked(deck.text)))
 
 
 def deck_slots(deck: Deck, language: str) -> list[SlideSlot]:
@@ -185,14 +193,13 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
     copy instead of opening them itself. `strict_includes` raises for missing
     literal includes and cycles instead of leaving them for TeX.
     """
-    from . import latex_lint
     from .deck_scan import _parse_chapters
 
     dependencies: list[Path] = []
 
     def expand(text: str, directory: Path, seen: frozenset[Path]) -> str:
         edits = []
-        for match in latex_lint._INPUT_RE.finditer(_masked(text)):
+        for match in INPUT_RE.finditer(masked(text)):
             name = match.group(1).strip()
             if not name or "\\" in name or "#" in name:
                 continue  # Macro-valued paths require TeX expansion.
@@ -213,7 +220,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
             with path.open(encoding="utf-8", errors="replace", newline="") as file:
                 fragment = file.read()
             expanded = expand(fragment, path.parent, seen | {path.resolve()})
-            if not deck_editor.SLIDE_CALL_RE.search(_masked(expanded)):
+            if not deck_editor.SLIDE_CALL_RE.search(masked(expanded)):
                 continue
             dependencies.append(path)
             # A newline terminates a fragment's trailing comment before the rest of the deck.

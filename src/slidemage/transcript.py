@@ -29,6 +29,7 @@ from pathlib import Path
 
 from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan
 from .deck_scan import PROJECT_ROOT, Deck
+from .tex_source import COMMENT_RE
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
@@ -224,7 +225,7 @@ def deck_version_of(deck_text: str) -> str | None:
     is always generated for an explicitly chosen version, never for whatever
     the file happens to say.
     """
-    match = _DECK_VERSION_RE.search(alt_blocks.COMMENT_RE.sub("", deck_text))
+    match = _DECK_VERSION_RE.search(COMMENT_RE.sub("", deck_text))
     if not match:
         return VERSION_INSTRUCTOR          # the preamble's own default
     listed = _versions_from(match.group(1), (VERSION_INSTRUCTOR,)) or (VERSION_INSTRUCTOR,)
@@ -254,7 +255,7 @@ def deck_language_of(deck_text: str) -> str:
     default for every real deck, including ones whose actual hardcoded
     language is "de" -- caught by testing against a real deck file, not
     assumed."""
-    text = alt_blocks.COMMENT_RE.sub("", deck_text)
+    text = COMMENT_RE.sub("", deck_text)
     for match in _DECK_LANGUAGE_RE.finditer(text):
         value = match.group(1).strip()
         if value and not value.startswith("\\"):
@@ -321,7 +322,7 @@ def _expand_literal_includes(
     active_paths: tuple[Path, ...],
 ) -> str:
     """Inline literal body includes in order, with stack-based cycle checks."""
-    clean = alt_blocks.COMMENT_RE.sub("", source)
+    clean = COMMENT_RE.sub("", source)
     body = _document_body(clean)
     # Instructor notes may contain arbitrary TeX. They are not deck-level
     # includes and must not affect slide numbering or trigger file lookups.
@@ -1381,7 +1382,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
     # so both the title and the body reflect only the requested language.
     source_text = _resolve_multilingual_text(source_text, language)
 
-    stripped = alt_blocks.COMMENT_RE.sub("", source_text)
+    stripped = COMMENT_RE.sub("", source_text)
     stripped = resolve_deck_conditionals(stripped, version)
     stripped, _notes = alt_blocks.extract_note_calls(stripped)
     body = _expand_local_macros(stripped)
@@ -1549,7 +1550,7 @@ def _section_titles(deck_path: Path) -> list[str]:
     source = deck_path.read_text(encoding="utf-8")
     text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
                                     (deck_path.resolve(),))
-    text = alt_blocks.COMMENT_RE.sub("", text)
+    text = COMMENT_RE.sub("", text)
     titles: list[str] = []
     for match in _SECTION_RE.finditer(text):
         title, _after = alt_blocks.braced_argument(text, match.end() - 1)

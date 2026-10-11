@@ -1970,6 +1970,8 @@ v8.0.7 (2026-10-11, code review fix A7): A compile whose bibliography could not 
 
 v8.0.8 (2026-10-11, code review fix A8): Compiling only some pages works for slides that come from an \\input or \\include fragment of the deck; before, such pages were refused as "not from a slide of the deck's list".
 
+v8.0.9 (2026-10-11, code review cleanup B1a): Internal: the TeX source-text helpers (comment pattern, comment and verbatim masking, the \\input/\\include pattern) live once in tex_source.py instead of four copies and private names other modules borrowed. No change in behaviour.
+
 """
 from __future__ import annotations
 
@@ -1979,7 +1981,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.8"
+VERSION_NUMBER = "v8.0.9"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

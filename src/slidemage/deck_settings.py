@@ -21,10 +21,10 @@ from .deck_scan import (
     OUTPUT_FOLDER_RE,
     DECKAPPENDIXTOC_RE,
     OPEN_PDF_RE,
-    is_commented,
     parse_course_url,
     parse_open_pdf,
 )
+from .tex_source import is_commented
 
 # \input{Slidemaster_preamble_<template>} -- which template the deck uses.
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{Slidemaster_preamble_([^}\s]+)\}")

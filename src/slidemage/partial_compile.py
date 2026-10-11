@@ -50,7 +50,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, compiler, deck_scan, latex_lint
+from . import compile_records, compiler, deck_scan
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .deck_editor import SlideCall
 
@@ -378,7 +378,7 @@ def wrapper_text(plan: PartialPlan) -> str:
         out.append("\n" + deck_language.language_line(deck_language.language_for_job(job)))
     pos = deck.preamble_end
     # Include folded translation calls here so they are removed too.
-    for call in sorted(latex_lint._calls_in(text, deck.chapters), key=lambda c: c.line_start):
+    for call in sorted(deck_language.calls_in(text, deck.chapters), key=lambda c: c.line_start):
         if call.line_start < pos or call.line_start >= body_end:
             continue
         out.append(text[pos:call.line_start])

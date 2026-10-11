@@ -45,7 +45,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, deck_scan, project
+from . import compat_bibliography, project
+from .tex_source import is_commented
 from .updater import parse_version
 
 from .compat_types import APPEARANCE, BREAKS, LAYOUT, Change, Finding  # noqa: F401  (re-exported)
@@ -66,7 +67,7 @@ def _detect_omitslide(root: Path) -> list[Finding]:
     for path in compat_bibliography._decks(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in re.finditer(r"\\omitslide(?:version)?\s*\{", text):
-            if not deck_scan.is_commented(text, match.start()):
+            if not is_commented(text, match.start()):
                 findings.append(Finding(path.relative_to(root).as_posix(),
                                         text.count("\n", 0, match.start()) + 1,
                                         "Instructor-only slide is skipped in student deck versions."))

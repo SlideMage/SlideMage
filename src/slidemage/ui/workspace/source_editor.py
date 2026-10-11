@@ -32,6 +32,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QT
 
 from ... import app_settings, latex_edit
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY, Edit, Insert, utf16_len, utf16_units
+from ...tex_source import COMMENT_RE
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.tokens import FONT_MONO
@@ -40,7 +41,6 @@ from ..kit.widgets import Button, IconButton
 # Comments, commands and braces as before; the rest (environments, math, TODO
 # markers) cost nothing extra, since a QSyntaxHighlighter re-runs only the
 # blocks that changed.
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
 COMMAND_RE = re.compile(r"\\[a-zA-Z]+\*?|\\.")
 BRACE_RE = re.compile(r"(?<!\\)[{}]")
 ENV_RE = re.compile(r"\\(?:begin|end)\{([a-zA-Z*]+)\}")

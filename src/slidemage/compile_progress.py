@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import compile_passes, latex_lint
+from .tex_source import INPUT_RE, masked_same_length
 
 PASSES_WITH_BIBLIOGRAPHY = 4
 PASSES_WITHOUT_BIBLIOGRAPHY = 3
@@ -97,13 +98,13 @@ def count_job_slides(deck, version: Optional[str], chapter, language: Optional[s
         if call.included_in(version):
             total += 1
     if deck.preamble_end is not None and resolved_deck.text == text:
-        body = latex_lint._masked_same_length(text)[deck.preamble_end:]
-        for m in latex_lint._INPUT_RE.finditer(body):
+        body = masked_same_length(text)[deck.preamble_end:]
+        for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
             frag = latex_lint.DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
-                total += sum(1 for s in deck_language.slots(latex_lint._calls_in(frag_text, []), language)
+                total += sum(1 for s in deck_language.slots(deck_language.calls_in(frag_text, []), language)
                              if s.call.included_in(version))
     return total
 

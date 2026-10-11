@@ -49,11 +49,11 @@ import time
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Iterable, Optional
 
 from . import bibliography, deck_editor
 from .deck_scan import DECKS_DIR, PROJECT_ROOT, Chapter, Deck
+from .tex_source import IFFALSE_RE, INPUT_RE, VERB_RE, VERBATIM_ENV_RE, masked_same_length
 
 ERROR = "error"
 WARNING = "warning"
@@ -102,11 +102,6 @@ class LintIssue:
 # --------------------------------------------------------------------------
 # Lexical layer
 # --------------------------------------------------------------------------
-
-_VERBATIM_ENV_RE = re.compile(
-    r"\\begin\{(verbatim\*?|Verbatim|lstlisting|minted)\}.*?\\end\{\1\}", re.DOTALL)
-_IFFALSE_RE = re.compile(r"\\iffalse\b.*?\\fi\b", re.DOTALL)
-_VERB_RE = re.compile(r"\\verb\*?([^a-zA-Z\s*])(.*?)\1")
 
 # Environments in which & is a column separator.
 _COLUMN_ENVS = {
@@ -180,9 +175,9 @@ def _mask_comments_and_verbatim(text: str) -> tuple[str, list[tuple[int, str]]]:
     def blank(m: re.Match) -> str:
         return re.sub(r"[^\n]", " ", m.group(0))
 
-    text = _VERBATIM_ENV_RE.sub(blank, text)
-    text = _IFFALSE_RE.sub(blank, text)
-    text = _VERB_RE.sub(blank, text)
+    text = VERBATIM_ENV_RE.sub(blank, text)
+    text = IFFALSE_RE.sub(blank, text)
+    text = VERB_RE.sub(blank, text)
     percent_hits: list[tuple[int, str]] = []
     out_lines: list[str] = []
     for number, line in enumerate(text.split("\n"), 1):
@@ -574,31 +569,6 @@ def _slide_path(call) -> Path:
     return deck_editor.SLIDES_DIR / f"{call.id_slug}-current.tex"
 
 
-_INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^{}]+)\}")
-
-
-def _masked_same_length(text: str) -> str:
-    """`text` with comments replaced by spaces (offsets preserved)."""
-    out = []
-    for line in text.split("\n"):
-        i, n, cut = 0, len(line), -1
-        while i < n:
-            if line[i] == "\\":
-                i += 2
-                continue
-            if line[i] == "%":
-                cut = i
-                break
-            i += 1
-        out.append(line if cut < 0 else line[:cut] + " " * (n - cut))
-    return "\n".join(out)
-
-
-def _calls_in(text: str, chapters: list[Chapter]) -> list:
-    shim = SimpleNamespace(text=_masked_same_length(text), chapters=chapters)
-    return deck_editor.parse_slide_calls(shim)  # type: ignore[arg-type]
-
-
 @dataclass
 class CheckResult:
     issues: list[LintIssue] = field(default_factory=list)
@@ -675,8 +645,8 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
 
     # \input{fragment} decks (test-slides.tex): their slide calls count too
     if deck.preamble_end is not None and resolved_deck.text == text:
-        body = _masked_same_length(text)[deck.preamble_end:]
-        for m in _INPUT_RE.finditer(body):
+        body = masked_same_length(text)[deck.preamble_end:]
+        for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
             frag = DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file() and frag not in seen:
@@ -684,7 +654,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
                 seen.add(frag)
                 result.files_checked += 1
                 result.issues.extend(lint_text(frag_text, frag.name, frag))
-                for slot in deck_language.slots(_calls_in(frag_text, []), language):
+                for slot in deck_language.slots(deck_language.calls_in(frag_text, []), language):
                     call = slot.call
                     if not call.included_in(version):
                         continue

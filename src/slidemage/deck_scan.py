@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import project
+from .tex_source import is_commented
 
 
 # cli.py settles the project and exports it via $SLIDEMASTER_PROJECT before
@@ -21,11 +22,6 @@ DECKS_DIR = PROJECT_ROOT / "decks"
 ARCHIVE_DIR = DECKS_DIR / "archive"
 
 SECTION_RE = re.compile(r"\\section\{([^}]*)\}")
-# A "%" that isn't escaped as "\%" starts a LaTeX comment running to the end
-# of its line -- used by is_commented() below to recognize a commented-out
-# \section{}/\slide{}-family call as not really there (2026-09-28, porting
-# SlideMage upstream commit 34cdbd7).
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
 DOCUMENT_BEGIN_RE = re.compile(r"\\begin\{document\}")
 DOCUMENT_BEGIN_LINE_RE = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
 DOCUMENT_END_RE = re.compile(r"\\end\{document\}")
@@ -158,21 +154,6 @@ def slugify(title: str) -> str:
     """
     slug = re.sub(r"[^0-9A-Za-z]+", "-", title).strip("-")
     return slug or "chapter"
-
-
-def is_commented(text: str, pos: int) -> bool:
-    """Whether the character at `pos` in `text` falls inside a "%"-started
-    LaTeX comment -- true if an unescaped "%" appears anywhere between the
-    start of pos's own line and pos itself. Shared by _parse_chapters()
-    below and deck_editor.is_commented_out(), so a commented-out
-    \\section{}/\\slide{}-family call is recognized as not really there by
-    both this module's chapter list and appendix_toc.py's own slide-call
-    filtering. Unlike _parse_output_folders()/find_decktags()'s own
-    narrower "starts-with-%" check, this also catches a macro that follows
-    a live "%" occurring earlier on the same line, not just one at the very
-    start of it (2026-09-28, porting SlideMage upstream commit 34cdbd7)."""
-    line_start = text.rfind("\n", 0, pos) + 1
-    return bool(COMMENT_RE.search(text, line_start, pos))
 
 
 def _parse_chapters(text: str) -> list[Chapter]:

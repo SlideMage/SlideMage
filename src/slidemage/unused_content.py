@@ -62,6 +62,7 @@ from pathlib import Path
 from typing import Callable
 
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .tex_source import COMMENT_RE
 
 MEDIA_DIR = PROJECT_ROOT / "media"
 MEDIA_ARCHIVE_DIR = MEDIA_DIR / "archive"
@@ -84,11 +85,6 @@ def _is_media_metadata_filename(name: str) -> bool:
         name in MEDIA_METADATA_FILENAMES
         or (name.startswith(".alt-text.json.") and name.endswith(".tmp"))
     )
-# Same convention already used for syntax highlighting/other text scans in
-# this project (source_editor.py's own COMMENT_RE, alt_blocks.py's) --
-# an unescaped "%" starts a comment running to end of line; "\%" (a literal
-# percent sign) does not.
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
 
 
 def _strip_comments(text: str) -> str:
