@@ -74,7 +74,7 @@ def test_empty_project_can_add_a_standard_slide(tmp_path, monkeypatch, custom_te
     monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", template)
     monkeypatch.setattr(slide_ids, "SLIDES_DIR", target / "slides")
     monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", target / "slide_ids.csv")
-    expected = (project._template_dir("example") / relative).read_bytes().decode("utf-8")
+    expected = (project.template_dir("example") / relative).read_bytes().decode("utf-8")
     if custom_template is not None:
         template.parent.mkdir(parents=True)
         template.write_bytes(custom_template.encode("utf-8"))
@@ -89,7 +89,7 @@ def test_empty_project_can_add_a_standard_slide(tmp_path, monkeypatch, custom_te
 @pytest.mark.parametrize("bundled_available", [False, True])
 def test_missing_project_and_bundled_templates_raise(tmp_path, monkeypatch, bundled_available):
     monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", tmp_path / "missing-template.tex")
-    monkeypatch.setattr(project, "_template_dir", lambda _name: tmp_path if bundled_available else None)
+    monkeypatch.setattr(project, "template_dir", lambda _name: tmp_path if bundled_available else None)
 
     with pytest.raises(FileNotFoundError, match="No slide template found"):
         slide_ids.read_template()

@@ -149,7 +149,7 @@ def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None)
-    wrapper_text = compiler._wrapper_text(job)
+    wrapper_text = compiler.wrapper_text(job)
     write_record(c["build"], "t-Deck-instructor", c["inv"], c["wrapper"], wrapper_text,
                  c["pdf"], c["started"])
     assert [j.jobname for j, _ in compiler.unchanged_jobs([job], {"t-Deck-instructor": c["pdf"]})] \
@@ -192,7 +192,7 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
     dest = c["root"] / "pdf" / "t-Deck-during-course.pdf"
     key, generation = compiler._register_output(dest)
     assert compiler._mark_output_success(key, generation)
-    compiler._set_build_dir_active(c["inv"], True)
+    compiler.set_build_dir_active(c["inv"], True)
     compiler._relocate_pdf_and_finish(
         c["inv"] / "t-Deck-during-course.pdf", dest, "t-Deck-during-course", job, print,
         build_dir=c["inv"], destination_key=key, generation=generation,

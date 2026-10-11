@@ -273,7 +273,7 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
     return d
 
 
-def _entry_from_dict(image: str, d: dict) -> ImageEntry:
+def entry_from_dict(image: str, d: dict) -> ImageEntry:
     used_on = {
         slide_id: SlideUse(
             takeaway=(u.get("takeaway") or ""),
@@ -309,7 +309,7 @@ def load_store() -> dict[str, ImageEntry]:
         return {}
     raw = json.loads(STORE_PATH.read_text(encoding="utf-8"))
     images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
-    return {image: _entry_from_dict(image, d) for image, d in images.items()}
+    return {image: entry_from_dict(image, d) for image, d in images.items()}
 
 
 @dataclass

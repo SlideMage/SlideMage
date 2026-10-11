@@ -5,7 +5,7 @@ import pymupdf
 import pytest
 
 from slidemage import deck_editor, preview_target, slide_preview, slide_snapshot
-from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.deck_scan import Deck, parse_chapters
 
 PREAMBLE = "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}"
 
@@ -13,7 +13,7 @@ PREAMBLE = "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\be
 def make_deck(body):
     text = PREAMBLE + "\n" + body + "\\end{document}\n"
     return Deck(name="course", path=None, archived=False, text=text, supports_version=True,
-                uses_biblatex=False, preamble_end=len(PREAMBLE), chapters=_parse_chapters(text),
+                uses_biblatex=False, preamble_end=len(PREAMBLE), chapters=parse_chapters(text),
                 output_folders={})
 
 

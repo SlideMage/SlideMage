@@ -31,7 +31,7 @@ def deck(root, body, language="en"):
     path = root / "decks" / "course.tex"
     path.write_text("\\documentclass{beamer}\n" + f"\\decklanguage[{language}]\n"
                     + "\\begin{document}\n" + body + "\\end{document}\n")
-    return next(d for d in deck_scan._scan_dir(path.parent, False) if d.path == path)
+    return next(d for d in deck_scan.scan_dir(path.parent, False) if d.path == path)
 
 
 def rows(d, language):
@@ -130,20 +130,20 @@ def test_wrappers_resolve_full_chapter_and_appendix_without_writing_deck(project
                      "\\section{Last}\n\\slide{ddd-DE-Eins}\n\\slide{bbb-EN-Two}\n")
     before = d.path.read_bytes()
     job = compiler.CompileJob(d, "instructor", None, language="DE")
-    wrapper = compiler._wrapper_text(job)
+    wrapper = compiler.wrapper_text(job)
     assert wrapper.count("\\slide{ddd-DE-Eins}") == 1 and "\\slide{aaa-EN-One}" not in wrapper
     assert "\\slide{bbb-EN-Two}" in wrapper and "\\decklanguage[de]" in wrapper
     assert job.jobname == "course-instructor-de"
-    chapter = compiler._wrapper_text(replace(job, chapter=d.chapters[0]))
+    chapter = compiler.wrapper_text(replace(job, chapter=d.chapters[0]))
     assert "\\slide{ddd-DE-Eins}" in chapter and "\\slide{bbb-EN-Two}" not in chapter
-    appendix = compiler._wrapper_text(replace(job, appendix_toc=True))
+    appendix = compiler.wrapper_text(replace(job, appendix_toc=True))
     assert "\\hyperlink{ddd}" in appendix and "\\hyperlink{aaa}" not in appendix
     assert d.path.read_bytes() == before
 
 
 def test_a_german_deck_resolves_partners_without_an_explicit_override(project):
     d = deck(project, "\\slide{aaa-EN-One}\n", "de")
-    wrapper = compiler._wrapper_text(compiler.CompileJob(d, None, None))
+    wrapper = compiler.wrapper_text(compiler.CompileJob(d, None, None))
     assert "\\slide{ddd-DE-Eins}" in wrapper
 
 
@@ -277,7 +277,7 @@ def test_preview_maintenance_renders_both_files_independently(project, monkeypat
         "aaa-EN-One", "ddd-DE-Eins"}
     d = deck(project, "\\slide{aaa-EN-One}\n\\slide{ddd-DE-Eins}\n")
     job = compiler.CompileJob(d, None, None, language="DE", resolve_translations=False)
-    wrapper = compiler._wrapper_text(job)
+    wrapper = compiler.wrapper_text(job)
     assert "\\slide{aaa-EN-One}" in wrapper and "\\slide{ddd-DE-Eins}" in wrapper
 
 
@@ -326,5 +326,5 @@ def test_fragment_expansion_keeps_compiler_sources_and_tex_lookup_order(project,
     assert set(dependencies) == {fragment, candidates[locations.index(location)]}
     resolved, dependencies = deck_language.compile_deck(d, "EN")
     assert resolved is d and dependencies == []
-    wrapper = compiler._wrapper_text(compiler.CompileJob(d, "after-course", None))
+    wrapper = compiler.wrapper_text(compiler.CompileJob(d, "after-course", None))
     assert r"\input{course.tex}" in wrapper and r"\slide{bbb-EN-Two}" not in wrapper

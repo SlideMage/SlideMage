@@ -166,8 +166,8 @@ class MaintenanceMixin:
     def _bundled_parts(self) -> list:
         """What the framework / manual copies of this project would get (bundled_copies.plan_updates)."""
         return bundled_copies.plan_updates(
-            PROJECT_ROOT, latex_source=project._template_dir("latex"),
-            example_source=project._template_dir("example"))
+            PROJECT_ROOT, latex_source=project.template_dir("latex"),
+            example_source=project.template_dir("example"))
 
     def check_bundled_copies(self) -> None:
         app_version = version_mod.VERSION_NUMBER

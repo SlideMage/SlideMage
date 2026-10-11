@@ -64,7 +64,7 @@ BACKUP_DIR = Path(".slidemage") / "backups"
 
 def _detect_omitslide(root: Path) -> list[Finding]:
     findings = []
-    for path in compat_bibliography._decks(root):
+    for path in compat_bibliography.decks(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in re.finditer(r"\\omitslide(?:version)?\s*\{", text):
             if not is_commented(text, match.start()):

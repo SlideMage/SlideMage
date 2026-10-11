@@ -262,7 +262,7 @@ def write_record(
         inline_inputs = [deck_path] if deck_path is not None else []
         if deck_path is not None and deck_path.is_file():
             from . import deck_language, deck_scan
-            deck = next((d for d in deck_scan._scan_dir(deck_path.parent, False) if d.path == deck_path), None)
+            deck = next((d for d in deck_scan.scan_dir(deck_path.parent, False) if d.path == deck_path), None)
             if deck is not None:
                 # Include dependencies in either language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.

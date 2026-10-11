@@ -9,7 +9,7 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
 from slidemage import app_settings, deck_scan
-from slidemage.archive import _read
+from slidemage.archive import read
 from slidemage.slide_source import read_slide_source
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
@@ -263,12 +263,12 @@ def test_a_cell_writes_the_deck_and_the_list_follows(column, project):
     panels.set_panel("visibility")
     state.set_focused_slide("abc")
     cells(panels.panels["visibility"])[2].click()             # \slide: hide in After course
-    assert "\\conditionalslide[instructor,during-course]{abc-EN-Demo}" in _read(project.decks / "course.tex")
+    assert "\\conditionalslide[instructor,during-course]{abc-EN-Demo}" in read(project.decks / "course.tex")
     assert [b.isChecked() for b in cells(panels.panels["visibility"])][:3] == [True, True, False]
     state.set_view("after-course")                             # the slide list shows it hidden in that view
     assert window.slide_list.tree.data_of(window.slide_list.tree.currentItem()).hidden
     cells(panels.panels["visibility"])[4].click()              # \slidestep [instructor]: also show it to During
-    assert "\\slidestep{abc-EN-Demo}[instructor,during-course]{2}" in _read(project.decks / "course.tex")
+    assert "\\slidestep{abc-EN-Demo}[instructor,during-course]{2}" in read(project.decks / "course.tex")
     assert window.slide_list.toast.isHidden() is False         # an edit like any other: with Undo
 
 
@@ -276,10 +276,10 @@ def test_a_slide_cannot_be_hidden_from_every_view_and_the_cell_snaps_back(column
     panels, state, _window = column
     panels.set_panel("visibility")
     state.set_focused_slide("abc")
-    before = _read(project.decks / "course.tex")
+    before = read(project.decks / "course.tex")
     cells(panels.panels["visibility"])[3].click()              # \slidestep [instructor] -> hidden from all
     assert "at least one view" in project.errors[-1]
-    assert _read(project.decks / "course.tex") == before
+    assert read(project.decks / "course.tex") == before
     assert cells(panels.panels["visibility"])[3].isChecked()
 
 
@@ -345,13 +345,13 @@ def test_the_pin_moves_the_open_decks_calls_to_a_version_and_back(column, projec
     panel = panels.panels["versions"]
     assert buttons(panel, "current ▾")
     panel._set_pin("abc-EN-Demo", "1-0-0")
-    deck = _read(project.decks / "course.tex")
+    deck = read(project.decks / "course.tex")
     assert "\\slideversion{abc-EN-Demo}{1-0-0}" in deck
     assert "\\slidestep{abc-EN-Demo}[instructor]{2}" in deck       # a call with no pinned form stays
     assert buttons(panel, "v1.0.0 ▾")
     panel._set_pin("abc-EN-Demo", None)
-    assert "\\slide{abc-EN-Demo}" in _read(project.decks / "course.tex")
-    assert "slideversion" not in _read(project.decks / "course.tex")
+    assert "\\slide{abc-EN-Demo}" in read(project.decks / "course.tex")
+    assert "slideversion" not in read(project.decks / "course.tex")
 
 
 def test_the_pin_row_says_when_there_is_nothing_to_pin(column, project):

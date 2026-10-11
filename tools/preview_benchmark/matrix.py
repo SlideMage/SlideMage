@@ -28,7 +28,7 @@ def run_matrix(args):
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)][:args.limit]
     original_build = slide_preview.BUILD_DIR
-    original_compile = slide_preview._compile_and_extract
+    original_compile = slide_preview.compile_and_extract
     revision = 0
     reference_stamp = ""
 
@@ -42,7 +42,7 @@ def run_matrix(args):
                                   '\n' + slide_preview._preview_timestamp_line(True, reference_stamp), 1)
         return original_compile(wrapper, *a, **kw)
 
-    slide_preview._compile_and_extract = compile_revision
+    slide_preview.compile_and_extract = compile_revision
     for cache, region, overlay in ((True, False, False), (False, True, False),
                                    (False, False, True), (True, True, False),
                                    (True, False, True), (False, True, True),

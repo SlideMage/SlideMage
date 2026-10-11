@@ -15,7 +15,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import alt_images, preview_target, slide_snapshot
-from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view, render_check
@@ -76,7 +76,7 @@ def project(tmp_path, monkeypatch):
 def deck(tmp_path):
     return Deck(name="course", path=tmp_path / "course.tex", archived=False, text=DECK, supports_version=True,
                 uses_biblatex=False, preamble_end=DECK.index("\\begin{document}") + len("\\begin{document}"),
-                chapters=_parse_chapters(DECK), output_folders={})
+                chapters=parse_chapters(DECK), output_folders={})
 
 
 @pytest.fixture

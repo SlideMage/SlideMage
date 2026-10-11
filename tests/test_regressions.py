@@ -124,14 +124,14 @@ def _fake_deck_with_text(text, **overrides):
 
 
 def test_commented_out_section_is_not_a_chapter():
-    from slidemage.deck_scan import _parse_chapters
+    from slidemage.deck_scan import parse_chapters
 
     text = (
         "\\documentclass{beamer}\n\\begin{document}\n"
         "\\section{Intro}\n\\slide{aaa-EN-A}\n"
         "% \\section{Old stuff}\n\\slide{bbb-EN-B}\n\\end{document}\n"
     )
-    chapters = _parse_chapters(text)
+    chapters = parse_chapters(text)
     assert [c.title for c in chapters] == ["Intro"]
     # The real chapter's own span still covers the commented line as
     # ordinary content -- offsets must stay into the *original* text.

@@ -272,7 +272,7 @@ def _document_body(text: str) -> str:
     """
     document_start = None
     document_end = None
-    for name, start, command_end in alt_blocks._iter_tex_commands(text):
+    for name, start, command_end in alt_blocks.iter_tex_commands(text):
         if name not in {"begin", "end"}:
             continue
         cursor = command_end
@@ -330,7 +330,7 @@ def _expand_literal_includes(
 
     parts: list[str] = []
     copied_through = 0
-    for name, start, command_end in alt_blocks._iter_tex_commands(body):
+    for name, start, command_end in alt_blocks.iter_tex_commands(body):
         if name not in {"input", "include"} or start < copied_through:
             continue
         cursor = command_end
@@ -1340,7 +1340,7 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
 
     Must run before title/body extraction: a "mult" slide's transcript
     otherwise showed *both* languages concatenated together (2026-08-25,
-    reported directly against g6q) -- alt_blocks._slide_title()'s own
+    reported directly against g6q) -- alt_blocks.slide_title()'s own
     macro-name-stripping regex only ever removes the bare "\\multilingualtext"
     token, then strips every remaining brace indiscriminately, leaving
     "{EN}{DE}" collapse into "ENDE" rather than picking one."""
@@ -1397,7 +1397,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
     agenda_title = (_finish(_inline_markdown(agenda_titles[0]).strip())
                     if agenda_titles else "")
 
-    slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
+    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path)
     if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
                              or alt_blocks.TITLEFRAME_RE.search(stripped)):
         title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)
@@ -1427,7 +1427,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
         # _convert_body() below only strips bare macro *names*, leaving
         # brace-argument content (a version string, a raw image path)
         # flattened into the transcript text. The title slide's own title
-        # is already captured separately via _slide_title() above, so only
+        # is already captured separately via slide_title() above, so only
         # its subtitle (the second argument) is real body content; a
         # fullbleedframe slide has no text at all -- its image's own
         # description (now detected by referenced_images(), see
@@ -1612,7 +1612,7 @@ def generate_single_slide(
     `source_text` -- the editor's current buffer, possibly unsaved -- is
     written to a throwaway temp file under `bare_id`'s own real filename
     stem before render_slide() ever sees it: that function only reads from
-    a real Path, and alt_blocks._slide_title()/entry.takeaway_for() derive
+    a real Path, and alt_blocks.slide_title()/entry.takeaway_for() derive
     this slide's *identity* (its bare id, and therefore its own per-slide
     image-takeaway overrides and transcript summary) from that filename's
     stem, not from anything inside the text itself. A randomly-named temp

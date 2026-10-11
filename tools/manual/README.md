@@ -12,7 +12,7 @@ SlideMage venv's Python. Rerun the step whose input changed.
 | `screenshot-slide-gallery-*.png` | `python tools/manual/make_crops.py gallery example/decks/slidemage-manual.pdf` | a frame-type demo slide changes |
 | `screenshot-slide-version-*.png` | `python tools/manual/make_crops.py versions <instructor.pdf> <during-course.pdf> <after-course.pdf>` -- the manual compiled as each version (a wrapper deck with `\def\deckversionoverride{during-course}` before `\input{slidemage-manual.tex}`) | slide `1th` changes |
 | `screenshot-slide-presenter.png` | `make_crops.py one <presenter.pdf> 1y3 presenter` -- the manual compiled with `\def\SMPresenterModeOverride{1}` | slide `1y3` or the presenter layout changes |
-| `screenshot-slide-appendix-grid.png` | `make_crops.py titled <appendix.pdf> "Frame types" appendix-grid` -- a compile with the generated appendix (`compiler._wrapper_text` of a job with `appendix_toc=True`) | the appendix layout changes |
+| `screenshot-slide-appendix-grid.png` | `make_crops.py titled <appendix.pdf> "Frame types" appendix-grid` -- a compile with the generated appendix (`compiler.wrapper_text` of a job with `appendix_toc=True`) | the appendix layout changes |
 | `screenshot-slide-template-*.png` | `make_crops.py one <deck.pdf> 1wa template-<name>` -- one-slide decks with `\slide{1wa-EN-Columns-and-Tables}` under each template; MCI and Innsbruck need a project that has those templates (`\input@path` pointing there) | slide `1wa` or a template changes |
 
 Crops are PNG at 288 dpi, not PDF pages: an embedded PDF page carries its

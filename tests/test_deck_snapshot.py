@@ -111,7 +111,7 @@ def tree(tmp_path, monkeypatch):
             bib_sources=[cwd / "Slidemaster.bib"], timestamp=stamp.read_text(encoding="utf-8"))
 
     monkeypatch.setattr(deck_snapshot, "run_recorded_compile", fake_compile)
-    decks = {d.name: d for d in deck_scan._scan_dir(root / "decks", archived=False)}
+    decks = {d.name: d for d in deck_scan.scan_dir(root / "decks", archived=False)}
     return root, framework, decks, calls, state
 
 
@@ -319,8 +319,8 @@ def record_compile(root: Path, texroot: Path, jobname: str, started: float) -> P
     write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'Slidemaster.bib'}'\n")
     pdf = write(root / "pdf" / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
     assert compile_records.write_record(root / ".build", jobname, inv, root / "decks" / "_w.tex",
-                                        compiler._wrapper_text(compiler.CompileJob(
-                                            next(d for d in deck_scan._scan_dir(root / "decks", False)
+                                        compiler.wrapper_text(compiler.CompileJob(
+                                            next(d for d in deck_scan.scan_dir(root / "decks", False)
                                                  if d.name == "t-Deck"),
                                             None, None)), pdf, started)
     return pdf
@@ -599,7 +599,7 @@ def test_snapshot_compiler_mode(opened_snapshot, monkeypatch, tmp_path):
     monkeypatch.setattr(compiler, "PROJECT_ROOT", opened_snapshot)
     monkeypatch.setattr(compiler, "PDF_DIR", opened_snapshot / "pdf")
     monkeypatch.setattr(compiler, "BUILD_DIR", opened_snapshot / ".build")
-    deck = deck_scan._scan_dir(opened_snapshot / "decks", False)[0]
+    deck = deck_scan.scan_dir(opened_snapshot / "decks", False)[0]
     assert deck.output_folders  # D:/Teaching/Somewhere
     job = compiler.CompileJob(deck, None, None)
     assert compiler.resolve_output_location(job) == (opened_snapshot / "pdf", "t-Deck")
@@ -657,7 +657,7 @@ def test_real_snapshot_of_manual(tmp_path, monkeypatch):
     root = tmp_path / "example"
     monkeypatch.setattr(compiler, "BUILD_DIR", root / ".build")
     monkeypatch.setattr(compiler, "PROJECT_ROOT", root)
-    deck = next(d for d in deck_scan._scan_dir(root / "decks", False)
+    deck = next(d for d in deck_scan.scan_dir(root / "decks", False)
                 if d.name == "slidemage-manual")
     deck.supports_version = False
     result = deck_snapshot.create_snapshot(deck, SnapshotOptions(presenter=False), print,
@@ -701,7 +701,7 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
 \slide{1kp-EN-Deck-Housekeeping}
 \end{document}
 """)
-    deck = next(d for d in deck_scan._scan_dir(root / "decks", False) if d.name == "omit-test")
+    deck = next(d for d in deck_scan.scan_dir(root / "decks", False) if d.name == "omit-test")
     jobs = [compiler.CompileJob(deck, None, None), *compiler.build_jobs(deck, "all"),
             *compiler.build_jobs(deck, "presenter")]
     for job in jobs:

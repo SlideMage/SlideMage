@@ -30,7 +30,7 @@ from PIL import Image, ImageChops
 
 from . import alt_blocks, alt_images
 from .deck_scan import PROJECT_ROOT
-from .slide_preview import _compile_and_extract, default_preamble
+from .slide_preview import compile_and_extract, default_preamble
 
 # Gitignored, same regeneratable-cache reasoning as slide_previews/ and
 # pdf_render_cache/ (media_render.py) -- nothing here is ever authored, it
@@ -242,11 +242,11 @@ def ensure_rendered(reference: str, log: Optional[LogCallback] = None) -> Path:
     log(f"==== Rendering tikz illustration {illustration_id} "
        f"(from {slide_path.name}) ====")
     wrapper_text = _wrapper_text(illustration_id, options, body, slide_preamble)
-    pdf_path = _compile_and_extract(wrapper_text, f"tikz-{illustration_id}", log)
+    pdf_path = compile_and_extract(wrapper_text, f"tikz-{illustration_id}", log)
     try:
         _render_and_crop(pdf_path, png_path)
     finally:
-        # _compile_and_extract() leaves the PDF in its own fresh temp
+        # compile_and_extract() leaves the PDF in its own fresh temp
         # directory (slide_preview.py's convention, for a render meant to
         # stay open in a viewer) -- nothing here keeps the PDF itself, only
         # the PNG derived from it, so the temp directory is cleaned up

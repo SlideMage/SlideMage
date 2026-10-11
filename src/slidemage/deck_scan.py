@@ -156,7 +156,7 @@ def slugify(title: str) -> str:
     return slug or "chapter"
 
 
-def _parse_chapters(text: str) -> list[Chapter]:
+def parse_chapters(text: str) -> list[Chapter]:
     doc_end_match = DOCUMENT_END_RE.search(text)
     doc_end = doc_end_match.start() if doc_end_match else len(text)
 
@@ -270,7 +270,7 @@ def read_deck(path: Path, archived: bool = False) -> Deck:
     # reader in this package (archive.py, slide_source.py, ...) --
     # without it, Path.read_text()'s universal-newlines default silently
     # normalizes this project's CRLF files to bare "\n", so deck.text
-    # never byte-matches archive._read()'s raw re-read of the same file
+    # never byte-matches archive.read()'s raw re-read of the same file
     # in deck_editor.py's stale-file check, which then raises
     # StaleFileError on every single edit, even immediately after a
     # fresh restart.
@@ -285,7 +285,7 @@ def read_deck(path: Path, archived: bool = False) -> Deck:
         supports_version=bool(DECKVERSIONOVERRIDE_RE.search(text)),
         uses_biblatex=bool(ADDBIBRESOURCE_RE.search(text)),
         preamble_end=doc_begin_match.end() if doc_begin_match else None,
-        chapters=_parse_chapters(text),
+        chapters=parse_chapters(text),
         output_folders=_parse_output_folders(text),
         tags=parse_tags(text),
         course_url=parse_course_url(text),
@@ -294,7 +294,7 @@ def read_deck(path: Path, archived: bool = False) -> Deck:
     )
 
 
-def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
+def scan_dir(directory: Path, archived: bool) -> list[Deck]:
     decks: list[Deck] = []
     if not directory.is_dir():
         return decks
@@ -312,7 +312,7 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
 def scan_decks() -> list[Deck]:
     """Every discovered deck: active decks first, then archived ones, each
     group sorted by filename."""
-    return _scan_dir(DECKS_DIR, archived=False) + _scan_dir(ARCHIVE_DIR, archived=True)
+    return scan_dir(DECKS_DIR, archived=False) + scan_dir(ARCHIVE_DIR, archived=True)
 
 
 if __name__ == "__main__":

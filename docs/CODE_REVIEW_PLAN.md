@@ -90,3 +90,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | A7 Biber failure warning | Done, v8.0.7: implemented by Codex, reviewed by Claude. |
 | A8 Page compiles of fragment slides | Done, v8.0.8: confirmed by a failing test, implemented by Codex, reviewed by Claude. Phase A complete. |
 | B1a TeX text helpers in tex_source.py | Done, v8.0.9: implemented by Codex, reviewed by Claude (lint-only masking moved back to latex_lint). |
+| B1b Public names for shared helpers | Done, v8.0.10: implemented by Codex, reviewed by Claude. |

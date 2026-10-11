@@ -77,8 +77,8 @@ def test_compile_job_stamps_its_run(tmp_path):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None, run_id=RUN)
-    assert compile_records.run_id_line(RUN) in compiler._wrapper_text(job)
-    assert "SlideMageRun" not in compiler._wrapper_text(compiler.CompileJob(deck, "instructor", None))
+    assert compile_records.run_id_line(RUN) in compiler.wrapper_text(job)
+    assert "SlideMageRun" not in compiler.wrapper_text(compiler.CompileJob(deck, "instructor", None))
 
 
 @pytest.fixture
@@ -89,7 +89,7 @@ def deck_with_pdfs(tmp_path, monkeypatch):
     (tmp_path / "decks" / "t-A.tex").write_text(
         "\\documentclass{beamer}\n\\deckversionoverride\n\\begin{document}\n\\end{document}\n",
         encoding="utf-8")
-    deck = deck_scan._scan_dir(tmp_path / "decks", False)[0]
+    deck = deck_scan.scan_dir(tmp_path / "decks", False)[0]
     (tmp_path / "pdf").mkdir()
     for name, age_minutes, run_id in (("t-A-instructor", 30, RUN),
                                       ("t-A-after-course", 0, "2026-10-08T09:00:00")):

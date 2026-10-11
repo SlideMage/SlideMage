@@ -299,13 +299,13 @@ def build_context(slide_path: Path, reference: str) -> SlideContext:
     source_text = slide_path.read_text(encoding="utf-8")
     stripped = COMMENT_RE.sub("", source_text)
 
-    slide_id, title = alt_blocks._slide_title(source_text, slide_path)
+    slide_id, title = alt_blocks.slide_title(source_text, slide_path)
 
     body, sources = alt_blocks.extract_macro_calls(stripped, "source")
     body, _notes = alt_blocks.extract_macro_calls(body, "note")  # discarded, see docstring
     source_line = _flatten_latex(" ".join(sources)) if sources else ""
 
-    # Brace-matched, same reason as alt_blocks._slide_title: a non-greedy
+    # Brace-matched, same reason as alt_blocks.slide_title: a non-greedy
     # frame-open regex ends mid-title whenever the title carries a
     # `\footnote{...\fullcite{key}...}`, and the title's tail (", 430-431.")
     # then becomes the first line of what we hand the model as slide text.

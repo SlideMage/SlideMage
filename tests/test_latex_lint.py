@@ -8,7 +8,7 @@ def test_student_lint_skips_omitslide(tmp_path, monkeypatch):
     (tmp_path / "deck.tex").write_text(
         "\\documentclass{beamer}\n\\begin{document}\n"
         "\\omitslide{abc-EN-Missing}\n\\end{document}\n", encoding="utf-8")
-    deck, = deck_scan._scan_dir(tmp_path, False)
+    deck, = deck_scan.scan_dir(tmp_path, False)
     monkeypatch.setattr(deck_editor, "SLIDES_DIR", tmp_path / "slides")
     for version in ("during-course", "after-course"):
         assert not latex_lint.check_deck_job(deck, version).errors
@@ -63,7 +63,7 @@ def test_lint_checks_included_fragment_slides(tmp_path, monkeypatch, name):
         + f"\\include{{{name}}}\n\\end{{document}}\n")
     slide = root / "slides/abc-EN-Hello-current.tex"
     slide.write_text("{")
-    deck, = deck_scan._scan_dir(root / "decks", False)
+    deck, = deck_scan.scan_dir(root / "decks", False)
     result = latex_lint.check_deck_job(deck)
     assert result.files_checked == 3
     assert result.errors and all(i.path == slide for i in result.errors)

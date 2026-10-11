@@ -21,7 +21,7 @@ INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^{}]+)\}")
 def is_commented(text: str, pos: int) -> bool:
     """Whether the character at `pos` in `text` falls inside a "%"-started
     LaTeX comment -- true if an unescaped "%" appears anywhere between the
-    start of pos's own line and pos itself. Shared by deck_scan._parse_chapters()
+    start of pos's own line and pos itself. Shared by deck_scan.parse_chapters()
     and deck_editor.is_commented_out(), so a commented-out
     \\section{}/\\slide{}-family call is recognized as not really there by
     both deck_scan's chapter list and appendix_toc.py's own slide-call

@@ -34,7 +34,7 @@ def _configure_compiler(monkeypatch, tmp_path):
     monkeypatch.setattr(compiler, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(compiler, "BUILD_DIR", build_dir)
     monkeypatch.setattr(compiler, "PDF_DIR", pdf_dir)
-    monkeypatch.setattr(compiler, "_build_env", lambda: {})
+    monkeypatch.setattr(compiler, "build_env", lambda: {})
     return compiler, deck, build_dir, pdf_dir, deck_path
 
 

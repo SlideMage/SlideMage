@@ -5,7 +5,7 @@ match how the slide actually looks in context. A slide that is in no deck
 falls back to a generic standalone preamble matching decks/test.tex, this
 project's own demo deck.
 
-Reuses compiler.py's own _build_env()/FATAL_ERROR_RE (the Git-for-Windows
+Reuses compiler.py's own build_env()/FATAL_ERROR_RE (the Git-for-Windows
 Perl PATH fix and the "trust the log, not the exit code" pass/fail check --
 see that module's own docstring for why both are needed) rather than
 duplicating them.
@@ -24,7 +24,7 @@ from typing import Callable, Optional
 
 from . import open_path
 from . import slide_snapshot
-from .compiler import BUILD_DIR, FATAL_ERROR_RE, _build_env
+from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env
 from .deck_editor import VERSION_FILE_RE, format_call
 from .deck_scan import PROJECT_ROOT
 from .preview_metrics import measure, record_line, finish_rules
@@ -243,7 +243,7 @@ def _presenter_mode_line(presenter: bool) -> str:
 
 
 @measure('build')
-def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
+def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
                          reuse_build: bool = True) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
@@ -268,7 +268,7 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
         from .preview_build import compile_cached
         dest_pdf = compile_cached(
             wrapper_text, id_slug, log, project_root=PROJECT_ROOT,
-            build_dir=BUILD_DIR, env=_build_env(), fatal_error_re=FATAL_ERROR_RE)
+            build_dir=BUILD_DIR, env=build_env(), fatal_error_re=FATAL_ERROR_RE)
         if snapshot_template is not None:
             try:
                 slide_snapshot.capture_single_slide(
@@ -336,7 +336,7 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             "latexmk", "-f", f"-jobname={jobname}", f"-outdir={BUILD_DIR.as_posix()}",
             str(rel_wrapper),
         ]
-        env = _build_env()
+        env = build_env()
         popen_kwargs: dict = {}
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -494,7 +494,7 @@ def render_slide_to_pdf(
         slide_snapshot.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and overlay is None else None
     )
-    return _compile_and_extract(
+    return compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build,
     )
@@ -557,7 +557,7 @@ def render_slide_text_to_pdf(
     Also refreshes this slide's compile-time PNG snapshot (2026-08-31,
     direct report: "Render to PDF" succeeded but "Preview" then said no
     preview had been generated yet) -- this function used to call
-    _compile_and_extract() without a `snapshot_template`, so it silently
+    compile_and_extract() without a `snapshot_template`, so it silently
     skipped the capture_single_slide() side effect that
     render_slide_to_pdf() above already documents and performs; the
     Preview (preview_target.cached_image()) reads
@@ -590,7 +590,7 @@ def render_slide_text_to_pdf(
         if capture_snapshot and deck_version in (None, "instructor") and not presenter
         and preview_mode == "slide" and overlay is None else None
     )
-    return _compile_and_extract(
+    return compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build,
     )

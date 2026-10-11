@@ -6,7 +6,7 @@ import os
 import pytest
 
 from slidemage import deck_editor, deck_outline, slide_language, slide_snapshot
-from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.deck_scan import Deck, parse_chapters
 
 GOOD = "\\begin{standardframe}{Title}Text\\end{standardframe}\n"
 BROKEN = "\\begin{standardframe}{Title}{Text\\end{standardframe}\n"   # an unclosed brace
@@ -31,7 +31,7 @@ def make_deck(tmp_path, body):
         name="course", path=tmp_path / "course.tex", archived=False, text=text,
         supports_version=True, uses_biblatex=False,
         preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
-        chapters=_parse_chapters(text), output_folders={},
+        chapters=parse_chapters(text), output_folders={},
     )
 
 

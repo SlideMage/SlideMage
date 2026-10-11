@@ -88,7 +88,7 @@ def test_init_project_preflights_template_collisions(tmp_path, monkeypatch):
     latex_template.mkdir()
     (latex_template / "framework.sty").write_text("framework")
     monkeypatch.setattr(
-        project, "_template_dir",
+        project, "template_dir",
         lambda name: {"example": template, "latex": latex_template}.get(name),
     )
 
@@ -120,7 +120,7 @@ def test_init_project_preserves_unrelated_existing_files(tmp_path, monkeypatch):
     latex_template = tmp_path / "latex-template"
     latex_template.mkdir()
     monkeypatch.setattr(
-        project, "_template_dir",
+        project, "template_dir",
         lambda name: {"example": template, "latex": latex_template}.get(name),
     )
 

@@ -62,7 +62,7 @@ def deck_on_record(tmp_path, monkeypatch, request):
         f = root / "slides" / f"{slug}-current.tex"
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(f"slide {slug}\n", encoding="utf-8")
-    deck = deck_scan._scan_dir(root / "decks", False)[0]
+    deck = deck_scan.scan_dir(root / "decks", False)[0]
     job = compiler.CompileJob(deck, None, None)
     inv = build / "t-D-x"
     inv.mkdir(parents=True)
@@ -72,7 +72,7 @@ def deck_on_record(tmp_path, monkeypatch, request):
     (inv / "t-D.aux").write_text("\\relax\n", encoding="utf-8")
     pdf = make_pdf(root / "pdf" / "t-D.pdf", full_pages())
     assert compile_records.write_record(build, "t-D", inv, deck_file / "_w.tex",
-                                        compiler._wrapper_text(job), pdf, time.time() + 1,
+                                        compiler.wrapper_text(job), pdf, time.time() + 1,
                                         deck_path=deck_file)
     return root, job, pdf
 

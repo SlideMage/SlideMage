@@ -402,7 +402,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
     first_ok = new_id[:1] in (slide_ids.RESERVED_FIRST_DIGITS if reserved else slide_ids.ID_ALPHABET)
     if len(new_id) != slide_ids.ID_LENGTH or not first_ok or not all(c in slide_ids.ID_ALPHABET for c in new_id[1:]):
         raise ValueError(f"{new_id!r} must be {slide_ids.ID_LENGTH} characters from {slide_ids.ID_ALPHABET!r}")
-    taken = slide_ids._existing_ids_from_csv() | slide_ids._existing_ids_from_disk()
+    taken = slide_ids.existing_ids_from_csv() | slide_ids.existing_ids_from_disk()
     if new_id.lower() in {i.lower() for i in taken}:
         raise FileExistsError(f"slide id {new_id!r} is already in use")
     old_files = sorted(SLIDES_DIR.glob(f"{old_id}-*.tex"))

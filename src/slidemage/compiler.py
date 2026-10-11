@@ -86,7 +86,7 @@ def _destination_publish_lock(key: str) -> threading.Lock:
         return _DESTINATION_PUBLISH_LOCKS.setdefault(key, threading.Lock())
 
 
-def _set_build_dir_active(path: Path, active: bool) -> None:
+def set_build_dir_active(path: Path, active: bool) -> None:
     with _BUILD_STATE_LOCK:
         if active:
             _ACTIVE_BUILD_DIRS.add(path)
@@ -274,7 +274,7 @@ def pdf_to_open(pdfs: list[DeckPdf]) -> Optional[DeckPdf]:
     return preferred
 
 
-def _display_path(path: Path) -> str:
+def display_path(path: Path) -> str:
     """A PDF's destination for the compile log -- relative to PROJECT_ROOT
     (e.g. "pdf/foo.pdf") when it's under there, same as the old hardcoded
     "pdf/{jobname}.pdf" text always showed; the full absolute path for a
@@ -402,7 +402,7 @@ class CompileJob:
     presenter: bool = False
     # SlideMage's "Generate appendix TOC" checkbox -- set uniformly on
     # every job a compile batch builds (the window's _compile_jobs(), same
-    # pattern as footer_timestamp), but _wrapper_text() below only actually
+    # pattern as footer_timestamp), but wrapper_text() below only actually
     # generates the appendix for a whole-deck job (job.chapter is None) --
     # of any version since 2026-10-03 (direct instruction; it used to be
     # the instructor/presenter compiles only). A per-chapter job stays
@@ -428,7 +428,7 @@ class CompileJob:
     def _appendix_applies(self) -> bool:
         """Whether appendix_toc actually generates content for *this* job
         -- a whole-deck compile (see appendix_toc field's own comment).
-        Used by _wrapper_text() below."""
+        Used by wrapper_text() below."""
         return self.appendix_toc and self.chapter is None
 
     @property
@@ -470,7 +470,7 @@ def _find_git_perl_bin() -> Optional[Path]:
     return None
 
 
-def _build_env() -> dict:
+def build_env() -> dict:
     env = os.environ.copy()
     perl_bin = _find_git_perl_bin()
     if perl_bin is not None:
@@ -491,7 +491,7 @@ def _seed_snapshot_timestamp(jobname: str, build_dir: Path) -> None:
         shutil.copy2(seed, build_dir / seed.name)
 
 
-def _wrapper_text(job: CompileJob) -> str:
+def wrapper_text(job: CompileJob) -> str:
     from . import deck_language
     lines: list[str] = []
     if job.version:
@@ -583,7 +583,7 @@ def _release_build_dir_after_attempts(
         attempts_drained.wait()
         if remove:
             shutil.rmtree(build_dir, ignore_errors=True)
-        _set_build_dir_active(build_dir, False)
+        set_build_dir_active(build_dir, False)
 
     if attempts_drained.is_set():
         release()
@@ -635,7 +635,7 @@ def _relocate_pdf_and_finish(
         if elapsed >= PDF_MOVE_RETRY_TOTAL_SECONDS:
             break
         if cancel is not None and cancel.is_set():
-            source_display = _display_path(pdf_source)
+            source_display = display_path(pdf_source)
             log(f"*** FAIL: {jobname} -- stopped by user while relocating the "
                f"PDF; left at {source_display} for manual recovery ***")
             if on_relocated is not None:
@@ -657,7 +657,7 @@ def _relocate_pdf_and_finish(
                     attempts_drained.set()
             raise
         if attempt_count == 1:
-            log(f"    (moving {jobname}.pdf into {_display_path(dest_pdf)} -- "
+            log(f"    (moving {jobname}.pdf into {display_path(dest_pdf)} -- "
                "this can take a moment if a sync client is still indexing it)")
         elif attempt_count % 6 == 0:
             log(f"    (still trying to publish {jobname}.pdf, "
@@ -674,9 +674,9 @@ def _relocate_pdf_and_finish(
         return
 
     if not succeeded.is_set():
-        source_display = _display_path(pdf_source)
+        source_display = display_path(pdf_source)
         log(f"*** FAIL: {jobname} -- couldn't publish PDF into "
-            f"{_display_path(dest_pdf)} after "
+            f"{display_path(dest_pdf)} after "
             f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min; left at "
             f"{source_display} for manual recovery ***")
         if on_relocated is not None:
@@ -707,7 +707,7 @@ def _relocate_pdf_and_finish(
 
     elapsed = time.monotonic() - started
     suffix = f" (after {elapsed:.0f}s)" if elapsed >= 5 else ""
-    log(f"==== PASS: {jobname} -> {_display_path(dest_pdf)}{suffix} ====")
+    log(f"==== PASS: {jobname} -> {display_path(dest_pdf)}{suffix} ====")
     if on_relocated is not None:
         on_relocated(True, dest_pdf)
     _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
@@ -738,15 +738,15 @@ def run_job(
     )
     dest_pdf = output_dir / f"{output_stem}.pdf"
     destination_key, generation = _register_output(dest_pdf)
-    _set_build_dir_active(build_dir, True)
+    set_build_dir_active(build_dir, True)
     relocation_started = False
 
     log(f"==== Compiling {job.deck.name} -> {jobname} ====")
     try:
         # Preserve the deck's literal line endings when its preamble or body
         # is spliced into a chapter/appendix wrapper.
-        wrapper_text = _wrapper_text(job)
-        wrapper_path.write_text(wrapper_text, encoding="utf-8", newline="")
+        wrapper = wrapper_text(job)
+        wrapper_path.write_text(wrapper, encoding="utf-8", newline="")
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         build_dir.mkdir(parents=True, exist_ok=False)
         _seed_snapshot_timestamp(jobname, build_dir)
@@ -761,7 +761,7 @@ def run_job(
             str(rel_wrapper),
         ]
         compile_started = time.time()
-        env = _build_env()
+        env = build_env()
         popen_kwargs: dict = {}
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -828,7 +828,7 @@ def run_job(
                 on_relocated(False, dest_pdf)
             return True
 
-        dest_display = _display_path(dest_pdf)
+        dest_display = display_path(dest_pdf)
         log(f"==== MOVING: {jobname} -> {dest_display} ==== "
             f"(now backgrounded -- retrying for up to "
             f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min if needed, "
@@ -841,7 +841,7 @@ def run_job(
                 "destination_key": destination_key,
                 "generation": generation,
                 # whole-deck compiles only: those are what a snapshot reuses
-                "record": ((wrapper_path, wrapper_text, compile_started)
+                "record": ((wrapper_path, wrapper, compile_started)
                            if job.chapter is None else None),
             },
             daemon=True,
@@ -852,7 +852,7 @@ def run_job(
     finally:
         wrapper_path.unlink(missing_ok=True)
         if not relocation_started:
-            _set_build_dir_active(build_dir, False)
+            set_build_dir_active(build_dir, False)
 
 
 def _disambiguated_destinations(
@@ -902,7 +902,7 @@ def unchanged_jobs(
     for job in jobs:
         if job.chapter is not None or job.pages or job.jobname not in destinations:
             continue
-        fresh, _why = compile_records.fresh_output(BUILD_DIR, job.jobname, _wrapper_text(job))
+        fresh, _why = compile_records.fresh_output(BUILD_DIR, job.jobname, wrapper_text(job))
         if fresh is not None and (compile_records.norm(fresh.pdf)
                                   == compile_records.norm(destinations[job.jobname])):
             unchanged.append((job, fresh.created))

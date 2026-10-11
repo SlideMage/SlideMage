@@ -11,7 +11,7 @@ def _deck(path, text):
         name=path.stem, path=path, archived=False, text=text, supports_version=False,
         uses_biblatex=False,
         preamble_end=begin + len("\\begin{document}") if begin != -1 else None,
-        chapters=deck_scan._parse_chapters(text), output_folders={}, tags=[],
+        chapters=deck_scan.parse_chapters(text), output_folders={}, tags=[],
     )
 
 

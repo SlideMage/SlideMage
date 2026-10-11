@@ -213,7 +213,7 @@ def _full_compile(job: CompileJob, build_dir: Path) -> _FullCompile:
     if job.chapter is not None:
         raise PartialError("Page compiles work on whole-deck versions, not per-chapter PDFs.")
     # The deck as it is on disk now (the deck table's copy may be older).
-    fresh = next((d for d in deck_scan._scan_dir(job.deck.path.parent, job.deck.archived)
+    fresh = next((d for d in deck_scan.scan_dir(job.deck.path.parent, job.deck.archived)
                   if compile_records.norm(d.path) == compile_records.norm(job.deck.path)), None)
     if fresh is None:
         raise PartialError(f"{job.deck.path.name} is no longer a deck file.")
@@ -439,7 +439,7 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
     invocation = uuid.uuid4().hex
     build = build_root / f"pages-{jobname}-{invocation}"
     build.mkdir(parents=True)
-    compiler._set_build_dir_active(build, True)
+    compiler.set_build_dir_active(build, True)
     wrapper = job.deck.path.parent / f"_slidemage_{jobname}-pages_{invocation}.tex"
     wrapper.write_text(wrapper_text(plan), encoding="utf-8", newline="")
     try:
@@ -448,7 +448,7 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
         cmd = ["latexmk", "-g", "-f", "-e", "$max_repeat=1", "-e", "$bibtex_use=0",
                f"-jobname={jobname}", f"-auxdir={out}", f"-outdir={out}",
                os.path.relpath(wrapper, project_root)]
-        env = compiler._build_env()
+        env = compiler.build_env()
         kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
         for number in (1, 2):
             if number == 2:
@@ -480,7 +480,7 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
         return PartialOutput(pdf, build, page_infos(pdf))
     finally:
         wrapper.unlink(missing_ok=True)
-        compiler._set_build_dir_active(build, False)
+        compiler.set_build_dir_active(build, False)
 
 
 # --------------------------------------------------------------------------
@@ -661,7 +661,7 @@ def run_page_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken
         if the_plan.other_changed:
             log(f"    (not recompiled, but changed since the whole-deck compile: "
                 f"{', '.join(the_plan.other_changed)})")
-        log(f"==== PASS: {jobname} -> {compiler._display_path(where)} ====")
+        log(f"==== PASS: {jobname} -> {compiler.display_path(where)} ====")
         return True
     except PartialError as exc:
         log(f"*** FAIL: {jobname} -- {exc} ***")

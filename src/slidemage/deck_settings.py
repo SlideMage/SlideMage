@@ -3,7 +3,7 @@
 text, course link, output folders and the appendix TOC.
 
 Everything here is plain text in, text out, so the dialog can apply all its
-changes in one stale-checked write (deck_editor._apply). Only a live line
+changes in one stale-checked write (deck_editor.apply). Only a live line
 (not %-commented) counts, and a setting the deck does not have yet is added
 just before \\begin{document}, after the preamble \\input{} that defines the
 (inert) macros -- the same rule deck_editor.set_deck_tags() follows.
@@ -58,7 +58,7 @@ def set_open_pdf(text: str, choice: str) -> str:
     like the course link."""
     end = _preamble_end(text)
     for match in reversed(list(OPEN_PDF_RE.finditer(text, 0, end))):
-        line_start, line_end = deck_editor._line_span(text, match.start(), match.end())
+        line_start, line_end = deck_editor.line_span(text, match.start(), match.end())
         text = text[:line_start] + text[line_end:]
     if choice in ("", "instructor"):
         return text
@@ -88,7 +88,7 @@ def _line_bounds(text: str, pos: int) -> tuple[int, int]:
 def _insert_line(text: str, line: str, *, after: re.Match[str] | None = None) -> str:
     """`line` as a new line after the line of `after`, else just before
     \\begin{document} (at the end of the file for a fragment)."""
-    newline = deck_editor._eol(text)
+    newline = deck_editor.eol(text)
     if after is not None:
         _, at = _line_bounds(text, after.start())
         if at == len(text) and not text.endswith("\n"):
@@ -268,6 +268,6 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
 
 def save_settings(deck_path: Path, expected_text: str, old: DeckSettings, new: DeckSettings) -> str:
     """Write the changes in one stale-checked write; returns the new text."""
-    return deck_editor._apply(
+    return deck_editor.apply(
         deck_path, expected_text,
         lambda text: apply_settings(text, old, new, deck_path.name))

@@ -109,7 +109,7 @@ def reserved_id_reason(slide_id: str) -> Optional[str]:
 ID_FROM_FILENAME_RE = re.compile(r"^([^-]+)-.*\.tex$")
 
 
-def _existing_ids_from_csv() -> set[str]:
+def existing_ids_from_csv() -> set[str]:
     if not SLIDE_IDS_CSV.exists():
         return set()
     with open(SLIDE_IDS_CSV, encoding="utf-8", newline="") as f:
@@ -119,7 +119,7 @@ def _existing_ids_from_csv() -> set[str]:
     return ids
 
 
-def _existing_ids_from_disk() -> set[str]:
+def existing_ids_from_disk() -> set[str]:
     if not SLIDES_DIR.is_dir():
         return set()
     ids = set()
@@ -157,7 +157,7 @@ def mint_slide_id(reserved: Optional[str] = None) -> str:
     demo slide id instead: that digit, a letter, then any character."""
     if reserved is not None and reserved not in RESERVED_FIRST_DIGITS:
         raise ValueError(f"reserved must be one of {RESERVED_FIRST_DIGITS!r}, got {reserved!r}")
-    existing = {i.lower() for i in _existing_ids_from_csv() | _existing_ids_from_disk()}
+    existing = {i.lower() for i in existing_ids_from_csv() | existing_ids_from_disk()}
     while True:
         if reserved is None:
             candidate = random.choice(ID_FIRST_ALPHABET) + "".join(
@@ -248,7 +248,7 @@ def read_template() -> str:
     """The project's starter slide, or the bundled example's when absent."""
     if TEMPLATE_PATH.is_file():
         return TEMPLATE_PATH.read_bytes().decode("utf-8")
-    example = project._template_dir("example")
+    example = project.template_dir("example")
     if example is not None:
         template = example / TEMPLATE_RELATIVE
         if template.is_file():

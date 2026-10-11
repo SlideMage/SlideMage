@@ -193,7 +193,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
     copy instead of opening them itself. `strict_includes` raises for missing
     literal includes and cycles instead of leaving them for TeX.
     """
-    from .deck_scan import _parse_chapters
+    from .deck_scan import parse_chapters
 
     dependencies: list[Path] = []
 
@@ -233,12 +233,12 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
         return deck, []
     expanded = deck.preamble_text + expand(deck.text[deck.preamble_end:], deck.path.parent,
                                          frozenset({deck.path.resolve()}))
-    return replace(deck, text=expanded, chapters=_parse_chapters(expanded)), sorted(set(dependencies))
+    return replace(deck, text=expanded, chapters=parse_chapters(expanded)), sorted(set(dependencies))
 
 
 def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
     """Resolve calls, inlining fragments only when language resolution changes them."""
-    from .deck_scan import _parse_chapters
+    from .deck_scan import parse_chapters
 
     if deck.preamble_end is None:
         return deck, []
@@ -251,7 +251,7 @@ def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
                      if slide_id in links.paths}
     if resolved == expanded:
         return deck, sorted(header_inputs)
-    return replace(deck, text=resolved, chapters=_parse_chapters(resolved)), sorted(set(dependencies) | header_inputs)
+    return replace(deck, text=resolved, chapters=parse_chapters(resolved)), sorted(set(dependencies) | header_inputs)
 
 
 def language_for_job(job) -> str:

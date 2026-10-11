@@ -72,7 +72,7 @@ def search_project(
         if index == -1:
             continue
         if path.name.endswith(SLIDE_SUFFIX):
-            slide_id, title = alt_blocks._slide_title(text, path)
+            slide_id, title = alt_blocks.slide_title(text, path)
             title = f"{slide_id} · {title}"
         else:
             title = path.relative_to(root).as_posix()

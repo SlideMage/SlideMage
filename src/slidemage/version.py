@@ -1972,6 +1972,8 @@ v8.0.8 (2026-10-11, code review fix A8): Compiling only some pages works for sli
 
 v8.0.9 (2026-10-11, code review cleanup B1a): Internal: the TeX source-text helpers (comment pattern, comment and verbatim masking, the \\input/\\include pattern) live once in tex_source.py instead of four copies and private names other modules borrowed. No change in behaviour.
 
+v8.0.10 (2026-10-11, code review cleanup B1b): Internal: every helper one module uses from another has a public name (22 renames, e.g. compiler.build_env, deck_scan.parse_chapters, alt_blocks.slide_title); no module reaches into another one's private names any more. No change in behaviour.
+
 """
 from __future__ import annotations
 
@@ -1981,7 +1983,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.9"
+VERSION_NUMBER = "v8.0.10"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
@@ -2030,7 +2032,7 @@ def parse_history() -> list[HistoryEntry]:
     return entries
 
 
-def _run_git(*args: str) -> str | None:
+def run_git(*args: str) -> str | None:
     popen_kwargs: dict = {}
     if os.name == "nt":
         popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -2048,7 +2050,7 @@ def _run_git(*args: str) -> str | None:
 
 
 def _compute_version_string() -> str:
-    commit_dt = _run_git(
+    commit_dt = run_git(
         "show", "-s", "--format=%cd", "--date=format:%Y-%m-%d %H:%M", "HEAD"
     )
     if commit_dt is None:

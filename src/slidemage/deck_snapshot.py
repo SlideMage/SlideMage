@@ -444,7 +444,7 @@ def tex_roots() -> list[Path]:
 
 
 def _isolated_env(epoch: int, framework_dir: Optional[Path] = None) -> dict:
-    env = compiler._build_env()
+    env = compiler.build_env()
     for name in ISOLATING_ENV_VARS:
         env.pop(name, None)
     if framework_dir is not None:
@@ -821,8 +821,8 @@ def _project_git_state(root: Path, rels: Iterable[str]) -> dict:
 
 def _app_info() -> dict:
     from . import version
-    commit = version._run_git("rev-parse", "--short", "HEAD") or ""
-    dirty = bool(version._run_git("status", "--porcelain", "--untracked-files=no"))
+    commit = version.run_git("rev-parse", "--short", "HEAD") or ""
+    dirty = bool(version.run_git("status", "--porcelain", "--untracked-files=no"))
     return {"version": version.VERSION_NUMBER, "commit": commit,
             "dirty": dirty if commit else False, "frozen": bool(getattr(sys, "frozen", False))}
 
@@ -990,12 +990,12 @@ def _scratch_dir(kind: str) -> Iterator[Path]:
     not %TEMP%), protected from the GUI's temp-file cleanup while in use."""
     path = compiler.BUILD_DIR / f"snapshot-{kind}-{uuid.uuid4().hex}"
     path.mkdir(parents=True)
-    compiler._set_build_dir_active(path, True)
+    compiler.set_build_dir_active(path, True)
     try:
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
-        compiler._set_build_dir_active(path, False)
+        compiler.set_build_dir_active(path, False)
 
 
 def first_difference(reference: str, rendered: str, width: int = 60) -> str:
@@ -1155,7 +1155,7 @@ def create_snapshot(
     name = snapshot_name(deck.name, when, directory, options.zip)
     partial = directory / f"{PARTIAL_PREFIX}{name}"
     build_root = compiler.BUILD_DIR / f"snapshot-{uuid.uuid4().hex}"
-    compiler._set_build_dir_active(build_root, True)
+    compiler.set_build_dir_active(build_root, True)
     jobs = snapshot_jobs(deck, options)
     wrappers: list[Path] = []
     try:
@@ -1169,7 +1169,7 @@ def create_snapshot(
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
             key = progress_key(job.jobname)
-            wrapper_text = compiler._wrapper_text(job)
+            wrapper_text = compiler.wrapper_text(job)
             wrapper_texts.append(wrapper_text)
             if options.reuse:
                 fresh, why = compile_records.fresh_output(compiler.BUILD_DIR, job.jobname,
@@ -1334,7 +1334,7 @@ def create_snapshot(
         for wrapper in wrappers:
             wrapper.unlink(missing_ok=True)
         shutil.rmtree(build_root, ignore_errors=True)
-        compiler._set_build_dir_active(build_root, False)
+        compiler.set_build_dir_active(build_root, False)
         if not result.ok and partial.exists():
             shutil.rmtree(partial, ignore_errors=True)
     log(f"*** Snapshot of {deck.name} FAILED: {result.error} ***")

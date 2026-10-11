@@ -81,7 +81,7 @@ def _is_git_tracked(path: Path) -> bool:
     return result.returncode == 0
 
 
-def _read(path: Path) -> str:
+def read(path: Path) -> str:
     # newline='' passes CRLF through untouched, matching this project's own
     # convention (see add_deck_headers.py's own header comment) -- so the
     # regex substitutions below don't need to know or care which line
@@ -90,7 +90,7 @@ def _read(path: Path) -> str:
         return f.read()
 
 
-def _write(path: Path, text: str) -> None:
+def write(path: Path, text: str) -> None:
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
 
@@ -136,7 +136,7 @@ def archive_deck(deck: Deck) -> Path:
     else:
         shutil.move(str(deck.path), str(dest))
 
-    text = _read(dest)
+    text = read(dest)
 
     text, n_input_path = INPUT_PATH_RE.subn(r"\\def\\input@path{{../../}}", text)
     text, n_graphicspath = GRAPHICSPATH_RE.subn(r"\\graphicspath{{../../}}", text)
@@ -159,5 +159,5 @@ def archive_deck(deck: Deck) -> Path:
                 "archived file's bibliography path may be broken; fix by hand."
             )
 
-    _write(dest, text)
+    write(dest, text)
     return dest

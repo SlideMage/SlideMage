@@ -249,7 +249,7 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
 def plan_updates(project_root: Path, *, latex_source: Optional[Path],
                  example_source: Optional[Path]) -> list[Part]:
     """The parts with something to do for `project_root`, given the bundled
-    framework and example folders (project._template_dir()). Never plans
+    framework and example folders (project.template_dir()). Never plans
     against the bundle itself (a developer running on the repo's example/),
     and never against a deck snapshot, which keeps the framework and manual it
     was made with (v5.33.0)."""
@@ -370,7 +370,7 @@ def _merge_image_descriptions(part: Part) -> None:
         raw = json.loads((part.source / "media" / "alt-text.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
-    bundled = {image: alt_images._entry_from_dict(image, d)
+    bundled = {image: alt_images.entry_from_dict(image, d)
                for image, d in raw.get("images", raw).items()}
     replaced = set(part.update) | set(part.add)
 

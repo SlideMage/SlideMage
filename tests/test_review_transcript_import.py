@@ -314,5 +314,5 @@ def test_read_deck_accepts_fragments_without_changing_discovery(tmp_path: Path):
 
     assert read.path == fragment and read.archived and read.text == text
     assert read.preamble_end is None and read.chapters[0].title == "Body"
-    assert [d.path for d in deck_scan._scan_dir(tmp_path, False)] == [deck]
+    assert [d.path for d in deck_scan.scan_dir(tmp_path, False)] == [deck]
     assert deck_scan.read_deck(wrapper).name == "_wrapper"

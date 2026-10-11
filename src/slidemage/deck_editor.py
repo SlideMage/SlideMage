@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit
 
-from .archive import _read, _write
+from .archive import read, write
 from .deck_scan import (
     COURSE_URL_RE,
     DOCUMENT_BEGIN_LINE_RE,
@@ -34,7 +34,7 @@ from .deck_scan import (
     PROJECT_ROOT,
     Chapter,
     Deck,
-    _parse_chapters,
+    parse_chapters,
     SECTION_RE,
     find_decktags,
 )
@@ -134,7 +134,7 @@ def _find_chapter(chapters: list[Chapter], offset: int) -> Optional[Chapter]:
     return None
 
 
-def _line_span(text: str, call_start: int, call_end: int) -> tuple[int, int]:
+def line_span(text: str, call_start: int, call_end: int) -> tuple[int, int]:
     nl_before = text.rfind("\n", 0, call_start)
     line_start = nl_before + 1  # 0 if not found, i.e. first line of file
     nl_after = text.find("\n", call_end)
@@ -193,7 +193,7 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
 
         steps = m.group("ss_steps").strip() if macro == "slidestep" else None
         slide_id, _, slug = idslug.partition("-")
-        line_start, line_end = _line_span(deck.text, m.start(), m.end())
+        line_start, line_end = line_span(deck.text, m.start(), m.end())
         editable, readonly_reason = _editability(deck.text, line_start, m.start(), m.end(), line_end)
 
         calls.append(SlideCall(
@@ -299,20 +299,20 @@ def format_call(macro: str, id_slug: str, version: Optional[str] = None, conditi
     return f"\\{macro}{{{id_slug}}}"
 
 
-def _apply(deck_path: Path, expected_text: str, mutate) -> str:
+def apply(deck_path: Path, expected_text: str, mutate) -> str:
     """Shared stale-check-then-write path for every mutating function
     below: re-reads the file, verifies it still matches expected_text (the
     GUI tab's own last-loaded copy) before touching anything, applies
     `mutate(text) -> new_text`, writes the result, and returns it so the
     caller can refresh its own cached copy."""
-    current = _read(deck_path)
+    current = read(deck_path)
     if current != expected_text:
         raise StaleFileError(
             f"{deck_path.name} changed on disk since it was last loaded -- "
             "reload the deck and retry."
         )
     new_text = mutate(current)
-    _write(deck_path, new_text)
+    write(deck_path, new_text)
     return new_text
 
 
@@ -334,7 +334,7 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
             text = text[: call.line_start] + text[call.line_end :]
         return text
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def normalize_course_url(url: str) -> str:
@@ -360,7 +360,7 @@ def course_url_text(text: str, url: str, deck_name: str) -> str:
         raise ValueError(f"{deck_name} has no \\begin{{document}} to place the course link before.")
     preamble_end = begin.start() if begin else len(text)
     for match in reversed(list(COURSE_URL_RE.finditer(text, 0, preamble_end))):
-        line_start, line_end = _line_span(text, match.start(), match.end())
+        line_start, line_end = line_span(text, match.start(), match.end())
         text = text[:line_start] + text[line_end:]
     if not clean:
         return text
@@ -378,7 +378,7 @@ def set_course_url(deck_path: Path, expected_text: str, url: str) -> str:
     if url.strip():
         normalize_course_url(url)  # a bad URL is refused before anything is read
 
-    return _apply(deck_path, expected_text, lambda text: course_url_text(text, url, deck_path.name))
+    return apply(deck_path, expected_text, lambda text: course_url_text(text, url, deck_path.name))
 
 
 def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
@@ -396,7 +396,7 @@ def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
         if existing is not None:
             if not clean:
                 # Drop the whole line, like remove_slide_calls() does.
-                line_start, line_end = _line_span(text, existing.start(), existing.end())
+                line_start, line_end = line_span(text, existing.start(), existing.end())
                 return text[:line_start] + text[line_end:]
             return text[: existing.start()] + f"\\decktags{{{','.join(clean)}}}" + text[existing.end():]
         if not clean:
@@ -413,7 +413,7 @@ def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
         line = f"\\decktags{{{','.join(clean)}}}{newline}"
         return text[: begin.start()] + line + text[begin.start():]
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def change_slide_call_variant(
@@ -434,7 +434,7 @@ def change_slide_call_variant(
     def mutate(text: str) -> str:
         return text[: call.call_start] + new_token + text[call.call_end :]
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def set_calls_visibility(
@@ -467,7 +467,7 @@ def set_calls_visibility(
             text = text[: call.call_start] + token + text[call.call_end :]
         return text
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def _section_title(title: str) -> str:
@@ -482,14 +482,14 @@ def _section_title(title: str) -> str:
 
 def _chapter_marker(text: str, chapter: Chapter) -> tuple[int, int, int, int]:
     """Return a live chapter marker's token and line bounds."""
-    chapters = _parse_chapters(text)
+    chapters = parse_chapters(text)
     if chapter not in chapters:
         raise ValueError("This section is no longer at its scanned location; reload the deck and retry.")
     match = SECTION_RE.match(text, chapter.start)
     if match is None or match.group(1).strip() != chapter.title:
         raise ValueError("This section marker no longer matches its scanned location; reload the deck and retry.")
     token_end = match.end()
-    line_start, line_end = _line_span(text, chapter.start, token_end)
+    line_start, line_end = line_span(text, chapter.start, token_end)
     editable, reason = _editability(text, line_start, chapter.start, token_end, line_end)
     if not editable:
         raise ValueError(f"can't edit this section marker -- {reason}")
@@ -503,7 +503,7 @@ def _slide_marker(text: str, call: SlideCall) -> tuple[int, int]:
     token = text[call.call_start:call.call_end]
     if SLIDE_CALL_RE.fullmatch(token) is None or not re.match(rf"\\{re.escape(call.macro)}\s*(?:\{{|\[)", token):
         raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
-    line_start, line_end = _line_span(text, call.call_start, call.call_end)
+    line_start, line_end = line_span(text, call.call_start, call.call_end)
     if (line_start, line_end) != (call.line_start, call.line_end):
         raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
     editable, reason = _editability(text, line_start, call.call_start, call.call_end, line_end)
@@ -516,9 +516,9 @@ def add_section(deck_path: Path, expected_text: str, title: str, insert_at: int)
     """Insert a standalone ``\\section{title}`` line at ``insert_at``."""
     clean_title = _section_title(title)
     def mutate(text: str) -> str:
-        return _splice(text, insert_at, f"\\section{{{clean_title}}}{_eol(text)}")
+        return _splice(text, insert_at, f"\\section{{{clean_title}}}{eol(text)}")
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def rename_section(deck_path: Path, expected_text: str, chapter: Chapter, title: str) -> str:
@@ -529,7 +529,7 @@ def rename_section(deck_path: Path, expected_text: str, chapter: Chapter, title:
         token_start, token_end, _line_start, _line_end = _chapter_marker(text, chapter)
         return text[:token_start] + f"\\section{{{clean_title}}}" + text[token_end:]
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def _live_document_end(text: str) -> int:
@@ -555,7 +555,7 @@ def section_editable(text: str, chapter: Chapter) -> bool:
 
 def section_line_span(text: str, chapter: Chapter) -> tuple[int, int]:
     """Start and end (after its terminator) of the line holding the section marker."""
-    return _line_span(text, chapter.start, chapter.start)
+    return line_span(text, chapter.start, chapter.start)
 
 
 def section_append_point(deck: Deck, chapter: Optional[Chapter]) -> int:
@@ -576,7 +576,7 @@ def remove_section(deck_path: Path, expected_text: str, chapter: Chapter) -> str
         _token_start, _token_end, line_start, line_end = _chapter_marker(text, chapter)
         return text[:line_start] + text[line_end:]
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def _swap_sections(text: str, chapter: Chapter, neighbor: Chapter) -> str:
@@ -584,17 +584,17 @@ def _swap_sections(text: str, chapter: Chapter, neighbor: Chapter) -> str:
     content) swapped."""
     _chapter_marker(text, chapter)
     _chapter_marker(text, neighbor)
-    chapters = _parse_chapters(text)
+    chapters = parse_chapters(text)
     chapter_index, neighbor_index = chapters.index(chapter), chapters.index(neighbor)
     if abs(chapter_index - neighbor_index) != 1:
         raise ValueError("Sections can only move past an adjacent section.")
     first, second = sorted((chapter, neighbor), key=lambda item: item.start)
-    first_start = _line_span(text, first.start, first.start)[0]
-    second_start = _line_span(text, second.start, second.start)[0]
+    first_start = line_span(text, first.start, first.start)[0]
+    second_start = line_span(text, second.start, second.start)[0]
     second_index = chapters.index(second)
     if second_index + 1 < len(chapters):
         next_chapter = chapters[second_index + 1]
-        next_start = _line_span(text, next_chapter.start, next_chapter.start)[0]
+        next_start = line_span(text, next_chapter.start, next_chapter.start)[0]
     else:
         next_start = _live_document_end(text)
     if not first_start < second_start < next_start:
@@ -604,24 +604,24 @@ def _swap_sections(text: str, chapter: Chapter, neighbor: Chapter) -> str:
 
 def move_section(deck_path: Path, expected_text: str, chapter: Chapter, neighbor: Chapter) -> str:
     """Swap two adjacent section blocks, each marker and all following content."""
-    return _apply(deck_path, expected_text, lambda text: _swap_sections(text, chapter, neighbor))
+    return apply(deck_path, expected_text, lambda text: _swap_sections(text, chapter, neighbor))
 
 
 def move_section_to(deck_path: Path, expected_text: str, chapter: Chapter, index: int) -> str:
     """Move a section block so that it becomes the `index`-th section (0-based)
     of the deck, as one edit."""
     def mutate(text: str) -> str:
-        chapters = _parse_chapters(text)
+        chapters = parse_chapters(text)
         if chapter not in chapters or not 0 <= index < len(chapters):
             raise ValueError("This section is no longer at its scanned location; reload the deck and retry.")
         position = chapters.index(chapter)
         while position != index:
             step = 1 if index > position else -1
             text = _swap_sections(text, chapters[position], chapters[position + step])
-            chapters, position = _parse_chapters(text), position + step
+            chapters, position = parse_chapters(text), position + step
         return text
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def move_slide_past_section(deck_path: Path, expected_text: str, call: SlideCall, chapter: Chapter) -> str:
@@ -639,7 +639,7 @@ def move_slide_past_section(deck_path: Path, expected_text: str, call: SlideCall
                 if slide_start < section_start
                 else (section_start, section_end, slide_start, slide_end)
             )
-        for marker in _parse_chapters(text):
+        for marker in parse_chapters(text):
             if first_end <= marker.start < second_start:
                 raise ValueError("A slide can cross only the neighboring section marker.")
         for match in SLIDE_CALL_RE.finditer(text, first_end, second_start):
@@ -651,7 +651,7 @@ def move_slide_past_section(deck_path: Path, expected_text: str, call: SlideCall
         return (text[:first_start] + second_body + text[first_start + len(first_body):second_start]
                 + first_body + text[second_start + len(second_body):])
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def restore_deck_text(deck_path: Path, expected_text: str, previous_text: str) -> str:
@@ -660,7 +660,7 @@ def restore_deck_text(deck_path: Path, expected_text: str, previous_text: str) -
     as every other mutator here, so undo refuses (rather than silently
     clobbering) if the file changed on disk since the edit being undone --
     e.g. a Refresh picked up an outside edit in between."""
-    return _apply(deck_path, expected_text, lambda _text: previous_text)
+    return apply(deck_path, expected_text, lambda _text: previous_text)
 
 
 def insert_slide_call(
@@ -683,9 +683,9 @@ def insert_slide_call(
     token = format_call(macro, id_slug, version, conditions, steps)
 
     def mutate(text: str) -> str:
-        return _splice(text, insert_at, f"{indent}{token}{_eol(text)}")
+        return _splice(text, insert_at, f"{indent}{token}{eol(text)}")
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def insert_slide_calls(
@@ -695,11 +695,11 @@ def insert_slide_calls(
     order, at `insert_at` as a single edit -- so either all land or none."""
 
     def mutate(text: str) -> str:
-        eol = _eol(text)
-        lines = "".join(f"{indent}{format_call('slide', slug)}{eol}" for slug in id_slugs)
+        line_end = eol(text)
+        lines = "".join(f"{indent}{format_call('slide', slug)}{line_end}" for slug in id_slugs)
         return _splice(text, insert_at, lines)
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def move_slide_call(deck_path: Path, expected_text: str, call: SlideCall, neighbor: SlideCall) -> str:
@@ -725,7 +725,7 @@ def move_slide_call(deck_path: Path, expected_text: str, call: SlideCall, neighb
             + text[second.line_start + len(b):]
         )
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
 def move_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCall], insert_at: int) -> str:
@@ -740,18 +740,18 @@ def move_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCall]
     moved = sorted(calls, key=lambda c: c.line_start)
 
     def mutate(text: str) -> str:
-        eol = _eol(text)
-        lines = "".join(text[c.line_start:c.line_end].rstrip("\r\n") + eol for c in moved)
+        line_end = eol(text)
+        lines = "".join(text[c.line_start:c.line_end].rstrip("\r\n") + line_end for c in moved)
         rest = text
         for c in reversed(moved):
             rest = rest[:c.line_start] + rest[c.line_end:]
         shift = sum(c.line_end - c.line_start for c in moved if c.line_end <= insert_at)
         return _splice(rest, insert_at - shift, lines)
 
-    return _apply(deck_path, expected_text, mutate)
+    return apply(deck_path, expected_text, mutate)
 
 
-def _eol(text: str) -> str:
+def eol(text: str) -> str:
     return "\r\n" if "\r\n" in text else "\n"
 
 
@@ -764,7 +764,7 @@ def _splice(text: str, insert_at: int, new_text: str) -> str:
         raise ValueError(f"insert_at {insert_at} out of range for a {len(text)}-char file")
     if insert_at not in (0, len(text)) and text[insert_at - 1] != "\n":
         raise ValueError("insert_at must fall at the start of a line")
-    prefix = _eol(text) if insert_at == len(text) and text and not text.endswith("\n") else ""
+    prefix = eol(text) if insert_at == len(text) and text and not text.endswith("\n") else ""
     return text[:insert_at] + prefix + new_text + text[insert_at:]
 
 

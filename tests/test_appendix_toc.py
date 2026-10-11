@@ -5,7 +5,7 @@ from pathlib import Path
 
 from slidemage import appendix_toc, compiler
 from slidemage.compiler import CompileJob
-from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.deck_scan import Deck, parse_chapters
 
 DECK = (
     "\\documentclass{beamer}\n\\begin{document}\n"
@@ -26,7 +26,7 @@ def make_deck() -> Deck:
     return Deck(
         name="demo", path=Path("demo.tex"), archived=False, text=DECK, supports_version=True,
         uses_biblatex=False, preamble_end=doc_begin + len("\\begin{document}"),
-        chapters=_parse_chapters(DECK), output_folders={}, tags=[])
+        chapters=parse_chapters(DECK), output_folders={}, tags=[])
 
 
 def listed_ids(tex: str) -> list[str]:
@@ -62,7 +62,7 @@ def test_the_appendix_lists_the_slides_of_its_own_version():
 def test_student_wrapper_carries_the_appendix_after_the_body():
     deck = make_deck()
     job = CompileJob(deck, "during-course", None, appendix_toc=True)
-    text = compiler._wrapper_text(job)
+    text = compiler.wrapper_text(job)
     assert "\\def\\deckversionoverride{during-course}" in text
     assert "\\def\\SMAppendixTocOverride{1}" in text
     body_end = text.index("\\slide{eee-EN-Extra}")

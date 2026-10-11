@@ -229,8 +229,8 @@ def test_init_project_records_the_baseline(tmp_path):
     assert manifest[FRAMEWORK]["dir"] == "../latex"
     assert "decks/slidemage-manual.tex" in manifest[MANUAL]["files"]
     assert bundled_copies.plan_updates(
-        target, latex_source=project._template_dir("latex"),
-        example_source=project._template_dir("example")) == []
+        target, latex_source=project.template_dir("latex"),
+        example_source=project.template_dir("example")) == []
 
 
 # -- the dialog (MaintenanceMixin.check_bundled_copies) ----------------
@@ -243,7 +243,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
     QApplication.instance() or QApplication([])
     latex, example = bundle
     monkeypatch.setattr(maintenance, "PROJECT_ROOT", root)
-    monkeypatch.setattr(project, "_template_dir", lambda name: {"latex": latex, "example": example}[name])
+    monkeypatch.setattr(project, "template_dir", lambda name: {"latex": latex, "example": example}[name])
     seen = {}
 
     def fake_exec(box):

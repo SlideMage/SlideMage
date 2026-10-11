@@ -71,17 +71,17 @@ def child(base, label, deadline, case_name):
     slide_preview.BUILD_DIR = root / ".build" / label if cached else root / ".build"
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(reuse_build=cached, deferred_images=cached, case=case_name,
-             edit="typical-user-edit-v1", recipe=case), slide_preview._build_env())
+             edit="typical-user-edit-v1", recipe=case), slide_preview.build_env())
     identity["pymupdf"] = pymupdf.VersionBind
     atomic_json(out / "identity.json", identity)
-    compile_original = slide_preview._compile_and_extract
+    compile_original = slide_preview.compile_and_extract
 
     def frozen_compile(wrapper, *args, **kwargs):
         wrapper = wrapper.replace(r"\begin{document}", r"\begin{document}" + "\n"
             + slide_preview._preview_timestamp_line(True, "2026-10-11 12:00"), 1)
         return compile_original(wrapper, *args, **kwargs)
 
-    slide_preview._compile_and_extract = frozen_compile
+    slide_preview.compile_and_extract = frozen_compile
     samples, previous = [], None
     try:
         for phase, text in revisions(case):

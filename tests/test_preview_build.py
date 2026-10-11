@@ -85,7 +85,7 @@ def test_unused_preview_wrappers_are_pruned(tmp_path):
 
 def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
     calls = []
-    monkeypatch.setattr(slide_preview, '_compile_and_extract',
+    monkeypatch.setattr(slide_preview, 'compile_and_extract',
                         lambda *args, **kwargs: calls.append((args, kwargs)))
     pre = r'\documentclass{beamer}\begin{document}'
     slide_preview.render_slide_to_pdf('slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
