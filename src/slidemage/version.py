@@ -1959,6 +1959,11 @@ v5.35.7 (2026-10-11, direct report: "When compiling individual slides multiple t
 NEW: Fixed: single-slide renders no longer get stuck after the compile.
 - A render whose build files are still locked for a moment (cloud sync, antivirus) now finishes normally instead of silently hanging in the status bar; leftovers in .build/ are cleaned up by a later render.
 - Any other unexpected error during a render is shown as a failed render.
+
+v5.35.8 (2026-10-11, direct instruction: "Let SlideMage automatically delete individual slide renders (typically triggered from the edit tab) sometime after at least 24 hours have passed"): the PDF of a single-slide render (the slide editor's "Render to PDF", a Preview popup's "Render now") sits in a folder of its own, %TEMP%\slidemage_preview_*, so the viewer can open it, and nothing ever deleted it (about 280 had piled up). slide_preview.sweep_old_renders() removes those folders once they -- and everything in them -- are at least 24 hours old; it runs on a background thread 8 seconds after the app starts and after every single-slide render. Only folders with that prefix that hold nothing but files are touched; a PDF a viewer still has open is kept and retried by the next sweep. Test in tests/test_slide_preview_cleanup.py.
+
+NEW: Single-slide renders clean up after themselves.
+- The PDF of a single-slide render (the temporary files "Render to PDF" and "Render now" open) is deleted automatically once it is more than 24 hours old, at the next start of SlideMage or the next render.
 """
 from __future__ import annotations
 
@@ -1968,7 +1973,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.7"
+VERSION_NUMBER = "v5.35.8"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

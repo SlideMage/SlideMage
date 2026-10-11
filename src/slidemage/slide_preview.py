@@ -44,6 +44,48 @@ _LOCK_RETRY_DELAY = 0.25
 _STALE_PREVIEW_AGE = 3600
 
 
+# Single-slide renders (the slide editor's "Render to PDF", a Preview popup's
+# "Render now") leave their PDF in a folder of its own under the OS temp
+# directory so the viewer opens it; nothing else ever deleted them. They are
+# removed once they are at least this old (seconds) -- 24 hours, direct
+# instruction 2026-10-11 -- by sweep_old_renders(), which runs shortly after
+# the app starts and after every render, so "sometime after" 24 hours.
+RENDER_FOLDER_PREFIX = "slidemage_preview_"
+RENDER_MAX_AGE = 24 * 3600
+
+
+def sweep_old_renders(max_age: float = RENDER_MAX_AGE, temp_dir: Optional[Path] = None) -> int:
+    """Delete the single-slide render folders (`slidemage_preview_*` under
+    the temp directory) that are at least `max_age` seconds old; returns how
+    many were removed. Only folders that look like ours (that prefix, holding
+    nothing but files) are touched. Best-effort and silent: a PDF a viewer
+    still has open stays (Windows won't delete it) and is retried by the next
+    sweep."""
+    root = Path(temp_dir) if temp_dir is not None else Path(tempfile.gettempdir())
+    cutoff = time.time() - max_age
+    removed = 0
+    try:
+        candidates = list(root.glob(f"{RENDER_FOLDER_PREFIX}*"))
+    except OSError:
+        return 0
+    for folder in candidates:
+        try:
+            if not folder.is_dir() or folder.stat().st_mtime > cutoff:
+                continue
+            files = list(folder.iterdir())
+            if any(not f.is_file() for f in files):
+                continue
+            if any(f.stat().st_mtime > cutoff for f in files):
+                continue  # something in it was written recently
+            for f in files:
+                f.unlink()
+            folder.rmdir()
+            removed += 1
+        except OSError:
+            continue  # in use, or already gone -- the next sweep tries again
+    return removed
+
+
 def _retry_on_lock(action: Callable[[], None]) -> bool:
     """Run `action`, retrying while the OS reports the file is locked.
     True when it eventually worked, False when it never did (the caller
@@ -410,7 +452,7 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     # preview, not a build artifact), named after the slide itself rather
     # than the jobname's own uuid suffix, for a sane PDF-viewer window
     # title/taskbar entry.
-    out_dir = Path(tempfile.mkdtemp(prefix="slidemage_preview_"))
+    out_dir = Path(tempfile.mkdtemp(prefix=RENDER_FOLDER_PREFIX))
     dest_pdf = out_dir / f"{id_slug}.pdf"
     try:
         # Not shutil.move(): a locked source makes its copy-then-delete
@@ -426,6 +468,7 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
         log(f"    ({left} build file(s) of this render could not be deleted yet "
             f"-- they will be swept with a later render)")
     _sweep_stale_previews()
+    sweep_old_renders()
 
     if snapshot_template is not None:
         try:

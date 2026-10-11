@@ -38,6 +38,10 @@ def project(monkeypatch, tmp_path):
     monkeypatch.setattr(slide_preview, "BUILD_DIR", build)
     monkeypatch.setattr(slide_preview, "_build_env", lambda: {})
     monkeypatch.setattr(slide_preview, "_LOCK_RETRY_DELAY", 0)
+    # renders (and the sweep after them) must never touch the real temp directory
+    fake_temp = tmp_path / "temp"
+    fake_temp.mkdir()
+    monkeypatch.setattr(slide_preview.tempfile, "tempdir", str(fake_temp))
     monkeypatch.setattr(
         slide_preview.slide_snapshot, "capture_single_slide", lambda *a, **k: None)
     monkeypatch.setattr(
@@ -79,3 +83,32 @@ def test_stale_preview_leftovers_are_swept_by_the_next_render(project):
 
     assert not old.exists()
     assert young.exists()
+
+
+def test_renders_older_than_24_hours_are_deleted(tmp_path):
+    import os
+
+    day = 24 * 3600
+
+    def make(name: str, age: float, extra_dir: bool = False) -> Path:
+        folder = tmp_path / name
+        folder.mkdir()
+        pdf = folder / "abc.pdf"
+        pdf.write_text("%PDF", encoding="utf-8")
+        if extra_dir:
+            (folder / "sub").mkdir()
+        then = time.time() - age
+        os.utime(pdf, (then, then))
+        os.utime(folder, (then, then))
+        return folder
+
+    old = make("slidemage_preview_old", day + 60)
+    young = make("slidemage_preview_young", day - 3600)
+    foreign = make("something_else", 10 * day)
+    odd = make("slidemage_preview_odd", 10 * day, extra_dir=True)
+
+    removed = slide_preview.sweep_old_renders(temp_dir=tmp_path)
+
+    assert removed == 1
+    assert not old.exists()
+    assert young.exists() and foreign.exists() and odd.exists()
