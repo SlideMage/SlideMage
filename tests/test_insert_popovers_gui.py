@@ -13,11 +13,6 @@ from slidemage.ui.workspace.insert_popovers import CitationPopover, CodeFilePopo
 from slidemage.ui.workspace.source_view import SourcePane
 
 
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
 class FakeApp:
     def __init__(self):
         self.theme = ThemeManager()

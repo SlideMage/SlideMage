@@ -5,16 +5,11 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QPushButton
 
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace.source_editor import FindBar, LatexPlainTextEdit
 from slidemage.ui.workspace.source_file import SourceFile
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def make_editor(text):
@@ -23,27 +18,22 @@ def make_editor(text):
     return editor, FindBar(editor)
 
 
-def test_replace_selected_match_and_advance(qapp):
-    editor, bar = make_editor("cat CAT cat")
+@pytest.mark.parametrize("text, select_match, expected, next_match", [
+    ("cat CAT cat", True, "dog CAT cat", "CAT"),
+    ("a cat b cat", False, "a dog b cat", "cat"),
+])
+def test_replace_match_and_advance(qapp, text, select_match, expected, next_match):
+    editor, bar = make_editor(text)
     bar.find_entry.setText("cat")
     bar.replace_entry.setText("dog")
-    bar._on_next()
-
+    if select_match:
+        bar._on_next()
     bar._on_replace()
-
-    assert editor.text() == "dog CAT cat"
-    assert editor.selected_text() == "CAT"
+    assert editor.text() == expected
+    assert editor.selected_text() == next_match
     assert editor.is_modified()
     editor.undo()
-    assert editor.text() == "cat CAT cat"
-
-
-def test_replace_without_a_selected_match_finds_and_replaces_the_next_one(qapp):
-    editor, bar = make_editor("a cat b cat")
-    bar.find_entry.setText("cat")
-    bar.replace_entry.setText("dog")
-    bar._on_replace()
-    assert editor.text() == "a dog b cat" and editor.selected_text() == "cat"
+    assert editor.text() == text
 
 
 def test_next_and_previous_wrap_around(qapp):

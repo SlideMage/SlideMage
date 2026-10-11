@@ -4,28 +4,22 @@ model: the files are a throwaway project's and the provider is a fake."""
 from __future__ import annotations
 
 import threading
-import time
 from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+from PySide6.QtWidgets import QMessageBox, QWidget
 
 from slidemage import deck_editor, deck_scan, slide_add
 from slidemage.ai.providers import Cancelled, ChatReply, OllamaProvider
 from slidemage.ui.dialogs import add_slide
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
 
-from conftest import use_new_slide_files
+from conftest import use_new_slide_files, wait_until
 
 FRAME = "\\begin{standardframe}{%s}\r\nText\r\n\\end{standardframe}\r\n"
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeWindow(QWidget):
@@ -123,14 +117,6 @@ def pick(sheet, id_slug):
     sheet.search.setText("")
     sheet._select(id_slug)
     assert sheet.picked() == id_slug
-
-
-def wait_for(sheet):
-    deadline = time.monotonic() + 5
-    while sheet._worker is not None and time.monotonic() < deadline:
-        QCoreApplication.processEvents()
-        time.sleep(0.005)
-    assert sheet._worker is None
 
 
 def use_provider(monkeypatch, provider):
@@ -240,24 +226,24 @@ def test_unticking_a_view_makes_a_conditional_slide_and_one_view_is_needed(make,
 
 # -- Duplicate and Translate -------------------------------------------------------------------
 
-def test_duplicate_starts_on_the_given_slide_and_adds_an_independent_copy(make, project):
-    sheet, window = make(source="duplicate", slide="abc-EN-Demo")
-    assert sheet.picker.label.text() == "Slide to duplicate" and sheet.picked() == "abc-EN-Demo"
-    assert sheet.copy_slug.text() == "Demo-Copy" and sheet.translation.isHidden()
+@pytest.mark.parametrize("preset, id_slug, title", [
+    ("abc-EN-Demo", "abc-EN-Demo", "Demo"),
+    (None, "ccc-DE-Drei", "Dritte"),
+])
+def test_duplicate_adds_an_independent_copy(make, project, preset, id_slug, title):
+    sheet, window = make(source="duplicate", slide=preset)
+    assert sheet.picker.label.text() == "Slide to duplicate" and sheet.picked() == preset
+    assert sheet.translation.isHidden()
+    if preset is None:
+        assert not sheet.ok.isEnabled()
+        pick(sheet, id_slug)
+    language, slug = id_slug.split("-", 2)[1:]
+    assert sheet.copy_slug.text() == f"{slug}-Copy"
     sheet.ok.click()
-    created = next(project.slides.glob("*-EN-Demo-Copy-current.tex"))
-    assert created.read_bytes().decode().endswith(FRAME % "Demo") and "Translation of" not in created.read_text()
-    assert "translation" not in (project.slides / "abc-EN-Demo-current.tex").read_text()
+    created = next(project.slides.glob(f"*-{language}-{slug}-Copy-current.tex"))
+    assert created.read_bytes().decode().endswith(FRAME % title) and "Translation of" not in created.read_text()
+    assert "translation" not in (project.slides / f"{id_slug}-current.tex").read_text()
     assert window.opened == [created] and created.name[:3] in deck_text(project)
-
-
-def test_any_slide_of_the_project_can_be_duplicated(make, project):
-    sheet, _window = make(source="duplicate")
-    assert sheet.picked() is None and not sheet.ok.isEnabled()
-    pick(sheet, "ccc-DE-Drei")
-    assert sheet.copy_slug.text() == "Drei-Copy"
-    sheet.ok.click()
-    assert list(project.slides.glob("*-DE-Drei-Copy-current.tex"))
 
 
 def test_a_copy_needs_the_saved_file_and_a_good_slug(make, project):
@@ -278,7 +264,7 @@ def test_translate_into_german_runs_the_model_and_links_the_translation(make, pr
     assert sheet.machine.isEnabled() and sheet.machine.isChecked() and not sheet.machine_box.isHidden()
     sheet.ok.click()
     assert sheet._worker is not None and not sheet.ok.isEnabled() and "Translating with fake" in sheet.status.text()
-    wait_for(sheet)
+    wait_until(lambda: sheet._worker is None)
     created = next(project.slides.glob("*-DE-Demo-current.tex"))
     text = created.read_bytes().decode()
     assert "%% Translation of: abc-EN-Demo" in text and text.endswith("Text auf Deutsch")
@@ -294,7 +280,7 @@ def test_a_failed_translation_is_shown_and_nothing_is_made(make, project, monkey
     sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
     before = sorted(project.slides.iterdir())
     sheet.ok.click()
-    wait_for(sheet)
+    wait_until(lambda: sheet._worker is None)
     assert "Translation failed: rate limited" in sheet.status.text() and sheet.ok.isEnabled()
     assert sorted(project.slides.iterdir()) == before and window.edits == [] and window.slots[-1] == ("end",)
     sheet.machine.setChecked(False)

@@ -3,7 +3,7 @@ the current one (the Slide versions panel is in test_side_panels_gui.py)."""
 from __future__ import annotations
 
 import pytest
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
+from PySide6.QtWidgets import QLabel, QMessageBox
 
 from slidemage import alt_images
 from slidemage.ui.kit.theme import ThemeManager
@@ -14,11 +14,6 @@ from slidemage.ui.workspace.state import WorkspaceState
 from conftest import use_slides_folder
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeApp:

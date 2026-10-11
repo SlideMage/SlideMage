@@ -4,15 +4,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+from PySide6.QtWidgets import QMessageBox, QWidget
 
 from slidemage import deck_scan, slide_import
 from slidemage.ui.dialogs.import_presentation import ImportPresentationSheet
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeWindow(QWidget):

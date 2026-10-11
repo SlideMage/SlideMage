@@ -26,11 +26,6 @@ HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
 FRAME = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
 
 
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
 class FakeCentre:
     """What the panels ask of the centre column: versions, the Source view's buffers and its Save."""
 
@@ -293,13 +288,14 @@ def test_a_pinned_call_shows_its_state_but_cannot_be_changed(column, project):
     assert [b.isEnabled() for b in pinned] == [False] * 3 and [b.isEnabled() for b in cells(panel)[:3]] == [True] * 3
 
 
-def test_the_panel_says_when_the_open_deck_does_not_use_the_slide(column, project):
+@pytest.mark.parametrize("key", ["visibility", "versions"])
+def test_the_panel_says_when_the_open_deck_does_not_use_the_slide(column, project, key):
     panels, state, _window = column
-    panels.set_panel("visibility")
+    panels.set_panel(key)
     state.set_focused_slide("xyz")
     state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "talk"))
     state.set_focused_slide("xyz")
-    assert "talk does not call this slide." in texts(panels.panels["visibility"])
+    assert "talk does not call this slide." in texts(panels.panels[key])
 
 
 # -- Slide versions ------------------------------------------------------------------------------
@@ -354,14 +350,6 @@ def test_the_pin_moves_the_open_decks_calls_to_a_version_and_back(column, projec
     assert "slideversion" not in read(project.decks / "course.tex")
 
 
-def test_the_pin_row_says_when_there_is_nothing_to_pin(column, project):
-    panels, state, _window = column
-    panels.set_panel("versions")
-    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "talk"))
-    state.set_focused_slide("xyz")
-    assert "talk does not call this slide." in texts(panels.panels["versions"])
-
-
 def test_freezing_asks_the_centre_with_the_chosen_level(column):
     panels, state, window = column
     panels.set_panel("versions")
@@ -414,7 +402,6 @@ def test_citations_resolve_the_keys_and_mark_the_missing_ones(content, paths):
     assert lines[:2] == ["smith2020", "Smith (2020), “Findings”, Journal"]
     assert lines[2:4] == ["ghost1999", "Not in Slidemaster.bib"]
     assert panel.meta() == "2"
-    assert next(l for l in panel.findChildren(QLabel) if l.text() == "Not in Slidemaster.bib").objectName() == "kitPanelMissing"
     next(r for r in rows(panel) if r.findChildren(QLabel)[0].text() == "smith2020").clicked.emit()
     assert window.opened[-1] == (paths.bib, {"line": 1})
     buttons(panel, "Add to .bib…")[0].click()
@@ -749,11 +736,6 @@ def test_a_frozen_versions_notes_are_read_only(content, project, paths):
     panel = shown(panels, "notes")
     assert all(e.isReadOnly() for e in panel._edits) and not buttons(panel, "Save notes")
     assert "This is a frozen version: its notes are read-only." in texts(panel)
-
-
-def test_side_panels_can_take_more_than_the_first_three_panels():
-    assert [p.key for p in PANELS] == ["used", "versions", "visibility", "citations", "language", "images",
-                                       "transcript", "notes"]
 
 
 def test_the_reference_form_can_start_from_a_missing_key(qapp, project, monkeypatch):

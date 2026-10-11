@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtGui import QTextCursor
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from slidemage import alt_images, housekeeping
 from slidemage.ui.workspace import window as window_module
@@ -13,11 +13,6 @@ from slidemage.ai.providers import OllamaProvider
 from slidemage.ui.dialogs.open_project import OpenProjectSheet
 
 from conftest import build_window
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def _mock_ollama_lists(monkeypatch) -> None:
@@ -46,53 +41,28 @@ def _open_dirty_source(window, path: Path, monkeypatch):
     return file
 
 
-def test_main_window_cancel_keeps_dirty_source_open(monkeypatch, qapp, tmp_path):
+@pytest.mark.parametrize("answer, save_succeeds, closes", [
+    (QMessageBox.StandardButton.Cancel, True, False),
+    (QMessageBox.StandardButton.Yes, True, True),
+    (QMessageBox.StandardButton.Yes, False, False),
+], ids=["cancel-close", "save-and-close", "cancel-save"])
+def test_main_window_resolves_dirty_source_before_close(monkeypatch, qapp, tmp_path, answer, save_succeeds, closes):
+    """2026-09 regression: Cancel or a failed save must keep the dirty source open."""
     window = _make_window(monkeypatch, qapp)
     file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     saved = []
-    file.save = lambda: saved.append(True)  # must not run after Cancel
-    monkeypatch.setattr(
-        QMessageBox, "question",
-        lambda *args, **kwargs: QMessageBox.StandardButton.Cancel,
-    )
 
-    assert window.close() is False
-    assert file.dirty
-    assert not saved
+    def save():
+        saved.append(file.path)
+        if save_succeeds:
+            file.editor.mark_saved()
+        return save_succeeds
 
-
-def test_main_window_saves_dirty_source_before_close(monkeypatch, qapp, tmp_path):
-    window = _make_window(monkeypatch, qapp)
-    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
-    calls = []
-
-    def save_without_disk_write():
-        calls.append(file.path)
-        file.editor.mark_saved()
-        return True
-
-    file.save = save_without_disk_write
-    monkeypatch.setattr(
-        QMessageBox, "question",
-        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
-    )
-
-    assert window.close() is True
-    assert calls == [file.path]
-    assert not file.dirty
-
-
-def test_main_window_stays_open_when_source_save_is_cancelled(monkeypatch, qapp, tmp_path):
-    window = _make_window(monkeypatch, qapp)
-    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
-    monkeypatch.setattr(
-        QMessageBox, "question",
-        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
-    )
-    file.save = lambda: False
-
-    assert window.close() is False
-    assert file.dirty
+    file.save = save
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: answer)
+    assert window.close() is closes
+    assert file.dirty is not closes
+    assert saved == ([] if answer == QMessageBox.StandardButton.Cancel else [file.path])
 
 
 def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, tmp_path):
