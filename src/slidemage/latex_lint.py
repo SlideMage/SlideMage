@@ -574,12 +574,6 @@ def _slide_path(call) -> Path:
     return deck_editor.SLIDES_DIR / f"{call.id_slug}-current.tex"
 
 
-def _slide_included(call, version: Optional[str]) -> bool:
-    if call.macro in deck_editor.CONDITIONAL_MACROS and call.conditions is not None:
-        return (version or "instructor") in call.conditions
-    return True
-
-
 _INPUT_RE = re.compile(r"\\input\s*\{([^{}]+)\}")
 
 
@@ -668,7 +662,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
     for call in calls:
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
-        if not _slide_included(call, version):
+        if not call.included_in(version):
             continue
         path = _slide_path(call)
         if not path.is_file():
@@ -692,7 +686,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
                 result.issues.extend(lint_text(frag_text, frag.name, frag))
                 for slot in deck_language.slots(_calls_in(frag_text, []), language):
                     call = slot.call
-                    if not _slide_included(call, version):
+                    if not call.included_in(version):
                         continue
                     path = _slide_path(call)
                     if not path.is_file():

@@ -12,6 +12,7 @@ DECK = (
     "\\slide{aaa-EN-Intro-slide}\n"
     "\\section{Basics}\n"
     "\\slide{bbb-EN-Everyone}\n"
+    "\\omitslide{fff-EN-Omitted}\n"
     "\\conditionalslide[instructor]{ccc-EN-Instructor-only}\n"
     "\\slidestep{ddd-EN-Steps}[during-course,after-course]{1}\n"
     "\\section{Appendix}\n"
@@ -51,7 +52,9 @@ def test_the_appendix_lists_the_slides_of_its_own_version():
     deck = make_deck()
     assert listed_ids(appendix_toc.generate_appendix_tex(deck, "t", "instructor")) == [
         "aaa", "bbb", "ccc", "eee"]
+    assert "\\hyperlink{fff}" in appendix_toc.generate_appendix_tex(deck, "t", "instructor")
     for version in ("during-course", "after-course"):
+        assert "\\hyperlink{fff}" not in appendix_toc.generate_appendix_tex(deck, "t", version)
         assert listed_ids(appendix_toc.generate_appendix_tex(deck, "t", version)) == [
             "aaa", "bbb", "ddd", "eee"], version
 

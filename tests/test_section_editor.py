@@ -216,6 +216,32 @@ def test_move_section_to_reorders_whole_blocks_in_one_edit(tmp_path):
         deck_editor.move_section_to(deck.path, text, two, 3)
 
 
+@pytest.mark.parametrize("version,column", [
+    ("instructor", 0), ("during-course", 1), ("after-course", 2),
+    (None, 0), ("presenter", 0),
+])
+@pytest.mark.parametrize("source,conditions,expected", [
+    (r"\slide{aaa-A}", None, (True, True, True)),
+    (r"\slidefinal{aaa-A}", None, (True, True, True)),
+    (r"\slideversion{aaa-A}{1-0-0}", None, (True, True, True)),
+    (r"\omitslide{aaa-A}", None, (True, False, False)),
+    (r"\omitslideversion{aaa-A}{1-0-0}", None, (True, False, False)),
+    (r"\conditionalslide[instructor,after-course]{aaa-A}",
+     ["instructor", "after-course"], (True, False, True)),
+    (r"\conditionalslide{aaa-A}",
+     ["instructor", "during-course", "after-course"], (True, True, True)),
+    (r"\conditionalslide[]{aaa-A}", [], (False, False, False)),
+    (r"\slidestep{aaa-A}[during-course]{1,2}", ["during-course"], (False, True, False)),
+    (r"\slidestep{aaa-A}{1,2}",
+     ["instructor", "during-course", "after-course"], (True, True, True)),
+    (r"\slidestep{aaa-A}[]{1,2}", [], (False, False, False)),
+])
+def test_slide_call_included_in(tmp_path, source, conditions, expected, version, column):
+    call, = deck_editor.parse_slide_calls(_deck(tmp_path / "deck.tex", source + "\n"))
+    assert call.conditions == conditions
+    assert call.included_in(version) is expected[column]
+
+
 def test_set_calls_visibility_rewrites_the_call_per_view(tmp_path):
     def set_visibility(text, which, view, visible):
         deck = _deck(tmp_path / "deck.tex", text)      # puts `text` on disk

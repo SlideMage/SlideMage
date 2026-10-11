@@ -94,7 +94,7 @@ def count_job_slides(deck, version: Optional[str], chapter, language: Optional[s
         call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
-        if latex_lint._slide_included(call, version):
+        if call.included_in(version):
             total += 1
     if deck.preamble_end is not None and resolved_deck.text == text:
         body = latex_lint._masked_same_length(text)[deck.preamble_end:]
@@ -104,7 +104,7 @@ def count_job_slides(deck, version: Optional[str], chapter, language: Optional[s
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
                 total += sum(1 for s in deck_language.slots(latex_lint._calls_in(frag_text, []), language)
-                             if latex_lint._slide_included(s.call, version))
+                             if s.call.included_in(version))
     return total
 
 

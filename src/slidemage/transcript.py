@@ -219,7 +219,7 @@ def _versions_from(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]
     if raw is None:
         return default
     parts = tuple(p.strip() for p in raw.split(",") if p.strip())
-    return parts or default
+    return parts
 
 
 def deck_version_of(deck_text: str) -> str | None:
@@ -235,7 +235,7 @@ def deck_version_of(deck_text: str) -> str | None:
     match = _DECK_VERSION_RE.search(alt_blocks.COMMENT_RE.sub("", deck_text))
     if not match:
         return VERSION_INSTRUCTOR          # the preamble's own default
-    listed = _versions_from(match.group(1), (VERSION_INSTRUCTOR,))
+    listed = _versions_from(match.group(1), (VERSION_INSTRUCTOR,)) or (VERSION_INSTRUCTOR,)
     return listed[0] if listed[0] in _ALL_VERSIONS else None
 
 

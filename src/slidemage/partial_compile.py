@@ -237,7 +237,7 @@ def _full_compile(job: CompileJob, build_dir: Path) -> _FullCompile:
             break
 
     groups = frame_groups(page_infos(full_pdf))
-    calls = [c for c in _deck_calls(job) if latex_lint._slide_included(c, job.version)]
+    calls = [c for c in _deck_calls(job) if c.included_in(job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
     unmatched: list[FrameGroup] = []
     ptr = 0

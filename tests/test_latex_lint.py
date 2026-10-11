@@ -1,4 +1,15 @@
-from slidemage import latex_lint
+from slidemage import deck_editor, deck_scan, latex_lint
+
+
+def test_student_lint_skips_omitslide(tmp_path, monkeypatch):
+    (tmp_path / "deck.tex").write_text(
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        "\\omitslide{abc-EN-Missing}\n\\end{document}\n", encoding="utf-8")
+    deck, = deck_scan._scan_dir(tmp_path, False)
+    monkeypatch.setattr(deck_editor, "SLIDES_DIR", tmp_path / "slides")
+    for version in ("during-course", "after-course"):
+        assert not latex_lint.check_deck_job(deck, version).errors
+    assert [i.code for i in latex_lint.check_deck_job(deck, "instructor").errors] == ["slide-file"]
 
 
 def codes(text):

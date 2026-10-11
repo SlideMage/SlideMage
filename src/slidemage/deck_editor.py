@@ -115,14 +115,16 @@ class SlideCall:
             return f"{self.id_slug}-v{self.version}.tex"
         return f"{self.id_slug}-current.tex"
 
-    def included_in(self, version: str) -> bool:
+    def included_in(self, version: Optional[str]) -> bool:
         """Whether the deck version `version` (one of DEFAULT_CONDITIONS) typesets
         this slide: \\omitslide is instructor-only, the conditional macros
         follow their list, everything else is always in."""
+        if version in (None, "presenter"):
+            version = DEFAULT_CONDITIONS[0]
         if self.macro in OMIT_MACROS:
             return version == DEFAULT_CONDITIONS[0]
         if self.macro in CONDITIONAL_MACROS:
-            return version in (self.conditions or DEFAULT_CONDITIONS)
+            return version in (self.conditions if self.conditions is not None else DEFAULT_CONDITIONS)
         return True
 
 

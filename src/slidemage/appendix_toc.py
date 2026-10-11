@@ -60,20 +60,6 @@ _GEOMETRY_TEX = r"""
 """.strip()
 
 
-def _visible_for_version(call: SlideCall, version: str) -> bool:
-    """Whether `call` renders on a compile of deck version `version`
-    ("instructor", "during-course" or "after-course"; a version-less or
-    presenter job counts as "instructor"). \\conditionalslide and \\slidestep
-    are the macros whose visibility depends on the deck version; every other
-    macro (\\slide, \\slidefinal, \\slideversion, \\omitslide,
-    \\omitslideversion) always renders -- \\omitslide{}/\\omitslideversion{}
-    only skip under \\ifSMStudentVersion, which no real deck in this project
-    currently ever sets true."""
-    if call.macro in ("conditionalslide", "slidestep"):
-        return version in (call.conditions or [])
-    return True
-
-
 def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, list[SlideCall]]]:
     """(order, title, calls) per appendix entry, in agenda order -- a
     leading "Front matter" entry (order 0) for slides before the first
@@ -87,7 +73,7 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
     for c in deck_editor.parse_slide_calls(deck):
         if deck_editor.is_commented_out(deck.text, c):
             continue
-        if not _visible_for_version(c, version):
+        if not c.included_in(version):
             continue
         if deck_editor.is_commented_out(deck.text, c):
             # A disabled "% \slide{abc-EN-Old}" is not a real slide in

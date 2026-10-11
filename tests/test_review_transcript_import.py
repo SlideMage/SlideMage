@@ -52,6 +52,25 @@ def test_render_slide_uses_note_sanitized_title_body_and_images(tmp_path: Path):
     assert entry.images == []
 
 
+def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(tmp_path: Path):
+    deck = tmp_path / "deck.tex"
+    deck.write_text(
+        r"\slide{aaa-EN-Always}"
+        r"\conditionalslide[]{bbb-EN-Empty}"
+        r"\conditionalslide{ccc-EN-Default}"
+        r"\slidestep{ddd-EN-Empty}[]{1}"
+        r"\slidestep{eee-EN-Default}{1}"
+        r"\omitslide{fff-EN-Instructor}"
+        r"\omitslideversion{ggg-EN-Instructor}{1-0-0}", encoding="utf-8")
+    for version in transcript.STUDENT_VERSIONS:
+        slides = transcript.resolve_deck(deck, version)
+        assert [(s.slide_id, s.number) for s in slides if s.included] == [
+            ("aaa", 1), ("ccc", 3), ("eee", 4)]
+    assert [s.slide_id for s in transcript.resolve_deck(deck, "instructor") if s.included] == [
+        "aaa", "ccc", "eee", "fff", "ggg"]
+    assert transcript.deck_version_of(r"\deckversion[]") == "instructor"
+
+
 def test_resolve_deck_expands_relative_and_project_includes_in_order(
     tmp_path: Path, monkeypatch
 ):
