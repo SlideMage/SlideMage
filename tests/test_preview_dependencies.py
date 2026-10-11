@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from slidemage import preview_build, preview_cli
+from slidemage import compiler, preview_build, preview_cli
 from slidemage.preview_metrics import PreviewMetrics, record_line, stage
 
 
@@ -285,10 +285,10 @@ def test_cache_reserved_before_first_directory_mutation(tmp_path, monkeypatch):
         job = next(c.split('=', 1)[1] for c in cmd if c.startswith('-jobname='))
         (cache / (job + '.pdf')).write_bytes(b'pdf')
         (cache / (job + '.log')).write_text('Success')
-        return SimpleNamespace(stdout=iter([]), wait=lambda: None, returncode=0)
+        return SimpleNamespace(stdout=iter([]), wait=lambda: 0, returncode=0)
 
     monkeypatch.setattr(Path, "mkdir", mkdir)
-    monkeypatch.setattr(preview_build.subprocess, "Popen", popen)
+    monkeypatch.setattr(compiler.subprocess, "Popen", popen)
     output = preview_build.compile_cached(r'\begin{document}Text', 'abc', lambda _: None,
         project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
     assert observed and all(observed)

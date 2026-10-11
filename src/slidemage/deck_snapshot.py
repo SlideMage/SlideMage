@@ -463,21 +463,10 @@ def run_recorded_compile(
     cmd = ["latexmk", "-f", "-recorder", f"-jobname={jobname}",
            f"-auxdir={out}", f"-outdir={out}", _rel(wrapper, cwd)]
     try:
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, errors="replace",
-                                bufsize=1, **no_console_kwargs())
+        compiler.run_streamed(cmd, cwd=cwd, env=env, log=log, cancel=cancel,
+                              errors="replace")
     except FileNotFoundError as exc:
         raise SnapshotError("latexmk not found on PATH -- is a TeX distribution installed?") from exc
-    if cancel is not None:
-        cancel._set_process(proc)
-    try:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            log(line.rstrip("\n"))
-        proc.wait()
-    finally:
-        if cancel is not None:
-            cancel._set_process(None)
     if cancel is not None and cancel.is_set():
         raise SnapshotError("stopped by user")
     pdf = build_dir / f"{jobname}.pdf"

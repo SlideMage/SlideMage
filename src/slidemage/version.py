@@ -1978,6 +1978,8 @@ v8.0.11 (2026-10-11, code review cleanup B2): Internal: the compile status lines
 
 v8.0.12 (2026-10-11, code review cleanup B4): Internal: copy-pasted helpers merged -- the Windows no-console subprocess option (11 copies) and the git checks of archiving and renaming live in processes.py; the slide id helpers bare_id and slide_id_of exist once. No change in behaviour.
 
+v8.0.13 (2026-10-11, code review cleanup B3): Internal: the five places that run latexmk (compile, page compile, slide preview, reusable preview build, deck snapshot) share one function for starting it, streaming its output to the log and letting Stop end it; each keeps its own command and checks. No change in behaviour.
+
 """
 from __future__ import annotations
 
@@ -1988,7 +1990,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.12"
+VERSION_NUMBER = "v8.0.13"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

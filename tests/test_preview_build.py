@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from slidemage import preview_build, preview_format, slide_preview
+from slidemage import compiler, preview_build, preview_format, slide_preview
 
 
 @pytest.fixture(autouse=True)
@@ -46,9 +46,9 @@ def test_cached_build_retains_aux_and_rejects_stale_pdf(tmp_path, monkeypatch):
         (cache / (job + '.pdf')).write_bytes(b'old pdf')
         (cache / (job + '.aux')).write_text('remember me')
         (cache / (job + '.log')).write_text('! Bad edit' if fail else 'Success')
-        return SimpleNamespace(stdout=iter([]), wait=lambda: None, returncode=int(fail))
+        return SimpleNamespace(stdout=iter([]), wait=lambda: int(fail), returncode=int(fail))
 
-    monkeypatch.setattr(preview_build.subprocess, 'Popen', popen)
+    monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
     monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
     kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
     one = r'\documentclass{beamer}\begin{document}one\end{document}'
@@ -112,9 +112,9 @@ def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):
         (cache / (job + '.log')).write_text('Successful TeX pass')
         return SimpleNamespace(stdout=iter(['Maximum runs of lualatex reached\n',
                                            'lualatex needed too many passes\n']),
-                               wait=lambda: None, returncode=12)
+                               wait=lambda: 12, returncode=12)
 
-    monkeypatch.setattr(preview_build.subprocess, 'Popen', popen)
+    monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
     monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
     kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
     preview_build.compile_cached(r'\begin{document}Hi', 'abc', print, **kwargs)
@@ -197,9 +197,9 @@ def test_slide_failing_only_with_the_format_is_rebuilt_without_it_and_the_format
         if not with_format:
             (cache / (job + '.pdf')).write_bytes(b'pdf')
         (cache / (job + '.log')).write_text('! Format breaks this' if with_format else 'Success')
-        return SimpleNamespace(stdout=iter([]), wait=lambda: None, returncode=int(with_format))
+        return SimpleNamespace(stdout=iter([]), wait=lambda: int(with_format), returncode=int(with_format))
 
-    monkeypatch.setattr(preview_build.subprocess, 'Popen', popen)
+    monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
     monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
     kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={},
                   fatal_error_re=re.compile('^!'))

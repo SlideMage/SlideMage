@@ -15,7 +15,6 @@ from __future__ import annotations
 from datetime import datetime
 import re
 import shutil
-import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -23,10 +22,9 @@ from typing import Callable, Optional
 
 from . import compile_log, open_path
 from . import slide_language, slide_snapshot
-from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env
+from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env, run_streamed
 from .deck_editor import VERSION_FILE_RE, format_call
 from .deck_scan import PROJECT_ROOT
-from .processes import no_console_kwargs
 from .preview_metrics import measure, record_line, finish_rules
 
 DECKS_DIR = PROJECT_ROOT / "decks"
@@ -337,20 +335,10 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             str(rel_wrapper),
         ]
         env = build_env()
-        popen_kwargs: dict = no_console_kwargs()
 
         log(compile_log.rendering(id_slug, jobname))
         try:
-            proc = subprocess.Popen(
-                cmd, cwd=PROJECT_ROOT, env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                **popen_kwargs,
-            )
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                record_line(line)
-                log(line.rstrip("\n"))
-            proc.wait()
+            run_streamed(cmd, cwd=PROJECT_ROOT, env=env, log=log, on_line=record_line)
             finish_rules()
         except FileNotFoundError:
             raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")

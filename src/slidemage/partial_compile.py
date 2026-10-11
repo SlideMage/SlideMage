@@ -44,7 +44,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -53,7 +52,6 @@ from typing import Callable, Optional
 from . import compile_log, compile_records, compiler, deck_scan
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .deck_editor import SlideCall
-from .processes import no_console_kwargs
 
 LogCallback = Callable[[str], None]
 
@@ -450,27 +448,15 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
                f"-jobname={jobname}", f"-auxdir={out}", f"-outdir={out}",
                os.path.relpath(wrapper, project_root)]
         env = compiler.build_env()
-        kwargs = no_console_kwargs()
         for number in (1, 2):
             if number == 2:
                 _restore_full_aux(plan, build, build)
             log(f"    (page compile of {jobname}: pass {number} of 2)")
             try:
-                proc = subprocess.Popen(cmd, cwd=project_root, env=env, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, text=True, errors="replace",
-                                        bufsize=1, **kwargs)
+                compiler.run_streamed(cmd, cwd=project_root, env=env, log=log,
+                                      cancel=cancel, errors="replace")
             except FileNotFoundError as exc:
                 raise PartialError("latexmk not found on PATH") from exc
-            if cancel is not None:
-                cancel._set_process(proc)
-            try:
-                assert proc.stdout is not None
-                for line in proc.stdout:
-                    log(line.rstrip("\n"))
-                proc.wait()
-            finally:
-                if cancel is not None:
-                    cancel._set_process(None)
             if cancel is not None and cancel.job_stopped():
                 raise PartialError("stopped by user")
         pdf = build / f"{jobname}.pdf"

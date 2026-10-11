@@ -378,6 +378,34 @@ class CancelToken:
             proc.kill()
 
 
+def run_streamed(
+    cmd: list[str], *, cwd: Path, env: dict, log: LogCallback,
+    cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
+    errors: Optional[str] = None, bufsize: int = 1,
+) -> int:
+    """Stream process output to log, with an optional callback on each raw line.
+
+    Keep the caller's decoding and buffering options; launch errors propagate.
+    """
+    try:
+        proc = subprocess.Popen(
+            cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, errors=errors, bufsize=bufsize,
+            **no_console_kwargs(),
+        )
+        if cancel is not None:
+            cancel._set_process(proc)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if on_line is not None:
+                on_line(line)
+            log(line.rstrip("\n"))
+        return proc.wait()
+    finally:
+        if cancel is not None:
+            cancel._set_process(None)
+
+
 @dataclass
 class CompileJob:
     deck: Deck
@@ -763,35 +791,20 @@ def run_job(
         ]
         compile_started = time.time()
         env = build_env()
-        popen_kwargs: dict = no_console_kwargs()
+        passes = 0
+
+        def count_passes(line: str) -> None:
+            nonlocal passes
+            run = compile_passes.RUN_RE.match(line)
+            if run:
+                passes = max(passes, int(run.group(1)))
 
         try:
-            proc = subprocess.Popen(
-                cmd,
-                cwd=PROJECT_ROOT,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                **popen_kwargs,
-            )
-            if cancel is not None:
-                cancel._set_process(proc)
-            assert proc.stdout is not None
-            passes = 0
-            for line in proc.stdout:
-                run = compile_passes.RUN_RE.match(line)
-                if run:
-                    passes = max(passes, int(run.group(1)))
-                log(line.rstrip("\n"))
-            proc.wait()
+            run_streamed(cmd, cwd=PROJECT_ROOT, env=env, log=log, cancel=cancel,
+                         on_line=count_passes)
         except FileNotFoundError:
             log("*** latexmk not found on PATH -- is a TeX distribution installed? ***")
             return False
-        finally:
-            if cancel is not None:
-                cancel._set_process(None)
 
         if cancel is not None and cancel.job_stopped():
             log(compile_log.failed(jobname, "stopped by user"))
