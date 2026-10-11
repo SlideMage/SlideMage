@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import threading
 import time
+from functools import partial
 
 import pytest
 from agent_fakes import ScriptedProvider, call, reply
-from conftest import SLIDE_TEXT, build_window, make_project
+from conftest import SLIDE_TEXT, build_window, make_project, wait_until as _wait_until
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from slidemage import app_settings, compiler
@@ -34,20 +35,15 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+wait_until = partial(_wait_until, seconds=10)
+
+
 def pump(seconds=0.0):
     end = time.time() + seconds
     QApplication.processEvents()
     while time.time() < end:
         QApplication.processEvents()
         time.sleep(0.005)
-
-
-def wait_until(condition, seconds=10):
-    end = time.time() + seconds
-    while not condition() and time.time() < end:
-        QApplication.processEvents()
-        time.sleep(0.005)
-    assert condition()
 
 
 @pytest.fixture

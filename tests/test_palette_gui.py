@@ -2,7 +2,6 @@
 text search of the project's files."""
 from __future__ import annotations
 
-import time
 from dataclasses import replace
 
 import pytest
@@ -10,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from conftest import build_window
+from conftest import build_window, wait_until
 from slidemage import slide_ids
 from slidemage.ui.workspace import palette as palette_module
 from slidemage.ui.workspace.palette import CHAT, GO_TO_DECK, GO_TO_SLIDE, TEXT_HITS, matches, words_of
@@ -28,14 +27,6 @@ def window(qapp, monkeypatch):
     window.palette._debounce.setInterval(0)
     yield window
     window.palette.stop_search()
-
-
-def wait_until(condition, seconds=5):
-    end = time.time() + seconds
-    while not condition() and time.time() < end:
-        QApplication.processEvents()
-        time.sleep(0.01)
-    assert condition()
 
 
 def labels(palette, group=None):

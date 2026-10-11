@@ -65,6 +65,8 @@ def record(c, wrapper_text=WRAPPER, log=None):
 
 def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     c = compiled
+    assert fresh_output(c["build"], "t-Deck-instructor", WRAPPER) == (
+        None, "no compile on record")
     assert record(c) == c["build"] / "compile-records" / "t-Deck-instructor.json"
     fresh, why = fresh_output(c["build"], "t-Deck-instructor", WRAPPER)
     assert why == ""
@@ -105,11 +107,6 @@ def test_stale_when_settings_or_engine_change(compiled, monkeypatch):
     monkeypatch.setattr(compile_records, "engine_version", lambda: "LuaHBTeX 1.23.0")
     assert fresh_output(compiled["build"], "t-Deck-instructor", WRAPPER) == (
         None, "the TeX engine changed")
-
-
-def test_no_record_no_reuse(compiled):
-    assert fresh_output(compiled["build"], "t-Deck-instructor", WRAPPER) == (
-        None, "no compile on record")
 
 
 def test_file_changed_during_the_compile_is_not_recorded(compiled):

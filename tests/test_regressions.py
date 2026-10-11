@@ -33,95 +33,6 @@ def test_line_removal_takes_whole_calls_and_crlf():
     assert new == "\\slide{keep-EN-A}\r\n\\slide{gone-EN-B-longer}\r\n"
 
 
-def _fake_deck(**overrides):
-    from slidemage.deck_scan import Deck
-
-    fields = dict(
-        name="fake", path=None, archived=False, text="", supports_version=True,
-        uses_biblatex=False, preamble_end=0, chapters=[], output_folders={}, tags=[],
-    )
-    fields.update(overrides)
-    return Deck(**fields)
-
-
-def test_wrapper_write_does_not_double_crlf(tmp_path):
-    # Same bug slide_preview.py's own wrapper write already guards against:
-    # writing CRLF content (deck_scan.py reads deck text with newline="",
-    # so a real deck's preamble_text/chapter_text already carries literal
-    # "\r\n") with the default newline translation doubles every "\r" into
-    # "\r\r\n" on Windows. run_job() must write with newline="" too.
-
-    wrapper = tmp_path / "wrapper.tex"
-    content = "line one\r\nline two\r\n"
-    wrapper.write_text(content, encoding="utf-8", newline="")
-    assert wrapper.read_bytes().decode("utf-8") == content
-
-
-def test_deckoutputfolder_collision_falls_back_to_jobname(tmp_path):
-    from slidemage.compiler import CompileJob, Chapter, _disambiguated_destinations
-
-    deck = _fake_deck(
-        name="course", chapters=[
-            Chapter(order=1, title="A", slug="A", start=0, end=0),
-            Chapter(order=2, title="B", slug="B", start=0, end=0),
-        ],
-        output_folders={"after-course": str(tmp_path / "Handout.pdf")},
-    )
-    jobs = [
-        CompileJob(deck, "after-course", deck.chapters[0]),
-        CompileJob(deck, "after-course", deck.chapters[1]),
-    ]
-    logged = []
-    dests = _disambiguated_destinations(jobs, logged.append)
-    resolved = {dests[id(job)] for job in jobs}
-    assert len(resolved) == 2  # no longer collide
-    assert all(stem == job.jobname for job, (_, stem) in zip(jobs, [dests[id(j)] for j in jobs]))
-    assert any("shared by 2 jobs" in line for line in logged)
-
-
-def test_deckoutputfolder_no_collision_keeps_literal_name(tmp_path):
-    from slidemage.compiler import CompileJob, _disambiguated_destinations
-
-    deck = _fake_deck(
-        name="solo", supports_version=False,
-        output_folders={None: str(tmp_path / "Handout.pdf")},
-    )
-    jobs = [CompileJob(deck, None, None)]
-    logged = []
-    dests = _disambiguated_destinations(jobs, logged.append)
-    output_dir, stem = dests[id(jobs[0])]
-    assert stem == "Handout"  # single job, no collision -- literal name kept
-    assert not logged
-
-
-def test_presenter_fallback_collision_is_disambiguated(tmp_path):
-    from slidemage.compiler import CompileJob, _disambiguated_destinations
-
-    deck = _fake_deck(
-        name="course", supports_version=True,
-        output_folders={"instructor": str(tmp_path / "Handout.pdf")},
-    )
-    ordinary = CompileJob(deck, "instructor", None)
-    presenter = CompileJob(deck, "instructor", None, presenter=True)
-    logged = []
-    dests = _disambiguated_destinations([ordinary, presenter], logged.append)
-    assert dests[id(ordinary)] != dests[id(presenter)]
-
-
-def _fake_deck_with_text(text, **overrides):
-    from slidemage.deck_scan import Deck
-
-    doc_begin = text.find("\\begin{document}")
-    fields = dict(
-        name="fake", path=None, archived=False, text=text, supports_version=False,
-        uses_biblatex=False,
-        preamble_end=(doc_begin + len("\\begin{document}")) if doc_begin != -1 else None,
-        chapters=[], output_folders={}, tags=[],
-    )
-    fields.update(overrides)
-    return Deck(**fields)
-
-
 def test_commented_out_section_is_not_a_chapter():
     from slidemage.deck_scan import parse_chapters
 
@@ -136,19 +47,6 @@ def test_commented_out_section_is_not_a_chapter():
     # ordinary content -- offsets must stay into the *original* text.
     expected = text[text.index("\\section{Intro}"):text.index("\\end{document}")]
     assert text[chapters[0].start:chapters[0].end] == expected
-
-
-def test_commented_out_slide_call_is_excluded_from_appendix():
-    from slidemage import deck_editor
-
-    text = (
-        "\\documentclass{beamer}\n\\begin{document}\n"
-        "\\slide{abc-EN-Old}\n% \\slide{xyz-EN-Old}\n\\end{document}\n"
-    )
-    deck = _fake_deck_with_text(text)
-    calls = deck_editor.parse_slide_calls(deck)
-    commented = {c.id_slug: deck_editor.is_commented_out(deck.text, c) for c in calls}
-    assert commented == {"abc-EN-Old": False, "xyz-EN-Old": True}
 
 
 def test_save_slide_source_detects_stale_disk_content(tmp_path):

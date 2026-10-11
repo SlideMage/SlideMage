@@ -2,6 +2,7 @@ import atexit
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 # project.py imports nothing else from the package, so this is safe before the variable below is set.
@@ -205,3 +206,15 @@ def make_project(monkeypatch, root):
     monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", root / "decks" / "archive")
     monkeypatch.setattr(bibliography, "DEFAULT_BIB", root / "Slidemaster.bib")
     return root.resolve()
+
+
+def wait_until(condition, seconds=5.0):
+    """Wait for background work while keeping Qt signals and events moving."""
+    from PySide6.QtWidgets import QApplication
+
+    end = time.monotonic() + seconds
+    while not condition():
+        QApplication.processEvents()
+        assert time.monotonic() < end, "timed out"
+        time.sleep(0.005)
+    QApplication.processEvents()

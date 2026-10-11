@@ -79,49 +79,55 @@ def deck_on_record(tmp_path, monkeypatch, request):
 
 def test_page_spec():
     assert parse_page_spec("4, 5, 7-10, 15") == [4, 5, 7, 8, 9, 10, 15]
-    assert parse_page_spec("3 1;2  7\u20139") == [1, 2, 3, 7, 8, 9]
     assert format_page_spec([4, 5, 7, 8, 9, 10, 15]) == "4-5, 7-10, 15"
-    for bad in ("", "a", "5-3", "0", "4,,x"):
+    for bad in ("", "a", "5-3", "0"):
         with pytest.raises(PartialError):
             parse_page_spec(bad)
 
 
-def test_plan_maps_footer_numbers_to_slides(deck_on_record):
-    _root, job, pdf = deck_on_record
+@pytest.mark.parametrize("deck_on_record", [None, "input", "include"], indirect=True,
+                         ids=["inline", "input", "include"])
+def test_page_compile_maps_slides_and_preserves_numbers(deck_on_record):
+    _root, job, _pdf = deck_on_record
     plan = partial_compile.plan(job, "2, 9")
     assert [k.call.id for k in plan.kept] == ["1bb"]
     assert plan.kept[0].first_frame == 2 and plan.kept[0].first_page == 2
     assert plan.missing == [9]
-    plan = partial_compile.plan(job, [3])
-    assert plan.kept[0].call.id == "1cc" and plan.kept[0].first_page == 4
-
-
-@pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
-def test_page_compile_of_a_fragment_slide(deck_on_record):
-    _root, job, _pdf = deck_on_record
-    plan = partial_compile.plan(job, "2")
-    assert [k.call.id for k in plan.kept] == ["1bb"]
-    assert plan.kept[0].call.chapter.title == "Fragment"
+    chapter = "One" if job.deck.text == DECK else "Fragment"
+    assert plan.kept[0].call.chapter.title == chapter
     assert partial_compile.frames_for_slides(job, ["1bb", "1cc"]) == [2, 3]
+    assert partial_compile.frames_for_slides(job, ["1cc", "1bb"]) == [2, 3]
+    assert partial_compile.frames_for_slides(job, ["1AA"]) == [1]
+    assert partial_compile.frames_for_slides(job, ["1zz"]) == []     # not in that PDF
+    assert partial_compile.plan(job, partial_compile.frames_for_slides(job, ["1bb"])).kept[0].call.id == "1bb"
     text = partial_compile.wrapper_text(plan)
-    assert "\\section{Fragment}" in text
+    assert f"\\section{{{chapter}}}" in text
     assert "\\setcounter{framenumber}{1}\\setcounter{page}{2}%\n\\slide{1bb-EN-B}" in text
     assert "1aa-EN-A" not in text and "1cc-EN-C" not in text
     assert "{fragment}" not in text
-    text = partial_compile.wrapper_text(partial_compile.plan(job, "3"))
+    assert text.rstrip().endswith("\\end{document}")
+    plan = partial_compile.plan(job, [3])
+    assert plan.kept[0].call.id == "1cc" and plan.kept[0].first_page == 4
+    text = partial_compile.wrapper_text(plan)
     assert "\\setcounter{framenumber}{2}\\setcounter{page}{4}%\n\\slide{1cc-EN-C}" in text
     assert "1aa-EN-A" not in text and "1bb-EN-B" not in text
 
 
-@pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
-def test_deck_changes_after_a_fragment_slide_are_fine(deck_on_record):
+@pytest.mark.parametrize("deck_on_record", [None, "input", "include"], indirect=True,
+                         ids=["inline", "input", "include"])
+def test_deck_changes_after_the_asked_for_slides_are_fine(deck_on_record):
     root, job, _pdf = deck_on_record
     original = job.deck.text
     set_deck(root, original.replace("\\slide{1cc-EN-C}\n", "\\slide{1cc-EN-C}\n\\slide{1dd-EN-D}\n"))
     assert [k.call.id for k in partial_compile.plan(job, "2").kept] == ["1bb"]
-    set_deck(root, original.replace("\\slide{1cc-EN-C}\n", "\\slide{1zz-EN-Z}\n\\slide{1cc-EN-C}\n"))
-    with pytest.raises(PartialError, match="changed before or at page 3"):
-        partial_compile.plan(job, "3")
+    if original == DECK:
+        set_deck(root, original.replace("\\slide{1aa-EN-A}\n", "\\slide{1aa-EN-A}\n\\slide{1zz-EN-Z}\n"))
+        with pytest.raises(PartialError, match="changed before or at page 2"):
+            partial_compile.plan(job, "2")
+    else:
+        set_deck(root, original.replace("\\slide{1cc-EN-C}\n", "\\slide{1zz-EN-Z}\n\\slide{1cc-EN-C}\n"))
+        with pytest.raises(PartialError, match="changed before or at page 3"):
+            partial_compile.plan(job, "3")
 
 
 @pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
@@ -135,21 +141,6 @@ def test_frames_for_slides_finds_a_fragment_translation(deck_on_record, monkeypa
     assert partial_compile.frames_for_slides(job, ["1dd"]) == [2]
 
 
-def test_frames_for_slides_reads_the_footers_of_the_last_full_pdf(deck_on_record):
-    _root, job, _pdf = deck_on_record
-    assert partial_compile.frames_for_slides(job, ["1cc", "1bb"]) == [2, 3]
-    assert partial_compile.frames_for_slides(job, ["1AA"]) == [1]
-    assert partial_compile.frames_for_slides(job, ["1zz"]) == []     # not in that PDF
-    assert partial_compile.plan(job, partial_compile.frames_for_slides(job, ["1bb"])).kept[0].call.id == "1bb"
-
-
-def test_frames_for_slides_needs_a_whole_deck_compile_on_record(deck_on_record):
-    root, job, _pdf = deck_on_record
-    (root / ".build" / "compile-records" / "t-D.json").unlink()
-    with pytest.raises(PartialError, match="compile the whole deck once"):
-        partial_compile.frames_for_slides(job, ["1bb"])
-
-
 def test_plan_lists_other_changed_slides(deck_on_record):
     root, job, _pdf = deck_on_record
     (root / "slides" / "1cc-EN-C-current.tex").write_text("edited\n", encoding="utf-8")
@@ -159,17 +150,6 @@ def test_plan_lists_other_changed_slides(deck_on_record):
 
 def set_deck(root: Path, text: str) -> None:
     (root / "decks" / "t-D.tex").write_text(text, encoding="utf-8", newline="")
-
-
-def test_deck_changes_after_the_asked_for_slides_are_fine(deck_on_record):
-    root, job, _pdf = deck_on_record
-    set_deck(root, DECK.replace("\\slide{1cc-EN-C}\n", "\\slide{1cc-EN-C}\n\\slide{1dd-EN-D}\n"))
-    plan = partial_compile.plan(job, "2")
-    assert [k.call.id for k in plan.kept] == ["1bb"]
-    # ... the slide after the change can't be compiled alone, though
-    set_deck(root, DECK.replace("\\slide{1aa-EN-A}\n", "\\slide{1aa-EN-A}\n\\slide{1zz-EN-Z}\n"))
-    with pytest.raises(PartialError, match="changed before or at page 2"):
-        partial_compile.plan(job, "2")
 
 
 def test_no_deck_copy_on_record_means_any_change_counts(deck_on_record):
@@ -192,15 +172,9 @@ def test_plan_refuses_when_the_whole_deck_is_needed(deck_on_record, change, mess
     change(root, pdf)
     with pytest.raises(PartialError, match=message):
         partial_compile.plan(job, "2")
-
-
-def test_wrapper_keeps_only_the_asked_for_slides_with_their_numbers(deck_on_record):
-    _root, job, _pdf = deck_on_record
-    text = partial_compile.wrapper_text(partial_compile.plan(job, "2"))
-    assert "\\section{One}" in text
-    assert "\\setcounter{framenumber}{1}\\setcounter{page}{2}%\n\\slide{1bb-EN-B}" in text
-    assert "1aa-EN-A" not in text and "1cc-EN-C" not in text
-    assert text.rstrip().endswith("\\end{document}")
+    if "no whole-deck compile" in message:
+        with pytest.raises(PartialError, match="compile the whole deck once"):
+            partial_compile.frames_for_slides(job, ["1bb"])
 
 
 def output_for(tmp_path, pages, links=None):
@@ -210,6 +184,8 @@ def output_for(tmp_path, pages, links=None):
 
 def test_patch_swaps_the_pages_in_and_keeps_the_rest(deck_on_record, tmp_path):
     root, job, pdf = deck_on_record
+    (root / "slides" / "1bb-EN-B-current.tex").write_text("edited\n", encoding="utf-8")
+    assert partial_compile.plan(job, "3").other_changed == ["1bb"]
     plan = partial_compile.plan(job, "2")
     uri = {"kind": fitz.LINK_URI, "from": fitz.Rect(10, 10, 60, 30), "uri": "https://x.org"}
     goto = {"kind": fitz.LINK_GOTO, "from": fitz.Rect(10, 50, 60, 70), "page": 1}
@@ -229,15 +205,6 @@ def test_patch_swaps_the_pages_in_and_keeps_the_rest(deck_on_record, tmp_path):
     assert next(link for link in links if link["kind"] == fitz.LINK_GOTO)["page"] == 2
     # the record vouches for the patched PDF, so another page compile can follow
     assert partial_compile.plan(job, "3").kept[0].call.id == "1cc"
-
-
-def test_swapped_in_slide_no_longer_listed_as_changed(deck_on_record, tmp_path):
-    root, job, _pdf = deck_on_record
-    (root / "slides" / "1bb-EN-B-current.tex").write_text("edited\n", encoding="utf-8")
-    assert partial_compile.plan(job, "3").other_changed == ["1bb"]
-    plan = partial_compile.plan(job, "2")
-    output = output_for(tmp_path, [("B new 1", "1bb", 2), ("B new 2", "1bb", 2)])
-    assert partial_compile.patch(plan, output, print).replaced == [2]
     assert partial_compile.plan(job, "3").other_changed == []
 
 

@@ -38,13 +38,15 @@ def _configure_compiler(monkeypatch, tmp_path):
     return compiler, deck, build_dir, pdf_dir, deck_path
 
 
-def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n"):
+def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n", wrappers=None):
     from slidemage import compiler
 
     class FakeProcess:
         def __init__(self, command, **_kwargs):
             self.command = list(command)
             commands.append(self.command)
+            if wrappers is not None:
+                wrappers.append((compiler.PROJECT_ROOT / self.command[-1]).read_bytes())
             self.stdout = io.StringIO("")
             self.output = outputs.pop(0)
 
@@ -67,7 +69,8 @@ def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n")
     monkeypatch.setattr(compiler.subprocess, "Popen", FakeProcess)
 
 
-def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch):
+@pytest.mark.parametrize("biber_needed", [False, True], ids=["clean", "failed-bibliography"])
+def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber_needed):
     from slidemage.compiler import CompileJob
 
     compiler, deck, build_dir, pdf_dir, deck_path = _configure_compiler(
@@ -79,7 +82,17 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch):
     stale_deck_pdf.write_bytes(b"OLD_DECK_PDF")
     stale_build_pdf.write_bytes(b"OLD_BUILD_PDF")
     commands = []
-    _fake_latexmk(monkeypatch, [b"NEW_PDF"], commands)
+    log_text = "No errors found.\n"
+    if biber_needed:
+        log_text += "Package biblatex Warning: Please (re)run Biber on the file:\n"
+    # Regression: default newline translation used to double literal CRLF
+    # on Windows. Exercise run_job's own wrapper write, before it is removed.
+    content = "line one\r\nline two\r\n"
+    real_wrapper_text = compiler.wrapper_text
+    expected_wrapper = real_wrapper_text(job) + content
+    monkeypatch.setattr(compiler, "wrapper_text", lambda _job: expected_wrapper)
+    wrappers, lines = [], []
+    _fake_latexmk(monkeypatch, [b"NEW_PDF"], commands, log_text=log_text, wrappers=wrappers)
     relocated = threading.Event()
     outcome = {}
 
@@ -87,7 +100,7 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch):
         outcome.update(ok=ok, path=path)
         relocated.set()
 
-    assert compiler.run_job(job, lambda _line: None, on_relocated=on_relocated)
+    assert compiler.run_job(job, lines.append, on_relocated=on_relocated)
     assert relocated.wait(5)
 
     expected_pdf = pdf_dir / f"{job.jobname}.pdf"
@@ -106,38 +119,8 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch):
     assert aux_dir == out_dir
     assert aux_dir.parent == build_dir
     assert aux_dir != build_dir
-
-
-@pytest.mark.parametrize("biber_needed", [False, True])
-def test_run_job_warns_when_bibliography_failed(tmp_path, monkeypatch, biber_needed):
-    from slidemage.compiler import CompileJob
-
-    compiler, deck, _build_dir, pdf_dir, _deck_path = _configure_compiler(
-        monkeypatch, tmp_path
-    )
-    job = CompileJob(deck, "after-course", None)
-    commands = []
-    log_text = "No errors found.\n"
-    if biber_needed:
-        log_text += "Package biblatex Warning: Please (re)run Biber on the file:\n"
-    _fake_latexmk(monkeypatch, [b"NEW_PDF"], commands, log_text=log_text)
-    lines = []
-    relocated = threading.Event()
-    outcome = {}
-
-    def on_relocated(ok, path):
-        outcome.update(ok=ok, path=path)
-        relocated.set()
-
-    assert compiler.run_job(job, lines.append, on_relocated=on_relocated)
-    assert relocated.wait(5)
-    expected_pdf = pdf_dir / f"{job.jobname}.pdf"
-    assert outcome == {"ok": True, "path": expected_pdf}
-    assert expected_pdf.read_bytes() == b"NEW_PDF"
-    log_path = Path(next(
-        item.split("=", 1)[1] for item in commands[0]
-        if item.startswith("-outdir=")
-    )) / f"{job.jobname}.log"
+    assert wrappers == [expected_wrapper.encode("utf-8")]
+    log_path = out_dir / f"{job.jobname}.log"
     warnings = [line for line in lines if line.startswith("Warning:")]
     assert warnings == ([
         f"Warning: {job.jobname} -- the bibliography could not be built "
@@ -212,3 +195,33 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
     assert old_outcome == {"ok": False, "path": expected_pdf}
     assert new_outcome == {"ok": True, "path": expected_pdf}
     assert not list(deck_path.parent.glob(f"_slidemage_{job.jobname}_*.tex"))
+
+
+@pytest.mark.parametrize("kind, version", [
+    ("chapters", "after-course"), ("presenter", "instructor"), ("solo", None),
+])
+def test_output_destinations_prevent_collisions_and_keep_literal_names(tmp_path, kind, version):
+    from slidemage.compiler import CompileJob, _disambiguated_destinations
+    from slidemage.deck_scan import Chapter, Deck
+
+    deck = Deck(name="solo" if kind == "solo" else "course", path=tmp_path / "deck.tex",
+                archived=False, text="", supports_version=kind != "solo", uses_biblatex=False,
+                preamble_end=0, chapters=[Chapter(1, "A", "A", 0, 0), Chapter(2, "B", "B", 0, 0)],
+                output_folders={version: str(tmp_path / "Handout.pdf")})
+    if kind == "chapters":
+        jobs = [CompileJob(deck, version, c) for c in deck.chapters]
+    else:
+        jobs = [CompileJob(deck, version, None)]
+        if kind == "presenter":
+            jobs.append(CompileJob(deck, version, None, presenter=True))
+    logged = []
+    dests = _disambiguated_destinations(jobs, logged.append)
+    if kind == "solo":
+        _, stem = dests[id(jobs[0])]
+        assert stem == "Handout"
+        assert not logged
+    else:
+        assert len({dests[id(job)] for job in jobs}) == 2
+        if kind == "chapters":
+            assert all(dests[id(job)][1] == job.jobname for job in jobs)
+            assert any("shared by 2 jobs" in line for line in logged)

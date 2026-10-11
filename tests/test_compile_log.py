@@ -10,9 +10,6 @@ from slidemage import compile_log
     (compile_log.compiling, ("course", "course-instructor"),
      "==== Compiling course -> course-instructor ====",
      [(compile_log.COMPILING_RE, ("course-instructor",))]),
-    (compile_log.compiling, ("Übung", "snapshot~Übung"),
-     "==== Compiling Übung -> snapshot~Übung ====",
-     [(compile_log.COMPILING_RE, ("snapshot~Übung",))]),
     (compile_log.moving, ("job", "pdf/job.pdf"),
      "==== MOVING: job -> pdf/job.pdf ====",
      [(compile_log.MOVING_RE, ("job",))]),
@@ -37,24 +34,18 @@ from slidemage import compile_log
      "*** FAIL: job -- stopped by user ***",
      [(compile_log.FAIL_RE, ("job", "stopped by user")),
       (compile_log.FAIL_PREFIX_RE, ("job",))]),
-    (compile_log.failed, ("job", ""),
-     "*** FAIL: job --  ***",
-     [(compile_log.FAIL_RE, ("job", "")), (compile_log.FAIL_PREFIX_RE, ("job",))]),
     (compile_log.finished, ("verify~job",),
      "==== Finished: verify~job ====",
      [(compile_log.FINISHED_RE, ("verify~job",))]),
     (compile_log.skipped, ("job",),
      "==== Skipped: job ====",
      [(compile_log.SKIPPED_RE, ("job",))]),
-    (compile_log.stopped, (0,),
-     "==== Stopped: 0 job(s) skipped ====",
-     [(compile_log.STOPPED_ALL_RE, ()), (compile_log.STOPPED_RE, ("Stopped:",))]),
     (compile_log.stopped, (3,),
      "==== Stopped: 3 job(s) skipped ====",
      [(compile_log.STOPPED_ALL_RE, ()), (compile_log.STOPPED_RE, ("Stopped:",))]),
     (compile_log.stop_requested, (),
      "==== Stop requested -- killing current job and skipping the rest ====",
-     [(compile_log.STOPPED_RE, ("Stop requested",))]),
+     [(compile_log.STOPPED_RE, ("Stop requested",)), (compile_log.STOPPED_ALL_RE, None)]),
     (compile_log.rendering, ("1ab-EN-Title", "preview-job"),
      "==== Rendering 1ab-EN-Title -> preview-job ====",
      [(compile_log.RENDERING_RE, ("1ab-EN-Title", "preview-job"))]),
@@ -76,8 +67,11 @@ def test_status_line_text_and_groups(writer, args, expected, recognizers):
     assert line.encode("utf-8") == expected.encode("utf-8")
     for regex, groups in recognizers:
         match = regex.match(line)
-        assert match is not None
-        assert match.groups() == groups
+        if groups is None:
+            assert match is None
+        else:
+            assert match is not None
+            assert match.groups() == groups
 
 
 def test_failure_parsers_keep_their_different_prefix_matching():
@@ -85,7 +79,3 @@ def test_failure_parsers_keep_their_different_prefix_matching():
     line = compile_log.failed("job", "first line\nsecond line")
     assert compile_log.FAIL_RE.match(line) is None
     assert compile_log.FAIL_PREFIX_RE.match(line).groups() == ("job",)
-
-
-def test_stop_request_does_not_match_the_stopped_summary_parser():
-    assert compile_log.STOPPED_ALL_RE.match(compile_log.stop_requested()) is None

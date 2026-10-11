@@ -11,9 +11,10 @@ import socket
 import sys
 import threading
 import time
+from functools import partial
 
 import pytest
-from conftest import SLIDE_TEXT, build_window, make_project
+from conftest import SLIDE_TEXT, build_window, make_project, wait_until as _wait_until
 from fake_claude import make_fake_claude
 from mcp_client import Client
 from PySide6.QtCore import Qt
@@ -44,20 +45,15 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+wait_until = partial(_wait_until, seconds=20)
+
+
 def pump(seconds=0.0):
     end = time.time() + seconds
     QApplication.processEvents()
     while time.time() < end:
         QApplication.processEvents()
         time.sleep(0.005)
-
-
-def wait_until(condition, seconds=20):
-    end = time.time() + seconds
-    while not condition() and time.time() < end:
-        QApplication.processEvents()
-        time.sleep(0.005)
-    assert condition()
 
 
 def on_thread(function):
