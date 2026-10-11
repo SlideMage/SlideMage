@@ -500,6 +500,29 @@ def test_images_show_state_and_save_drafts_and_reviews_through_the_store(content
     assert alt_images.load_store()["media/pic.png"].status == "reviewed"
 
 
+@pytest.mark.parametrize("save", ["draft", "review", "flush"])
+def test_image_save_preserves_a_field_updated_by_a_worker(content, paths, save):
+    from slidemage import alt_images
+
+    panels, _state, _window = content
+    reference = "media/pic.png"
+    alt_images.save_slide_image(reference, "cit", paths.path, role="informative", short="Old short",
+                                long="Old long", reviewed=True)
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    alt_images.update_store(lambda entries: setattr(entries[reference], "long", "Worker long") or True)
+    form.short_edit.setPlainText("Edited short")
+    if save == "flush":
+        panel.flush()
+    else:
+        (form.review_button if save == "review" else form.save_button).click()
+    entry = alt_images.load_store()[reference]
+    assert (entry.short, entry.long, entry.status) == ("Edited short", "Worker long", "reviewed")
+    assert bool(entry.used_on["cit"].reviewed) == (save == "review")
+    assert entry.used_on["cit"].stored_hash == alt_images.slide_context_hash(paths.path)
+    assert panel._forms[0].baseline == panel._forms[0].values() and not panel.dirty
+
+
 def test_a_pending_image_edit_is_saved_as_a_draft_when_the_slide_is_left(content):
     from slidemage import alt_images
 
@@ -549,6 +572,40 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(content, mon
     assert panel.dirty and not alt_images.load_store()
 
 
+def test_redraft_is_ignored_after_switching_to_a_slide_with_the_same_image(content, monkeypatch, paths):
+    from slidemage import alt_draft, alt_images
+    from slidemage.ui.workspace.panels import images
+
+    panels, state, window = content
+    (paths.path.parent / "abc-EN-Demo-current.tex").write_text(CITED, encoding="utf-8")
+    panel = shown(panels, "images")
+    provider = SimpleNamespace(label="qwen3 · local")
+    monkeypatch.setattr(images, "provider_for_task", lambda *args: provider)
+    monkeypatch.setattr(alt_draft, "draftable_images", lambda row, entries: [(row.images[0], paths.path)])
+    monkeypatch.setattr(alt_draft, "ModelBackend", lambda given: SimpleNamespace(
+        draft=lambda *args: alt_draft.DraftResult(short="Slide A short", long="Slide A long", model=given.label)))
+    pending = []
+
+    class Later:
+        def __init__(self, target, args, daemon):
+            pending.append(lambda: target(*args))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(images.threading, "Thread", Later)
+    panel._forms[0].redraft_button.click()
+    assert window.busy == "drafting a description"
+    state.set_focused_slide("abc")
+    form = panel._forms[0]
+    assert form.reference == "media/pic.png" and panel._slide[0] == "abc"
+    before = form.values(), form.note.text()
+    pending[0]()
+    assert (form.values(), form.note.text()) == before
+    assert form.redraft_button.isEnabled() and not panel.dirty
+    assert window.busy is None and not alt_images.load_store()
+
+
 def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, paths):
     from slidemage import alt_draft
     from slidemage.ui.workspace.panels import images
@@ -559,9 +616,9 @@ def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, 
     monkeypatch.setattr(images, "provider_for_task", lambda *args: None)           # declined, or no model
     panel._forms[0].redraft_button.click()
     assert window.busy is None
-    panel._on_drafted("media/pic.png", None, alt_draft.DraftResult(error="timed out"))
+    panel._on_drafted("cit", "media/pic.png", None, alt_draft.DraftResult(error="timed out"))
     assert "The draft failed: timed out" in panel._forms[0].note.text()
-    panel._on_drafted("media/gone.png", None, alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
+    panel._on_drafted("cit", "media/gone.png", None, alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
 
 
 def test_redraft_that_raises_still_ends_with_an_error_and_gives_back_its_slot(content, monkeypatch, paths):

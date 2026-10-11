@@ -780,15 +780,19 @@ def set_takeaway_default(image: str, slide_id: str, text: str) -> ImageEntry | N
 
 def save_slide_image(
     image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
+    baseline: tuple[str, str, str] | None = None,
 ) -> None:
     """Store what was written for one image on one slide: its role and English short and long
     description (an entry is made if the image has none yet), reviewed or as a draft as in
-    stamp_review(). Everything else of the entry (takeaway, German text, source) is left as it is."""
+    stamp_review(). With a form baseline, only changed fields are copied, as in image_review.apply_form_edit().
+    Everything else of the entry (takeaway, German text, source) is left as it is."""
     slide_hash = slide_context_hash(slide_path)
 
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         entry = entries.setdefault(image, ImageEntry(image=image))
-        entry.role, entry.short, entry.long = role, short, long
+        for i, (field, value) in enumerate((("role", role), ("short", short), ("long", long))):
+            if baseline is None or value != baseline[i]:
+                setattr(entry, field, value)
         stamp_review(entry, entry.used_on.setdefault(slide_id, SlideUse()), reviewed, slide_hash)
         return True
 

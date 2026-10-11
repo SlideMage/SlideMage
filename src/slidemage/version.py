@@ -1962,6 +1962,8 @@ v8.0.3 (2026-10-11, code review fix A2a): Slides in a fragment pulled into a dec
 
 v8.0.4 (2026-10-11, code review fix A2b): Transcripts find a deck's slides as the compile does -- with the deck parser and the translation resolution -- instead of their own pattern. A German deck's transcript now describes the linked German slides the PDF shows, not the English originals; a translation partner the deck also calls explicitly is one entry (as in the PDF), not two; and slide calls inside \\iffalse...\\fi, verbatim or a \\note are no longer counted. Fragments are looked up as TeX does: from the deck's folder first, then the project folder.
 
+v8.0.5 (2026-10-11, code review fix A4): The Image descriptions side panel saves only the fields you changed, so a description a drafting or translation job wrote while the panel was open is no longer overwritten by the older text still shown there. A redraft that finishes after you moved to another slide showing the same image no longer fills that slide's form.
+
 """
 from __future__ import annotations
 
@@ -1971,7 +1973,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.4"
+VERSION_NUMBER = "v8.0.5"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

@@ -98,7 +98,7 @@ class ImageDescriptions(SidePanel):
     key = "images"
     title = "Image descriptions"
 
-    drafted = Signal(str, object, object)   # reference, whose Ollama slot to give back, alt_draft.DraftResult: from the drafting thread
+    drafted = Signal(str, str, object, object)   # slide id, reference, whose Ollama slot to give back, alt_draft.DraftResult
 
     def __init__(self, app, state) -> None:
         super().__init__(app, state)
@@ -151,12 +151,14 @@ class ImageDescriptions(SidePanel):
                                 "An informative image needs a long description before it can be reviewed. "
                                 "Write one, or set the role to decorative.")
             return
-        self._store(form.reference, role, short, long, reviewed)
+        self._store(form.reference, role, short, long, reviewed, form.baseline)
         self.refresh()
 
-    def _store(self, reference: str, role: str, short: str, long: str, reviewed: bool) -> None:
+    def _store(self, reference: str, role: str, short: str, long: str, reviewed: bool,
+               baseline: tuple[str, str, str]) -> None:
         slide_id, path = self._slide
-        alt_images.save_slide_image(reference, slide_id, path, role=role, short=short, long=long, reviewed=reviewed)
+        alt_images.save_slide_image(reference, slide_id, path, role=role, short=short, long=long,
+                                    reviewed=reviewed, baseline=baseline)
         self.app.log(f"{'Reviewed' if reviewed else 'Saved draft of'} {reference} on {path.name}")
 
     def flush(self) -> None:
@@ -164,7 +166,7 @@ class ImageDescriptions(SidePanel):
         if not self.dirty or self._slide is None:
             return
         for form in [f for f in self._forms if f.changed]:
-            self._store(form.reference, *form.values(), reviewed=False)
+            self._store(form.reference, *form.values(), reviewed=False, baseline=form.baseline)
             form.baseline = form.values()
         self.set_dirty(False)
 
@@ -185,18 +187,20 @@ class ImageDescriptions(SidePanel):
         form.note.setText(f"Drafting with {provider.label}…")
         form.note.show()
         context = alt_draft.build_context(path, form.reference)
-        threading.Thread(target=self._draft_bg, args=(form.reference, provider, alt_draft.ModelBackend(provider),
+        threading.Thread(target=self._draft_bg, args=(slide_id, form.reference, provider, alt_draft.ModelBackend(provider),
                                                       found[0][1], context), daemon=True).start()
 
-    def _draft_bg(self, reference: str, provider, backend, resolved: Path, context) -> None:
+    def _draft_bg(self, slide_id: str, reference: str, provider, backend, resolved: Path, context) -> None:
         try:
             result = backend.draft(resolved, context)
         except Exception as exc:  # noqa: BLE001 -- shown on the form; the slot must still be given back
             result = alt_draft.DraftResult(error=str(exc) or type(exc).__name__)
-        self.drafted.emit(reference, provider, result)
+        self.drafted.emit(slide_id, reference, provider, result)
 
-    def _on_drafted(self, reference: str, provider, result) -> None:
+    def _on_drafted(self, slide_id: str, reference: str, provider, result) -> None:
         self.app.end_ollama_task(provider)
+        if self._slide is None or self._slide[0] != slide_id:
+            return
         form = next((f for f in self._forms if f.reference == reference), None)
         if form is None:
             return   # the slide changed meanwhile
