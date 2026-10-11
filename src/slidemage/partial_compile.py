@@ -46,7 +46,7 @@ import re
 import shutil
 import subprocess
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -193,7 +193,8 @@ class PartialPlan:
 
 def _deck_calls(job: CompileJob) -> list[SlideCall]:
     from . import deck_language
-    return [s.call for s in deck_language.deck_slots(job.deck, deck_language.language_for_job(job))]
+    deck, _ = deck_language.expand_fragments(job.deck)
+    return [s.call for s in deck_language.deck_slots(deck, deck_language.language_for_job(job))]
 
 
 @dataclass
@@ -260,7 +261,8 @@ def frames_for_slides(job: CompileJob, slide_ids: list[str], build_dir: Optional
     wanted = {i.lower() for i in slide_ids}
     full = _full_compile(job, build_dir or compiler.BUILD_DIR)
     from . import deck_language
-    for slot in deck_language.deck_slots(job.deck, deck_language.language_for_job(job)):
+    deck, _ = deck_language.expand_fragments(job.deck)
+    for slot in deck_language.deck_slots(deck, deck_language.language_for_job(job)):
         if any(slot.matches(i) for i in slide_ids):
             wanted.add(slot.call.id.lower())
     return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
@@ -320,7 +322,7 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
 
 def _first_change(aux: Path, job: CompileJob) -> int:
     """Where the deck file first differs from the copy kept with its last
-    whole-deck compile (character offset; 0 when there is no copy -- a
+    whole-deck compile (expanded character offset; 0 when there is no copy -- a
     record from before v5.35.0 -- so any change counts as early)."""
     copy = aux / compile_records.DECK_COPY_NAME
     try:
@@ -328,7 +330,11 @@ def _first_change(aux: Path, job: CompileJob) -> int:
             old = f.read()
     except OSError:
         return 0
-    new = job.deck.text
+    from . import deck_language
+    begin = deck_scan.DOCUMENT_BEGIN_RE.search(old)
+    old_deck = replace(job.deck, text=old, preamble_end=begin.end() if begin else None)
+    old = deck_language.expand_fragments(old_deck)[0].text
+    new = deck_language.expand_fragments(job.deck)[0].text
     limit = min(len(old), len(new))
     i = 0
     while i < limit and old[i] == new[i]:
@@ -344,7 +350,8 @@ def wrapper_text(plan: PartialPlan) -> str:
     and page counters it had in the full deck. Same version settings as a
     whole-deck compile, without the generated appendix."""
     job = plan.job
-    deck = job.deck
+    from . import deck_language
+    deck, _ = deck_language.expand_fragments(job.deck)
     lines: list[str] = []
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
@@ -366,7 +373,6 @@ def wrapper_text(plan: PartialPlan) -> str:
     end = compiler.DOCUMENT_END_RE.search(text, deck.preamble_end)
     body_end = end.start() if end else len(text)
     kept = {k.call.line_start: k for k in plan.kept}
-    from . import deck_language
     out: list[str] = [text[:deck.preamble_end]]
     if job.language:
         out.append("\n" + deck_language.language_line(deck_language.language_for_job(job)))

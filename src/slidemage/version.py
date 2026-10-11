@@ -1968,6 +1968,8 @@ v8.0.6 (2026-10-11, code review fix A6): A new empty project can add a standard 
 
 v8.0.7 (2026-10-11, code review fix A7): A compile whose bibliography could not be built (biber failed, so citations show as their keys) still succeeds, but now writes a warning to the compile log.
 
+v8.0.8 (2026-10-11, code review fix A8): Compiling only some pages works for slides that come from an \\input or \\include fragment of the deck; before, such pages were refused as "not from a slide of the deck's list".
+
 """
 from __future__ import annotations
 
@@ -1977,7 +1979,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.7"
+VERSION_NUMBER = "v8.0.8"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

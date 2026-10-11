@@ -41,7 +41,7 @@ def full_pages():
 
 
 @pytest.fixture
-def deck_on_record(tmp_path, monkeypatch):
+def deck_on_record(tmp_path, monkeypatch, request):
     root = tmp_path / "Proj"
     build = root / ".build"
     monkeypatch.setattr(compiler, "BUILD_DIR", build)
@@ -49,7 +49,15 @@ def deck_on_record(tmp_path, monkeypatch):
     monkeypatch.setattr(compile_records, "engine_version", lambda: "E")
     deck_file = root / "decks" / "t-D.tex"
     deck_file.parent.mkdir(parents=True)
-    deck_file.write_text(DECK, encoding="utf-8", newline="")
+    deck_text = DECK
+    inputs = [deck_file]
+    if getattr(request, "param", None):
+        fragment = deck_file.parent / "fragment.tex"
+        fragment.write_text("\\section{Fragment}\n% " + "padding " * 20 + "\n"
+                            "\\slide{1bb-EN-B}\n", encoding="utf-8")
+        inputs.append(fragment)
+        deck_text = DECK.replace("\\slide{1bb-EN-B}\n", f"\\{request.param}{{fragment}}\n")
+    deck_file.write_text(deck_text, encoding="utf-8", newline="")
     for slug in ("1aa-EN-A", "1bb-EN-B", "1cc-EN-C"):
         f = root / "slides" / f"{slug}-current.tex"
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +67,7 @@ def deck_on_record(tmp_path, monkeypatch):
     inv = build / "t-D-x"
     inv.mkdir(parents=True)
     (inv / "t-D.fls").write_text("".join(
-        f"INPUT {p}\n" for p in [deck_file, *sorted((root / "slides").iterdir())]), encoding="utf-8")
+        f"INPUT {p}\n" for p in [*inputs, *sorted((root / "slides").iterdir())]), encoding="utf-8")
     (inv / "t-D.log").write_text("ok\n", encoding="utf-8")
     (inv / "t-D.aux").write_text("\\relax\n", encoding="utf-8")
     pdf = make_pdf(root / "pdf" / "t-D.pdf", full_pages())
@@ -86,6 +94,45 @@ def test_plan_maps_footer_numbers_to_slides(deck_on_record):
     assert plan.missing == [9]
     plan = partial_compile.plan(job, [3])
     assert plan.kept[0].call.id == "1cc" and plan.kept[0].first_page == 4
+
+
+@pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
+def test_page_compile_of_a_fragment_slide(deck_on_record):
+    _root, job, _pdf = deck_on_record
+    plan = partial_compile.plan(job, "2")
+    assert [k.call.id for k in plan.kept] == ["1bb"]
+    assert plan.kept[0].call.chapter.title == "Fragment"
+    assert partial_compile.frames_for_slides(job, ["1bb", "1cc"]) == [2, 3]
+    text = partial_compile.wrapper_text(plan)
+    assert "\\section{Fragment}" in text
+    assert "\\setcounter{framenumber}{1}\\setcounter{page}{2}%\n\\slide{1bb-EN-B}" in text
+    assert "1aa-EN-A" not in text and "1cc-EN-C" not in text
+    assert "{fragment}" not in text
+    text = partial_compile.wrapper_text(partial_compile.plan(job, "3"))
+    assert "\\setcounter{framenumber}{2}\\setcounter{page}{4}%\n\\slide{1cc-EN-C}" in text
+    assert "1aa-EN-A" not in text and "1bb-EN-B" not in text
+
+
+@pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
+def test_deck_changes_after_a_fragment_slide_are_fine(deck_on_record):
+    root, job, _pdf = deck_on_record
+    original = job.deck.text
+    set_deck(root, original.replace("\\slide{1cc-EN-C}\n", "\\slide{1cc-EN-C}\n\\slide{1dd-EN-D}\n"))
+    assert [k.call.id for k in partial_compile.plan(job, "2").kept] == ["1bb"]
+    set_deck(root, original.replace("\\slide{1cc-EN-C}\n", "\\slide{1zz-EN-Z}\n\\slide{1cc-EN-C}\n"))
+    with pytest.raises(PartialError, match="changed before or at page 3"):
+        partial_compile.plan(job, "3")
+
+
+@pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
+def test_frames_for_slides_finds_a_fragment_translation(deck_on_record, monkeypatch):
+    from slidemage import slide_language
+
+    root, job, _pdf = deck_on_record
+    monkeypatch.setattr(slide_language, "SLIDES_DIR", root / "slides")
+    (root / "slides" / "1dd-DE-B-current.tex").write_text(
+        "%% Translation of: 1bb-EN-B\nText\n", encoding="utf-8")
+    assert partial_compile.frames_for_slides(job, ["1dd"]) == [2]
 
 
 def test_frames_for_slides_reads_the_footers_of_the_last_full_pdf(deck_on_record):

@@ -88,3 +88,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | A4 Image side panel | Done, v8.0.5: implemented by Codex, reviewed by Claude. |
 | A6 New projects | Done, v8.0.6: implemented by Codex, reviewed by Claude. |
 | A7 Biber failure warning | Done, v8.0.7: implemented by Codex, reviewed by Claude. |
+| A8 Page compiles of fragment slides | Done, v8.0.8: confirmed by a failing test, implemented by Codex, reviewed by Claude. Phase A complete. |
