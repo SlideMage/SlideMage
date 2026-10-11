@@ -352,7 +352,10 @@ class CompileJobsMixin:
         "chapters" or "presenter" (compiler.build_jobs)."""
         deck = self.state.deck
         if deck is not None:
-            self._compile_jobs(compiler.build_jobs(deck, kind, pages))
+            jobs = compiler.build_jobs(deck, kind, pages)
+            for job in jobs:
+                job.language = self.state.language
+            self._compile_jobs(jobs)
 
     def _compile_several(self) -> None:
         """Compile -> "Several decks…": the PDFs and transcripts ticked in
@@ -406,6 +409,7 @@ class CompileJobsMixin:
         if deck is None:
             return
         job = compiler.build_jobs(deck, self.state.view)[0]
+        job.language = self.state.language
         try:
             pages = partial_compile.frames_for_slides(job, slide_ids)
         except PartialError as exc:
@@ -539,7 +543,7 @@ class CompileJobsMixin:
         surviving: list[CompileJob] = []
         descriptions: list[str] = []
         for job in jobs:
-            if compile_progress.count_job_slides(job.deck, job.version, job.chapter) > 0:
+            if compile_progress.count_job_slides(job.deck, job.version, job.chapter, job.language) > 0:
                 surviving.append(job)
                 continue
             where = job.deck.name

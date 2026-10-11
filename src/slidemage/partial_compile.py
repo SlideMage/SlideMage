@@ -192,7 +192,8 @@ class PartialPlan:
 
 
 def _deck_calls(job: CompileJob) -> list[SlideCall]:
-    return list(latex_lint._calls_in(job.deck.text, job.deck.chapters))
+    from . import deck_language
+    return [s.call for s in deck_language.deck_slots(job.deck, deck_language.language_for_job(job))]
 
 
 @dataclass
@@ -258,6 +259,10 @@ def frames_for_slides(job: CompileJob, slide_ids: list[str], build_dir: Optional
     is not in that PDF (not typeset in the version) has no frames."""
     wanted = {i.lower() for i in slide_ids}
     full = _full_compile(job, build_dir or compiler.BUILD_DIR)
+    from . import deck_language
+    for slot in deck_language.deck_slots(job.deck, deck_language.language_for_job(job)):
+        if any(slot.matches(i) for i in slide_ids):
+            wanted.add(slot.call.id.lower())
     return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
 
 
@@ -353,15 +358,21 @@ def wrapper_text(plan: PartialPlan) -> str:
         lines.append("\\def\\SMAppendixTocOverride{1}")
     if job.run_id:
         lines.append(compile_records.run_id_line(job.run_id))
+    if job.language:
+        lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
     text = deck.text
     if deck.preamble_end is None:
         raise PartialError(f"{deck.name}: no \\begin{{document}}")
     end = compiler.DOCUMENT_END_RE.search(text, deck.preamble_end)
     body_end = end.start() if end else len(text)
     kept = {k.call.line_start: k for k in plan.kept}
+    from . import deck_language
     out: list[str] = [text[:deck.preamble_end]]
+    if job.language:
+        out.append("\n" + deck_language.language_line(deck_language.language_for_job(job)))
     pos = deck.preamble_end
-    for call in sorted(_deck_calls(job), key=lambda c: c.line_start):
+    # Include folded translation calls here so they are removed too.
+    for call in sorted(latex_lint._calls_in(text, deck.chapters), key=lambda c: c.line_start):
         if call.line_start < pos or call.line_start >= body_end:
             continue
         out.append(text[pos:call.line_start])
@@ -369,7 +380,9 @@ def wrapper_text(plan: PartialPlan) -> str:
         if keep is not None:
             out.append(f"\\setcounter{{framenumber}}{{{keep.first_frame - 1}}}"
                        f"\\setcounter{{page}}{{{keep.first_page}}}%\n")
-            out.append(text[call.line_start:call.line_end])
+            source = text[call.line_start:call.line_end]
+            a, b = call.call_start - call.line_start, call.call_end - call.line_start
+            out.append(source[:a] + deck_language.call_text(keep.call) + source[b:])
         pos = call.line_end
     out.append(text[pos:body_end])
     out.append("\\end{document}\n")

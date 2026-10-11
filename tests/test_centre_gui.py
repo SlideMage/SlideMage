@@ -126,6 +126,66 @@ def wait_idle(centre):
     assert not centre.preview._busy
 
 
+def link_german(project):
+    english = project / "aaa-EN-One-current.tex"
+    english.write_text("%% DE translation: ddd-DE-Eins\n" + english.read_text())
+    german = project / "ddd-DE-Eins-current.tex"
+    german.write_text("%% Translation of: aaa-EN-One\n\\setSlideVersion{7-0-2}\n" + FRAME % "Erste")
+    return english, german
+
+
+def test_language_switch_changes_editor_preview_details_and_keeps_both_buffers(centre, project):
+    english, german = link_german(project)
+    state = centre.state
+    state.set_mode("split")
+    state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("% English draft\n")
+    state.set_language("DE")
+    assert centre.source.current.path == german and centre.path == german
+    assert centre.preview._target.id_slug == "ddd-DE-Eins"
+    assert centre.preview._row.title == "Erste"
+    centre.source.current.editor.insertPlainText("% Deutscher Entwurf\n")
+    state.set_mode("details")
+    assert centre.details._id_slug == "ddd-DE-Eins" and centre.details.current_path == german
+    state.set_language("EN")
+    state.set_mode("source")
+    assert centre.source.current.path == english
+    assert "% English draft" in centre.source.current.editor.text()
+    state.set_language("DE")
+    assert "% Deutscher Entwurf" in centre.source.current.editor.text()
+    assert centre.is_dirty(english) and centre.is_dirty(german)
+
+
+def test_saving_in_de_mode_writes_and_renders_only_the_german_file(centre, project, renders, monkeypatch):
+    from slidemage.ui.workspace import source_file
+
+    english, german = link_german(project)
+    before = english.read_bytes()
+    monkeypatch.setattr(source_file, "prompt_version_choice", lambda *_args: "overwrite")
+    monkeypatch.setattr(source_file, "PROJECT_ROOT", project.parent)
+    centre.state.set_focused_slide("aaa")
+    centre.state.set_mode("split")
+    centre.state.set_language("DE")
+    centre.source.current.editor.insertPlainText("% German saved edit\n")
+    assert centre.source.save()
+    wait_idle(centre)
+    assert "% German saved edit" in german.read_text()
+    assert english.read_bytes() == before
+    assert renders[-1][0:2] == ("saved", "ddd-DE-Eins")
+
+
+def test_de_buffer_render_uses_the_german_draft(centre, project, renders):
+    link_german(project)
+    centre.state.set_focused_slide("aaa")
+    centre.state.set_language("DE")
+    centre.state.set_mode("split")
+    centre.source.current.editor.insertPlainText("% German buffer\n")
+    centre.render_buffer()
+    wait_idle(centre)
+    assert renders[-1][0:2] == ("buffer", "ddd-DE-Eins")
+    assert "% German buffer" in renders[-1][2][0]
+
+
 def page(centre):
     return centre.preview._page
 

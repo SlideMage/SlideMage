@@ -111,7 +111,8 @@ def cross_referenced_language(id_slug: str, path: Optional[Path] = None) -> Opti
 
     lm = LANG_TRANSLATION_RE.search(text)
     if lm:
-        return lm.group(1)
+        partner = current_id_slug_for_bare_id(bare_id(lm.group(2)))
+        return own_language(partner) if partner is not None else None
 
     return None
 

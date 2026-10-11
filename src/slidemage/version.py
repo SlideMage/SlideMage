@@ -1942,6 +1942,10 @@ v6.1.0 (2026-10-11, direct instruction: BIG CHANGE 2, faster previews): Preview 
 
 v6.1.1 (2026-10-11, direct instruction: fix the independent preview review findings): Preview disposal now survives actual Qt destruction and removes queued or failed temporary results. Accepted image identity includes the timestamp setting; unverified disk snapshots remain visible with a request to render. Cleanup and build reservations share an atomic guard and a persistent cross-process maintenance lock. The image helper has a 15-second request deadline, validates its response and recovers after a stalled read or write. The short benchmark uses four fixed manual calls, immutable implementation/input/options identities, fresh interrupted attempts, adjacent before/after ordering and durable checksummed evidence.
 
+v7.0.0 (2026-10-11, direct instruction: BIG CHANGE 1, the language switch follows translations): EN / DE resolves each deck slot to its linked partner in the chosen language across the slide list, Preview, Source, Details and side panels. DE edits and saved/buffer renders use the German file; unsaved buffers survive switching languages. A translation has an independent id and version history, so an English version pin stays in EN while DE uses the translation's current file. Missing partners fall back to the called slide with the existing no-version flag. The original call keeps placement, view conditions and reveal steps. Full, chapter, presenter and selected-page compiles of the open deck follow the selected language; alternate-language PDFs have their own names. Compile wrappers resolve local slide-list fragments and the generated appendix too, with original input files retained in compile records.
+
+BREAKING: linked translations are one logical row and one typeset slot in SlideMage, even when older decks list both language calls. EN / DE now selects the file to edit as well as the render language. Existing deck and slide files need no migration. To typeset both linked files as separate bilingual slides, use independent, unlinked copies. An English pin does not pin the German translation; each slide has its own version history. Compiling raw deck source outside SlideMage retains its literal calls.
+
 """
 from __future__ import annotations
 
@@ -1951,7 +1955,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v6.1.1"
+VERSION_NUMBER = "v7.0.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

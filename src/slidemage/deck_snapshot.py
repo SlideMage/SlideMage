@@ -1201,6 +1201,10 @@ def create_snapshot(
                 log(f"==== Finished: {key} ====")
 
         # 2. What to copy.
+        from . import deck_language
+        for job, output in zip(jobs, outputs):
+            _resolved, dependencies = deck_language.compile_deck(deck, deck_language.language_for_job(job))
+            output.inputs = list(dict.fromkeys([*output.inputs, deck.path, *dependencies]))
         _check_cancel(cancel)
         progress("collecting files")
         roots = tex_roots()

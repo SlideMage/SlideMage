@@ -7,12 +7,15 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 
 ## 1. Big change: the DE switch follows translations
 
+Status: implemented in SlideMage 7.0.0, 2026-10-11. Design decisions and validation:
+[BIG CHANGE 1 implementation](BIG_CHANGE_1_IMPLEMENTATION.md).
+
 With **DE** selected in the top bar, every slide that has a German partner shows that partner in the slide
 list, the preview and the editor. Slides without one stay English and keep the "No DE version" flag.
 
 Cost: ~200-400k agent tokens, ~10-20% of a window. Do it after section 2.
 
-**Today.** A translation is a separate slide with its own id (`1f8-EN-...` and `tks-DE-...`), linked by
+**Before this change.** A translation is a separate slide with its own id (`1f8-EN-...` and `tks-DE-...`), linked by
 `%% Translation of:` / `%% DE translation:` header comments. `\slide{X}` always typesets the file X, so
 nothing swaps in the partner at compile time. The DE button only sets the compile language and the
 "no DE" flags; the `EN + DE` chip is informational.
@@ -23,13 +26,14 @@ nothing swaps in the partner at compile time. The DE button only sets the compil
 - A translation is no longer a second row to look for at the end of the deck.
 - Edits in DE mode write to the German file, never to the English one.
 
-**Design questions to settle first.**
+**Implemented decisions.**
 
-- Does the deck keep both calls and DE mode hides the EN one, or does it keep one call and resolve the partner?
-- What does a DE compile typeset for a slide with no translation: the English slide, or a placeholder?
-- A call that pins a version of the English slide: does the German partner follow the pin?
-- Hidden-in-view and conditional slides: which file's visibility rules apply?
-- Keep the "Translation outdated" chip and the Language panel as they are?
+- Deck files stay unchanged. One logical slot resolves to its partner; separately listed linked
+  translations are folded into the original slot, in both EN and DE.
+- A missing translation typesets the called slide, with the existing no-version flag.
+- Translation versions are independent. EN keeps an English pin; DE uses the current German translation.
+- The original deck call controls placement, visibility, conditions and reveal steps.
+- Keep the "Translation outdated" chip and Language panel; panels follow the displayed file.
 
 **Touches.** `deck_outline.py`, preview target and render, source editor, Details and Language panels, the
 compile path for a single slide, and the GUI tests that assume the English row.

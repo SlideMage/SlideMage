@@ -16,7 +16,7 @@ class UsedInDecks(SidePanel):
     title = "Used in decks"
 
     def build(self, id_slug: str) -> None:
-        usages = find_usage(id_slug)
+        usages = find_usage(id_slug, language=self.state.language)
         frame, layout = box()
         if not usages:
             empty_row(layout, "No deck calls this slide.")

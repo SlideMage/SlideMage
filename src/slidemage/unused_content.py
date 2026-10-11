@@ -130,6 +130,8 @@ def _deck_texts() -> list[str]:
 def find_used_slide_filenames() -> set[str]:
     """Every slides/*.tex filename actually referenced from any deck."""
     used: set[str] = set()
+    from types import SimpleNamespace
+    from . import deck_editor, deck_language
     for text in _deck_texts():
         for match in SLIDE_CURRENT_RE.finditer(text):
             slide_id = next(g for g in match.groups() if g is not None)
@@ -138,6 +140,13 @@ def find_used_slide_filenames() -> set[str]:
             id1, ver1, id2, ver2 = match.groups()
             slide_id, version = (id1, ver1) if id1 is not None else (id2, ver2)
             used.add(f"{slide_id}-v{version}.tex")
+        calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+        for language in ("EN", "DE"):
+            for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
+                used.add(slot.call.source_filename)
+                if slot.related_ids:
+                    # Current headers identify the partner even when the call pins a version.
+                    used.add(f"{slot.original.id_slug}-current.tex")
     return used
 
 

@@ -77,6 +77,21 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     fix=(
         "Nothing to do in the project. Compile the other versions from the arrow of Compile PDF "
         "(they were the deck table's checkboxes), and use the chat instead of AI drafting."),
+), Change(
+    id="language-switch-translations",
+    since="v7.0.0",
+    severity=APPEARANCE,
+    title="EN / DE follows linked translations",
+    description=(
+        "The language switch now selects the linked slide file for editing, previewing and "
+        "compiling the open deck. Linked EN / DE calls are one logical slot, including old "
+        "decks that list both. The original call keeps visibility and reveal steps; a "
+        "translation uses its own current version, independently of an English pin."),
+    fix=(
+        "No project migration is needed. Select EN or DE to edit that language's slide; "
+        "missing partners fall back to the called file. To include both languages as "
+        "separate slides, use independent copies without translation links. Raw LaTeX "
+        "compiles outside SlideMage keep the literal deck calls."),
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

@@ -203,7 +203,7 @@ class SlideList(QWidget):
             shown = 0
             for i in range(head.childCount()):
                 row = self.tree.data_of(head.child(i))
-                hit = all(w in f"{row.call.id_slug} {row.title}".lower() for w in words)
+                hit = all(w in f"{row.call.id_slug} {row.deck_call.id_slug} {row.title}".lower() for w in words)
                 head.child(i).setHidden(not hit)
                 shown += hit
             head.setHidden(bool(words) and not shown)
@@ -237,7 +237,7 @@ class SlideList(QWidget):
     def _on_state_focus(self, slide_id: Optional[str]) -> None:
         """Another part of the window focused a slide (the source editor, the palette's Go to
         slide): it is shown even if the Find box hides it or its section is closed."""
-        item = next((i for i in self.tree.slide_items() if self.tree.data_of(i).call.id == slide_id), None)
+        item = next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)), None)
         if item is None:
             return
         head = item.parent()
@@ -246,7 +246,7 @@ class SlideList(QWidget):
             self.find.clear()   # shows every slide again, the sections open as the user left them
         head.setExpanded(True)
         current = self.tree.data_of(self.tree.currentItem())
-        if not (isinstance(current, SlideRow) and current.call.id == slide_id):
+        if not (isinstance(current, SlideRow) and current.matches(slide_id)):
             self.tree.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.tree.scrollToItem(item)
 
@@ -320,12 +320,12 @@ class SlideList(QWidget):
         if position is None or not 0 <= position + delta < len(items):
             return
         neighbor = items[position + delta]
-        call = current.call
+        call = current.deck_call
         direction = "up" if delta < 0 else "down"
         if isinstance(neighbor, Chapter):
             move = lambda path, text: deck_editor.move_slide_past_section(path, text, call, neighbor)  # noqa: E731
         else:
-            move = lambda path, text: deck_editor.move_slide_call(path, text, call, neighbor.call)  # noqa: E731
+            move = lambda path, text: deck_editor.move_slide_call(path, text, call, neighbor.deck_call)  # noqa: E731
         self.edit("Move failed", f"Moved {call.id_slug} {direction} in {deck.name}", move)
 
     # -- menus --------------------------------------------------------------------
@@ -366,9 +366,9 @@ class SlideList(QWidget):
 
     def _slide_menu(self) -> PopoverMenu:
         row = self.targets()[0]
-        call = row.call
+        call = row.deck_call
         menu = self._new_menu(280)
-        menu.add_header(f"{call.id} · {row.title}")
+        menu.add_header(f"{row.call.id} · {row.title}")
         add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images"])
         if not call.editable:
             menu.add_header(f"Read-only here: {call.readonly_reason}")
@@ -378,9 +378,9 @@ class SlideList(QWidget):
         for macro in BASE_MACROS:
             menu.add_item(f"variant:{macro}", VARIANT_TITLES[macro], meta=f"\\{macro}", enabled=editable,
                           icon="check" if call.macro == macro else "")
-        versions = deck_editor.available_versions(call.id_slug)
-        if call.macro in VERSIONED_MACROS and call.version not in versions:
-            versions.append(call.version)
+        versions = deck_editor.available_versions(row.deck_call.id_slug)
+        if row.deck_call.macro in VERSIONED_MACROS and row.deck_call.version not in versions:
+            versions.append(row.deck_call.version)
         for version in versions:
             for macro, title in (("slideversion", "Pinned to"), ("omitslideversion", "Instructor only, pinned to")):
                 menu.add_item(f"variant:{macro}:{version}", f"{title} v{version}", meta=f"\\{macro}",
@@ -552,7 +552,7 @@ class SlideList(QWidget):
         self.app.after_deck_edit(deck.path, f"Undid last change to {deck.name}")
 
     def _change_variant(self, row: SlideRow, macro: str, version: Optional[str]) -> None:
-        call = row.call
+        call = row.deck_call
         steps = None
         if macro == "slidestep":
             steps, accepted = QInputDialog.getText(
@@ -569,7 +569,7 @@ class SlideList(QWidget):
                 path, text, call, macro, version, conditions, steps))
 
     def _set_visibility(self, rows: list[SlideRow], view: str, visible: bool) -> None:
-        calls = [r.call for r in rows]
+        calls = [r.deck_call for r in rows]
         what = ", ".join(c.id_slug for c in calls)
         self.edit(
             "Change failed",
@@ -584,7 +584,7 @@ class SlideList(QWidget):
     def _remove(self, rows: list[SlideRow]) -> None:
         if not rows:
             return
-        calls = [r.call for r in rows]
+        calls = list({c.call_start: c for r in rows for c in (r.deck_call, *r.folded_calls)}.values())
         what = calls[0].id_slug if len(calls) == 1 else f"{len(calls)} slides ({', '.join(c.id_slug for c in calls)})"
         self.edit("Remove failed", f"Removed {what} from {self.deck.name}",
                    lambda path, text: deck_editor.remove_slide_calls(path, text, calls))
@@ -616,7 +616,7 @@ class SlideList(QWidget):
 
     def _add_slide_to(self, section: SectionRow) -> None:
         deck = self.deck
-        calls = [r.call for r in section.rows]
+        calls = [r.deck_call for r in section.rows]
         indent = calls[-1].indent if calls else "\t"
         try:
             insert_at = deck_editor.section_append_point(deck, section.chapter)
@@ -658,7 +658,7 @@ class SlideList(QWidget):
         self._move_slides(rows, insert_at, f"to {section.title}")
 
     def _move_slides(self, rows: list[SlideRow], insert_at: int, where: str) -> None:
-        calls = [r.call for r in rows]
+        calls = [r.deck_call for r in rows]
         self.edit("Move failed", f"Moved {', '.join(c.id_slug for c in calls)} {where}",
                    lambda path, text: deck_editor.move_slide_calls(path, text, calls, insert_at))
 

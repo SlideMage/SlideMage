@@ -1144,7 +1144,7 @@ in the footer appended directly to the tracked version:
 `v1.1.0` becomes `v1.1.0EN`/`v1.1.0DE` (only once a version is tracked at
 all — an untracked slide's footer still shows no `v...` segment).
 
-A deck's own language is fixed, set once near the top of the deck file
+A deck's default language is set near the top of the deck file
 next to `\deckversion` (same `\ifdefined`-override pattern, for
 SlideMage's own one-off render preview and ad-hoc testing):
 
@@ -1155,6 +1155,22 @@ SlideMage's own one-off render preview and ad-hoc testing):
 	\decklanguage[en]           % options: en, de
 \fi
 ```
+
+In SlideMage, the top bar's **EN / DE** switch overrides this default for
+the open deck. The slide list, preview, source editor, Details, side panels
+and Compile PDF follow the linked slide in that language. A missing partner
+keeps the called file and shows **No DE version** (or **No EN version**).
+Unsaved edits are retained separately for each file when switching languages.
+
+A linked translation occupies its original's place in the deck; an older
+deck that also lists the translation elsewhere shows and compiles one slot.
+The original call controls visibility and reveal steps. Translations have
+independent version histories: an English pin still applies in EN, while DE
+uses the German translation's current file. Alternate-language PDFs add
+`-de` or `-en` to their usual name. SlideMage resolves calls in temporary
+compile wrappers; compiling the raw deck outside the app keeps its literal
+calls. For a deck that deliberately typesets both languages separately,
+use independent copies without translation links.
 
 ### Creating a German translation of an existing slide
 

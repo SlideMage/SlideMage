@@ -97,7 +97,11 @@ def slide_entries(window, words: list[str], project_slugs: list[str]) -> list[En
     for row in window.slide_list.rows():
         call = row.call
         in_deck.add(call.id_slug)
-        if matches(words, call.id_slug, row.title):
+        in_deck.add(row.deck_call.id_slug)
+        in_deck.update(c.id_slug for c in row.folded_calls)
+        in_deck.update(slug for slide_id in row.related_ids
+                       if (slug := slide_language.current_id_slug_for_bare_id(slide_id)))
+        if matches(words, call.id_slug, row.deck_call.id_slug, row.title):
             entries.append(Entry(GO_TO_SLIDE, f"{call.id} · {row.title}",
                                  lambda i=call.id: state.set_focused_slide(i), GROUP_ICONS[GO_TO_SLIDE], call.id_slug))
     for id_slug in project_slugs:

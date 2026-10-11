@@ -22,7 +22,8 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout
 
-from ....deck_editor import SLIDES_DIR, SlideCall, parse_slide_calls
+from ....deck_editor import SLIDES_DIR, SlideCall
+from .... import deck_outline
 from ....slide_language import current_id_slug_for_bare_id, current_path_for_bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import ClickFrame, Surface
@@ -146,22 +147,30 @@ class SidePanel(Surface):
         deck, slide = self.state.deck, self.state.focused_slide
         if deck is None or deck.is_test_deck or slide is None:
             return []
-        return [(i, c) for i, c in enumerate(parse_slide_calls(deck), start=1) if c.id == slide]
+        return [(r.position, r.deck_call)
+                for section in deck_outline.build_outline(deck, self.state.view, self.state.language)
+                for r in section.rows if r.matches(slide)]
+
+    def _focused_row(self):
+        deck, slide = self.state.deck, self.state.focused_slide
+        if deck is None or deck.is_test_deck or slide is None:
+            return None
+        return deck_outline.slide_row(deck, slide, self.state.view, self.state.language)
 
     def id_slug(self) -> str:
         """The focused slide's full id-slug: as the open deck calls it, else its current file's; "" for none."""
-        calls = self.deck_calls()
-        if calls:
-            return calls[0][1].id_slug
+        row = self._focused_row()
+        if row is not None:
+            return row.call.id_slug
         slide = self.state.focused_slide
         return current_id_slug_for_bare_id(slide) or "" if slide else ""
 
     def slide_path(self) -> Optional[Path]:
         """The file of the focused slide: what the open deck calls (a pinned version is its own
         file), else the slide's current file."""
-        calls = self.deck_calls()
+        row = self._focused_row()
         slide = self.state.focused_slide
-        path = SLIDES_DIR / calls[0][1].source_filename if calls else (current_path_for_bare_id(slide) if slide else None)
+        path = SLIDES_DIR / row.call.source_filename if row else (current_path_for_bare_id(slide) if slide else None)
         return path if path is not None and path.is_file() else None
 
     def slide_text(self) -> str:

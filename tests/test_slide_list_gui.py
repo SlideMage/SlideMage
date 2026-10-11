@@ -156,6 +156,34 @@ def test_an_empty_deck_says_so_and_a_missing_deck_disables_adding(make_list):
     assert slide_list.note.isHidden()
 
 
+def test_de_rows_keep_focus_selection_and_edit_the_original_slot(make_list, tmp_path, monkeypatch):
+    from conftest import use_slides_folder
+
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    use_slides_folder(monkeypatch, slides)
+    monkeypatch.setattr(slide_list_module, "SLIDES_DIR", slides)
+    for slug, header in (("aaa-EN-One", "%% DE translation: ddd-DE-Eins\n"),
+                         ("ddd-DE-Eins", "%% Translation of: aaa-EN-One\n")):
+        (slides / f"{slug}-current.tex").write_text(header + "\\begin{standardframe}{Title}Text\\end{standardframe}\n")
+    slide_list, window, path = make_list(
+        "\\slide{aaa-EN-One}\n\\slide{bbb-EN-Two}\n\\section{Late}\n\\slide{ddd-DE-Eins}\n")
+    assert ids(slide_list) == ["aaa", "bbb"]
+    focus(slide_list, "aaa")
+    select(slide_list, "aaa", "bbb")
+    window.state.set_language("DE")
+    assert ids(slide_list) == ["ddd", "bbb"]
+    assert window.state.focused_slide == "ddd" and window.state.selection == ("ddd", "bbb")
+    slide_list._open_source(slide_list.rows()[0])
+    assert window.opened[-1].name == "ddd-DE-Eins-current.tex"
+    slide_list._set_visibility([slide_list.rows()[0]], "after-course", False)
+    assert "\\conditionalslide[instructor,during-course]{aaa-EN-One}" in path.read_text()
+    assert not make_list.errors
+    slide_list._remove([slide_list.rows()[0]])
+    assert "aaa-EN-One" not in path.read_text() and "ddd-DE-Eins" not in path.read_text()
+    assert ids(slide_list) == ["bbb"]
+
+
 def test_a_test_deck_has_no_slide_list(make_list):
     slide_list, _window, _path = make_list("\\slide{aaa-One}\n", tags=["test"])
     assert slide_list.deck is None and slide_list.tree.topLevelItemCount() == 0

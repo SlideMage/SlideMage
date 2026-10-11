@@ -119,11 +119,12 @@ def test_a_slide_without_a_version_in_the_edited_language_is_missing_its_transla
     slide(project, "eee-Legacy")
     deck = make_deck(tmp_path, "".join(f"\\slide{{{s}}}\n" for s in (
         "aaa-EN-Alone", "bbb-EN-Both", "ccc-DE-Both", "ddd-mult-Image", "eee-Legacy")))
-    for language, expected in (("EN", [False, False, False, False, False]),
-                               ("DE", [True, False, False, False, False])):
+    for language, expected in (("EN", [False, False, False, False]),
+                               ("DE", [True, False, False, False])):
         rows = rows_of(deck_outline.build_outline(deck, "instructor", language))
         assert [r.missing_translation for r in rows] == expected, language
-    assert [r.badge for r in rows] == ["[EN]", "[EN + DE]", "[DE + EN]", "[mult]", ""]
+    assert [r.badge for r in rows] == ["[EN]", "[DE + EN]", "[mult]", ""]
+    assert [r.call.id for r in rows] == ["aaa", "ccc", "ddd", "eee"]
 
 
 def test_a_call_is_found_again_by_what_it_is_even_twice_in_a_deck(tmp_path, project):

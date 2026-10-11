@@ -75,7 +75,7 @@ class CentreColumn(QFrame):
         state.deck_changed.connect(self._on_deck_changed)
         state.focused_slide_changed.connect(self._on_focus)
         state.view_changed.connect(lambda _view: self.refresh())
-        state.language_changed.connect(lambda _language: self.refresh())
+        state.language_changed.connect(self._on_language)
         state.mode_changed.connect(lambda _mode: self.refresh())
         self.refresh()
 
@@ -228,6 +228,13 @@ class CentreColumn(QFrame):
         if not self._opening:
             self._path = self._focused_path()
             self.refresh()
+
+    def _on_language(self, _language: str) -> None:
+        # SourcePane retains each file's buffer, including pending edits.
+        # A non-slide opened explicitly (deck source, bibliography) stays open.
+        if self._focused_row() is not None and (self._path is None or self._file_slide()[0]):
+            self._path = self._focused_path()
+        self.refresh()
 
     def _on_saved(self, _path: Path) -> None:
         if self.state.mode in ("preview", "split"):

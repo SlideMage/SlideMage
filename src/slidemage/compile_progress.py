@@ -76,7 +76,7 @@ def passes_for(uses_biblatex: bool) -> int:
     return PASSES_WITH_BIBLIOGRAPHY if uses_biblatex else PASSES_WITHOUT_BIBLIOGRAPHY
 
 
-def count_job_slides(deck, version: Optional[str], chapter) -> int:
+def count_job_slides(deck, version: Optional[str], chapter, language: Optional[str] = None) -> int:
     """Slide calls a compile of `deck` (in `version`, whole or one chapter)
     typesets per pass -- the same scoping the pre-render syntax check uses:
     calls left out of the version by \\conditionalslide/\\slidestep are not
@@ -84,20 +84,27 @@ def count_job_slides(deck, version: Optional[str], chapter) -> int:
     fragments (test-slides.tex) count with their own calls."""
     total = 0
     text = deck.text
-    for call in latex_lint._calls_in(text, deck.chapters):
+    if not text:
+        return 0
+    from . import deck_language
+    from .deck_settings import read_settings
+    language = (language or read_settings(text).language).upper()
+    resolved_deck, _inputs = deck_language.compile_deck(deck, language)
+    for slot in deck_language.deck_slots(resolved_deck, language):
+        call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
         if latex_lint._slide_included(call, version):
             total += 1
-    if deck.preamble_end is not None:
+    if deck.preamble_end is not None and resolved_deck.text == text:
         body = latex_lint._masked_same_length(text)[deck.preamble_end:]
         for m in latex_lint._INPUT_RE.finditer(body):
             name = m.group(1).strip()
             frag = latex_lint.DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
-                total += sum(1 for c in latex_lint._calls_in(frag_text, [])
-                             if latex_lint._slide_included(c, version))
+                total += sum(1 for s in deck_language.slots(latex_lint._calls_in(frag_text, []), language)
+                             if latex_lint._slide_included(s.call, version))
     return total
 
 
@@ -109,7 +116,7 @@ def spec_for_job(job) -> JobSpec:
         return JobSpec(1, 0, estimated=True)
     remembered, known = compile_passes.predict(job)
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
-                   count_job_slides(job.deck, job.version, job.chapter),
+                   count_job_slides(job.deck, job.version, job.chapter, getattr(job, "language", None)),
                    estimated=not known)
 
 

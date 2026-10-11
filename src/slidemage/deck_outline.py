@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_blocks, deck_editor, latex_lint, slide_language, slide_snapshot
+from . import alt_blocks, deck_editor, deck_language, latex_lint, slide_language, slide_snapshot
 from .deck_editor import SLIDES_DIR, SlideCall
 from .deck_scan import Chapter, Deck
 
@@ -40,6 +40,17 @@ class SlideRow:
     stale_preview: bool
     hidden: bool             # not typeset in the view being edited
     missing_translation: bool   # no version in the language being edited
+    original_call: Optional[SlideCall] = None
+    folded_calls: tuple[SlideCall, ...] = ()
+    related_ids: tuple[str, ...] = ()
+
+    @property
+    def deck_call(self) -> SlideCall:
+        """The physical call to edit; `call` is the file shown in this language."""
+        return self.original_call or self.call
+
+    def matches(self, slide_id: str) -> bool:
+        return deck_language.SlideSlot(self.deck_call, self.call, self.folded_calls, self.related_ids).matches(slide_id)
 
 
 @dataclass(frozen=True)
@@ -82,10 +93,13 @@ def slide_file_title(path: Path, id_slug: str) -> str:
     return _title(path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
 
 
-def _row(call: SlideCall, key: tuple, position: int, template: str, view: str, language: str) -> SlideRow:
+def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str) -> SlideRow:
+    call = slot.call
     path = SLIDES_DIR / call.source_filename
     png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
     badge = slide_language.badge_for(call.id_slug, path)
+    if slot.related_ids and badge.own in ("EN", "DE"):
+        badge.cross_referenced = "DE" if badge.own == "EN" else "EN"
     lint_error, title = _source_facts(call)
     return SlideRow(
         call=call,
@@ -97,8 +111,10 @@ def _row(call: SlideCall, key: tuple, position: int, template: str, view: str, l
         lint_error=lint_error,
         stale_preview=png.is_file() and _older(png, path),
         hidden=not call.included_in(view),
-        missing_translation=badge.own in ("EN", "DE") and badge.own != language
-        and badge.cross_referenced != language,
+        missing_translation=badge.own in ("EN", "DE") and badge.own != language,
+        original_call=slot.original,
+        folded_calls=slot.folded,
+        related_ids=slot.related_ids,
     )
 
 
@@ -114,11 +130,12 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
     template = slide_snapshot.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     occurrences: dict[tuple, int] = {}
-    for position, call in enumerate(deck_editor.parse_slide_calls(deck), start=1):
+    for position, slot in enumerate(deck_language.deck_slots(deck, language), start=1):
+        call = slot.original
         base = _call_key(call)
         occurrences[base] = occurrences.get(base, 0) + 1
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
-            _row(call, base + (occurrences[base] - 1,), position, template, view, language))
+            _row(slot, base + (occurrences[base] - 1,), position, template, view, language))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -131,9 +148,9 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
 def slide_row(deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
     """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
     template = slide_snapshot.detect_template(deck.preamble_text)
-    for position, call in enumerate(deck_editor.parse_slide_calls(deck), start=1):
-        if call.id == slide_id:
-            return _row(call, _call_key(call) + (0,), position, template, view, language)
+    for position, slot in enumerate(deck_language.deck_slots(deck, language), start=1):
+        if slot.matches(slide_id):
+            return _row(slot, _call_key(slot.original) + (0,), position, template, view, language)
     return None
 
 

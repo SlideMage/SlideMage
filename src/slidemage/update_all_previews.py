@@ -81,11 +81,14 @@ def needed_slides_by_template() -> dict[str, set[str]]:
     below converts to bare ids itself, the shape a cached filename encodes.
     """
     needed: dict[str, set[str]] = {}
+    from . import deck_language
     for deck in scan_decks():
         template = slide_snapshot.detect_template(deck.preamble_text)
         bucket = needed.setdefault(template, set())
         for call in deck_editor.parse_slide_calls(deck):
             bucket.add(call.id_slug)
+        for language in ("EN", "DE"):
+            bucket.update(slot.call.id_slug for slot in deck_language.deck_slots(deck, language))
     return needed
 
 
@@ -155,7 +158,7 @@ def _run_one_template(
         chapters=[],
         output_folders={},
     )
-    job = CompileJob(deck=deck, version="instructor", chapter=None)
+    job = CompileJob(deck=deck, version="instructor", chapter=None, resolve_translations=False)
     try:
         return run_job(job, log, cancel=cancel)
     finally:

@@ -105,6 +105,12 @@ def _regenerate_headers_impl() -> tuple[int, int]:
             text = f.read()
         for slide_id in set(SLIDE_CALL_RE.findall(text)):
             id_to_decks.setdefault(slide_id, set()).add(deck_name)
+        from types import SimpleNamespace
+        from . import deck_editor, deck_language
+        calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+        for language in ("EN", "DE"):
+            for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
+                id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
 
     changed = 0
     if SLIDES_DIR.is_dir():

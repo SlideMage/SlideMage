@@ -327,6 +327,21 @@ def test_the_caret_compiles_the_selected_slides_and_every_active_deck(env, monke
     assert len(jobs) == 1 + 3 + 3
 
 
+def test_current_deck_compile_and_selected_pages_take_the_workspace_language(env, monkeypatch):
+    window = env.window
+    window.state.set_language("DE")
+    captured = []
+    monkeypatch.setattr(window, "_compile_jobs", lambda jobs: captured.extend(jobs))
+    window._compile_current("instructor")
+    assert captured[-1].language == "DE" and captured[-1].jobname == "course-instructor-de"
+    looked_up = []
+    monkeypatch.setattr(compile_jobs.partial_compile, "frames_for_slides",
+                        lambda job, ids: looked_up.append((job.language, ids)) or [2])
+    window._compile_slides(["ddd"])
+    assert looked_up == [("DE", ["ddd"])]
+    assert captured[-1].pages == [2] and captured[-1].language == "DE"
+
+
 def test_the_log_drawer_is_closed_until_asked_and_takes_every_writer(env):
     window = env.window
     drawer = window.log_drawer

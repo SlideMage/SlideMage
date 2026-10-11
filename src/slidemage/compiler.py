@@ -189,12 +189,13 @@ class DeckPdf:
 
 
 def job_label(job: CompileJob) -> str:
-    if job.presenter:
-        return "Presenter"
-    label = {"during-course": "During-course", "after-course": "After-course"}.get(
+    label = "Presenter" if job.presenter else {
+        "during-course": "During-course", "after-course": "After-course"}.get(
         job.version or "", "Instructor")
     if job.chapter is not None:
         label += f", chapter {job.chapter.order}: {job.chapter.title}"
+    if job.language:
+        label += f" · {job.language.upper()}"
     return label
 
 
@@ -228,6 +229,11 @@ def deck_pdfs(deck: Deck) -> list[DeckPdf]:
     chapter_version = "after-course" if deck.supports_version else None
     for chapter in deck.chapters:
         jobs.append(CompileJob(deck, chapter_version, chapter))
+
+    from dataclasses import replace
+    from .deck_settings import read_settings
+    other = "DE" if read_settings(deck.text).language.lower() == "en" else "EN"
+    jobs += [replace(job, language=other) for job in jobs]
 
     found: dict[str, DeckPdf] = {}
     for job in jobs:
@@ -415,6 +421,8 @@ class CompileJob:
     # (/SlideMageRun), so "Open pdf" can tell PDFs of the same run, with no
     # change in between, from later ones. None: not stamped.
     run_id: Optional[str] = None
+    language: Optional[str] = None   # EN/DE override; None uses the deck's setting
+    resolve_translations: bool = True   # False for a maintenance deck rendering each file independently
 
     @property
     def _appendix_applies(self) -> bool:
@@ -432,6 +440,10 @@ class CompileJob:
             parts.append(f"{self.chapter.order:02d}-{self.chapter.slug}")
         if self.presenter:
             parts.append("presenter")
+        if self.language:
+            from .deck_settings import read_settings
+            if self.language.lower() != read_settings(self.deck.text).language.lower():
+                parts.append(self.language.lower())
         # No "-appendix" suffix (2026-10-03, direct instruction; it used to
         # mark a compile with the generated appendix): with or without the
         # appendix a job writes the same file.
@@ -480,6 +492,7 @@ def _seed_snapshot_timestamp(jobname: str, build_dir: Path) -> None:
 
 
 def _wrapper_text(job: CompileJob) -> str:
+    from . import deck_language
     lines: list[str] = []
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
@@ -491,11 +504,22 @@ def _wrapper_text(job: CompileJob) -> str:
         lines.append("\\def\\SMAppendixTocOverride{1}")
     if job.run_id:
         lines.append(compile_records.run_id_line(job.run_id))
+    if job.language:
+        lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
+
+    language = deck_language.language_for_job(job)
+    resolved_deck, _dependencies = (deck_language.compile_deck(job.deck, language)
+                                   if job.resolve_translations else (job.deck, []))
+    resolved = resolved_deck.text
+    preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
+    if job.language and preamble:
+        preamble += "\n" + deck_language.language_line(language)
 
     if job.chapter is not None:
-        lines.append(job.deck.preamble_text)
+        lines.append(preamble)
         lines.append("")
-        lines.append(job.deck.chapter_text(job.chapter))
+        chapter = next(c for c in resolved_deck.chapters if c.order == job.chapter.order)
+        lines.append(resolved_deck.chapter_text(chapter))
         lines.append("")
         lines.append("\\end{document}")
     elif job._appendix_applies:
@@ -505,15 +529,18 @@ def _wrapper_text(job: CompileJob) -> str:
         # \end{document} -- a plain \input{deck.tex} would hit that
         # \end{document} and stop before anything appended after the
         # \input{} line ever ran.
-        body = job.deck.text[job.deck.preamble_end :]
+        body = resolved[job.deck.preamble_end :]
         end_match = DOCUMENT_END_RE.search(body)
         body_without_end = body[: end_match.start()] if end_match else body
         template = slide_snapshot.detect_template(job.deck.preamble_text)
-        lines.append(job.deck.preamble_text)
+        lines.append(preamble)
         lines.append(body_without_end)
         lines.append(appendix_toc.generate_appendix_tex(
-            job.deck, template, job.version or "instructor"))
+            resolved_deck, template, job.version or "instructor"))
         lines.append("\\end{document}")
+    elif job.language or resolved != job.deck.text:
+        lines.append(preamble)
+        lines.append(resolved[job.deck.preamble_end:])
     else:
         lines.append(f"\\input{{{job.deck.path.name}}}")
 

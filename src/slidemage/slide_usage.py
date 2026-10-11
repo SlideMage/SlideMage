@@ -88,13 +88,17 @@ def _skipped(deck: Deck) -> bool:
     return deck.name.startswith(("#", "zzz_"))
 
 
-def find_usage(id_slug: str, decks: Optional[list[Deck]] = None) -> list[DeckUsage]:
+def find_usage(id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
     """Every deck (archived ones too) that calls this slide, in scan order."""
     usages = []
     for deck in decks if decks is not None else scan_decks():
         if _skipped(deck):
             continue
-        every = deck_editor.parse_slide_calls(deck)
+        if language is not None:
+            from . import deck_language
+            every = [slot.call for slot in deck_language.deck_slots(deck, language)]
+        else:
+            every = deck_editor.parse_slide_calls(deck)
         places = [(c, i) for i, c in enumerate(every, start=1) if c.id_slug == id_slug]
         if places:
             usages.append(DeckUsage(deck, [c for c, _ in places], [i for _, i in places], len(every)))

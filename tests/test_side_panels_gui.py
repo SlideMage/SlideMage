@@ -138,6 +138,34 @@ def texts(widget):
     return [label.text() for label in widget.findChildren(QLabel)]
 
 
+def test_de_panels_use_german_content_but_visibility_uses_the_original_call(column, project):
+    panels, state, window = column
+    slides = project.decks.parent / "slides"
+    english = slides / "abc-EN-Demo-current.tex"
+    german = slides / "ddd-DE-Beispiel-current.tex"
+    english.write_text("%% DE translation: ddd-DE-Beispiel\n" + FRAME)
+    german.write_text("%% Translation of: abc-EN-Demo\n" + FRAME.replace("Demo", "Beispiel"))
+    state.set_focused_slide("abc")
+    panels.set_panel("notes")
+    notes = panels.panels["notes"]
+    notes._new.setPlainText("English pending note")
+    state.set_language("DE")
+    assert "English pending note" in window.centre.buffers[english]
+    assert german not in window.centre.buffers
+    assert notes.id_slug() == "ddd-DE-Beispiel" and notes.slide_path() == german
+    notes._new.setPlainText("German pending note")
+    notes.flush()
+    assert "German pending note" in window.centre.buffers[german]
+    panels.set_panel("language")
+    assert panels.panels["language"].id_slug() == "ddd-DE-Beispiel"
+    assert "A translation of abc-EN-Demo." in texts(panels.panels["language"])
+    visibility = panels.panels["visibility"]
+    assert [call.id for _, call in visibility.deck_calls()] == ["abc", "abc"]
+    visibility._set(visibility.deck_calls()[0][1], "after-course", False)
+    assert "\\conditionalslide[instructor,during-course]{abc-EN-Demo}" in state.deck.text
+    assert not project.errors
+
+
 def rows(panel):
     return panel.findChildren(Row)
 

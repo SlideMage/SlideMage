@@ -62,8 +62,11 @@ class PreviewTarget:
                 hashlib.sha256((self.preamble_text or '').encode()).hexdigest())
 
 
-def for_call(deck: Deck, call: SlideCall, position: int) -> PreviewTarget:
+def for_call(deck: Deck, call: SlideCall, position: int, language: Optional[str] = None) -> PreviewTarget:
     """`call`, the `position`-th slide call of `deck`, as the deck typesets it."""
+    if language is not None:
+        from .deck_language import resolve_call
+        call = resolve_call(call, language)
     return PreviewTarget(call.macro, call.id_slug, call.version, call.conditions, call.steps,
                          position, deck.preamble_text)
 

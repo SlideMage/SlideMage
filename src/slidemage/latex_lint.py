@@ -625,7 +625,8 @@ class CheckResult:
 
 
 def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[Chapter] = None,
-                   result: Optional[CheckResult] = None, seen: Optional[set] = None) -> CheckResult:
+                   result: Optional[CheckResult] = None, seen: Optional[set] = None,
+                   language: Optional[str] = None) -> CheckResult:
     """Everything a compile of `deck` (in `version`, whole or one `chapter`)
     reads: the deck file itself (preamble, plus only the chosen chapter for a
     per-chapter job), every slide file its included calls load, and any
@@ -656,7 +657,14 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
         if keep is None or keep(issue.line):
             result.issues.append(issue)
 
-    calls = _calls_in(text, deck.chapters)
+    from . import deck_language
+    from .deck_settings import read_settings
+    language = (language or read_settings(deck.text).language).upper()
+    resolved_deck, inline_inputs = deck_language.compile_deck(deck, language)
+    calls = [s.call for s in deck_language.deck_slots(resolved_deck, language)]
+    for path in inline_inputs:
+        if path.parent != deck_editor.SLIDES_DIR:
+            check_file(path)
     for call in calls:
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
@@ -672,7 +680,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
         check_file(path)
 
     # \input{fragment} decks (test-slides.tex): their slide calls count too
-    if deck.preamble_end is not None:
+    if deck.preamble_end is not None and resolved_deck.text == text:
         body = _masked_same_length(text)[deck.preamble_end:]
         for m in _INPUT_RE.finditer(body):
             name = m.group(1).strip()
@@ -682,7 +690,8 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
                 seen.add(frag)
                 result.files_checked += 1
                 result.issues.extend(lint_text(frag_text, frag.name, frag))
-                for call in _calls_in(frag_text, []):
+                for slot in deck_language.slots(_calls_in(frag_text, []), language):
+                    call = slot.call
                     if not _slide_included(call, version):
                         continue
                     path = _slide_path(call)
@@ -702,7 +711,7 @@ def check_jobs(jobs: Iterable) -> CheckResult:
     result, seen = CheckResult(), set()
     started = time.perf_counter()
     for job in jobs:
-        check_deck_job(job.deck, job.version, job.chapter, result, seen)
+        check_deck_job(job.deck, job.version, job.chapter, result, seen, getattr(job, "language", None))
     result.seconds = time.perf_counter() - started
     return _dedupe(result)
 

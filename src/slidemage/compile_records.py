@@ -259,7 +259,17 @@ def write_record(
         aux.mkdir(parents=True)
         entries = []
         seen: set[str] = set()
-        for path in [*parse_fls(fls), *bib_sources]:
+        inline_inputs = [deck_path] if deck_path is not None else []
+        if deck_path is not None and deck_path.is_file():
+            from . import deck_language, deck_scan
+            deck = next((d for d in deck_scan._scan_dir(deck_path.parent, False) if d.path == deck_path), None)
+            if deck is not None:
+                # Include dependencies in either language: the wrapper can inline
+                # a shared slide list instead of having TeX open its original file.
+                for language in ("EN", "DE"):
+                    _resolved, inputs = deck_language.compile_deck(deck, language)
+                    inline_inputs.extend(inputs)
+        for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:
             key = norm(path)
             if key in seen or is_within(path, invocation_dir) or key == norm(wrapper_path):
                 continue
