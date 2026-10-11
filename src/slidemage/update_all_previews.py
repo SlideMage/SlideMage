@@ -97,7 +97,7 @@ def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> Non
     `needed` any more -- a slide no deck references under that template
     (removed from every deck, or moved to a different institution) leaves
     an orphaned file otherwise, the same class of dead weight the old
-    flat-naming cleanup (ALT_TEXT_NOTES.md, Phase 8) removed by hand once.
+    flat-naming cleanup removed by hand once.
     """
     valid_bare_ids_by_template_name: dict[str, set[str]] = {
         slide_snapshot.TEMPLATES.get(template, template):

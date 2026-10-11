@@ -1,5 +1,4 @@
-"""Generate an accessible companion transcript for a deck (ALT_TEXT_NOTES.md,
-phase 4).
+"""Generate an accessible companion transcript for a deck.
 
 Markdown is the source format, HTML the delivered one. Generated on demand and
 never committed: everything it needs already lives in the deck file, the slide
@@ -72,7 +71,7 @@ _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 # scaffolding around German slide content. Only strings *transcript.py
 # itself* writes are here; a slide's own body/title/source text is never
 # translated by this module at all -- it's already in whichever language
-# that slide's own file is written in (see LANGUAGE_NOTES.md: a
+# that slide's own file is written in (a
 # German-content slide is a separate file, not a translated field), so
 # only the alt_images-sourced per-image fields (short/long/takeaway/
 # source) and this module's own scaffolding need a language dimension.
@@ -212,8 +211,8 @@ def _versions_from(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]
 def deck_language_of(deck_text: str) -> str:
     """"en"/"de" from the deck's \\decklanguage[...]; always a concrete
     value, never None: language is fixed per deck
-    (not a per-compile-run choice the way version is -- see
-    LANGUAGE_NOTES.md), so "\\decklanguage[\\decklanguageoverride]" (the
+    (not a per-compile-run choice the way version is),
+    so "\\decklanguage[\\decklanguageoverride]" (the
     macro-argument case, only ever used for SlideMage's own one-off
     render preview, never a real deck's own hardcoded line) falling
     through to the preamble's own "en" default is the right answer here,
@@ -223,7 +222,7 @@ def deck_language_of(deck_text: str) -> str:
     This deliberately scans every \\decklanguage[...] occurrence
     and picks the first *literal* one: every real deck's own
     \\ifdefined\\decklanguageoverride ... \\else \\decklanguage[en] ... \\fi
-    boilerplate (see README.md/LANGUAGE_NOTES.md) puts the macro-argument
+    boilerplate (see README.md) puts the macro-argument
     branch textually *first*, so a plain first-match .search() would
     always see "\\decklanguageoverride" and fall through to the "en"
     default for every real deck, including ones whose actual hardcoded
@@ -1638,7 +1637,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     if version not in STUDENT_VERSIONS:
         raise ValueError(
             f"Transcripts are generated for {' and '.join(STUDENT_VERSIONS)} "
-            f"only, not {version!r} — see ALT_TEXT_NOTES.md."
+            f"only, not {version!r}."
         )
 
     language = deck_language_of(deck_path.read_text(encoding="utf-8"))

@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Qt WebEngine (the Claude Code terminal) needs this before the QApplication exists.
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-    app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
+    app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])  # noqa: F841 -- keep QApplication alive
 
     if args.project is not None:
         root = args.project.resolve()

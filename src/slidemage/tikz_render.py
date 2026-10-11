@@ -1,5 +1,5 @@
 """Render a `\\tikzillustration{ID}` to a cached PNG for the vision-model
-drafting pipeline (ALT_TEXT_NOTES.md's tikz-illustration extension of the
+drafting pipeline (tikz-illustration extension of the
 alt-text system -- see alt_blocks.py/alt_images.py for the rest of it).
 
 There is no media/ file behind one of these at all, so unlike

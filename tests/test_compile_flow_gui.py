@@ -14,7 +14,7 @@ from slidemage.compile_status import DONE, FAILED, QUEUED, STOPPED
 from slidemage.deck_scan import PROJECT_ROOT
 from slidemage.ui.workspace import compile_jobs, render_check
 
-from test_workspace_window import COURSE, MANUAL, OLD, WORK, make_deck, qapp, window  # noqa: F401 -- fixtures
+from test_workspace_window import COURSE, MANUAL, OLD, WORK, make_deck, qapp, window as window  # noqa: F401 -- fixtures
 
 SLIDE = sorted((PROJECT_ROOT / "slides").glob("*-current.tex"))[0]
 SLIDE_ID = SLIDE.name.split("-")[0]

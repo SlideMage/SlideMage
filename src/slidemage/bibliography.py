@@ -1,4 +1,4 @@
-"""Resolve citation keys against Slidemaster.bib (ALT_TEXT_NOTES.md, phase 4).
+"""Resolve citation keys against Slidemaster.bib.
 
 Without this a transcript renders `\\fullcite{loughran1995}` as the bare key
 "loughran1995", which tells a student nothing.

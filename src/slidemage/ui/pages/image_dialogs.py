@@ -97,7 +97,7 @@ class PromptTuningSheet(ModalSheet):
     """Draft one image with an editable prompt, again and again until it reads right. The one
     drafting that is deliberately not durable: nothing reaches the store until the page writes the
     accepted draft. Prompt tuning fixes misreadings (a wrong axis maximum, a mistaken chart type); it
-    does not fix what the model cannot resolve at all (ALT_TEXT_NOTES.md).
+    does not fix what the model cannot resolve at all.
 
     `on_over` runs once nothing of the sheet is running any more (it gives the Ollama slot back)."""
 

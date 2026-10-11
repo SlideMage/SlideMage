@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit
 from .... import slide_language, slide_source
 from ...kit import kit_qss as q
 from ...kit.widgets import Button
-from .base import Row, SidePanel, box, text
+from .base import Row, SidePanel, box
 
 
 class SpeakerNotes(SidePanel):

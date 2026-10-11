@@ -1,4 +1,4 @@
-"""Draft image descriptions with a vision model (ALT_TEXT_NOTES.md, phase 3).
+"""Draft image descriptions with a vision model.
 
 Produces **unreviewed drafts** only. Everything this writes lands as state
 🔴 in the review tab and must be checked by a human before it can be marked
@@ -92,9 +92,6 @@ RESPONSE_SCHEMA = {
     "required": ["short", "long", "takeaway", "role_suggestion"],
 }
 
-# Mirrors the "Writing conventions for descriptions" section of
-# ALT_TEXT_NOTES.md. Keep the two in sync -- if the conventions change
-# there, this prompt is the other half of the change.
 SYSTEM_PROMPT = """\
 You write image descriptions for university finance lecture slides, for \
 students who cannot see the images. Your descriptions are read aloud by a \
@@ -817,7 +814,7 @@ def run_batch(
 # --------------------------------------------------------------------------
 # German translation (2026-08-24)
 # --------------------------------------------------------------------------
-# Per the confirmed multi-language design (LANGUAGE_NOTES.md): German alt
+# Per the confirmed multi-language design: German alt
 # text is produced by translating the *finalized* English short/long/
 # takeaway_default text, not by an independent vision-model draft against
 # the image -- cheaper, and keeps the two languages semantically aligned.

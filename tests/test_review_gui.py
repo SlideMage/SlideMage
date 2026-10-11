@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtGui import QTextCursor
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import alt_images, housekeeping
 from slidemage.ui.workspace import window as window_module

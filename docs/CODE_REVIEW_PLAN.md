@@ -100,3 +100,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | C3 One translation-link reader | Done, v8.0.17: implemented by Codex, reviewed by Claude. One reader instead of one written direction: removes the disagreement without rewriting slide files. |
 | C4 Translation versions | Done, v8.0.18: implemented by Codex, reviewed by Claude. The pinned-version display part was dropped (the documented contract stays). C5 dropped: a cleanup action would add code without removing the folding. |
 | D3 Release history in CHANGELOG.md | Done, v8.0.19: implemented by Codex, reviewed by Claude; all 216 entries and the release notes verified identical. |
+| D4 palette.py / D5a missing notes references / D6 lint rules | Done, v8.0.20: implemented by Codex, reviewed by Claude. Template move, preview-wrapper move, docs sorting and comment rewrites deliberately not done (see summary). |

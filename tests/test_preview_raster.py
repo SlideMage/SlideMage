@@ -1,7 +1,6 @@
 """The persistent image process, including error recovery and frozen dispatch."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
 

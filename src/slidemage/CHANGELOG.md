@@ -2005,3 +2005,5 @@ v8.0.17 (2026-10-11, code review fix C3): The language badges ("EN + DE"), the L
 v8.0.18 (2026-10-11, code review fix C4): A translation or duplicate of a slide starts its own version history like any new slide (no version until its first tracked save, counted from 1.0.0); before, it carried over the original's \setSlideVersion, e.g. a German translation of a slide at 1.1.0 started at 1.1.0.
 
 v8.0.19 (2026-10-11, code review cleanup D3): The release history moved out of version.py (about 2,000 lines of docstring) into src/slidemage/CHANGELOG.md, which the About sheet and the release notes read; a new release adds its entry there. The version string with the commit time is worked out when first needed, not when the app starts. No change in what is shown.
+
+v8.0.20 (2026-10-11, code review cleanup D4-D6): Internal: palette.py (the UI colours) moved into the UI kit; references to the notes files LANGUAGE_NOTES.md and ALT_TEXT_NOTES.md, which are not in the repository, were removed (one was in an error message); the lint check also catches unused imports, redefinitions and unused variables, and the existing ones were removed. No change in behaviour.

@@ -1,7 +1,6 @@
 """Change a slide's own language segment (<id>-<slug> -> <id>-<LANG>-<slug>,
 or <id>-<OLDLANG>-<slug> -> <id>-<LANG>-<slug>), and keep translation
-cross-reference header comments honest afterward. See LANGUAGE_NOTES.md
-for the whole design.
+cross-reference header comments honest afterward.
 
 Two entry points:
 

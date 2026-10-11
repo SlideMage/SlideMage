@@ -104,7 +104,7 @@ def render(data, sizes, full_size):
             if any(not item.startswith(b'\x89PNG\r\n\x1a\n') for item in images):
                 raise ValueError("Invalid preview PNG payload")
             return images
-        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:  # noqa: F841 -- original error is used when not timed out
             close()
             if expired.is_set():
                 exc = RuntimeError("Preview image request timed out")

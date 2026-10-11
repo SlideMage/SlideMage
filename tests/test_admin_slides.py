@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from slidemage import admin_slides, course_schedule, deck_editor, slide_ids
-from slidemage.course_schedule import CourseDetail, CourseGroup, CourseSchedule, CourseSession, Lecturer
+from slidemage.course_schedule import CourseDetail, CourseGroup, CourseSession, Lecturer
 from slidemage.deck_scan import Deck
 
 DETAIL = CourseDetail(

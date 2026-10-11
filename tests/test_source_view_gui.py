@@ -2,7 +2,6 @@
 switching, saving with the version prompt, frozen versions, the .bib."""
 from __future__ import annotations
 
-from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import Qt

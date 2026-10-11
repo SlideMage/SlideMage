@@ -3,12 +3,10 @@ ones: detected from a deck's preamble, previews named after it, the
 "Update previews" preamble built from it, and shipped with the framework
 (latex/), so every project next to it can use it."""
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
-from slidemage.ai.providers import OllamaProvider
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 LATEX = Path(__file__).resolve().parents[1] / "latex"

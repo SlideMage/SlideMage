@@ -50,7 +50,6 @@ def test_wrapper_write_does_not_double_crlf(tmp_path):
     # so a real deck's preamble_text/chapter_text already carries literal
     # "\r\n") with the default newline translation doubles every "\r" into
     # "\r\r\n" on Windows. run_job() must write with newline="" too.
-    from slidemage import compiler
 
     wrapper = tmp_path / "wrapper.tex"
     content = "line one\r\nline two\r\n"

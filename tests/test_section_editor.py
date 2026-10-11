@@ -119,7 +119,7 @@ def test_slide_boundary_move_refuses_nonadjacent_lines(tmp_path):
 
 def test_move_section_ignores_commented_document_end_marker(tmp_path):
     text = "\\begin{document}\n% \\end{document}\n\\section{A}\nA\n\\section{B}\nB\n\\end{document}\n"
-    deck = _deck(tmp_path / "deck.tex", text)
+    _deck(tmp_path / "deck.tex", text)
 
 
 def test_legacy_block_comments_do_not_prevent_section_move(tmp_path):

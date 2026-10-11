@@ -6,7 +6,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import pytest
 
 from slidemage import compat, project, version
 from slidemage.compat import APPEARANCE, BREAKS, Change, Finding

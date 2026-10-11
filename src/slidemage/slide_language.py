@@ -1,7 +1,7 @@
 """Multi-language parsing primitives shared by the SlideMage GUI's
 language badges (deck_outline.py, the Add slide sheet,
 the Details view) and slide_rename.py's translation-link repair
-pass. See LANGUAGE_NOTES.md for the whole design.
+pass.
 
 Language lives in a slide's own id-slug, as its *second* hyphen segment
 (<id>-<LANG>-<slug>), exactly mirroring what

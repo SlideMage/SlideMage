@@ -13,7 +13,7 @@ from slidemage import translation_prompts as tp
 from slidemage.ai import credentials, ollama_admin, resolver
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.dialogs.settings import CLOUD, GENERAL, MODELS, OLLAMA, PROMPTS, SettingsSheet
+from slidemage.ui.dialogs.settings import CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
 from test_templates import _framework, _project
 
 INSTALLED = [InstalledModel("general-text", 2_000_000_000, "", ("tools",)), InstalledModel("translator", 1_000_000, ""),

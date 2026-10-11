@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QTextBrowser
 
 from ... import app_info
 from ... import version as version_mod
-from ...palette import PALETTES
+from ..kit.palette import PALETTES
 from ..kit.widgets import ModalSheet
 
 

@@ -136,7 +136,7 @@ class ImageEntry:
     # even though it carries no alt text, confirmed directly against a real
     # slide (dh6-Private-Equity-Categorization) that already hand-authors
     # exactly that combination. Auto-pulled into a compiled slide's own
-    # footnote wherever this image is used -- see ALT_TEXT_NOTES.md.
+    # footnote wherever this image is used.
     source: str = ""
     # Which vision model produced the current short/long, when one did.
     # Cleared on human review -- once checked, the text is yours.
@@ -150,7 +150,7 @@ class ImageEntry:
     # German counterparts (2026-08-24), produced by translating the
     # already-finalized English text (alt_draft.translate_to_german())
     # rather than an independent vision-model draft, per direct
-    # instruction -- see LANGUAGE_NOTES.md. `source_de` is a genuine
+    # instruction. `source_de` is a genuine
     # default+override, the same shape takeaway_default/SlideUse.takeaway
     # already use: "" means "same citation in both languages" (most
     # citations are proper nouns/publication names that don't translate),

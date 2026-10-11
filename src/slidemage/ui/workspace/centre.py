@@ -25,7 +25,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMessageBox, QSplitter, QStackedWidget
 
-from ... import deck_editor, deck_outline, slide_language, slide_preview, slide_source, slide_versioning
+from ... import deck_outline, slide_language, slide_preview, slide_source, slide_versioning
 from ...deck_editor import SLIDES_DIR
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import bare_id, current_path_for_bare_id

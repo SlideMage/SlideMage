@@ -479,7 +479,6 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     (slides / "aaa-First-v1-0-0.tex").write_text("x", encoding="utf-8")
     monkeypatch.setattr(deck_editor, "SLIDES_DIR", slides)
     slide_list, window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
-    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
     assert keys_of(menu) == [
