@@ -1948,6 +1948,8 @@ BREAKING: linked translations are one logical row and one typeset slot in SlideM
 
 v7.0.1 (2026-10-11, direct instruction): The slide list's "no DE" and "no EN" indicators use the app's red warning colour in both themes, including the focused row. The rest of the row keeps its usual colours.
 
+v7.0.2 (2026-10-11, code review fix A5): A slide's version is read from its first \\setSlideVersion line that is not commented out; before, a commented-out marker (e.g. "% \\setSlideVersion{9-9-9}") counted, so a save froze and bumped from the wrong version. A save also removes every \\setSlideVersion line before writing the new one, so a slide can no longer end up with two different versions.
+
 """
 from __future__ import annotations
 
@@ -1957,7 +1959,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v7.0.1"
+VERSION_NUMBER = "v7.0.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

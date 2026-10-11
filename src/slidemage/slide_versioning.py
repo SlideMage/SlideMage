@@ -28,6 +28,8 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
+from .deck_scan import is_commented
+
 Version = tuple[int, int, int]
 BumpLevel = Literal["major", "minor", "patch"]
 
@@ -51,10 +53,10 @@ _MARKER_LINE_RE = re.compile(r"^\\setSlideVersion\{\d+-\d+-\d+\}%?[ \t]*\r?\n?",
 def parse_version(text: str) -> Optional[Version]:
     """The version embedded in a slide's own current text, or None if it
     was never tracked (no \\setSlideVersion{} line yet)."""
-    match = _EMBEDDED_VERSION_RE.search(text)
-    if match is None:
-        return None
-    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    for match in _EMBEDDED_VERSION_RE.finditer(text):
+        if not is_commented(text, match.start()):
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return None
 
 
 def format_hyphen(version: Version) -> str:
@@ -92,7 +94,7 @@ def strip_marker(text: str) -> str:
     re-inserting one (set_marker()) or when a save leaves the slide
     untracked, so a stray/stale marker from a previous save or a
     copy-pasted block never survives into the new content."""
-    return _MARKER_LINE_RE.sub("", text, count=1)
+    return _MARKER_LINE_RE.sub("", text)
 
 
 def set_marker(text: str, version: Version) -> str:
