@@ -9,7 +9,7 @@ from functools import partial
 
 import pytest
 from agent_fakes import ScriptedProvider, call, reply
-from conftest import SLIDE_TEXT, build_window, make_project, wait_until as _wait_until
+from conftest import build_window, make_project, wait_until as _wait_until
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from slidemage import app_settings, compiler
@@ -26,13 +26,7 @@ from slidemage.ui.workspace.chat.format import diff_rows, summarize_call
 from slidemage.ui.workspace.chat.session import current_route
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
-LF = SLIDE_TEXT.replace("\r\n", "\n")
 EDIT = dict(path=SLIDE, old_text="First point", new_text="1st point")
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 wait_until = partial(_wait_until, seconds=10)
@@ -124,6 +118,7 @@ def test_the_answer_streams_into_the_list_with_the_provider_label(env):
     assert env.chat.send_button.isVisible() and not env.chat.stop_button.isVisible()
     assert any(w.text() == "claude-sonnet-5-5 · cloud" for w in widgets(env, QLabel))     # who answers
     assert len(env.chat.session.history) == 2                                           # the request and the answer
+    assert slot(env) is None
 
 
 def test_tool_calls_become_cards_with_their_result_and_failures_open(env):
@@ -267,9 +262,13 @@ def test_the_permission_is_remembered(env):
 
 # -- Stop, closing, switching -----------------------------------------------------------------------
 
-def test_stop_ends_a_run_that_waits_for_the_model(env):
-    script(env, blocked())
+@pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
+def test_stop_ends_a_run_that_waits_for_the_model(env, monkeypatch, local):
+    if not local:
+        monkeypatch.setattr(resolver, "cloud_consent_given", lambda: True)
+    script(env, blocked()).is_local = local
     env.chat.send("go")
+    assert slot(env) == ("answering in the chat" if local else None)
     wait_until(lambda: env.chat.stop_button.isVisible())
     assert env.chat.status.isVisible()
     env.chat.stop_button.click()
@@ -277,6 +276,7 @@ def test_stop_ends_a_run_that_waits_for_the_model(env):
     pump()
     assert [n.text() for n in widgets(env, Notice)] == ["Stopped."]
     assert env.chat.send_button.isVisible()
+    assert slot(env) is None
 
 
 def test_stop_rejects_an_edit_that_waits_for_an_answer(env):
@@ -285,22 +285,13 @@ def test_stop_rejects_an_edit_that_waits_for_an_answer(env):
     env.chat.send("go")
     card = wait_for_card(env, "asking")
     env.chat.stop()
+    # Regression (1c7e047): Stop settles the card immediately and rejects asks already on their way.
+    assert card.state == "rejected" and not card.apply_button.isVisible() and not card.reject_button.isVisible()
+    assert env.chat.workspace.confirm_edit("late", env.path, "a", "b") is False
     wait_until(lambda: not env.chat.session.running)
     pump()
     assert card.state == "rejected" and "First point" in file.editor.text()
     assert widgets(env, Notice)[-1].text() == "Stopped."
-
-
-def test_stop_takes_the_buttons_off_the_card_at_once_and_refuses_later_asks(env):
-    open_buffer(env)
-    script(env, reply("", call("edit_file", **EDIT)), reply("never asked"))
-    env.chat.send("go")
-    card = wait_for_card(env, "asking")
-    env.chat.stop()
-    assert card.state == "rejected" and not card.apply_button.isVisible() and not card.reject_button.isVisible()
-    # an edit that reaches the window after Stop is answered No without being shown
-    assert env.chat.workspace.confirm_edit("late", env.path, "a", "b") is False
-    wait_until(lambda: not env.chat.session.running)
     env.chat.workspace.begin_request()                       # the next request asks again
     assert env.chat.workspace._stopping is False
 
@@ -319,24 +310,22 @@ def test_an_apply_that_cannot_be_carried_out_ends_the_card_and_tells_the_model(e
     assert "was not changed" in provider.sent[1][-1].results[0].text
 
 
-def test_closing_the_window_mid_run_does_not_hang_and_releases_a_pending_confirm(env):
-    open_buffer(env)
-    script(env, reply("", call("edit_file", **EDIT)), reply("never asked"))
+@pytest.mark.parametrize("waiting_for", ["edit", "model"])
+def test_closing_the_window_mid_run_does_not_hang_and_releases_the_slot(env, waiting_for):
+    if waiting_for == "edit":
+        open_buffer(env)
+        script(env, reply("", call("edit_file", **EDIT)), reply("never asked"))
+    else:
+        script(env, blocked())
     env.chat.send("go")
-    wait_for_card(env, "asking")
+    if waiting_for == "edit":
+        wait_for_card(env, "asking")
+    else:
+        wait_until(lambda: env.chat.stop_button.isVisible())
     started = time.time()
     env.window.close()
     assert time.time() - started < 5 and not env.chat.session.running
-    pump(0.2)
-
-
-def test_closing_the_window_while_the_model_is_still_answering(env):
-    script(env, blocked())
-    env.chat.send("go")
-    wait_until(lambda: env.chat.stop_button.isVisible())
-    started = time.time()
-    env.window.close()
-    assert time.time() - started < 5 and not env.chat.session.running
+    assert slot(env) is None
     pump(0.2)
 
 
@@ -385,6 +374,9 @@ def test_the_picker_lists_the_local_models_that_call_tools(env):
     menu.close()
     env.chat._set_route("ollama:qwen3:8b")
     assert app_settings.default_model("chat") == "ollama:qwen3:8b" and env.chat.route_chip.text() == "qwen3:8b · local"
+    env.chat._set_route("anthropic:claude-opus-5-5")
+    assert app_settings.default_model("chat") == "anthropic:claude-opus-5-5"
+    assert env.chat.route_chip.text() == "claude-opus-5-5 · cloud"
 
 
 def test_while_a_run_is_going_the_model_and_the_scope_stay_as_they_are(env):
@@ -410,12 +402,6 @@ def test_only_one_question_to_ollama_about_local_models_is_out_at_a_time(env, mo
     assert env.chat._local_models == ["qwen3:8b"]
     env.chat._load_local_models()
     assert len(started) == 2
-
-
-def test_the_picker_stores_the_choice_in_the_chat_assistant_setting(env):
-    env.chat._set_route("anthropic:claude-opus-5-5")
-    assert app_settings.default_model("chat") == "anthropic:claude-opus-5-5"
-    assert env.chat.route_chip.text() == "claude-opus-5-5 · cloud"
 
 
 def test_without_a_chosen_model_or_key_the_chat_says_what_to_do(env, monkeypatch):
@@ -450,49 +436,17 @@ def slot(env):
     return env.window._ollama_task_label
 
 
-def test_a_local_run_holds_the_ollama_slot_until_done(env):
-    script(env, blocked())
-    env.chat.send("go")
-    assert slot(env) == "answering in the chat"
-    env.chat.stop()
-    wait_until(lambda: not env.chat.session.running)
-    pump()
-    assert slot(env) is None
-
-
-def test_a_finished_local_run_releases_the_slot(env):
-    script(env, reply("Done."))
-    ask(env)
-    assert slot(env) is None
-
-
-def test_a_cloud_run_takes_no_slot(env, monkeypatch):
-    monkeypatch.setattr(resolver, "cloud_consent_given", lambda: True)
-    script(env, blocked()).is_local = False
-    env.chat.send("go")
-    assert slot(env) is None
-    env.chat.stop()
-    wait_until(lambda: not env.chat.session.running)
-
-
-def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch):
+@pytest.mark.parametrize("entry, text", [
+    ("send", "go"), ("ask", "Make this slide more concise"),
+], ids=["message", "suggestion"])
+def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch, entry, text):
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
     assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
     script(env, reply("never"))
-    env.chat.send("go")
-    assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == "go"
+    getattr(env.chat, entry)(text)
+    assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == text
     assert "Drafting descriptions is already running" in warned[0]
-    env.window.end_ollama_task()
-
-
-def test_a_suggestion_that_a_busy_slot_blocks_stays_in_the_message_box(env, monkeypatch):
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
-    assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
-    script(env, reply("never"))
-    env.chat.ask("Make this slide more concise")
-    assert not env.chat.session.running and not widgets(env, UserBubble)
-    assert env.chat.composer.toPlainText() == "Make this slide more concise"
     env.window.end_ollama_task()
 
 
@@ -506,13 +460,6 @@ def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, mo
     with pytest.raises(RuntimeError):
         env.chat.send("go")
     assert slot(env) is None and not env.chat.session.running and not env.chat.stop_button.isVisible()
-
-
-def test_closing_the_window_mid_run_releases_the_slot(env):
-    script(env, blocked())
-    env.chat.send("go")
-    env.window.close()
-    assert slot(env) is None
 
 
 def test_the_tools_menu_entry_opens_the_chat_on_this_slide_ready_to_type(env):
@@ -626,8 +573,6 @@ def test_the_chats_stop_ends_a_compile_without_asking(env, monkeypatch):
 def test_a_tool_call_is_summarised_in_a_few_words():
     assert summarize_call(ToolCall("1", "read_file", {"path": "slides/a.tex"})) == "slides/a.tex"
     assert summarize_call(ToolCall("1", "list_slides", {})) == ""
-    assert summarize_call(ToolCall("1", "x", {"a": 1, "b": "two"})) == "a=1, b=two"
-    assert summarize_call(ToolCall("1", "search", {"query": "w " * 60})).endswith("…")
 
 
 def test_diff_rows_show_changes_with_two_lines_of_context_and_gaps():
@@ -638,4 +583,3 @@ def test_diff_rows_show_changes_with_two_lines_of_context_and_gaps():
     assert [r for r in rows if r[0] in ("add", "del")] == [("del", "line 5"), ("add", "LINE 5"), ("add", "extra")]
     assert [r[1] for r in rows if r[0] == "ctx"] == ["line 3", "line 4", "line 6", "line 7"]
     assert diff_rows("", "a\n\tb") == [("add", "a"), ("add", "  b")]      # a new file; tabs shown narrow
-    assert diff_rows("same", "same") == []

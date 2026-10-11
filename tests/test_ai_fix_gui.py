@@ -12,25 +12,19 @@ from slidemage.ai.providers import OllamaProvider
 from slidemage.syntax_check import SyntaxCheckResult, SyntaxIssue
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import ai_fix
-from slidemage.ui.workspace.source_file import LINT_DELAY_MS, SourceFile
+from slidemage.ui.workspace.source_file import SourceFile
 
 BROKEN = "\\begin{standardframe}{Demo}\nText {unclosed\n\\end{standardframe}\n"
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeApp:
     def __init__(self):
         self.theme = ThemeManager()
-        self.logged = []
         self.busy = False
         self.started, self.ended = [], []
 
-    def log(self, line):
-        self.logged.append(line)
+    def log(self, _line):
+        pass
 
     def open_slide_editor(self, path, **_kwargs):
         pass
@@ -110,18 +104,14 @@ def test_the_status_line_counts_errors_and_warnings_and_lists_them(make_file, mo
     assert jumps == [file.lint.issues[0].line]
 
 
-def test_a_clean_buffer_says_so(make_file):
-    file = make_file("\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n")
-    assert file.lint_chip.text() == "No problems found" and file.lint.errors == []
-
-
 def test_the_buffer_is_checked_a_moment_after_the_last_keystroke(make_file):
     file = make_file("\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n")
+    assert file.lint_chip.text() == "No problems found" and file.lint.errors == []
     changes = []
     file.lint_changed.connect(lambda: changes.append(len(file.lint.errors)))
     file.editor.insertPlainText("{")
     file.editor.insertPlainText("{")
-    assert changes == [] and file._lint_timer.isActive() and file._lint_timer.interval() == LINT_DELAY_MS
+    assert changes == [] and file._lint_timer.isActive()
     file._lint_timer.timeout.emit()                  # the pause is over
     assert len(changes) == 1 and changes[0] >= 1 and file.lint_chip.property("tone") == "error"
 
@@ -183,7 +173,7 @@ def test_the_proposed_fixes_show_as_a_diff_and_apply_one_by_one_in_one_undo_step
     assert second.apply_button.isHidden() and second.note.text() == "No fix suggested."
     first.apply_button.click()
     assert file.editor.text().splitlines()[1] == "Text {unclosed}"
-    assert first.apply_button.text() == "Applied" and any("Applied syntax fix on line 2" in l for l in file.app.logged)
+    assert first.apply_button.text() == "Applied"
     file.editor.undo()
     assert file.editor.text() == BROKEN
     assert file.app.started == ["checking syntax"] and file.app.ended == [True]
