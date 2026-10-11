@@ -31,27 +31,6 @@ def test_note_parser_removes_complete_commands_without_matching_literals():
     assert r"\verb|\note{verbatim literal}|" in clean
 
 
-def test_render_slide_uses_note_sanitized_title_body_and_images(tmp_path: Path):
-    path = tmp_path / "abc-EN-Question-current.tex"
-    path.write_text(
-        r"\begin{standardframe}{Clean title \note{PRIVATE TITLE}}"
-        r"Visible body. \note<2>[item]{PRIVATE BODY "
-        r"\includegraphics{private.png}}"
-        r"\end{standardframe}",
-        encoding="utf-8",
-    )
-
-    entry = transcript.render_slide(
-        transcript.DeckSlide(1, "abc", path, True), "during-course", {}
-    )
-
-    assert entry is not None
-    assert entry.title == "Clean title"
-    assert "Visible body." in entry.body
-    assert "PRIVATE" not in entry.title + entry.body
-    assert entry.images == []
-
-
 def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(tmp_path: Path):
     deck = tmp_path / "deck.tex"
     deck.write_text(

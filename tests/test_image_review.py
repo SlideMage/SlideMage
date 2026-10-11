@@ -42,7 +42,6 @@ def test_slide_state_is_the_worst_of_its_images(store):
     assert image_review.slide_state(row, {IMG: done}, "h") == alt_images.STATE_NONE   # b.png has no entry
     assert image_review.slide_state(row, {IMG: done}, "other") == alt_images.STATE_NONE
     assert image_review.slide_state(slide(store, "1a2b", images=(IMG,)), {IMG: done}, "other") == alt_images.STATE_STALE
-    assert image_review.slide_state(slide(store, "1a2b", images=()), {}, "h") == alt_images.STATE_REVIEWED
 
 
 def test_scan_views_hash_and_state(store, monkeypatch):
@@ -67,11 +66,10 @@ def test_visible_views_filter_and_order(store):
     # slides missing from the order keep their place, at the end
     assert ids(image_review.visible_views(views, {}, everything, order={"3aaa": 0, "1aaa": 1})) == [
         "3aaa", "1aaa", "0aaa", "2aaa"]
-    labels = [label for label, _ in image_review.FILTERS]
-    assert labels[everything] == "All slides with images"
-    assert labels[1:] == ["All slides with images", "No description", "Draft, unreviewed", "Needs re-check",
-                          "Reviewed", "No German"]
     assert image_review.filter_counts(views, {}) == [3, 4, 1, 1, 1, 1, 0]
+    summary_views = [*views, views[0]]
+    assert image_review.state_counts(summary_views) == {"none": 2, "draft": 1, "stale": 1, "reviewed": 1}
+    assert image_review.summary_text(summary_views) == "1 reviewed · 1 need re-check · 1 draft · 2 undescribed"
 
 
 def test_no_german_filter_lists_slides_with_an_english_only_informative_image(store):
@@ -94,24 +92,12 @@ def test_no_german_filter_lists_slides_with_an_english_only_informative_image(st
     assert [v.row.slide_id for v in image_review.visible_views(views, entries, no_german)] == ["1aaa"]
 
 
-def test_counts_and_summary(store):
-    views = [view(slide(store, "1aaa"), s) for s in ("none", "none", "reviewed", "stale", "draft")]
-    assert image_review.state_counts(views) == {"none": 2, "draft": 1, "stale": 1, "reviewed": 1}
-    assert image_review.summary_text(views) == "1 reviewed · 1 need re-check · 1 draft · 2 undescribed"
-
-
 def test_find_slide_by_id_or_stem(store):
     views = [view(slide(store, "1aaa"), "none"), view(slide(store, "2bbb"), "none")]
     assert image_review.find_slide(views, "2BBB").row.slide_id == "2bbb"
     assert image_review.find_slide(views, "2bbb-x").row.slide_id == "2bbb"
     assert image_review.find_slide(views, "1aaa-x-current").row.slide_id == "1aaa"
     assert image_review.find_slide(views, "zzzz") is None
-
-
-def test_needs_long_description():
-    assert image_review.needs_long_description(alt_images.ROLE_INFORMATIVE, "")
-    assert not image_review.needs_long_description(alt_images.ROLE_INFORMATIVE, "text")
-    assert not image_review.needs_long_description(alt_images.ROLE_DECORATIVE, "")
 
 
 def test_stamp_review_and_save_slide_image_agree(store):

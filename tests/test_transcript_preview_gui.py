@@ -3,15 +3,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from slidemage.ui.dialogs import transcript_preview
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def window_stand_in():

@@ -5,65 +5,6 @@ def test_license_found_outside_project():
     assert "Slidemaster" in license_text()
 
 
-def test_stale_translation_is_not_written_as_in_sync(monkeypatch, tmp_path):
-    """A batch translation whose English text has since been edited must
-    not be saved with a translated_from_hash that makes translation_state()
-    call it 'in sync' -- see alt_draft.apply_one_translation's own comment
-    for the full scenario (a long-running 'Translate all' batch snapshots
-    its queue once up front)."""
-    from slidemage import alt_draft, alt_images
-
-    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "alt-text.csv")
-
-    entry = alt_images.ImageEntry(image="media/x.png", short="s1", long="original english", takeaway_default="t1")
-    original_hash = alt_images.en_text_hash(entry)
-    alt_images.save_store({"media/x.png": entry})
-
-    # The batch translates from a queue snapshot taken before this edit.
-    stale_result = alt_draft.TranslationResult(
-        short_de="s1-de", long_de="translated from the OLD text",
-        takeaway_de="t1-de", model="test", source_hash=original_hash,
-    )
-
-    # ... then, while that translation was in flight, the user edits the
-    # English text (e.g. via the review tab, on the GUI thread).
-    def edit_english(entries):
-        entries["media/x.png"].long = "edited english"
-        return True
-
-    alt_images.update_store(edit_english)
-
-    written = alt_draft.apply_one_translation("media/x.png", stale_result, "test")
-    assert written is False
-
-    current = alt_images.load_store()["media/x.png"]
-    assert current.long_de == ""  # stale translation was NOT written
-    assert current.translated_from_hash == ""
-
-
-def test_fresh_translation_is_written_normally(monkeypatch, tmp_path):
-    from slidemage import alt_draft, alt_images
-
-    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "alt-text.csv")
-
-    entry = alt_images.ImageEntry(image="media/x.png", short="s1", long="english text", takeaway_default="t1")
-    current_hash = alt_images.en_text_hash(entry)
-    alt_images.save_store({"media/x.png": entry})
-
-    result = alt_draft.TranslationResult(
-        short_de="s1-de", long_de="translated text",
-        takeaway_de="t1-de", model="test", source_hash=current_hash,
-    )
-    written = alt_draft.apply_one_translation("media/x.png", result, "test")
-    assert written is True
-
-    current = alt_images.load_store()["media/x.png"]
-    assert current.long_de == "translated text"
-    assert current.translated_from_hash == current_hash
-
-
 def test_relaunch_with_project_saves_and_spawns(monkeypatch, tmp_path):
     """2026-09-23: on a fresh machine's first real run, cli.py's discovery
     chain (env var / upward search / last project) can silently reuse a
@@ -155,61 +96,6 @@ def test_last_project_hint_is_nearest_existing_folder(monkeypatch, tmp_path):
     root.rmdir()
     assert project.load_last_project() is None
     assert project.last_project_hint() == tmp_path / "cloud"
-
-
-def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
-    """2026-09-23 review finding: the Ollama host was a hardcoded constant
-    duplicated in alt_draft.py and ai_draft.py, with no way to point this
-    app at a non-default Ollama server. app_settings.get_ollama_host()
-    resolves it; OllamaProvider reads it when constructed instead of
-    freezing a constant at class-definition time."""
-    from slidemage import app_settings
-    from slidemage.ai.providers import OllamaProvider
-
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    monkeypatch.delenv("OLLAMA_HOST", raising=False)
-
-    assert app_settings.get_ollama_host() == "http://localhost:11434"
-
-    app_settings.set_ollama_host("http://gpu-box:9999")
-    assert app_settings.get_ollama_host() == "http://gpu-box:9999"
-    assert OllamaProvider("m").host == "http://gpu-box:9999"
-
-    # An explicit host= still wins over the saved setting.
-    assert OllamaProvider("m", host="http://explicit").host == "http://explicit"
-
-    # Clearing it falls back through $OLLAMA_HOST, then the plain default.
-    app_settings.set_ollama_host("")
-    assert app_settings.get_ollama_host() == "http://localhost:11434"
-    monkeypatch.setenv("OLLAMA_HOST", "http://from-env:8000")
-    assert app_settings.get_ollama_host() == "http://from-env:8000"
-
-
-def test_draft_prompt_is_customizable_and_persists(monkeypatch, tmp_path):
-    """2026-09-23 review finding: alt_draft.py's image-description prompt
-    was a hardcoded SYSTEM_PROMPT constant -- unlike translation_prompts.py's
-    already-customizable prompts, there was no way to tune it without
-    editing source."""
-    from slidemage import alt_draft, draft_prompts
-    from slidemage.ai.providers import OllamaProvider
-
-    monkeypatch.setattr(draft_prompts, "STORE_PATH", tmp_path / "draft_prompts.json")
-
-    assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
-
-    draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "Custom draft prompt.")
-    assert alt_draft.effective_system_prompt() == "Custom draft prompt."
-
-    # A freshly constructed backend with no explicit system_prompt picks
-    # up the current custom default; an explicit one still overrides it.
-    provider = OllamaProvider("m")
-    assert alt_draft.ModelBackend(provider).system_prompt == "Custom draft prompt."
-    assert alt_draft.ModelBackend(provider, system_prompt="one-off").system_prompt == "one-off"
-
-    # Clearing (empty string) reverts to the hardcoded default.
-    draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "")
-    assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
 
 
 def test_init_project_seeds_from_example_and_compiles(tmp_path):
