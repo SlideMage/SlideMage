@@ -173,3 +173,27 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
         if any(p.startswith("BREAKING:") for p in entry.paragraphs):
             assert entry.version in registered, (
                 f"{entry.version} has a BREAKING: paragraph but no slidemage.compat.CHANGES entry")
+
+
+def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
+    root = make_project(tmp_path, "v7.0.2")
+    (root / "decks" / "course.tex").write_text(
+        "\\omitslide{live}\n"
+        "% \\omitslide{commented}\n"
+        "\\slide{regular} % \\omitslideversion{commented}{1-0-0}\n"
+        "\\omitslideversion{pinned}{1-0-0}\\omitslide{same-line}\n"
+        "\\% escaped percent \\omitslide {escaped}\n", encoding="utf-8")
+    archive = root / "decks" / "archive"
+    archive.mkdir()
+    (archive / "old.tex").write_text(
+        "% \\omitslideversion{commented}{1-0-0}\n"
+        "\\omitslideversion{archived}{1-0-0}\n", encoding="utf-8")
+    (root / "slides" / "ignore.tex").write_text("\\omitslide{outside-decks}\n")
+    change = next(c for c in compat.CHANGES if c.id == "omitslide-instructor-only")
+    findings = change.detect(root)
+    assert [(f.file, f.line) for f in findings] == [
+        ("decks/course.tex", 1), ("decks/course.tex", 4), ("decks/course.tex", 4),
+        ("decks/course.tex", 5), ("decks/archive/old.tex", 2)]
+    ev = compat.evaluate(root, "v8.0.0")
+    assert not ev.loud
+    assert [(p.change.id, p.findings) for p in ev.quiet] == [(change.id, findings)]

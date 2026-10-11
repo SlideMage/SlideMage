@@ -38,13 +38,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, project
+from . import compat_bibliography, deck_scan, project
 from .updater import parse_version
 
 from .compat_types import APPEARANCE, BREAKS, LAYOUT, Change, Finding  # noqa: F401  (re-exported)
@@ -58,6 +59,18 @@ LOUD = (BREAKS, LAYOUT)  # these open the dialog; APPEARANCE stays quiet
 REPORT_MD = Path(".slidemage") / "compat-report.md"
 REPORT_JSON = Path(".slidemage") / "compat-report.json"
 BACKUP_DIR = Path(".slidemage") / "backups"
+
+
+def _detect_omitslide(root: Path) -> list[Finding]:
+    findings = []
+    for path in compat_bibliography._decks(root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in re.finditer(r"\\omitslide(?:version)?\s*\{", text):
+            if not deck_scan.is_commented(text, match.start()):
+                findings.append(Finding(path.relative_to(root).as_posix(),
+                                        text.count("\n", 0, match.start()) + 1,
+                                        "Instructor-only slide is skipped in student deck versions."))
+    return findings
 
 
 # Newest last. Entries start with v5.29.0's rule that every breaking change
@@ -92,6 +105,19 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "missing partners fall back to the called file. To include both languages as "
         "separate slides, use independent copies without translation links. Raw LaTeX "
         "compiles outside SlideMage keep the literal deck calls."),
+), Change(
+    id="omitslide-instructor-only",
+    since="v8.0.0",
+    severity=APPEARANCE,
+    title="Omitted slides are instructor-only",
+    description=(
+        "\\omitslide and \\omitslideversion now skip slides in during-course and after-course "
+        "decks, keeping frame numbers aligned. Instructor and presenter compiles, and decks "
+        "without \\deckversion, still include them unless \\studentversion is set."),
+    fix=(
+        "Use \\slide or \\slideversion for slides students should receive; keep omission "
+        "calls for instructor-only content."),
+    detect=_detect_omitslide,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

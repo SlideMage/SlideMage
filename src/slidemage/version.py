@@ -1950,6 +1950,10 @@ v7.0.1 (2026-10-11, direct instruction): The slide list's "no DE" and "no EN" in
 
 v7.0.2 (2026-10-11, code review fix A5): A slide's version is read from its first \\setSlideVersion line that is not commented out; before, a commented-out marker (e.g. "% \\setSlideVersion{9-9-9}") counted, so a save froze and bumped from the wrong version. A save also removes every \\setSlideVersion line before writing the new one, so a slide can no longer end up with two different versions.
 
+v8.0.0 (2026-10-11, code review fix A1a): \\omitslide and \\omitslideversion now include slides only in instructor decks; during-course and after-course compiles skip them while keeping subsequent frame numbers aligned. Decks without \\deckversion and presenter compiles retain instructor content.
+
+BREAKING: \\omitslide and \\omitslideversion no longer send tagged slides to during-course or after-course decks. Use \\slide or \\slideversion for slides students should receive; keep omission calls for instructor-only content. The existing \\studentversion flag still skips these slides, including in instructor decks.
+
 """
 from __future__ import annotations
 
@@ -1959,7 +1963,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v7.0.2"
+VERSION_NUMBER = "v8.0.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

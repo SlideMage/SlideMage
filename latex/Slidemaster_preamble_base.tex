@@ -1434,23 +1434,23 @@
 % not just once at class-option time, so this is safe, not a hack that
 % happens to work by luck of file ordering.
 % \omitslide{}/\omitslideversion{} are drop-in replacements for
-% \slide{}/\slideversion{} that tag a slide as excluded from that variant:
+% \slide{}/\slideversion{} that tag a slide as excluded from student deck versions:
 %
 %   \omitslide{xyz-Answer-key}                 % instead of \slide{...}
 %   \omitslideversion{xyz-Answer-key}{1-0-0}    % instead of \slideversion{...}{...}
 %
-% In a \studentversion compile, a tagged slide's \input{} is skipped
-% entirely -- no frame is produced for it at all (not a blank page, not a
-% numbering gap: beamer's frame/slide counters simply never advance for a
-% call that never ran). In every other (i.e. normal/instructor) compile, a
-% tagged slide loads exactly as it would via \slide{}/\slideversion{}, with
+% In a \studentversion compile or a deck version other than instructor,
+% a tagged slide's \input{} is skipped entirely and its frame number still
+% advances, keeping numbering aligned across deck versions. In an
+% instructor compile (the default), a tagged slide loads exactly as it
+% would via \slide{}/\slideversion{}, with
 % one difference: \SMOmittedSlide is set for the duration of that one
 % \input{}, so the footer template below can print a marker next to that
 % frame's slide ID -- a deliberately visible reminder, while reviewing the
 % instructor deck, of which slides won't make it to students. The same tag
-% works for both compiles because it lives at the call site in the *deck*
+% works for all deck versions because it lives at the call site in the *deck*
 % file (not inside the slide's own content file): the identical slide list
-% can serve both the instructor deck and the student handout, e.g.
+% can serve the instructor deck and both student deck versions, e.g.
 %
 %   \input{Slidemaster_preamble_uni-graz}
 %   \FooterText{...}
@@ -1662,7 +1662,7 @@
 
 \newif\ifSMOmittedSlide
 \newcommand{\SMOmittedSlideMarker}{ | omitted from student deck}
-% \stepcounter{framenumber} in the skipped branch below keeps the student
+% \stepcounter{framenumber} in the skipped branches below keeps the student
 % deck's slide numbers matching the instructor deck's, gap and all, so "see
 % slide 12" means the same physical slide to both audiences: beamer steps
 % "framenumber" exactly once per \begin{frame} (checked in
@@ -1670,28 +1670,33 @@
 % right regardless of how many overlay steps the omitted slide would have
 % had), and this is the one place that increment is skipped along with the
 % frame itself, so it has to be replayed by hand.
+% Both forms are instructor-only; \studentversion also skips them.
 \newcommand{\omitslide}[1]{%
 	\ifSMStudentVersion
 		\stepcounter{framenumber}%
 	\else
-		\global\SMOmittedSlidetrue
-		\global\SMSlideVersionSetfalse
-		\setSlideID{#1}%
-		\setSlideLanguageFromSlug{#1}%
-		\input{slides/#1-current.tex}%
-		\global\SMOmittedSlidefalse
+		\ifdeckversioninlist{\SMDeckVersion}{instructor}%
+			{\global\SMOmittedSlidetrue
+			 \global\SMSlideVersionSetfalse
+			 \setSlideID{#1}%
+			 \setSlideLanguageFromSlug{#1}%
+			 \input{slides/#1-current.tex}%
+			 \global\SMOmittedSlidefalse}%
+			{\stepcounter{framenumber}}%
 	\fi
 }
 \newcommand{\omitslideversion}[2]{%
 	\ifSMStudentVersion
 		\stepcounter{framenumber}%
 	\else
-		\global\SMOmittedSlidetrue
-		\setSlideID{#1}%
-		\setSlideLanguageFromSlug{#1}%
-		\setSlideVersion{#2}%
-		\input{slides/#1-v#2.tex}%
-		\global\SMOmittedSlidefalse
+		\ifdeckversioninlist{\SMDeckVersion}{instructor}%
+			{\global\SMOmittedSlidetrue
+			 \setSlideID{#1}%
+			 \setSlideLanguageFromSlug{#1}%
+			 \setSlideVersion{#2}%
+			 \input{slides/#1-v#2.tex}%
+			 \global\SMOmittedSlidefalse}%
+			{\stepcounter{framenumber}}%
 	\fi
 }
 

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 import zipfile
 from datetime import datetime
@@ -662,3 +663,70 @@ def test_real_snapshot_of_manual(tmp_path, monkeypatch):
     result = deck_snapshot.create_snapshot(deck, SnapshotOptions(presenter=False), print,
                                            project_root=root)
     assert result.ok, result.error
+
+
+@pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
+                    reason="real LaTeX compile; set SLIDEMAGE_TEX_TESTS=1")
+@pytest.mark.parametrize("pinned", [False, True], ids=["current", "pinned"])
+def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
+    import pymupdf
+    from slidemage import compile_passes, slide_language, slide_snapshot
+
+    repo = Path(__file__).resolve().parents[1]
+    shutil.copytree(repo / "latex", tmp_path / "latex")
+    shutil.copytree(repo / "example", tmp_path / "example",
+                    ignore=shutil.ignore_patterns("pdf", ".build", ".previews", "snapshots"))
+    root = tmp_path / "example"
+    monkeypatch.setenv("SLIDEMASTER_LATEX", str(tmp_path / "latex"))
+    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
+    monkeypatch.setattr(compiler, "PROJECT_ROOT", root)
+    monkeypatch.setattr(compiler, "BUILD_DIR", root / ".build")
+    monkeypatch.setattr(compiler, "PDF_DIR", root / "pdf")
+    monkeypatch.setattr(compile_passes, "STORE_PATH", root / ".slidemage" / "compile_passes.json")
+    monkeypatch.setattr(slide_language, "SLIDES_DIR", root / "slides")
+    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", root)
+    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", root / ".previews" / "slide_previews")
+    omit = (r"\omitslideversion{1an-EN-Slide-Versions}{1-0-0}" if pinned
+            else r"\omitslide{1an-EN-Slide-Versions}")
+    write(root / "decks" / "omit-test.tex", r"""\documentclass[aspectratio=169]{beamer}
+\usetheme{gotham}
+\makeatletter\def\input@path{{../}}\makeatother
+\input{Slidemaster_preamble_slidemage}
+\newcommand{\FooterText}{Omission test}
+\ifdefined\deckversionoverride\deckversion[\deckversionoverride]\fi
+\typeout{SM TEST deck version: \SMDeckVersion}
+\begin{document}
+\slide{1jv-EN-Anatomy-of-a-Project}
+""" + omit + r"""
+\slide{1kp-EN-Deck-Housekeeping}
+\end{document}
+""")
+    deck = next(d for d in deck_scan._scan_dir(root / "decks", False) if d.name == "omit-test")
+    jobs = [compiler.CompileJob(deck, None, None), *compiler.build_jobs(deck, "all"),
+            *compiler.build_jobs(deck, "presenter")]
+    for job in jobs:
+        job.footer_timestamp = False
+        lines, outcome = [], []
+        relocated = threading.Event()
+
+        def finished(ok, path):
+            outcome.append((ok, path))
+            relocated.set()
+
+        assert compiler.run_job(job, lines.append, on_relocated=finished), "\n".join(lines)
+        assert relocated.wait(30), "\n".join(lines)
+        assert outcome[0][0], "\n".join(lines)
+        assert f"SM TEST deck version: {job.version or 'instructor'}" in lines
+        expected = [("1jv", 1), ("1an", 2), ("1kp", 3)]
+        if job.version in ("during-course", "after-course"):
+            expected = [("1jv", 1), ("1kp", 3)]
+        with pymupdf.open(outcome[0][1]) as pdf:
+            assert pdf.page_count == len(expected)
+            footers = [re.search(r"\(slide id:\s*(\S+)[^)]*\)\s*(\d+)", page.get_text())
+                       for page in pdf]
+            assert all(footers)
+            frames = [(m.group(1), int(m.group(2))) for m in footers]
+            assert frames == expected
+            if len(expected) == 3:
+                assert "omitted from student deck" in pdf[1].get_text()
+            print(f"{job.jobname}: {pdf.page_count} pages, slides {frames}")
