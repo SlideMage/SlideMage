@@ -583,3 +583,71 @@ def test_declining_the_switch_keeps_the_slide_and_its_selection(
         tab._current_row_index
     ]
     tab.hide()
+
+
+def test_changing_show_filter_keeps_the_slide_on_show_and_its_translation(
+    monkeypatch, qapp, tmp_path
+):
+    # direct report 2026-10-11: choosing another view in "Show:" jumped to a different slide,
+    # translation or not
+    tab, _sync_calls, _store = _make_transcript_tab(monkeypatch, qapp, tmp_path)
+    tab.resize(900, 600)
+    tab.show()
+    qapp.processEvents()
+    tab.slide_list.setCurrentRow(1)
+    qapp.processEvents()
+    shown = tab._current.row.path
+    editor = tab._editors[0]
+    editor.translating = True
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *args, **kwargs: asked.append(args) or QMessageBox.StandardButton.No,
+    )
+
+    tab.filter_combo.setCurrentIndex(1)  # "All slides with images": both slides still listed
+    qapp.processEvents()
+
+    assert asked == []
+    assert tab._current.row.path == shown
+    assert tab._editors[0] is editor
+    assert tab.slide_list.currentRow() == tab._current_row_index
+    assert tab.slide_list.item(tab.slide_list.currentRow()).data(0x0100) == shown
+    tab.hide()
+
+
+def test_show_filter_that_drops_the_slide_asks_during_a_translation(
+    monkeypatch, qapp, tmp_path
+):
+    tab, _sync_calls, _store = _make_transcript_tab(monkeypatch, qapp, tmp_path)
+    tab.resize(900, 600)
+    tab.show()
+    qapp.processEvents()
+    shown = tab._current.row.path
+    editor = tab._editors[0]
+    editor.translating = True
+    answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+    asked = []
+
+    def answer(*args, **kwargs):
+        asked.append(args[1])
+        return answers.pop(0)
+
+    monkeypatch.setattr(QMessageBox, "question", answer)
+    reviewed = 5  # "Reviewed": neither fixture slide is in it
+
+    tab.filter_combo.setCurrentIndex(reviewed)
+    qapp.processEvents()
+
+    assert asked == ["Translation in progress"]
+    assert tab.filter_combo.currentIndex() == 0
+    assert tab._current.row.path == shown
+    assert tab._editors[0] is editor
+
+    tab.filter_combo.setCurrentIndex(reviewed)  # now confirmed
+    qapp.processEvents()
+
+    assert asked == ["Translation in progress", "Translation in progress"]
+    assert tab.filter_combo.currentIndex() == reviewed
+    assert tab.slide_list.count() == 0
+    tab.hide()

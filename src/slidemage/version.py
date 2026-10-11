@@ -1947,6 +1947,12 @@ v5.35.5 (2026-10-09, direct report: "While translating an image description, I a
 
 NEW: Fixed: answering "No" to "Switch anyway?" on the Images tab.
 - Declining the warning when you leave a slide with unsaved image edits or a translation still running keeps the list on the slide you are working on; the list used to highlight the slide you had clicked while the old slide stayed open.
+
+v5.35.6 (2026-10-11, direct report: "When I select a different view in the Images tab in the 'Show:' dropdown, the selection jumps to a different slide even if a translation is under way. There should be a safety check as when manually switching away from one slide to another while a translation is ongoing"): the "Show:" combo was connected straight to _populate_list(), which took the combo's index for the slide to re-select, found nothing and landed on the first row -- a different slide than the one on show, with the warning suppressed (qt_transcript_tab._on_filter_changed()). Now the slide on show stays on show whenever the new view still lists it (re-selected by path, its editors and any translation in them untouched, no spurious "unsaved edits" question); when the new view would drop it, a translation in flight is confirmed first ("Translation in progress ... Switch anyway?") and "No" puts the dropdown back. The "Sort:" dropdown no longer jumps to the first row either. Tests in tests/test_review_gui.py.
+
+NEW: Fixed: the "Show:" and "Sort:" dropdowns on the Images tab no longer jump to another slide.
+- Choosing another view in "Show:" (or another deck in "Sort:") keeps you on the slide you are working on whenever that slide is still in the list, with its translation and unsaved edits intact.
+- When the chosen view would no longer list your slide while a translation is running, you are asked "Switch anyway?" first, as when you click another slide; answering No puts the dropdown back.
 """
 from __future__ import annotations
 
@@ -1956,7 +1962,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.5"
+VERSION_NUMBER = "v5.35.6"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

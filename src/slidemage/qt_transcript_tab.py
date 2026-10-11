@@ -1291,7 +1291,7 @@ class TranscriptTab(QWidget):
         nav_toolbar.addWidget(QLabel("Show:"))
         self.filter_combo = QComboBox()
         self.filter_combo.addItems([label for label, _ in _FILTERS])
-        self.filter_combo.currentIndexChanged.connect(self._populate_list)
+        self.filter_combo.currentIndexChanged.connect(self._on_filter_changed)
         nav_toolbar.addWidget(self.filter_combo)
 
         nav_toolbar.addSpacing(_RELATED_GAP)
@@ -1499,10 +1499,49 @@ class TranscriptTab(QWidget):
             self._sort_order = {
                 call.id: position for position, call in enumerate(parse_slide_calls(deck))
             }
-        self._populate_list()
+        # Sorting never removes a slide, so the slide on show stays on show
+        # (2026-10-11): re-selected by path, its editors left alone.
+        self._populate_list(self._current_path(), keep_view=self._current_slide_stays())
+
+    def _on_filter_changed(self, _index: int) -> None:
+        """The "Show:" dropdown. Connected straight to _populate_list() until
+        2026-10-11, which handed it the combo's *index* as `preserve`: the
+        list was rebuilt around nothing and landed on its first row -- a
+        different slide than the one on show -- with the in-flight-translation
+        warning suppressed (direct report: "the selection jumps to a
+        different slide even if a translation is under way"). Now the slide
+        on show stays on show whenever it is still in the filtered list (its
+        editors, and any translation running in them, are left alone); when
+        the filter would drop it, the same "Translation in progress"
+        question as for a manual switch comes first."""
+        if self._has_in_flight_translation() and not self._current_slide_stays():
+            confirm = QMessageBox.question(
+                self, "Translation in progress",
+                "A German translation is still being generated for an "
+                "image on this slide. Switching to a different slide now "
+                "will discard the result when it finishes. Switch anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                self.filter_combo.blockSignals(True)
+                self.filter_combo.setCurrentIndex(self._last_filter_index)
+                self.filter_combo.blockSignals(False)
+                return
+        self._populate_list(self._current_path(), keep_view=self._current_slide_stays())
+
+    def _current_path(self) -> Path | None:
+        return self._current.row.path if self._current is not None else None
+
+    def _current_slide_stays(self) -> bool:
+        """True when the slide on show is in the list as filtered right now."""
+        path = self._current_path()
+        return path is not None and any(
+            view.row.path == path for view in self._visible_rows()
+        )
 
     def _populate_list(
-        self, preserve: Path | None = None, *, allow_dirty: bool = False
+        self, preserve: Path | None = None, *, allow_dirty: bool = False,
+        keep_view: bool = False,
     ) -> None:
         """Rebuild the list, re-selecting `preserve` **by path**, not by index.
 
@@ -1512,8 +1551,13 @@ class TranscriptTab(QWidget):
         entirely). A later save then wrote its descriptions into whichever
         slide the list happened to land on -- observed writing slide 22s's
         file while slide 3px was on screen.
+
+        `keep_view` (a Show:/Sort: change that leaves the slide on show in the
+        list): the list is rebuilt and the same slide re-selected without
+        rebuilding its editors -- nothing is discarded, so unsaved edits and
+        a translation in flight survive and there is nothing to confirm.
         """
-        if self._any_editor_dirty() and not allow_dirty:
+        if self._any_editor_dirty() and not allow_dirty and not keep_view:
             choice = QMessageBox.question(
                 self, "Unsaved image edits",
                 "Refreshing or changing the slide list will discard unsaved "
@@ -1573,11 +1617,23 @@ class TranscriptTab(QWidget):
                 return
 
             target_row = 0
+            found = False
             if preserve is not None:
                 for index in range(self.slide_list.count()):
                     if self.slide_list.item(index).data(Qt.UserRole) == preserve:
                         target_row = index
+                        found = True
                         break
+            if keep_view and found and self._current is not None:
+                self.slide_list.blockSignals(True)
+                try:
+                    self.slide_list.setCurrentRow(target_row)
+                finally:
+                    self.slide_list.blockSignals(False)
+                self._current_row_index = target_row
+                self._last_filter_index = self.filter_combo.currentIndex()
+                self._last_sort_index = self.sort_combo.currentIndex()
+                return
             self.slide_list.setCurrentRow(target_row)
             # setCurrentRow only emits currentRowChanged when Qt's own
             # notion of the current row actually changes -- which, after
