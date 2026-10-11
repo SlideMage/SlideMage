@@ -86,3 +86,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | A2a \include fragments | Done, v8.0.3: implemented by Codex, reviewed by Claude. |
 | A2a/A2b Transcripts via the deck parser | Done, v8.0.3 / v8.0.4: implemented by Codex (A2b sent back once), reviewed by Claude. |
 | A4 Image side panel | Done, v8.0.5: implemented by Codex, reviewed by Claude. |
+| A6 New projects | Done, v8.0.6: implemented by Codex, reviewed by Claude. |

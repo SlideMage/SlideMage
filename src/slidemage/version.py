@@ -1964,6 +1964,8 @@ v8.0.4 (2026-10-11, code review fix A2b): Transcripts find a deck's slides as th
 
 v8.0.5 (2026-10-11, code review fix A4): The Image descriptions side panel saves only the fields you changed, so a description a drafting or translation job wrote while the panel was open is no longer overwritten by the older text still shown there. A redraft that finishes after you moved to another slide showing the same image no longer fills that slide's form.
 
+v8.0.6 (2026-10-11, code review fix A6): A new empty project can add a standard slide: without a slide template of its own, the bundled example project's template is used (before, adding the slide failed). Creating a project from the example no longer copies generated preview wrappers (decks/_*.tex).
+
 """
 from __future__ import annotations
 
@@ -1973,7 +1975,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.5"
+VERSION_NUMBER = "v8.0.6"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

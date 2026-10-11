@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import alt_blocks, deck_editor, slide_add, slide_ids, slide_import
+from slidemage import alt_blocks, deck_editor, project, slide_add, slide_ids, slide_import
 from slidemage.ai.providers import ChatReply, ProviderError
 
 from conftest import TEMPLATE, use_new_slide_files
@@ -63,6 +63,36 @@ def test_the_frame_environments_are_the_ones_the_app_recognises():
 def test_the_standard_frame_is_the_projects_template(files):
     assert slide_add.frame_body("standardframe", "") == TEMPLATE
     assert slide_add.frame_body("standardframe", " My title ") == TEMPLATE.replace("{Title}", "{My title}")
+
+
+@pytest.mark.parametrize("custom_template", [None, TEMPLATE + "% Custom template\r\n"])
+def test_empty_project_can_add_a_standard_slide(tmp_path, monkeypatch, custom_template):
+    target = tmp_path / "empty-project"
+    project.init_project(target, copy_example=False)
+    relative = ".scripts/R_Slidemaster/inst/templates/slide-template.tex"
+    template = target / relative
+    monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", template)
+    monkeypatch.setattr(slide_ids, "SLIDES_DIR", target / "slides")
+    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", target / "slide_ids.csv")
+    expected = (project._template_dir("example") / relative).read_bytes().decode("utf-8")
+    if custom_template is not None:
+        template.parent.mkdir(parents=True)
+        template.write_bytes(custom_template.encode("utf-8"))
+        expected = custom_template
+
+    assert slide_ids.read_template() == expected
+    created = slide_add.create_new("First", "EN")
+    assert created.path.read_bytes().decode("utf-8") == slide_ids.build_new_slide_header() + expected
+    assert template.exists() == (custom_template is not None)
+
+
+@pytest.mark.parametrize("bundled_available", [False, True])
+def test_missing_project_and_bundled_templates_raise(tmp_path, monkeypatch, bundled_available):
+    monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", tmp_path / "missing-template.tex")
+    monkeypatch.setattr(project, "_template_dir", lambda _name: tmp_path if bundled_available else None)
+
+    with pytest.raises(FileNotFoundError, match="No slide template found"):
+        slide_ids.read_template()
 
 
 # -- new files -------------------------------------------------------------------------------

@@ -111,6 +111,12 @@ def test_init_project_preserves_unrelated_existing_files(tmp_path, monkeypatch):
     template = tmp_path / "template"
     (template / "decks").mkdir(parents=True)
     (template / "decks" / "demo.tex").write_text("template")
+    generated = ("_slidemage_preview-x.tex", "_slidemage_snapshot-x.tex")
+    for name in generated:
+        (template / "decks" / name).write_text("generated wrapper")
+    (template / "decks" / "_kept").mkdir()
+    (template / "decks" / "_kept" / "_nested.tex").write_text("nested asset")
+    (template / "_kept.tex").write_text("root asset")
     latex_template = tmp_path / "latex-template"
     latex_template.mkdir()
     monkeypatch.setattr(
@@ -127,6 +133,9 @@ def test_init_project_preserves_unrelated_existing_files(tmp_path, monkeypatch):
 
     assert note.read_text() == "my notes"
     assert (target / "decks" / "demo.tex").read_text() == "template"
+    assert all(not (target / "decks" / name).exists() for name in generated)
+    assert (target / "decks" / "_kept" / "_nested.tex").read_text() == "nested asset"
+    assert (target / "_kept.tex").read_text() == "root asset"
 
 
 def _temporary_store(monkeypatch, tmp_path):

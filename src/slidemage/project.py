@@ -41,6 +41,7 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     skip = {".build", ".previews", ".backups", "pdf", "__pycache__"}
     if os.path.basename(directory) == "decks":
         skip |= {n for n in names if n.endswith((".pdf", ".synctex.gz"))}
+        skip |= {n for n in names if n.startswith("_") and (Path(directory) / n).is_file()}
     return {n for n in names if n in skip}
 
 

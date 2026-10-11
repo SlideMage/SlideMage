@@ -12,12 +12,13 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from . import slide_language
+from . import project, slide_language
 from .deck_scan import PROJECT_ROOT
 
 SLIDE_IDS_CSV = PROJECT_ROOT / "slide_ids.csv"
 SLIDES_DIR = PROJECT_ROOT / "slides"
-TEMPLATE_PATH = PROJECT_ROOT / ".scripts" / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
+TEMPLATE_RELATIVE = Path(".scripts") / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
+TEMPLATE_PATH = PROJECT_ROOT / TEMPLATE_RELATIVE
 
 # Matches the *unadorned* two-line "Included in decks" block only -- unlike
 # deck_headers.HEADER_RE, deliberately does NOT also consume a trailing
@@ -244,8 +245,17 @@ def create_slide_file(
 
 
 def read_template() -> str:
-    """The project's starter slide (.scripts/R_Slidemaster/inst/templates/slide-template.tex)."""
-    return TEMPLATE_PATH.read_bytes().decode("utf-8")
+    """The project's starter slide, or the bundled example's when absent."""
+    if TEMPLATE_PATH.is_file():
+        return TEMPLATE_PATH.read_bytes().decode("utf-8")
+    example = project._template_dir("example")
+    if example is not None:
+        template = example / TEMPLATE_RELATIVE
+        if template.is_file():
+            return template.read_bytes().decode("utf-8")
+    raise FileNotFoundError(
+        f"No slide template found at {TEMPLATE_PATH} or in the bundled example project."
+    )
 
 
 def add_translation_backreference(source_path: Path, language: str, new_id_slug: str) -> None:
