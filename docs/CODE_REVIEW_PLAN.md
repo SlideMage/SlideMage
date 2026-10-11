@@ -83,3 +83,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | A1a Instructor only (LaTeX) | Done, v8.0.0 (BREAKING): implemented by Codex, reviewed by Claude; manual slides 1u4/1d7 corrected. |
 | A1b One visibility rule | Done, v8.0.1: implemented by Codex, reviewed by Claude. |
 | A3 Whitespace in slide calls | Done, v8.0.2: implemented by Codex, reviewed by Claude. |
+| A2a \include fragments | Done, v8.0.3: implemented by Codex, reviewed by Claude. |

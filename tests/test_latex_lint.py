@@ -1,4 +1,7 @@
+import pytest
+
 from slidemage import deck_editor, deck_scan, latex_lint
+from conftest import make_project
 
 
 def test_student_lint_skips_omitslide(tmp_path, monkeypatch):
@@ -48,3 +51,19 @@ def test_cited_keys_are_listed_once_in_order_without_comments_or_macro_keys():
             "% \\fullcite{commented2000}\n\\parencite{\\mykey} \\parencite{#1} \\textcite{lee1999}\n")
     assert latex_lint.cited_keys(text) == ["smith2020", "doe2021", "lee1999"]
     assert latex_lint.cited_keys("no citations here") == []
+
+
+@pytest.mark.parametrize("name", ["fragment", "fragment.tex"])
+def test_lint_checks_included_fragment_slides(tmp_path, monkeypatch, name):
+    root = make_project(monkeypatch, tmp_path)
+    monkeypatch.setattr(latex_lint, "DECKS_DIR", root / "decks")
+    (root / "decks/fragment.tex").write_text("\\slide{abc-EN-Hello}\n")
+    (root / "decks/test.tex").write_text(
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        + f"\\include{{{name}}}\n\\end{{document}}\n")
+    slide = root / "slides/abc-EN-Hello-current.tex"
+    slide.write_text("{")
+    deck, = deck_scan._scan_dir(root / "decks", False)
+    result = latex_lint.check_deck_job(deck)
+    assert result.files_checked == 3
+    assert result.errors and all(i.path == slide for i in result.errors)

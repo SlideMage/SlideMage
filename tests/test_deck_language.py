@@ -155,19 +155,33 @@ def test_commented_and_verbatim_calls_are_preserved_and_do_not_hide_a_real_partn
     assert deck_language.resolved_text(d, "DE") == d.text
 
 
-def test_nested_body_fragments_are_resolved_and_kept_as_dependencies(project):
+@pytest.mark.parametrize("command", ["input", "include"])
+@pytest.mark.parametrize("suffix", ["", ".tex"])
+def test_nested_body_fragments_are_resolved_and_kept_as_dependencies(project, command, suffix):
     fragment = project / "decks" / "slides.tex"
     nested = project / "decks" / "nested.tex"
-    fragment.write_text("\\input{nested}\n\\slide{bbb-EN-Two}\n")
+    fragment_text = f"\\{command}{{nested{suffix}}}\n\\slide{{bbb-EN-Two}}\n"
+    fragment.write_text(fragment_text)
     nested.write_text("\\slide{aaa-EN-One}\n\\slide{ddd-DE-Eins}\n")
-    d = deck(project, "\\input{slides}\n")
+    d = deck(project, f"\\{command}{{slides{suffix}}}\n")
     resolved, dependencies = deck_language.compile_deck(d, "DE")
-    assert "\\input{slides}" not in resolved.text
+    assert f"\\{command}{{slides{suffix}}}" not in resolved.text
     assert resolved.text.count("\\slide{ddd-DE-Eins}") == 1
     assert {fragment, nested, project / "slides/aaa-EN-One-current.tex",
             project / "slides/ddd-DE-Eins-current.tex"} == set(dependencies)
-    assert fragment.read_text() == "\\input{nested}\n\\slide{bbb-EN-Two}\n"
+    assert fragment.read_text() == fragment_text
+    assert compile_progress.count_job_slides(d, "instructor", None, "EN") == 2
     assert compile_progress.count_job_slides(d, "instructor", None, "DE") == 2
+
+
+@pytest.mark.parametrize("command", ["includegraphics", "includeonly", "includepdf", "inputencoding"])
+def test_other_commands_are_not_body_fragments(project, command):
+    (project / "decks" / "x.tex").write_text("\\slide{aaa-EN-One}\n")
+    d = deck(project, f"\\{command}{{x}}\n")
+    resolved, dependencies = deck_language.compile_deck(d, "DE")
+    assert resolved.text == d.text and dependencies == []
+    assert compile_progress.count_job_slides(d, "instructor", None, "DE") == 0
+    assert latex_lint.check_deck_job(d, language="DE").files_checked == 1
 
 
 def test_precompile_check_checks_the_german_file_instead_of_the_english_file(project):

@@ -1958,6 +1958,8 @@ v8.0.1 (2026-10-11, code review fix A1b): One rule decides whether a slide call 
 
 v8.0.2 (2026-10-11, code review fix A3): Slide calls with spaces or a line break before an argument -- \\slide {id}, \\conditionalslide [instructor] {id} -- are legal TeX and are now recognised: the slide list shows them, "Archive unused content" no longer offers their files, and their slides get the deck in their "Included in decks" header. The two separate slide-call patterns of unused-content archiving and the deck headers are gone; both use the deck parser.
 
+v8.0.3 (2026-10-11, code review fix A2a): Slides in a fragment pulled into a deck with \\include (not only \\input) are resolved to the selected language when compiling, counted in the progress bar and checked by the lint.
+
 """
 from __future__ import annotations
 
@@ -1967,7 +1969,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.2"
+VERSION_NUMBER = "v8.0.3"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

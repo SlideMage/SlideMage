@@ -574,7 +574,7 @@ def _slide_path(call) -> Path:
     return deck_editor.SLIDES_DIR / f"{call.id_slug}-current.tex"
 
 
-_INPUT_RE = re.compile(r"\\input\s*\{([^{}]+)\}")
+_INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^{}]+)\}")
 
 
 def _masked_same_length(text: str) -> str:
