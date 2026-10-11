@@ -9,19 +9,12 @@ from pathlib import Path
 
 import pytest
 
+from conftest import write_test_file as write
+
 from slidemage import compile_records, compiler, deck_scan
 from slidemage.compile_records import fresh_output, write_record
 
 WRAPPER = "\\def\\deckversionoverride{instructor}\n\\input{t-Deck.tex}\n"
-
-
-def write(path: Path, data: str | bytes) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if isinstance(data, bytes):
-        path.write_bytes(data)
-    else:
-        path.write_text(data, encoding="utf-8", newline="")
-    return path
 
 
 @pytest.fixture

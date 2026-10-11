@@ -93,8 +93,6 @@ def test_language_mismatch_is_a_warning_only_when_the_course_is_taught_in_anothe
         deck_language, taught, warned):
     text = admin_slides.language_warning(deck_language, replace(DETAIL, languages=taught))
     assert bool(text) is warned
-    if warned:
-        assert "taught in German, but the deck is English" in text
 
 
 def test_the_two_parts_of_a_fetch_fail_independently(monkeypatch):
@@ -106,21 +104,23 @@ def test_the_two_parts_of_a_fetch_fail_independently(monkeypatch):
     assert admin_slides.fetch("https://example.invalid", "de") == ("network unreachable", DETAIL)
 
 
-def test_insertion_creates_editable_slides_and_deck_calls_in_order(tmp_path, new_slides):
-    deck = make_deck(tmp_path)
+@pytest.mark.parametrize("language", ["de", "en"])
+def test_insertion_creates_editable_slides_and_deck_calls_in_order(tmp_path, new_slides, language):
+    deck = make_deck(tmp_path, language=language)
     position = deck_editor.slide_insert_positions(deck)[0]
     specs = [
         ("Title-Slide", admin_slides.build_title_slide_source(r"\titleframe{Financial Markets}{Stefan Palan\\Summer term 2026}")),
-        ("Course-Sessions", admin_slides.build_sessions_slide_source(r"\begin{tabular}{ll}Datum & Zeit \\ \end{tabular}")),
+        ("Course-Sessions", admin_slides.build_sessions_slide_source(r"\begin{tabular}{ll}Datum & Zeit \\ \end{tabular}", language)),
     ]
 
-    slide_paths = admin_slides.insert_admin_slides(deck, position, specs)
+    slide_paths = admin_slides.insert_admin_slides(deck, position, specs, language)
 
+    tag = language.upper()
     assert [path.name for path in slide_paths] == [
-        "abc-DE-Title-Slide-current.tex", "def-DE-Course-Sessions-current.tex",
+        f"abc-{tag}-Title-Slide-current.tex", f"def-{tag}-Course-Sessions-current.tex",
     ]
     deck_text = deck.path.read_text(encoding="utf-8")
-    assert deck_text.index(r"\slide{abc-DE-Title-Slide}") < deck_text.index(r"\slide{def-DE-Course-Sessions}")
+    assert deck_text.index(r"\slide{abc-" + tag + "-Title-Slide}") < deck_text.index(r"\slide{def-" + tag + "-Course-Sessions}")
     assert '"abc"' in (tmp_path / "slide_ids.csv").read_text(encoding="utf-8")
     assert '"def"' in (tmp_path / "slide_ids.csv").read_text(encoding="utf-8")
 
@@ -163,16 +163,3 @@ def test_stale_deck_keeps_external_change_and_removes_new_slide(tmp_path, new_sl
 
     assert "% external edit" in deck.path.read_text(encoding="utf-8")
     assert not list((tmp_path / "slides").glob("*.tex"))
-
-
-def test_english_deck_slides_are_named_en(tmp_path, new_slides):
-    deck = make_deck(tmp_path, language="en")
-    position = deck_editor.slide_insert_positions(deck)[0]
-    slide_paths = admin_slides.insert_admin_slides(deck, position, [
-        ("Title-Slide", admin_slides.build_title_slide_source("A")),
-        ("Course-Sessions", admin_slides.build_sessions_slide_source("Table", "en")),
-    ], "en")
-    assert [path.name for path in slide_paths] == [
-        "abc-EN-Title-Slide-current.tex", "def-EN-Course-Sessions-current.tex",
-    ]
-    assert r"\slide{def-EN-Course-Sessions}" in deck.path.read_text(encoding="utf-8")

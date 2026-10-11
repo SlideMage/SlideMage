@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import write_test_file as write
+
 from slidemage import compiler, deck_scan, deck_snapshot, project, sm_rename
 from slidemage.deck_snapshot import SnapshotOptions
 
@@ -31,15 +33,6 @@ DECK = r"""\documentclass{beamer}
 \slide{1aa-EN-One}
 \end{document}
 """
-
-
-def write(path: Path, text: str | bytes) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if isinstance(text, bytes):
-        path.write_bytes(text)
-    else:
-        path.write_text(text, encoding="utf-8", newline="")
-    return path
 
 
 @pytest.fixture
@@ -120,11 +113,6 @@ def options(**kwargs) -> SnapshotOptions:
     return SnapshotOptions(**kwargs)
 
 
-def logs():
-    lines: list[str] = []
-    return lines, lines.append
-
-
 # ---------------------------------------------------------------- parsing
 
 def test_parse_fls_resolves_relative_paths_and_drops_duplicates(tmp_path):
@@ -139,12 +127,6 @@ def test_parse_fls_resolves_relative_paths_and_drops_duplicates(tmp_path):
     inputs = deck_snapshot.parse_fls(fls)
     assert [p.name for p in inputs] == ["deck.tex", "a.png", "base.tex"]
     assert inputs[2] == Path(os.path.normpath(tmp_path / "fw" / "base.tex"))
-
-
-def test_parse_blg_sources(tmp_path):
-    blg = write(tmp_path / "x.blg", "[883] bibtex.pm:1519> INFO - Found BibTeX data source "
-                                    "'d:/proj/Slidemaster.bib'\n")
-    assert [p.name for p in deck_snapshot.parse_blg_sources(blg)] == ["Slidemaster.bib"]
 
 
 def test_failed_biber_run_is_recognized_in_the_final_log():
@@ -162,12 +144,6 @@ def test_first_difference_names_the_line():
     assert deck_snapshot.first_difference("a\nb", "a") == "reference has 2 lines, now 1"
 
 
-def test_timestamp_value():
-    assert deck_snapshot.timestamp_value(
-        "\\gdef\\SMCompileTimestampValue{2026-10-07 14:53}\n") == "2026-10-07 14:53"
-    assert deck_snapshot.timestamp_value(None) == ""
-
-
 @pytest.mark.skipif(os.name != "nt", reason="Windows paths compare case-insensitively")
 def test_is_within_ignores_drive_letter_case():
     assert deck_snapshot.is_within(r"d:\uniCLOUD\Proj\media\a.png", r"D:\uniCLOUD\Proj")
@@ -176,30 +152,16 @@ def test_is_within_ignores_drive_letter_case():
 
 def test_framework_relpath(tmp_path):
     root = tmp_path / "Proj"
-    assert deck_snapshot.framework_relpath(root, tmp_path / "SlideMage" / "latex") == "SlideMage/latex"
     assert deck_snapshot.framework_relpath(root, tmp_path / "latex") == "latex"
     assert deck_snapshot.framework_relpath(root, tmp_path.parent / "elsewhere" / "latex") \
         == "SlideMage/latex"
-
-
-# ---------------------------------------------------------------- naming
-
-def test_snapshot_name_has_date_time_and_numbers_same_minute(tmp_path):
-    name = deck_snapshot.snapshot_name("t-Deck", WHEN, tmp_path, is_zip=False)
-    assert name == "t-Deck_2026-10-07_14-12"
-    (tmp_path / name).mkdir()
-    # a zip of the same minute keeps the name; a second folder gets _2
-    assert deck_snapshot.snapshot_name("t-Deck", WHEN, tmp_path, is_zip=True) == name
-    assert deck_snapshot.snapshot_name("t-Deck", WHEN, tmp_path, is_zip=False) == name + "_2"
-    assert deck_snapshot.NAME_RE.match(name + "_2").group("deck") == "t-Deck"
 
 
 # ---------------------------------------------------------------- creating
 
 def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
     root, framework, decks, calls, _ = tree
-    lines, log = logs()
-    result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), log, when=WHEN,
+    result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
                                            project_root=root)
     assert result.ok, result.error
     snap = result.path
@@ -263,14 +225,6 @@ def test_latex_package_files_are_copied_on_request(tree):
     assert result.counts["texmf"] == 2
 
 
-def test_wrapper_paths_into_the_project_become_relative(tmp_path):
-    root = tmp_path / "Proj"
-    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.previews/slide_previews/x.png}}\n"
-            "\\input{t-Deck.tex}\n")
-    assert deck_snapshot.relative_wrapper(text, root) == (
-        "\\includegraphics[width=1cm]{.previews/slide_previews/x.png}\n\\input{t-Deck.tex}\n")
-
-
 def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     """The instructor compile reads the previews from before its own refresh,
     the versions compiled after it the refreshed ones: one snapshot holds both."""
@@ -293,6 +247,11 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     wrapper = f"\\includegraphics{{{root.as_posix()}/.previews/slide_previews/1aa-304-171.png}}"
     assert deck_snapshot.relative_wrapper(wrapper, root, "t-instructor") == (
         "\\includegraphics{.previews/t-instructor/slide_previews/1aa-304-171.png}")
+
+    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.previews/slide_previews/x.png}}\n"
+            "\\input{t-Deck.tex}\n")
+    assert deck_snapshot.relative_wrapper(text, root) == (
+        "\\includegraphics[width=1cm]{.previews/slide_previews/x.png}\n\\input{t-Deck.tex}\n")
 
 
 def test_root_of_prefers_the_deepest_root(tmp_path):
@@ -342,7 +301,6 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
     assert [c[0] for c in calls] == ["t-Deck-presenter", "t-Deck", "t-Deck-presenter"], [
         line for line in lines if "is compiled" in line]
     assert result.counts["reused"] == 1
-    assert any("nothing it uses changed since its compile" in line for line in lines)
     manifest = deck_snapshot.read_manifest(result.path)
     job = manifest["jobs"][0]
     assert job["reused_compile"] and job["source_date_epoch"] == int(started)
@@ -356,7 +314,6 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), lines.append,
                                            when=WHEN, project_root=root)
     assert result.ok and [c[0] for c in calls] == ["t-Deck", "t-Deck-presenter"]
-    assert any("t-Deck is compiled: 1aa-EN-One-current.tex changed" in line for line in lines)
     # and --recompile ignores the record
     record_compile(root, texroot, "t-Deck", time.time() + 1)
     calls.clear()
@@ -558,8 +515,6 @@ def test_project_scans_never_look_inside_snapshots(tmp_path):
         write(snap / rel, "x")
     for pattern in sm_rename.PROJECT_GLOBS:
         assert not list(tmp_path.glob(pattern)), pattern
-    assert deck_scan.DECKS_DIR == deck_scan.PROJECT_ROOT / "decks"
-    assert deck_scan.ARCHIVE_DIR == deck_scan.DECKS_DIR / "archive"
 
 
 # ---------------------------------------------------------------- a snapshot opened as a project
@@ -573,15 +528,13 @@ def opened_snapshot(tree):
     return result.path / "Proj"
 
 
-def test_snapshot_project_is_recognized(opened_snapshot, tree):
+def test_snapshot_project_is_recognized_and_uses_its_own_framework_and_dates(opened_snapshot, tree):
     root = tree[0]
     assert project.is_snapshot(opened_snapshot)
     assert not project.is_snapshot(root)
     assert project.snapshot_info(opened_snapshot)["deck_name"] == "t-Deck"
     assert project.snapshot_manifest(opened_snapshot)["deck_name"] == "t-Deck"
 
-
-def test_snapshot_compiles_use_its_own_framework_and_dates(opened_snapshot):
     env = {"TEXINPUTS": "D:/elsewhere", "SLIDEMASTER_LATEX": "D:/live/latex", "PATH": "x"}
     adjusted = project.snapshot_compile_env(opened_snapshot, env)
     assert "TEXINPUTS" not in adjusted

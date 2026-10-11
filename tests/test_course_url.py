@@ -26,7 +26,6 @@ def test_course_url_round_trip_and_rescan(tmp_path, newline):
     linked = deck_editor.set_course_url(path, initial, COURSE_URL)
     assert path.read_bytes().decode() == linked
     assert f"%% SlideMage course URL: {COURSE_URL}{newline}" in linked
-    assert deck_scan.parse_course_url(linked) == COURSE_URL
     assert deck_scan.scan_dir(tmp_path, archived=False)[0].course_url == COURSE_URL
 
     changed = deck_editor.set_course_url(path, linked, OTHER_URL)

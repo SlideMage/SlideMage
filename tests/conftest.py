@@ -225,3 +225,13 @@ def wait_until(condition, seconds=5.0):
         assert time.monotonic() < end, "timed out"
         time.sleep(0.005)
     QApplication.processEvents()
+
+
+def write_test_file(path: Path, text: str | bytes, *, newline: str | None = "") -> Path:
+    """Create a fixture file and its parents, preserving bytes and the requested newlines."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(text, bytes):
+        path.write_bytes(text)
+    else:
+        path.write_text(text, encoding="utf-8", newline=newline)
+    return path

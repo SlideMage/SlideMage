@@ -5,20 +5,18 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import pytest
+
+from conftest import write_test_file as write
 
 from slidemage import alt_images, bundled_copies, project
 from slidemage.bundled_copies import FRAMEWORK, MANUAL
 
 NOW = datetime(2026, 10, 5, 12, 0, 0)
-
-
-def write(path: Path, text: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    return path
+write = partial(write, newline=None)
 
 
 @pytest.fixture
