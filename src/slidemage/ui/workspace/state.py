@@ -37,6 +37,7 @@ class WorkspaceState(QObject):
     focused_slide_changed = Signal(object)   # bare slide id | None
     view_changed = Signal(str)
     language_changed = Signal(str)
+    footer_timestamp_changed = Signal(bool)
     selection_changed = Signal(object)       # tuple of bare slide ids
     mode_changed = Signal(str)
     dirty_changed = Signal(bool)
@@ -125,7 +126,9 @@ class WorkspaceState(QObject):
             self.lint_errors_changed.emit(count)
 
     def set_footer_timestamp(self, enabled: bool) -> None:
-        self.footer_timestamp = enabled
+        if self.footer_timestamp != enabled:
+            self.footer_timestamp = enabled
+            self.footer_timestamp_changed.emit(enabled)
 
     def selected_or_focused(self) -> tuple[str, ...]:
         """The selected slides, else the focused one."""

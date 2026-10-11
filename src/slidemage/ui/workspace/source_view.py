@@ -38,6 +38,7 @@ LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 class SourcePane(Surface):
     dirty_changed = Signal(bool)         # some file has unsaved edits
+    buffer_changed = Signal(object)      # Path; every text edit, even while already dirty
     file_closed = Signal(object)         # the Path of a file the view no longer holds
     lint_errors_changed = Signal(int)    # errors the static check finds in the file shown
     saved = Signal(object)               # the Path that was saved
@@ -213,6 +214,7 @@ class SourcePane(Surface):
             if file is None:
                 file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
                 file.modified_changed.connect(self._on_modified)
+                file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
                 file.lint_changed.connect(self._emit_lint_errors)
                 file.saved.connect(lambda p=path: self.saved.emit(p))
                 self._files[path] = file

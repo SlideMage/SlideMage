@@ -12,6 +12,7 @@ what the Preview shows without compiling anything.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -57,7 +58,8 @@ class PreviewTarget:
     def key(self) -> tuple:
         """What a render depends on besides the view and the language."""
         return (self.macro, self.id_slug, self.version, tuple(self.conditions or ()), self.steps,
-                self.frame_number, self.template)
+                self.frame_number, self.template,
+                hashlib.sha256((self.preamble_text or '').encode()).hexdigest())
 
 
 def for_call(deck: Deck, call: SlideCall, position: int) -> PreviewTarget:
@@ -89,19 +91,21 @@ def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
     return png, slide_snapshot.is_fresh(target.bare_id, target.source_path, target.template)
 
 
-def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log) -> Path:
+def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log,
+           capture_snapshot: bool = True) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     Raises RuntimeError with the compile log's tail on failure."""
     return slide_preview.render_slide_to_pdf(
         target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(), footer_timestamp=footer_timestamp,
         preamble_text=target.preamble_text, frame_number=target.frame_number,
-        log=log, steps=target.steps, capture_snapshot=not target.is_frozen_alone)
+        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone)
 
 
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, footer_timestamp: bool, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
+    capture_snapshot: bool = True,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
@@ -111,4 +115,5 @@ def render_text(
         target.id_slug, text,
         deck_version=VERSION_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
-        frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay)
+        frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,
+        capture_snapshot=capture_snapshot and not target.is_frozen_alone)

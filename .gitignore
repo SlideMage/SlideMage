@@ -369,6 +369,10 @@ alt-text-bakeoff.md
 # project-root folder before that).
 **/.previews/tikz_illustration_previews/
 
+# Persistent preview maintenance lock and local, checksummed benchmark evidence.
+**/.previews/preview-maintenance.lock
+**/.previews/benchmarks/
+
 # SlideMage's own local UI preferences (app_settings.py -- currently
 # just dark mode) -- a personal taste, not project content worth
 # version-controlling/diffing on every toggle, same category as

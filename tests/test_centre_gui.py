@@ -97,8 +97,9 @@ def renders(tmp_path, monkeypatch):
             return pdf
         return render
 
-    real_png = slide_snapshot.page_png      # the pages need not be full HD for these tests
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda path: real_png(path, 160))
+    # Exercise the prepare/publish path; GUI state tests do not need full-HD rasterization.
+    monkeypatch.setattr(slide_snapshot, "FULL_SIZE", (160, 90))
+    monkeypatch.setattr(slide_snapshot, "THUMB_SIZE", (80, 45))
     monkeypatch.setattr(preview_target, "render", fake("saved"))
     monkeypatch.setattr(preview_target, "render_text", fake("buffer"))
     monkeypatch.setattr(preview_view.slide_preview, "open_pdf", lambda path: calls.append(("open", path)))
@@ -257,7 +258,10 @@ def test_a_slide_the_view_does_not_typeset_says_so_and_does_not_offer_to_render(
     assert not page(centre).render_button.isVisibleTo(centre) and renders == []
 
 
-def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_result(centre, renders):
+def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_result(centre, renders, monkeypatch):
+    # This checks the view/language-specific session cache, independently of
+    # the canonical instructor snapshot the accepted render also publishes.
+    monkeypatch.setattr(preview_target, 'cached_image', lambda target: None)
     state = centre.state
     state.set_focused_slide("aaa")
     assert "No preview" in page(centre).message and not page(centre).render_button.isHidden()
@@ -302,7 +306,8 @@ def test_the_cached_snapshot_is_shown_for_the_instructor_view(centre, project, t
     doc.close()
     os.utime(png, (1, (project / "aaa-EN-One-current.tex").stat().st_mtime + 10))
     centre.refresh()
-    assert page(centre).pixmap is not None and not centre.preview._status_chip.isVisibleTo(centre)
+    assert page(centre).pixmap is not None
+    assert centre.preview._status_chip.text() == "Cached preview; render to verify current settings"
     centre.state.set_view("after-course")
     assert page(centre).pixmap is None                      # only the instructor view is cached
 
@@ -558,3 +563,18 @@ def test_the_footer_timestamp_of_the_state_reaches_the_render(centre, renders):
     centre.preview.render_now()
     wait_idle(centre)
     assert [c[3]["footer_timestamp"] for c in renders] == [False, True]
+
+
+def test_an_already_dirty_buffer_marks_its_preview_older_after_another_edit(centre, renders):
+    centre.state.set_focused_slide('aaa')
+    centre.state.set_mode('split')
+    editor=centre.source.current.editor
+    editor.insertPlainText('% unsaved first edit\n')
+    centre.preview.render_buffer()
+    wait_idle(centre)
+    assert 'Rendered from the editor buffer' in centre.preview._status_chip.text()
+    assert centre.source.current.dirty
+    editor.insertPlainText('% a second edit while still dirty\n')
+    QTest.qWait(200)
+    assert 'Older than the editor buffer' in centre.preview._status_chip.text()
+    assert len(renders) == 1  # status refresh never compiles on a keystroke

@@ -63,6 +63,8 @@ def test_unused_preview_wrappers_are_pruned(tmp_path):
     old = time.time() - (preview_build.UNUSED_DAYS + 1) * 86400
     for key, age in (('fresh', None), ('stale', old), ('nocache', 'none')):
         (decks / f'_slidemage_preview-{key}.tex').write_text('x')
+        if age == 'none':
+            os.utime(decks / f'_slidemage_preview-{key}.tex', (old, old))
         if age != 'none':
             lock = build / 'preview-cache' / key / 'build.lock'
             lock.parent.mkdir(parents=True)

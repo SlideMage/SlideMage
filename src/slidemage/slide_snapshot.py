@@ -56,6 +56,9 @@ from __future__ import annotations
 
 import os
 import re
+import hashlib
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 # `import fitz` still works but is deprecated in current PyMuPDF releases
@@ -65,8 +68,15 @@ import pymupdf as fitz
 
 from . import slide_language
 from .deck_scan import PROJECT_ROOT
+from .preview_metrics import measure
 
 SNAPSHOT_DIR = PROJECT_ROOT / ".previews" / "slide_previews"
+
+# PDF content, dimensions -> PNG. Paths alone are unsafe when a job is rebuilt.
+# Bounded by bytes as well as entries; no permanent extra artifacts on disk.
+_PNG_CACHE: OrderedDict = OrderedDict()
+_PNG_CACHE_BYTES = 32 * 1024 * 1024
+_PNG_LOCK = threading.RLock()
 
 # Every compiled frame carries this footer element unconditionally (theme
 # footer template, Slidemaster_preamble_base.tex) -- not something special
@@ -222,22 +232,64 @@ def _save_page(page: "fitz.Page", slide_id: str, template: str,
         pixmap.save(str(snapshot_path(slide_id, template, (width, height))))
 
 
+@measure('png')
+def _preview_pngs(pdf_path: Path, sizes) -> tuple[bytes, ...]:
+    data = pdf_path.read_bytes()
+    digest = hashlib.sha256(data).digest()
+    with _PNG_LOCK:
+        keys = [(digest, size) for size in sizes]
+        missing = [key for key in keys if key not in _PNG_CACHE]
+        if missing:
+            from .preview_raster_client import render
+            # Only bytes cross the boundary. MuPDF is unsafe in Python threads,
+            # even with a mutex around calls (another thread can run its GC).
+            images = render(data, tuple(key[1] for key in missing), FULL_SIZE)
+            if not images:
+                return ()
+            _PNG_CACHE.update(zip(missing, images))
+        result = tuple(_PNG_CACHE[key] for key in keys)
+        for key in keys:
+            _PNG_CACHE.move_to_end(key)
+        while len(_PNG_CACHE) > 16 or sum(map(len, _PNG_CACHE.values())) > _PNG_CACHE_BYTES:
+            _PNG_CACHE.popitem(last=False)
+        return result
+
+
+def prepare_preview(pdf_path: Path, snapshots: bool = False):
+    """Prepare the display and optional canonical PNGs without publishing them.
+
+    The GUI accepts the request first, then writes its canonical snapshots.
+    Full-slide display reuses the already rasterized full-size snapshot.
+    """
+    display = (FULL_SIZE[0], None)
+    sizes = (FULL_SIZE, THUMB_SIZE, display) if snapshots else (display,)
+    images = _preview_pngs(pdf_path, sizes)
+    if not images:
+        raise RuntimeError('Preview PDF has no pages')
+    return images[-1], tuple(zip(sizes[:2], images[:2])) if snapshots else ()
+
+
+@measure('snapshot_write')
+def publish_preview(images, slide_id: str, template: str) -> None:
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    for size, data in images:
+        # Refresh freshness even when a source edit leaves identical PDF pixels.
+        path = snapshot_path(slide_id, template, size)
+        if path.exists() and path.read_bytes() == data:
+            path.touch()
+        else:
+            path.write_bytes(data)
+
+
 def page_png(pdf_path: Path, width: int = FULL_SIZE[0]) -> bytes | None:
     """The last page of a single-slide preview PDF (its final build step) as
     PNG bytes `width` pixels wide, at the page's own aspect ratio (a cropped
     element preview is not 16:9). None if the PDF cannot be read."""
     try:
-        doc = fitz.open(pdf_path)
+        images = _preview_pngs(pdf_path, ((width, None),))
+        return images[0] if images else None
     except Exception:
         return None
-    try:
-        if doc.page_count == 0:
-            return None
-        page = doc[doc.page_count - 1]
-        zoom = width / page.rect.width
-        return page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).tobytes("png")
-    finally:
-        doc.close()
 
 
 def capture_single_slide(pdf_path: Path, slide_id: str, template: str,
@@ -247,16 +299,13 @@ def capture_single_slide(pdf_path: Path, slide_id: str, template: str,
     one slide's own build steps -- the last page is its final reveal
     directly, no footer-scanning needed. True if a snapshot was written."""
     try:
-        doc = fitz.open(pdf_path)
+        images = _preview_pngs(pdf_path, sizes)
     except Exception:
         return False
-    try:
-        if doc.page_count == 0:
-            return False
-        _save_page(doc[doc.page_count - 1], slide_id, template, sizes)
-        return True
-    finally:
-        doc.close()
+    if not images:
+        return False
+    publish_preview(tuple(zip(sizes, images)), slide_id, template)
+    return True
 
 
 def capture_deck(pdf_path: Path, template: str,

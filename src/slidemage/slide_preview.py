@@ -27,6 +27,7 @@ from . import slide_snapshot
 from .compiler import BUILD_DIR, FATAL_ERROR_RE, _build_env
 from .deck_editor import VERSION_FILE_RE, format_call
 from .deck_scan import PROJECT_ROOT
+from .preview_metrics import measure, record_line, finish_rules
 
 DECKS_DIR = PROJECT_ROOT / "decks"
 
@@ -241,6 +242,7 @@ def _presenter_mode_line(presenter: bool) -> str:
     return "\\def\\SMPresenterModeOverride{1}\n"
 
 
+@measure('build')
 def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
                          reuse_build: bool = True) -> Path:
@@ -315,98 +317,106 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     # with bare "\n" to begin with -- only a *deck's own* preamble_text
     # (every deck-editor-tab "Preview" -> "Render now") carries pre-existing
     # "\r\n" for this to double.
-    wrapper_path.write_text(wrapper_text, encoding="utf-8", newline="")
+    from .preview_build import active_build
+    with active_build(BUILD_DIR, wrapper_path):
+        wrapper_path.write_text(wrapper_text, encoding="utf-8", newline="")
 
-    BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
-    # -outdir=BUILD_DIR, same as compiler.py's own run_job -- this has to
-    # match .latexmkrc's own $aux_dir exactly (an *absolute* path to this
-    # same BUILD_DIR, set unconditionally there), not some other temp
-    # location: $aux_dir governs where latexmk actually writes the .log
-    # regardless of what -outdir says, so a *different* -outdir here
-    # silently splits the two apart -- confirmed directly: the .log ended
-    # up in BUILD_DIR while a leftover 0-byte .pdf sat in the mismatched
-    # -outdir, and the fatal-error check below, looking for the log in the
-    # wrong place, missed it entirely and read the empty .pdf as a pass.
-    cmd = [
-        "latexmk", "-f", f"-jobname={jobname}", f"-outdir={BUILD_DIR.as_posix()}",
-        str(rel_wrapper),
-    ]
-    env = _build_env()
-    popen_kwargs: dict = {}
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        BUILD_DIR.mkdir(parents=True, exist_ok=True)
+        rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
+        # -outdir=BUILD_DIR, same as compiler.py's own run_job -- this has to
+        # match .latexmkrc's own $aux_dir exactly (an *absolute* path to this
+        # same BUILD_DIR, set unconditionally there), not some other temp
+        # location: $aux_dir governs where latexmk actually writes the .log
+        # regardless of what -outdir says, so a *different* -outdir here
+        # silently splits the two apart -- confirmed directly: the .log ended
+        # up in BUILD_DIR while a leftover 0-byte .pdf sat in the mismatched
+        # -outdir, and the fatal-error check below, looking for the log in the
+        # wrong place, missed it entirely and read the empty .pdf as a pass.
+        cmd = [
+            "latexmk", "-f", f"-jobname={jobname}", f"-outdir={BUILD_DIR.as_posix()}",
+            str(rel_wrapper),
+        ]
+        env = _build_env()
+        popen_kwargs: dict = {}
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-    log(f"==== Rendering {id_slug} -> {jobname} ====")
-    try:
-        proc = subprocess.Popen(
-            cmd, cwd=PROJECT_ROOT, env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-            **popen_kwargs,
-        )
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            log(line.rstrip("\n"))
-        proc.wait()
-    except FileNotFoundError:
-        raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")
-    finally:
-        wrapper_path.unlink(missing_ok=True)
-
-    log_path = BUILD_DIR / f"{jobname}.log"
-    build_pdf_path = BUILD_DIR / f"{jobname}.pdf"
-    ok = build_pdf_path.exists() and build_pdf_path.stat().st_size > 0
-    if ok and log_path.exists():
-        if FATAL_ERROR_RE.search(log_path.read_text(encoding="utf-8", errors="replace")):
-            ok = False
-    elif not log_path.exists():
-        ok = False
-
-    if not ok:
-        tail = ""
-        if log_path.exists():
-            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-            tail = "\n".join(lines[-20:])
-        log(f"*** FAIL: render of {id_slug} -- see log tail below ***")
-        raise RuntimeError(f"Render failed for {id_slug}:\n{tail}")
-
-    # Move the finished PDF out of .build/ into a fresh, genuinely
-    # temporary directory of its own (not pdf/ -- this is a scratch
-    # preview, not a build artifact), named after the slide itself rather
-    # than the jobname's own uuid suffix, for a sane PDF-viewer window
-    # title/taskbar entry.
-    out_dir = Path(tempfile.mkdtemp(prefix="slidemage_preview_"))
-    dest_pdf = out_dir / f"{id_slug}.pdf"
-    shutil.move(str(build_pdf_path), str(dest_pdf))
-    for aux in BUILD_DIR.glob(f"{jobname}.*"):
-        aux.unlink(missing_ok=True)
-
-    if snapshot_template is not None:
+        log(f"==== Rendering {id_slug} -> {jobname} ====")
         try:
-            # bare id, not the full id_slug -- capture_deck() (the "Update
-            # previews"/full-compile path) always keys a snapshot by the
-            # bare id it parses straight out of the compiled page's own
-            # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
-            # derives from everything before the *first* "-"). Passing the
-            # full id_slug here instead produced e.g.
-            # "kcc-Reasons-Repurchases-UniGraz-1920-1080.png" alongside the
-            # correct "kcc-UniGraz-1920-1080.png" a full compile would
-            # cache -- two different files for the same slide, one of them
-            # never found by any lookup (snapshot_path()/is_fresh() only
-            # ever look up the bare id) and therefore silently dead weight.
-            # Root-caused 2026-08-17 (direct instruction: "some slides have
-            # now turned up with full slugs instead of the typical
-            # nomenclature") from every "Preview -> Render now" render,
-            # not just this project's own recently-touched slides.
-            slide_snapshot.capture_single_slide(
-                dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
-        except Exception as exc:
-            log(f"    (preview snapshot not updated: {exc})")
+            proc = subprocess.Popen(
+                cmd, cwd=PROJECT_ROOT, env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                **popen_kwargs,
+            )
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                record_line(line)
+                log(line.rstrip("\n"))
+            proc.wait()
+            finish_rules()
+        except FileNotFoundError:
+            raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")
+        finally:
+            wrapper_path.unlink(missing_ok=True)
 
-    log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
-    return dest_pdf
+        log_path = BUILD_DIR / f"{jobname}.log"
+        build_pdf_path = BUILD_DIR / f"{jobname}.pdf"
+        ok = build_pdf_path.exists() and build_pdf_path.stat().st_size > 0
+        if ok and log_path.exists():
+            if FATAL_ERROR_RE.search(log_path.read_text(encoding="utf-8", errors="replace")):
+                ok = False
+        elif not log_path.exists():
+            ok = False
+
+        if not ok:
+            tail = ""
+            if log_path.exists():
+                lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                tail = "\n".join(lines[-20:])
+            log(f"*** FAIL: render of {id_slug} -- see log tail below ***")
+            raise RuntimeError(f"Render failed for {id_slug}:\n{tail}")
+
+        # Move the finished PDF out of .build/ into a fresh, genuinely
+        # temporary directory of its own (not pdf/ -- this is a scratch
+        # preview, not a build artifact), named after the slide itself rather
+        # than the jobname's own uuid suffix, for a sane PDF-viewer window
+        # title/taskbar entry.
+        out_dir = Path(tempfile.mkdtemp(prefix="slidemage_preview_"))
+        dest_pdf = out_dir / f"{id_slug}.pdf"
+        shutil.move(str(build_pdf_path), str(dest_pdf))
+        from .preview_build import write_inputs
+        write_inputs(dest_pdf, BUILD_DIR / f'{jobname}.fls', BUILD_DIR / f'{jobname}.fdb_latexmk',
+                     project_root=PROJECT_ROOT, cache=BUILD_DIR)
+        for aux in BUILD_DIR.glob(f"{jobname}.*"):
+            aux.unlink(missing_ok=True)
+
+        if snapshot_template is not None:
+            try:
+                # bare id, not the full id_slug -- capture_deck() (the "Update
+                # previews"/full-compile path) always keys a snapshot by the
+                # bare id it parses straight out of the compiled page's own
+                # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
+                # derives from everything before the *first* "-"). Passing the
+                # full id_slug here instead produced e.g.
+                # "kcc-Reasons-Repurchases-UniGraz-1920-1080.png" alongside the
+                # correct "kcc-UniGraz-1920-1080.png" a full compile would
+                # cache -- two different files for the same slide, one of them
+                # never found by any lookup (snapshot_path()/is_fresh() only
+                # ever look up the bare id) and therefore silently dead weight.
+                # Root-caused 2026-08-17 (direct instruction: "some slides have
+                # now turned up with full slugs instead of the typical
+                # nomenclature") from every "Preview -> Render now" render,
+                # not just this project's own recently-touched slides.
+                slide_snapshot.capture_single_slide(
+                    dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
+            except Exception as exc:
+                log(f"    (preview snapshot not updated: {exc})")
+
+        log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
+        return dest_pdf
 
 
+@measure('render')
 def render_slide_to_pdf(
     macro: str,
     id_slug: str,
@@ -490,6 +500,7 @@ def render_slide_to_pdf(
     )
 
 
+@measure('render')
 def render_slide_text_to_pdf(
     id_slug: str,
     slide_body: str,
@@ -503,6 +514,7 @@ def render_slide_text_to_pdf(
     preview_mode: str = "slide",
     overlay: Optional[int] = None,
     frame_number: Optional[int] = None,
+    capture_snapshot: bool = True,
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -575,7 +587,7 @@ def render_slide_text_to_pdf(
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
-        if deck_version in (None, "instructor") and not presenter
+        if capture_snapshot and deck_version in (None, "instructor") and not presenter
         and preview_mode == "slide" and overlay is None else None
     )
     return _compile_and_extract(

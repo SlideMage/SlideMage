@@ -1937,6 +1937,11 @@ Changed or removed (your habits may need a second look): there are no tabs, deck
 The program: a one-file build is about 300 MB (it carries QtWebEngine for the terminal), checked on Linux; Windows and macOS builds are untested. New dependencies: anthropic, ptyprocess (pywinpty on Windows) and, optionally, keyring.
 
 BREAKING: the program works differently from SlideMage 5.x in the ways listed above; nothing in a project needs migrating, so the compatibility check only lists this under Info -> Project compatibility. What you need to know: compile the other versions (After course, per chapter, Presenter, several decks, transcripts) from the arrow of Compile PDF instead of the deck row's checkboxes; AI drafting of a whole slide is gone in favour of the chat (a model that can call tools is needed for local use, and the model setting of AI drafting no longer exists); a Linux machine needs QtWebEngine's system libraries to start the app.
+
+v6.1.0 (2026-10-11, direct instruction: BIG CHANGE 2, faster previews): Preview requests keep one running compile and the latest queued request, debounce automatic saves, bound session image retention and update the older-buffer notice after typing, and discard obsolete results after source, deck preamble, view, language or timestamp changes. A reusable image child process keeps MuPDF out of GUI/worker threads and restarts after an image-process failure. The display and canonical snapshots reuse prepared PNGs, cached by PDF content with bounded memory; only accepted renders publish snapshots. Cached scratch previews skip unusable SyncTeX output. Reusable builds also invalidate on toolchain, environment and latexmk configuration changes, preserve active files during housekeeping, and export recorded dependencies for the CLI watch mode. Optional preview profiling records build stages and latexmk rule durations. Generated preview/snapshot wrappers are excluded from slide deck-membership headers. Repeated manual benchmarks use visible title, body and graphic edits and retain the cold/warm/unchanged distinction.
+
+v6.1.1 (2026-10-11, direct instruction: fix the independent preview review findings): Preview disposal now survives actual Qt destruction and removes queued or failed temporary results. Accepted image identity includes the timestamp setting; unverified disk snapshots remain visible with a request to render. Cleanup and build reservations share an atomic guard and a persistent cross-process maintenance lock. The image helper has a 15-second request deadline, validates its response and recovers after a stalled read or write. The short benchmark uses four fixed manual calls, immutable implementation/input/options identities, fresh interrupted attempts, adjacent before/after ordering and durable checksummed evidence.
+
 """
 from __future__ import annotations
 
@@ -1946,7 +1951,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v6.0.0"
+VERSION_NUMBER = "v6.1.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

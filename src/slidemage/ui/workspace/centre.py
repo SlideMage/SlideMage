@@ -66,6 +66,7 @@ class CentreColumn(QFrame):
         self.setObjectName(q.CARD)   # the white card on the grey page
 
         self.source.dirty_changed.connect(self._update_dirty)
+        self.source.buffer_changed.connect(self.preview.buffer_changed)
         self.source.lint_errors_changed.connect(state.set_lint_errors)
         self.source.saved.connect(self._on_saved)
         self.source.render_requested.connect(self._render_buffer)

@@ -1,0 +1,1631 @@
+{
+  "complete": true,
+  "summary": [
+    {
+      "case": "bullet",
+      "name": "Edit one bullet",
+      "before": 7.644611372001236,
+      "after": 2.3869641964993207,
+      "saved": 5.257647175501916,
+      "speedup": 3.202650204478428,
+      "reduction": 0.6877585948656992
+    },
+    {
+      "case": "title",
+      "name": "Change the slide title",
+      "before": 7.3519672065012855,
+      "after": 4.6244285019784,
+      "saved": 2.7275387045228854,
+      "speedup": 1.589810979530985,
+      "reduction": 0.37099440570286346
+    },
+    {
+      "case": "formula",
+      "name": "Edit a formula",
+      "before": 7.432760585506912,
+      "after": 2.376316186520853,
+      "saved": 5.056444398986059,
+      "speedup": 3.127850000630245,
+      "reduction": 0.6802915741488545
+    },
+    {
+      "case": "figure",
+      "name": "Resize a figure",
+      "before": 7.351724332489539,
+      "after": 2.4287162969849305,
+      "saved": 4.923008035504608,
+      "speedup": 3.027000041798276,
+      "reduction": 0.6696399120609455
+    }
+  ],
+  "examples": {
+    "bullet": {
+      "complete": true,
+      "records": {
+        "original-fresh": [
+          {
+            "phase": "cold",
+            "seconds": 7.495705191016896,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "04a13c251e1ac99a8c0675f1e84e66e630fefbb44fcb9fa179aa567eb267aaee"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "68a703c80ba58064557c648943bcb5b2f802669689c8c569574edcfab45db8b1"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0646934790129308
+                },
+                {
+                  "rule": "biber /tmp/slidemage-bullet-edit-2026-10-11-valid/project/.build/preview-1sv-EN-Lists-and-Formulas-5f5b5e26",
+                  "run": 1,
+                  "seconds": 0.5433416019950528
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.124403579015052
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0349501309974585
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 7.482541703997413,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ca4e344b218d828fe0be7c1492ae21a0412f11c44aa38754e6f0422f5afe2a7e"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "15447bb690c0469b2722c3d713a74e094844c9db5944e6dcc862d7d519688e8a"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.089073681010632
+                },
+                {
+                  "rule": "biber /tmp/slidemage-bullet-edit-2026-10-11-valid/project/.build/preview-1sv-EN-Lists-and-Formulas-080762a4",
+                  "run": 1,
+                  "seconds": 0.5476253329834435
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.050892865023343
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0824342030100524
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 7.80668104000506,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "c325e7adcc20ad64b39fe951a2295524100bfb57d38d59da2cc2a0fbe3c407ec"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ca675525cbfc66869273b0b96d4019c7149e00b67a53a4f14e438ea9e0323c2a"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.098699703987222
+                },
+                {
+                  "rule": "biber /tmp/slidemage-bullet-edit-2026-10-11-valid/project/.build/preview-1sv-EN-Lists-and-Formulas-c499dfa7",
+                  "run": 1,
+                  "seconds": 0.5514233740104828
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.056845412007533
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.4064494220074266
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 7.505054100998677,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "c325e7adcc20ad64b39fe951a2295524100bfb57d38d59da2cc2a0fbe3c407ec"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ca675525cbfc66869273b0b96d4019c7149e00b67a53a4f14e438ea9e0323c2a"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.035383593989536
+                },
+                {
+                  "rule": "biber /tmp/slidemage-bullet-edit-2026-10-11-valid/project/.build/preview-1sv-EN-Lists-and-Formulas-fb97d21d",
+                  "run": 1,
+                  "seconds": 0.546098399994662
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.063179012009641
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.118885589996353
+                }
+              ]
+            }
+          }
+        ],
+        "optimized": [
+          {
+            "phase": "cold",
+            "seconds": 7.602193905011518,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "04a13c251e1ac99a8c0675f1e84e66e630fefbb44fcb9fa179aa567eb267aaee"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "68a703c80ba58064557c648943bcb5b2f802669689c8c569574edcfab45db8b1"
+              ]
+            ],
+            "trace": {
+              "seconds": 7.602188304997981,
+              "stages": {
+                "cache_configuration": 0.008973182004410774,
+                "prune": 0.00021573901176452637,
+                "lock_wait": 4.865200025960803e-05,
+                "wrapper_write": 4.426398663781583e-05,
+                "latexmk": 7.393347770994296,
+                "pdf_copy": 0.00019144301768392324,
+                "dependencies": 0.016000258998246863,
+                "build": 7.423057512001833,
+                "render": 7.423080515000038,
+                "png": 0.17825127698597498,
+                "snapshot_write": 0.0007983619871083647,
+                "prepare": 2.3002998204901814e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.138849509006832
+                },
+                {
+                  "rule": "biber /tmp/slidemage-bullet-edit-2026-10-11-valid/project/.build/optimized/preview-cache/9598758643f5ec6175a1e0d1/preview-9598758643f5ec6175a1e0d1",
+                  "number": 1,
+                  "seconds": 0.5529384329856839
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 2,
+                  "seconds": 2.061541437986307
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 3,
+                  "seconds": 2.0444854689994827
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 2.3622957069892436,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ca4e344b218d828fe0be7c1492ae21a0412f11c44aa38754e6f0422f5afe2a7e"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "15447bb690c0469b2722c3d713a74e094844c9db5944e6dcc862d7d519688e8a"
+              ]
+            ],
+            "trace": {
+              "seconds": 2.3622902870120015,
+              "stages": {
+                "cache_configuration": 0.00048253400018438697,
+                "lock_wait": 1.1862983228638768e-05,
+                "prune": 0.00016794900875538588,
+                "latexmk": 2.280164928000886,
+                "pdf_copy": 0.00014284998178482056,
+                "dependencies": 0.014324535004561767,
+                "build": 2.296500060998369,
+                "render": 2.2965214629948605,
+                "png": 0.06481779398745857,
+                "snapshot_write": 0.0008779829950071871,
+                "prepare": 2.1401996491476893e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.02089033901575
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 2.4116326860093977,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "c325e7adcc20ad64b39fe951a2295524100bfb57d38d59da2cc2a0fbe3c407ec"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ca675525cbfc66869273b0b96d4019c7149e00b67a53a4f14e438ea9e0323c2a"
+              ]
+            ],
+            "trace": {
+              "seconds": 2.411628939997172,
+              "stages": {
+                "cache_configuration": 0.0004928029957227409,
+                "lock_wait": 1.3055017916485667e-05,
+                "prune": 0.00018203500076197088,
+                "latexmk": 2.331682878022548,
+                "pdf_copy": 0.00022136999177746475,
+                "dependencies": 0.014648057986050844,
+                "build": 2.3490099999762606,
+                "render": 2.3490291259950027,
+                "png": 0.061816278990590945,
+                "snapshot_write": 0.0007407529919873923,
+                "prepare": 1.9126018742099404e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.063540274015395
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 0.13068231899524108,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "c325e7adcc20ad64b39fe951a2295524100bfb57d38d59da2cc2a0fbe3c407ec"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ca675525cbfc66869273b0b96d4019c7149e00b67a53a4f14e438ea9e0323c2a"
+              ]
+            ],
+            "trace": {
+              "seconds": 0.1306790730159264,
+              "stages": {
+                "cache_configuration": 0.00048776398762129247,
+                "lock_wait": 1.2101983884349465e-05,
+                "prune": 0.00019690298358909786,
+                "latexmk": 0.11343598098028451,
+                "pdf_copy": 0.00015736802015453577,
+                "dependencies": 0.01460954497451894,
+                "build": 0.13020871300250292,
+                "render": 0.13022677699336782,
+                "png": 7.193599594756961e-05,
+                "snapshot_write": 0.0003452539967838675,
+                "prepare": 1.8063990864902735e-05
+              },
+              "rules": []
+            }
+          }
+        ]
+      },
+      "edit_means": {
+        "original-fresh": 7.644611372001236,
+        "optimized": 2.3869641964993207
+      },
+      "wall_seconds": 44.33183312416077,
+      "pdf_matches": 4,
+      "display_matches": 4,
+      "visible_edits": 4,
+      "artifact": {
+        "path": "/home/juergen/github/SlideMage/.previews/benchmarks/preview-bullet-edit-2026-10-11.tar.gz",
+        "sha256": "9ed5912273a1d1cc83e38d7d300a47672e4f87d87085256f61ebdf191d22b9c3",
+        "files": 1646
+      }
+    },
+    "title": {
+      "complete": true,
+      "case": "title",
+      "recipe": {
+        "index": 54,
+        "slide": "1sv-EN-Lists-and-Formulas",
+        "title": "Change the slide title",
+        "token": "{Lists and formulas}",
+        "replacements": [
+          "{Lists and equations}",
+          "{Lists and symbols}"
+        ],
+        "description": "Only the frame title changes; the bullets, formula and other content stay unchanged."
+      },
+      "order": [
+        "original-fresh",
+        "optimized"
+      ],
+      "records": {
+        "original-fresh": [
+          {
+            "phase": "cold",
+            "seconds": 7.2963085410010535,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "04a13c251e1ac99a8c0675f1e84e66e630fefbb44fcb9fa179aa567eb267aaee"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "68a703c80ba58064557c648943bcb5b2f802669689c8c569574edcfab45db8b1"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0125989480002318
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/title/project/.build/preview-1sv-EN-Lists-and-Formulas-76267947",
+                  "run": 1,
+                  "seconds": 0.5395644539967179
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.02349119601422
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.014499279001029
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 7.33245181501843,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "09077971d84e9c93027b1fefb7f010eda7ae4e70905085ecf33f77720a08417e"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "cd14db023d6c0e7176053bde1ec59a830cd309be78cdebee9b9988395d10cf92"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0353901459893677
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/title/project/.build/preview-1sv-EN-Lists-and-Formulas-e31ddbd3",
+                  "run": 1,
+                  "seconds": 0.5493166300002486
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.038365809014067
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0184027809882537
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 7.371482597984141,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "19dd0e82570240397097b7fc1d8060e25e9551178d86ebf1f2046d9e3cf33a62"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ed8d271659d8548053837317f48fdaf58ef29ae1c5c30b0260cd016c6df6b2ae"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0183434240170754
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/title/project/.build/preview-1sv-EN-Lists-and-Formulas-88c8cda6",
+                  "run": 1,
+                  "seconds": 0.5477593550167512
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.042897298990283
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0573342809802853
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 7.398128762986744,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "19dd0e82570240397097b7fc1d8060e25e9551178d86ebf1f2046d9e3cf33a62"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ed8d271659d8548053837317f48fdaf58ef29ae1c5c30b0260cd016c6df6b2ae"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0371975830057636
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/title/project/.build/preview-1sv-EN-Lists-and-Formulas-03dd9890",
+                  "run": 1,
+                  "seconds": 0.5477725439995993
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.0226515870017465
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.075055805995362
+                }
+              ]
+            }
+          }
+        ],
+        "optimized": [
+          {
+            "phase": "cold",
+            "seconds": 7.63951236900175,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "04a13c251e1ac99a8c0675f1e84e66e630fefbb44fcb9fa179aa567eb267aaee"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "68a703c80ba58064557c648943bcb5b2f802669689c8c569574edcfab45db8b1"
+              ]
+            ],
+            "trace": {
+              "seconds": 7.639505396015011,
+              "stages": {
+                "cache_configuration": 0.0005317269824445248,
+                "prune": 0.0001779870071914047,
+                "lock_wait": 2.77829822152853e-05,
+                "wrapper_write": 3.077799919992685e-05,
+                "latexmk": 7.435308034007903,
+                "pdf_copy": 0.00020838400814682245,
+                "dependencies": 0.016273975983494893,
+                "build": 7.457191525987582,
+                "render": 7.457222625002032,
+                "png": 0.18135831999825314,
+                "snapshot_write": 0.0008505310106556863,
+                "prepare": 3.1099014449864626e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.0611027329869103
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/title/project/.build/optimized/preview-cache/00e3d900e104456d9d698c65/preview-00e3d900e104456d9d698c65",
+                  "number": 1,
+                  "seconds": 0.557666982000228
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 2,
+                  "seconds": 2.0975793540128507
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 3,
+                  "seconds": 2.1044801310054027
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 4.715417332976358,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "09077971d84e9c93027b1fefb7f010eda7ae4e70905085ecf33f77720a08417e"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "cd14db023d6c0e7176053bde1ec59a830cd309be78cdebee9b9988395d10cf92"
+              ]
+            ],
+            "trace": {
+              "seconds": 4.715409567987081,
+              "stages": {
+                "cache_configuration": 0.0005047160084359348,
+                "lock_wait": 1.3025011867284775e-05,
+                "prune": 0.00018424898735247552,
+                "latexmk": 4.632692514976952,
+                "pdf_copy": 0.00025437198928557336,
+                "dependencies": 0.015736027009552345,
+                "build": 4.651275684998836,
+                "render": 4.651299301011022,
+                "png": 0.06316722198971547,
+                "snapshot_write": 0.0008831330051179975,
+                "prepare": 2.3616012185811996e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.1027564810065087
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 2,
+                  "seconds": 2.1210538070008624
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 4.533439670980442,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "19dd0e82570240397097b7fc1d8060e25e9551178d86ebf1f2046d9e3cf33a62"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ed8d271659d8548053837317f48fdaf58ef29ae1c5c30b0260cd016c6df6b2ae"
+              ]
+            ],
+            "trace": {
+              "seconds": 4.533435824007029,
+              "stages": {
+                "cache_configuration": 0.000527900003362447,
+                "lock_wait": 1.62090000230819e-05,
+                "prune": 0.0001884259982034564,
+                "latexmk": 4.451125521009089,
+                "pdf_copy": 0.00022908399114385247,
+                "dependencies": 0.016056674998253584,
+                "build": 4.469967782002641,
+                "render": 4.469985595991602,
+                "png": 0.06275452999398112,
+                "snapshot_write": 0.0006518439913634211,
+                "prepare": 1.7813988961279392e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.0150984700012486
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 2,
+                  "seconds": 2.023889947013231
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 0.1292399980011396,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "19dd0e82570240397097b7fc1d8060e25e9551178d86ebf1f2046d9e3cf33a62"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "ed8d271659d8548053837317f48fdaf58ef29ae1c5c30b0260cd016c6df6b2ae"
+              ]
+            ],
+            "trace": {
+              "seconds": 0.12923639098880813,
+              "stages": {
+                "cache_configuration": 0.00047670298954471946,
+                "lock_wait": 1.2714037438854575e-05,
+                "prune": 0.00018579198513180017,
+                "latexmk": 0.11206057600793429,
+                "pdf_copy": 0.00014717900194227695,
+                "dependencies": 0.014617888984503224,
+                "build": 0.12879184001940303,
+                "render": 0.1288097729848232,
+                "png": 5.740899359807372e-05,
+                "snapshot_write": 0.00033604601048864424,
+                "prepare": 1.793296542018652e-05
+              },
+              "rules": []
+            }
+          }
+        ]
+      },
+      "edit_means": {
+        "original-fresh": 7.3519672065012855,
+        "optimized": 4.6244285019784
+      },
+      "wall_seconds": 47.93438935279846,
+      "pdf_matches": 4,
+      "display_matches": 4,
+      "visible_edits": 4,
+      "artifact": {
+        "path": "/home/juergen/github/SlideMage/.previews/benchmarks/preview-user-edits-2026-10-11/title.tar.gz",
+        "sha256": "1c2a0bc2668c0b694f57bad3d345a130c28cb21850dd7dfa06beebc4cd3e1df4",
+        "files": 1647
+      }
+    },
+    "formula": {
+      "complete": true,
+      "case": "formula",
+      "recipe": {
+        "index": 54,
+        "slide": "1sv-EN-Lists-and-Formulas",
+        "title": "Edit a formula",
+        "token": "{\\sigma}",
+        "replacements": [
+          "{2\\sigma}",
+          "{3\\sigma}"
+        ],
+        "description": "Only the formula denominator changes; the frame title and other content stay unchanged."
+      },
+      "order": [
+        "optimized",
+        "original-fresh"
+      ],
+      "records": {
+        "original-fresh": [
+          {
+            "phase": "cold",
+            "seconds": 7.341969366010744,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "04a13c251e1ac99a8c0675f1e84e66e630fefbb44fcb9fa179aa567eb267aaee"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "68a703c80ba58064557c648943bcb5b2f802669689c8c569574edcfab45db8b1"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.031172590010101
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/formula/project/.build/preview-1sv-EN-Lists-and-Formulas-35b09a30",
+                  "run": 1,
+                  "seconds": 0.5393029249971732
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.006339977000607
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0586659600085113
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 7.464905753004132,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "8bfaeb519db5fbfa0dcde9bde97345e4fedf6f74c87cc78fcf15a23848c58cb2"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "d756101c96bb8c65b77dc36d84212469ad515f45e4d05a9fd7f86afd55b0f324"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.138388847990427
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/formula/project/.build/preview-1sv-EN-Lists-and-Formulas-9605f076",
+                  "run": 1,
+                  "seconds": 0.5344120650261175
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.0651526779984124
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.033372903999407
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 7.400615418009693,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "1a61b150e9cc918a63869dc802d8eff95252fb09f038329d24304fd1f0127b49"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "5d1425ec2688e6c1ab544c4d95c859bfee35ab871504a3ccb5d86b09c6a60799"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0614794900175184
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/formula/project/.build/preview-1sv-EN-Lists-and-Formulas-72083794",
+                  "run": 1,
+                  "seconds": 0.5534732549858745
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.0523801800154615
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0348026379942894
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 7.400101038016146,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "1a61b150e9cc918a63869dc802d8eff95252fb09f038329d24304fd1f0127b49"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "5d1425ec2688e6c1ab544c4d95c859bfee35ab871504a3ccb5d86b09c6a60799"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0457347509800456
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/formula/project/.build/preview-1sv-EN-Lists-and-Formulas-6dac23ef",
+                  "run": 1,
+                  "seconds": 0.5335610409965739
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.065167486987775
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0588720660016406
+                }
+              ]
+            }
+          }
+        ],
+        "optimized": [
+          {
+            "phase": "cold",
+            "seconds": 7.4235925170069095,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "04a13c251e1ac99a8c0675f1e84e66e630fefbb44fcb9fa179aa567eb267aaee"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "68a703c80ba58064557c648943bcb5b2f802669689c8c569574edcfab45db8b1"
+              ]
+            ],
+            "trace": {
+              "seconds": 7.4235707860207185,
+              "stages": {
+                "cache_configuration": 0.0005299939948599786,
+                "prune": 0.00018480999278835952,
+                "lock_wait": 3.1388975912705064e-05,
+                "wrapper_write": 4.375301068648696e-05,
+                "latexmk": 7.229136322974227,
+                "pdf_copy": 0.00028363801538944244,
+                "dependencies": 0.014806085993768647,
+                "build": 7.249527448992012,
+                "render": 7.249557236005785,
+                "png": 0.1731206190015655,
+                "snapshot_write": 0.0008293910068459809,
+                "prepare": 2.978701377287507e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.029650578973815
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/formula/project/.build/optimized/preview-cache/8d82494162de4019c59cf71a/preview-8d82494162de4019c59cf71a",
+                  "number": 1,
+                  "seconds": 0.531887700984953
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 2,
+                  "seconds": 2.031536127004074
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 3,
+                  "seconds": 2.05575159098953
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 2.3639351760211866,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "8bfaeb519db5fbfa0dcde9bde97345e4fedf6f74c87cc78fcf15a23848c58cb2"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "d756101c96bb8c65b77dc36d84212469ad515f45e4d05a9fd7f86afd55b0f324"
+              ]
+            ],
+            "trace": {
+              "seconds": 2.3639290540013462,
+              "stages": {
+                "cache_configuration": 0.000506860000314191,
+                "lock_wait": 1.5138997696340084e-05,
+                "prune": 0.00021408600150607526,
+                "latexmk": 2.282768808014225,
+                "pdf_copy": 0.00014562602154910564,
+                "dependencies": 0.014865098026348278,
+                "build": 2.299780853005359,
+                "render": 2.2999508140201215,
+                "png": 0.06327435601269826,
+                "snapshot_write": 0.0006459529977291822,
+                "prepare": 0.0001699610147625208
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.01553296300699
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 2.3886971970205195,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "1a61b150e9cc918a63869dc802d8eff95252fb09f038329d24304fd1f0127b49"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "5d1425ec2688e6c1ab544c4d95c859bfee35ab871504a3ccb5d86b09c6a60799"
+              ]
+            ],
+            "trace": {
+              "seconds": 2.3886933989997488,
+              "stages": {
+                "cache_configuration": 0.0005240429891273379,
+                "lock_wait": 1.821498153731227e-05,
+                "prune": 0.00019946799147874117,
+                "latexmk": 2.30981488499674,
+                "pdf_copy": 0.0001478899794165045,
+                "dependencies": 0.014385039015905932,
+                "build": 2.326291947014397,
+                "render": 2.3263102910132147,
+                "png": 0.06170207800460048,
+                "snapshot_write": 0.0006335100042633712,
+                "prepare": 1.834399881772697e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.0468786739802454
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 0.1325101449911017,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "1a61b150e9cc918a63869dc802d8eff95252fb09f038329d24304fd1f0127b49"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "5d1425ec2688e6c1ab544c4d95c859bfee35ab871504a3ccb5d86b09c6a60799"
+              ]
+            ],
+            "trace": {
+              "seconds": 0.13250631801201962,
+              "stages": {
+                "cache_configuration": 0.00048500901903025806,
+                "lock_wait": 1.2422999134287238e-05,
+                "prune": 0.0002051590126939118,
+                "latexmk": 0.11398818899760954,
+                "pdf_copy": 0.0001602540141902864,
+                "dependencies": 0.015695910988142714,
+                "build": 0.13205039300373755,
+                "render": 0.1320696499897167,
+                "png": 5.9592974139377475e-05,
+                "snapshot_write": 0.00034192801103927195,
+                "prepare": 1.9256985979154706e-05
+              },
+              "rules": []
+            }
+          }
+        ]
+      },
+      "edit_means": {
+        "original-fresh": 7.432760585506912,
+        "optimized": 2.376316186520853
+      },
+      "wall_seconds": 43.426634550094604,
+      "pdf_matches": 4,
+      "display_matches": 4,
+      "visible_edits": 4,
+      "artifact": {
+        "path": "/home/juergen/github/SlideMage/.previews/benchmarks/preview-user-edits-2026-10-11/formula.tar.gz",
+        "sha256": "6de56d81c89fc60120ddc6a742d22eaa39afa44dcefdb4879bcb229a63d349cb",
+        "files": 1647
+      }
+    },
+    "figure": {
+      "complete": true,
+      "case": "figure",
+      "recipe": {
+        "index": 58,
+        "slide": "1c9-EN-Placing-Figures",
+        "title": "Resize a figure",
+        "token": "height=4.2cm",
+        "replacements": [
+          "height=3.9cm",
+          "height=3.7cm"
+        ],
+        "description": "Only the figure height changes; the frame title and source text stay unchanged."
+      },
+      "order": [
+        "original-fresh",
+        "optimized"
+      ],
+      "records": {
+        "original-fresh": [
+          {
+            "phase": "cold",
+            "seconds": 7.417738396994537,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "4566b487994a96ab7c94e780494c01b1e684e0beb94cb37ab7120abf06e24ff0"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "eeb036edc03d13421b5d1a13ab9d11fdc559b1935aff71437704899eff95b9d0"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0735675930045545
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/figure/project/.build/preview-1c9-EN-Placing-Figures-1c71a5a2",
+                  "run": 1,
+                  "seconds": 0.5392952179827262
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.0567279900133144
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0438185799866915
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 7.368987081979867,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "aeb0207473fd81fbfcfc81214403d5474a43bcbea99c58a9e3e42c2ef47eead4"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "e97b68fcc5fbb2cfc3eaf878c8601efca465a53666b260272bdf9f7bb755de6d"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.0689523550099693
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/figure/project/.build/preview-1c9-EN-Placing-Figures-0be411eb",
+                  "run": 1,
+                  "seconds": 0.5366239919967484
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.014770915993722
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.044654878991423
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 7.334461582999211,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "f9242843c96b1e91b327b7db3e2b4448de2411781f8b735b40abd2058a95cf01"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "203a1f4447de95bdecea30111f3edee1a5b0d6d3a4c0f47755821a8fe2813aaf"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.013811037002597
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/figure/project/.build/preview-1c9-EN-Placing-Figures-546f8246",
+                  "run": 1,
+                  "seconds": 0.5406051469908562
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.0647509370173793
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0227507910167333
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 7.34249171501142,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "f9242843c96b1e91b327b7db3e2b4448de2411781f8b735b40abd2058a95cf01"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "203a1f4447de95bdecea30111f3edee1a5b0d6d3a4c0f47755821a8fe2813aaf"
+              ]
+            ],
+            "trace": {
+              "stages": {},
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "run": 1,
+                  "seconds": 2.050166207976872
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/figure/project/.build/preview-1c9-EN-Placing-Figures-b54ab79b",
+                  "run": 1,
+                  "seconds": 0.5364175479917321
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 2,
+                  "seconds": 2.0328788260230795
+                },
+                {
+                  "rule": "lualatex",
+                  "run": 3,
+                  "seconds": 2.0319261550030205
+                }
+              ]
+            }
+          }
+        ],
+        "optimized": [
+          {
+            "phase": "cold",
+            "seconds": 7.539508979010861,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "4566b487994a96ab7c94e780494c01b1e684e0beb94cb37ab7120abf06e24ff0"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "eeb036edc03d13421b5d1a13ab9d11fdc559b1935aff71437704899eff95b9d0"
+              ]
+            ],
+            "trace": {
+              "seconds": 7.53950242701103,
+              "stages": {
+                "cache_configuration": 0.0005240119935479015,
+                "prune": 0.00018419898697175086,
+                "lock_wait": 2.794302417896688e-05,
+                "wrapper_write": 2.9524991987273097e-05,
+                "latexmk": 7.328858704975573,
+                "pdf_copy": 0.0001981350069399923,
+                "dependencies": 0.014914822997525334,
+                "build": 7.3487535909807775,
+                "render": 7.348777186009102,
+                "png": 0.18978587098536082,
+                "snapshot_write": 0.0008768010011408478,
+                "prepare": 2.359502832405269e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.04996157498681
+                },
+                {
+                  "rule": "biber /tmp/slidemage-typical-edits-2026-10-11/figure/project/.build/optimized/preview-cache/e2e91a8796fba56f44b46a04/preview-e2e91a8796fba56f44b46a04",
+                  "number": 1,
+                  "seconds": 0.5477403510012664
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 2,
+                  "seconds": 2.0671473359980155
+                },
+                {
+                  "rule": "lualatex",
+                  "number": 3,
+                  "seconds": 2.084765273000812
+                }
+              ]
+            }
+          },
+          {
+            "phase": "edit-1",
+            "seconds": 2.4251435859769117,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "aeb0207473fd81fbfcfc81214403d5474a43bcbea99c58a9e3e42c2ef47eead4"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "e97b68fcc5fbb2cfc3eaf878c8601efca465a53666b260272bdf9f7bb755de6d"
+              ]
+            ],
+            "trace": {
+              "seconds": 2.425137715996243,
+              "stages": {
+                "cache_configuration": 0.0006082619947846979,
+                "lock_wait": 1.8063001334667206e-05,
+                "prune": 0.00020931600010953844,
+                "latexmk": 2.3406276080058888,
+                "pdf_copy": 0.00014298100722953677,
+                "dependencies": 0.014256426016800106,
+                "build": 2.3574631600058638,
+                "render": 2.3574860829976387,
+                "png": 0.06687531198258512,
+                "snapshot_write": 0.0007208049937617034,
+                "prepare": 2.2922991774976254e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.076036693993956
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "edit-2",
+            "seconds": 2.4322890079929493,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "f9242843c96b1e91b327b7db3e2b4448de2411781f8b735b40abd2058a95cf01"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "203a1f4447de95bdecea30111f3edee1a5b0d6d3a4c0f47755821a8fe2813aaf"
+              ]
+            ],
+            "trace": {
+              "seconds": 2.4322853309859056,
+              "stages": {
+                "cache_configuration": 0.0005174799880478531,
+                "lock_wait": 1.1771975550800562e-05,
+                "prune": 0.00017136501264758408,
+                "latexmk": 2.348704614007147,
+                "pdf_copy": 0.00013663899153470993,
+                "dependencies": 0.014537538023432717,
+                "build": 2.3655479500012007,
+                "render": 2.3655737089866307,
+                "png": 0.06599805998848751,
+                "snapshot_write": 0.0006672239978797734,
+                "prepare": 2.5758985430002213e-05
+              },
+              "rules": [
+                {
+                  "rule": "lualatex",
+                  "number": 1,
+                  "seconds": 2.0759890679910313
+                }
+              ]
+            },
+            "visible_edit": true
+          },
+          {
+            "phase": "unchanged",
+            "seconds": 0.13484002801124007,
+            "ok": true,
+            "signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "f9242843c96b1e91b327b7db3e2b4448de2411781f8b735b40abd2058a95cf01"
+              ]
+            ],
+            "display_signature": [
+              [
+                453.5429992675781,
+                255.1179962158203,
+                "203a1f4447de95bdecea30111f3edee1a5b0d6d3a4c0f47755821a8fe2813aaf"
+              ]
+            ],
+            "trace": {
+              "seconds": 0.13483573999837972,
+              "stages": {
+                "cache_configuration": 0.0004961600061506033,
+                "lock_wait": 1.2293981853872538e-05,
+                "prune": 0.00019296500249765813,
+                "latexmk": 0.11558870901353657,
+                "pdf_copy": 0.00020257398136891425,
+                "dependencies": 0.01630544799263589,
+                "build": 0.13436314501450397,
+                "render": 0.13438716900418513,
+                "png": 6.402199505828321e-05,
+                "snapshot_write": 0.000340174010489136,
+                "prepare": 2.402398968115449e-05
+              },
+              "rules": []
+            }
+          }
+        ]
+      },
+      "edit_means": {
+        "original-fresh": 7.351724332489539,
+        "optimized": 2.4287162969849305
+      },
+      "wall_seconds": 43.558467864990234,
+      "pdf_matches": 4,
+      "display_matches": 4,
+      "visible_edits": 4,
+      "artifact": {
+        "path": "/home/juergen/github/SlideMage/.previews/benchmarks/preview-user-edits-2026-10-11/figure.tar.gz",
+        "sha256": "07d91ca80ebbf759d211dbfb91e1ad1642eaf24f77bd205bc48f1c97bd4ce100",
+        "files": 1647
+      }
+    }
+  },
+  "added_wall_seconds": 139.26652908325195,
+  "added_requests": 24,
+  "pdf_matches": 16,
+  "display_matches": 16,
+  "visible_edits": 16,
+  "summary_artifact": {
+    "path": "/home/juergen/github/SlideMage/.previews/benchmarks/preview-user-edits-2026-10-11.tar.gz",
+    "sha256": "8718d252b7d1353bb564cea6aca4b264d32f3c049deb77cda1d5c20e666b172a",
+    "files": 13
+  }
+}

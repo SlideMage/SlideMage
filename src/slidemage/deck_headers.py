@@ -94,7 +94,7 @@ def _regenerate_headers_impl() -> tuple[int, int]:
     deck_paths = [
         p for directory in DECKS_GLOBS if directory.is_dir()
         for p in directory.glob("*.tex")
-        if p.name != "#workdeck.tex" and not p.name.startswith("zzz_")
+        if p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))
     ]
 
     # id -> sorted list of deck display names that include it

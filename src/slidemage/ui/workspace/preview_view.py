@@ -19,17 +19,23 @@ is guessed.
 from __future__ import annotations
 
 import threading
+from threading import Thread
+import shutil
+import time
+import weakref
 from dataclasses import dataclass
+from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
+from ...preview_metrics import PreviewMetrics
 from ...slide_language import TranslationLink, translation_link
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
@@ -93,6 +99,38 @@ class _Job:
     mtime: int = 0                  # of the slide's source when the render started
     note: str = ""                  # set: rendered from the editor buffer, not the saved file
     external: bool = False          # open the PDF in the viewer instead of showing it
+    generation: int = 0
+    source: Optional[Path] = None
+    buffer_text: Optional[str] = None
+    timestamp: bool = False
+    snapshot_template: Optional[str] = None
+    images: tuple = ()
+    requested: float = 0
+    metrics: Optional[dict] = None
+
+
+def _discard_job(job: _Job) -> None:
+    if job.pdf is not None and job.pdf.parent.name.startswith('slidemage_preview_'):
+        shutil.rmtree(job.pdf.parent, ignore_errors=True)
+
+
+class _Lifetime:
+    """Plain Python receiver: it survives QObject destruction and queued results."""
+
+    def __init__(self, pane):
+        self.owner = weakref.ref(pane)
+        self.closed = threading.Event()
+        self.job = None
+
+    def close(self, *_args):
+        self.closed.set()
+        owner = self.owner()
+        if owner is not None:
+            # Only Python attributes; the C++ QWidget may already be gone.
+            owner._pending = None
+            owner._generation += 1
+        if self.job is not None:
+            _discard_job(self.job)
 
 
 class _Page(QWidget):
@@ -174,14 +212,29 @@ class PreviewPane(Surface):
         self._title = ""
         self._message = ""
         self._busy = False
+        self._generation = 0
+        self._active: Optional[_Job] = None
+        self._pending = None
+        self._lifetime = _Lifetime(self)
+        self._shown_mtime = 0
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(300)
+        self._debounce.timeout.connect(self._launch_pending)
+        self._buffer_notice = QTimer(self)
+        self._buffer_notice.setSingleShot(True)
+        self._buffer_notice.setInterval(150)
+        self._buffer_notice.timeout.connect(self._refresh)
+        self.destroyed.connect(self._lifetime.close)
         self._error = ""
         self._last_pdf: Optional[Path] = None
         self._scope = "slide"
         self._overlay = 0
-        # Renders of the saved slide this session: (target.key, view, language) -> (pixmap, source mtime).
-        self._pixmaps: dict[tuple, tuple[QPixmap, int]] = {}
+        # Renders this session: (target.key, view, language, timestamp) -> image.
+        self._pixmaps: OrderedDict[tuple, tuple[QPixmap, int]] = OrderedDict()
         # The latest render of the editor buffer: (target.key, view, language) -> (pixmap, note).
         self._adhoc: Optional[tuple[tuple, QPixmap, str]] = None
+        self._adhoc_text: Optional[str] = None
         self._finished.connect(self._on_finished)
 
         layout = QVBoxLayout(self)
@@ -223,44 +276,69 @@ class PreviewPane(Surface):
 
         state.view_changed.connect(self._on_context_changed)
         state.language_changed.connect(self._on_context_changed)
+        state.footer_timestamp_changed.connect(self._on_context_changed)
         self._refresh()
 
     # -- what is shown -----------------------------------------------------------------
 
     def show_slide(self, target: Optional[PreviewTarget], row: Optional[SlideRow], title: str, message: str) -> None:
         """Show `target` (None: just `message`). `row` is its row in the open deck, if it has one."""
-        if target is None or self._target is None or target.key != self._target.key:
+        changed = target is None or self._target is None or target.key != self._target.key
+        mtime = _mtime(target.source_path) if target else 0
+        if changed or mtime != self._shown_mtime:
+            self._invalidate()
+        if changed:
             self._error = ""
             self._adhoc = None
         self._target, self._row, self._title, self._message = target, row, title, message
+        self._shown_mtime = mtime
         self._refresh()
 
     def _on_context_changed(self, _value: str) -> None:
+        self._invalidate()
         self._error = ""      # a failure belongs to the view and language it happened in
         self._refresh()
+
+    def buffer_changed(self, path: Path) -> None:
+        """Refresh a buffer preview's age after typing pauses, without compiling."""
+        if self._target is not None and path == self._target.source_path:
+            self._buffer_notice.start()
 
     def _image(self, target: PreviewTarget) -> Optional[tuple[QPixmap, bool, str]]:
         """(the page, whether it is as new as the slide's source, a note) -- the latest
         render of the buffer, else this session's render of the saved file, else the
         cached snapshot (instructor view only)."""
         view, language = self.state.view, self.state.language
-        key = (target.key, view, language)
+        key = (target.key, view, language, self._footer_timestamp())
         if self._adhoc is not None and self._adhoc[0] == key:
-            return self._adhoc[1], True, self._adhoc[2]
+            buffer = self._buffer()
+            fresh = buffer is None or buffer[0] == self._adhoc_text
+            return self._adhoc[1], fresh, self._adhoc[2] if fresh else "Older than the editor buffer"
         mtime = _mtime(target.source_path)
         rendered = self._pixmaps.get(key)
+        if rendered is not None:
+            self._pixmaps.move_to_end(key)
         if rendered is not None and rendered[1] == mtime:
             return rendered[0], True, ""
+        if self._adhoc is not None and self._adhoc[0][:3] == key[:3]:
+            return self._adhoc[1], False, "Timestamp setting changed"
+        previous = next((image for identity, image in reversed(self._pixmaps.items())
+                         if identity[:3] == key[:3]), None)
+        if previous is not None and rendered is None:
+            return previous[0], False, "Timestamp setting changed"
         cached = preview_target.cached_image(target) if view == "instructor" else None
         if cached is not None and (cached[1] or rendered is None):
             pixmap = QPixmap(str(cached[0]))
             if not pixmap.isNull():
-                return pixmap, cached[1], ""
+                return pixmap, False, "Cached preview; render to verify current settings"
         return (rendered[0], False, "") if rendered is not None else None
 
     def _refresh(self) -> None:
         target, row = self._target, self._row
         view, language = self.state.view, self.state.language
+        job = self._pending[1] if self._pending else self._active
+        busy_here = (target is not None and job is not None and job.generation == self._generation
+                     and job.target_key == target.key and (job.view, job.language) == (view, language))
         while (item := self._chips.takeAt(0)) is not None:
             if item.widget() is not None:
                 item.widget().setParent(None)
@@ -275,7 +353,7 @@ class PreviewPane(Surface):
         self._id.setText(target.bare_id if target else "")
         self._name.setText(self._title if target else "")
         self._render.setVisible(target is not None)
-        self._render.setEnabled(target is not None and not self._busy)
+        self._render.setEnabled(target is not None)
         self._render.set_text(f"Render · {short_view(view)} · {language}")
         self._rebuild_menu()
 
@@ -288,16 +366,17 @@ class PreviewPane(Surface):
             found = self._image(target)
             if found is None:
                 self._page.show_message(
-                    f"No preview for the {VIEW_LABELS[view]} view yet." if not self._busy else "Rendering…",
-                    not self._busy)
+                    f"No preview for the {VIEW_LABELS[view]} view yet." if not busy_here else "Rendering…",
+                    not busy_here)
             else:
                 self._page.show_image(found[0])
                 if found[2]:
-                    status, tone, icon = found[2], "info", "edit_note"
+                    status, tone, icon, can_render = found[2], "info" if found[1] else "warning", "edit_note", not found[1]
                 elif not found[1]:
                     status, tone, icon, can_render = "Older than the slide's source", "warning", "history", True
-        if self._busy:
-            status, tone, icon, can_render = "Rendering…", "info", "autorenew", False
+        if busy_here:
+            status = "Rendering…" if job is self._active else "Waiting to render…"
+            tone, icon, can_render = "info", "autorenew", False
         elif self._error:
             status, tone, icon, can_render = "Render failed", "error", "error_outline", target is not None
         self._status_chip.setVisible(bool(status))
@@ -313,12 +392,12 @@ class PreviewPane(Surface):
         menu = PopoverMenu(self, min_width=260)
         has_buffer = self._target is not None
         menu.add_header("Editor buffer, as it is now")
-        menu.add_item(BUFFER, "Render the buffer", meta="Ctrl+R", enabled=has_buffer and not self._busy)
+        menu.add_item(BUFFER, "Render the buffer", meta="Ctrl+R", enabled=has_buffer)
         for scope, label in SCOPES:
             menu.add_item(f"scope:{scope}", label, icon="check" if scope == self._scope else "")
         menu.add_item(OVERLAY, f"Reveal step: {self._overlay or 'all'}…", enabled=self._scope != "element")
         menu.add_separator()
-        menu.add_item(PRESENTER, "Presenter PDF", meta="opens in the viewer", enabled=has_buffer and not self._busy)
+        menu.add_item(PRESENTER, "Presenter PDF", meta="opens in the viewer", enabled=has_buffer)
         menu.add_item(TRANSCRIPT, "Render transcript", enabled=has_buffer)
         menu.add_item(OPEN_PDF, "Open the last PDF", enabled=self._last_pdf is not None)
         menu.triggered.connect(self._on_menu)
@@ -349,51 +428,135 @@ class PreviewPane(Surface):
     def _footer_timestamp(self) -> bool:
         return self.state.footer_timestamp
 
-    def _start(self, work: Callable[[], Path], job: _Job) -> None:
+    @property
+    def _closed(self) -> bool:
+        return self._lifetime.closed.is_set()
+
+    def _dispose(self) -> None:
+        self._lifetime.close()
+
+    def _invalidate(self) -> None:
+        self._generation += 1
+        self._error = ''
+        self._pending = None
+        self._debounce.stop()
+        self._buffer_notice.stop()
+        self._busy = self._active is not None
+
+    def _start(self, work: Callable[[], Path], job: _Job, *, debounce: bool = False) -> None:
+        """One running compile and one replaceable latest request; never overlap."""
+        self._generation += 1
+        job.generation = self._generation
+        job.requested = time.perf_counter()
+        self._shown_mtime = job.mtime
+        self._pending = (work, job)
         self._busy, self._error = True, ""
+        if debounce:
+            self._debounce.start()
+        else:
+            self._debounce.stop()
+            self._launch_pending()
         self._refresh()
-        threading.Thread(target=self._run, args=(work, job), daemon=True).start()
+
+    def _launch_pending(self) -> None:
+        if self._closed or self._active is not None or self._pending is None or self._debounce.isActive():
+            return
+        work, job = self._pending
+        self._pending = None
+        self._active = job
+        self._lifetime.job = job
+        Thread(target=self._run, args=(work, job), daemon=True).start()
 
     def _run(self, work: Callable[[], Path], job: _Job) -> None:
+        with PreviewMetrics() as metrics:
+            try:
+                job.pdf = work()
+                if not job.external and not self._closed and job.generation == self._generation:
+                    job.png, job.images = slide_snapshot.prepare_preview(job.pdf, bool(job.snapshot_template))
+            except Exception as exc:  # noqa: BLE001 -- shown as the error; the render must always end
+                job.error = str(exc) or type(exc).__name__
+        job.metrics = metrics.to_dict()
+        if self._closed:
+            self._discard(job)
+            return
         try:
-            job.pdf = work()
-            job.png = slide_snapshot.page_png(job.pdf)
-        except Exception as exc:  # noqa: BLE001 -- shown as the error; the render must always end
-            job.error = str(exc) or type(exc).__name__
-        self._finished.emit(job)
+            self._finished.emit(job)
+        except RuntimeError:  # Qt owner was destroyed while TeX finished.
+            self._discard(job)
+
+    _discard = staticmethod(_discard_job)
+
+    def _accepts(self, job: _Job) -> bool:
+        target = self._target
+        if (target is None or job.generation != self._generation or target.key != job.target_key
+                or (self.state.view, self.state.language, self.state.footer_timestamp)
+                != (job.view, job.language, job.timestamp)
+                or _mtime(job.source) != job.mtime):
+            return False
+        buffer = self._buffer()
+        return job.buffer_text is None or buffer is None or buffer[0] == job.buffer_text
 
     def _on_finished(self, job: _Job) -> None:
-        self._busy = False
-        if job.error:
+        if self._closed:
+            self._discard(job)
+            return
+        if self._active is not job:
+            self._discard(job)
+            return
+        self._active = None
+        self._lifetime.job = None
+        self._busy = self._pending is not None
+        publish_start = time.perf_counter()
+        accepted = self._accepts(job)
+        if not accepted:
+            self._discard(job)
+        elif job.error:
+            self._discard(job)
             self._error = job.error
             self.app.log(f"*** Render failed: {job.error} ***")
         else:
+            if job.images and job.snapshot_template:
+                try:
+                    slide_snapshot.publish_preview(job.images, self._target.bare_id, job.snapshot_template)
+                except Exception as exc:
+                    self.app.log(f"    (preview snapshot not updated: {exc})")
             self._last_pdf = job.pdf
             if job.external:
                 slide_preview.open_pdf(job.pdf)
             else:
                 pixmap = QPixmap()
                 if job.png is not None and pixmap.loadFromData(job.png):
-                    key = (job.target_key, job.view, job.language)
+                    key = (job.target_key, job.view, job.language, job.timestamp)
                     if job.note:
                         self._adhoc = (key, pixmap, job.note)
+                        self._adhoc_text = job.buffer_text
                     else:
                         self._adhoc = None
                         self._pixmaps[key] = (pixmap, job.mtime)
+                        self._pixmaps.move_to_end(key)
+                        while len(self._pixmaps) > 12:
+                            self._pixmaps.popitem(last=False)
             self.rendered.emit()
+        self._launch_pending()
         self._refresh()
+        if job.metrics is not None:
+            job.metrics['accepted'] = accepted
+            job.metrics['publication_seconds'] = time.perf_counter() - publish_start
+            job.metrics['request_to_finished_seconds'] = time.perf_counter() - job.requested
+            self.app.log(f"Preview timing: {job.metrics}")
 
     def _job(self, target: PreviewTarget, **fields) -> _Job:
         return _Job(target_key=target.key, view=self.state.view, language=self.state.language,
-                    mtime=_mtime(target.source_path), **fields)
+                    mtime=_mtime(target.source_path), source=target.source_path,
+                    timestamp=self._footer_timestamp(), **fields)
 
     def render_now(self) -> None:
         """Compile the saved slide in the view and language being edited."""
         self._render_saved(precheck=True)
 
-    def _render_saved(self, precheck: bool) -> None:
+    def _render_saved(self, precheck: bool, *, debounce: bool = False) -> None:
         target = self._target
-        if target is None or self._busy:
+        if target is None:
             return
         path = target.source_path
         if precheck and not render_check.confirm_render(
@@ -401,21 +564,26 @@ class PreviewPane(Surface):
                 show_in_editor=lambda issue: render_check.open_issue_in_editor(self.app, issue)):
             return
         view, language = self.state.view, self.state.language
+        timestamp = self._footer_timestamp()
         self._start(lambda: preview_target.render(
-            target, view, language, footer_timestamp=self._footer_timestamp(), log=self.app.signals.log.emit),
-            self._job(target))
+            target, view, language, footer_timestamp=timestamp, log=self.app.signals.log.emit, capture_snapshot=False),
+            self._job(target, snapshot_template=target.template
+                      if view == 'instructor' and not target.is_frozen_alone else None), debounce=debounce)
 
     def render_after_save(self) -> None:
         """The slide was saved: render it again, unless its source has errors (then
         the page just stays older than the source, and Render asks)."""
         target = self._target
         if target is not None and not latex_lint.check_slide_files([target.source_path]).errors:
-            self._render_saved(precheck=False)
+            self._render_saved(precheck=False, debounce=True)
+        elif target is not None:
+            self._invalidate()
+            self._refresh()
 
     def render_buffer(self, presenter: bool = False) -> None:
         """Compile the editor's buffer, saved or not, per the scope and reveal step chosen."""
         target = self._target
-        if target is None or self._busy:
+        if target is None:
             return
         text, selection = self._buffer() or (slide_source.read_slide_source(target.source_path)[0], "")
         scope = "slide" if presenter else self._scope
@@ -430,10 +598,14 @@ class PreviewPane(Surface):
             return
         view, language = self.state.view, self.state.language
         overlay = None if scope == "element" else (self._overlay or None)
+        timestamp = self._footer_timestamp()
         self._start(lambda: preview_target.render_text(
-            target, body, view, language, footer_timestamp=self._footer_timestamp(), log=self.app.signals.log.emit,
-            presenter=presenter, mode=scope, overlay=overlay),
-            self._job(target, external=presenter, note="Rendered from the editor buffer, not the saved file"))
+            target, body, view, language, footer_timestamp=timestamp, log=self.app.signals.log.emit,
+            presenter=presenter, mode=scope, overlay=overlay, capture_snapshot=False),
+            self._job(target, external=presenter, buffer_text=text,
+                      snapshot_template=target.template if view == 'instructor' and not presenter
+                      and scope == 'slide' and overlay is None and not target.is_frozen_alone else None,
+                      note="Rendered from the editor buffer, not the saved file"))
 
     def render_transcript(self) -> None:
         """A one-slide transcript preview of the buffer (nothing is written to disk)."""
@@ -445,7 +617,9 @@ class PreviewPane(Surface):
         show_transcript_preview(self.app, text, target.bare_id, target.id_slug, self.state.view, self.state.language)
 
 
-def _mtime(path: Path) -> int:
+def _mtime(path: Optional[Path]) -> int:
+    if path is None:
+        return 0
     try:
         return path.stat().st_mtime_ns
     except OSError:

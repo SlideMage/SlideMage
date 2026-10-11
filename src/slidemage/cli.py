@@ -61,6 +61,11 @@ def check_project_format(root: Path, app_version: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> None:
+    if (sys.argv[1:] if argv is None else argv)[:1] == ['--preview-raster']:
+        # A frozen executable has no python -m; dispatch before project/GUI setup.
+        from .preview_raster import serve
+        serve()
+        return
     if (sys.argv[1:] if argv is None else argv)[:1] == [CLAUDE_HOOK_FLAG]:
         # Claude Code's PreToolUse hook (ai/claude_hook.py), run as this program in a frozen build, which
         # has no `python -m`: before anything else, no window.

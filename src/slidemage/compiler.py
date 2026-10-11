@@ -106,13 +106,14 @@ def removable_build_entries() -> list[Path]:
     (2026-10-08, direct instruction: "They are small and would be good to
     keep even if the user generally wants to clean up").
     """
+    from .preview_build import is_active
     snapshot = project.is_snapshot(PROJECT_ROOT)
     with _BUILD_STATE_LOCK:
         if not BUILD_DIR.is_dir():
             return []
         return sorted(
             (entry for entry in BUILD_DIR.iterdir()
-             if entry not in _ACTIVE_BUILD_DIRS
+             if entry not in _ACTIVE_BUILD_DIRS and not is_active(entry)
              and entry.name != compile_records.RECORDS_DIRNAME
              and not (snapshot and (entry / f"{entry.name}.timestamp").is_file())),
             key=lambda entry: entry.name,

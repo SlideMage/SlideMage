@@ -2875,11 +2875,34 @@ SLIDEMASTER_PROJECT=/path/to/project python -m slidemage.preview_cli \
 
 Use `--lines 12:30 --mode region` for a source region, `--mode element` for a
 self-contained fragment, `--overlay 2` for one reveal state, or `--no-cache` to
-use fresh build files. Watch mode follows changes to the selected source file.
+use fresh build files. Watch mode follows the source, owning deck, project latexmk configuration and recorded
+inputs such as included preambles, graphics and bibliography files. Use `--profile`
+to print build-stage and TeX/bibliography-pass timings as JSON.
 See `tools/preview_benchmark/README.md` for the reproducible manual benchmark.
 
-The [measured manual benchmark](docs/preview-benchmark-2026-10-09.md) covers all
-77 manual preview calls and the compatible combinations. Reusable builds plus
+The [historical manual benchmark](docs/preview-benchmark-2026-10-09.md) covers
+77 preview calls. The [BIG CHANGE 2 comparison](docs/preview-benchmark-2026-10-11.md)
+measures all 81 calls in the current manual with real visible edits and unchanged requests.
+Unchanged previews improve from a median of 0.234 s to 0.138 s; interleaved controls
+show essentially unchanged real-edit speed. The report retains the full-run timing variation
+and the compatible combinations. Reusable builds plus
 in-memory source rendering are the default editor path; choose an overlay when
 only one reveal state is needed. The `.fmt` preamble-cache probes failed with
 the tested LuaLaTeX installation, so no `.fmt` cache is enabled.
+
+BIG CHANGE 2 queues the latest render while one is running and debounces automatic
+renders after saving by 300 ms. Editor changes update an older-buffer notice after
+typing pauses, without compiling on a keystroke. A superseded result cannot replace the page, open a
+presenter PDF or publish a canonical snapshot. Image preparation is shared between
+the display and snapshots, with a bounded cache keyed by PDF content. A reusable
+child process rasterizes PDFs so MuPDF objects stay out of GUI/worker threads. Cached scratch
+previews skip SyncTeX output. Cleanup and build reservations share locks that also protect previews
+in other processes. Timestamp changes mark older accepted images stale, and disk thumbnails
+request verification by rendering. Actual pane destruction discards late results safely. A stalled
+raster helper is killed after 15 seconds and restarted by the next request.
+The [implementation details](docs/BIG_CHANGE_2_IMPLEMENTATION.md) describe invalidation
+and publication. The [v6.1.1 review fixes](docs/BIG_CHANGE_2_REVIEW_FIXES.md) passed
+1,491 tests and the [four-slide subset benchmark](docs/preview-benchmark-review-fixes-2026-10-11.md)
+completed 80 requests in 7 minutes 54 seconds without failures or PDF mismatches.
+Saved unchanged median improved from 0.235 s to 0.138 s; visible-edit speed was
+essentially unchanged.

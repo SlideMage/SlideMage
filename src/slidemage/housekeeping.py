@@ -9,7 +9,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import compiler, deck_snapshot, project
+from . import compiler, deck_snapshot, project, preview_build
 from .compiler import PDF_DIR
 from .deck_scan import DECKS_DIR, PROJECT_ROOT
 
@@ -50,13 +50,19 @@ def find_temp_files() -> TempFiles:
         # left behind by an interrupted snapshot; in a snapshot they're its own
         wrappers += DECKS_DIR.rglob(f"{deck_snapshot.WRAPPER_PREFIX}*.tex")
     scratch = list(TEMP_DIR.iterdir()) if TEMP_DIR.exists() else []
-    return TempFiles(compiler.removable_build_entries(), wrappers, scratch)
+    return TempFiles(compiler.removable_build_entries(), [p for p in wrappers if not preview_build.is_active(p)], scratch)
 
 
 def remove_temp_files(found: TempFiles) -> None:
-    for path in found.build + found.scratch:
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-        else:
-            path.unlink(missing_ok=True)
-    delete_files(found.wrappers)
+    paths = found.build + found.scratch + found.wrappers
+    # A preview can start after the sheet counts files. Both the reservation
+    # check and deletion use the same guard, including a live CLI's OS lock.
+    with preview_build.cleanup_guard(paths, PROJECT_ROOT) as permitted:
+        if not permitted:
+            return
+        for path in found.build + found.scratch:
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
+        delete_files(found.wrappers)
