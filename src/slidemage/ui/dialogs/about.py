@@ -1,7 +1,7 @@
 """The About sheet (UI_REDESIGN_PLAN.md, step 9): SlideMage's release history and license.
 
-The history is version.parse_history(), read from version.py's own docstring, so a new history
-paragraph appended there (this project's per-bump convention) shows up here with nothing else to
+The history is version.parse_history(), read from CHANGELOG.md, so a new history
+entry appended there (this project's per-bump convention) shows up here with nothing else to
 keep in sync. Each entry collapses to a one-line summary (some run to a dozen sentences);
 "show more" expands that one entry in place. The toggles are links of a made-up `toggle:N` scheme
 that the browser must not navigate to (setOpenLinks(False)), so anchorClicked() is all that

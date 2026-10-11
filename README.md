@@ -124,7 +124,8 @@ them, zipped, to that tag's release page. The workflow refuses a tag that
 doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
 always says which code it was built from:
 
-1. Bump `VERSION_NUMBER` and add its history entry in `version.py`, commit.
+1. Bump `VERSION_NUMBER` in `src/slidemage/version.py` and append its history
+   entry to `src/slidemage/CHANGELOG.md`, commit.
 2. `git tag vX.Y.Z && git push origin HEAD vX.Y.Z` (the branch and the tag).
 3. A few minutes later the release has `SlideMage-windows.zip` and
    `SlideMage-linux.zip`, and its release notes are that version's
@@ -133,8 +134,8 @@ always says which code it was built from:
 **Breaking releases.** A release that breaks with the past -- a project,
 deck, setting or workflow that worked before no longer does, or now
 behaves differently -- raises the major number (`v5.0.0`), and its
-history entry in `version.py` gets a paragraph of its own starting
-`BREAKING:` that says what changes and what to do about it. The release
+history entry in `src/slidemage/CHANGELOG.md` gets a paragraph of its own
+starting `BREAKING:` that says what changes and what to do about it. The release
 workflow refuses a major bump without that paragraph. Try it before
 tagging: `python packaging/release_notes.py vX.Y.Z`.
 

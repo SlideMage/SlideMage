@@ -1,4 +1,4 @@
-"""Print a release's notes -- its history entry in src/slidemage/version.py
+"""Print a release's notes -- its history entry in src/slidemage/CHANGELOG.md
 -- for the GitHub release (release.yml), and refuse a major version bump
 whose entry has no "BREAKING:" paragraph.
 
@@ -63,7 +63,7 @@ def check(tag: str, previous: str | None, paragraphs: list[str]) -> list[str]:
     if new is not None and old is not None and new[0] > old[0] and not marked:
         return [
             f"{tag} raises the major version (previous release {previous}) but its "
-            f"history entry in version.py has no paragraph starting {BREAKING_PREFIX!r}. "
+            f"history entry in CHANGELOG.md has no paragraph starting {BREAKING_PREFIX!r}. "
             "Say what breaks with the past and what users need to do."
         ]
     return []
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
 
     if notes_for(args.tag) is None:
-        print(f"error: version.py has no history entry for {args.tag}", file=sys.stderr)
+        print(f"error: CHANGELOG.md has no history entry for {args.tag}", file=sys.stderr)
         return 1
     previous = args.previous or previous_tag(args.tag)
     entries = entries_since(args.tag, previous)
