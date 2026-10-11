@@ -193,6 +193,67 @@ def test_cleanup_preserves_partners_and_link_headers_of_an_english_pin(project, 
         "bbb-EN-Two-current.tex", "ccc-mult-Three-current.tex"}
 
 
+@pytest.mark.parametrize("gap", [" ", "\t", "\n"])
+@pytest.mark.parametrize("source,filename", [
+    (r"\slide{bbb-EN-Two}", "bbb-EN-Two-current.tex"),
+    (r"\slidefinal{bbb-EN-Two}", "bbb-EN-Two-current.tex"),
+    (r"\omitslide{bbb-EN-Two}", "bbb-EN-Two-current.tex"),
+    (r"\slideversion{bbb-EN-Two}{1-0-0}", "bbb-EN-Two-v1-0-0.tex"),
+    (r"\omitslideversion{bbb-EN-Two}{1-0-0}", "bbb-EN-Two-v1-0-0.tex"),
+    (r"\conditionalslide[instructor]{bbb-EN-Two}", "bbb-EN-Two-current.tex"),
+    (r"\slidestep{bbb-EN-Two}[instructor]{1}", "bbb-EN-Two-current.tex"),
+])
+def test_spaced_calls_keep_slides_used_and_update_headers(project, monkeypatch, gap, source, filename):
+    from slidemage import deck_headers, unused_content
+
+    deck(project, source.replace("{", gap + "{").replace("[", gap + "[") + "\n")
+    (project / "slides" / filename).write_text("Slide content\n")
+    monkeypatch.setattr(unused_content, "SLIDES_DIR", project / "slides")
+    monkeypatch.setattr(unused_content, "DECKS_DIR", project / "decks")
+    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", project / "decks/archive")
+    assert unused_content.find_used_slide_filenames() == {filename}
+    assert filename not in {p.name for p in unused_content.find_unused_slides()}
+    monkeypatch.setattr(deck_headers, "SLIDES_DIR", project / "slides")
+    monkeypatch.setattr(deck_headers, "DECKS_GLOBS", [project / "decks"])
+    deck_headers.regenerate_headers()
+    assert "%% Included in decks: course" in (project / "slides/bbb-EN-Two-current.tex").read_text()
+
+
+@pytest.mark.parametrize("macro", ["slideversion", "omitslideversion"])
+def test_cleanup_keeps_explicit_pins_of_folded_translations(project, monkeypatch, macro):
+    from slidemage import unused_content
+
+    filename = "ddd-DE-Eins-v2-0-0.tex"
+    (project / "slides" / filename).write_text("Pinned German slide\n")
+    deck(project, f"\\{macro} {{aaa-EN-One}} {{1-0-0}}\n"
+                  f"\\{macro}\n{{ddd-DE-Eins}}\n{{2-0-0}}\n")
+    monkeypatch.setattr(unused_content, "SLIDES_DIR", project / "slides")
+    monkeypatch.setattr(unused_content, "DECKS_DIR", project / "decks")
+    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", project / "decks/archive")
+    assert unused_content.find_used_slide_filenames() == {
+        "aaa-EN-One-v1-0-0.tex", "aaa-EN-One-current.tex", "ddd-DE-Eins-current.tex", filename}
+    assert filename not in {p.name for p in unused_content.find_unused_slides()}
+
+
+def test_usage_scans_preserve_comment_policy_and_legacy_slides(project, monkeypatch):
+    from slidemage import deck_headers, unused_content
+
+    legacy = project / "slides/eee-Legacy-current.tex"
+    legacy.write_text("Legacy slide\n")
+    deck(project, "\\slide {eee-Legacy}\n% \\slide{bbb-EN-Two}\n"
+                  "\\% \\slide\n{ccc-mult-Three}\n")
+    monkeypatch.setattr(unused_content, "SLIDES_DIR", project / "slides")
+    monkeypatch.setattr(unused_content, "DECKS_DIR", project / "decks")
+    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", project / "decks/archive")
+    assert unused_content.find_used_slide_filenames() == {legacy.name, "ccc-mult-Three-current.tex"}
+    assert "bbb-EN-Two-current.tex" in {p.name for p in unused_content.find_unused_slides()}
+    monkeypatch.setattr(deck_headers, "SLIDES_DIR", project / "slides")
+    monkeypatch.setattr(deck_headers, "DECKS_GLOBS", [project / "decks"])
+    deck_headers.regenerate_headers()
+    for filename in (legacy.name, "bbb-EN-Two-current.tex", "ccc-mult-Three-current.tex"):
+        assert "%% Included in decks: course" in (project / "slides" / filename).read_text()
+
+
 def test_preview_maintenance_renders_both_files_independently(project, monkeypatch):
     from slidemage import update_all_previews
 

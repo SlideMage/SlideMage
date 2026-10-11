@@ -82,3 +82,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | A5 Version marker | Done, v7.0.2: implemented by Codex (gpt-6.1-sol, xhigh), reviewed by Claude. |
 | A1a Instructor only (LaTeX) | Done, v8.0.0 (BREAKING): implemented by Codex, reviewed by Claude; manual slides 1u4/1d7 corrected. |
 | A1b One visibility rule | Done, v8.0.1: implemented by Codex, reviewed by Claude. |
+| A3 Whitespace in slide calls | Done, v8.0.2: implemented by Codex, reviewed by Claude. |

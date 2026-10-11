@@ -1956,6 +1956,8 @@ BREAKING: \\omitslide and \\omitslideversion no longer send tagged slides to dur
 
 v8.0.1 (2026-10-11, code review fix A1b): One rule decides whether a slide call is typeset in a deck version (SlideCall.included_in), used by the slide list, the appendix agenda, the lint check, the compile progress count and page compiles; the appendix and lint kept their own rules, which still counted \\omitslide slides in the student versions. An explicitly empty list, \\conditionalslide[]{...} or \\slidestep{...}[]{...}, now means no version everywhere, as in LaTeX; it meant every version in the slide list and the transcript.
 
+v8.0.2 (2026-10-11, code review fix A3): Slide calls with spaces or a line break before an argument -- \\slide {id}, \\conditionalslide [instructor] {id} -- are legal TeX and are now recognised: the slide list shows them, "Archive unused content" no longer offers their files, and their slides get the deck in their "Included in decks" header. The two separate slide-call patterns of unused-content archiving and the deck headers are gone; both use the deck parser.
+
 """
 from __future__ import annotations
 
@@ -1965,7 +1967,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.1"
+VERSION_NUMBER = "v8.0.2"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

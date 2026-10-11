@@ -78,20 +78,22 @@ def test_move_section_swaps_whole_adjacent_sections_including_empty_section(tmp_
         deck_editor.move_section(deck.path, moved, deck.chapters[0], deck.chapters[2])
 
 
-def test_slide_can_cross_an_adjacent_section_marker_in_either_direction(tmp_path):
+@pytest.mark.parametrize("gap", ["", " ", "\t", "\r\n\t"])
+def test_slide_can_cross_an_adjacent_section_marker_in_either_direction(tmp_path, gap):
+    source = f"\\slide{gap}{{aaa-EN-First}}"
     text = (
-        "\\begin{document}\r\n\\section{One}\r\n\\slide{aaa-EN-First}\r\n"
+        f"\\begin{{document}}\r\n\\section{{One}}\r\n{source}\r\n"
         "% boundary note\r\n\r\n\\section{Two}\r\n\\slide{bbb-EN-Second}\r\n\\end{document}\r\n"
     )
     deck = _deck(tmp_path / "deck.tex", text)
     calls = deck_editor.parse_slide_calls(deck)
     moved = deck_editor.move_slide_past_section(deck.path, text, calls[0], deck.chapters[1])
-    assert "\\section{One}\r\n\\section{Two}\r\n% boundary note\r\n\r\n\\slide{aaa-EN-First}\r\n" in moved
+    assert f"\\section{{One}}\r\n\\section{{Two}}\r\n% boundary note\r\n\r\n{source}\r\n" in moved
 
     deck = _deck(deck.path, moved)
     calls = deck_editor.parse_slide_calls(deck)
     moved = deck_editor.move_slide_past_section(deck.path, moved, calls[0], deck.chapters[1])
-    assert "\\section{One}\r\n\\slide{aaa-EN-First}\r\n% boundary note\r\n\r\n\\section{Two}\r\n" in moved
+    assert f"\\section{{One}}\r\n{source}\r\n% boundary note\r\n\r\n\\section{{Two}}\r\n" in moved
 
 
 def test_section_operations_refuse_inline_or_commented_marker_lines(tmp_path):
@@ -214,6 +216,50 @@ def test_move_section_to_reorders_whole_blocks_in_one_edit(tmp_path):
     assert back == text
     with pytest.raises(ValueError):
         deck_editor.move_section_to(deck.path, text, two, 3)
+
+
+@pytest.mark.parametrize("gap", ["", " ", "\t", "\n", "\r\n\t "])
+@pytest.mark.parametrize("macro,args,version,conditions,steps", [
+    ("slide", "{abc-EN-X}", None, None, None),
+    ("slidefinal", "{abc-EN-X}", None, None, None),
+    ("omitslide", "{abc-EN-X}", None, None, None),
+    ("slideversion", "{abc-EN-X}{2-3-4}", "2-3-4", None, None),
+    ("omitslideversion", "{abc-EN-X}{2-3-4}", "2-3-4", None, None),
+    ("conditionalslide", "[ instructor, after-course ]{abc-EN-X}", None,
+     ["instructor", "after-course"], None),
+    ("conditionalslide", "{abc-EN-X}", None, deck_editor.DEFAULT_CONDITIONS, None),
+    ("conditionalslide", "[]{abc-EN-X}", None, [], None),
+    ("slidestep", "{abc-EN-X}[ instructor, after-course ]{ 1,2 }", None,
+     ["instructor", "after-course"], "1,2"),
+    ("slidestep", "{abc-EN-X}{1,2}", None, deck_editor.DEFAULT_CONDITIONS, "1,2"),
+    ("slidestep", "{abc-EN-X}[]{1,2}", None, [], "1,2"),
+])
+def test_slide_call_whitespace_preserves_arguments_and_exact_span(
+        tmp_path, gap, macro, args, version, conditions, steps):
+    source = "\\" + macro + args.replace("{", gap + "{").replace("[", gap + "[")
+    prefix = "\\begin{document}\n  "
+    suffix = " \t% keep comment\n\\end{document}\n"
+    text = prefix + source + suffix
+    deck = _deck(tmp_path / "deck.tex", text)
+    call, = deck_editor.parse_slide_calls(deck)
+    assert (call.macro, call.id, call.slug, call.version, call.conditions, call.steps) == (
+        macro, "abc", "EN-X", version, conditions, steps)
+    assert (call.call_start, call.call_end) == (len(prefix), len(prefix) + len(source))
+    assert text[call.call_start:call.call_end] == source
+    assert call.editable
+    assert deck_editor.change_slide_call_variant(deck.path, text, call, "omitslide") == (
+        prefix + r"\omitslide{abc-EN-X}" + suffix)
+
+    inline = _deck(tmp_path / "inline.tex", prefix + source + " \t{not-an-argument}\n")
+    call, = deck_editor.parse_slide_calls(inline)
+    assert inline.text[call.call_start:call.call_end] == source
+    assert not call.editable
+
+
+@pytest.mark.parametrize("macro", sorted(deck_editor.ALL_MACROS))
+def test_slide_call_does_not_match_a_longer_control_word(tmp_path, macro):
+    deck = _deck(tmp_path / "deck.tex", f"\\{macro}extra \n[instructor]{{abc-EN-X}}{{1}}\n")
+    assert deck_editor.parse_slide_calls(deck) == []
 
 
 @pytest.mark.parametrize("version,column", [

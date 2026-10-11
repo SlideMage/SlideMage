@@ -65,13 +65,13 @@ DEFAULT_CONDITIONS = ["instructor", "during-course", "after-course"]
 BASE_MACROS = ["slide", "slidefinal", "omitslide", "conditionalslide", "slidestep"]
 
 SLIDE_CALL_RE = re.compile(
-    r"\\slideversion\{(?P<sv_idslug>[^}]+)\}\{(?P<sv_version>[^}]+)\}"
-    r"|\\omitslideversion\{(?P<osv_idslug>[^}]+)\}\{(?P<osv_version>[^}]+)\}"
-    r"|\\slidefinal\{(?P<sf_idslug>[^}]+)\}"
-    r"|\\slide\{(?P<s_idslug>[^}]+)\}"
-    r"|\\omitslide\{(?P<os_idslug>[^}]+)\}"
-    r"|\\conditionalslide(?:\[(?P<cs_conditions>[^\]]*)\])?\{(?P<cs_idslug>[^}]+)\}"
-    r"|\\slidestep\{(?P<ss_idslug>[^}]+)\}(?:\[(?P<ss_conditions>[^\]]*)\])?\{(?P<ss_steps>[^}]*)\}"
+    r"\\slideversion\s*\{(?P<sv_idslug>[^}]+)\}\s*\{(?P<sv_version>[^}]+)\}"
+    r"|\\omitslideversion\s*\{(?P<osv_idslug>[^}]+)\}\s*\{(?P<osv_version>[^}]+)\}"
+    r"|\\slidefinal\s*\{(?P<sf_idslug>[^}]+)\}"
+    r"|\\slide\s*\{(?P<s_idslug>[^}]+)\}"
+    r"|\\omitslide\s*\{(?P<os_idslug>[^}]+)\}"
+    r"|\\conditionalslide\s*(?:\[(?P<cs_conditions>[^\]]*)\]\s*)?\{(?P<cs_idslug>[^}]+)\}"
+    r"|\\slidestep\s*\{(?P<ss_idslug>[^}]+)\}\s*(?:\[(?P<ss_conditions>[^\]]*)\]\s*)?\{(?P<ss_steps>[^}]*)\}"
 )
 
 VERSION_FILE_RE = re.compile(r"-v([0-9]+(?:-[0-9]+)*)\.tex$")
@@ -502,7 +502,7 @@ def _slide_marker(text: str, call: SlideCall) -> tuple[int, int]:
     if call.call_start < 0 or call.call_end > len(text) or call.call_start >= call.call_end:
         raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
     token = text[call.call_start:call.call_end]
-    if SLIDE_CALL_RE.fullmatch(token) is None or not re.match(rf"\\{re.escape(call.macro)}(?:\{{|\[)", token):
+    if SLIDE_CALL_RE.fullmatch(token) is None or not re.match(rf"\\{re.escape(call.macro)}\s*(?:\{{|\[)", token):
         raise ValueError("This slide is no longer at its scanned location; reload the deck and retry.")
     line_start, line_end = _line_span(text, call.call_start, call.call_end)
     if (line_start, line_end) != (call.line_start, call.line_end):
