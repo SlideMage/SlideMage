@@ -59,8 +59,11 @@ def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instruct
     assert presenter["deck_version"] == "instructor" and presenter["presenter"]
 
 
-def test_a_slide_file_alone_has_no_deck_context(tmp_path, monkeypatch):
+def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_snapshots(
+    tmp_path, monkeypatch, renders,
+):
     monkeypatch.setattr(preview_target, "SLIDES_DIR", tmp_path)
+    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path)
     current = preview_target.for_path(tmp_path / "abc-EN-Demo-current.tex")
     frozen = preview_target.for_path(tmp_path / "abc-EN-Demo-v1-0-0.tex")
     assert (current.macro, current.version, current.preamble_text) == ("slide", None, None)
@@ -68,12 +71,6 @@ def test_a_slide_file_alone_has_no_deck_context(tmp_path, monkeypatch):
     assert current.source_path == tmp_path / "abc-EN-Demo-current.tex"
     assert frozen.source_path == tmp_path / "abc-EN-Demo-v1-0-0.tex"
     assert preview_target.for_path(tmp_path / "deck.tex") is None
-
-
-def test_a_frozen_version_on_its_own_neither_uses_nor_refreshes_the_cached_snapshot(tmp_path, monkeypatch, renders):
-    monkeypatch.setattr(preview_target, "SLIDES_DIR", tmp_path)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path)
-    frozen = preview_target.for_path(tmp_path / "abc-EN-Demo-v1-0-0.tex")
     assert frozen.is_frozen_alone
     slide_snapshot.snapshot_path("abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
     assert preview_target.cached_image(frozen) is None

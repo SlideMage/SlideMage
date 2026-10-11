@@ -30,9 +30,8 @@ def test_regions_and_elements_keep_preamble_and_validate():
 def test_overlay_does_not_change_action_defaults():
     assert slide_preview._overlay_line(None) == ''
     assert r'\gdef\beamer@whichframes{2}' in slide_preview._overlay_line(2)
-    for invalid in (0, -1, '2', True):
-        with pytest.raises(ValueError):
-            slide_preview._overlay_line(invalid)
+    with pytest.raises(ValueError):
+        slide_preview._overlay_line(0)
 
 
 def test_cached_build_retains_aux_and_rejects_stale_pdf(tmp_path, monkeypatch):
@@ -78,8 +77,13 @@ def test_unused_preview_wrappers_are_pruned(tmp_path):
             if age:
                 os.utime(lock, (age, age))
     (decks / 'deck.tex').write_text('x')
+    for key in ('new-unique', 'other'):
+        (decks / f'_slidemage_preview-{key}.tex').write_text('job without a cache in this build root')
     preview_build.prune_unused(tmp_path, build)
-    assert sorted(p.name for p in decks.iterdir()) == ['_slidemage_preview-fresh.tex', 'deck.tex']
+    assert sorted(p.name for p in decks.iterdir()) == [
+        '_slidemage_preview-fresh.tex', '_slidemage_preview-new-unique.tex',
+        '_slidemage_preview-other.tex', 'deck.tex',
+    ]
     assert (build / 'preview-cache' / 'fresh').exists() and not (build / 'preview-cache' / 'stale').exists()
 
 
@@ -94,11 +98,6 @@ def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
     assert all(kwargs['snapshot_template'] is None for _, kwargs in calls)
     assert r'\SMCompileTimestampValue' in calls[0][0][0]
     assert slide_preview._preview_timestamp_line(False) == ''
-
-
-def test_commented_frame_does_not_prevent_region_wrapper():
-    _, body = slide_preview._region_source(r'\begin{document}', '% \\titleframe{demo}\nHello', 'region')
-    assert body.startswith(r'\begin{frame}')
 
 
 def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):

@@ -66,17 +66,6 @@ def test_recorded_inputs_include_bib_spaces_and_missing_files_but_exclude_output
     assert preview_cli.input_state(map(Path, paths)) != state
 
 
-def test_pruning_preserves_fresh_job_and_other_cache_roots(tmp_path):
-    decks = tmp_path / "decks"
-    decks.mkdir()
-    fresh = decks / "_slidemage_preview-new-unique.tex"
-    fresh.write_text("running fresh job")
-    other = decks / "_slidemage_preview-other.tex"
-    other.write_text("job belongs to a different build root")
-    preview_build.prune_unused(tmp_path, tmp_path / ".build")
-    assert fresh.exists() and other.exists()
-
-
 def test_metrics_record_passes_and_nested_stages_without_global_leaks():
     with PreviewMetrics() as trace:
         with stage("latexmk"):

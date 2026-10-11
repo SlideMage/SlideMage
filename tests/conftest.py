@@ -30,6 +30,13 @@ from PySide6.QtCore import QCoreApplication, Qt  # noqa: E402
 QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
 
+@pytest.fixture(scope="session")
+def qapp():
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
 @pytest.fixture(autouse=True)
 def _no_cloud_credentials(monkeypatch):
     """No test may find a real Anthropic key (environment or keychain), so

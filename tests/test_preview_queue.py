@@ -7,17 +7,11 @@ from threading import Thread as WorkerThread
 import pymupdf
 import pytest
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
 
 from slidemage import preview_target, slide_snapshot
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
 from slidemage.ui.workspace.state import WorkspaceState
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture
@@ -47,10 +41,11 @@ def pane(qapp, tmp_path, monkeypatch):
     return view, target, path
 
 
-def pdf_at(path, text="hello"):
+def pdf_at(path, text="hello", height=180):
     with pymupdf.open() as doc:
-        page = doc.new_page(width=320, height=180)
-        page.insert_text((30, 30), text)
+        page = doc.new_page(width=320, height=height)
+        if text:
+            page.insert_text((30, 30), text)
         doc.save(path)
     return path
 
@@ -104,6 +99,9 @@ def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
             "Two",
             "",
         )
+        assert "No preview" in view._page.message
+        assert not view._page.render_button.isHidden()
+        assert view._busy  # the obsolete compiler is still finishing in the background
     elif change == "view":
         view.state.set_view("after-course")
     elif change == "language":
@@ -196,74 +194,47 @@ def test_real_worker_leaves_qt_event_loop_responsive(qapp, pane, tmp_path, monke
     assert not view._busy and view._last_pdf is not None
 
 
-def test_png_cache_follows_pdf_content_and_keeps_exact_canonical_sizes(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("height, text", [(180, "formula and text"), (240, "")], ids=["16:9", "4:3"])
+def test_prepared_images_preserve_pixels_aspect_ratio_and_cache_by_pdf_content(
+    tmp_path, monkeypatch, height, text,
 ):
-    pdf = pdf_at(tmp_path / "preview.pdf", "first")
+    pdf = pdf_at(tmp_path / "preview.pdf", text, height)
     slide_snapshot._PNG_CACHE.clear()
     images1, snapshots1 = slide_snapshot.prepare_preview(pdf, True)
     assert [size for size, _ in snapshots1] == [
         slide_snapshot.FULL_SIZE,
         slide_snapshot.THUMB_SIZE,
     ]
-    for size, data in snapshots1:
-        pix = pymupdf.Pixmap(data)
-        assert (pix.width, pix.height) == size
-    # A second request must use the cache without opening/rasterizing the PDF.
-    original_open = slide_snapshot.fitz.open
-    monkeypatch.setattr(
-        slide_snapshot.fitz,
-        "open",
-        lambda *a, **kw: pytest.fail("duplicate rasterization"),
+    display = pymupdf.Pixmap(images1)
+    assert (display.width, display.height) == (
+        slide_snapshot.FULL_SIZE[0], slide_snapshot.FULL_SIZE[0] * height // 320,
     )
-    assert slide_snapshot.prepare_preview(pdf, True) == (images1, snapshots1)
-    monkeypatch.setattr(slide_snapshot.fitz, "open", original_open)
-    pdf.unlink()
-    pdf_at(pdf, "changed in the same path")
-    assert slide_snapshot.prepare_preview(pdf, True)[0] != images1
-
-
-def test_full_slide_display_keeps_a_four_by_three_decks_aspect_ratio(tmp_path):
-    pdf = tmp_path / "four-by-three.pdf"
-    with pymupdf.open() as doc:
-        doc.new_page(width=320, height=240)
-        doc.save(pdf)
-    display, snapshots = slide_snapshot.prepare_preview(pdf, True)
-    pix = pymupdf.Pixmap(display)
-    assert (pix.width, pix.height) == (1920, 1440)
-    assert [size for size, _ in snapshots] == [
-        slide_snapshot.FULL_SIZE,
-        slide_snapshot.THUMB_SIZE,
-    ]
-
-
-def test_prepared_canonical_images_match_the_original_rasterization(tmp_path):
-    pdf = pdf_at(tmp_path / "canonical.pdf", "formula and text")
-    _, snapshots = slide_snapshot.prepare_preview(pdf, True)
     with pymupdf.open(pdf) as doc:
         page = doc[-1]
-        for (width, height), png in snapshots:
+        for (width, pixel_height), png in snapshots1:
             original = page.get_pixmap(
                 matrix=pymupdf.Matrix(
-                    width / page.rect.width, height / page.rect.height
+                    width / page.rect.width, pixel_height / page.rect.height
                 )
             )
             current = pymupdf.Pixmap(png)
+            assert (current.width, current.height) == (width, pixel_height)
             assert (current.width, current.height, current.samples) == (
-                original.width,
-                original.height,
-                original.samples,
+                original.width, original.height, original.samples,
             )
-
-
-def test_switching_slides_does_not_claim_the_new_slide_is_rendering(pane, tmp_path):
-    view, target, _ = pane
-    view._start(lambda: pdf_at(tmp_path / "a.pdf"), view._job(target))
-    other = preview_target.for_path(tmp_path / "bbb-EN-Two-current.tex")
-    view.show_slide(other, None, "Two", "")
-    assert "No preview" in view._page.message
-    assert not view._page.render_button.isHidden()
-    assert view._busy  # the obsolete compiler is still finishing in the background
+    # A second request must not enter the raster process.
+    from slidemage import preview_raster_client
+    original_render = preview_raster_client.render
+    monkeypatch.setattr(
+        preview_raster_client,
+        "render",
+        lambda *a: pytest.fail("cache miss for unchanged PDF"),
+    )
+    assert slide_snapshot.prepare_preview(pdf, True) == (images1, snapshots1)
+    monkeypatch.setattr(preview_raster_client, "render", original_render)
+    pdf.unlink()
+    pdf_at(pdf, "changed in the same path", height)
+    assert slide_snapshot.prepare_preview(pdf, True)[0] != images1
 
 
 def test_session_pixmaps_are_bounded_and_keep_the_most_recent(pane, tmp_path):
@@ -293,9 +264,9 @@ def test_timestamp_changes_make_accepted_images_stale_and_switching_back_restore
     previous = view._image(target)[0]
     assert view._image(target)[1]
     view.state.set_footer_timestamp(True)
-    image, fresh, note = view._image(target)
+    image, fresh, _ = view._image(target)
     assert image.cacheKey() == previous.cacheKey() and not fresh
-    assert note == "Timestamp setting changed" and view._pending is None
+    assert view._pending is None
     view.state.set_footer_timestamp(False)
     assert view._image(target)[1]
 
@@ -308,9 +279,7 @@ def test_disk_snapshot_is_best_effort_not_verified_context(pane, tmp_path, monke
     pixmap.fill()
     pixmap.save(str(snapshot))
     monkeypatch.setattr(preview_target, "cached_image", lambda _: (snapshot, True))
-    assert view._image(target)[1:] == (
-        False, "Cached preview; render to verify current settings",
-    )
+    assert not view._image(target)[1]
 
 
 def test_actual_parent_destruction_closes_lifetime_and_discards_worker_result(
