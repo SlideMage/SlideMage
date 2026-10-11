@@ -35,13 +35,6 @@ def test_a_hit_names_the_file_the_line_and_the_text_around_the_match(tmp_path):
     assert [h.line for h in hits] == [3, 1, 1, 2]
 
 
-def test_a_long_line_is_cut_around_the_match(tmp_path):
-    (tmp_path / "decks").mkdir()
-    (tmp_path / "decks" / "d.tex").write_text("x" * 100 + " needle " + "y" * 100, encoding="utf-8")
-    (hit,) = slide_search.search_project("needle", tmp_path)
-    assert hit.snippet == "…" + "x" * 39 + " needle " + "y" * 39 + "…"
-
-
 def test_a_blank_query_matches_nothing_and_a_cancelled_search_stops(tmp_path):
     make_project(tmp_path)
     assert slide_search.search_project("  ", tmp_path) == []

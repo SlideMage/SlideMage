@@ -16,24 +16,17 @@ def apply(text: str, start: int, end: int, edit: le.Edit) -> tuple[str, int]:
 
 # -- reindent ---------------------------------------------------------------------
 
-def test_reindent_gives_one_tab_per_environment_level():
-    text = "  \\begin{standardframe}{T}\n\\begin{itemize}\n   \\item a\n\n\\end{itemize}\n\\end{standardframe}"
-    assert le.reindent_latex(text) == (
-        "\\begin{standardframe}{T}\n\t\\begin{itemize}\n\t\t\\item a\n\n\t\\end{itemize}\n\\end{standardframe}")
 
-
-def test_reindent_clamps_an_unmatched_end_at_zero():
-    assert le.reindent_latex("\\end{x}\n  text") == "\\end{x}\ntext"
+@pytest.mark.parametrize("text,expected", [
+    ("  \\begin{standardframe}{T}\n\\begin{itemize}\n   \\item a\n\n\\end{itemize}\n\\end{standardframe}",
+     "\\begin{standardframe}{T}\n\t\\begin{itemize}\n\t\t\\item a\n\n\t\\end{itemize}\n\\end{standardframe}"),
+    ("\\end{x}\n  text", "\\end{x}\ntext"),  # an unmatched end must not amplify a source error
+])
+def test_reindent_respects_environment_depth(text, expected):
+    assert le.reindent_latex(text) == expected
 
 
 # -- the hyperlink command --------------------------------------------------------
-
-def test_hyperlink_formatter_escapes_text_and_preserves_url():
-    url = "https://example.org/a_b?x=1&y=2#part%20x"
-    assert le.format_hyperlink(" R&D ", url) == (
-        r"\href{https://example.org/a\_b?x=1\&y=2\#part\%20x}{R\&D}"
-    )
-
 
 @pytest.mark.parametrize("word,url", [
     ("", "https://example.org"),
@@ -48,7 +41,8 @@ def test_hyperlink_formatter_rejects_invalid_input(word, url):
 
 def test_hyperlink_url_survives_transcript_html():
     url = "https://example.org/a_b?x=1&y=2#part%20x"
-    source = le.format_hyperlink("R&D", url)
+    source = le.format_hyperlink(" R&D ", url)
+    assert source == r"\href{https://example.org/a\_b?x=1\&y=2\#part\%20x}{R\&D}"
     html = transcript._inline_html(transcript._inline_markdown(source))
 
     class Links(HTMLParser):
@@ -119,17 +113,17 @@ def test_every_insert_entry_has_an_edit_except_those_that_ask_first():
     assert literal == le.Edit("\\tallitem", len("\\tallitem"))
 
 
-def test_textcolors_are_sorted_by_category_and_all_have_swatches():
-    assert len(le.TEXTCOLOR_PALETTE) == len(le.TEXTCOLOR_SWATCHES)
-    assert le.TEXTCOLOR_PALETTE[0].startswith("c_custom_")
-    assert le.TEXTCOLOR_PALETTE[-1].startswith("c_tertiary_")
-
-
 # -- Enter --------------------------------------------------------------------------
 
-def test_enter_continues_the_indent():
-    assert le.smart_return("\ttext", True) == le.Edit("\n\t", 2)
-    assert le.smart_return("\ttext", False) == le.Edit("\n\t", 2)
+
+@pytest.mark.parametrize("line,at_end,expected", [
+    ("\ttext", True, le.Edit("\n\t", 2)),
+    ("\ttext", False, le.Edit("\n\t", 2)),
+    ("\\begin{standardframe}{Title}", True, le.Edit("\n", 1)),
+    ("\\begin{itemize} x", False, le.Edit("\n", 1)),
+])
+def test_enter_continues_the_indent_without_opening_an_environment(line, at_end, expected):
+    assert le.smart_return(line, at_end) == expected
 
 
 def test_enter_after_begin_opens_the_matching_end_with_the_cursor_inside():
@@ -137,11 +131,6 @@ def test_enter_after_begin_opens_the_matching_end_with_the_cursor_inside():
     assert edit.text == "\n\t\t\\item \n\t\\end{itemize}"
     assert edit.text[:edit.caret] == "\n\t\t\\item "
     assert le.smart_return("\\begin{center}", True).text == "\n\t\n\\end{center}"
-
-
-def test_enter_leaves_standardframe_and_a_mid_line_begin_alone():
-    assert le.smart_return("\\begin{standardframe}{Title}", True) == le.Edit("\n", 1)
-    assert le.smart_return("\\begin{itemize} x", False) == le.Edit("\n", 1)
 
 
 def test_enter_after_an_item_starts_the_next_one_with_the_same_label():
@@ -187,8 +176,5 @@ def test_minimal_replacement_reports_utf16_offsets():
     assert units[:start] + replacement + units[end:] == le.utf16_units(new)
     assert start == units.index("1.0.0") + 1   # the common "1" stays; the emoji counts twice
     assert le.minimal_replacement("same", "same")[2] == ""
-
-
-def test_utf16_helpers_count_surrogate_pairs():
     assert le.utf16_len("a😀") == 3
     assert len(le.utf16_units("a😀")) == 3

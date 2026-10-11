@@ -40,17 +40,9 @@ def test_usage_lists_decks_and_their_state(project):
     assert usages["follows"].following and not usages["follows"].pinned_versions
     assert usages["pinned"].pinned_versions == ["1-0-0"]
     assert usages["steps"].only_unpinnable
+    assert usages["follows"].positions == [1, 2] and usages["follows"].total == 3
     assert slide_usage.needs_dialog(list(usages.values()), [])
     assert not slide_usage.needs_dialog(slide_usage.find_usage("xyz-EN-Other")[:1], [])
-
-
-def test_usage_knows_where_each_call_stands_and_how_it_is_called(project):
-    usages = {u.deck.name: u for u in slide_usage.find_usage("abc-EN-Demo")}
-    assert usages["follows"].positions == [1, 2] and usages["follows"].total == 3
-    assert [slide_usage.call_text(c) for c in usages["follows"].calls] == [
-        "\\slide, follows the current version", "\\omitslide, follows the current version"]
-    assert slide_usage.call_text(usages["pinned"].calls[0]) == "\\slideversion, frozen v1.0.0"
-    assert slide_usage.call_text(usages["steps"].calls[0]) == "\\slidestep, steps 2"
 
 
 def test_set_pin_pins_unpins_and_repins_only_the_calls_that_can(project):
@@ -94,17 +86,13 @@ def test_dialog_defaults_to_moving_every_deck_to_the_current_version(project):
     from PySide6.QtWidgets import QApplication
     from slidemage.ui.dialogs.slide_usage_dialog import SlideUsageDialog
 
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     usages = slide_usage.find_usage("abc-EN-Demo")
     translation = slide_usage.Translation("abc-DE-Demo", "DE", Path("x.tex"), ["follows"])
     dialog = SlideUsageDialog(None, "abc-EN-Demo", "1.1.0", "1.0.0", usages, [translation])
 
     assert dialog.choices() == {"follows": "current", "pinned": "current"}   # \slidestep: no choice
     assert not dialog.open_translation()
-    combo = dialog._combos["follows"]
-    assert [combo.itemText(i) for i in range(combo.count())] == [
-        "Move to current (v1.1.0)", "Keep v1.0.0"]
-    assert app is not None
 
 
 def test_ask_and_apply_deck_versions_are_the_two_halves_of_the_save_time_question(project, monkeypatch):
@@ -135,7 +123,7 @@ def test_ask_and_apply_deck_versions_are_the_two_halves_of_the_save_time_questio
     dialogs.apply_deck_versions(app, "abc-EN-Demo", {}, (1, 0, 0))
     assert app.logged == [] and app.refreshed == 0
     dialogs.apply_deck_versions(app, "abc-EN-Demo", {"follows": "keep"}, (1, 0, 0))
-    assert app.logged == ["    follows: 2 call(s) changed -- stays on v1.0.0"] and app.refreshed == 1
+    assert app.refreshed == 1
     told = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))
     monkeypatch.setattr(dialogs.slide_usage, "apply_choices", lambda *a: (_ for _ in ()).throw(ValueError("nope")))

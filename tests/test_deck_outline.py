@@ -188,3 +188,19 @@ def test_an_outline_reads_each_translation_header_once(tmp_path, project, monkey
         assert rows_of(outline)[0].badge == ("[EN + DE]" if language == "EN" else "[DE + EN]")
         assert set(reads) == {"aaa-EN-One", "ddd-DE-Eins", "bbb-EN-Two"}
         assert all(reads.count(slug) == build + 1 for slug in set(reads))
+
+
+def test_commented_out_section_is_not_a_chapter():
+    from slidemage.deck_scan import parse_chapters
+
+    text = (
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        "\\section{Intro}\n\\slide{aaa-EN-A}\n"
+        "% \\section{Old stuff}\n\\slide{bbb-EN-B}\n\\end{document}\n"
+    )
+    chapters = parse_chapters(text)
+    assert [c.title for c in chapters] == ["Intro"]
+    # The real chapter's own span still covers the commented line as
+    # ordinary content -- offsets must stay into the *original* text.
+    expected = text[text.index("\\section{Intro}"):text.index("\\end{document}")]
+    assert text[chapters[0].start:chapters[0].end] == expected

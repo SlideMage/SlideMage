@@ -53,8 +53,10 @@ def test_partner_replaces_original_in_its_section_and_late_partner_is_folded(pro
         assert deck_outline.slide_row(d, slide_id, "instructor", "DE").call.id == "ddd"
 
 
-def test_a_partner_need_not_have_a_deck_call_and_both_ids_find_its_slot(project):
-    d = deck(project, "\\slide{aaa-EN-One}\n")
+@pytest.mark.parametrize("source,language", [("aaa-EN-One", "en"), ("ddd-DE-Eins", "de")])
+def test_a_partner_need_not_have_a_deck_call_and_both_ids_find_its_slot(project, source, language):
+    d = deck(project, f"\\slide{{{source}}}\n", language)
+    assert rows(d, "EN")[0].call.id == "aaa"
     assert rows(d, "DE")[0].call.id == "ddd"
     assert deck_outline.slide_row(d, "ddd", "instructor", "EN").call.id == "aaa"
 
@@ -86,12 +88,6 @@ def test_source_visibility_steps_and_repeated_occurrences_survive_resolution(pro
     assert [r.hidden for section in deck_outline.build_outline(d, "during-course", "DE")
             for r in section.rows] == [True, False, False]
     assert compile_progress.count_job_slides(d, "during-course", None, "DE") == 2
-
-
-def test_a_translation_only_deck_resolves_back_to_english(project):
-    d = deck(project, "\\slide{ddd-DE-Eins}\n", "de")
-    assert rows(d, "EN")[0].call.id == "aaa"
-    assert rows(d, "DE")[0].call.id == "ddd"
 
 
 def test_deleted_partner_falls_back_and_renamed_partner_is_found_by_id(project):
@@ -373,3 +369,10 @@ def test_fragment_expansion_keeps_compiler_sources_and_tex_lookup_order(project,
     assert resolved is d and dependencies == []
     wrapper = compiler.wrapper_text(compiler.CompileJob(d, "after-course", None))
     assert r"\input{course.tex}" in wrapper and r"\slide{bbb-EN-Two}" not in wrapper
+
+
+def test_slidestep_slide_counts_as_used():
+    from slidemage import unused_content
+
+    unused = {p.name for p in unused_content.find_unused_slides()}
+    assert "1mu-EN-Slidestep-Demo-current.tex" not in unused

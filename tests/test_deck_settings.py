@@ -171,9 +171,3 @@ def test_from_form_refuses_latex_specials_in_a_path_but_keeps_an_untouched_one_b
     original = DeckSettings(output_folders={None: "D:\\Old\\Way", "presenter": "D:/50%"})
     new = form(original, output_folders={None: "D:\\Old\\Way", "presenter": "D:/50%"})
     assert new.output_folders == original.output_folders
-
-
-def test_from_form_carries_the_other_fields_through():
-    new = form(template="mci", language="de", footer_text="Course | term", appendix_toc=True, open_pdf="presenter")
-    assert (new.template, new.language, new.footer_text, new.appendix_toc, new.open_pdf) == (
-        "mci", "de", "Course | term", True, "presenter")

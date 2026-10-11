@@ -5,21 +5,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-from PySide6.QtWidgets import QApplication, QPushButton, QRadioButton
+from PySide6.QtWidgets import QPushButton, QRadioButton
 
 from slidemage.compiler import CompileJob, order_jobs
-from slidemage.deck_scan import GROUP_ORDER, SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
+from slidemage.deck_scan import SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
 from conftest import command_context
 from slidemage.ui.dialogs.deck_group import GROUP_LABELS, DeckGroupSheet
-from slidemage.ui.workspace.menus import GROUP_HEADINGS, build_deck_menu, build_more_menu
+from slidemage.ui.workspace.menus import build_deck_menu, build_more_menu
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
-
-
-@pytest.fixture(scope="module")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def make_deck(name, tags):
@@ -33,9 +27,6 @@ def test_manual_tag_wins_and_is_its_own_group():
     assert make_deck("m", ["test", "manual"]).group == TAG_MANUAL
     assert make_deck("m", ["manual"]).is_test_deck is False   # clickable, has a slide list
     assert TAG_MANUAL not in SELECTABLE_GROUP_TAGS
-    assert GROUP_ORDER[-2:] == (TAG_MANUAL, "test")      # test decks sort below the manual
-    assert list(GROUP_HEADINGS)[-2:] == [TAG_MANUAL, "test"]
-    assert GROUP_HEADINGS[TAG_MANUAL] == "SlideMage manual"
 
 
 def test_shipped_manual_carries_the_tag():

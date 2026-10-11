@@ -32,13 +32,9 @@ def test_parse_version_returns_the_first_uncommented_marker(text, expected):
     assert sv.parse_version(text) == expected
 
 
-def test_strip_marker_removes_all_live_markers_and_preserves_comments():
+def test_marker_edits_replace_all_live_markers_and_preserve_comments():
     text = "% \\setSlideVersion{9-9-9}\n\\setSlideVersion{1-2-3}\nbody\n\\setSlideVersion{4-5-6}\n"
     assert sv.strip_marker(text) == "% \\setSlideVersion{9-9-9}\nbody\n"
-
-
-def test_set_marker_replaces_all_live_markers_and_preserves_comments():
-    text = "% \\setSlideVersion{9-9-9}\n\\setSlideVersion{1-2-3}\nbody\n\\setSlideVersion{4-5-6}\n"
     assert sv.set_marker(text, (2, 0, 0)) == "% \\setSlideVersion{9-9-9}\n\\setSlideVersion{2-0-0}\nbody\n"
 
 

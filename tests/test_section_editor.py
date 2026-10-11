@@ -117,11 +117,6 @@ def test_slide_boundary_move_refuses_nonadjacent_lines(tmp_path):
         deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
 
 
-def test_move_section_ignores_commented_document_end_marker(tmp_path):
-    text = "\\begin{document}\n% \\end{document}\n\\section{A}\nA\n\\section{B}\nB\n\\end{document}\n"
-    _deck(tmp_path / "deck.tex", text)
-
-
 def test_legacy_block_comments_do_not_prevent_section_move(tmp_path):
     text = (
         "\\begin{document}\n\\section{Before}\n"
@@ -262,10 +257,6 @@ def test_slide_call_does_not_match_a_longer_control_word(tmp_path, macro):
     assert deck_editor.parse_slide_calls(deck) == []
 
 
-@pytest.mark.parametrize("version,column", [
-    ("instructor", 0), ("during-course", 1), ("after-course", 2),
-    (None, 0), ("presenter", 0),
-])
 @pytest.mark.parametrize("source,conditions,expected", [
     (r"\slide{aaa-A}", None, (True, True, True)),
     (r"\slidefinal{aaa-A}", None, (True, True, True)),
@@ -282,10 +273,12 @@ def test_slide_call_does_not_match_a_longer_control_word(tmp_path, macro):
      ["instructor", "during-course", "after-course"], (True, True, True)),
     (r"\slidestep{aaa-A}[]{1,2}", [], (False, False, False)),
 ])
-def test_slide_call_included_in(tmp_path, source, conditions, expected, version, column):
+def test_slide_call_included_in(tmp_path, source, conditions, expected):
     call, = deck_editor.parse_slide_calls(_deck(tmp_path / "deck.tex", source + "\n"))
     assert call.conditions == conditions
-    assert call.included_in(version) is expected[column]
+    for version, column in (("instructor", 0), ("during-course", 1), ("after-course", 2),
+                            (None, 0), ("presenter", 0)):
+        assert call.included_in(version) is expected[column]
 
 
 def test_set_calls_visibility_rewrites_the_call_per_view(tmp_path):

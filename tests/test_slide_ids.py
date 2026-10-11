@@ -1,6 +1,6 @@
 import pytest
 
-from slidemage import alt_images, deck_headers, slide_ids, slide_rename, slide_snapshot
+from slidemage import alt_images, deck_headers, slide_ids, slide_language, slide_rename, slide_snapshot
 
 
 @pytest.fixture
@@ -93,3 +93,21 @@ def test_rename_collision_check_ignores_case(rename_project):
     (rename_project / "slides" / "ZZH-EN-Demo-current.tex").write_text("x", encoding="utf-8")
     with pytest.raises(FileExistsError):
         slide_rename.rename_slide_id("2du", "zzh")
+
+
+def test_raw_reads_work_below_python_313():
+    slide_language.cross_referenced_language("1vn-EN-Languages")
+    assert "slidemage-manual" in slide_rename.deck_names_referencing("1mu-EN-Slidestep-Demo")
+
+
+def test_line_removal_takes_whole_calls_and_crlf():
+    deck = (
+        "\\slide{keep-EN-A}\r\n"
+        "\\slideversion{gone-EN-B}{1-0-0}\r\n"
+        "\t\\slidestep{gone-EN-B}[instructor]{1,2}  \r\n"
+        "\\conditionalslide[after-course]{gone-EN-B}\n"
+        "\\slide{gone-EN-B-longer}\r\n"
+    )
+    new, n = slide_rename._line_removal_pattern("gone-EN-B").subn("", deck)
+    assert n == 3
+    assert new == "\\slide{keep-EN-A}\r\n\\slide{gone-EN-B-longer}\r\n"

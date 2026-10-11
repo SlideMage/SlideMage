@@ -72,10 +72,13 @@ def test_last_saved_is_the_newest_backup_of_the_file(slides):
     assert slide_source.last_saved(path) == datetime(2026, 3, 1, 9, 0, 0)
 
 
-def test_a_real_save_makes_a_backup_that_last_saved_finds(slides):
+@pytest.mark.parametrize("original,new_text", [("one\n", "two\n"), ("original\n", "new content\n")])
+def test_a_real_save_makes_a_backup_that_last_saved_finds(slides, original, new_text):
     path = slides / "abc-EN-Demo-current.tex"
-    path.write_text("one\n", encoding="utf-8")
-    slide_source.save_slide_source(path, "two\n", "\n")
+    path.write_text(original, encoding="utf-8")
+    archived = slide_source.save_slide_source(path, new_text, "\n")
+    assert path.read_text(encoding="utf-8") == new_text
+    assert archived.read_text(encoding="utf-8") == original
     assert abs((slide_source.last_saved(path) - datetime.now()).total_seconds()) < 5
 
 
@@ -170,3 +173,23 @@ def test_save_slide_image_stores_text_and_reviews_this_slides_use_only(store):
     alt_images.save_slide_image("media/a.png", "abc", store, role="decorative", short="", long="", reviewed=False)
     entry = alt_images.load_store()["media/a.png"]
     assert entry.is_decorative and entry.used_on["abc"].reviewed == "" and entry.status == "reviewed"
+
+
+def test_save_slide_source_detects_stale_disk_content(slides):
+    from slidemage import slide_source
+
+    slide_path = slides / "abc-EN-Test-current.tex"
+    slide_path.write_text("original\n", encoding="utf-8", newline="")
+
+    # Another writer (a citation dialog, header regeneration, ...) changes
+    # the file after this "tab" read it.
+    loaded_text, eol = slide_source.read_slide_source(slide_path)
+    slide_path.write_text("changed elsewhere\n", encoding="utf-8", newline="")
+
+    with pytest.raises(slide_source.StaleFileError):
+        slide_source.save_slide_source(
+            slide_path, "my edit\n", eol, expected_text=loaded_text
+        )
+    # Nothing was overwritten or backed up.
+    assert slide_path.read_text(encoding="utf-8") == "changed elsewhere\n"
+    assert not (slides / ".backups").exists()
