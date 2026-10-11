@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
+from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
 from ... import pptx_export
 from ... import slide_ids, slide_snapshot, update_all_previews
 from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, JobRow, RunStatus, job_title
@@ -667,7 +667,7 @@ class CompileJobsMixin:
         cancel = self.cancel_token
         if cancel is None or not self.compiling:
             return
-        self._log("==== Stop requested -- killing current job and skipping the rest ====")
+        self._log(compile_log.stop_requested())
         self._stop_requested = True
         cancel.request_stop()
 

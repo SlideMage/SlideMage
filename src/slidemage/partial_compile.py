@@ -50,7 +50,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, compiler, deck_scan
+from . import compile_log, compile_records, compiler, deck_scan
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .deck_editor import SlideCall
 
@@ -626,7 +626,7 @@ def run_page_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken
     job.replace_pages False, into <full pdf>-pages-<spec>.pdf). Logs the
     usual "==== Compiling ... ====" / PASS / FAIL lines."""
     jobname = job.jobname
-    log(f"==== Compiling {job.deck.name} -> {jobname} ====")
+    log(compile_log.compiling(job.deck.name, jobname))
     try:
         the_plan = plan(job, job.pages or [])
         if the_plan.missing:
@@ -661,8 +661,8 @@ def run_page_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken
         if the_plan.other_changed:
             log(f"    (not recompiled, but changed since the whole-deck compile: "
                 f"{', '.join(the_plan.other_changed)})")
-        log(f"==== PASS: {jobname} -> {compiler.display_path(where)} ====")
+        log(compile_log.passed(jobname, compiler.display_path(where)))
         return True
     except PartialError as exc:
-        log(f"*** FAIL: {jobname} -- {exc} ***")
+        log(compile_log.failed(jobname, str(exc)))
         return False

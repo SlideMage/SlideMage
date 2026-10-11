@@ -1974,6 +1974,8 @@ v8.0.9 (2026-10-11, code review cleanup B1a): Internal: the TeX source-text help
 
 v8.0.10 (2026-10-11, code review cleanup B1b): Internal: every helper one module uses from another has a public name (22 renames, e.g. compiler.build_env, deck_scan.parse_chapters, alt_blocks.slide_title); no module reaches into another one's private names any more. No change in behaviour.
 
+v8.0.11 (2026-10-11, code review cleanup B2): Internal: the compile status lines ("==== Compiling ...", "==== PASS: ...", "*** FAIL: ...") are written and recognised in one module, compile_log.py, instead of f-strings in five modules and two copies of the patterns in the progress bar and the job list. The log text is unchanged.
+
 """
 from __future__ import annotations
 
@@ -1983,7 +1985,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.10"
+VERSION_NUMBER = "v8.0.11"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

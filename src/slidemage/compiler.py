@@ -40,7 +40,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import appendix_toc, compile_passes, compile_records, project, slide_snapshot
+from . import appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
 from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
 
 BUILD_DIR = PROJECT_ROOT / ".build"
@@ -636,8 +636,8 @@ def _relocate_pdf_and_finish(
             break
         if cancel is not None and cancel.is_set():
             source_display = display_path(pdf_source)
-            log(f"*** FAIL: {jobname} -- stopped by user while relocating the "
-               f"PDF; left at {source_display} for manual recovery ***")
+            log(compile_log.failed(jobname, "stopped by user while relocating the "
+               f"PDF; left at {source_display} for manual recovery"))
             if on_relocated is not None:
                 on_relocated(False, dest_pdf)
             _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
@@ -666,8 +666,8 @@ def _relocate_pdf_and_finish(
         done.wait(PDF_MOVE_RETRY_INTERVAL_SECONDS)
 
     if superseded.is_set() and not succeeded.is_set():
-        log(f"*** FAIL: {jobname} -- output superseded by a newer successful "
-            "compile; this PDF was not published ***")
+        log(compile_log.failed(jobname, "output superseded by a newer successful "
+            "compile; this PDF was not published"))
         if on_relocated is not None:
             on_relocated(False, dest_pdf)
         _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
@@ -675,10 +675,10 @@ def _relocate_pdf_and_finish(
 
     if not succeeded.is_set():
         source_display = display_path(pdf_source)
-        log(f"*** FAIL: {jobname} -- couldn't publish PDF into "
+        log(compile_log.failed(jobname, "couldn't publish PDF into "
             f"{display_path(dest_pdf)} after "
             f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min; left at "
-            f"{source_display} for manual recovery ***")
+            f"{source_display} for manual recovery"))
         if on_relocated is not None:
             on_relocated(False, dest_pdf)
         _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
@@ -707,7 +707,7 @@ def _relocate_pdf_and_finish(
 
     elapsed = time.monotonic() - started
     suffix = f" (after {elapsed:.0f}s)" if elapsed >= 5 else ""
-    log(f"==== PASS: {jobname} -> {display_path(dest_pdf)}{suffix} ====")
+    log(compile_log.passed(jobname, display_path(dest_pdf), suffix))
     if on_relocated is not None:
         on_relocated(True, dest_pdf)
     _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
@@ -741,7 +741,7 @@ def run_job(
     set_build_dir_active(build_dir, True)
     relocation_started = False
 
-    log(f"==== Compiling {job.deck.name} -> {jobname} ====")
+    log(compile_log.compiling(job.deck.name, jobname))
     try:
         # Preserve the deck's literal line endings when its preamble or body
         # is spliced into a chapter/appendix wrapper.
@@ -795,7 +795,7 @@ def run_job(
                 cancel._set_process(None)
 
         if cancel is not None and cancel.job_stopped():
-            log(f"*** FAIL: {jobname} -- stopped by user ***")
+            log(compile_log.failed(jobname, "stopped by user"))
             return False
 
         log_path = build_dir / f"{jobname}.log"
@@ -814,7 +814,7 @@ def run_job(
             ok = False
 
         if not ok:
-            log(f"*** FAIL: {jobname} -- see {log_path} ***")
+            log(compile_log.failed(jobname, f"see {log_path}"))
             if on_relocated is not None:
                 on_relocated(False, pdf_source)
             return False
@@ -822,17 +822,17 @@ def run_job(
 
         output_dir.mkdir(parents=True, exist_ok=True)
         if not _mark_output_success(destination_key, generation):
-            log(f"*** FAIL: {jobname} -- output superseded by a newer successful "
-                "compile; this PDF was not published ***")
+            log(compile_log.failed(jobname, "output superseded by a newer successful "
+                "compile; this PDF was not published"))
             if on_relocated is not None:
                 on_relocated(False, dest_pdf)
             return True
 
         dest_display = display_path(dest_pdf)
-        log(f"==== MOVING: {jobname} -> {dest_display} ==== "
-            f"(now backgrounded -- retrying for up to "
+        log(compile_log.moving(jobname, dest_display,
+            f" (now backgrounded -- retrying for up to "
             f"{PDF_MOVE_RETRY_TOTAL_SECONDS / 60:.0f} min if needed, "
-            "no longer blocking the rest of the queue)")
+            "no longer blocking the rest of the queue)"))
         relocation = threading.Thread(
             target=_relocate_pdf_and_finish,
             args=(pdf_source, dest_pdf, jobname, job, log, cancel, on_relocated),
@@ -967,10 +967,10 @@ def run_jobs(
     results: dict[str, bool] = {}
     for position, job in enumerate(jobs):
         if cancel is not None and cancel.is_set():
-            log(f"==== Stopped: {len(jobs) - position} job(s) skipped ====")
+            log(compile_log.stopped(len(jobs) - position))
             break
         if cancel is not None and cancel.is_skipped(job.jobname):
-            log(f"==== Skipped: {job.jobname} ====")
+            log(compile_log.skipped(job.jobname))
             continue
         results[job.jobname] = run_job(
             job, log, cancel=cancel, dest_override=destinations[id(job)]

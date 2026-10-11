@@ -22,7 +22,7 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import open_path
+from . import compile_log, open_path
 from . import slide_snapshot
 from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env
 from .deck_editor import VERSION_FILE_RE, format_call
@@ -275,7 +275,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                     dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
             except Exception as exc:
                 log(f"    (preview snapshot not updated: {exc})")
-        log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
+        log(compile_log.render_passed(id_slug, dest_pdf))
         return dest_pdf
 
     DECKS_DIR.mkdir(parents=True, exist_ok=True)
@@ -341,7 +341,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-        log(f"==== Rendering {id_slug} -> {jobname} ====")
+        log(compile_log.rendering(id_slug, jobname))
         try:
             proc = subprocess.Popen(
                 cmd, cwd=PROJECT_ROOT, env=env,
@@ -373,7 +373,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             if log_path.exists():
                 lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
                 tail = "\n".join(lines[-20:])
-            log(f"*** FAIL: render of {id_slug} -- see log tail below ***")
+            log(compile_log.render_failed(id_slug, "see log tail below"))
             raise RuntimeError(f"Render failed for {id_slug}:\n{tail}")
 
         # Move the finished PDF out of .build/ into a fresh, genuinely
@@ -412,7 +412,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             except Exception as exc:
                 log(f"    (preview snapshot not updated: {exc})")
 
-        log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
+        log(compile_log.render_passed(id_slug, dest_pdf))
         return dest_pdf
 
 

@@ -54,7 +54,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import app_settings, compile_records, compiler, project
+from . import app_settings, compile_log, compile_records, compiler, project
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
@@ -1074,7 +1074,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
             if seed.is_file():
                 shutil.copy2(seed, build / seed.name)
             key = progress_key(jobname, verify=True)
-            log(f"==== Compiling {manifest.get('deck_name', '?')} -> {key} ====")
+            log(compile_log.compiling(manifest.get('deck_name', '?'), key))
             log("    (verifying: rendering from the snapshot itself)")
             env = _isolated_env(int(job.get("source_date_epoch", default_epoch)), framework)
             try:
@@ -1085,7 +1085,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
                 report.problems.append(str(exc))
                 continue
             finally:
-                log(f"==== Finished: {key} ====")
+                log(compile_log.finished(key))
             outputs.append(out)
             for path in out.inputs + out.bib_sources:
                 if is_within(path, snapshot_root) or is_within(path, build):
@@ -1176,11 +1176,11 @@ def create_snapshot(
                                                           wrapper_text)
                 if fresh is not None:
                     progress(f"{job.jobname} unchanged ({i} of {len(jobs)})")
-                    log(f"==== Compiling {deck.name} -> {key} ====")
+                    log(compile_log.compiling(deck.name, key))
                     log(f"    ({job.jobname}: nothing it uses changed since its compile of "
                         f"{fresh.created[:16].replace('T', ' ')} -- using "
                         f"{fresh.pdf} instead of compiling it again)")
-                    log(f"==== Finished: {key} ====")
+                    log(compile_log.finished(key))
                     outputs.append(_JobOutput(
                         job_name=job.jobname, pdf=fresh.pdf, inputs=fresh.inputs,
                         log_text=fresh.log_text, bib_sources=fresh.bib_sources,
@@ -1189,7 +1189,7 @@ def create_snapshot(
                     continue
                 log(f"    ({job.jobname} is compiled: {why})")
             progress(f"compiling {job.jobname} ({i} of {len(jobs)})")
-            log(f"==== Compiling {deck.name} -> {key} ====")
+            log(compile_log.compiling(deck.name, key))
             wrapper = deck.path.parent / wrapper_name(job.jobname)
             wrappers.append(wrapper)
             wrapper.write_text(wrapper_text, encoding="utf-8", newline="")
@@ -1198,7 +1198,7 @@ def create_snapshot(
                     project_root, wrapper, job.jobname, build_root / job.jobname, env, log, cancel))
             finally:
                 wrapper.unlink(missing_ok=True)
-                log(f"==== Finished: {key} ====")
+                log(compile_log.finished(key))
 
         # 2. What to copy.
         from . import deck_language

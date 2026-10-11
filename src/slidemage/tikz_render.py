@@ -28,7 +28,7 @@ from typing import Callable, Optional
 import pymupdf as fitz
 from PIL import Image, ImageChops
 
-from . import alt_blocks, alt_images
+from . import alt_blocks, alt_images, compile_log
 from .deck_scan import PROJECT_ROOT
 from .slide_preview import compile_and_extract, default_preamble
 
@@ -239,8 +239,7 @@ def ensure_rendered(reference: str, log: Optional[LogCallback] = None) -> Path:
     if png_path.is_file():
         return png_path
 
-    log(f"==== Rendering tikz illustration {illustration_id} "
-       f"(from {slide_path.name}) ====")
+    log(compile_log.tikz_rendering(illustration_id, slide_path.name))
     wrapper_text = _wrapper_text(illustration_id, options, body, slide_preamble)
     pdf_path = compile_and_extract(wrapper_text, f"tikz-{illustration_id}", log)
     try:
@@ -253,5 +252,5 @@ def ensure_rendered(reference: str, log: Optional[LogCallback] = None) -> Path:
         # immediately rather than accumulating one per illustration drafted.
         shutil.rmtree(pdf_path.parent, ignore_errors=True)
 
-    log(f"==== PASS: tikz illustration {illustration_id} -> {png_path} ====")
+    log(compile_log.tikz_passed(illustration_id, png_path))
     return png_path
