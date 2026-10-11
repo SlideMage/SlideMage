@@ -87,3 +87,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | A2a/A2b Transcripts via the deck parser | Done, v8.0.3 / v8.0.4: implemented by Codex (A2b sent back once), reviewed by Claude. |
 | A4 Image side panel | Done, v8.0.5: implemented by Codex, reviewed by Claude. |
 | A6 New projects | Done, v8.0.6: implemented by Codex, reviewed by Claude. |
+| A7 Biber failure warning | Done, v8.0.7: implemented by Codex, reviewed by Claude. |

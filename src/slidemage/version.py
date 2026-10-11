@@ -1966,6 +1966,8 @@ v8.0.5 (2026-10-11, code review fix A4): The Image descriptions side panel saves
 
 v8.0.6 (2026-10-11, code review fix A6): A new empty project can add a standard slide: without a slide template of its own, the bundled example project's template is used (before, adding the slide failed). Creating a project from the example no longer copies generated preview wrappers (decks/_*.tex).
 
+v8.0.7 (2026-10-11, code review fix A7): A compile whose bibliography could not be built (biber failed, so citations show as their keys) still succeeds, but now writes a warning to the compile log.
+
 """
 from __future__ import annotations
 
@@ -1975,7 +1977,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v8.0.6"
+VERSION_NUMBER = "v8.0.7"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

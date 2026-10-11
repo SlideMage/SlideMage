@@ -804,10 +804,12 @@ def run_job(
         pdf_source = build_dir / f"{jobname}.pdf"
         ok = pdf_source.is_file() and pdf_source.stat().st_size > 0
         if ok and log_path.exists():
-            if FATAL_ERROR_RE.search(
-                log_path.read_text(encoding="utf-8", errors="replace")
-            ):
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+            if FATAL_ERROR_RE.search(log_text):
                 ok = False
+            elif compile_records.BIBER_NEEDED_RE.search(log_text):
+                log(f"Warning: {jobname} -- the bibliography could not be built "
+                    f"(biber failed); citations show as keys. See {log_path}")
         elif not log_path.exists():
             ok = False
 
