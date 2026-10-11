@@ -97,3 +97,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | B5 Dead code | Done, v8.0.14: implemented by Codex, reviewed by Claude; ~290 lines removed. Phase B complete. |
 | C1 Slide file-name grammar | Done, v8.0.15: implemented by Codex, reviewed by Claude. Public helpers in slide_language instead of a SlideFile class (Codex caveat accepted). |
 | C2 Shared constants | Done, v8.0.16: implemented by Codex, reviewed by Claude. |
+| C3 One translation-link reader | Done, v8.0.17: implemented by Codex, reviewed by Claude. One reader instead of one written direction: removes the disagreement without rewriting slide files. |

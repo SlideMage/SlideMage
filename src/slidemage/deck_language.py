@@ -18,72 +18,13 @@ from .deck_scan import Chapter, Deck
 from .tex_source import IFFALSE_RE, INPUT_RE, VERBATIM_ENV_RE, VERB_RE, masked_same_length
 
 
-def _header(id_slug: str, path: Path | None = None) -> str:
-    try:
-        return (path or slide_language.SLIDES_DIR / slide_language.current_name(id_slug)).read_text(
-            encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-class _Links:
-    """One scan per resolution, including links recorded on only one side."""
-
-    def __init__(self, slides_dir: Path | None = None) -> None:
-        self.slides_dir = slides_dir or slide_language.SLIDES_DIR
-        self.paths = {slide_language.bare_id(p.name): p
-                      for p in self.slides_dir.glob("*-current.tex")}
-        self.headers: dict[str, str] = {}
-        self.reverse: dict[tuple[str, str], set[str]] | None = None
-
-    def partner(self, ref: str) -> str | None:
-        path = self.paths.get(slide_language.bare_id(ref))
-        partner = path.name[:-len(slide_language.CURRENT_SUFFIX)] if path else None
-        return partner if partner and slide_language.own_language(partner) in slide_language.TRANSLATION_LANGUAGES else None
-
-    def header(self, id_slug: str) -> str:
-        if id_slug not in self.headers:
-            self.headers[id_slug] = _header(id_slug, self.slides_dir / slide_language.current_name(id_slug))
-        return self.headers[id_slug]
-
-    def find(self, id_slug: str, language: str, path: Path | None = None) -> str | None:
-        language = language.upper()
-        if slide_language.own_language(id_slug) in (None, "mult", language):
-            return None
-        text = _header(id_slug, path) if path else self.header(id_slug)
-        refs = [m.group(1) for m in slide_language.TRANSLATION_OF_RE.finditer(text)]
-        refs += [m.group(2) for m in slide_language.LANG_TRANSLATION_RE.finditer(text)
-                 if m.group(1) == language]
-        for ref in refs:
-            partner = self.partner(ref)
-            if partner and partner != id_slug and slide_language.own_language(partner) == language:
-                return partner
-        if self.reverse is None:
-            self.reverse = {}
-            for file in self.paths.values():
-                slug = file.name[:-len(slide_language.CURRENT_SUFFIX)]
-                own = slide_language.own_language(slug)
-                if own not in slide_language.TRANSLATION_LANGUAGES:
-                    continue
-                header = self.header(slug)
-                refs = [m.group(1) for m in slide_language.TRANSLATION_OF_RE.finditer(header)]
-                refs += [m.group(2) for m in slide_language.LANG_TRANSLATION_RE.finditer(header)]
-                for ref in refs:
-                    partner = self.partner(ref)
-                    if partner and slide_language.own_language(partner) != own:
-                        self.reverse.setdefault((slide_language.bare_id(partner), own), set()).add(slug)
-        candidates = self.reverse.get((slide_language.bare_id(id_slug), language), set())
-        # Conflicting reverse links do not pick an arbitrary translation.
-        return next(iter(candidates)) if len(candidates) == 1 else None
-
-
-def resolve_call(call: SlideCall, language: str, *, _links: _Links | None = None) -> SlideCall:
+def resolve_call(call: SlideCall, language: str, *, _links: slide_language.TranslationLinks | None = None) -> SlideCall:
     language = language.upper()
     if slide_language.own_language(call.id_slug) in (None, "mult", language):
         return call
     # Translation links belong to the slide, independently of a frozen
     # version's old header. Never transfer a version number between slides.
-    partner = (_links or _Links()).find(call.id_slug, language)
+    partner = (_links or slide_language.TranslationLinks()).find(call.id_slug, language)
     if partner is None:
         return call
     slide_id, slug = partner.split("-", 1)
@@ -110,8 +51,11 @@ def slots(calls: list[SlideCall], language: str, *, slides_dir: Path | None = No
     A translation called on its own is a slot too. Repeated originals and
     different slidestep calls retain their order and their individual rules.
     """
+    return _slots(calls, language, slide_language.TranslationLinks(slides_dir))
+
+
+def _slots(calls: list[SlideCall], language: str, links: slide_language.TranslationLinks) -> list[SlideSlot]:
     by_id = {c.id: c for c in calls}
-    links = _Links(slides_dir)
     owners: dict[str, str] = {}
     for call in calls:
         text = links.header(call.id_slug)
@@ -239,7 +183,7 @@ def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
     candidate, dependencies = expand_fragments(deck)
     expanded = candidate.text
     resolved = resolved_text(candidate, language)
-    links = _Links()
+    links = slide_language.TranslationLinks()
     header_inputs = {links.paths[slide_id] for slot in deck_slots(candidate, language)
                      if slot.related_ids for slide_id in (slot.original.id, *slot.related_ids)
                      if slide_id in links.paths}

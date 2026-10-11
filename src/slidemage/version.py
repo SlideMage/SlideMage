@@ -1986,6 +1986,8 @@ v8.0.15 (2026-10-11, code review cleanup C1): Internal: slide_language owns the 
 
 v8.0.16 (2026-10-11, code review cleanup C2): Internal: the three deck views are defined once in deck_editor (they lived in transcript.py, imported from there by the workspace, and were written out in four more modules); the translation languages EN/DE are one constant beside the slide languages. No change in behaviour.
 
+v8.0.17 (2026-10-11, code review fix C3): The language badges ("EN + DE"), the Language panel and the preview's "translation outdated" notice find a slide's translation partner by the same rules as the slide list, preview and compile -- also when the link is recorded on only one of the two slides, and not at all when two translations claim the same original. Before, they read only the slide's own first header comment and could disagree.
+
 """
 from __future__ import annotations
 
@@ -1996,7 +1998,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.16"
+VERSION_NUMBER = "v8.0.17"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

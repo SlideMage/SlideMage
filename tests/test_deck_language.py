@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from slidemage import compile_progress, compiler, deck_language, deck_outline, deck_scan, latex_lint, preview_target
+from slidemage import compile_progress, compiler, deck_language, deck_outline, deck_scan, latex_lint, preview_target, slide_language
 from conftest import use_slides_folder
 
 
@@ -123,6 +123,51 @@ def test_one_sided_links_resolve_in_both_directions(project, missing_header):
     assert [r.call.id for r in rows(d, "DE")] == ["ddd"]
     assert [r.call.id for r in rows(d, "EN")] == ["aaa"]
     assert rows(d, "EN")[0].badge == "[EN + DE]"
+    for slug, partner, badge, is_translation in (
+        ("aaa-EN-One", "ddd-DE-Eins", "[EN + DE]", False),
+        ("ddd-DE-Eins", "aaa-EN-One", "[DE + EN]", True),
+    ):
+        link = slide_language.translation_link(slug)
+        assert (link.partner, link.is_translation) == (partner, is_translation)
+        assert slide_language.cross_referenced_language(slug) == slide_language.own_language(partner)
+        assert slide_language.badge_for(slug).text() == badge
+
+
+def test_conflicting_reverse_links_have_no_partner_in_either_reader(project):
+    slides = project / "slides"
+    (slides / "aaa-EN-One-current.tex").write_text("Text\n")
+    (slides / "eee-DE-Andere-current.tex").write_text("%% Translation of: aaa-EN-One\nText\n")
+    d = deck(project, "\\slide{aaa-EN-One}\n")
+    assert deck_language.deck_slots(d, "DE")[0].call.id_slug == "aaa-EN-One"
+    assert slide_language.translation_link("aaa-EN-One") is None
+    assert slide_language.cross_referenced_language("aaa-EN-One") is None
+    assert slide_language.badge_for("aaa-EN-One").text() == "[EN]"
+
+
+@pytest.mark.parametrize("header", [
+    "%% Translation of: gone-DE-Missing\n%% DE translation: ddd-DE-Eins\n",
+    "%% DE translation: bbb-EN-Two\n%% DE translation: ddd-DE-Eins\n",
+    "%% mult translation: ccc-mult-Three\n%% DE translation: ddd-DE-Eins\n",
+])
+def test_slide_reader_skips_unusable_comments_like_the_deck_reader(project, header):
+    (project / "slides" / "aaa-EN-One-current.tex").write_text(header + "Text\n")
+    d = deck(project, "\\slide{aaa-EN-One}\n")
+    assert deck_language.deck_slots(d, "DE")[0].call.id_slug == "ddd-DE-Eins"
+    link = slide_language.translation_link("aaa-EN-One")
+    assert (link.partner, link.is_translation) == ("ddd-DE-Eins", False)
+    assert slide_language.badge_for("aaa-EN-One").text() == "[EN + DE]"
+
+
+def test_frozen_headers_do_not_change_the_translation_partner(project):
+    slides = project / "slides"
+    frozen = slides / "aaa-EN-One-v1-0-0.tex"
+    frozen.write_text("%% DE translation: eee-DE-Old\nText\n")
+    (slides / "eee-DE-Old-current.tex").write_text("Text\n")
+    d = deck(project, "\\slideversion{aaa-EN-One}{1-0-0}\n")
+    assert deck_language.deck_slots(d, "DE")[0].call.id_slug == "ddd-DE-Eins"
+    assert slide_language.translation_link("aaa-EN-One", frozen).partner == "ddd-DE-Eins"
+    assert slide_language.cross_referenced_language("aaa-EN-One", frozen) == "DE"
+    assert slide_language.badge_for("aaa-EN-One", frozen).text() == "[EN + DE]"
 
 
 def test_wrappers_resolve_full_chapter_and_appendix_without_writing_deck(project):

@@ -186,8 +186,9 @@ class ProjectSlide:
 def project_slides() -> list[ProjectSlide]:
     """Every slide of the project, sorted by id-slug."""
     slides = []
+    links = slide_language.TranslationLinks()
     for id_slug in slide_ids.list_id_slugs():
         path = slide_path(id_slug)
         slides.append(ProjectSlide(id_slug, deck_outline.slide_file_title(path, id_slug),
-                                   slide_language.badge_for(id_slug, path).text()))
+                                   slide_language.badge_for(id_slug, path, links=links).text()))
     return slides

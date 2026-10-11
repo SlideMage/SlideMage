@@ -165,3 +165,26 @@ def test_slide_row_is_the_outlines_row_of_the_first_call(tmp_path, project):
     assert (row.call.id, row.position, row.key) == ("bbb", 2, rows[1].key)
     assert row.title == "Title" and not row.hidden
     assert deck_outline.slide_row(deck, "zzz", "instructor", "EN") is None
+
+
+@pytest.mark.parametrize("language", ["EN", "DE"])
+def test_an_outline_reads_each_translation_header_once(tmp_path, project, monkeypatch, language):
+    slide(project, "aaa-EN-One")
+    slide(project, "ddd-DE-Eins", "%% Translation of: aaa-EN-One\n" + GOOD)
+    slide(project, "bbb-EN-Two")
+    (project / "aaa-EN-One-v1-0-0.tex").write_text(GOOD, encoding="utf-8")
+    deck = make_deck(tmp_path, "\\slide{aaa-EN-One}\n\\slideversion{aaa-EN-One}{1-0-0}\n"
+                               "\\slide{ddd-DE-Eins}\n\\slide{bbb-EN-Two}\n\\slide{bbb-EN-Two}\n")
+    reads = []
+    real = slide_language._header
+
+    def header(id_slug, path=None):
+        reads.append(id_slug)
+        return real(id_slug, path)
+
+    monkeypatch.setattr(slide_language, "_header", header)
+    for build in range(2):
+        outline = deck_outline.build_outline(deck, "instructor", language)
+        assert rows_of(outline)[0].badge == ("[EN + DE]" if language == "EN" else "[DE + EN]")
+        assert set(reads) == {"aaa-EN-One", "ddd-DE-Eins", "bbb-EN-Two"}
+        assert all(reads.count(slug) == build + 1 for slug in set(reads))

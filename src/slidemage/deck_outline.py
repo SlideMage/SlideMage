@@ -93,13 +93,12 @@ def slide_file_title(path: Path, id_slug: str) -> str:
     return _title(path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
 
 
-def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str) -> SlideRow:
+def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
+         links: slide_language.TranslationLinks) -> SlideRow:
     call = slot.call
     path = SLIDES_DIR / call.source_filename
     png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
-    badge = slide_language.badge_for(call.id_slug, path)
-    if slot.related_ids and badge.own in slide_language.TRANSLATION_LANGUAGES:
-        badge.cross_referenced = "DE" if badge.own == "EN" else "EN"
+    badge = slide_language.badge_for(call.id_slug, path, links=links)
     lint_error, title = _source_facts(call)
     return SlideRow(
         call=call,
@@ -130,12 +129,14 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
     template = slide_snapshot.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     occurrences: dict[tuple, int] = {}
-    for position, slot in enumerate(deck_language.deck_slots(deck, language), start=1):
+    links = slide_language.TranslationLinks(SLIDES_DIR)
+    slots = deck_language._slots(deck_language.active_calls(deck), language, links)
+    for position, slot in enumerate(slots, start=1):
         call = slot.original
         base = _call_key(call)
         occurrences[base] = occurrences.get(base, 0) + 1
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
-            _row(slot, base + (occurrences[base] - 1,), position, template, view, language))
+            _row(slot, base + (occurrences[base] - 1,), position, template, view, language, links))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -148,9 +149,11 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
 def slide_row(deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
     """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
     template = slide_snapshot.detect_template(deck.preamble_text)
-    for position, slot in enumerate(deck_language.deck_slots(deck, language), start=1):
+    links = slide_language.TranslationLinks(SLIDES_DIR)
+    slots = deck_language._slots(deck_language.active_calls(deck), language, links)
+    for position, slot in enumerate(slots, start=1):
         if slot.matches(slide_id):
-            return _row(slot, _call_key(slot.original) + (0,), position, template, view, language)
+            return _row(slot, _call_key(slot.original) + (0,), position, template, view, language, links)
     return None
 
 
