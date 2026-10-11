@@ -20,6 +20,7 @@ import re
 import threading
 import errno
 from .preview_metrics import measure, stage, record_line, finish_rules
+from . import preview_format
 
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
@@ -114,10 +115,11 @@ WRAPPER_PREFIX = '_slidemage_preview-'
 UNUSED_DAYS = 14
 
 
-def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Path) -> list[str]:
+def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Path,
+                    extra=()) -> list[str]:
     """TeX recorder plus latexmk's bibliography inputs, excluding generated output."""
     cwd = project_root / 'decks'
-    names = []
+    names = list(extra)
     if fls.is_file():
         for line in fls.read_text(errors='replace').splitlines():
             if line.startswith('PWD '):
@@ -140,9 +142,10 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
     return sorted(paths)
 
 
-def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, cache: Path):
+def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, cache: Path,
+                extra=()):
     pdf.with_suffix('.inputs.json').write_text(json.dumps(recorded_inputs(
-        fls, database, project_root=project_root, cache=cache)), encoding='utf-8')
+        fls, database, project_root=project_root, cache=cache, extra=extra)), encoding='utf-8')
 
 
 @measure('prune')
@@ -203,7 +206,42 @@ def configuration_key(wrapper_text, id_slug, project_root, env):
 
 def compile_cached(wrapper_text, id_slug, log, *, project_root, build_dir, env,
                    fatal_error_re):
-    key = configuration_key(wrapper_text, id_slug, project_root, env)
+    """Build with the preamble precompiled when that works, else the ordinary way.
+
+    A run that fails only with the format is repeated without it, so a preamble
+    the format cannot reproduce costs one slower build, never a wrong preview.
+    """
+    preamble, marker, body = wrapper_text.partition(r'\begin{document}')
+    format_dir = None
+    if marker:
+        format_dir = preview_format.ensure(
+            preamble, configuration_key(wrapper_text, '', project_root, env),
+            project_root=project_root, build_dir=build_dir, env=env,
+            fatal_error_re=fatal_error_re, log=log, lock=build_lock)
+    if format_dir is not None:
+        try:
+            return _compile_cached(marker + body, id_slug, log, project_root=project_root,
+                                   build_dir=build_dir, env=env, fatal_error_re=fatal_error_re,
+                                   key_text=wrapper_text, format_dir=format_dir)
+        except RuntimeError as exc:
+            log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
+    pdf = _compile_cached(wrapper_text, id_slug, log, project_root=project_root,
+                          build_dir=build_dir, env=env, fatal_error_re=fatal_error_re,
+                          key_text=wrapper_text, format_dir=None)
+    if format_dir is not None:
+        # The slide builds without the format but not with it: stop using it.
+        preview_format.disable(format_dir)
+    return pdf
+
+
+def _compile_cached(wrapper_text, id_slug, log, *, project_root, build_dir, env,
+                    fatal_error_re, key_text, format_dir):
+    key = configuration_key(key_text, id_slug, project_root, env)
+    if format_dir is not None:
+        # A rebuilt format means changed preamble inputs, which latexmk's own
+        # dependency list (only the slide's) cannot see: use fresh state.
+        built = (format_dir / 'preamble.fmt').stat().st_mtime_ns
+        key = key[:16] + hashlib.sha256(f'{built}'.encode()).hexdigest()[:8]
     cache = build_dir / 'preview-cache' / key
     prune_unused(project_root, build_dir)
     jobname = 'preview-' + key
@@ -215,11 +253,12 @@ def compile_cached(wrapper_text, id_slug, log, *, project_root, build_dir, env,
         with build_lock(cache / 'build.lock'):
             return _compile_reserved(wrapper_text, id_slug, log, project_root=project_root,
                                      env=env, fatal_error_re=fatal_error_re,
-                                     cache=cache, wrapper=wrapper, jobname=jobname)
+                                     cache=cache, wrapper=wrapper, jobname=jobname,
+                                     format_dir=format_dir)
 
 
 def _compile_reserved(wrapper_text, id_slug, log, *, project_root, env, fatal_error_re,
-                      cache, wrapper, jobname):
+                      cache, wrapper, jobname, format_dir=None):
     unstable = cache / 'rerun-limit'
     if unstable.exists():
         # Retaining oscillating layout state changes the next preview.
@@ -234,8 +273,14 @@ def _compile_reserved(wrapper_text, id_slug, log, *, project_root, env, fatal_er
     # Returned previews contain only a temporary PDF, so a SyncTeX file in
     # this private build directory cannot be used by the external viewer.
     cmd = ['latexmk', '-f', '-synctex=0', f'-jobname={jobname}',
-           f'-outdir={cache.as_posix()}', f'-auxdir={cache.as_posix()}',
-           str(wrapper.relative_to(project_root))]
+           f'-outdir={cache.as_posix()}', f'-auxdir={cache.as_posix()}']
+    if format_dir is not None:
+        # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.
+        # Found through TEXFORMATS: a path given to -fmt names the recorder file.
+        cmd.append('-lualatex=lualatex -fmt=' + preview_format.NAME
+                   + ' -interaction=nonstopmode -file-line-error %O %S')
+        env = dict(env, TEXFORMATS=str(format_dir) + os.pathsep)
+    cmd.append(str(wrapper.relative_to(project_root)))
     pdf = cache / (jobname + '.pdf')
     previous_pdf = pdf.stat().st_mtime_ns if pdf.exists() else None
     output_tail = deque(maxlen=200)
@@ -279,5 +324,6 @@ def _compile_reserved(wrapper_text, id_slug, log, *, project_root, env, fatal_er
         shutil.copy2(pdf, dest)
     with stage('dependencies'):
         write_inputs(dest, cache / (jobname + '.fls'), cache / (jobname + '.fdb_latexmk'),
-                     project_root=project_root, cache=cache)
+                     project_root=project_root, cache=cache,
+                     extra=preview_format.inputs(format_dir) if format_dir is not None else ())
     return dest

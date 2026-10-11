@@ -1,3 +1,13 @@
+% \SMLuaOnce{<lua>}: run Lua now AND remember it, so a precompiled format
+% (SlideMage's fast preview, see preview_format.py) can replay it. A LuaTeX
+% format stores TeX state but not Lua state: every global function, table and
+% callback a preamble sets up is gone when the format is loaded. The replay list
+% is run by the format's \everyjob; in an ordinary build it is never used.
+\newtoks\SMLuaReplayList
+\newcommand{\SMLuaOnce}[1]{%
+	\directlua{#1}%
+	\global\SMLuaReplayList\expandafter{\the\SMLuaReplayList\directlua{#1}}%
+}
 \usepackage{etoolbox} % \AtEndEnvironment, used for the itemize level-drop spacing below
 \usepackage{tikz} % For painting a white box over title bar
 \usetikzlibrary{calc}
@@ -2211,7 +2221,7 @@
 	% this failed exactly that way). This loader snippet is deliberately
 	% free of "%" and "#" so it is safe to keep inline. Found via kpathsea
 	% (TEXINPUTS), since it lives in latex/, outside the project.
-	\directlua{
+	\SMLuaOnce{
 		local path = kpse.find_file("Slidemaster_alt.lua", "lua")
 			or kpse.find_file("Slidemaster_alt.lua", "tex")
 		if path then
@@ -2677,7 +2687,7 @@
 	\setbeamertemplate{note page}[gothampresenter]
 	\makeatother
 \fi
-\directlua{
+\SMLuaOnce{
 	function SMZeroPad(n) if n < 10 then return "0" .. n else return "" .. n end end
 }
 \newwrite\SMCompileTimestampFile
@@ -3314,7 +3324,7 @@
 	gap/.store in=\gothamtable@gap,
 }
 \ifluatex
-	\directlua{
+	\SMLuaOnce{
 		local path = kpse.find_file("Slidemaster_layout.lua", "lua")
 			or kpse.find_file("Slidemaster_layout.lua", "tex")
 		if path then
@@ -3488,7 +3498,7 @@
 % boxes already set it.) Checked in LuaTeX by walking the current list.
 \newlength{\SMColumnsTopCorrection}
 \setlength{\SMColumnsTopCorrection}{10.17pt}
-\directlua{
+\SMLuaOnce{
 	gotham_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
 		for n in node.traverse(head) do
@@ -3793,7 +3803,7 @@
 \newwrite\SM@topfile
 \newcommand{\SMSetTopCorrection}[2]{\global\@namedef{SM@topcorr@#1}{#2}}
 \ifluatex
-	\directlua{
+	\SMLuaOnce{
 		luatexbase.add_to_callback("pre_shipout_filter", function(head)
 			if gotham_layout and gotham_layout.top_measure_page then
 				gotham_layout.top_measure_page(head)

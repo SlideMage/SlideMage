@@ -6,7 +6,13 @@ import time
 
 import pytest
 
-from slidemage import preview_build, slide_preview
+from slidemage import preview_build, preview_format, slide_preview
+
+
+@pytest.fixture(autouse=True)
+def _no_precompiled_preamble(monkeypatch):
+    # These tests fake latexmk; the format tests below opt back in.
+    monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '0')
 
 
 def test_regions_and_elements_keep_preamble_and_validate():
@@ -123,3 +129,87 @@ def test_element_rejects_frame_only_options():
         with pytest.raises(ValueError):
             slide_preview.render_slide_text_to_pdf(
                 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element', **options)
+
+
+def _fake_engine(monkeypatch, log='Success\nBeginning to dump on file preamble.fmt\n', make_fmt=True):
+    """Stand in for `lualatex -ini`: writes the format, its log and recorder file."""
+    runs = []
+
+    def run(cmd, **kwargs):
+        runs.append(cmd)
+        out = Path(next(c.split('=', 1)[1] for c in cmd if c.startswith('-output-directory=')))
+        if make_fmt:
+            (out / 'preamble.fmt').write_bytes(b'format')
+        (out / 'preamble.log').write_text(log)
+        package = out.parents[2] / 'package.sty'  # outside the format's own directory
+        package.write_text(package.read_text() if package.exists() else 'x')
+        (out / 'preamble.fls').write_text(f'PWD {out}\nINPUT {package}\n')
+        return SimpleNamespace(returncode=1)  # the dump's own Lua noise makes TeX exit 1
+
+    monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '1')
+    monkeypatch.setattr(preview_format.shutil, 'which', lambda *a, **k: '/bin/lualatex')
+    monkeypatch.setattr(preview_format.subprocess, 'run', run)
+    return runs
+
+
+def _ensure(tmp_path, preamble=r'\documentclass{beamer}'):
+    return preview_format.ensure(
+        preamble, 'key', project_root=tmp_path, build_dir=tmp_path / '.build', env={},
+        fatal_error_re=re.compile(r'^!|^\S.*:[0-9]+: ', re.M), log=lambda line: None,
+        lock=preview_build.build_lock)
+
+
+def test_format_is_built_once_and_rebuilt_when_an_input_changes(tmp_path, monkeypatch):
+    runs = _fake_engine(monkeypatch)
+    first = _ensure(tmp_path)
+    assert first and (first / 'preamble.fmt').is_file()
+    text = (first / 'preamble.tex').read_text()
+    assert text.startswith(r'\documentclass{beamer}') and text.rstrip().endswith(r'\dump')
+    assert (first / 'capture.lua').is_file() and 'SMLuaReplayList' in text
+    package = tmp_path / 'package.sty'
+    assert preview_format.inputs(first) == [str(package)]
+    assert _ensure(tmp_path) == first and len(runs) == 1  # unchanged inputs: reused
+    package.write_text('changed, and longer')
+    assert _ensure(tmp_path) == first and len(runs) == 2  # an input changed: rebuilt
+
+
+def test_format_noise_after_the_preamble_is_not_a_failure_but_real_errors_are(tmp_path, monkeypatch):
+    noise = ('Success\n)...uni-algos/lua-uni-stage-tables.lua:141: attempt to per\n'
+             'Beginning to dump on file preamble.fmt\n')
+    _fake_engine(monkeypatch, log=noise)
+    assert _ensure(tmp_path)
+    _fake_engine(monkeypatch, log='./deck.tex:12: Undefined control sequence.\nBeginning to dump on file x\n')
+    assert _ensure(tmp_path / 'other') is None
+    _fake_engine(monkeypatch, log='Success\n')  # never reached \dump
+    assert _ensure(tmp_path / 'third') is None
+
+
+def test_slide_failing_only_with_the_format_is_rebuilt_without_it_and_the_format_disabled(
+        tmp_path, monkeypatch):
+    _fake_engine(monkeypatch)
+    commands = []
+
+    def popen(cmd, **kwargs):
+        commands.append(cmd)
+        cache = Path(next(c.split('=', 1)[1] for c in cmd if c.startswith('-outdir=')))
+        job = next(c.split('=', 1)[1] for c in cmd if c.startswith('-jobname='))
+        with_format = any(c.startswith('-lualatex=') for c in cmd)
+        if not with_format:
+            (cache / (job + '.pdf')).write_bytes(b'pdf')
+        (cache / (job + '.log')).write_text('! Format breaks this' if with_format else 'Success')
+        return SimpleNamespace(stdout=iter([]), wait=lambda: None, returncode=int(with_format))
+
+    monkeypatch.setattr(preview_build.subprocess, 'Popen', popen)
+    monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
+    kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={},
+                  fatal_error_re=re.compile('^!'))
+    wrapper = r'\documentclass{beamer}\begin{document}one\end{document}'
+    pdf = preview_build.compile_cached(wrapper, 'abc', print, **kwargs)
+    assert pdf.is_file()
+    assert any(c.startswith('-lualatex=') for c in commands[0])
+    assert 'TeX' not in ''.join(commands[0])
+    assert not any(c.startswith('-lualatex=') for c in commands[1])
+    # The format stays disabled: the next request goes straight to the ordinary build.
+    preview_build.compile_cached(wrapper, 'abc', print, **kwargs)
+    assert not any(c.startswith('-lualatex=') for c in commands[2])
+    assert len(commands) == 3

@@ -3,8 +3,16 @@ import json
 import re
 from types import SimpleNamespace
 
+import pytest
+
 from slidemage import preview_build, preview_cli
 from slidemage.preview_metrics import PreviewMetrics, record_line, stage
+
+
+@pytest.fixture(autouse=True)
+def _no_precompiled_preamble(monkeypatch):
+    # These tests fake latexmk, not the engine that would build a format.
+    monkeypatch.setenv("SLIDEMAGE_PREVIEW_FORMAT", "0")
 
 
 def test_cache_key_tracks_preamble_toolchain_environment_and_user_rc(
