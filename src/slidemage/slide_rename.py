@@ -136,10 +136,10 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
     if new_id_slug == id_slug:
         return id_slug
 
-    current_src = SLIDES_DIR / f"{id_slug}-current.tex"
+    current_src = SLIDES_DIR / slide_language.current_name(id_slug)
     if not current_src.exists():
         raise FileNotFoundError(f"{current_src} does not exist")
-    current_dest = SLIDES_DIR / f"{new_id_slug}-current.tex"
+    current_dest = SLIDES_DIR / slide_language.current_name(new_id_slug)
     if current_dest.exists():
         raise FileExistsError(f"{current_dest} already exists")
 
@@ -319,8 +319,8 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
         if dest.exists():
             raise FileExistsError(f"{dest} already exists")
         _move(src, dest)
-        if src.name.endswith("-current.tex"):
-            old_slug = src.name[: -len("-current.tex")]
+        if src.name.endswith(slide_language.CURRENT_SUFFIX):
+            old_slug = src.name[: -len(slide_language.CURRENT_SUFFIX)]
             mapping[old_slug] = new_id + old_slug[len(old_id):]
 
     if mapping:
@@ -461,7 +461,7 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
     this function itself deletes unconditionally, no confirmation of its
     own. Returns {"files_removed": n, "deck_references_removed": n} for
     the caller's own confirmation/log message."""
-    current = SLIDES_DIR / f"{id_slug}-current.tex"
+    current = SLIDES_DIR / slide_language.current_name(id_slug)
     if not current.exists():
         raise FileNotFoundError(f"{current} does not exist")
 

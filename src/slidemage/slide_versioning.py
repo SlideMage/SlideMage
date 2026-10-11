@@ -28,6 +28,7 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
+from .slide_language import FROZEN_RE, frozen_name
 from .tex_source import is_commented
 
 Version = tuple[int, int, int]
@@ -152,7 +153,7 @@ def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional
     """
     if not current_path.exists():
         return None
-    dest = current_path.parent / f"{id_slug}-v{format_hyphen(version)}.tex"
+    dest = current_path.parent / frozen_name(id_slug, format_hyphen(version))
     if dest.exists():
         return None
     shutil.copy2(str(current_path), str(dest))
@@ -173,9 +174,6 @@ def freeze_current(current_path: Path, id_slug: str, level: BumpLevel) -> tuple[
         raise ValueError(f"v{format_dot(freeze_as)} of {id_slug} is already frozen, so the current content cannot be.")
     slide_source.save_slide_source(current_path, set_marker(text, final), eol, expected_text=text)
     return frozen, final
-
-
-_FROZEN_RE = re.compile(r"-v(\d+)-(\d+)-(\d+)\.tex$")
 
 
 class RestoreError(ValueError):
@@ -208,12 +206,12 @@ def restore_version(current_path: Path, id_slug: str, version_path: Path) -> tup
     cur_version = parse_version(cur_text) or DEFAULT_BASELINE
     known = [cur_version]
     for path in current_path.parent.glob(f"{id_slug}-v*.tex"):
-        m = _FROZEN_RE.search(path.name)
+        m = FROZEN_RE.search(path.name)
         if m:
-            known.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            known.append(tuple(int(part) for part in m.group(1).split("-")))
     new_version = bump(max(known), "minor")
 
-    archive = current_path.parent / f"{id_slug}-v{format_hyphen(cur_version)}.tex"
+    archive = current_path.parent / frozen_name(id_slug, format_hyphen(cur_version))
     archived: Optional[Path] = None
     if archive.exists():
         frozen_text, _ = slide_source.read_slide_source(archive)

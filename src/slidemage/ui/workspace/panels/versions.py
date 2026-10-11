@@ -54,7 +54,7 @@ class SlideVersions(SidePanel):
             layout, "v" + slide_versioning.format_dot(number) if number else "untracked", current,
             "current, the live text" + self._used_by(users.get(None)))
         for version in frozen:
-            path = current.parent / f"{id_slug}-v{version}.tex"
+            path = current.parent / slide_language.frozen_name(id_slug, version)
             when = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d") if path.is_file() else "?"
             self._add_version(layout, slide_versioning.version_label(version), path, f"frozen {when}" + self._used_by(users.get(version)))
         self.body.addWidget(frame)

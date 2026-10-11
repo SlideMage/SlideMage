@@ -127,7 +127,7 @@ class Language(SidePanel):
         n_refs = slide_rename.count_references(old)
         confirm = QMessageBox.question(
             self, "Set language",
-            f"This will rename {old}-current.tex (and any frozen versions of it) to language "
+            f"This will rename {slide_language.current_name(old)} (and any frozen versions of it) to language "
             f"{language}, and rewrite {n_refs} deck reference(s) to match. Continue?")
         if confirm != QMessageBox.StandardButton.Yes:
             return

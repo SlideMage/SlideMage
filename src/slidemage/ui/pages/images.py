@@ -373,7 +373,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         view = self._current
         if view is None:
             return
-        row, id_slug = view.row, view.row.path.name.removesuffix("-current.tex")
+        row, id_slug = view.row, view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX)
         language = "de" if slide_language.own_language(id_slug) == "DE" else "en"
         show_transcript_preview(self.app, self.app.centre.slide_text(row.path), row.slide_id, id_slug,
                                 self.state.view, language)

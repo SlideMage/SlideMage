@@ -152,7 +152,7 @@ class CentreColumn(QFrame):
 
     def restore_version(self, frozen: Path) -> None:
         """"Make this the current version": slide_versioning.restore_version()."""
-        match = deck_editor.VERSION_FILE_RE.search(frozen.name)
+        match = slide_language.FROZEN_RE.search(frozen.name)
         id_slug = frozen.name[:match.start()] if match else ""
         current = frozen.parent / slide_language.current_name(id_slug)
         if not match or not current.is_file():

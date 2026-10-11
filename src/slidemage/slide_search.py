@@ -21,10 +21,11 @@ from pathlib import Path
 
 from . import alt_blocks
 from .deck_scan import PROJECT_ROOT
+from .slide_language import CURRENT_SUFFIX
 
 # Characters of context kept on each side of the match: a palette row shows one line.
 _SNIPPET_CONTEXT = 40
-SLIDE_SUFFIX = "-current.tex"
+SLIDE_SUFFIX = CURRENT_SUFFIX
 BIB_NAME = "Slidemaster.bib"
 
 

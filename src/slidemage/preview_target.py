@@ -39,8 +39,8 @@ class PreviewTarget:
     @property
     def source_path(self) -> Path:
         """The slide file this call loads."""
-        suffix = f"-v{self.version}" if self.version else "-current"
-        return SLIDES_DIR / f"{self.id_slug}{suffix}.tex"
+        name = slide_language.frozen_name(self.id_slug, self.version) if self.version else slide_language.current_name(self.id_slug)
+        return SLIDES_DIR / name
 
     @property
     def template(self) -> str:

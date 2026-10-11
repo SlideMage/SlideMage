@@ -57,7 +57,7 @@ TRANSLATION_MAX_TOKENS = 4096
 
 def slide_path(id_slug: str) -> Path:
     """The live file of a slide."""
-    return slide_ids.SLIDES_DIR / f"{id_slug}-current.tex"
+    return slide_ids.SLIDES_DIR / slide_language.current_name(id_slug)
 
 
 def frame_thumbnail(frame: str) -> Path:

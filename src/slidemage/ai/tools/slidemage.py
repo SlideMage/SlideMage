@@ -189,7 +189,7 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     source_id_slug = ""
     if (args.get("translation_of") or "").strip():
         source = slide_or_file(ctx, args["translation_of"])
-        source_id_slug = source.name.removesuffix("-current.tex")
+        source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
         if not slide_add.slide_path(source_id_slug).exists():
             raise ToolError(f"'{args['translation_of']}' is not a slide. list_slides shows the ids.")
         if slide_language.own_language(source_id_slug) == language:

@@ -44,6 +44,7 @@ TRANSLATION_OF_RE = re.compile(r"^%% Translation of: (\S+)", re.MULTILINE)
 LANG_TRANSLATION_RE = re.compile(r"^%% (EN|DE|mult) translation: (\S+)", re.MULTILINE)
 
 CURRENT_SUFFIX = "-current.tex"
+FROZEN_RE = re.compile(r"-v([0-9]+-[0-9]+-[0-9]+)\.tex$")
 
 
 def bare_id(id_slug_or_ref: str) -> str:
@@ -65,6 +66,11 @@ def own_language(id_slug: str) -> Optional[str]:
 def current_name(id_slug: str) -> str:
     """The file name of a slide's current file ("1ab-EN-Demo-current.tex")."""
     return f"{id_slug}{CURRENT_SUFFIX}"
+
+
+def frozen_name(id_slug: str, version: str) -> str:
+    """The frozen file name for a version in its file form ("1-0-0")."""
+    return f"{id_slug}-v{version}.tex"
 
 
 def is_current_file(path: Path) -> bool:

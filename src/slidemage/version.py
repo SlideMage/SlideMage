@@ -1982,6 +1982,8 @@ v8.0.13 (2026-10-11, code review cleanup B3): Internal: the five places that run
 
 v8.0.14 (2026-10-11, code review cleanup B5): Internal: removed 11 unused functions and what only they used (about 290 lines), among them the old image-description bake-off, a bulk language setter and an unused "other model" setting. No change in behaviour.
 
+v8.0.15 (2026-10-11, code review cleanup C1): Internal: slide_language owns the slide file names -- current_name(), frozen_name() and one pattern for frozen versions (-vX-Y-Z.tex, three parts as the naming convention says) replace names assembled by hand in about 20 places and two patterns that disagreed. No change in behaviour for files SlideMage writes.
+
 """
 from __future__ import annotations
 
@@ -1992,7 +1994,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.14"
+VERSION_NUMBER = "v8.0.15"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

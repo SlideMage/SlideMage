@@ -62,6 +62,7 @@ from pathlib import Path
 from typing import Callable
 
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .slide_language import current_name
 from .tex_source import COMMENT_RE
 
 MEDIA_DIR = PROJECT_ROOT / "media"
@@ -123,7 +124,7 @@ def find_used_slide_filenames() -> set[str]:
                 used.add(slot.call.source_filename)
                 if slot.related_ids:
                     # Current headers identify the partner even when the call pins a version.
-                    used.add(f"{slot.original.id_slug}-current.tex")
+                    used.add(current_name(slot.original.id_slug))
     return used
 
 

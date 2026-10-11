@@ -27,7 +27,7 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
 from .deck_scan import PROJECT_ROOT, Deck
 from .tex_source import COMMENT_RE
 
@@ -1604,7 +1604,7 @@ def generate_single_slide(
     slide_notes = alt_images.load_slide_notes()
     tmp_dir = Path(tempfile.mkdtemp(prefix="slidemage-transcript-"))
     try:
-        tmp_path = tmp_dir / f"{bare_id}-current.tex"
+        tmp_path = tmp_dir / slide_language.current_name(bare_id)
         tmp_path.write_text(source_text, encoding="utf-8", newline="")
         deck_slide = DeckSlide(number=1, slide_id=bare_id, path=tmp_path, included=True)
         entry = render_slide(deck_slide, version, entries, slide_notes, language=language)

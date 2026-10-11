@@ -557,9 +557,7 @@ def lint_file(path: Path) -> list[LintIssue]:
 
 
 def _slide_path(call) -> Path:
-    if call.macro in deck_editor.VERSIONED_MACROS:
-        return deck_editor.SLIDES_DIR / f"{call.id_slug}-v{call.version}.tex"
-    return deck_editor.SLIDES_DIR / f"{call.id_slug}-current.tex"
+    return deck_editor.SLIDES_DIR / call.source_filename
 
 
 @dataclass

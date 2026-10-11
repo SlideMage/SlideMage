@@ -23,7 +23,7 @@ from typing import Callable, Optional
 from . import compile_log, open_path
 from . import slide_language, slide_snapshot
 from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env, run_streamed
-from .deck_editor import VERSION_FILE_RE, format_call
+from .deck_editor import format_call
 from .deck_scan import PROJECT_ROOT
 from .preview_metrics import measure, record_line, finish_rules
 
@@ -156,9 +156,9 @@ def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
     call that loads exactly that file -- used by the slide-source editor,
     which only knows its own file path, not a deck-parsed SlideCall."""
     name = path.name
-    if name.endswith("-current.tex"):
-        return "slide", name[: -len("-current.tex")], None
-    m = VERSION_FILE_RE.search(name)
+    if name.endswith(slide_language.CURRENT_SUFFIX):
+        return "slide", name[: -len(slide_language.CURRENT_SUFFIX)], None
+    m = slide_language.FROZEN_RE.search(name)
     if m:
         return "slideversion", name[: m.start()], m.group(1)
     raise ValueError(f"{name}: doesn't look like a slides/ current or version file")

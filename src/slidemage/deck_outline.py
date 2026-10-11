@@ -85,7 +85,7 @@ def _source_facts(call: SlideCall) -> tuple[bool, str]:
 def _title(source: str, id_slug: str) -> str:
     # Named as the current file whichever version the source is of, so that a
     # slide without a frame title falls back to its slug alone.
-    return alt_blocks.slide_title(source, Path(f"{id_slug}-current.tex"))[1]
+    return alt_blocks.slide_title(source, Path(slide_language.current_name(id_slug)))[1]
 
 
 def slide_file_title(path: Path, id_slug: str) -> str:

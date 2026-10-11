@@ -38,6 +38,7 @@ from .deck_scan import (
     SECTION_RE,
     find_decktags,
 )
+from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, is_commented
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -72,8 +73,6 @@ SLIDE_CALL_RE = re.compile(
     r"|\\conditionalslide\s*(?:\[(?P<cs_conditions>[^\]]*)\]\s*)?\{(?P<cs_idslug>[^}]+)\}"
     r"|\\slidestep\s*\{(?P<ss_idslug>[^}]+)\}\s*(?:\[(?P<ss_conditions>[^\]]*)\]\s*)?\{(?P<ss_steps>[^}]*)\}"
 )
-
-VERSION_FILE_RE = re.compile(r"-v([0-9]+(?:-[0-9]+)*)\.tex$")
 
 _LEADING_BLANK_RE = re.compile(r"^[ \t]*$")
 _TRAILING_OK_RE = re.compile(r"^[ \t]*(%.*)?$")
@@ -111,8 +110,8 @@ class SlideCall:
     def source_filename(self) -> str:
         """The exact slides/ file this call loads."""
         if self.version is not None:
-            return f"{self.id_slug}-v{self.version}.tex"
-        return f"{self.id_slug}-current.tex"
+            return frozen_name(self.id_slug, self.version)
+        return current_name(self.id_slug)
 
     def included_in(self, version: Optional[str]) -> bool:
         """Whether the deck version `version` (one of DEFAULT_CONDITIONS) typesets
@@ -236,7 +235,7 @@ def available_versions(id_slug: str) -> list[str]:
         return []
     versions = []
     for path in SLIDES_DIR.glob(f"{id_slug}-v*.tex"):
-        m = VERSION_FILE_RE.search(path.name)
+        m = FROZEN_RE.search(path.name)
         if m:
             versions.append(m.group(1))
     return sorted(versions, key=lambda v: tuple(int(part) for part in v.split("-")))

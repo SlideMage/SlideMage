@@ -135,7 +135,7 @@ def list_id_slugs() -> list[str]:
     the Add slide sheet's slide picker."""
     if not SLIDES_DIR.is_dir():
         return []
-    suffix = "-current.tex"
+    suffix = slide_language.CURRENT_SUFFIX
     return sorted(
         p.name[: -len(suffix)]
         for p in SLIDES_DIR.glob(f"*{suffix}")
@@ -233,7 +233,7 @@ def create_slide_file(
     file is already there."""
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
-    dest = SLIDES_DIR / f"{slide_id}-{language}-{slug}-current.tex"
+    dest = SLIDES_DIR / slide_language.current_name(f"{slide_id}-{language}-{slug}")
     if dest.exists():
         raise FileExistsError(f"{dest} already exists")
     SLIDES_DIR.mkdir(parents=True, exist_ok=True)
