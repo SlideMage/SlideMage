@@ -250,13 +250,6 @@ def deck_pdfs(deck: Deck) -> list[DeckPdf]:
     return sorted(found.values(), key=lambda pdf: pdf.mtime, reverse=True)
 
 
-def latest_pdf_for_deck(deck: Deck) -> Optional[Path]:
-    """The most recently written PDF SlideMage has produced for `deck`, or
-    None if there is none on disk (see deck_pdfs())."""
-    pdfs = deck_pdfs(deck)
-    return pdfs[0].path if pdfs else None
-
-
 def pdf_to_open(pdfs: list[DeckPdf]) -> Optional[DeckPdf]:
     """Which of a deck's PDFs (deck_pdfs()) "Open pdf" opens without asking
     (2026-10-08, direct instructions): the deck's preferred PDF (its setting,

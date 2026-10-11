@@ -556,13 +556,6 @@ def lint_file(path: Path) -> list[LintIssue]:
     return lint_text(text, path.name, path)
 
 
-def _display(path: Path) -> str:
-    try:
-        return path.relative_to(PROJECT_ROOT).as_posix()
-    except ValueError:
-        return path.name
-
-
 def _slide_path(call) -> Path:
     if call.macro in deck_editor.VERSIONED_MACROS:
         return deck_editor.SLIDES_DIR / f"{call.id_slug}-v{call.version}.tex"

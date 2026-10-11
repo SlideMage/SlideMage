@@ -97,11 +97,6 @@ STATE_LABELS = {
     STATE_REVIEWED: "Reviewed",
 }
 
-# Same reasoning as alt_blocks._image_hash: hashing every referenced image
-# on every rescan is expensive, so cache by (path, size, mtime).
-_image_hash_cache: dict[tuple[str, int, int], str] = {}
-
-
 @dataclass
 class SlideUse:
     """One slide's use of one image -- the per-slide half of the record."""
@@ -636,24 +631,6 @@ def lookup(entries: dict[str, ImageEntry], reference: str) -> ImageEntry | None:
 # --------------------------------------------------------------------------
 # Staleness
 # --------------------------------------------------------------------------
-
-def _image_hash(path: Path) -> str:
-    stat = path.stat()
-    key = (str(path), stat.st_size, stat.st_mtime_ns)
-    cached = _image_hash_cache.get(key)
-    if cached is not None:
-        return cached
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    _image_hash_cache[key] = digest
-    return digest
-
-
-def content_hash(image_path: Path) -> str:
-    """The image's own bytes only -- what invalidates an ImageEntry's
-    reviewed status. No slide text involved: the description belongs to
-    the picture, not to any one slide that happens to show it."""
-    return _image_hash(image_path)[:12]
-
 
 def tikz_source_hash(source: str) -> str:
     """content_hash()'s counterpart for a tikz illustration, which has no

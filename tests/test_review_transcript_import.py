@@ -72,7 +72,6 @@ def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(tmp_path:
         ("aaa", 1, True), ("bbb", 2, False), ("ccc", 3, True),
         ("eee", 4, True), ("fff", 5, False), ("ggg", 6, False)]
     assert slides[-1].path.name == "ggg-EN-Instructor-v1-0-0.tex"
-    assert transcript.deck_version_of(r"\deckversion[]") == "instructor"
 
 
 def test_resolve_deck_expands_relative_and_project_includes_in_order(

@@ -234,27 +234,6 @@ def _parse_show_parameters(parameters: object) -> dict[str, bool | int | float |
     return parsed
 
 
-def _strip_modelfile_comments(modelfile: str) -> list[str]:
-    """Drops Ollama's own auto-generated leading "#" comment lines and
-    blank separator lines from a `ollama show --modelfile`-style Modelfile
-    -- but only outside a multi-line triple-quoted field (SYSTEM/TEMPLATE/
-    LICENSE all use this). Blank lines and stray "#" characters *inside*
-    one of those are real content (confirmed directly, 2026-09-18: the
-    qwen3.6:jbef custom model's inherited LICENSE field is the Apache 2.0
-    text, which has blank lines throughout) and must survive untouched, or
-    the model re-created from this would silently carry a mangled
-    SYSTEM/LICENSE/etc. compared to the one it's replacing."""
-    kept: list[str] = []
-    in_block = False
-    for line in modelfile.splitlines():
-        if not in_block and (not line.strip() or line.lstrip().startswith("#")):
-            continue
-        kept.append(line)
-        if line.count('"""') % 2 == 1:
-            in_block = not in_block
-    return kept
-
-
 def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> tuple[bool, str]:
     """Re-creates custom `model` (built from `base`) against `base`'s
     current weights. Reads Ollama's structured `/api/show` response and

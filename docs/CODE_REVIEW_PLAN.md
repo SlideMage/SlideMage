@@ -94,3 +94,4 @@ Cost figures are rough, from the usage calibration of ~5% of a 5-hour window per
 | B2 Compile status lines in compile_log.py | Done, v8.0.11: implemented by Codex, reviewed by Claude. Keeps the log text; not full structured events (smaller change, same effect on the duplication). |
 | B4 Copy-pasted helpers | Done, v8.0.12: implemented by Codex, reviewed by Claude. Atomic writes left separate (they differ in fsync, temp names and cleanup). |
 | B3 One latexmk runner | Done, v8.0.13: implemented by Codex, reviewed by Claude. |
+| B5 Dead code | Done, v8.0.14: implemented by Codex, reviewed by Claude; ~290 lines removed. Phase B complete. |

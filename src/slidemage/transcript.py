@@ -70,7 +70,6 @@ _ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 # two \slidestep calls at one position are alternatives, exactly one of which exists
 # in any given deck version (see \slidestep in Slidemaster_preamble_base.tex).
 _SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
-_DECK_VERSION_RE = re.compile(r"\\deckversion\s*\[([^\]]*)\]")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 
 # UI strings that need to read naturally in the deck's own language
@@ -215,27 +214,9 @@ def _versions_from(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]
     return parts
 
 
-def deck_version_of(deck_text: str) -> str | None:
-    """The version a deck file hard-codes, or None if it decides at compile time.
-
-    Returns None when `\\deckversion[...]` holds a macro rather than a literal:
-    SlideMage compiles each version by wrapping the deck and defining
-    `\\deckversionoverride`, so most real decks read `\\deckversion[\\deckversionoverride]`
-    and have no fixed version of their own. Informational only -- a transcript
-    is always generated for an explicitly chosen version, never for whatever
-    the file happens to say.
-    """
-    match = _DECK_VERSION_RE.search(COMMENT_RE.sub("", deck_text))
-    if not match:
-        return VERSION_INSTRUCTOR          # the preamble's own default
-    listed = _versions_from(match.group(1), (VERSION_INSTRUCTOR,)) or (VERSION_INSTRUCTOR,)
-    return listed[0] if listed[0] in _ALL_VERSIONS else None
-
-
 def deck_language_of(deck_text: str) -> str:
-    """"en"/"de" -- mirrors deck_version_of() above, for \\decklanguage[...]
-    instead of \\deckversion[...]. Unlike deck_version_of(), always
-    returns a concrete value rather than None: language is fixed per deck
+    """"en"/"de" from the deck's \\decklanguage[...]; always a concrete
+    value, never None: language is fixed per deck
     (not a per-compile-run choice the way version is -- see
     LANGUAGE_NOTES.md), so "\\decklanguage[\\decklanguageoverride]" (the
     macro-argument case, only ever used for SlideMage's own one-off
@@ -244,9 +225,7 @@ def deck_language_of(deck_text: str) -> str:
     the same way it would be at actual compile time for any deck that
     doesn't set \\decklanguageoverride itself.
 
-    Unlike deck_version_of()'s single .search() (fine there -- a macro
-    match legitimately means "no single answer, informational only" for
-    version), this deliberately scans every \\decklanguage[...] occurrence
+    This deliberately scans every \\decklanguage[...] occurrence
     and picks the first *literal* one: every real deck's own
     \\ifdefined\\decklanguageoverride ... \\else \\decklanguage[en] ... \\fi
     boilerplate (see README.md/LANGUAGE_NOTES.md) puts the macro-argument

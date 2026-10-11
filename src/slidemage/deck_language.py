@@ -77,12 +77,6 @@ class _Links:
         return next(iter(candidates)) if len(candidates) == 1 else None
 
 
-def partner_for(id_slug: str, language: str, path: Path | None = None,
-                *, slides_dir: Path | None = None) -> str | None:
-    """An existing, explicitly linked partner in `language`; never guess from a slug."""
-    return _Links(slides_dir).find(id_slug, language, path)
-
-
 def resolve_call(call: SlideCall, language: str, *, _links: _Links | None = None) -> SlideCall:
     language = language.upper()
     if slide_language.own_language(call.id_slug) in (None, "mult", language):

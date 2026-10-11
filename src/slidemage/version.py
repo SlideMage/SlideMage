@@ -1980,6 +1980,8 @@ v8.0.12 (2026-10-11, code review cleanup B4): Internal: copy-pasted helpers merg
 
 v8.0.13 (2026-10-11, code review cleanup B3): Internal: the five places that run latexmk (compile, page compile, slide preview, reusable preview build, deck snapshot) share one function for starting it, streaming its output to the log and letting Stop end it; each keeps its own command and checks. No change in behaviour.
 
+v8.0.14 (2026-10-11, code review cleanup B5): Internal: removed 11 unused functions and what only they used (about 290 lines), among them the old image-description bake-off, a bulk language setter and an unused "other model" setting. No change in behaviour.
+
 """
 from __future__ import annotations
 
@@ -1990,7 +1992,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.13"
+VERSION_NUMBER = "v8.0.14"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
