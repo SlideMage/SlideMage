@@ -601,9 +601,7 @@ def draftable_images(row: alt_blocks.SlideRow,
     """(reference, resolved path) for one slide's images worth sending to a
     model. Skips decorative ones (nothing to describe) and any format
     neither Ollama's vision path nor _resolve_describable()'s .pdf
-    rendering can turn into something it can read. Used by the bake-off,
-    which stays per-slide since it's explicitly comparing models on chosen
-    slides, not running the real batch."""
+    rendering can turn into something it can read."""
     out: list[tuple[str, Path]] = []
     for reference in row.images:
         entry = alt_images.lookup(entries, reference)

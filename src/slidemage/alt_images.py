@@ -768,9 +768,9 @@ def save_slide_image(
 
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         entry = entries.setdefault(image, ImageEntry(image=image))
-        for i, (field, value) in enumerate((("role", role), ("short", short), ("long", long))):
+        for i, (name, value) in enumerate((("role", role), ("short", short), ("long", long))):
             if baseline is None or value != baseline[i]:
-                setattr(entry, field, value)
+                setattr(entry, name, value)
         stamp_review(entry, entry.used_on.setdefault(slide_id, SlideUse()), reviewed, slide_hash)
         return True
 

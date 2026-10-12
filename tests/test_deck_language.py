@@ -162,8 +162,8 @@ def test_frozen_headers_do_not_change_the_translation_partner(project):
     d = deck(project, "\\slideversion{aaa-EN-One}{1-0-0}\n")
     assert deck_language.deck_slots(d, "DE")[0].call.id_slug == "ddd-DE-Eins"
     assert slide_language.translation_link("aaa-EN-One", frozen).partner == "ddd-DE-Eins"
-    assert slide_language.cross_referenced_language("aaa-EN-One", frozen) == "DE"
-    assert slide_language.badge_for("aaa-EN-One", frozen).text() == "[EN + DE]"
+    assert slide_language.cross_referenced_language("aaa-EN-One") == "DE"
+    assert slide_language.badge_for("aaa-EN-One").text() == "[EN + DE]"
 
 
 def test_wrappers_resolve_full_chapter_and_appendix_without_writing_deck(project):

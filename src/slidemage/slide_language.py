@@ -155,11 +155,10 @@ class TranslationLinks:
         return next(iter(candidates)) if len(candidates) == 1 else None
 
 
-def cross_referenced_language(id_slug: str, path: Optional[Path] = None, *,
-                              links: Optional[TranslationLinks] = None) -> Optional[str]:
+def cross_referenced_language(id_slug: str, *, links: Optional[TranslationLinks] = None) -> Optional[str]:
     """The language of this slide's resolved translation partner, or None.
 
-    Links belong to the current slide, even when `path` is a frozen version.
+    Links belong to the current slide, also when a frozen version of it is shown.
     Pass a shared index when building badges for a whole list."""
     links = links or TranslationLinks()
     return next((language for language in TRANSLATION_LANGUAGES
@@ -243,8 +242,7 @@ class LanguageBadge:
         return f"[{self.own}]"
 
 
-def badge_for(id_slug: str, path: Optional[Path] = None, *,
-              links: Optional[TranslationLinks] = None) -> LanguageBadge:
+def badge_for(id_slug: str, *, links: Optional[TranslationLinks] = None) -> LanguageBadge:
     own = own_language(id_slug)
-    cross = cross_referenced_language(id_slug, path, links=links) if own is not None else None
+    cross = cross_referenced_language(id_slug, links=links) if own is not None else None
     return LanguageBadge(own=own, cross_referenced=cross)
