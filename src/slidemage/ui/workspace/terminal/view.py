@@ -8,8 +8,7 @@ Restart starts a new one. Closing the window, switching project and `shutdown()`
 
 Under the status row: the suggestion bubbles for the slide in the Source view (with the scope on Deck, for the
 open deck), the model and effort the next bubble task runs with (remembered per user), and the status line of
-the running or last task, with Stop (tasks.py does the work). The result of a single-slide task is shown below
-as a diff card with Apply / Reject (and Undo once applied); a new task replaces the card.
+the running or last task, with Stop (tasks.py does the work).
 """
 from __future__ import annotations
 
@@ -21,19 +20,16 @@ from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
 
 from ....ai import claude_launch, claude_runner
-from ....ai.agent_types import EditApplied
 from ....ai.claude_scope import DECK, SLIDE
 from ... import layout_settings
 from ...kit import kit_qss as q
 from ...kit.widgets import (
     Button, Chip, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
-from ..chat.cards import DiffCard
 from ..state import WorkspaceState
 from .tasks import Bubble, TaskRunner, bubbles, deck_bubbles
 
 HINT, TERMINAL = 0, 1
 BUBBLE_DELAY_MS = 500
-CARD_DIFF_HEIGHT = 100                            # of the proposal's diff, which scrolls beyond that
 MODEL_SETTING, EFFORT_SETTING = "claude_task_model", "claude_task_effort"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
@@ -72,10 +68,6 @@ class ClaudeCodeView(Surface):
         self._terminal_layout.addLayout(self._build_status_row())
         self._terminal_layout.addLayout(self._build_bubble_row())
         self._terminal_layout.addLayout(self._build_task_row())
-        self._card_slot = QVBoxLayout()           # the proposal of a single-slide task, above the terminal
-        self._card_slot.setContentsMargins(0, 0, 0, 0)
-        self._terminal_layout.addLayout(self._card_slot)
-        self._card: DiffCard | None = None
         self._stack.addWidget(self._terminal_page)
         QCoreApplication.instance().aboutToQuit.connect(self.shutdown)
 
@@ -238,43 +230,12 @@ class ClaudeCodeView(Surface):
         self._fit()
 
     def _run(self, bubble: Bubble) -> None:
-        self._drop_card()
-        self.tasks.start(bubble.task, self._model, self._effort, bubble.paths, bubble.label)
-
-    def _show_card(self, title: str, before: str, after: str) -> None:
-        card = self._card = DiffCard(title, before, after, scroll_height=CARD_DIFF_HEIGHT)
-        card.apply_clicked.connect(lambda: self._apply(card))
-        card.reject_clicked.connect(card.rejected)
-        self._card_slot.addWidget(card)
-        card.ask()
-
-    def _drop_card(self) -> None:
-        if self._card is not None:
-            self._card.setParent(None)
-            self._card.deleteLater()
-            self._card = None
-
-    def _apply(self, card: DiffCard) -> None:
-        problem, edit = self.tasks.apply_pending()
-        if problem:
-            card.failed(problem)
-        elif edit is None:
-            card.applied(False, False, new_file=True)        # a new slide: nothing to undo
-        else:
-            card.applied(edit.via_buffer, True, new_file=False)
-            card.undo_clicked.connect(lambda: self._undo(card, edit))
-
-    def _undo(self, card: DiffCard, edit: EditApplied) -> None:
-        problem = self.session.workspace.undo_in_buffer(edit)
-        if problem:
-            card.undo_failed(problem)
-        else:
-            card.undone()
+        self.tasks.start(bubble.task, self._model, self._effort, bubble.paths)
 
     def _on_task_status(self, text: str, tone: str) -> None:
         self.task_status.setText(text)
         set_property(self.task_status, "tone", tone)
-        self.result_button.setVisible(bool(self.tasks.report))
+        self.result_button.setVisible(bool(self.tasks.unapplied or self.tasks.report))
 
     def _on_busy(self, busy: bool) -> None:
         self.stop_button.setVisible(busy)
@@ -282,7 +243,9 @@ class ClaudeCodeView(Surface):
         self._refresh_bubbles()
 
     def _show_result(self) -> None:
-        self._show_text("What became of each slide", self.tasks.report)
+        tasks = self.tasks
+        self._show_text(*(("Claude's result", tasks.unapplied) if tasks.unapplied
+                          else ("What became of each slide", tasks.report)))
 
     def _show_text(self, title: str, content: str) -> None:
         sheet = ModalSheet(title, self.app, width=640)
@@ -328,7 +291,6 @@ class ClaudeCodeView(Surface):
         self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)
         self.tasks.status.connect(self._on_task_status)
         self.tasks.busy_changed.connect(self._on_busy)
-        self.tasks.proposed.connect(self._show_card)
         self.tasks.summary.connect(lambda text: self._show_text("Summary of the deck", text))
         self.session.focus_changed.connect(self._refresh_bubbles)
         self.app.centre.source.buffer_changed.connect(lambda _path: self._typing.start())

@@ -3,18 +3,17 @@
 `bubbles(window)` says which tasks fit the slide in the Source view (and translation partner). A click goes through TaskRunner:
 `start` captures the task on the GUI thread (the slide's text as its buffer has it, the request), a worker thread
 runs ai/claude_runner.run_task, and the outcome comes back to the GUI thread as a signal. Only then is anything
-changed. A single-slide result is first a proposal (`proposed`: the view shows it as a diff card); Apply
-(`apply_pending`) writes it only if the slide still has the captured text: a fix goes into the buffer (Ctrl+Z or
-the card's Undo takes it back) or, for a closed file, onto disk with a backup; the update of a translation changes
-the translation, wherever it is open; a translation creates the partner slide, links it to the source (a change
-of the source's header, subject to the same check) and puts its call after the source's in the deck.
-Typing in the slide meanwhile makes it a conflict: nothing is written.
+changed, and only if the slide still has the captured text: a fix goes into the buffer (Ctrl+Z undoes it) or, for
+a closed file, onto disk with a backup; the update of a translation changes the translation, wherever it is
+open; a translation creates the partner slide, links it to the source (a change of the source's header,
+subject to the same check) and puts its call after the source's in the deck.
+Typing in the slide meanwhile makes it a conflict: nothing is written and the result is kept for the user.
 The image bubbles (describe, translate the descriptions) are different: an _ImageWorker works through the slide's
 images one process after another and alt_draft's batch stores each draft as it is done (nothing of the slide
 changes); the Images panel is shown again at the end.
 The deck bubbles (`deck_bubbles`, shown while the tab's scope is Deck) run one of these tasks over the deck's
 slides: a batch with up to WORKERS processes at a time. Each slide is captured when its turn comes, so what the user
-typed meanwhile is in the request; every result is applied at once by `_on_done` on the GUI thread, one after the other,
+typed meanwhile is in the request; every result is applied by `_on_done` on the GUI thread, one after the other,
 whichever process finished first, so writes, ids and links never race. A rate-limit error drops the batch to one
 process and gives that slide a second try; a usage-limit error ends it. Its progress is the task row's status line,
 what became of each slide is in the "Show result" sheet. "Describe images" is one image run over the deck's images, a
@@ -36,7 +35,6 @@ from .... import (alt_blocks, alt_draft, alt_images, deck_editor, deck_language,
                   slide_language, slide_source, slide_versioning)
 from ....tex_source import masked_same_length
 from ....ai import claude_images, claude_runner, claude_tasks, translation_style
-from ....ai.agent_types import EditApplied
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ... import background
 
@@ -358,7 +356,6 @@ class TaskRunner(QObject):
     status = Signal(str, str)          # the status line's text and tone ("muted", "ok", "warning", "error")
     busy_changed = Signal(bool)
     summary = Signal(str)              # the summary of the deck, to show
-    proposed = Signal(str, str, str)   # title, before and after of the result of a single-slide task, to show as a diff
 
     def __init__(self, window, claude: Path, workspace, parent: QObject | None = None) -> None:
         """`window` is the main window, `workspace` the GuiWorkspace that applies edits to its buffers."""
@@ -372,24 +369,22 @@ class TaskRunner(QObject):
         self._ticker = QTimer(self)
         self._ticker.setInterval(1000)
         self._ticker.timeout.connect(self._tick)
-        self._label = ""               # of the bubble clicked: the proposal's title
-        self._pending: tuple[_Capture, Outcome] | None = None      # the result `proposed` shows
+        self.unapplied = ""            # the result a conflict did not apply, for the user to copy
         self.report = ""               # what became of each slide of the last batch
 
     @property
     def busy(self) -> bool:
         return bool(self._running) or self._batch is not None
 
-    def start(self, task: claude_tasks.Task, model: str, effort: str, paths: tuple[Path, ...] = (),
-              label: str = "") -> None:
-        """Run `task` (the bubble `label`) on the slide in the Source view, or for a deck bubble on its slides
-        `paths`, unless one is running or it no longer fits. A result not yet applied is dropped."""
+    def start(self, task: claude_tasks.Task, model: str, effort: str, paths: tuple[Path, ...] = ()) -> None:
+        """Run `task` on the slide in the Source view, or for a deck bubble on its slides `paths`, unless one is
+        running or it no longer fits."""
         if self.busy:
             return
-        self._model, self._effort, self._label = model, effort, label
+        self._model, self._effort = model, effort
         self._cancel = threading.Event()
         self._started = time.monotonic()
-        self._pending, self.report = None, ""
+        self.unapplied = self.report = ""
         if paths and task in BATCH_TASKS:
             self._batch = _Batch(task, deque(_Item(task, path) for path in paths), len(paths))
             self.busy_changed.emit(True)
@@ -459,14 +454,14 @@ class TaskRunner(QObject):
             report = self._images_report(worker.capture.task, outcome)
             self._window.side_panels.refresh()         # shows the drafts that were stored
         else:
-            report = self._result(worker.capture, outcome, review=worker.capture.task is not claude_tasks.SUMMARISE)
+            report = self._result(worker.capture, outcome)
         self.busy_changed.emit(False)          # after the change: the bubbles look at the slide as it is now
         self.status.emit(*report)
 
-    def _result(self, capture: _Capture, outcome: Outcome, review: bool = False) -> tuple[str, str]:
-        """(status text, tone) of an outcome; a result is applied here, or with `review` only proposed."""
+    def _result(self, capture: _Capture, outcome: Outcome) -> tuple[str, str]:
+        """(status text, tone) of an outcome; a result is applied here."""
         if outcome.status == DONE:
-            return self._propose(capture, outcome) if review else self._apply(capture, outcome)
+            return self._apply(capture, outcome)
         return {CANCELLED: ("Cancelled", "muted"), NOTHING: ("Nothing to change", "muted")}.get(
             outcome.status, (outcome.message, "error"))
 
@@ -532,28 +527,6 @@ class TaskRunner(QObject):
 
     # -- applying ----------------------------------------------------------------------------------------
 
-    def _propose(self, capture: _Capture, outcome: Outcome) -> tuple[str, str]:
-        """Keep the result for `apply_pending` and have the view show what it would change."""
-        self._pending = capture, outcome
-        slide = slide_language.bare_id(capture.id_slug)
-        if capture.language:
-            title, before, after = f"New {claude_tasks.LANGUAGE_NAMES[capture.language]} slide from {slide}", "", outcome.text
-        else:
-            title, before, after = f"{self._label}: {slide}", capture.text, capture.header + outcome.text
-        self.proposed.emit(title, before, after)
-        return f"Ready in {outcome.elapsed_s:.1f} s — review the change", "ok"
-
-    def apply_pending(self) -> tuple[str, EditApplied | None]:
-        """Apply the proposed result, if the slide still has the captured text: ("", the edit that undoes it, None
-        for a new slide), or (why not, None) with nothing written. The status line says it."""
-        (capture, outcome), self._pending = self._pending, None
-        via_buffer = self._workspace.is_open(capture.path)
-        text, tone = self._apply(capture, outcome)
-        self.status.emit(text, tone)
-        if tone != "ok":
-            return text, None
-        return "", None if capture.language else EditApplied("", capture.path, capture.text, capture.header + outcome.text, via_buffer)
-
     def _apply(self, capture: _Capture, outcome: Outcome) -> tuple[str, str]:
         """Change the slide as the result says, if it still has the captured text: (status text, tone)."""
         if capture.task is claude_tasks.SUMMARISE:
@@ -564,6 +537,7 @@ class TaskRunner(QObject):
         except OSError as exc:
             return str(exc), "error"
         if note is None:
+            self.unapplied = outcome.text
             return CONFLICT, "warning"
         return f"Done in {outcome.elapsed_s:.1f} s{note}", "ok"
 
