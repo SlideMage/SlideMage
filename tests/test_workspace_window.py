@@ -4,13 +4,16 @@ actions went."""
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import QRect, QSize
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from slidemage import app_settings
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import Chapter, Deck
+from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import window as window_module
@@ -786,8 +789,137 @@ def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeyp
     first.show()
     first.set_right_column_width(520)
     first.splitter.splitterMoved.emit(0, 2)                                 # what a drag of the handle sends
-    assert first.side_panels.width() == 520 and app_settings.get(side_panels.WIDTH_SETTING) == 520
+    assert first.side_panels.width() == 520 and layout_settings.get(side_panels.WIDTH_SETTING) == 520
+    assert app_settings.get(side_panels.WIDTH_SETTING) is None
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
     assert second.side_panels.width() == 520
+
+
+def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
+    from slidemage.ui.workspace import side_panels
+
+    app_settings.set(side_panels.WIDTH_SETTING, 520)
+    first = build_window(monkeypatch)
+    first.resize(2400, 800)
+    first.show()
+    assert first.side_panels.width() == 520
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
+    assert app_settings.get(side_panels.WIDTH_SETTING) == 520
+    app_settings.set(side_panels.WIDTH_SETTING, 600)       # a different project's old preference
+    second = build_window(monkeypatch)
+    second.resize(2400, 800)
+    second.show()
+    assert second.side_panels.width() == 520
+    second.set_right_column_width(580)
+    second.splitter.splitterMoved.emit(0, 2)
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == 580
+    assert app_settings.get(side_panels.WIDTH_SETTING) == 600
+
+
+@pytest.mark.parametrize("value, expected", [(None, 340), (200, 340), (1000, 900), ("wide", 340)])
+def test_the_right_column_keeps_its_width_limits(value, expected):
+    from slidemage.ui.workspace import side_panels
+
+    layout_settings.set(side_panels.WIDTH_SETTING, value)
+    assert side_panels.remembered_width() == expected
+
+
+# -- per-machine layout and window geometry ------------------------------------
+
+def test_layout_settings_round_trip_and_create_the_folder(tmp_path, monkeypatch):
+    store = tmp_path / "user" / "settings" / "layout.json"
+    monkeypatch.setattr(layout_settings, "STORE_PATH", store)
+    assert layout_settings.get("missing") is None
+    assert layout_settings.get("missing", 42) == 42
+    layout_settings.set("right_column_width", 520)
+    layout_settings.set("label", "Fenstergröße")
+    assert layout_settings.get("right_column_width") == 520
+    assert layout_settings.get("label") == "Fenstergröße"
+    assert "Fenstergröße" in store.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("contents", [b"{broken", b"\xff", b"[]", b"null"])
+def test_layout_settings_survive_a_corrupt_file(contents):
+    layout_settings.STORE_PATH.write_bytes(contents)
+    assert layout_settings.get("right_column_width", 340) == 340
+    layout_settings.set("right_column_width", 520)
+    assert layout_settings.get("right_column_width") == 520
+
+
+def test_layout_settings_treat_an_unreadable_file_as_empty(monkeypatch):
+    read_text = Path.read_text
+
+    def unreadable(path, *args, **kwargs):
+        if path == layout_settings.STORE_PATH:
+            raise PermissionError("unreadable layout")
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+    assert layout_settings.get("right_column_width", 340) == 340
+
+
+@pytest.mark.parametrize("maximized", [False, True])
+def test_window_geometry_saved_on_close_is_restored_before_show(window, qapp, monkeypatch, maximized):
+    window.resize(1024, 680)
+    window.move(0, 40)
+    window.show()
+    qapp.processEvents()
+    if maximized:
+        window.showMaximized()
+        qapp.processEvents()
+    geometry = window.geometry()
+    saved = window.saveGeometry().toBase64().data().decode("ascii")
+    assert window.close()
+    assert layout_settings.get("window_geometry") == saved
+    assert app_settings.get("window_geometry") is None
+    second = build_window(monkeypatch)
+    assert not second.isVisible()
+    assert second.isMaximized() == maximized
+    if not maximized:
+        assert second.geometry() == geometry
+    second.show()
+    qapp.processEvents()
+    assert second.isMaximized() == maximized
+    if not maximized:
+        assert second.geometry() == geometry
+
+
+@pytest.mark.parametrize("saved", [None, "invalid geometry", 7])
+@pytest.mark.parametrize("available", [QRect(120, 80, 1920, 1080), QRect(120, 80, 1100, 700)])
+def test_without_valid_window_geometry_the_window_fits_the_primary_screen(qapp, monkeypatch, saved, available):
+    # The offscreen plugin's 800 px screen is narrower than the required minimum.
+    screen = SimpleNamespace(availableGeometry=lambda: available)
+    monkeypatch.setattr(window_module.QApplication, "primaryScreen", lambda: screen)
+    layout_settings.set("window_geometry", saved)
+    window = build_window(monkeypatch)
+    assert available.contains(window.frameGeometry())
+    assert window.frameGeometry().center() == available.center()
+    assert window.size() == (available.size() * 0.9).expandedTo(QSize(1024, 640))
+
+
+def test_geometry_outside_every_available_screen_falls_back_to_the_primary(window, qapp, monkeypatch):
+    window.showMaximized()
+    qapp.processEvents()
+    assert window.close()
+    available = QRect(4000, 100, 1920, 1080)
+    screens = [SimpleNamespace(availableGeometry=lambda: available),
+               SimpleNamespace(availableGeometry=lambda: QRect(6000, 100, 1920, 1080))]
+    monkeypatch.setattr(window_module.QApplication, "primaryScreen", lambda: screens[0])
+    monkeypatch.setattr(window_module.QApplication, "screens", lambda: screens)
+    second = build_window(monkeypatch)
+    assert not second.isMaximized()
+    assert available.contains(second.frameGeometry())
+    assert second.frameGeometry().center() == available.center()
+
+
+def test_a_cancelled_close_keeps_the_saved_window_geometry(window, monkeypatch):
+    layout_settings.set("window_geometry", "previous geometry")
+    monkeypatch.setattr(window, "_resolve_dirty_edits", lambda: False)
+    assert not window.close()
+    assert layout_settings.get("window_geometry") == "previous geometry"
+
+
+def test_window_minimum_size_is_1024_by_640(window):
+    assert window.minimumSize() == QSize(1024, 640)

@@ -65,3 +65,4 @@ options), then L6-L7.
 | --- | --- |
 | L1 Centre minimum | Done, v8.0.21: columns need 996 px instead of ~1,560. |
 | L2 Compact top bar | Done, v8.0.22: window minimum width 1,568 -> ~1,020 px. |
+| L3 Window size and position | Done, v8.0.23: geometry remembered, 1024 x 640 minimum, per-user layout.json. |

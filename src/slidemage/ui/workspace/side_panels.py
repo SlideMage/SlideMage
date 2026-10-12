@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QSplitter, QVBoxLayout
 
 from ... import app_settings
+from .. import layout_settings
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
 from .chat.assistant import AssistantArea
@@ -29,7 +30,10 @@ ASSISTANT_SPLIT = (300, 500)   # starting heights of the panels and of the assis
 
 def remembered_width() -> int:
     """The width the user dragged the column to, within its limits (WIDTH if never)."""
-    value = app_settings.get(WIDTH_SETTING)
+    value = layout_settings.get(WIDTH_SETTING)
+    if value is None:   # once: this project's old width becomes the user's
+        value = app_settings.get(WIDTH_SETTING)
+        layout_settings.set(WIDTH_SETTING, value if isinstance(value, int) else WIDTH)
     return min(max(value, WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 

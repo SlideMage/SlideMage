@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QByteArray, QSize, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -37,6 +37,7 @@ from ... import app_settings, bibliography, deck_headers, deck_outline, latex_ed
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
+from .. import layout_settings
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
@@ -83,7 +84,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         super().__init__()
         self.theme = theme
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
-        self.resize(1280, 860)
+        self.setMinimumSize(1024, 640)
         if updater.can_self_update():
             updater.remove_leftover_binary(Path(sys.executable))
 
@@ -172,6 +173,19 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 
         self.reload_decks()
+        self._restore_window_geometry()
+
+    def _restore_window_geometry(self) -> None:
+        saved = layout_settings.get("window_geometry")
+        if isinstance(saved, str) and self.restoreGeometry(QByteArray.fromBase64(saved.encode("utf-8"))):
+            if any(self.frameGeometry().intersects(screen.availableGeometry()) for screen in QApplication.screens()):
+                return
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        available = QApplication.primaryScreen().availableGeometry()
+        self.resize(available.size() * 0.9)
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     # -- the right column's width ----------------------------------------------
 
@@ -189,7 +203,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         if self.side_panels.isVisible():       # the Images page hides the column: not the user's choice
-            app_settings.set(WIDTH_SETTING, self.splitter.sizes()[2])
+            layout_settings.set(WIDTH_SETTING, self.splitter.sizes()[2])
 
     # -- commands --------------------------------------------------------------
 
@@ -322,6 +336,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.images_page.shutdown()
         self.palette.stop_search(5000)
         self._stop_worker()
+        layout_settings.set("window_geometry", self.saveGeometry().toBase64().data().decode("ascii"))
         super().closeEvent(event)
 
     def _resolve_dirty_edits(self) -> bool:
