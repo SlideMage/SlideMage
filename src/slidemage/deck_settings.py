@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import deck_editor
-from .alt_blocks import braced_argument
 from .deck_scan import (
     DOCUMENT_BEGIN_LINE_RE,
     OUTPUT_FOLDER_RE,
@@ -24,7 +23,7 @@ from .deck_scan import (
     parse_course_url,
     parse_open_pdf,
 )
-from .tex_source import is_commented
+from .tex_source import braced_argument, is_commented
 
 # \input{Slidemaster_preamble_<template>} -- which template the deck uses.
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{Slidemaster_preamble_([^}\s]+)\}")

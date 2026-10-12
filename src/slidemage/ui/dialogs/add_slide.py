@@ -16,7 +16,8 @@ and reports what went wrong. A new or copied slide opens in the Source view afte
 """
 from __future__ import annotations
 
-from typing import Optional
+from pathlib import Path
+from typing import Callable, Optional
 
 from PySide6.QtCore import QEvent, QSize, QThread, Qt, Signal
 from PySide6.QtGui import QIcon
@@ -77,12 +78,13 @@ class _TranslateWorker(QThread):
 
 class AddSlideSheet(ModalSheet):
     def __init__(self, app, deck: Deck, insert_at: int, indent: str, *, where: str = "", source: str = "new",
-                 slide: Optional[str] = None, target: Optional[str] = None) -> None:
-        """`app` is the window; the slide goes into `deck` at the offset `insert_at` (indented by
+                 slide: Optional[str] = None, target: Optional[str] = None,
+                 is_dirty: Callable[[Path], bool]) -> None:
+        """`app` is the window and `is_dirty(path)` says whether the Source view holds unsaved edits of a file; the slide goes into `deck` at the offset `insert_at` (indented by
         `indent`), described by `where` ("after 1y8"). `source` is the one to start on, `slide` the
         id-slug Duplicate and Translate start from, `target` the language a translation starts on."""
         super().__init__("Add slide", app, width=WIDTH)
-        self.app = app
+        self.app, self._is_dirty = app, is_dirty
         self.deck = deck
         self.insert_at = insert_at
         self.indent = indent
@@ -305,7 +307,7 @@ class AddSlideSheet(ModalSheet):
             if self.chosen_load() == "frozen" and self.version.currentData() is None:
                 return "This slide has no frozen version."
         else:
-            if self.app.centre.is_dirty(slide_add.slide_path(self.app.project, self.picked())):
+            if self._is_dirty(slide_add.slide_path(self.app.project, self.picked())):
                 return "Save this slide's unsaved changes first: the copy is made from the saved file."
             if not slide_add.SLUG_RE.match(self.slug()):
                 return SLUG_HINT

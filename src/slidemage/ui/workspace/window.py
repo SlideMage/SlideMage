@@ -165,8 +165,9 @@ class WorkspaceWindow(QMainWindow):
         # launch, and deliberately not a launch-time *write* to media/alt-text.json.
         self.stack = _CurrentPageStack()
         self.centre = CentreColumn(self, self.state)
+        self.centre.duplicate_requested.connect(lambda id_slug: self.slide_list.add_slide("duplicate", id_slug))
         self.stack.addWidget(self.centre)
-        self.images_page = ImagesPage(self, self.state)
+        self.images_page = ImagesPage(self, self.state, self.centre)
         self.images_page.closed.connect(self._toggle_images)
         self.stack.addWidget(self.images_page)
         self.stack.currentChanged.connect(self._on_page_changed)
@@ -486,9 +487,14 @@ class WorkspaceWindow(QMainWindow):
         chosen_path = sheet.chosen
         if chosen_path is None or chosen_path == self.project.root:
             return  # cancelled, or already open -- nothing to restart for
+        self.relaunch_with_project(chosen_path)
+
+    def relaunch_with_project(self, root: Path) -> None:
+        """Restart SlideMage on the project at `root` and close this window, unless the user keeps
+        their unsaved edits."""
         if not self._resolve_dirty_edits():
             return
-        project.relaunch_with_project(chosen_path)
+        project.relaunch_with_project(root)
         self._dirty_edits_resolved_for_close = True
         self.close()
 
@@ -632,7 +638,7 @@ class WorkspaceWindow(QMainWindow):
     def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str, **start) -> None:
         """The Add slide sheet for a place in `deck`; `start`: where, source, slide, target
         (AddSlideSheet)."""
-        AddSlideSheet(self, deck, insert_at, indent, **start).exec()
+        AddSlideSheet(self, deck, insert_at, indent, is_dirty=self.centre.is_dirty, **start).exec()
 
     def _build_snapshot_banner(self) -> Optional[QLabel]:
         """A line above the tabs when the open project is a deck snapshot:

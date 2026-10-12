@@ -58,11 +58,11 @@ class ImagesPage(ImageRunsMixin, Surface):
     title = "Image descriptions"   # what the close prompt calls its unsaved edits
     closed = Signal()             # the back arrow
 
-    def __init__(self, app, state) -> None:
-        """`app` is the window: it logs, opens a slide in the Source view, holds the Ollama slot and
-        knows what the Source view has open; `state` says which deck is open."""
+    def __init__(self, app, state, source) -> None:
+        """`app` is the window: it logs, opens a slide in the Source view and holds the Ollama slot; `state` says
+        which deck is open; `source` (the centre column) gives the Source view's buffers: slide_text, is_dirty, sync_source."""
         super().__init__()
-        self.app, self.state = app, state
+        self.app, self.state, self.source = app, state, source
         self.dirty = False
         self._loaded = self._models_loaded = False
         self._entries: dict[str, alt_images.ImageEntry] = {}
@@ -382,7 +382,7 @@ class ImagesPage(ImageRunsMixin, Surface):
             return
         row, id_slug = view.row, view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX)
         language = "de" if slide_language.own_language(id_slug) == "DE" else "en"
-        show_transcript_preview(self.app, self.app.centre.slide_text(row.path), row.slide_id, id_slug,
+        show_transcript_preview(self.app, self.source.slide_text(row.path), row.slide_id, id_slug,
                                 self.state.view, language)
 
     def _clear_draft(self) -> None:
@@ -446,9 +446,9 @@ class ImagesPage(ImageRunsMixin, Surface):
             targets.update({slide_id: rows[slide_id].path for slide_id in others if slide_id in rows})
         changed, failures = image_review.repoint_slides(
             self.app.project, form.entry, self._entries, targets, rows, form.reference, f"media/{sheet.new_name}",
-            unsaved=self.app.centre.is_dirty)
+            unsaved=self.source.is_dirty)
         for slide_id in changed:
-            self.app.centre.sync_source(targets[slide_id])   # a clean buffer of the slide shows the new reference
+            self.source.sync_source(targets[slide_id])   # a clean buffer of the slide shows the new reference
         if changed:
             self.app.log(f"Replaced {form.reference} with media/{sheet.new_name} on: " + ", ".join(changed))
         if failures:

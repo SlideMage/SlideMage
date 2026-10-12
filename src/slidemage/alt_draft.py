@@ -32,7 +32,7 @@ from typing import Optional, Protocol
 from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .project import ProjectContext
-from .tex_source import COMMENT_RE
+from .tex_source import COMMENT_RE, braced_argument
 
 # Formats Ollama's vision path can read directly.
 DRAFTABLE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
@@ -205,7 +205,6 @@ class DraftResult:
 # --------------------------------------------------------------------------
 
 _FRAME_BEGIN_RE = re.compile(r"\\begin\{\w*frame\}(?:\[[^\]]*\])?\{.*?\}", re.DOTALL)
-_FRAME_END_RE = re.compile(r"\\end\{\w*frame\}")
 _ITEM_RE = re.compile(r"\\item\s*")
 _ENV_RE = re.compile(r"\\(?:begin|end)\{[^}]*\}(?:\[[^\]]*\])?(?:\{[^}]*\})?")
 _MACRO_ARG_RE = re.compile(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}")
@@ -307,9 +306,9 @@ def build_context(ctx: ProjectContext, slide_path: Path, reference: str) -> Slid
     # `\footnote{...\fullcite{key}...}`, and the title's tail (", 430-431.")
     # then becomes the first line of what we hand the model as slide text.
     begin = alt_blocks.FRAME_OPEN_RE.search(body)
-    end = _FRAME_END_RE.search(body)
+    end = alt_blocks.FRAME_END_RE.search(body)
     if begin and end:
-        _title, after_title = alt_blocks.braced_argument(body, begin.end() - 1)
+        _title, after_title = braced_argument(body, begin.end() - 1)
         if after_title < end.start():
             body = body[after_title:end.start()]
     body = _flatten_latex(body)

@@ -12,6 +12,8 @@ import json
 import os
 from pathlib import Path
 
+from ..fileio import write_json
+
 FOCUS_ENV = "SLIDEMAGE_FOCUS_FILE"
 SLIDE, DECK = "slide", "deck"
 GUARDED_FOLDERS = ("slides", "decks")
@@ -34,9 +36,7 @@ def publish(file: Path, scope: str, root: Path, slide_id: str | None, slide_path
         slide, dirty = None, False
     data = {"scope": scope, "slide_id": slide_id, "slide": slide, "deck": rel(deck),
             "view": view, "language": language, "dirty": dirty}
-    temporary = file.with_name(file.name + ".tmp")
-    temporary.write_text(json.dumps(data), encoding="utf-8")
-    os.replace(temporary, file)
+    write_json(file, data, indent=None, sort_keys=False, ensure_ascii=True)
 
 
 def load(file: str | os.PathLike | None) -> dict | None:

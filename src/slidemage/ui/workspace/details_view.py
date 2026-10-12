@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -45,6 +45,8 @@ def _label(text: str, name: str) -> QLabel:
 
 
 class DetailsPane(Surface):
+    duplicate_requested = Signal(str)   # the id-slug of the slide to duplicate into a deck
+
     def __init__(self, app, state: WorkspaceState, is_dirty: Callable[[Path], bool]) -> None:
         """`is_dirty(path)`: whether the Source view holds unsaved edits of that file."""
         super().__init__()
@@ -187,7 +189,7 @@ class DetailsPane(Surface):
         self.app.refresh_open_deck_editors()
 
     def _duplicate(self) -> None:
-        self.app.slide_list.add_slide("duplicate", self._id_slug)
+        self.duplicate_requested.emit(self._id_slug)
 
     def _delete(self) -> None:
         id_slug = self._id_slug

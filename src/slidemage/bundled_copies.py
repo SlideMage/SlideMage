@@ -55,6 +55,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from .fileio import read_json, write_json
 from .project import ProjectContext
 
 MANIFEST_PATH = Path(".slidemage") / "bundled_copies.json"
@@ -135,18 +136,11 @@ def manual_files(example_dir: Path) -> list[str]:
 # -- the manifest ------------------------------------------------------------
 
 def read_manifest(project_root: Path) -> dict:
-    try:
-        data = json.loads((project_root / MANIFEST_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(project_root / MANIFEST_PATH)
 
 
 def write_manifest(project_root: Path, data: dict) -> None:
-    path = project_root / MANIFEST_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
+    write_json(project_root / MANIFEST_PATH, data, ensure_ascii=True)
 
 
 def record_copies(project_root: Path, app_version: str, *, framework_dir: Optional[Path],

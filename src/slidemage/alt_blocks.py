@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from .project import ProjectContext
-from .tex_source import COMMENT_RE
+from .tex_source import COMMENT_RE, braced_argument
 
 INCLUDEGRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
 
@@ -96,35 +96,6 @@ TIKZILLUSTRATION_END = "\\end{tikzillustration}"
 # Suffixes tried when a slide references an image without one (graphicx
 # picks the suffix itself). Same list, same order, as alt_images.py.
 _SUFFIXES = (".png", ".jpg", ".jpeg", ".pdf", ".eps")
-
-
-# --------------------------------------------------------------------------
-# Brace-matching helpers
-# --------------------------------------------------------------------------
-
-def braced_argument(text: str, open_index: int) -> tuple[str, int]:
-    """Content of the brace group starting at `open_index`, and the index after it.
-
-    Brace-matched, skipping escaped characters. Returns ("", open_index) if the
-    group is unbalanced.
-    """
-    if open_index >= len(text) or text[open_index] != "{":
-        return "", open_index
-    depth = 0
-    cursor = open_index
-    while cursor < len(text):
-        char = text[cursor]
-        if char == "\\":
-            cursor += 2
-            continue
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return text[open_index + 1:cursor], cursor + 1
-        cursor += 1
-    return "", open_index
 
 
 def _control_sequence_at(text: str, index: int) -> tuple[str, int] | None:
@@ -293,6 +264,7 @@ def extract_macro_calls(text: str, macro: str) -> tuple[str, list[str]]:
         index = after
 
 
+FRAME_END_RE = re.compile(r"\\end\{\w*frame\}")
 FRAME_OPEN_RE = re.compile(
     r"\\begin\{((?:standard|figure|section|highlight|quote|title|sideimage)frame)\}"
     r"(?:\[[^\]]*\])?\s*\{"

@@ -37,7 +37,6 @@ Free of Qt. Command line::
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -46,6 +45,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import compat_bibliography, project
+from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
 
@@ -233,12 +233,6 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
-    tmp = path.with_name(path.name + ".slidemage-tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
-
-
 def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
                now: Optional[datetime] = None) -> UpdateResult:
     """Run the migrations of `pending`. Every file that changes is copied to
@@ -271,9 +265,7 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
                 (backup / rel).write_bytes(path.read_bytes())
                 result.backup = backup
-            else:
-                path.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_write(path, data)
+            atomic_write(path, data)
         except OSError as exc:
             result.errors.append(f"{rel}: {exc}")
     return result

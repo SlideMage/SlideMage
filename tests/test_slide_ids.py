@@ -1,7 +1,7 @@
 import pytest
 from conftest import EXAMPLE_PROJECT
 
-from slidemage import alt_images, deck_headers, slide_ids, slide_language, slide_rename
+from slidemage import alt_images, deck_headers, processes, slide_ids, slide_language, slide_rename
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def rename_project(project, monkeypatch):
     previews = project / ".previews" / "slide_previews"
     previews.mkdir(parents=True)
     (previews / "2du-EN-UniGraz-1920-1080.png").write_bytes(b"png")
-    monkeypatch.setattr(slide_rename, "is_git_repo", lambda _root: False)
+    monkeypatch.setattr(processes, "is_git_repo", lambda _root: False)
     monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda _ctx: None)
     monkeypatch.setattr(deck_headers, "regenerate_headers", lambda _ctx: None)
     monkeypatch.setattr(alt_images, "update_store", lambda _ctx, fn: None)

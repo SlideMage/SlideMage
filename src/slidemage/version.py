@@ -5,13 +5,12 @@ See CHANGELOG.md for the release history, bump rules and BREAKING convention.
 from __future__ import annotations
 
 import re
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .processes import no_console_kwargs
+from .processes import command_output
 
-VERSION_NUMBER = "v8.3.6"
+VERSION_NUMBER = "v8.3.7"
 
 # Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md,
 # skipping the introduction.
@@ -80,18 +79,11 @@ def parse_history() -> list[HistoryEntry]:
 
 
 def run_git(*args: str) -> str | None:
-    popen_kwargs: dict = no_console_kwargs()
-    try:
-        result = subprocess.run(
-            # The app's own checkout, not the project: since v4.0.0 the two
-            # are separate repositories, and the version string is about
-            # the app. (A frozen build has no checkout -> plain number.)
-            ["git", *args], cwd=Path(__file__).resolve().parent, capture_output=True, text=True,
-            timeout=5, **popen_kwargs,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout.strip() if result.returncode == 0 else None
+    # The app's own checkout, not the project: since v4.0.0 the two
+    # are separate repositories, and the version string is about
+    # the app. (A frozen build has no checkout -> plain number.)
+    out = command_output(["git", *args], cwd=Path(__file__).resolve().parent, timeout=5)
+    return None if out is None else out.strip()
 
 
 def _compute_version_string() -> str:

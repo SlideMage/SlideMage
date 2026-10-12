@@ -51,10 +51,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import bibliography
+from . import bibliography, deck_editor
 from .deck_scan import Chapter, Deck
 from .project import ProjectContext
-from .tex_source import IFFALSE_RE, INPUT_RE, VERB_RE, VERBATIM_ENV_RE, masked_same_length
+from .tex_source import INPUT_RE, blanked_verbatim, comment_start, masked_same_length
 
 ERROR = "error"
 WARNING = "warning"
@@ -124,8 +124,7 @@ _MATH_ENVS = {"equation", "equation*", "align", "align*", "alignat", "alignat*",
 _NON_TYPESET_OWNERS = {
     "textcolor", "color", "colorbox", "fcolorbox", "definecolor", "colorlet", "pagecolor",
     "includegraphics", "input", "include", "InputIfFileExists", "graphicspath",
-    "slide", "slidefinal", "slideversion", "omitslide", "omitslideversion",
-    "conditionalslide", "slidestep", "setSlideID", "setSlideVersion", "chapterlogo",
+    *deck_editor.ALL_MACROS, "setSlideID", "setSlideVersion", "chapterlogo",
     "fullbleedframe", "label", "ref", "pageref", "eqref", "hyperlink", "hypertarget",
     "href", "url", "nolinkurl", "begin", "end", "cite", "fullcite", "parencite", "textcite",
     "autocite", "footcite", "citeauthor", "citeyear", "citetitle", "smartcite",
@@ -173,26 +172,11 @@ def _mask_comments_and_verbatim(text: str) -> tuple[str, list[tuple[int, str]]]:
     """Text with comments, verbatim bodies, \\verb and \\iffalse blocks blanked
     out (line structure preserved) plus [(line, message)] for % that looks
     like an unescaped percent sign."""
-    def blank(m: re.Match) -> str:
-        return re.sub(r"[^\n]", " ", m.group(0))
-
-    text = VERBATIM_ENV_RE.sub(blank, text)
-    text = IFFALSE_RE.sub(blank, text)
-    text = VERB_RE.sub(blank, text)
+    text = blanked_verbatim(text)
     percent_hits: list[tuple[int, str]] = []
     out_lines: list[str] = []
     for number, line in enumerate(text.split("\n"), 1):
-        i, n = 0, len(line)
-        cut = -1
-        while i < n:
-            c = line[i]
-            if c == "\\":
-                i += 2
-                continue
-            if c == "%":
-                cut = i
-                break
-            i += 1
+        cut = comment_start(line)
         if cut >= 0:
             after = line[cut + 1:]
             if cut > 0 and line[cut - 1].isdigit() and re.match(r"\s+[A-Za-z]", after):

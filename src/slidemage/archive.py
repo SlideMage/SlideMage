@@ -26,20 +26,14 @@ correct relative path is knowable up front and doesn't need runtime probing.
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 from .deck_scan import Deck
+from .fileio import read_text_exact, write_text_exact
 from .project import ProjectContext
-from .processes import is_git_repo, is_git_tracked, no_console_kwargs
+from .processes import move_file
 
 INPUT_PATH_RE = re.compile(r"\\def\\input@path\{\{\.\./\}\}")
-
-# the slidemage GUI script runs with no console of its own, so without
-# this, Windows pops up a new console window for each `git` call below --
-# same fix, same reason, as compiler.py's own subprocess.Popen call.
-_NO_CONSOLE_KWARGS: dict = no_console_kwargs()
 GRAPHICSPATH_RE = re.compile(r"\\graphicspath\{\{\.\./\}\}")
 BIB_IFFILEEXISTS_RE = re.compile(
     r"\\IfFileExists\{Slidemaster\.bib\}\{\\addbibresource\{Slidemaster\.bib\}\}"
@@ -68,20 +62,6 @@ def _sibling_dependencies(deck: Deck) -> list[str]:
     return siblings
 
 
-def read(path: Path) -> str:
-    # newline='' passes CRLF through untouched, matching this project's own
-    # convention (see add_deck_headers.py's own header comment) -- so the
-    # regex substitutions below don't need to know or care which line
-    # ending the file actually uses.
-    with open(path, encoding="utf-8", newline="") as f:
-        return f.read()
-
-
-def write(path: Path, text: str) -> None:
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
-
-
 def archive_deck(ctx: ProjectContext, deck: Deck) -> Path:
     """Move decks/<name>.tex to decks/archive/<name>.tex (via `git mv` in a
     git working tree, else a plain move), then patch its
@@ -105,25 +85,9 @@ def archive_deck(ctx: ProjectContext, deck: Deck) -> Path:
     if dest.exists():
         raise FileExistsError(f"{dest} already exists")
 
-    # `git mv` refuses outright ("fatal: not under version control") on a
-    # file that's never been committed -- a brand-new deck, or any file
-    # still untracked -- so that case falls back to a plain move, same as
-    # a non-git checkout; there's no history to preserve for it anyway.
-    if is_git_repo(ctx.root) and is_git_tracked(deck.path, ctx.root):
-        subprocess.run(
-            [
-                "git", "mv",
-                str(deck.path.relative_to(ctx.root)),
-                str(dest.relative_to(ctx.root)),
-            ],
-            cwd=ctx.root,
-            check=True,
-            **_NO_CONSOLE_KWARGS,
-        )
-    else:
-        shutil.move(str(deck.path), str(dest))
+    move_file(deck.path, dest, ctx.root)
 
-    text = read(dest)
+    text = read_text_exact(dest)
 
     text, n_input_path = INPUT_PATH_RE.subn(r"\\def\\input@path{{../../}}", text)
     text, n_graphicspath = GRAPHICSPATH_RE.subn(r"\\graphicspath{{../../}}", text)
@@ -146,5 +110,5 @@ def archive_deck(ctx: ProjectContext, deck: Deck) -> Path:
                 "archived file's bibliography path may be broken; fix by hand."
             )
 
-    write(dest, text)
+    write_text_exact(dest, text)
     return dest

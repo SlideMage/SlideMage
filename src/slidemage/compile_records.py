@@ -41,13 +41,13 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from .processes import no_console_kwargs
+from .fileio import write_json
+from .processes import command_output
 from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES
 
@@ -185,12 +185,7 @@ def version_lines(log_text: str) -> str:
 def engine_version() -> str:
     """lualatex's version line ("This is LuaHBTeX, Version 1.22.0 (MiKTeX
     25.4)"), once per run of SlideMage; "" if it can't be run."""
-    try:
-        result = subprocess.run(["lualatex", "--version"], capture_output=True, text=True,
-                                errors="replace", timeout=30, **no_console_kwargs())
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    lines = result.stdout.splitlines() if result.returncode == 0 else []
+    lines = (command_output(["lualatex", "--version"]) or "").splitlines()
     return lines[0].strip() if lines else ""
 
 
@@ -317,9 +312,7 @@ def write_record(
         # changed only after the slides it compiles (partial_compile.plan)
         if deck_path is not None and deck_path.is_file():
             shutil.copy2(deck_path, aux / DECK_COPY_NAME)
-        tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
-        os.replace(tmp, target)
+        write_json(target, record, indent=1, sort_keys=False, ensure_ascii=True)
         return target
     except (OSError, ValueError) as exc:
         log(f"    (compile not recorded for snapshots: {exc})")

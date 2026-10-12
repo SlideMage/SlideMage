@@ -66,7 +66,7 @@ def tree(tmp_path, monkeypatch):
     write(texroot / "tex" / "latex" / "beamer" / "beamer.cls", "beamer\n")
 
     monkeypatch.setattr(deck_snapshot, "tex_roots", lambda: [texroot])
-    monkeypatch.setattr(deck_snapshot, "_run_text", lambda cmd, cwd=None, any_exit_code=False: "")
+    monkeypatch.setattr(deck_snapshot, "command_output", lambda cmd, **kwargs: None)
     write(texroot / "fonts" / "opentype" / "public" / "fira" / "FiraSans-Light.otf", b"otf")
     monkeypatch.setattr(deck_snapshot, "pdf_font_names", lambda pdfs: ["FiraSans-Light"])
     monkeypatch.setattr(deck_snapshot, "locate_fonts", lambda names: {

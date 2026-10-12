@@ -274,10 +274,11 @@ def shot_sheets(shooter: Shooter) -> None:
     for index, name in enumerate(("general", "models", "cloud", "ollama", "prompts")):
         shooter.sheet_shot(f"settings-{name}", sheet, index)
     sheet.close()
-    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8")
+    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", is_dirty=window.centre.is_dirty)
     shooter.sheet_shot("add-slide", sheet)
     sheet.close()
-    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", source="existing")
+    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", source="existing",
+                         is_dirty=window.centre.is_dirty)
     shooter.sheet_shot("add-slide-existing", sheet)
     sheet.close()
     templates = [(key, key) for key in ("gotham", "uni-graz")]

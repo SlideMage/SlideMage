@@ -96,7 +96,7 @@ def make(project, qapp):
         window = FakeWindow(ProjectContext.at(project.slides.parent))
         deck = next(d for d in deck_scan.scan_decks(window.project) if d.name == "course")
         insert_at, indent = deck_editor.append_position(deck)
-        sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", **start)
+        sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", is_dirty=window.centre.is_dirty, **start)
         keep.append((window, sheet))
         sheet.show()
         return sheet, window

@@ -15,6 +15,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .fileio import atomic_write, read_json
+
 MARKER = "slide_ids.csv"
 ENV_VAR = "SLIDEMASTER_PROJECT"
 
@@ -176,11 +178,7 @@ def _recent_file() -> Path:
 def recent_projects() -> list[Path]:
     """The projects opened last on this computer, newest first. A folder that has
     gone since stays listed (project_status says so)."""
-    try:
-        data = json.loads(_recent_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    return [Path(p) for p in data if isinstance(p, str)] if isinstance(data, list) else []
+    return [Path(p) for p in read_json(_recent_file(), list) if isinstance(p, str)]
 
 
 def _remember_recent(path: Path) -> None:
@@ -192,8 +190,7 @@ def _remember_recent(path: Path) -> None:
     except OSError:
         pass
     try:
-        _recent_file().parent.mkdir(parents=True, exist_ok=True)
-        _recent_file().write_text(text, encoding="utf-8")
+        atomic_write(_recent_file(), text)
     except OSError:
         pass
 
@@ -217,26 +214,18 @@ def read_project_info(root: Path) -> dict:
     project.json; a missing or unreadable file reads as format
     PROJECT_FORMAT with no known last version."""
     info = {"format": PROJECT_FORMAT, "last_app_version": ""}
-    try:
-        data = json.loads((root / PROJECT_INFO_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return info
-    if isinstance(data, dict):
-        if isinstance(data.get("format"), int):
-            info["format"] = data["format"]
-        if isinstance(data.get("last_app_version"), str):
-            info["last_app_version"] = data["last_app_version"]
+    data = read_project_json(root)
+    if isinstance(data.get("format"), int):
+        info["format"] = data["format"]
+    if isinstance(data.get("last_app_version"), str):
+        info["last_app_version"] = data["last_app_version"]
     return info
 
 
 def read_project_json(root: Path) -> dict:
     """The whole of the project's project.json (every key, also those a
     newer or other part of SlideMage wrote); {} if missing or unreadable."""
-    try:
-        data = json.loads((root / PROJECT_INFO_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(root / PROJECT_INFO_PATH)
 
 
 def write_project_json(root: Path, data: dict) -> None:
@@ -247,8 +236,7 @@ def write_project_json(root: Path, data: dict) -> None:
             return  # unchanged -- don't touch a cloud-synced file for nothing
     except OSError:
         pass
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\n")
+    atomic_write(path, text)
 
 
 @dataclass(frozen=True)

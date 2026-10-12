@@ -19,37 +19,13 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from .tex_source import braced_argument, masked_same_length
+
 _HEADER_COMMENT_LINE_RE = re.compile(r"^\s*%")
 _SET_SLIDE_VERSION_RE = re.compile(r"^\\setSlideVersion\{[^}]*\}[ \t]*$", re.MULTILINE)
 # Not a generic tikzpicture/overlay match -- deliberately anchored to this
 # one specific wrapper (see this module's own docstring for why).
 _VBOX_OPEN_RE = re.compile(r"\\vbox\s+to\s+0pt\s*\{")
-
-
-def _find_matching_brace(text: str, open_pos: int) -> Optional[int]:
-    """Index of the '}' matching the '{' at `open_pos`, or None if unbalanced. A backslash escapes the
-    next character (`\\{`, `\\%`) and a '%' comment runs to the end of its line, as in TeX."""
-    depth = 0
-    i = open_pos
-    while i < len(text):
-        char = text[i]
-        if char == "\\" and i + 1 < len(text):
-            i += 2
-            continue
-        if char == "%":
-            end = text.find("\n", i)
-            if end < 0:
-                return None
-            i = end
-            continue
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
-    return None
 
 
 def _header_comment_span(text: str) -> Optional[tuple[int, int]]:
@@ -83,10 +59,11 @@ def mask_protected_regions(text: str) -> MaskResult:
     for m in _SET_SLIDE_VERSION_RE.finditer(text):
         spans.append([m.start(), m.end()])
 
+    uncommented = masked_same_length(text)  # a "%" comment may hold braces
     for m in _VBOX_OPEN_RE.finditer(text):
-        close = _find_matching_brace(text, m.end() - 1)
-        if close is not None:
-            spans.append([m.start(), close + 1])
+        after = braced_argument(uncommented, m.end() - 1)[1]
+        if after != m.end() - 1:
+            spans.append([m.start(), after])
 
     # Merge overlapping/adjacent spans (e.g. the header block butting
     # straight up against a \setSlideVersion line right after it) into

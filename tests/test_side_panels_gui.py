@@ -9,7 +9,7 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
 from slidemage import app_settings, deck_scan
-from slidemage.archive import read
+from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager

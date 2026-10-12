@@ -23,11 +23,10 @@ sharing/versioning, not one machine's own throwaway local state.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from .project import ProjectContext
-from .alt_images import atomic_write_text
+from .fileio import read_json, write_json
 
 KIND_IMAGE_DRAFT = "image_draft"
 
@@ -39,12 +38,7 @@ def _store_path(ctx: ProjectContext) -> Path:
 def _load_raw(ctx: ProjectContext) -> dict[str, str]:
     """The stored prompts; a file that cannot be read or is not the documented shape counts as empty,
     and entries that are not text are dropped."""
-    try:
-        data = json.loads(_store_path(ctx).read_text(encoding="utf-8"))
-    except (OSError, ValueError):    # a missing file, no permission, not UTF-8 (UnicodeDecodeError), bad JSON
-        return {}
-    if not isinstance(data, dict):
-        return {}
+    data = read_json(_store_path(ctx))
     return {kind: prompt for kind, prompt in data.items() if isinstance(prompt, str)}
 
 
@@ -67,4 +61,4 @@ def set_custom_prompt(ctx: ProjectContext, kind: str, prompt: str, default: str 
         raw[kind] = prompt
     else:
         raw.pop(kind, None)
-    atomic_write_text(_store_path(ctx), json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    write_json(_store_path(ctx), raw)

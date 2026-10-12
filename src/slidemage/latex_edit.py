@@ -18,6 +18,7 @@ from typing import NamedTuple, Optional
 from urllib.parse import quote, urlsplit
 
 from . import slide_import
+from .tex_source import braced_argument
 
 # The editor's tab width: Settings -> General stores it under this key.
 DEFAULT_TAB_WIDTH_CHARS = 2
@@ -363,16 +364,8 @@ def matching_brace(text: str, pos: int) -> Optional[int]:
     char = text[pos]
     depth = 0
     if char == "{":
-        for i in range(pos, len(text)):
-            if _is_escaped(text, i):
-                continue
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    return i
-        return None
+        after = braced_argument(text, pos)[1]
+        return after - 1 if after != pos else None
     for i in range(pos, -1, -1):
         if _is_escaped(text, i):
             continue

@@ -33,18 +33,56 @@ def is_commented(text: str, pos: int) -> bool:
     return bool(COMMENT_RE.search(text, line_start, pos))
 
 
+def comment_start(line: str) -> int:
+    r"""Index of the "%" that starts a comment in one line, or -1. A backslash escapes the next character, so
+    "\\%" (a line break, then a comment) is a comment and "\%" is not; COMMENT_RE does not tell these apart."""
+    i = 0
+    while i < len(line):
+        if line[i] == "\\":
+            i += 2
+        elif line[i] == "%":
+            return i
+        else:
+            i += 1
+    return -1
+
+
 def masked_same_length(text: str) -> str:
     """`text` with comments replaced by spaces (offsets preserved)."""
     out = []
     for line in text.split("\n"):
-        i, n, cut = 0, len(line), -1
-        while i < n:
-            if line[i] == "\\":
-                i += 2
-                continue
-            if line[i] == "%":
-                cut = i
-                break
-            i += 1
-        out.append(line if cut < 0 else line[:cut] + " " * (n - cut))
+        cut = comment_start(line)
+        out.append(line if cut < 0 else line[:cut] + " " * (len(line) - cut))
     return "\n".join(out)
+
+
+def blanked_verbatim(text: str) -> str:
+    """`text` with verbatim bodies, \\verb and \\iffalse blocks replaced by spaces (offsets and line breaks kept)."""
+    for pattern in (VERBATIM_ENV_RE, IFFALSE_RE, VERB_RE):
+        text = pattern.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
+    return text
+
+
+def braced_argument(text: str, open_index: int) -> tuple[str, int]:
+    """Content of the brace group starting at `open_index`, and the index after it.
+
+    Brace-matched, skipping escaped characters. Returns ("", open_index) if the
+    group is unbalanced.
+    """
+    if open_index >= len(text) or text[open_index] != "{":
+        return "", open_index
+    depth = 0
+    cursor = open_index
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "\\":
+            cursor += 2
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_index + 1:cursor], cursor + 1
+        cursor += 1
+    return "", open_index

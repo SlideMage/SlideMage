@@ -11,7 +11,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QStyleOptionViewItem, QWidget
 
 from slidemage import deck_editor, deck_outline
-from slidemage.archive import read
+from slidemage.fileio import read_text_exact as read
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.theme import ThemeManager

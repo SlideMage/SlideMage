@@ -31,7 +31,7 @@ from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, sl
 from .project import ProjectContext
 from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
 from .deck_scan import Deck
-from .tex_source import COMMENT_RE
+from .tex_source import COMMENT_RE, braced_argument
 
 
 # Only the student versions are generated. See the module docstring.
@@ -259,7 +259,7 @@ def _document_body(text: str) -> str:
         cursor = command_end
         while cursor < len(text) and text[cursor].isspace():
             cursor += 1
-        environment, after = alt_blocks.braced_argument(text, cursor)
+        environment, after = braced_argument(text, cursor)
         if after == cursor or environment.strip() != "document":
             continue
         if name == "begin" and document_start is None:
@@ -318,7 +318,7 @@ def _expand_literal_includes(
         cursor = command_end
         while cursor < len(body) and body[cursor].isspace():
             cursor += 1
-        token_text, after = alt_blocks.braced_argument(body, cursor)
+        token_text, after = braced_argument(body, cursor)
         if after == cursor:
             continue
         token = token_text.strip()
@@ -431,7 +431,7 @@ def _resolve_deck_reveals(text: str, version: str) -> str:
             out.append(text[index:])
             return "".join(out)
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end())
+        content, after = braced_argument(text, match.end())
         if after == match.end():
             out.append(text[match.start():])
             return "".join(out)
@@ -461,7 +461,7 @@ def resolve_deck_conditionals(text: str, version: str) -> str:
             return "".join(out)
 
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end())
+        content, after = braced_argument(text, match.end())
         if after == match.end():                 # unbalanced; bail out safely
             out.append(text[match.start():])
             return "".join(out)
@@ -683,12 +683,12 @@ def _render_block(body: str, label: str, bib: dict) -> str:
     stripped = _skip_optional_argument(body).lstrip()
     if label.startswith("gothamfloating") and stripped.startswith("{"):
         # the floating variants take the block's width first: {6cm}{Title}
-        _width, after = alt_blocks.braced_argument(stripped, 0)
+        _width, after = braced_argument(stripped, 0)
         if after > 0:
             stripped = stripped[after:].lstrip()
     body = stripped
     if stripped.startswith("{"):
-        title, after = alt_blocks.braced_argument(stripped, 0)
+        title, after = braced_argument(stripped, 0)
         if after > 0:
             body = stripped[after:]
     heading = _inline_markdown(title, bib).strip() or label.replace("block", "").title()
@@ -713,7 +713,7 @@ def _strip_column_spec(body: str, count: int) -> str:
         stripped = body.lstrip()
         if not stripped.startswith("{"):
             break
-        _content, after = alt_blocks.braced_argument(stripped, 0)
+        _content, after = braced_argument(stripped, 0)
         if after == 0:
             break
         body = stripped[after:]
@@ -818,7 +818,7 @@ def _park_code_spans(text: str) -> str:
             out.append(text[index:])
             return "".join(out)
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end() - 1)
+        content, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             out.append(text[match.start():])
             return "".join(out)
@@ -885,11 +885,11 @@ def _replace_two_arguments(text: str, pattern: re.Pattern, render) -> str:
         if match is None:
             out.append(text[index:])
             return "".join(out)
-        first, after = alt_blocks.braced_argument(text, match.end() - 1)
+        first, after = braced_argument(text, match.end() - 1)
         cursor = after
         while cursor < len(text) and text[cursor].isspace():
             cursor += 1
-        second, after2 = alt_blocks.braced_argument(text, cursor)
+        second, after2 = braced_argument(text, cursor)
         if after == match.end() - 1 or after2 == cursor:
             out.append(text[index:match.end()])
             index = match.end()
@@ -945,7 +945,7 @@ def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str, bib
             out.append(text[index:])
             return "".join(out)
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end() - 1)
+        content, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             out.append(text[match.start():])
             return "".join(out)
@@ -973,10 +973,10 @@ def _inline_markdown(text: str, bib: dict) -> str:
         match = _HREF_RE.search(text)
         if match is None:
             break
-        url, after = alt_blocks.braced_argument(text, match.end() - 1)
+        url, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             break
-        label, after2 = alt_blocks.braced_argument(text, after)
+        label, after2 = braced_argument(text, after)
         if after2 == after:
             text = text[:match.start()] + url + text[after:]
             continue
@@ -1042,7 +1042,7 @@ def _tikz_labels(body: str, bib: dict) -> str:
         last_open = span.rfind("{")
         if last_open == -1:
             continue
-        content, after = alt_blocks.braced_argument(span, last_open)
+        content, after = braced_argument(span, last_open)
         if after == last_open or "includegraphics" in content:
             continue
         rendered = _convert_body(content, bib).strip()
@@ -1087,7 +1087,7 @@ def _figure_commands(text: str) -> str:
         if match is None:
             out.append(text[index:])
             return "".join(out)
-        argument, after = alt_blocks.braced_argument(text, match.end() - 1)
+        argument, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             out.append(text[index:])
             return "".join(out)
@@ -1103,7 +1103,7 @@ def _arguments(text: str, start: int, count: int) -> tuple[list[str], int]:
     for _ in range(count):
         while cursor < len(text) and text[cursor].isspace():
             cursor += 1
-        content, after = alt_blocks.braced_argument(text, cursor)
+        content, after = braced_argument(text, cursor)
         if after == cursor:
             return [], start
         arguments.append(content)
@@ -1198,7 +1198,6 @@ def _convert_body(text: str, bib: dict, depth: int = 0) -> str:
 # Rendering one slide
 # --------------------------------------------------------------------------
 
-_FRAME_END_RE = re.compile(r"\\end\{\w*frame\}")
 _PLAIN_FRAME_OPEN_RE = re.compile(r"\\begin\{frame\}\s*(?:<[^>]*>)?\s*(?:\[[^\]]*\])?")
 
 # \SMCodeFile[listings keys]{path}: LaTeX source a slide shows from a file
@@ -1265,7 +1264,7 @@ def _expand_local_macros(text: str) -> str:
         match = _LOCAL_MACRO_DEF_RE.search(text)
         if match is None:
             break
-        body, after = alt_blocks.braced_argument(text, match.end() - 1)
+        body, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             break
         macros[match.group(1) or match.group(2)] = (
@@ -1315,7 +1314,7 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
     """Replaces every \\multilingualtext{EN}{DE} call with just its EN or
     DE argument, mirroring \\ifSMGerman's own choice at compile time
     (Slidemaster_preamble_base.tex) -- brace-matched
-    (alt_blocks.braced_argument), not a naive regex, since either argument
+    (braced_argument), not a naive regex, since either argument
     can itself contain a braced macro (e.g. \\textbf{...}).
 
     Must run before title/body extraction: a "mult" slide's transcript
@@ -1333,11 +1332,11 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
             return "".join(out)
         out.append(text[index:found])
         first_open = found + len(_MULTILINGUAL_NEEDLE) - 1
-        arg_en, after_first = alt_blocks.braced_argument(text, first_open)
+        arg_en, after_first = braced_argument(text, first_open)
         if after_first == first_open:  # unbalanced first arg -- leave the rest untouched
             out.append(text[found:])
             return "".join(out)
-        arg_de, after_second = alt_blocks.braced_argument(text, after_first)
+        arg_de, after_second = braced_argument(text, after_first)
         if after_second == after_first:  # no second {...} immediately following -- malformed
             out.append(text[found:after_first])
             index = after_first
@@ -1389,9 +1388,9 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
 
     begin = alt_blocks.FRAME_OPEN_RE.search(body)
     plain = _PLAIN_FRAME_OPEN_RE.search(body)
-    end = _FRAME_END_RE.search(body)
+    end = alt_blocks.FRAME_END_RE.search(body)
     if begin and end:
-        _title_arg, after_title = alt_blocks.braced_argument(body, begin.end() - 1)
+        _title_arg, after_title = braced_argument(body, begin.end() - 1)
         if begin.group(0).startswith("\\begin{sideimageframe}"):
             _path, after_title = _arguments(body, after_title, 1)  # its image
         if after_title < end.start():
@@ -1402,11 +1401,11 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
         while cursor < len(body) and body[cursor].isspace():
             cursor += 1
         if body.startswith("{", cursor):
-            _title_arg, cursor = alt_blocks.braced_argument(body, cursor)
+            _title_arg, cursor = braced_argument(body, cursor)
         body = body[cursor:end.start()]
     else:
         # \titleframe{title}{subtitle}/\fullbleedframe{path} are commands,
-        # not environments, so they never match FRAME_OPEN_RE/_FRAME_END_RE
+        # not environments, so they never match FRAME_OPEN_RE/alt_blocks.FRAME_END_RE
         # above -- without this branch, `body` stayed the *entire* raw
         # stripped source (this slide's own macro call included), and
         # _convert_body() below only strips bare macro *names*, leaving
@@ -1420,11 +1419,11 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
         title_cmd = alt_blocks.TITLEFRAME_RE.search(body)
         fullbleed_cmd = alt_blocks.FULLBLEEDFRAME_RE.search(body)
         if title_cmd:
-            _title_arg, after_title = alt_blocks.braced_argument(body, title_cmd.end() - 1)
+            _title_arg, after_title = braced_argument(body, title_cmd.end() - 1)
             cursor = after_title
             while cursor < len(body) and body[cursor].isspace():
                 cursor += 1
-            subtitle, _after_subtitle = alt_blocks.braced_argument(body, cursor)
+            subtitle, _after_subtitle = braced_argument(body, cursor)
             body = subtitle
         elif fullbleed_cmd:
             body = ""
@@ -1556,7 +1555,7 @@ def _section_titles(ctx: ProjectContext, deck_path: Path, bib: dict) -> list[str
     text = COMMENT_RE.sub("", text)
     titles: list[str] = []
     for match in _SECTION_RE.finditer(text):
-        title, _after = alt_blocks.braced_argument(text, match.end() - 1)
+        title, _after = braced_argument(text, match.end() - 1)
         titles.append(_finish(_inline_markdown(title, bib).strip()))
     return titles
 
@@ -1572,7 +1571,7 @@ def _subsection_titles(ctx: ProjectContext, deck_path: Path, bib: dict) -> dict[
     section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
     titles: dict[int, list[str]] = {}
     for match in _SUBSECTION_RE.finditer(text):
-        title, _after = alt_blocks.braced_argument(text, match.end() - 1)
+        title, _after = braced_argument(text, match.end() - 1)
         chapter = bisect.bisect_left(section_starts, match.start())
         titles.setdefault(chapter, []).append(_finish(_inline_markdown(title, bib).strip()))
     return titles

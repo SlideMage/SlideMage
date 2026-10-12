@@ -30,41 +30,17 @@ add_deck_headers.py's own add-only caution.
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional
 
-from . import alt_images, deck_headers, slide_ids, slide_language
+from .fileio import read_text_exact, write_text_exact
+from . import alt_images, deck_editor, deck_headers, slide_ids, slide_language
 from .project import ProjectContext
-from .processes import is_git_repo, is_git_tracked, no_console_kwargs
+from .processes import delete_file, move_file
 
 # Decks and archived decks can hold \slide{}-family references.
 
-# the slidemage GUI script runs with no console of its own -- same
-# fix, same reason, as compiler.py's/archive.py's own subprocess calls.
-_NO_CONSOLE_KWARGS: dict = no_console_kwargs()
-
-# Mirrors deck_headers.SLIDE_CALL_RE's own macro set, plus conditionalslide
-# (deck_headers.py's own regex omits it -- a pre-existing gap unrelated to
-# this feature, left alone here rather than silently "fixed" as a
-# drive-by; conditionalslide references still get rewritten correctly by
-# THIS module's own pattern, just not counted by deck_headers.py's
-# separate "Included in decks" bookkeeping).
-_MACROS = (
-    "slide", "slidefinal", "slideversion",
-    "omitslide", "omitslideversion", "conditionalslide", "slidestep",
-)
-
-
-def _move(ctx: ProjectContext, src: Path, dest: Path) -> None:
-    if is_git_repo(ctx.root) and is_git_tracked(src, ctx.root):
-        subprocess.run(
-            ["git", "mv", str(src.relative_to(ctx.root)), str(dest.relative_to(ctx.root))],
-            cwd=ctx.root, check=True, **_NO_CONSOLE_KWARGS,
-        )
-    else:
-        shutil.move(str(src), str(dest))
+_MACROS = "|".join(sorted(deck_editor.ALL_MACROS))
 
 
 def compute_new_id_slug(id_slug: str, language: str) -> str:
@@ -87,7 +63,7 @@ def _reference_pattern(id_slug: str) -> re.Pattern:
     # suffix) so the id-slug has to be the *entire* argument, not merely a
     # substring of some other, longer id-slug/slug.
     return re.compile(
-        r"(\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{)"
+        r"(\\(?:" + _MACROS + r")(?:\[[^\]]*\])?\{)"
         + re.escape(id_slug) + r"(\})"
     )
 
@@ -100,7 +76,7 @@ def count_references(ctx: ProjectContext, id_slug: str) -> int:
     total = 0
     deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
-        text = deck_path.read_bytes().decode("utf-8")
+        text = read_text_exact(deck_path)
         total += len(pattern.findall(text))
     return total
 
@@ -112,11 +88,11 @@ def _reference_decks(ctx: ProjectContext) -> list[Path]:
 
 
 def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str) -> int:
-    text = deck_path.read_bytes().decode("utf-8")
+    text = read_text_exact(deck_path)
     pattern = _reference_pattern(id_slug)
     new_text, n = pattern.subn(r"\g<1>" + new_id_slug + r"\g<2>", text)
     if n:
-        deck_path.write_text(new_text, encoding="utf-8", newline="")
+        write_text_exact(deck_path, new_text)
     return n
 
 
@@ -152,7 +128,7 @@ def _apply_id_slug_rename(ctx: ProjectContext, id_slug: str, new_id_slug: str) -
         renames.append((version_src, version_dest))
 
     for src, dest in renames:
-        _move(ctx, src, dest)
+        move_file(src, dest, ctx.root)
 
     deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
@@ -231,7 +207,7 @@ def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
 
     for path in sorted(ctx.slides_dir.glob("*-current.tex")):
         own_name = path.name[: -len(slide_language.CURRENT_SUFFIX)]
-        text = path.read_bytes().decode("utf-8")
+        text = read_text_exact(path)
         new_text = text
 
         m = slide_language.TRANSLATION_OF_RE.search(new_text)
@@ -260,7 +236,7 @@ def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
         new_text = slide_language.LANG_TRANSLATION_RE.sub(_lang_repl, new_text)
 
         if new_text != text:
-            path.write_text(new_text, encoding="utf-8", newline="")
+            write_text_exact(path, new_text)
             changed += 1
 
     return changed, missing
@@ -311,29 +287,29 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
         dest = ctx.slides_dir / (new_id + src.name[len(old_id):])
         if dest.exists():
             raise FileExistsError(f"{dest} already exists")
-        _move(ctx, src, dest)
+        move_file(src, dest, ctx.root)
         if src.name.endswith(slide_language.CURRENT_SUFFIX):
             old_slug = src.name[: -len(slide_language.CURRENT_SUFFIX)]
             mapping[old_slug] = new_id + old_slug[len(old_id):]
 
     if mapping:
         pattern = re.compile(
-            r"(\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{)("
+            r"(\\(?:" + _MACROS + r")(?:\[[^\]]*\])?\{)("
             + "|".join(re.escape(s) for s in mapping) + r")(\})"
         )
         deck_paths = _reference_decks(ctx)
         for deck_path in deck_paths:
-            text = deck_path.read_bytes().decode("utf-8")
+            text = read_text_exact(deck_path)
             new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
             if new_text != text:
-                deck_path.write_text(new_text, encoding="utf-8", newline="")
+                write_text_exact(deck_path, new_text)
 
     link = re.compile(r"(\\hyperlink\{)" + re.escape(old_id) + r"(\})")
     for path in ctx.slides_dir.glob("*.tex"):
-        text = path.read_bytes().decode("utf-8")
+        text = read_text_exact(path)
         new_text = link.sub(r"\g<1>" + new_id + r"\g<2>", text)
         if new_text != text:
-            path.write_text(new_text, encoding="utf-8", newline="")
+            write_text_exact(path, new_text)
 
     def _move_uses(entries) -> bool:
         changed = False
@@ -376,7 +352,7 @@ def deck_names_referencing(ctx: ProjectContext, id_slug: str) -> list[str]:
     names: list[str] = []
     deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
-        text = deck_path.read_bytes().decode("utf-8")
+        text = read_text_exact(deck_path)
         if pattern.search(text):
             names.append(deck_path.stem)
     return names
@@ -412,10 +388,10 @@ def _line_removal_pattern(id_slug: str) -> re.Pattern:
 
 
 def _remove_references_in_file(deck_path: Path, id_slug: str) -> int:
-    text = deck_path.read_bytes().decode("utf-8")
+    text = read_text_exact(deck_path)
     new_text, n = _line_removal_pattern(id_slug).subn("", text)
     if n:
-        deck_path.write_text(new_text, encoding="utf-8", newline="")
+        write_text_exact(deck_path, new_text)
     return n
 
 
@@ -451,13 +427,7 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
 
     files = sorted(ctx.slides_dir.glob(f"{id_slug}-*.tex"))
     for path in files:
-        if is_git_repo(ctx.root) and is_git_tracked(path, ctx.root):
-            subprocess.run(
-                ["git", "rm", "-q", str(path.relative_to(ctx.root))],
-                cwd=ctx.root, check=True, **_NO_CONSOLE_KWARGS,
-            )
-        else:
-            path.unlink()
+        delete_file(path, ctx.root)
 
     deck_refs_removed = 0
     if remove_deck_references:

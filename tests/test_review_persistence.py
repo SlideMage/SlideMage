@@ -226,7 +226,7 @@ def test_store_json_is_replaced_atomically(ctx, tmp_path, monkeypatch):
             raise AssertionError("test did not release atomic replacement")
         real_replace(source, destination)
 
-    monkeypatch.setattr(alt_images.os, "replace", gated_replace)
+    monkeypatch.setattr(os, "replace", gated_replace)
 
     def update_worker():
         try:

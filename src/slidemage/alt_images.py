@@ -54,14 +54,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import threading
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
 from . import alt_blocks
+from .fileio import read_json, write_json
 from .project import ProjectContext
 from .tex_source import COMMENT_RE
 
@@ -327,12 +326,7 @@ class SlideNotes:
 
 
 def _read_raw(ctx: ProjectContext) -> dict:
-    if not _store_path(ctx).is_file():
-        return {}
-    try:
-        return json.loads(_store_path(ctx).read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    return read_json(_store_path(ctx))
 
 
 def load_slide_notes(ctx: ProjectContext) -> dict[str, SlideNotes]:
@@ -395,23 +389,6 @@ def update_slide_notes(ctx: ProjectContext, mutate) -> bool:
         return changed
 
 
-def atomic_write_text(path: Path, text: str) -> None:
-    """Write complete UTF-8 content beside its target, then replace it."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-
 def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None:
     _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
     raw = _read_raw(ctx)
@@ -427,10 +404,7 @@ def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None
     # compile-time CSV mirror only ever holds image role/short_alt columns
     # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
-    atomic_write_text(
-        _store_path(ctx),
-        json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
-    )
+    write_json(_store_path(ctx), raw, sort_keys=False)
 
 
 def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
@@ -448,10 +422,7 @@ def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
         },
         "slides": existing_slides,
     }
-    atomic_write_text(
-        _store_path(ctx),
-        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
-    )
+    write_json(_store_path(ctx), payload, sort_keys=False)
     _write_compile_csv(ctx, entries)
 
 

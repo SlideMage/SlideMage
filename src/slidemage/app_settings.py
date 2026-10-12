@@ -21,11 +21,11 @@ next to translation_prompts.json; every function takes the ProjectContext it bel
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
 
+from .fileio import read_json, write_json
 from .project import ProjectContext
 
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
@@ -41,22 +41,11 @@ def _store_path(ctx: ProjectContext) -> Path:
 
 
 def load(ctx: ProjectContext) -> dict[str, Any]:
-    path = _store_path(ctx)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    return read_json(_store_path(ctx))
 
 
 def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
-    path = _store_path(ctx)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(settings, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json(_store_path(ctx), settings)
 
 
 def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:

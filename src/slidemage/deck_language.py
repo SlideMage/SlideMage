@@ -10,13 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
-import re
 
 from . import alt_blocks, deck_editor, slide_language
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
 from .project import ProjectContext
-from .tex_source import IFFALSE_RE, INPUT_RE, VERBATIM_ENV_RE, VERB_RE, masked_same_length
+from .tex_source import INPUT_RE, blanked_verbatim, masked_same_length
 
 
 def resolve_call(call: SlideCall, language: str, links: slide_language.TranslationLinks) -> SlideCall:
@@ -82,9 +81,7 @@ def _slots(calls: list[SlideCall], language: str, links: slide_language.Translat
 
 def masked(text: str) -> str:
     """Blank verbatim, inactive blocks, comments and notes, preserving offsets."""
-    for pattern in (VERBATIM_ENV_RE, IFFALSE_RE, VERB_RE):
-        text = pattern.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
-    return alt_blocks.extract_note_calls(masked_same_length(text), mask=True)[0]
+    return alt_blocks.extract_note_calls(masked_same_length(blanked_verbatim(text)), mask=True)[0]
 
 
 def calls_in(text: str, chapters: list[Chapter]) -> list:

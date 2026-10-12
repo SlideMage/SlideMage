@@ -27,7 +27,7 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from .project import ProjectContext
-from .archive import read, write
+from .fileio import read_text_exact, write_text_exact
 from .deck_scan import COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, is_commented
@@ -298,14 +298,14 @@ def apply(deck_path: Path, expected_text: str, mutate) -> str:
     GUI tab's own last-loaded copy) before touching anything, applies
     `mutate(text) -> new_text`, writes the result, and returns it so the
     caller can refresh its own cached copy."""
-    current = read(deck_path)
+    current = read_text_exact(deck_path)
     if current != expected_text:
         raise StaleFileError(
             f"{deck_path.name} changed on disk since it was last loaded -- "
             "reload the deck and retry."
         )
     new_text = mutate(current)
-    write(deck_path, new_text)
+    write_text_exact(deck_path, new_text)
     return new_text
 
 

@@ -51,6 +51,7 @@ from typing import Callable, Optional
 from . import compile_log, compile_records, compiler, deck_scan, project
 from .compiler import CancelToken, CompileJob
 from .deck_editor import SlideCall
+from .fileio import replace_with_retry, write_json
 
 LogCallback = Callable[[str], None]
 
@@ -555,7 +556,6 @@ def patch(plan: PartialPlan, output: PartialOutput, log: LogCallback) -> PatchRe
                     # the patched PDF now belongs to this compile run ("Open pdf")
                     compile_records.stamp_run_id(full, plan.job.run_id)
                 full.save(tmp, garbage=3, deflate=True)
-            from .deck_snapshot import replace_with_retry
             replace_with_retry(tmp, full_pdf)
         finally:
             tmp.unlink(missing_ok=True)
@@ -575,7 +575,6 @@ def _note_patch(plan: PartialPlan, result: PatchResult) -> None:
     """The record keeps vouching for the full PDF's identity (its new hash),
     so another page compile can follow; its input hashes stay those of the
     whole-deck compile, so the PDF no longer counts as unchanged."""
-    import json
     from datetime import datetime
     record = dict(plan.record)
     record["pdf_sha256"] = compile_records.sha256(plan.full_pdf)
@@ -593,7 +592,7 @@ def _note_patch(plan: PartialPlan, result: PatchResult) -> None:
         if path.name in swapped and path.is_file():
             patched_inputs[entry["path"]] = compile_records.sha256(path)
     path = compile_records.record_path(plan.context.build_dir, plan.job.jobname)
-    path.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+    write_json(path, record, indent=1, sort_keys=False, ensure_ascii=True)
 
 
 # --------------------------------------------------------------------------

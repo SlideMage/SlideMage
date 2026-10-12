@@ -10,9 +10,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from .fileio import read_text_exact, write_text_exact
 from . import alt_blocks
 from .project import ProjectContext
-from .tex_source import masked_same_length
+from .tex_source import braced_argument, masked_same_length
 
 
 
@@ -39,8 +40,7 @@ def read_slide_source(path: Path) -> tuple[str, str]:
     detected per-file rather than assumed, for save_slide_source() to
     restore later.
     """
-    with open(path, encoding="utf-8", newline="") as f:
-        raw = f.read()
+    raw = read_text_exact(path)
     eol = "\r\n" if "\r\n" in raw else "\n"
     text = raw.replace("\r\n", "\n")
     return text, eol
@@ -109,8 +109,7 @@ def save_slide_source(
         shutil.copy2(path, backup_path)
 
     normalized = new_text.replace("\r\n", "\n").replace("\n", eol)
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(normalized)
+    write_text_exact(path, normalized)
 
     return backup_path
 
@@ -162,7 +161,7 @@ def note_calls(text: str) -> list[NoteCall]:
             cursor = after
             while cursor < len(text) and text[cursor].isspace():
                 cursor += 1
-        content, after = alt_blocks.braced_argument(text, cursor)
+        content, after = braced_argument(text, cursor)
         if after == cursor:
             continue
         overlay = text[command_end:cursor].strip()
@@ -211,7 +210,7 @@ def title_span(text: str) -> tuple[int, int] | None:
     match = alt_blocks.FRAME_OPEN_RE.search(masked) or alt_blocks.TITLEFRAME_RE.search(masked)
     if match is None:
         return None
-    _, after = alt_blocks.braced_argument(masked, match.end() - 1)
+    _, after = braced_argument(masked, match.end() - 1)
     return (match.end(), after - 1) if after > match.end() - 1 else None
 
 

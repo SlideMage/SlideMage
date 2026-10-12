@@ -14,7 +14,7 @@ Don't ask again (per change). Appearance-only changes never pop up; they are
 listed under ⋮ → Project compatibility.
 
 Plain functions of the window: each takes the WorkspaceWindow (window.py) first, which
-provides `project`, `log`, `update_check_done`, `compiling` and `_resolve_dirty_edits()`.
+provides `project`, `log`, `update_check_done`, `compiling` and `relaunch_with_project()`.
 """
 from __future__ import annotations
 
@@ -456,11 +456,7 @@ def download_and_install_update(window, release: updater.Release) -> None:
             "A compile run is in progress -- restart SlideMage once it finishes.",
         )
         return
-    if not window._resolve_dirty_edits():
-        return
-    project.relaunch_with_project(window.project.root)
-    window._dirty_edits_resolved_for_close = True
-    window.close()
+    window.relaunch_with_project(window.project.root)
 
 
 def housekeeping_sheet(window, page: int = LIST_PAGE) -> HousekeepingSheet:

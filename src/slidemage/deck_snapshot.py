@@ -43,7 +43,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 import uuid
@@ -68,7 +67,8 @@ from .compile_records import (
 )
 from .deck_editor import VIEWS
 from .deck_scan import Deck
-from .processes import no_console_kwargs
+from .fileio import replace_with_retry
+from .processes import command_output
 
 SNAPSHOTS_DIRNAME = "snapshots"
 SNAPSHOT_FORMAT = 1
@@ -247,32 +247,6 @@ def _dir_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
-def _run_text(cmd: list[str], cwd: Optional[Path] = None, any_exit_code: bool = False) -> str:
-    """A command's stdout ("" if it can't run, or exits with an error unless
-    `any_exit_code`) -- for version strings and kpsewhich lookups."""
-    try:
-        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                                errors="replace", timeout=30, **no_console_kwargs())
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout if result.returncode == 0 or any_exit_code else ""
-
-
-def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: float = 0.25) -> None:
-    """os.replace(), retried for a while: on Windows a virus scanner or the
-    search indexer often holds a just-written file open for a moment, and the
-    rename of a freshly written snapshot folder then fails with "access
-    denied" although nothing is wrong."""
-    for attempt in range(attempts):
-        try:
-            os.replace(source, target)
-            return
-        except PermissionError:
-            if attempt == attempts - 1:
-                raise
-            time.sleep(delay)
-
-
 def snapshots_dir(root: Path) -> Path:
     return root / SNAPSHOTS_DIRNAME
 
@@ -426,7 +400,7 @@ def tex_roots() -> list[Path]:
     roots: dict[str, Path] = {}
     for var in ("TEXMF", "TEXMFDIST", "TEXMFLOCAL", "TEXMFSYSVAR", "TEXMFVAR",
                 "TEXMFCACHE", "TEXMFROOT", "TEXMFSYSCONFIG", "TEXMFCONFIG"):
-        value = _run_text(["kpsewhich", f"--var-value={var}"]).strip()
+        value = (command_output(["kpsewhich", f"--var-value={var}"]) or "").strip()
         for part in re.split(r"[,;{}]", value.replace("!!", "")):
             part = part.strip()
             if part and os.path.isabs(part) and os.path.isdir(part):
@@ -665,7 +639,7 @@ def locate_fonts(names: Iterable[str]) -> dict[str, Path]:
                       for ext in (".otf", ".ttf", ".pfb")]
         # kpsewhich exits 1 as soon as one candidate is missing, but still
         # prints the ones it found -- so its output counts whatever the code.
-        lines = _run_text(["kpsewhich", *candidates], any_exit_code=True).splitlines()
+        lines = (command_output(["kpsewhich", *candidates], any_exit_code=True) or "").splitlines()
         if lines and lines[0].strip():
             # resolve(): the file's real name (MiKTeX echoes the case asked for)
             found[name] = Path(os.path.normpath(lines[0].strip())).resolve()
@@ -674,9 +648,9 @@ def locate_fonts(names: Iterable[str]) -> dict[str, Path]:
 
 def tex_environment(outputs: list[_JobOutput], tex_files: dict[str, Path],
                     roots: list[Path], fonts: Optional[dict[str, Path]] = None) -> dict:
-    engine = _run_text(["lualatex", "--version"]).splitlines()
-    latexmk = [line for line in _run_text(["latexmk", "-v"]).splitlines() if "Version" in line]
-    biber = _run_text(["biber", "-v"]).splitlines()
+    engine = (command_output(["lualatex", "--version"]) or "").splitlines()
+    latexmk = [line for line in (command_output(["latexmk", "-v"]) or "").splitlines() if "Version" in line]
+    biber = (command_output(["biber", "-v"]) or "").splitlines()
     distribution = ""
     if engine:
         m = re.search(r"\((MiKTeX [^)]+|TeX Live [^)]+)\)", engine[0])
@@ -778,12 +752,7 @@ def environment_differences(recorded: dict, current: dict) -> list[str]:
 # Writing the snapshot
 
 def _git(root: Path, *args: str) -> Optional[str]:
-    try:
-        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
-                                text=True, errors="replace", timeout=30, **no_console_kwargs())
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout if result.returncode == 0 else None
+    return command_output(["git", "-C", str(root), *args])
 
 
 def _project_git_state(root: Path, rels: Iterable[str]) -> dict:

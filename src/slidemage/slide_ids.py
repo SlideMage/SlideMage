@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from .fileio import read_text_exact, write_text_exact
 from . import project, slide_language
 from .project import ProjectContext
 
@@ -109,8 +110,7 @@ ID_FROM_FILENAME_RE = re.compile(r"^([^-]+)-.*\.tex$")
 def existing_ids_from_csv(ctx: ProjectContext) -> set[str]:
     if not ctx.slide_ids_csv.exists():
         return set()
-    with open(ctx.slide_ids_csv, encoding="utf-8", newline="") as f:
-        lines = f.read().splitlines()
+    lines = read_text_exact(ctx.slide_ids_csv).splitlines()
     ids = {line.strip().strip('"') for line in lines[1:]}  # skip "id" header
     ids.discard("")
     return ids
@@ -197,7 +197,7 @@ def build_new_slide_header(cross_ref_id_slug: Optional[str] = None) -> str:
 
 def slide_body(path: Path) -> str:
     """The content of the slide file `path` without its header comments (see body_of)."""
-    return body_of(path.read_bytes().decode("utf-8"))
+    return body_of(read_text_exact(path))
 
 
 _HEADER_RE = re.compile(r"\A(?:%%[^\r\n]*\r?\n)*(?:[ \t]*\r?\n)*")
@@ -252,19 +252,19 @@ def create_slide_file(
 
     if body is None:
         body = read_template(ctx)
-    dest.write_text(build_new_slide_header(cross_ref_id_slug) + body, encoding="utf-8", newline="")
+    write_text_exact(dest, build_new_slide_header(cross_ref_id_slug) + body)
     return dest
 
 
 def read_template(ctx: ProjectContext) -> str:
     """The project's starter slide, or the bundled example's when absent."""
     if ctx.slide_template_path.is_file():
-        return ctx.slide_template_path.read_bytes().decode("utf-8")
+        return read_text_exact(ctx.slide_template_path)
     example = project.template_dir("example")
     if example is not None:
         template = example / TEMPLATE_RELATIVE
         if template.is_file():
-            return template.read_bytes().decode("utf-8")
+            return read_text_exact(template)
     raise FileNotFoundError(
         f"No slide template found at {ctx.slide_template_path} or in the bundled example project."
     )
@@ -284,8 +284,8 @@ def add_translation_backreference(source_path: Path, language: str, new_id_slug:
     than one "%% <LANG> translation: ..." line per file."""
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
-    text = source_path.read_bytes().decode("utf-8")
-    source_path.write_text(with_translation_backreference(text, language, new_id_slug), encoding="utf-8", newline="")
+    text = read_text_exact(source_path)
+    write_text_exact(source_path, with_translation_backreference(text, language, new_id_slug))
 
 
 def with_translation_backreference(text: str, language: str, new_id_slug: str) -> str:

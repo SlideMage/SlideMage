@@ -36,8 +36,6 @@ class FakeApp:
         self.project = project
         self.theme = ThemeManager()
         self.logged = []
-        self.added = []
-        self.slide_list = SimpleNamespace(add_slide=lambda *start: self.added.append(start))
 
     def log(self, line):
         self.logged.append(line)
@@ -541,8 +539,10 @@ def test_moving_a_slide_with_unsaved_edits_is_refused(centre, project, monkeypat
 def test_duplicate_opens_the_add_slide_sheet_on_the_slide(centre):
     centre.state.set_mode("details")
     centre.state.set_focused_slide("ccc")
+    requested = []
+    centre.duplicate_requested.connect(requested.append)
     centre.details._duplicate()
-    assert centre.app.added == [("duplicate", "ccc-DE-Drei")]
+    assert requested == ["ccc-DE-Drei"]
 
 
 def test_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch):

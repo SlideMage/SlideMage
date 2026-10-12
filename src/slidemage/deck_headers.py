@@ -48,6 +48,7 @@ from __future__ import annotations
 import re
 import threading
 
+from .fileio import read_text_exact, write_text_exact
 from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES
 
@@ -96,8 +97,7 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
     id_to_decks: dict[str, set[str]] = {}
     for deck_path in deck_paths:
         deck_name = _deck_display_name(deck_path)
-        with open(deck_path, encoding="utf-8", newline="") as f:
-            text = f.read()
+        text = read_text_exact(deck_path)
         from types import SimpleNamespace
         from . import deck_editor, deck_language
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
@@ -113,8 +113,7 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
             slide_id = slide_path.name.split("-")[0]
             decks = sorted(id_to_decks.get(slide_id, []))
 
-            with open(slide_path, encoding="utf-8", newline="") as f:
-                text = f.read()
+            text = read_text_exact(slide_path)
             eol = "\r\n" if "\r\n" in text else "\n"
 
             listed = ", ".join(decks) if decks else "(none)"
@@ -131,8 +130,7 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
                 new_text = text[:insert_at] + new_header + text[insert_at:]
 
             if new_text != text:
-                with open(slide_path, "w", encoding="utf-8", newline="") as f:
-                    f.write(new_text)
+                write_text_exact(slide_path, new_text)
                 changed += 1
 
     return changed, len(deck_paths)

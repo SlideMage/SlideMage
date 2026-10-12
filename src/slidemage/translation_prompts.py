@@ -35,11 +35,11 @@ readable, hand-editable in a pinch):
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .fileio import read_json, write_json
 from .project import ProjectContext
 
 
@@ -94,12 +94,7 @@ def _store_path(ctx: ProjectContext) -> Path:
 
 
 def _load_raw(ctx: ProjectContext) -> dict:
-    if not _store_path(ctx).is_file():
-        return {}
-    try:
-        return json.loads(_store_path(ctx).read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    return read_json(_store_path(ctx))
 
 
 def _config_from_dict(cfg: dict) -> PromptConfig:
@@ -134,12 +129,7 @@ def _save(ctx: ProjectContext, default: Optional[PromptConfig], prompts: ModelPr
         for model, by_source in prompts.items()
         if by_source
     }
-    path = _store_path(ctx)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json(_store_path(ctx), raw)
 
 
 def get_prompt(ctx: ProjectContext, model: str, source_lang: str, target_lang: str) -> Optional[PromptConfig]:

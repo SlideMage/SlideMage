@@ -26,6 +26,7 @@ from . import slide_language, slide_snapshot
 from .compiler import build_env
 from .deck_editor import format_call
 from .preview_metrics import measure
+from .tex_source import COMMENT_RE
 
 
 LogCallback = Callable[[str], None]
@@ -653,7 +654,7 @@ def _region_source(preamble: str, body: str, mode: str) -> tuple[str, str]:
         raise ValueError(f"Unknown preview mode: {mode}")
     if not body.strip():
         raise ValueError("Select some LaTeX to preview first")
-    has_frame = re.search(r"\\begin\{\w*frame\}|\\(?:title|section|quote|figure|fullbleed|standout)frame\b", re.sub(r"(?<!\\)%[^\n]*", "", body))
+    has_frame = re.search(r"\\begin\{\w*frame\}|\\(?:title|section|quote|figure|fullbleed|standout)frame\b", COMMENT_RE.sub("", body))
     if mode == "region":
         return preamble, body if has_frame else "\\begin{frame}\n" + body + "\n\\end{frame}"
     if has_frame:

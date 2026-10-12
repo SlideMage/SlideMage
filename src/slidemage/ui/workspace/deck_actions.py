@@ -2,7 +2,7 @@
 The top bar's menus (menus.py) start them for the current deck.
 
 Plain functions of the window: each takes the WorkspaceWindow (window.py) first, which
-provides `project`, `state`, `compiling`, `_log` and `reload_decks()`.
+provides `project`, `state`, `compiling`, `log` and `reload_decks()`.
 """
 from __future__ import annotations
 

@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .tex_source import braced_argument
+
 
 
 # Same logic as the former one-off sort_bib.py (project root, deleted once
@@ -159,19 +161,8 @@ def _read_value(text: str, start: int) -> tuple[str, int]:
         return "", index
 
     if text[index] == "{":
-        depth, cursor = 0, index
-        while cursor < len(text):
-            if text[cursor] == "\\":
-                cursor += 2
-                continue
-            if text[cursor] == "{":
-                depth += 1
-            elif text[cursor] == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[index + 1:cursor], cursor + 1
-            cursor += 1
-        return text[index + 1:], len(text)
+        value, after = braced_argument(text, index)
+        return (value, after) if after != index else (text[index + 1:], len(text))  # unbalanced: the rest
 
     if text[index] == '"':
         end = text.find('"', index + 1)

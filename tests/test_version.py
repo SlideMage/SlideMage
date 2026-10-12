@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from slidemage import version
+from slidemage import processes, version
 
 
 @pytest.mark.parametrize("commit_dt", [None, "2026-10-11 12:34"])
@@ -14,7 +14,7 @@ def test_version_is_lazy_cached_and_importable(monkeypatch, commit_dt):
     def unexpected_git(*args, **kwargs):
         raise AssertionError("Git ran while importing version.py")
 
-    monkeypatch.setattr(version.subprocess, "run", unexpected_git)
+    monkeypatch.setattr(processes.subprocess, "run", unexpected_git)
     name = "slidemage._test_version"
     spec = importlib.util.spec_from_file_location(name, version.__file__)
     module = importlib.util.module_from_spec(spec)

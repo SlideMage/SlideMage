@@ -63,6 +63,7 @@ class _SourcePreviewSplitter(QSplitter):
 
 class CentreColumn(QFrame):
     versions_changed = Signal()   # a slide was restored or frozen as a version
+    duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
 
     def __init__(self, app, state: WorkspaceState) -> None:
         super().__init__()
@@ -74,6 +75,7 @@ class CentreColumn(QFrame):
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self.source.buffer)
         self.details = DetailsPane(app, state, self.is_dirty)
+        self.details.duplicate_requested.connect(self.duplicate_requested)
         ratio = layout_settings.get(SPLIT_SETTING)
         self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
                              and 0.1 <= ratio <= 0.9 else DEFAULT_SPLIT)

@@ -81,7 +81,7 @@ def make_page(monkeypatch, qapp, tmp_path, ctx):
         monkeypatch.setattr(alt_images, "update_store", update_store)
         monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
         app = FakeApp(ctx)
-        page = images.ImagesPage(app, WorkspaceState(ctx))
+        page = images.ImagesPage(app, WorkspaceState(ctx), app.centre)
         page.reload()
         page.app, page.sync_calls, page.store, page.first, page.second = app, sync_calls, store, first, second
         return page
