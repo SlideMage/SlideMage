@@ -1,6 +1,6 @@
 # Claude Code reviews, selections and structural edits
 
-Status: follow-up plan, 2026-10-12, split from [CLAUDE_CODE_TASKS_PLAN.md](CLAUDE_CODE_TASKS_PLAN.md).
+Status: follow-up plan, 2026-10-12, split from the (finished, removed) Claude Code tasks plan.
 Starts after that plan's step 6. Needs the user's go per step; pause after each committed step. Costs
 are estimated before each step, using the measurements from the tasks plan.
 

@@ -2,8 +2,7 @@
 
 A PySide6 (Qt) app for compiling, editing and archiving this project's `decks/`
 and `slides/`: since 6.0 one workspace window per open deck, with an AI assistant
-(see `UI_REDESIGN_PLAN.md` for how it was built; it was a Tkinter GUI until
-2026-08, see `PYSIDE6_MIGRATION.md`, and a window of tabs and tables until 6.0). This file is the "what and why" for future
+(it was a Tkinter GUI until 2026-08 and a window of tabs and tables until 6.0). This file is the "what and why" for future
 sessions working on this code -- the module docstrings cover the "how" at
 the code level.
 
@@ -783,11 +782,9 @@ The app runs on PySide6 (`ui/`, with `ui/app.py` as the application start) --
 `__main__.py` launches it. Since 6.0 the window is the workspace described under "What it
 does"; the `qt_*` modules of the Tkinter migration are gone. The terminal tab needs
 QtWebEngine (`PySide6-Addons`), which the PyInstaller spec bundles; QtWebEngine runs with
-`--disable-gpu`. See [`PYSIDE6_MIGRATION.md`](PYSIDE6_MIGRATION.md) (historical)
-for the Tkinter-to-Qt history: why (permanent ttk limitations -- no per-tab colors,
-no native tab scrolling, dark mode only working via a hand-rolled
-widget-registration workaround), and the phased implementation log. The original Tk
-implementation has since been removed. Install for development with `pip install -e ".[dev]"`
+`--disable-gpu`. The app moved from Tkinter to Qt because of permanent ttk limitations
+(no per-tab colors, no native tab scrolling, dark mode only working via a hand-rolled
+widget-registration workaround); the original Tk implementation has since been removed. Install for development with `pip install -e ".[dev]"`
 from the repo root and run `slidemage` (or `python -m slidemage`).
 
 ## Non-obvious things worth knowing before touching this code

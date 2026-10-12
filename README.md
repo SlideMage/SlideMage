@@ -244,8 +244,7 @@ compiles today, whatever later happens to the project, the framework or SlideMag
 snapshot; they are made one after the other), **Folder** or **.zip file**, and whether
 to **include the LaTeX package files** and **the SlideMage app**. Archiving a deck asks
 first: **Snapshot, then archive** / **Archive only** / Cancel (the snapshot uses the
-dialog's last settings and is taken before the deck moves). Design and reasoning:
-`docs/DECK_SNAPSHOT_PLAN.md`.
+dialog's last settings and is taken before the deck moves).
 
 Snapshots go to `<project>/snapshots/`, named `<deck>_<YYYY-MM-DD>_<HH-MM>` (folder) or
 `….zip`; a deck can have any number of them. When the selected decks already have
@@ -412,9 +411,7 @@ copied package files in `texmf/` record the exact originals.
   deck's `.tex` file into `decks/archive/` while keeping it compilable, and
   for describing images and generating accessible transcripts. Install with
   `pip install -e .`, start with `slidemage`; see
-  [docs/SlideMage.md](docs/SlideMage.md) for how it works and
-  [docs/PYSIDE6_MIGRATION.md](docs/PYSIDE6_MIGRATION.md) for why it is no
-  longer Tkinter (historical).
+  [docs/SlideMage.md](docs/SlideMage.md) for how it works.
 - `decks/slidemage-manual.tex` — the SlideMage manual: how SlideMage
   works, and a working demo of every frame type and feature, compiled in
   every deck version (since v5.16.0; it replaced the `test.tex`/
@@ -2894,9 +2891,7 @@ inputs such as included preambles, graphics and bibliography files. Use `--profi
 to print build-stage and TeX/bibliography-pass timings as JSON.
 See `tools/preview_benchmark/README.md` for the reproducible manual benchmark.
 
-The [historical manual benchmark](docs/preview-benchmark-2026-10-09.md) covers
-77 preview calls. The [BIG CHANGE 2 comparison](docs/preview-benchmark-2026-10-11.md)
-measures all 81 calls in the current manual with real visible edits and unchanged requests.
+The BIG CHANGE 2 comparison (2026-10-11) measured all 81 calls in the current manual with real visible edits and unchanged requests.
 Unchanged previews improve from a median of 0.234 s to 0.138 s; interleaved controls
 show essentially unchanged real-edit speed. The report retains the full-run timing variation
 and the compatible combinations. Reusable builds plus
@@ -2914,9 +2909,7 @@ previews skip SyncTeX output. Cleanup and build reservations share locks that al
 in other processes. Timestamp changes mark older accepted images stale, and disk thumbnails
 request verification by rendering. Actual pane destruction discards late results safely. A stalled
 raster helper is killed after 15 seconds and restarted by the next request.
-The [implementation details](docs/BIG_CHANGE_2_IMPLEMENTATION.md) describe invalidation
-and publication. The [v6.1.1 review fixes](docs/BIG_CHANGE_2_REVIEW_FIXES.md) passed
-1,491 tests and the [four-slide subset benchmark](docs/preview-benchmark-review-fixes-2026-10-11.md)
+The v6.1.1 review fixes passed 1,491 tests and the four-slide subset benchmark
 completed 80 requests in 7 minutes 54 seconds without failures or PDF mismatches.
 Saved unchanged median improved from 0.235 s to 0.138 s; visible-edit speed was
 essentially unchanged.

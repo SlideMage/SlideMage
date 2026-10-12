@@ -297,8 +297,7 @@ TSWLatexianTemp*
 __pycache__/
 *.pyc
 
-## Virtual environment (SlideMage's PySide6 migration, see
-## SlideMage/PYSIDE6_MIGRATION.md). Machine-specific, never meant to be
+## Virtual environment (from SlideMage's PySide6 migration). Machine-specific, never meant to be
 ## committed -- kept here as a legacy-path safety net only. As of
 ## 2026-08-11, the real venv no longer lives inside the project folder at
 ## all: this whole folder is Dropbox/SyncBackPro-synced, and a venv is
