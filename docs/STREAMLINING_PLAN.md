@@ -19,7 +19,7 @@ Budgets are net physical lines of application Python. Each is a hypothesis to be
 | Step | Work | Budget | Basis |
 | --- | --- | ---: | --- |
 | 1 | Image form/validation, widget kit and QSS | 350–900 | Two independent `ImageForm` classes (`ui/pages/image_form.py`, 314 lines; `ui/workspace/panels/images.py`, 215 lines) and duplicated review validation; `ui/kit/` is 2,763 lines with unaudited overlap. |
-| 2 | Edit validation/application | 200–600 | Separate write paths in `claude_runner.apply_result`, `claude_tasks._apply_edits`, `tools/edits.write_text`, two `apply_to_buffer` implementations, and `terminal/tasks._apply`. |
+| 2 | Edit validation/application | 200–600 | Write paths in `claude_runner.apply_result` (a wrapper over `tools/edits.write_text`), `claude_tasks._apply_edits` (validation only), one real `apply_to_buffer` (GUI; `ai/workspace.py` is the headless default), `terminal/tasks._apply`, plus the editor's own save and `ai_fix.py`; baseline step 0 found less duplication than first assumed, so re-estimate before starting. |
 | 3 | Explicit project context, window ownership | 0 (may add 100–300) | Ownership change; not a deletion target. |
 | 4 | Compile execution primitive | 300–800 | Repeated process startup, environment, cancellation and output validation across compiler, preview, snapshot and export paths. The status-event change contributes nothing (see section 3). |
 | 5 | Parsing, settings helpers, specialised workflow plumbing | 550–1,600 | Comment/brace/argument handling across `tex_source.py`, `latex_lint.py`, `transcript.py`, editing; two existing atomic-write helpers (`alt_images.atomic_write_text`, `compat._atomic_write`); repeated process/progress plumbing in snapshot, update and import/export code. |
@@ -32,9 +32,9 @@ The previous 20–30% target depended on removing features and is withdrawn. Do 
 
 ## Baseline and evidence
 
-The working-tree count on 12 October 2026 (at `3925f65`) is **47,019 physical Python lines in 190 application files** under `src/slidemage/`. The tree keeps changing (46,259/189 at the original inspection, 46,923 at the previous revision of this plan). Freeze an agreed revision before implementation so ongoing feature work is not attributed to this refactor, and refresh every figure in this document at that point, not only the totals.
+The count frozen at `378f50b` (v8.3.0, `develop` merged; see `docs/STREAMLINING_BASELINE.md`) is **47,258 physical Python lines in 190 application files** under `src/slidemage/` (47,019 at `3925f65` before the merge; 46,259/189 at the original inspection, 46,923 at the previous revision of this plan). Freeze an agreed revision before implementation so ongoing feature work is not attributed to this refactor, and refresh every figure in this document at that point, not only the totals.
 
-A token/AST-based count gives **32,896 code-bearing lines**, excluding blank lines, comment-only lines, and module/class/function docstrings. Multiline strings used as data, including QSS, still count as code-bearing lines. This is a reproducible source-size proxy, not executable statement count. Tests, assets, documentation, benchmark JSON, and the LaTeX framework are outside both totals.
+A token/AST-based count gives **33,056 code-bearing lines** at `378f50b` (32,896 at `3925f65`), excluding blank lines, comment-only lines, and module/class/function docstrings. Multiline strings used as data, including QSS, still count as code-bearing lines. This is a reproducible source-size proxy, not executable statement count. Tests, assets, documentation, benchmark JSON, and the LaTeX framework are outside both totals.
 
 Evidence from the original inspection:
 
