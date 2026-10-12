@@ -60,6 +60,15 @@ def _isolated_app_settings(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_layout_settings(monkeypatch, tmp_path_factory):
+    """Window layout belongs to this machine; tests must not read or change the user's layout."""
+    from slidemage.ui import layout_settings
+
+    store = tmp_path_factory.mktemp("layout") / "layout.json"
+    monkeypatch.setattr(layout_settings, "STORE_PATH", store)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_project_stores(monkeypatch, tmp_path_factory):
     """What Settings writes besides app_settings.json -- the prompts and the project's own
     project.json (its "Local AI only" override) -- goes to a throwaway folder too, never into the
@@ -81,7 +90,8 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
     from slidemage.ui.workspace.actions import build_registry
 
     state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected))
-    return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks))
+    return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks),
+                           left_column_hidden=False, right_column_hidden=False)
 
 
 @pytest.fixture(autouse=True)

@@ -98,7 +98,7 @@ def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str
     call = slot.call
     path = SLIDES_DIR / call.source_filename
     png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
-    badge = slide_language.badge_for(call.id_slug, path, links=links)
+    badge = slide_language.badge_for(call.id_slug, links=links)
     lint_error, title = _source_facts(call)
     return SlideRow(
         call=call,

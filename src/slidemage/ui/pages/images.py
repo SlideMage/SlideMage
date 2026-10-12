@@ -148,16 +148,20 @@ class ImagesPage(ImageRunsMixin, Surface):
         for widget in (self.draft_button, self.clear_button, self.open_button, self.transcript_button):
             actions.addWidget(widget)
         actions.addStretch(1)
-        actions.addWidget(self.save_button)
-        actions.addWidget(self.review_button)
         layout.addLayout(actions)
+        saves = QHBoxLayout()
+        saves.setSpacing(6)
+        saves.addStretch(1)
+        saves.addWidget(self.save_button)
+        saves.addWidget(self.review_button)
+        layout.addLayout(saves)
 
         self.job_card = JobCard(self._stop_clicked)
         layout.addWidget(self.job_card)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setObjectName(q.SURFACE)
         scroll.viewport().setObjectName(q.SURFACE)
         self.scroll = scroll

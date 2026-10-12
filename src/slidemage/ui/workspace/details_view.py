@@ -110,7 +110,7 @@ class DetailsPane(Surface):
         path = self.current_path
         text = slide_source.read_slide_source(path)[0] if path.is_file() else ""
         version = slide_versioning.parse_version(text)
-        badge = slide_language.badge_for(self._id_slug, path)
+        badge = slide_language.badge_for(self._id_slug)
         _language, _, slug = slide_rename.parse_id_slug(self._id_slug)
         panel, layout = self._panel("Slide")
         grid = QGridLayout()

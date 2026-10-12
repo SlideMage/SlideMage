@@ -96,6 +96,7 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 
 # The ⋮ menu: (header, command ids).
 MORE_SECTIONS = (
+    ("View", ("column:left", "column:right")),
     ("This deck", ("open_pdf", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
                    "export_pptx", "archive_deck")),
     ("Decks", ("create_snapshot", "import_presentation", "refresh_decks")),

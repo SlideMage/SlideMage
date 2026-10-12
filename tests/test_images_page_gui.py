@@ -104,6 +104,29 @@ def type_into(page, key, text, index=0):
 # -- the list ------------------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("themed", [False, True])
+@pytest.mark.parametrize("references", [[CHART], [CHART, "media/second.png"]])
+def test_images_page_minimum_width_fits_with_full_action_labels(make_page, qapp, references, themed):
+    page = make_page(references)
+    if themed:
+        from slidemage.ui.kit.fonts import load_fonts
+
+        load_fonts()
+        page.app.theme.apply()
+    page.show()
+    qapp.processEvents()
+    assert page.minimumSizeHint().width() <= 700
+    page.resize(700, 640)
+    qapp.processEvents()
+    for button in (page.draft_button, page.clear_button, page.save_button, page.review_button):
+        assert button.isVisible()
+        assert button.width() >= button.minimumSizeHint().width()
+    assert page.review_button.text() == images.review_label(len(references))
+    assert page.scroll.horizontalScrollBar().isVisible()
+    assert page.scroll.horizontalScrollBar().maximum() > 0
+    page.hide()
+
+
 @pytest.mark.parametrize(("references", "review_text"), [
     ([CHART], "Save and mark reviewed"),
     ([CHART, "media/second.png"], "Save and mark all images reviewed"),

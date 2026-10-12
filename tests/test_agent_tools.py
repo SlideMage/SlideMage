@@ -463,6 +463,6 @@ def test_add_slide_translation_of_links_both_ways_and_copies_the_body(box, root)
     out = box.ok("add_slide", slug="Hallo", title="Hallo", language="DE", translation_of="abc", after="abc")
     created = next((root / "slides").glob("*-DE-Hallo-current.tex"))
     assert "linked" in out
-    assert f"%% Translation of: abc-EN-Hello" in created.read_text()
+    assert "%% Translation of: abc-EN-Hello" in created.read_text()
     assert f"%% DE translation: {created.name[:-12]}" in (root / "slides" / "abc-EN-Hello-current.tex").read_text()
     assert "already EN" in box.error("add_slide", slug="Same", title="T", language="EN", translation_of="abc")

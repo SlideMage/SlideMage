@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, QSize, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QSplitterHandle,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -37,6 +38,7 @@ from ... import app_settings, bibliography, deck_headers, deck_outline, latex_ed
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
 from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
+from .. import layout_settings
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
@@ -47,13 +49,14 @@ from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
+from . import side_panels, slide_list
 from .actions import build_registry
 from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
 from .palette import CommandPalette
-from .side_panels import MAX_WIDTH, WIDTH, WIDTH_SETTING, SidePanels, remembered_width
+from .side_panels import SidePanels
 from .slide_list import SlideList
 from .state import WorkspaceState
 from .topbar import TopBar
@@ -62,12 +65,45 @@ from .topbar import TopBar
 LAST_DECK_KEY = "last_deck"
 
 
+class _ColumnHandle(QSplitterHandle):
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            splitter = self.splitter()
+            splitter.reset_column.emit(splitter.indexOf(self))
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+class _ColumnSplitter(QSplitter):
+    reset_column = Signal(int)
+
+    def createHandle(self) -> QSplitterHandle:
+        return _ColumnHandle(self.orientation(), self)
+
+
+class _CurrentPageStack(QStackedWidget):
+    """Let the shown page, rather than the widest hidden page, size the centre."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.currentChanged.connect(self.updateGeometry)
+
+    def minimumSizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return page.minimumSizeHint() if page is not None else super().minimumSizeHint()
+
+    def sizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return page.sizeHint() if page is not None else super().sizeHint()
+
+
 class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMainWindow):
     def __init__(self, theme: ThemeManager) -> None:
         super().__init__()
         self.theme = theme
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
-        self.resize(1280, 860)
+        self.setMinimumSize(1024, 640)
         if updater.can_self_update():
             updater.remove_leftover_binary(Path(sys.executable))
 
@@ -89,6 +125,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
         self.state = WorkspaceState(self)
         self.commands = build_registry()
+        self.left_column_hidden = layout_settings.get("left_column_hidden", False) is True
+        self.right_column_hidden = layout_settings.get("right_column_hidden", False) is True
         self.build_options = BuildOptionsDialog(self, self.state)
 
         central = QWidget()
@@ -102,7 +140,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             outer.addWidget(snapshot_banner)
 
         # Left: the slide list, right: side panels with the assistant (chat) area below them.
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
         self.side_panels = SidePanels(self, self.state)
@@ -111,7 +149,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
         # deferred to the first time the page is shown (_on_page_changed) rather than paid on every
         # launch, and deliberately not a launch-time *write* to media/alt-text.json.
-        self.stack = QStackedWidget()
+        self.stack = _CurrentPageStack()
         self.centre = CentreColumn(self, self.state)
         self.stack.addWidget(self.centre)
         self.images_page = ImagesPage(self, self.state)
@@ -121,9 +159,11 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
         self.splitter.setStretchFactor(1, 1)
-        self.splitter.setCollapsible(2, False)
+        self.splitter.setCollapsible(1, False)
         self.splitter.splitterMoved.connect(self._on_splitter_moved)
+        self.splitter.reset_column.connect(self._reset_column_width)
         self._columns_sized = False
+        self._apply_column_visibility()
         workspace = QWidget()
         workspace_layout = QHBoxLayout(workspace)
         workspace_layout.setContentsMargins(12, 12, 12, 12)
@@ -156,24 +196,80 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 
         self.reload_decks()
+        self._restore_window_geometry()
 
-    # -- the right column's width ----------------------------------------------
+    def _restore_window_geometry(self) -> None:
+        saved = layout_settings.get("window_geometry")
+        if isinstance(saved, str) and self.restoreGeometry(QByteArray.fromBase64(saved.encode("utf-8"))):
+            if any(self.frameGeometry().intersects(screen.availableGeometry()) for screen in QApplication.screens()):
+                return
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        available = QApplication.primaryScreen().availableGeometry()
+        self.resize(available.size() * 0.9)
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
+
+    # -- column widths and visibility ------------------------------------------
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if not self._columns_sized:
             self._columns_sized = True
-            self.set_right_column_width(remembered_width())
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width())
 
-    def set_right_column_width(self, width: int) -> None:
-        """Give the right column `width` px (within its limits) at the centre's expense."""
-        width = min(max(width, WIDTH), MAX_WIDTH)
-        left = self.slide_list.minimumWidth()      # the slide list has a fixed width
-        self.splitter.setSizes([left, max(sum(self.splitter.sizes()) - left - width, 1), width])
+    def set_column_widths(self, *, left: Optional[int] = None, right: Optional[int] = None) -> None:
+        """Size either column within its limits, taking the difference from the centre."""
+        sizes = self.splitter.sizes()
+        left = min(max(sizes[0] if left is None else left, slide_list.MIN_WIDTH), slide_list.MAX_WIDTH)
+        right = min(max(sizes[2] if right is None else right, side_panels.WIDTH), side_panels.MAX_WIDTH)
+        if self.slide_list.isHidden():
+            left = 0
+        if self.side_panels.isHidden():
+            right = 0
+        self.splitter.setSizes([left, max(sum(sizes) - left - right, 1), right])
+
+    def _toggle_column(self, side: str) -> None:
+        self._set_column_hidden(side, not getattr(self, side + "_column_hidden"))
+
+    def _set_column_hidden(self, side: str, hidden: bool) -> None:
+        column, index, settings = (self.slide_list, 0, slide_list) if side == "left" else (
+            self.side_panels, 2, side_panels)
+        width = self.splitter.sizes()[index]
+        if hidden and not column.isHidden() and width > 0:
+            layout_settings.set(settings.WIDTH_SETTING, width)
+        key = side + "_column_hidden"
+        setattr(self, key, hidden)
+        layout_settings.set(key, hidden)
+        self._apply_column_visibility()
+
+    def _apply_column_visibility(self) -> None:
+        # Images temporarily uses both columns' room without changing the user's preferences.
+        is_images = self.stack.currentWidget() is self.images_page
+        self.slide_list.setVisible(not is_images and not self.left_column_hidden)
+        self.side_panels.setVisible(not is_images and not self.right_column_hidden)
+        if self._columns_sized:
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width())
+        self.topbar.refresh_column_toggles()
+
+    def _reset_column_width(self, index: int) -> None:
+        self.set_column_widths(left=slide_list.WIDTH if index == 1 else None,
+                               right=side_panels.WIDTH if index == 2 else None)
+        self._on_splitter_moved(0, index)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
-        if self.side_panels.isVisible():       # the Images page hides the column: not the user's choice
-            app_settings.set(WIDTH_SETTING, self.splitter.sizes()[2])
+        # The Images page hides the columns: not the user's choice.
+        sizes = self.splitter.sizes()
+        collapsed = []
+        for side, index, column, settings in (("left", 0, self.slide_list, slide_list),
+                                              ("right", 2, self.side_panels, side_panels)):
+            if column.isVisible():
+                if sizes[index] == 0:
+                    collapsed.append(side)
+                else:
+                    layout_settings.set(settings.WIDTH_SETTING, sizes[index])
+        for side in collapsed:
+            self._set_column_hidden(side, True)
 
     # -- commands --------------------------------------------------------------
 
@@ -229,8 +325,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         side panels, and scans the slides when it is first shown. Leaving it saves a pending edit."""
         is_images = self.stack.widget(index) is self.images_page
         self.topbar.set_images_open(is_images)
-        self.slide_list.setVisible(not is_images)
-        self.side_panels.setVisible(not is_images)
+        self._apply_column_visibility()
         if is_images:
             self.images_page.ensure_loaded()
         else:
@@ -306,6 +401,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.images_page.shutdown()
         self.palette.stop_search(5000)
         self._stop_worker()
+        layout_settings.set("window_geometry", self.saveGeometry().toBase64().data().decode("ascii"))
         super().closeEvent(event)
 
     def _resolve_dirty_edits(self) -> bool:

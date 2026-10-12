@@ -35,6 +35,7 @@ from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
 from ...slide_ids import SLIDES_DIR
+from .. import layout_settings
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
@@ -43,7 +44,10 @@ from .slide_tree import SlideTree
 from .state import VIEWS, WorkspaceState
 
 UNDO_LIMIT = 20
-WIDTH = 280   # the prototype's fixed width of the column
+WIDTH = 280   # the default width of the column
+MIN_WIDTH = 220
+MAX_WIDTH = 520
+WIDTH_SETTING = "left_column_width"
 # QAbstractItemView.DropIndicatorPosition: where in a row a drop landed.
 ON_ITEM, ABOVE_ITEM, BELOW_ITEM = 0, 1, 2
 
@@ -54,6 +58,12 @@ VARIANT_TITLES = {
     "conditionalslide": "Only in some views",
     "slidestep": "Reveal steps…",
 }
+
+
+def remembered_width() -> int:
+    """The width the user dragged the column to, within its limits (WIDTH if never)."""
+    value = layout_settings.get(WIDTH_SETTING)
+    return min(max(value, MIN_WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 
 class SlideList(QWidget):
@@ -68,7 +78,8 @@ class SlideList(QWidget):
         self._outline: list[SectionRow] = []
         self._deck_path: Optional[Path] = None
         self._undo: dict[Path, list[str]] = {}
-        self.setFixedWidth(WIDTH)
+        self.setMinimumWidth(MIN_WIDTH)
+        self.setMaximumWidth(MAX_WIDTH)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

@@ -192,5 +192,5 @@ def project_slides() -> list[ProjectSlide]:
     for id_slug in slide_ids.list_id_slugs():
         path = slide_path(id_slug)
         slides.append(ProjectSlide(id_slug, deck_outline.slide_file_title(path, id_slug),
-                                   slide_language.badge_for(id_slug, path, links=links).text()))
+                                   slide_language.badge_for(id_slug, links=links).text()))
     return slides

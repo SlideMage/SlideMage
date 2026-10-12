@@ -10,6 +10,7 @@ from functools import partial
 import pytest
 from agent_fakes import ScriptedProvider, call, reply
 from conftest import build_window, make_project, wait_until as _wait_until
+from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from slidemage import app_settings, compiler
@@ -17,6 +18,8 @@ from slidemage.ai import credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
 from slidemage.ai.providers import Cancelled
 from slidemage.deck_scan import scan_decks
+from slidemage.ui import layout_settings
+from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace.chat import assistant as assistant_module
 from slidemage.ui.workspace.chat import gui_workspace
 from slidemage.ui.workspace.chat import view as chat_view
@@ -24,6 +27,7 @@ from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE, AssistantAr
 from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, ToolCard, UserBubble
 from slidemage.ui.workspace.chat.format import diff_rows, summarize_call
 from slidemage.ui.workspace.chat.session import current_route
+from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT, SPLIT_SETTING
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 EDIT = dict(path=SLIDE, old_text="First point", new_text="1st point")
@@ -105,6 +109,94 @@ def blocked(_provider=None):
             time.sleep(0.005)
         raise Cancelled("Aborted.")
     return step
+
+
+def test_the_right_column_split_is_saved_on_drag_and_restored_by_a_new_window(env, monkeypatch):
+    env.window.resize(1280, 1000)
+    pump()
+    panels = env.window.side_panels
+    panels.moveSplitter(400, 1)
+    panel, assistant = panels.sizes()
+    ratio = panel / (panel + assistant)
+    assert layout_settings.get(SPLIT_SETTING) == ratio
+    assert app_settings.get(SPLIT_SETTING) is None
+
+    again = build_window(monkeypatch)
+    again.resize(1280, 800)
+    again.show()
+    pump()
+    sizes = again.side_panels.sizes()
+    expected = max(PANEL_MIN_HEIGHT, min(sum(sizes) * ratio, sum(sizes) - again.assistant.minimumHeight()))
+    assert sizes[0] == pytest.approx(expected, abs=1)
+    again.resize(1280, 1000)
+    pump()
+    sizes = again.side_panels.sizes()
+    assert sizes[0] == pytest.approx(sum(sizes) * ratio, abs=1)
+    assert layout_settings.get(SPLIT_SETTING) == ratio
+
+
+@pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
+@pytest.mark.parametrize("scope", ["slide", "deck"])
+@pytest.mark.parametrize("lines", [2, 6])
+def test_at_640px_every_suggestion_is_reachable_without_scrolling_and_the_controls_fit(env, monkeypatch, theme, scope, lines):
+    if theme is not None:
+        env.window.theme.set_dark(theme)
+        env.window.theme.apply()
+    env.window.state.set_lint_errors(1)
+    env.chat.scope.set_current(scope)
+    env.chat._fill_empty()
+    env.chat.composer.setPlainText("\n".join(["A line of the message"] * lines))
+    env.window.resize(1280, 640)
+    pump()
+    chat, panels = env.chat, env.window.side_panels
+    assert env.window.height() == 640
+    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
+    for control in (chat.scope, chat.composer, chat.mode_picker, chat.send_button):
+        assert control.isVisible() and chat.rect().contains(control.geometry())
+    assert chat._scroll.verticalScrollBar().maximum() == 0
+
+    asked = []
+    monkeypatch.setattr(chat, "ask", asked.append)
+    expected = list(chat_view.SUGGESTIONS[scope])
+    if scope == "slide":
+        expected.insert(0, chat_view.FIX_SUGGESTION)
+    if lines == 6 and scope == "slide":
+        assert chat._suggestion_picker.isVisible()
+    if chat._suggestion_picker.isVisible():
+        assert chat._scroll.viewport().rect().contains(
+            QRect(chat._suggestion_picker.mapTo(chat._scroll.viewport(), QPoint()), chat._suggestion_picker.size()))
+        chat._suggestion_picker.clicked.emit()
+        menu = next(m for m in chat.findChildren(PopoverMenu) if m.isVisible())
+        assert [e[1] for e in menu._entries if e[0] == "item"] == expected
+        menu.triggered.emit(expected[-1])
+        menu.close()
+    else:
+        assert all(w.isVisible() for w in chat._suggestion_widgets)
+        chat._suggestion_widgets[-1].click()
+    assert asked == [expected[-1]]
+
+    env.window.resize(1280, 1000)
+    pump()
+    assert not chat._suggestion_picker.isVisible()
+    assert all(w.isVisible() for w in chat._suggestion_widgets)
+    assert chat._scroll.verticalScrollBar().maximum() == 0
+
+
+def test_a_six_line_input_and_send_row_fit_at_640px(env):
+    env.window.resize(1280, 640)
+    env.chat.route_note.setText("Choose a model before sending a message.")
+    env.chat.route_note.show()
+    env.chat.composer.setPlainText("\n".join(["A line of the message"] * 6))
+    wait_until(lambda: env.chat.composer.geometry().bottom() < env.chat.mode_picker.geometry().top())
+    chat, panels = env.chat, env.window.side_panels
+    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
+    assert chat.composer.isVisible() and chat.send_button.isVisible()
+    assert chat.rect().contains(chat.composer.geometry()) and chat.rect().contains(chat.send_button.geometry())
+    assert chat.composer.geometry().bottom() < chat.mode_picker.geometry().top()
+    assert chat.composer.geometry().bottom() < chat.send_button.geometry().top()
+    height = chat.composer.height()
+    chat.composer.clear()
+    wait_until(lambda: chat.composer.height() < height)
 
 
 # -- the text of an answer, and the cards ---------------------------------------------------------

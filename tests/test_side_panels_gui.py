@@ -11,12 +11,13 @@ from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QW
 from slidemage import app_settings, deck_scan
 from slidemage.archive import read
 from slidemage.slide_source import read_slide_source
+from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.panels import PANELS
 from slidemage.ui.workspace.panels.base import Row
-from slidemage.ui.workspace.side_panels import SETTING, SidePanels
+from slidemage.ui.workspace.side_panels import ASSISTANT_SPLIT, PANEL_MIN_HEIGHT, SETTING, SPLIT_SETTING, SidePanels
 from slidemage.ui.workspace.slide_list import SlideList
 from slidemage.ui.workspace.state import WorkspaceState
 
@@ -166,6 +167,52 @@ def rows(panel):
 
 
 # -- the host ---------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("ratio", [None, True, "0.25", 0, 1, -0.1, 2, float("nan")])
+def test_an_invalid_or_missing_split_uses_the_original_proportions(column, qapp, ratio):
+    panels, state, window = column
+    layout_settings.set(SPLIT_SETTING, ratio)
+    again = SidePanels(window, state)
+    again.resize(340, 1000)
+    again.show()
+    qapp.processEvents()
+    panel, assistant = again.sizes()
+    assert panel == pytest.approx((panel + assistant) * ASSISTANT_SPLIT[0] / sum(ASSISTANT_SPLIT), abs=1)
+    again.deleteLater()
+
+
+@pytest.mark.parametrize("ratio", [0.1, 0.375, 0.6])
+def test_a_short_column_protects_the_controls_and_grows_back_to_the_users_split(column, qapp, ratio):
+    panels, state, _window = column
+    state.set_focused_slide("abc")
+    panels.resize(340, 1600)
+    panels.show()
+    qapp.processEvents()
+    panels.moveSplitter(round(sum(panels.sizes()) * ratio), 1)
+    saved = layout_settings.get(SPLIT_SETTING)
+    assert saved == panels.sizes()[0] / sum(panels.sizes())
+    assert app_settings.get(SPLIT_SETTING) is None
+
+    panels.resize(340, 560)
+    qapp.processEvents()
+    assert panels.height() == 560
+    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
+    assert panels.sizes()[1] >= panels.assistant.minimumHeight()
+    if ratio == 0.1:
+        assert panels.sizes()[0] == PANEL_MIN_HEIGHT
+    else:
+        assert panels.sizes()[1] == panels.assistant.minimumHeight()
+    assert panels.picker.isVisible() and panels.widget(0).rect().contains(panels.picker.geometry())
+    chat = panels.assistant.chat
+    for control in (chat.composer, chat.mode_picker, chat.send_button):
+        assert control.isVisible() and chat.rect().contains(control.geometry())
+    assert layout_settings.get(SPLIT_SETTING) == saved
+
+    panels.resize(340, 1600)
+    qapp.processEvents()
+    assert panels.sizes()[0] == pytest.approx(sum(panels.sizes()) * saved, abs=1)
+    assert layout_settings.get(SPLIT_SETTING) == saved
+
 
 def test_the_picker_names_the_panel_and_lists_all_of_them(column):
     panels, _state, _window = column

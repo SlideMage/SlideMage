@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
 
@@ -172,6 +172,7 @@ class ChatView(Surface):
         self._show_mode()
         self.refresh_route()
         self._load_local_models()
+        self._scroll.viewport().installEventFilter(self)
 
     # -- the message list ---------------------------------------------------------------
 
@@ -185,15 +186,48 @@ class ChatView(Surface):
             widget.setParent(None)
             widget.deleteLater()
         box, scope = self._ideas, self.scope.current()
-        box.addWidget(caption("Describe a change to this slide, or try:" if scope == SCOPE_SLIDE
-                              else "Ask about the whole deck, or try:"))
+        self._suggestion_widgets = [caption("Describe a change to this slide, or try:" if scope == SCOPE_SLIDE
+                                            else "Ask about the whole deck, or try:")]
         ideas = list(SUGGESTIONS[scope])
         if scope == SCOPE_SLIDE and self.state.lint_errors:
             ideas.insert(0, FIX_SUGGESTION)
         for idea in ideas:
             button = suggestion_button(idea)
             button.clicked.connect(lambda _checked=False, text=idea: self.ask(text))
-            box.addWidget(button)
+            self._suggestion_widgets.append(button)
+        for widget in self._suggestion_widgets:
+            box.addWidget(widget)
+        self._suggestions = ideas
+        self._suggestion_picker = DropdownButton(q.PANEL_PICKER)
+        self._suggestion_picker.set_text("Suggestions")
+        self._suggestion_picker.clicked.connect(self._open_suggestions)
+        box.addWidget(self._suggestion_picker)
+        self._fit_suggestions()
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
+            self._fit_suggestions()
+        return super().eventFilter(watched, event)
+
+    def _fit_suggestions(self) -> None:
+        width = self._scroll.viewport().width() - self._messages.contentsMargins().right()
+        height = sum(widget.heightForWidth(width) if widget.hasHeightForWidth() else widget.sizeHint().height()
+                     for widget in self._suggestion_widgets)
+        height += self._ideas.spacing() * (len(self._suggestion_widgets) - 1)
+        compact = height > self._scroll.viewport().height()
+        for widget in self._suggestion_widgets:
+            widget.setVisible(not compact)
+        self._suggestion_picker.setVisible(compact)
+
+    def _open_suggestions(self) -> None:
+        menu = PopoverMenu(self, min_width=270)
+        for idea in self._suggestions:
+            menu.add_item(idea, idea)
+        menu.triggered.connect(self.ask)
+        menu.closed.connect(lambda: self._suggestion_picker.set_active(False))
+        menu.closed.connect(menu.deleteLater)
+        self._suggestion_picker.set_active(True)
+        menu.popup_below(self._suggestion_picker)
 
     def _begin_conversation(self) -> None:
         self._empty.hide()
