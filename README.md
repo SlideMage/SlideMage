@@ -126,10 +126,20 @@ always says which code it was built from:
 
 1. Bump `VERSION_NUMBER` in `src/slidemage/version.py` and append its history
    entry to `src/slidemage/CHANGELOG.md`, commit.
+   The entry ends with a paragraph starting `NEW:` -- a one-sentence
+   summary, then one `- ` bullet per change users notice, in plain words:
+   ```
+   NEW: Faster compiles for small edits.
+   - Compile only some pages of a deck: type them into the Pages field.
+   - Fixed: the progress bar no longer keeps running after a page compile.
+   ```
 2. `git tag vX.Y.Z && git push origin HEAD vX.Y.Z` (the branch and the tag).
 3. A few minutes later the release has `SlideMage-windows.zip` and
-   `SlideMage-linux.zip`, and its release notes are that version's
-   history entry (`packaging/release_notes.py`).
+   `SlideMage-linux.zip`, and its release notes
+   (`packaging/release_notes.py`) list the `NEW:` bullets of every version
+   since the previous release, with the tagged version's summary on top,
+   then any breaking changes and a link to the full changelog. The
+   workflow refuses a release whose versions lack a `NEW:` paragraph.
 
 **Breaking releases.** A release that breaks with the past -- a project,
 deck, setting or workflow that worked before no longer does, or now
@@ -2364,6 +2374,16 @@ link):
   is listed once; the agenda's own slide is not listed. `[width]` leaves
   room for a `\sectionfigure`. In the transcript it becomes the list of the
   chapter's slides with their numbers.
+- **`\SMSubsectionAgenda[width]`** (since v5.36.0) is the same for a chapter
+  that is divided into `\subsection`s: it lists their titles instead of every
+  slide, each entry a link to the first slide of its subsection (in this deck
+  version; a subsection with no slide there is left out, and so are slides
+  before the chapter's first `\subsection`). Same columns, font steps and
+  `[width]`, and the same "Chapter contents" target. Put it in the divider's
+  body, after `\sectionfigure`, and give it the room the figure leaves:
+  `\SMSubsectionAgenda[\dimexpr\linewidth-\SMSectionFigureWidth-12pt\relax]`.
+  In the transcript: "This chapter's sections:" with the number of each
+  subsection's first slide.
 - **`\deckappendixtoc`** (deck preamble, inert for LaTeX like `\decktags`)
   makes SlideMage generate the appendix for that deck on every whole-deck
   compile, whatever the Build options checkbox says -- so the "Slide previews"

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.2.1"
+VERSION_NUMBER = "v8.3.0"
 
 # Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md,
 # skipping the introduction.
@@ -31,6 +31,32 @@ class HistoryEntry:
     # joined -- keeps a "BREAKING:" paragraph recognizable
     # (packaging/release_notes.py, updater.breaking_notes()).
     paragraphs: list[str] = field(default_factory=list)
+    # The entry's "NEW:" paragraph (since v5.35.4): what users get, for the
+    # GitHub release notes (packaging/release_notes.py) -- an optional
+    # one-sentence summary on the NEW: line, then "- " bullets
+    summary: str = ""
+    news: list[str] = field(default_factory=list)
+
+
+NEW_PREFIX = "NEW:"
+
+
+def _parse_news(paragraph: str) -> tuple[str, list[str]]:
+    """(summary, bullets) of a "NEW:" paragraph: the text after NEW: on its
+    first line is the summary, every line starting with "- " a bullet, and
+    other lines continue the line before them."""
+    summary_lines: list[str] = []
+    bullets: list[str] = []
+    for line in paragraph.strip()[len(NEW_PREFIX):].split("\n"):
+        line = line.strip()
+        if line.startswith("- "):
+            bullets.append(line[2:].strip())
+        elif line:
+            if bullets:
+                bullets[-1] += " " + line
+            else:
+                summary_lines.append(line)
+    return " ".join(summary_lines), bullets
 
 
 def parse_history() -> list[HistoryEntry]:
@@ -41,12 +67,15 @@ def parse_history() -> list[HistoryEntry]:
         version, meta, body = match.group(1), match.group(2), match.group(3)
         meta = re.sub(r"\s+", " ", meta).strip()
         description = re.sub(r"\s+", " ", body).strip()
-        paragraphs = [
-            re.sub(r"\s+", " ", paragraph).strip()
-            for paragraph in re.split(r"\n\s*\n", body) if paragraph.strip()
-        ]
+        raw = [p for p in re.split(r"\n\s*\n", body) if p.strip()]
+        paragraphs = [re.sub(r"\s+", " ", paragraph).strip() for paragraph in raw]
+        summary, news = "", []
+        for paragraph in raw:
+            if paragraph.strip().startswith(NEW_PREFIX):
+                summary, news = _parse_news(paragraph)
         entries.append(HistoryEntry(
-            version=version, meta=meta, description=description, paragraphs=paragraphs))
+            version=version, meta=meta, description=description, paragraphs=paragraphs,
+            summary=summary, news=news))
     return entries
 
 

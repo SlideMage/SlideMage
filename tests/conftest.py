@@ -49,6 +49,15 @@ def _no_cloud_credentials(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_temp_dir(monkeypatch, tmp_path_factory):
+    """Renders leave their PDF folder (slidemage_preview_*) under the temp directory and sweep
+    old ones after every render; a test must neither litter nor sweep the real one."""
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path_factory.mktemp("temp")))
+
+
+@pytest.fixture(autouse=True)
 def _isolated_app_settings(monkeypatch, tmp_path_factory):
     """UI preferences (dark mode, the open deck, views ...) go to a throwaway
     file, so a test neither changes the example project's own settings nor

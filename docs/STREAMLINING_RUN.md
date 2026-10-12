@@ -47,3 +47,4 @@ Filled in by the orchestrator after each step.
 | Step | Commit | Version | Physical | Code | Net physical | Tests | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- |
 | baseline | `07c0ea5` | v8.2.1 | 47,019 | 32,896 | — | 1,840 passed, 8 skipped | |
+| M | (this commit) | v8.3.0 | 47,258 | 33,056 | +239 | 1,853 passed, 8 skipped | develop v5.35.4–v5.36.0 ported; both Images edge cases were real bugs, fixed with tests; ~147k tokens, 7 min |

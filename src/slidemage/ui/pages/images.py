@@ -84,7 +84,7 @@ class ImagesPage(ImageRunsMixin, Surface):
 
         self.nav.selected.connect(self._on_selected)
         self.nav.find_entered.connect(self.show_slide)
-        self.nav.view_changed.connect(lambda: self._populate(self._current_path(), row=self.nav.current_row()))
+        self.nav.view_changed.connect(self._on_view_changed)
         self.nav.rescan_clicked.connect(self._on_rescan)
         self.nav.back_clicked.connect(self.closed)
         state.deck_changed.connect(self._on_deck_changed)
@@ -289,6 +289,15 @@ class ImagesPage(ImageRunsMixin, Surface):
             return
         self.flush()
         self._show_slide(view)
+
+    def _on_view_changed(self) -> None:
+        """Another filter or order. A filter that no longer lists the slide on show means leaving it: the
+        same question as for a click on another slide, and "No" puts the filter back."""
+        if (not self.nav.lists(self._current, self._views, self._entries, self._order())
+                and not self._may_leave_translation()):
+            self.nav.restore_filter()
+            return
+        self._populate(self._current_path(), row=self.nav.current_row())
 
     def _may_leave_translation(self) -> bool:
         """False when a translation is on its way for a form on show and the user does not want to lose it

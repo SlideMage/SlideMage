@@ -26,7 +26,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from ... import bundled_copies, compat, housekeeping, open_path, project, slide_rename, updater
+from ... import bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
 from ... import version as version_mod
 from ...deck_scan import PROJECT_ROOT
 from ..dialogs.about import AboutSheet
@@ -38,6 +38,7 @@ STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 # The framework/manual copy check (bundled_copies.py) runs once, shortly after
 # the window is up -- a local comparison, no network.
 BUNDLED_COPIES_CHECK_DELAY_MS = 1500
+RENDER_SWEEP_DELAY_MS = 8000
 # The project compatibility check (compat.py): static scans of the project, a
 # local comparison -- shown before the framework/manual update offer.
 COMPAT_CHECK_DELAY_MS = 1000
@@ -162,6 +163,13 @@ class MaintenanceMixin:
 
     def schedule_bundled_copies_check(self) -> None:
         QTimer.singleShot(BUNDLED_COPIES_CHECK_DELAY_MS, self.check_bundled_copies)
+        # Single-slide renders older than 24 hours are deleted from the temp
+        # directory (slide_preview.sweep_old_renders), off the GUI thread; the
+        # preview's render worker sweeps again after every render.
+        QTimer.singleShot(RENDER_SWEEP_DELAY_MS, self._sweep_old_renders)
+
+    def _sweep_old_renders(self) -> None:
+        threading.Thread(target=slide_preview.sweep_old_renders, daemon=True).start()
 
     def _bundled_parts(self) -> list:
         """What the framework / manual copies of this project would get (bundled_copies.plan_updates)."""

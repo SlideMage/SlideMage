@@ -24,9 +24,11 @@ cross-compiles: run it on the OS you want the executable for. Pushing a
 attaches them to a GitHub Release instead, no local build needed. The tag
 must equal `VERSION_NUMBER` in `src/slidemage/version.py` (e.g. `v3.31.0`),
 or the workflow stops -- the update check below compares the two. The
-release notes are that version's history entry, printed by
-`packaging/release_notes.py`, which also stops the workflow when the major
-number goes up without a `BREAKING:` paragraph in the entry.
+release notes are built by `packaging/release_notes.py` from the history
+entries of every version since the previous release: their `NEW:` bullets
+(what users get), then their `BREAKING:` paragraphs and a changelog link.
+It stops the workflow when a version lacks a `NEW:` paragraph, or when the
+major number goes up without a `BREAKING:` paragraph.
 
 On Linux, `SlideMage-linux.zip` also bundles `icon.svg` and
 `slidemage.desktop.template` next to the binary -- unzip the release to

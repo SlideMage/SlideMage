@@ -357,3 +357,20 @@ def test_raster_failure_discards_the_new_temp_pdf_and_keeps_last_good_page(pane,
     view._run(*view.launched[0])
     assert not output.exists() and view._last_pdf == previous
     assert "image helper failed" in view._error
+
+
+def test_any_exception_in_the_render_worker_ends_the_render_with_a_fail_line(pane, monkeypatch):
+    # v5.35.7: a render must never stay "rendering" because of an unexpected error
+    view, target, _ = pane
+    swept = []
+    monkeypatch.setattr(preview_view.slide_preview, "sweep_old_renders", lambda: swept.append(True))
+
+    def broken():
+        raise PermissionError(32, "locked")
+
+    view._start(broken, view._job(target))
+    assert view._busy
+    view._run(*view.launched[0])
+    assert not view._busy and view._active is None
+    assert any(line.startswith("*** Render failed:") for line in view.logged)
+    assert swept == [True]      # and the old renders are swept after every render

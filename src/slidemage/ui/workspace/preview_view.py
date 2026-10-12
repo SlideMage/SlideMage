@@ -496,6 +496,7 @@ class PreviewPane(Surface):
             self._finished.emit(job)
         except RuntimeError:  # Qt owner was destroyed while TeX finished.
             self._discard(job)
+        slide_preview.sweep_old_renders()   # renders older than 24 h; best effort, never raises
 
     _discard = staticmethod(_discard_job)
 
@@ -523,6 +524,8 @@ class PreviewPane(Surface):
         accepted = self._accepts(job)
         if not accepted:
             self._discard(job)
+            if job.error:   # a superseded render that failed still ends in the log, never silently
+                self.app.log(f"*** Render failed: {job.error} ***")
         elif job.error:
             self._discard(job)
             self._error = job.error

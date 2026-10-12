@@ -854,3 +854,72 @@ def test_a_tuned_draft_can_be_accepted_with_its_hint(qapp, monkeypatch, tmp_path
     assert "SHORT" in sheet.output.toPlainText() and sheet.hint == "the y-axis maximum is 6800"
     sheet.accept()
     assert over == [True]
+
+
+# -- leaving the slide while a translation is under way (v5.35.5 / v5.35.6 on develop) ------------------
+
+
+def click_row(page, row):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    slide_list = page.nav.slide_list
+    QTest.mouseClick(slide_list.viewport(), Qt.MouseButton.LeftButton,
+                     pos=slide_list.visualItemRect(slide_list.item(row)).center())
+
+
+def test_declining_switch_anyway_after_a_click_keeps_the_list_on_the_slide_on_show(make_page, qapp, monkeypatch):
+    page = make_page()
+    page.resize(1100, 700)
+    page.show()
+    qapp.processEvents()
+    shown, form = page._current, page._forms[0]
+    page._translating = form                          # a translation is under way
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *args: asked.append(args[1]) or QMessageBox.StandardButton.No)
+
+    click_row(page, 1)
+    qapp.processEvents()
+
+    assert asked == ["Translation in progress"]
+    assert page._current is shown and page._forms[0] is form
+    slide_list = page.nav.slide_list
+    assert slide_list.currentRow() == 0
+    assert [slide_list.row(item) for item in slide_list.selectedItems()] == [0]
+    page.hide()
+
+
+def test_a_show_filter_that_drops_the_slide_asks_during_a_translation_and_no_restores_it(make_page, qapp, monkeypatch):
+    page = make_page()
+    shown, form = page._current, page._forms[0]
+    page._translating = form
+    filters = [label for label, _ in image_review.FILTERS]
+    reviewed = filters.index("Reviewed")                # neither slide is reviewed
+    answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+    asked = []
+
+    def answer(*args):
+        asked.append(args[1])
+        return answers.pop(0)
+
+    monkeypatch.setattr(QMessageBox, "question", answer)
+
+    page.nav._on_filter(str(reviewed))                  # what choosing it in the "Show" menu does
+    assert asked == ["Translation in progress"]
+    assert page.nav.filter_index == 0 and len(page.nav.shown) == 2
+    assert page._current is shown and page._forms[0] is form
+
+    page.nav._on_filter(str(reviewed))                  # now confirmed
+    assert len(asked) == 2 and page.nav.filter_index == reviewed and page.nav.shown == []
+
+
+def test_a_show_filter_that_keeps_the_slide_does_not_ask_and_keeps_the_translation(make_page, monkeypatch):
+    page = make_page()
+    page.nav.slide_list.setCurrentRow(1)
+    shown, form = page._current, page._forms[0]
+    page._translating = form
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: pytest.fail("asked although the slide stays"))
+    page.nav._on_filter(str([label for label, _ in image_review.FILTERS].index("All slides with images")))
+    assert page._current is shown and page._forms[0] is form
+    assert page.nav.slide_list.currentRow() == 1

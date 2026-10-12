@@ -56,6 +56,8 @@ class SlideNav(Card):
         super().__init__()
         self._theme = theme
         self.filter_index = 0
+        self._previous_filter = 0
+        self._restore: Optional[image_review.SlideView] = None
         self.shown: list[image_review.SlideView] = []
         self._counts: list[int] = [0] * len(image_review.FILTERS)
         self.setFixedWidth(340)
@@ -134,6 +136,10 @@ class SlideNav(Card):
         self.slide_list.blockSignals(False)
         return self.shown[index] if index >= 0 else None
 
+    def lists(self, view: Optional[image_review.SlideView], views, entries, order) -> bool:
+        """Whether the filter now chosen lists `view`."""
+        return view is not None and view in image_review.visible_views(views, entries, self.filter_index, order=order)
+
     def refresh_items(self, views: list[image_review.SlideView], entries) -> None:
         """New states for the rows; the list is not filtered again, so that no row vanishes under the cursor."""
         for index, view in enumerate(self.shown):
@@ -143,11 +149,28 @@ class SlideNav(Card):
         self._show_filter()
 
     def select(self, view: Optional[image_review.SlideView]) -> None:
-        """Make `view` (in the list) current without announcing it."""
+        """Make `view` (in the list) current without announcing it. A click reaches the page from inside
+        the list's mouse handler, which goes on to select the clicked row once the page has answered
+        (declined "Switch anyway?"): the choice is put back again once Qt has finished with the click,
+        unless the user has chosen another row since."""
+        self._restore = view
+        self._select(view)
+        QTimer.singleShot(0, lambda: self._restore is view and self._select(view))
+
+    def _select(self, view: Optional[image_review.SlideView]) -> None:
         index = next((i for i, shown in enumerate(self.shown) if shown is view), -1)
+        if self.slide_list.currentRow() == index and [self.slide_list.row(i) for i in self.slide_list.selectedItems()] == [index]:
+            return
         self.slide_list.blockSignals(True)
-        self.slide_list.setCurrentRow(index)
-        self.slide_list.blockSignals(False)
+        try:
+            self.slide_list.clearSelection()
+            self.slide_list.setCurrentRow(index)
+        finally:
+            self.slide_list.blockSignals(False)
+
+    def restore_filter(self) -> None:
+        """Back to the filter chosen before the last change (it was not confirmed)."""
+        self.set_filter(self._previous_filter)
 
     def current_row(self) -> int:
         return self.slide_list.currentRow()
@@ -183,10 +206,12 @@ class SlideNav(Card):
 
     def _on_filter(self, key: str) -> None:
         if int(key) != self.filter_index:
+            self._previous_filter = self.filter_index
             self.set_filter(int(key))
             self.view_changed.emit()
 
     def _on_row(self, row: int) -> None:
+        self._restore = None
         self.selected.emit(self.shown[row] if 0 <= row < len(self.shown) else None)
 
     def _on_completed(self, text: str) -> None:
