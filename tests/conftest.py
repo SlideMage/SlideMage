@@ -1,10 +1,25 @@
+import atexit
 import os
+import shutil
+import tempfile
+import time
 from pathlib import Path
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "example"
+# project.py imports nothing else from the package, so this is safe before the variable below is set.
+from slidemage.project import _ignore_template_build_output
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SESSION_DIR = Path(tempfile.mkdtemp(prefix="slidemage-tests-"))
+atexit.register(shutil.rmtree, _SESSION_DIR, ignore_errors=True)
+EXAMPLE = _SESSION_DIR / "example"
+shutil.copytree(_REPO_ROOT / "example", EXAMPLE, ignore=_ignore_template_build_output)
 
 # Must be set before any slidemage module computes PROJECT_ROOT at import.
 os.environ["SLIDEMASTER_PROJECT"] = str(EXAMPLE)
+# Both .latexmkrc files and preview discovery honor this; no framework copy or
+# symlink is needed, including on Windows where symlinks may need privileges.
+os.environ["SLIDEMASTER_LATEX"] = str(_REPO_ROOT / "latex")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -13,6 +28,13 @@ from PySide6.QtCore import QCoreApplication, Qt  # noqa: E402
 
 # Qt WebEngine (the Claude Code terminal) needs this before any QApplication exists, as the real app sets it.
 QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +60,15 @@ def _isolated_app_settings(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_layout_settings(monkeypatch, tmp_path_factory):
+    """Window layout belongs to this machine; tests must not read or change the user's layout."""
+    from slidemage.ui import layout_settings
+
+    store = tmp_path_factory.mktemp("layout") / "layout.json"
+    monkeypatch.setattr(layout_settings, "STORE_PATH", store)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_project_stores(monkeypatch, tmp_path_factory):
     """What Settings writes besides app_settings.json -- the prompts and the project's own
     project.json (its "Local AI only" override) -- goes to a throwaway folder too, never into the
@@ -59,7 +90,8 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
     from slidemage.ui.workspace.actions import build_registry
 
     state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected))
-    return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks))
+    return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks),
+                           left_column_hidden=False, right_column_hidden=False)
 
 
 @pytest.fixture(autouse=True)
@@ -191,3 +223,41 @@ def make_project(monkeypatch, root):
     monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", root / "decks" / "archive")
     monkeypatch.setattr(bibliography, "DEFAULT_BIB", root / "Slidemaster.bib")
     return root.resolve()
+
+
+@pytest.fixture
+def root(tmp_path, monkeypatch):
+    """The shared throwaway project for agent tools, MCP and the Claude hook."""
+    return make_project(monkeypatch, tmp_path / "project")
+
+
+@pytest.fixture
+def server():
+    """A local provider API; streaming tests override its content type."""
+    from fake_http import Server
+
+    srv = Server()
+    yield srv
+    srv.close()
+
+
+def wait_until(condition, seconds=5.0):
+    """Wait for background work while keeping Qt signals and events moving."""
+    from PySide6.QtWidgets import QApplication
+
+    end = time.monotonic() + seconds
+    while not condition():
+        QApplication.processEvents()
+        assert time.monotonic() < end, "timed out"
+        time.sleep(0.005)
+    QApplication.processEvents()
+
+
+def write_test_file(path: Path, text: str | bytes, *, newline: str | None = "") -> Path:
+    """Create a fixture file and its parents, preserving bytes and the requested newlines."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(text, bytes):
+        path.write_bytes(text)
+    else:
+        path.write_text(text, encoding="utf-8", newline=newline)
+    return path

@@ -148,7 +148,7 @@ def note_calls(text: str) -> list[NoteCall]:
     \note<2>[item]{...} (the same forms alt_blocks.extract_note_calls() removes for a transcript)."""
     calls = []
     last_end = 0
-    for name, found, command_end in alt_blocks._iter_tex_commands(text):
+    for name, found, command_end in alt_blocks.iter_tex_commands(text):
         if name != "note" or found < last_end:
             continue
         cursor = command_end
@@ -157,7 +157,7 @@ def note_calls(text: str) -> list[NoteCall]:
         seen: set[str] = set()
         while cursor < len(text) and text[cursor] in "<[" and text[cursor] not in seen:
             seen.add(text[cursor])
-            after = alt_blocks._delimited_group_end(text, cursor, text[cursor], ">" if text[cursor] == "<" else "]")
+            after = alt_blocks.delimited_group_end(text, cursor, text[cursor], ">" if text[cursor] == "<" else "]")
             if after is None:
                 break
             cursor = after

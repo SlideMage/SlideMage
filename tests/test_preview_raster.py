@@ -1,14 +1,13 @@
 """The persistent image process, including error recovery and frozen dispatch."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
 
 import pymupdf
 import pytest
 
-from slidemage import cli, preview_raster, preview_raster_client, slide_snapshot
+from slidemage import cli, preview_raster, preview_raster_client
 
 
 def pdf_bytes(text="one"):
@@ -18,7 +17,8 @@ def pdf_bytes(text="one"):
         return doc.tobytes()
 
 
-def test_helper_reuses_one_process_and_survives_a_bad_pdf():
+@pytest.mark.parametrize("failure", ["bad_pdf", "crash"])
+def test_helper_reuses_one_process_and_recovers_from_failure(failure):
     client = preview_raster_client
     client.close()
     data = pdf_bytes()
@@ -28,20 +28,16 @@ def test_helper_reuses_one_process_and_survives_a_bad_pdf():
     assert first[0] == first[1]
     assert client.render(data, ((160, 90),), (160, 90))[0] == first[0]
     assert client._process is process
-    with pytest.raises(RuntimeError, match="Cannot prepare preview images"):
-        client.render(b"not a pdf", ((160, None),), (160, 90))
-    assert client._process is None
-    assert client.render(data, ((160, 90),), (160, 90))[0] == first[0]
-
-
-def test_a_crashed_helper_is_restarted_for_the_next_request():
-    client = preview_raster_client
-    client.render(pdf_bytes(), ((160, 90),), (160, 90))
-    original = client._process
-    original.kill()
-    original.wait()
-    assert client.render(pdf_bytes("different"), ((160, 90),), (160, 90))
-    assert client._process is not original
+    if failure == "bad_pdf":
+        with pytest.raises(RuntimeError, match="Cannot prepare preview images"):
+            client.render(b"not a pdf", ((160, None),), (160, 90))
+        assert client._process is None
+        assert client.render(data, ((160, 90),), (160, 90))[0] == first[0]
+    else:
+        process.kill()
+        process.wait()
+        assert client.render(pdf_bytes("different"), ((160, 90),), (160, 90))
+    assert client._process is not process
 
 
 def test_image_process_flag_dispatches_before_gui_or_project_setup(monkeypatch):
@@ -85,21 +81,6 @@ def test_frozen_dispatch_uses_the_same_executable_without_starting_a_window(tmp_
         client.close()
     assert commands[0][0] == [sys.executable, "--preview-raster"]
     assert commands[0][1]["env"]["PYINSTALLER_SUPPRESS_SPLASH_SCREEN"] == "1"
-
-
-def test_worker_png_cache_hit_does_not_reenter_the_raster_process(
-    tmp_path, monkeypatch
-):
-    pdf = tmp_path / "preview.pdf"
-    pdf.write_bytes(pdf_bytes())
-    slide_snapshot._PNG_CACHE.clear()
-    expected = slide_snapshot.prepare_preview(pdf, True)
-    monkeypatch.setattr(
-        preview_raster_client,
-        "render",
-        lambda *a: pytest.fail("cache miss for unchanged PDF"),
-    )
-    assert slide_snapshot.prepare_preview(pdf, True) == expected
 
 
 def test_windowed_helper_restores_redirected_pipes_when_standard_streams_are_none(

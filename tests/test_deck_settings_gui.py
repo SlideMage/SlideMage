@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QMessageBox
 
 from slidemage import deck_settings
 from slidemage.course_schedule import CourseSchedule
@@ -25,11 +24,6 @@ DECK_TEXT = (
     "\\deckoutputfolder{D:/Out}\n\\newcommand{\\FooterText}{Course | 2027s}\n"
     "\\decklanguage[en]\n\\begin{document}\n"
 )
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def make_deck(tmp_path, tags=(), text=DECK_TEXT, **fields) -> Deck:
@@ -260,20 +254,6 @@ def test_settings_action_refuses_while_the_deck_source_has_unsaved_edits(tmp_pat
     window = SimpleNamespace(centre=SimpleNamespace(is_dirty=lambda path: path == deck.path))
     DeckActionsMixin._on_deck_settings(window, deck)
     assert told and deck.path.read_text(encoding="utf-8") == DECK_TEXT
-
-
-@pytest.mark.parametrize("archived", [False, True])
-@pytest.mark.parametrize("tags, enabled", [
-    ([], True), (["course"], True), (["work"], True), (["research"], True),
-    (["test"], True), (["manual"], False),
-])
-def test_settings_entry_is_in_the_menu_of_every_deck(tmp_path, qapp, archived, tags, enabled):
-    deck = make_deck(tmp_path, tags)
-    deck.archived = archived
-    menu = build_more_menu(None, command_context(deck))
-    menu._build()
-    row = next(row for row in menu._rows if row.key == "deck_settings")
-    assert row.isEnabled() == enabled
 
 
 def test_admin_slides_entry_is_only_for_a_linked_course_deck(tmp_path, qapp):

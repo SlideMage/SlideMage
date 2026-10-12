@@ -26,7 +26,12 @@ def states(run: RunStatus) -> dict[str, str]:
 
 def test_a_run_goes_through_its_jobs_in_the_order_of_the_log():
     run = run_of("a", "b")
+    assert run.feed("==== Rendering 1ab -> x ====") is None
+    assert run.feed("==== Compiling deck -> other ====") is None
+    assert run.feed("slides/1ab-EN-T-current.tex:3: Oops") is None     # no current job
+    assert run.feed("*** FAIL: render of other -- x ***") is None
     assert states(run) == {"a": QUEUED, "b": QUEUED}
+
     assert run.feed("==== Compiling deck -> a ====").state == RUNNING
     assert run.feed("Run number 1 of rule 'lualatex'") is None
     assert run.feed("==== MOVING: a -> pdf/a.pdf ==== (now backgrounded)").state == MOVING
@@ -56,15 +61,6 @@ def test_a_job_without_a_pdf_and_a_skipped_job():
     run = run_of("snapshot~a", "b")
     feed(run, "==== Compiling deck -> snapshot~a ====", "==== Finished: snapshot~a ====", "==== Skipped: b ====")
     assert states(run) == {"snapshot~a": DONE, "b": STOPPED}
-
-
-def test_lines_of_jobs_the_run_does_not_know_are_ignored():
-    run = run_of("a")
-    assert run.feed("==== Rendering 1ab -> x ====") is None
-    assert run.feed("==== Compiling deck -> other ====") is None
-    assert run.feed("slides/1ab-EN-T-current.tex:3: Oops") is None     # no current job
-    assert run.feed("*** FAIL: render of other -- x ***") is None
-    assert states(run) == {"a": QUEUED}
 
 
 def test_finish_marks_what_never_ended():

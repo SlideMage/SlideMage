@@ -2,6 +2,8 @@
 (v5.13.4). Each case was a visible artifact in the manual's transcript."""
 from pathlib import Path
 
+import pytest
+
 from slidemage import transcript
 
 
@@ -18,23 +20,19 @@ def _frame(body: str) -> str:
     return "\\begin{standardframe}{T}\n" + body + "\n\\end{standardframe}\n"
 
 
-def test_inline_code_keeps_escaped_braces_and_joins_adjacent_spans(tmp_path):
-    entry = _render(tmp_path, _frame(
-        r"Load it: \SMCmd{input}\SMCode{\{Slidemaster\_preamble\_base\}}, "
-        r"pin with \SMCmd{slideversion}\SMCode{\{abc-EN-X\}\{1-0-0\}}."))
-    assert "`\\input{Slidemaster_preamble_base}`" in entry.body
-    assert "`\\slideversion{abc-EN-X}{1-0-0}`" in entry.body
-
-
-def test_inline_code_is_verbatim(tmp_path):
-    entry = _render(tmp_path, _frame(
-        r"\SMCode{--project}, \SMCode{gothamtable[gap=12pt]}, "
-        r"\SMCode{\textbackslash setfootnotesymbols\{\textdagger,\S\}}, "
-        r"\SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}}"))
-    assert "`--project`" in entry.body
-    assert "`gothamtable[gap=12pt]`" in entry.body
-    assert "`\\setfootnotesymbols{†,§}`" in entry.body
-    assert "`\\multilingualtext{Hello}{Hallo}`" in entry.body
+@pytest.mark.parametrize(("body", "expected"), [
+    (r"Load it: \SMCmd{input}\SMCode{\{Slidemaster\_preamble\_base\}}, "
+     r"pin with \SMCmd{slideversion}\SMCode{\{abc-EN-X\}\{1-0-0\}}.",
+     (r"`\input{Slidemaster_preamble_base}`", r"`\slideversion{abc-EN-X}{1-0-0}`")),
+    (r"\SMCode{--project}, \SMCode{gothamtable[gap=12pt]}, "
+     r"\SMCode{\textbackslash setfootnotesymbols\{\textdagger,\S\}}, "
+     r"\SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}}",
+     ("`--project`", "`gothamtable[gap=12pt]`", r"`\setfootnotesymbols{†,§}`", r"`\multilingualtext{Hello}{Hallo}`")),
+])
+def test_inline_code_is_verbatim(tmp_path, body, expected):
+    entry = _render(tmp_path, _frame(body))
+    for span in expected:
+        assert span in entry.body
 
 
 def test_maths_symbols_fractions_and_underbraces(tmp_path):

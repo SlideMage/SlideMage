@@ -7,7 +7,7 @@ import base64
 import threading
 
 import pytest
-from fake_http import Server, message_sse
+from fake_http import message_sse
 
 from slidemage.ai.agent_types import (
     AssistantMessage,
@@ -25,11 +25,9 @@ TOOL = ToolSpec("read_file", "Read a file.", {"type": "object", "properties": {"
 
 
 @pytest.fixture
-def server():
-    srv = Server()
-    srv.content_type = "text/event-stream"
-    yield srv
-    srv.close()
+def server(server):
+    server.content_type = "text/event-stream"
+    return server
 
 
 def provider(server, model="claude-sonnet-5-5"):
@@ -42,25 +40,24 @@ def turn(p, messages, texts=None, tools=(TOOL,), system="Be brief."):
     return p.stream_turn(system, messages, list(tools), (texts if texts is not None else []).append)
 
 
-def test_the_request_has_tools_system_caching_and_effort(server):
+@pytest.mark.parametrize("model, effort", [("claude-sonnet-5-5", True), ("claude-haiku-4-5-20251001", False)])
+def test_the_request_has_tools_system_caching_and_effort(server, model, effort):
     server.body = message_sse([{"type": "text", "text": "Hello there"}])
     texts = []
-    reply = turn(provider(server), [UserMessage("hi")], texts)
+    reply = turn(provider(server, model), [UserMessage("hi")], texts)
     body = server.requests[0]["body"]
     assert server.requests[0]["path"] == "/v1/messages" and server.requests[0]["headers"]["x-api-key"] == "sk-test"
     assert body["stream"] is True and body["system"] == "Be brief."
-    assert body["cache_control"] == {"type": "ephemeral"} and body["output_config"] == {"effort": "medium"}
+    assert body["cache_control"] == {"type": "ephemeral"}
+    if effort:
+        assert body["output_config"] == {"effort": "medium"}
+    else:
+        assert "output_config" not in body
     assert body["tools"] == [{"name": "read_file", "description": "Read a file.", "input_schema": TOOL.schema}]
     assert body["messages"] == [{"role": "user", "content": "hi"}]
     assert "temperature" not in body and "thinking" not in body
     assert texts == ["Hello", " there"] and reply.text == "Hello there"
     assert reply.stop == "end_turn" and reply.tool_calls == []
-
-
-def test_older_models_get_no_effort(server):
-    server.body = message_sse([{"type": "text", "text": "ok"}])
-    turn(provider(server, "claude-haiku-4-5-20251001"), [UserMessage("hi")])
-    assert "output_config" not in server.requests[0]["body"]
 
 
 def test_tool_calls_stop_reason_and_usage(server):

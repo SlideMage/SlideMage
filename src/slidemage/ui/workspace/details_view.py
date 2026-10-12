@@ -110,7 +110,7 @@ class DetailsPane(Surface):
         path = self.current_path
         text = slide_source.read_slide_source(path)[0] if path.is_file() else ""
         version = slide_versioning.parse_version(text)
-        badge = slide_language.badge_for(self._id_slug, path)
+        badge = slide_language.badge_for(self._id_slug)
         _language, _, slug = slide_rename.parse_id_slug(self._id_slug)
         panel, layout = self._panel("Slide")
         grid = QGridLayout()
@@ -175,7 +175,7 @@ class DetailsPane(Surface):
         n_refs = slide_rename.count_references(old)
         confirm = QMessageBox.question(
             self, "Rename slide",
-            f"This will rename {old}-current.tex (and any frozen versions of it) to {new}-current.tex, "
+            f"This will rename {slide_language.current_name(old)} (and any frozen versions of it) to {slide_language.current_name(new)}, "
             f"and rewrite {n_refs} deck reference(s) to match. Continue?")
         if confirm != QMessageBox.StandardButton.Yes:
             return
@@ -202,7 +202,7 @@ class DetailsPane(Surface):
                  else "This slide is not currently referenced by any deck.")
         confirm = QMessageBox.question(
             self, "Delete slide",
-            f"Permanently delete {id_slug}-current.tex (and any frozen versions of it)?\n\n{usage}\n\n"
+            f"Permanently delete {slide_language.current_name(id_slug)} (and any frozen versions of it)?\n\n{usage}\n\n"
             "This cannot be undone from within SlideMage.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes:

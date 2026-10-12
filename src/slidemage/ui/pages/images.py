@@ -148,16 +148,20 @@ class ImagesPage(ImageRunsMixin, Surface):
         for widget in (self.draft_button, self.clear_button, self.open_button, self.transcript_button):
             actions.addWidget(widget)
         actions.addStretch(1)
-        actions.addWidget(self.save_button)
-        actions.addWidget(self.review_button)
         layout.addLayout(actions)
+        saves = QHBoxLayout()
+        saves.setSpacing(6)
+        saves.addStretch(1)
+        saves.addWidget(self.save_button)
+        saves.addWidget(self.review_button)
+        layout.addLayout(saves)
 
         self.job_card = JobCard(self._stop_clicked)
         layout.addWidget(self.job_card)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setObjectName(q.SURFACE)
         scroll.viewport().setObjectName(q.SURFACE)
         self.scroll = scroll
@@ -373,7 +377,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         view = self._current
         if view is None:
             return
-        row, id_slug = view.row, view.row.path.name.removesuffix("-current.tex")
+        row, id_slug = view.row, view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX)
         language = "de" if slide_language.own_language(id_slug) == "DE" else "en"
         show_transcript_preview(self.app, self.app.centre.slide_text(row.path), row.slide_id, id_slug,
                                 self.state.view, language)

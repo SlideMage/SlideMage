@@ -124,7 +124,8 @@ them, zipped, to that tag's release page. The workflow refuses a tag that
 doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
 always says which code it was built from:
 
-1. Bump `VERSION_NUMBER` and add its history entry in `version.py`, commit.
+1. Bump `VERSION_NUMBER` in `src/slidemage/version.py` and append its history
+   entry to `src/slidemage/CHANGELOG.md`, commit.
 2. `git tag vX.Y.Z && git push origin HEAD vX.Y.Z` (the branch and the tag).
 3. A few minutes later the release has `SlideMage-windows.zip` and
    `SlideMage-linux.zip`, and its release notes are that version's
@@ -133,8 +134,8 @@ always says which code it was built from:
 **Breaking releases.** A release that breaks with the past -- a project,
 deck, setting or workflow that worked before no longer does, or now
 behaves differently -- raises the major number (`v5.0.0`), and its
-history entry in `version.py` gets a paragraph of its own starting
-`BREAKING:` that says what changes and what to do about it. The release
+history entry in `src/slidemage/CHANGELOG.md` gets a paragraph of its own
+starting `BREAKING:` that says what changes and what to do about it. The release
 workflow refuses a major bump without that paragraph. Try it before
 tagging: `python packaging/release_notes.py vX.Y.Z`.
 
@@ -1133,8 +1134,7 @@ on, without a change to the text.
 
 ## Multi-language (EN/DE) slides
 
-Added 2026-08-24 — full design/implementation history in
-[LANGUAGE_NOTES.md](LANGUAGE_NOTES.md); this section covers the
+Added 2026-08-24 — this section covers the
 day-to-day workflow. Every slide's id-slug now carries a language
 segment as its second hyphen-delimited part —
 `slides/<id>-<LANG>-<slug>-current.tex`, `LANG` one of `EN`, `DE`, or
@@ -2382,9 +2382,7 @@ so it looks right under Graz/Innsbruck/MCI alike without separate tuning.
 
 > **Image descriptions and per-deck accessible transcripts were built on
 > 2026-08-14** — see "Describing images" and "Accessible transcripts" below
-> for how to use them, and [ALT_TEXT_NOTES.md](ALT_TEXT_NOTES.md) for the
-> design, the decisions behind it and the measured findings (including the
-> failure modes worth knowing about before trusting a drafted description).
+> for how to use them.
 
 **Status: partial**, scoped to the student/handout deck (see "Student-version
 decks" above for why that's the meaningful target: `\studentversion` now
@@ -2518,7 +2516,7 @@ Images page, automatically pulled into a compiled slide's own footnote —
 every distinct source among a frame's images, de-duplicated, prefixed
 "Image source(s):" — so a hand-authored `\source{}` is no longer needed
 for image attribution specifically (it still is for anything else, e.g.
-a data source for a table). See `ALT_TEXT_NOTES.md` for how.
+a data source for a table).
 
 Two things stay per-slide rather than shared, because they're genuinely
 contextual:

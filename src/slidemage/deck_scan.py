@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import project
+from .tex_source import is_commented
 
 
 # cli.py settles the project and exports it via $SLIDEMASTER_PROJECT before
@@ -21,11 +22,6 @@ DECKS_DIR = PROJECT_ROOT / "decks"
 ARCHIVE_DIR = DECKS_DIR / "archive"
 
 SECTION_RE = re.compile(r"\\section\{([^}]*)\}")
-# A "%" that isn't escaped as "\%" starts a LaTeX comment running to the end
-# of its line -- used by is_commented() below to recognize a commented-out
-# \section{}/\slide{}-family call as not really there (2026-09-28, porting
-# SlideMage upstream commit 34cdbd7).
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
 DOCUMENT_BEGIN_RE = re.compile(r"\\begin\{document\}")
 DOCUMENT_BEGIN_LINE_RE = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
 DOCUMENT_END_RE = re.compile(r"\\end\{document\}")
@@ -160,22 +156,7 @@ def slugify(title: str) -> str:
     return slug or "chapter"
 
 
-def is_commented(text: str, pos: int) -> bool:
-    """Whether the character at `pos` in `text` falls inside a "%"-started
-    LaTeX comment -- true if an unescaped "%" appears anywhere between the
-    start of pos's own line and pos itself. Shared by _parse_chapters()
-    below and deck_editor.is_commented_out(), so a commented-out
-    \\section{}/\\slide{}-family call is recognized as not really there by
-    both this module's chapter list and appendix_toc.py's own slide-call
-    filtering. Unlike _parse_output_folders()/find_decktags()'s own
-    narrower "starts-with-%" check, this also catches a macro that follows
-    a live "%" occurring earlier on the same line, not just one at the very
-    start of it (2026-09-28, porting SlideMage upstream commit 34cdbd7)."""
-    line_start = text.rfind("\n", 0, pos) + 1
-    return bool(COMMENT_RE.search(text, line_start, pos))
-
-
-def _parse_chapters(text: str) -> list[Chapter]:
+def parse_chapters(text: str) -> list[Chapter]:
     doc_end_match = DOCUMENT_END_RE.search(text)
     doc_end = doc_end_match.start() if doc_end_match else len(text)
 
@@ -283,7 +264,37 @@ def parse_open_pdf(text: str) -> str | None:
     return value if value in OPEN_PDF_CHOICES else None
 
 
-def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
+def read_deck(path: Path, archived: bool = False) -> Deck:
+    """Read one deck or body fragment, preserving its literal line endings."""
+    # newline="" passes CRLF through untouched, matching every other
+    # reader in this package (archive.py, slide_source.py, ...) --
+    # without it, Path.read_text()'s universal-newlines default silently
+    # normalizes this project's CRLF files to bare "\n", so deck.text
+    # never byte-matches archive.read()'s raw re-read of the same file
+    # in deck_editor.py's stale-file check, which then raises
+    # StaleFileError on every single edit, even immediately after a
+    # fresh restart.
+    with open(path, encoding="utf-8", errors="replace", newline="") as f:
+        text = f.read()
+    doc_begin_match = DOCUMENT_BEGIN_RE.search(text)
+    return Deck(
+        name=path.stem,
+        path=path,
+        archived=archived,
+        text=text,
+        supports_version=bool(DECKVERSIONOVERRIDE_RE.search(text)),
+        uses_biblatex=bool(ADDBIBRESOURCE_RE.search(text)),
+        preamble_end=doc_begin_match.end() if doc_begin_match else None,
+        chapters=parse_chapters(text),
+        output_folders=_parse_output_folders(text),
+        tags=parse_tags(text),
+        course_url=parse_course_url(text),
+        appendix_toc=parse_appendix_toc(text),
+        open_pdf=parse_open_pdf(text),
+    )
+
+
+def scan_dir(directory: Path, archived: bool) -> list[Deck]:
     decks: list[Deck] = []
     if not directory.is_dir():
         return decks
@@ -291,43 +302,17 @@ def _scan_dir(directory: Path, archived: bool) -> list[Deck]:
         if path.name.startswith("_"):
             continue  # SlideMage's / compile-all-versions.bat's own
             # generated wrapper files, never a real deck
-        # newline="" passes CRLF through untouched, matching every other
-        # reader in this package (archive.py, slide_source.py, ...) --
-        # without it, Path.read_text()'s universal-newlines default silently
-        # normalizes this project's CRLF files to bare "\n", so deck.text
-        # never byte-matches archive._read()'s raw re-read of the same file
-        # in deck_editor.py's stale-file check, which then raises
-        # StaleFileError on every single edit, even immediately after a
-        # fresh restart.
-        with open(path, encoding="utf-8", errors="replace", newline="") as f:
-            text = f.read()
-        if not DOCUMENTCLASS_RE.search(text):
+        deck = read_deck(path, archived)
+        if not DOCUMENTCLASS_RE.search(deck.text):
             continue  # a fragment (e.g. test-slides.tex), not a deck
-        doc_begin_match = DOCUMENT_BEGIN_RE.search(text)
-        decks.append(
-            Deck(
-                name=path.stem,
-                path=path,
-                archived=archived,
-                text=text,
-                supports_version=bool(DECKVERSIONOVERRIDE_RE.search(text)),
-                uses_biblatex=bool(ADDBIBRESOURCE_RE.search(text)),
-                preamble_end=doc_begin_match.end() if doc_begin_match else None,
-                chapters=_parse_chapters(text),
-                output_folders=_parse_output_folders(text),
-                tags=parse_tags(text),
-                course_url=parse_course_url(text),
-                appendix_toc=parse_appendix_toc(text),
-                open_pdf=parse_open_pdf(text),
-            )
-        )
+        decks.append(deck)
     return decks
 
 
 def scan_decks() -> list[Deck]:
     """Every discovered deck: active decks first, then archived ones, each
     group sorted by filename."""
-    return _scan_dir(DECKS_DIR, archived=False) + _scan_dir(ARCHIVE_DIR, archived=True)
+    return scan_dir(DECKS_DIR, archived=False) + scan_dir(ARCHIVE_DIR, archived=True)
 
 
 if __name__ == "__main__":

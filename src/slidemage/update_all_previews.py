@@ -26,7 +26,7 @@ import re
 import uuid
 from typing import Optional
 
-from . import deck_editor, slide_snapshot
+from . import deck_editor, slide_language, slide_snapshot
 from .compiler import CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
 from .slide_preview import DECKS_DIR, template_preamble
@@ -87,7 +87,7 @@ def needed_slides_by_template() -> dict[str, set[str]]:
         bucket = needed.setdefault(template, set())
         for call in deck_editor.parse_slide_calls(deck):
             bucket.add(call.id_slug)
-        for language in ("EN", "DE"):
+        for language in slide_language.TRANSLATION_LANGUAGES:
             bucket.update(slot.call.id_slug for slot in deck_language.deck_slots(deck, language))
     return needed
 
@@ -97,11 +97,11 @@ def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> Non
     `needed` any more -- a slide no deck references under that template
     (removed from every deck, or moved to a different institution) leaves
     an orphaned file otherwise, the same class of dead weight the old
-    flat-naming cleanup (ALT_TEXT_NOTES.md, Phase 8) removed by hand once.
+    flat-naming cleanup removed by hand once.
     """
     valid_bare_ids_by_template_name: dict[str, set[str]] = {
         slide_snapshot.TEMPLATES.get(template, template):
-            {slide_snapshot.bare_id(slug) for slug in full_slugs}
+            {slide_language.bare_id(slug) for slug in full_slugs}
         for template, full_slugs in needed.items()
     }
     removed = 0

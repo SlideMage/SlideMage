@@ -21,7 +21,7 @@ from experiment import (SCHEMA, EDIT_VERSION, atomic_json, bind, digest,
                         tree_hashes, validate_record, observed_rules)
 
 import pymupdf
-from slidemage import deck_editor, deck_scan, slide_preview, slide_snapshot
+from slidemage import deck_editor, deck_scan, slide_preview, slide_language, slide_snapshot
 from slidemage.preview_build import build_lock
 
 
@@ -147,8 +147,8 @@ def main():
     manifest = dict(
         schema=SCHEMA, selected_indices=selected, edit_version=EDIT_VERSION,
         project_inputs=tree_hashes(root),
-        framework_inputs=tree_hashes(Path(slide_preview._build_env()["SLIDEMASTER_LATEX"]))
-        if slide_preview._build_env().get("SLIDEMASTER_LATEX") else {},
+        framework_inputs=tree_hashes(Path(slide_preview.build_env()["SLIDEMASTER_LATEX"]))
+        if slide_preview.build_env().get("SLIDEMASTER_LATEX") else {},
         preamble_hash=hashlib.sha256(deck.preamble_text.encode()).hexdigest(),
         calls=[
             dict(
@@ -166,7 +166,7 @@ def main():
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(configs=args.configs, repeats=args.repeats, no_cache=args.no_cache,
              no_images=args.no_images, defer_images=args.defer_images, order_seed=args.order_seed),
-        slide_preview._build_env())
+        slide_preview.build_env())
     identity["pymupdf"] = pymupdf.VersionBind
     experiment_id = digest(dict(manifest=manifest, implementation=identity))
     deadline = time.monotonic() + args.time_budget
@@ -174,7 +174,7 @@ def main():
     def stopped():
         return ((args.output / "STOP").exists() or time.monotonic() >= deadline
                 or (args.deadline is not None and time.time() >= args.deadline))
-    original_compile = slide_preview._compile_and_extract
+    original_compile = slide_preview.compile_and_extract
 
     def frozen_compile(wrapper, *a, **kw):
         wrapper = wrapper.replace(
@@ -188,7 +188,7 @@ def main():
             kw["snapshot_template"] = None
         return original_compile(wrapper, *a, **kw)
 
-    slide_preview._compile_and_extract = frozen_compile
+    slide_preview.compile_and_extract = frozen_compile
     try:
         from slidemage.preview_metrics import PreviewMetrics
     except ImportError:
@@ -285,7 +285,7 @@ def main():
                                         if images:
                                             slide_snapshot.publish_preview(
                                                 images,
-                                                slide_snapshot.bare_id(call.id_slug),
+                                                slide_language.bare_id(call.id_slug),
                                                 slide_snapshot.detect_template(
                                                     deck.preamble_text
                                                 ),

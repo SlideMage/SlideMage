@@ -21,10 +21,11 @@ from pathlib import Path
 
 from . import alt_blocks
 from .deck_scan import PROJECT_ROOT
+from .slide_language import CURRENT_SUFFIX
 
 # Characters of context kept on each side of the match: a palette row shows one line.
 _SNIPPET_CONTEXT = 40
-SLIDE_SUFFIX = "-current.tex"
+SLIDE_SUFFIX = CURRENT_SUFFIX
 BIB_NAME = "Slidemaster.bib"
 
 
@@ -72,7 +73,7 @@ def search_project(
         if index == -1:
             continue
         if path.name.endswith(SLIDE_SUFFIX):
-            slide_id, title = alt_blocks._slide_title(text, path)
+            slide_id, title = alt_blocks.slide_title(text, path)
             title = f"{slide_id} · {title}"
         else:
             title = path.relative_to(root).as_posix()

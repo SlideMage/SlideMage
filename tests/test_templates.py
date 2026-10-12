@@ -3,12 +3,10 @@ ones: detected from a deck's preamble, previews named after it, the
 "Update previews" preamble built from it, and shipped with the framework
 (latex/), so every project next to it can use it."""
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
-from slidemage.ai.providers import OllamaProvider
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 LATEX = Path(__file__).resolve().parents[1] / "latex"
@@ -87,20 +85,6 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
     assert slide_snapshot.framework_dirs(project) == [elsewhere, checkout]
 
 
-def test_render_template_out_of_the_box_is_slidemage(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    root = _project(tmp_path / "project", "uni-graz", "slidemage")
-    assert slide_snapshot.available_templates(root) == ["uni-graz", "slidemage"]
-    assert slide_snapshot.render_template(root) == "slidemage"
-
-
-def test_render_template_follows_the_setting(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    root = _project(tmp_path / "project", "uni-graz", "slidemage")
-    app_settings.set(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-graz")
-    assert slide_snapshot.render_template(root) == "uni-graz"
-
-
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     # A project with only institution layers and no framework next to it: Graz.
@@ -121,13 +105,17 @@ def test_default_preamble_uses_the_render_template(monkeypatch):
     assert slide_snapshot.detect_template(preamble) == "slidemage"
 
 
-def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch):
+@pytest.mark.parametrize("template", ["uni-graz", "mci"])
+def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, template):
     monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     _framework(tmp_path / "latex", "slidemage")
-    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", _project(tmp_path / "project", "uni-graz", "mci"))
-    slide_snapshot.set_render_template("mci")
-    assert app_settings.get(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
-    assert slide_snapshot.render_template() == "mci"
+    root = _project(tmp_path / "project", "uni-graz", "mci", "slidemage")
+    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", root)
+    assert slide_snapshot.available_templates(root) == ["uni-graz", "mci", "slidemage"]
+    assert slide_snapshot.render_template(root) == "slidemage"
+    slide_snapshot.set_render_template(template)
+    assert app_settings.get(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == template
+    assert slide_snapshot.render_template() == template
     with pytest.raises(ValueError, match="not a template"):
         slide_snapshot.set_render_template("nope")
-    assert slide_snapshot.render_template() == "mci"
+    assert slide_snapshot.render_template() == template

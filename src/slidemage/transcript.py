@@ -1,5 +1,4 @@
-"""Generate an accessible companion transcript for a deck (ALT_TEXT_NOTES.md,
-phase 4).
+"""Generate an accessible companion transcript for a deck.
 
 Markdown is the source format, HTML the delivered one. Generated on demand and
 never committed: everything it needs already lives in the deck file, the slide
@@ -19,38 +18,33 @@ Three requirements from the design, each of which is a correctness trap:
 """
 from __future__ import annotations
 
-import bisect
 import html as _html
 import itertools
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
 from .deck_scan import PROJECT_ROOT, Deck
+from .tex_source import COMMENT_RE
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
-VERSION_DURING = "during-course"
-VERSION_AFTER = "after-course"
-VERSION_INSTRUCTOR = "instructor"
-
 # Only the student versions are generated. See the module docstring.
-STUDENT_VERSIONS = (VERSION_DURING, VERSION_AFTER)
+STUDENT_VERSIONS = (VIEW_DURING, VIEW_AFTER)
 
 VERSION_LABELS = {
-    VERSION_DURING: "during-course version",
-    VERSION_AFTER: "after-course version",
+    VIEW_DURING: "during-course version",
+    VIEW_AFTER: "after-course version",
 }
 VERSION_LABELS_DE = {
-    VERSION_DURING: "Semesterbegleitende Version",
-    VERSION_AFTER: "Version nach Kursende",
+    VIEW_DURING: "Semesterbegleitende Version",
+    VIEW_AFTER: "Version nach Kursende",
 }
 _VERSION_LABELS_BY_LANGUAGE = {"en": VERSION_LABELS, "de": VERSION_LABELS_DE}
-
-_ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 
 # How each slide-inclusion command behaves, mirrored from the preamble:
 #
@@ -69,15 +63,7 @@ _ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 # other command it does NOT advance the frame counter when the version is not in [vs]:
 # two \slidestep calls at one position are alternatives, exactly one of which exists
 # in any given deck version (see \slidestep in Slidemaster_preamble_base.tex).
-_SLIDE_CALL_RE = re.compile(
-    r"\\slidestep\s*\{(?P<ss_id>[^}]*)\}(?:\s*\[(?P<ss_versions>[^\]]*)\])?\s*\{[^}]*\}"
-    r"|\\(?P<cmd>slidefinal|slideversion|slide|omitslideversion|omitslide"
-    r"|conditionalslide)\s*(?:\[(?P<versions>[^\]]*)\])?\s*\{(?P<id>[^}]*)\}"
-    r"(?:\s*\{(?P<second>[^}]*)\})?"
-)
-
 _SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
-_DECK_VERSION_RE = re.compile(r"\\deckversion\s*\[([^\]]*)\]")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 
 # UI strings that need to read naturally in the deck's own language
@@ -85,7 +71,7 @@ _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 # scaffolding around German slide content. Only strings *transcript.py
 # itself* writes are here; a slide's own body/title/source text is never
 # translated by this module at all -- it's already in whichever language
-# that slide's own file is written in (see LANGUAGE_NOTES.md: a
+# that slide's own file is written in (a
 # German-content slide is a separate file, not a translated field), so
 # only the alt_images-sourced per-image fields (short/long/takeaway/
 # source) and this module's own scaffolding need a language dimension.
@@ -168,8 +154,8 @@ _DECK_ITEM_RE = re.compile(r"\\deckitem(?![a-zA-Z])\s*(?:<[^>]*>)?")
 # \ifSMInstructorVersion / \ifSMDuringCourseVersion / \ifSMAfterCourseVersion
 _VERSION_IF_RE = re.compile(r"\\ifSM(Instructor|DuringCourse|AfterCourse)Version(?![a-zA-Z])")
 _TEX_IF_TOKEN_RE = re.compile(r"\\(if[a-zA-Z@]*|else|fi)(?![a-zA-Z@])")
-_VERSION_OF_IF = {"Instructor": VERSION_INSTRUCTOR, "DuringCourse": VERSION_DURING,
-                  "AfterCourse": VERSION_AFTER}
+_VERSION_OF_IF = {"Instructor": VIEW_INSTRUCTOR, "DuringCourse": VIEW_DURING,
+                  "AfterCourse": VIEW_AFTER}
 
 
 @dataclass
@@ -219,50 +205,30 @@ def _versions_from(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]
     if raw is None:
         return default
     parts = tuple(p.strip() for p in raw.split(",") if p.strip())
-    return parts or default
-
-
-def deck_version_of(deck_text: str) -> str | None:
-    """The version a deck file hard-codes, or None if it decides at compile time.
-
-    Returns None when `\\deckversion[...]` holds a macro rather than a literal:
-    SlideMage compiles each version by wrapping the deck and defining
-    `\\deckversionoverride`, so most real decks read `\\deckversion[\\deckversionoverride]`
-    and have no fixed version of their own. Informational only -- a transcript
-    is always generated for an explicitly chosen version, never for whatever
-    the file happens to say.
-    """
-    match = _DECK_VERSION_RE.search(alt_blocks.COMMENT_RE.sub("", deck_text))
-    if not match:
-        return VERSION_INSTRUCTOR          # the preamble's own default
-    listed = _versions_from(match.group(1), (VERSION_INSTRUCTOR,))
-    return listed[0] if listed[0] in _ALL_VERSIONS else None
+    return parts
 
 
 def deck_language_of(deck_text: str) -> str:
-    """"en"/"de" -- mirrors deck_version_of() above, for \\decklanguage[...]
-    instead of \\deckversion[...]. Unlike deck_version_of(), always
-    returns a concrete value rather than None: language is fixed per deck
-    (not a per-compile-run choice the way version is -- see
-    LANGUAGE_NOTES.md), so "\\decklanguage[\\decklanguageoverride]" (the
+    """"en"/"de" from the deck's \\decklanguage[...]; always a concrete
+    value, never None: language is fixed per deck
+    (not a per-compile-run choice the way version is),
+    so "\\decklanguage[\\decklanguageoverride]" (the
     macro-argument case, only ever used for SlideMage's own one-off
     render preview, never a real deck's own hardcoded line) falling
     through to the preamble's own "en" default is the right answer here,
     the same way it would be at actual compile time for any deck that
     doesn't set \\decklanguageoverride itself.
 
-    Unlike deck_version_of()'s single .search() (fine there -- a macro
-    match legitimately means "no single answer, informational only" for
-    version), this deliberately scans every \\decklanguage[...] occurrence
+    This deliberately scans every \\decklanguage[...] occurrence
     and picks the first *literal* one: every real deck's own
     \\ifdefined\\decklanguageoverride ... \\else \\decklanguage[en] ... \\fi
-    boilerplate (see README.md/LANGUAGE_NOTES.md) puts the macro-argument
+    boilerplate (see README.md) puts the macro-argument
     branch textually *first*, so a plain first-match .search() would
     always see "\\decklanguageoverride" and fall through to the "en"
     default for every real deck, including ones whose actual hardcoded
     language is "de" -- caught by testing against a real deck file, not
     assumed."""
-    text = alt_blocks.COMMENT_RE.sub("", deck_text)
+    text = COMMENT_RE.sub("", deck_text)
     for match in _DECK_LANGUAGE_RE.finditer(text):
         value = match.group(1).strip()
         if value and not value.startswith("\\"):
@@ -279,7 +245,7 @@ def _document_body(text: str) -> str:
     """
     document_start = None
     document_end = None
-    for name, start, command_end in alt_blocks._iter_tex_commands(text):
+    for name, start, command_end in alt_blocks.iter_tex_commands(text):
         if name not in {"begin", "end"}:
             continue
         cursor = command_end
@@ -329,7 +295,7 @@ def _expand_literal_includes(
     active_paths: tuple[Path, ...],
 ) -> str:
     """Inline literal body includes in order, with stack-based cycle checks."""
-    clean = alt_blocks.COMMENT_RE.sub("", source)
+    clean = COMMENT_RE.sub("", source)
     body = _document_body(clean)
     # Instructor notes may contain arbitrary TeX. They are not deck-level
     # includes and must not affect slide numbering or trigger file lookups.
@@ -337,7 +303,7 @@ def _expand_literal_includes(
 
     parts: list[str] = []
     copied_through = 0
-    for name, start, command_end in alt_blocks._iter_tex_commands(body):
+    for name, start, command_end in alt_blocks.iter_tex_commands(body):
         if name not in {"input", "include"} or start < copied_through:
             continue
         cursor = command_end
@@ -380,55 +346,27 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     -- so the numbers a transcript prints keep matching the numbers a student
     sees.
     """
-    source = deck_path.read_text(encoding="utf-8")
-    deck_dir = deck_path.parent.resolve()
-    text = _expand_literal_includes(source, deck_path, deck_dir, (deck_path.resolve(),))
+    deck = deck_scan.read_deck(deck_path)
+    language = deck_language_of(deck.text).upper()
+    # Preamble definitions and text after the document are not slide placements.
+    body = _document_body(deck.text)
+    deck = replace(deck, text=body, preamble_end=0)
+    deck, _dependencies = deck_language.expand_fragments(deck, strict_includes=True)
     slides: list[DeckSlide] = []
     number = 0
-    section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
 
-    for match in _SLIDE_CALL_RE.finditer(text):
-        chapter = bisect.bisect_left(section_starts, match.start())
-        if match.group("ss_id") is not None:
-            step_id = match.group("ss_id").strip()
-            if not step_id or version not in _versions_from(match.group("ss_versions"), _ALL_VERSIONS):
-                continue
-            number += 1
-            slides.append(DeckSlide(
-                number=number,
-                slide_id=step_id.partition("-")[0],
-                path=SLIDES_DIR / f"{step_id}-current.tex",
-                included=True,
-                chapter=chapter,
-            ))
-            continue
-        command = match.group("cmd")
-        slide_id = match.group("id").strip()
-        if not slide_id:
+    for slot in deck_language.deck_slots(deck, language):
+        call = slot.call
+        included = call.included_in(version)
+        if call.macro == "slidestep" and not included:
             continue
         number += 1
-
-        if command in ("omitslide", "omitslideversion"):
-            included = version == VERSION_INSTRUCTOR
-        elif command == "conditionalslide":
-            included = version in _versions_from(match.group("versions"),
-                                                 _ALL_VERSIONS)
-        else:
-            included = True
-
-        if command == "slideversion" and match.group("second"):
-            filename = f"{slide_id}-v{match.group('second').strip()}.tex"
-        elif command == "omitslideversion" and match.group("second"):
-            filename = f"{slide_id}-v{match.group('second').strip()}.tex"
-        else:
-            filename = f"{slide_id}-current.tex"
-
         slides.append(DeckSlide(
             number=number,
-            slide_id=slide_id.partition("-")[0],
-            path=SLIDES_DIR / filename,
+            slide_id=call.id,
+            path=SLIDES_DIR / call.source_filename,
             included=included,
-            chapter=chapter,
+            chapter=call.chapter.order if call.chapter else 0,
         ))
     return slides
 
@@ -513,8 +451,8 @@ def resolve_deck_conditionals(text: str, version: str) -> str:
             out.append(text[match.start():])
             return "".join(out)
 
-        versions = _versions_from(match.group("versions"), _ALL_VERSIONS)
-        keep = version == VERSION_INSTRUCTOR or version in versions
+        versions = _versions_from(match.group("versions"), VIEWS)
+        keep = version == VIEW_INSTRUCTOR or version in versions
         if keep:
             # Recurse: the content may itself contain conditionals.
             out.append(resolve_deck_conditionals(content, version))
@@ -1375,7 +1313,7 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
 
     Must run before title/body extraction: a "mult" slide's transcript
     otherwise showed *both* languages concatenated together (2026-08-25,
-    reported directly against g6q) -- alt_blocks._slide_title()'s own
+    reported directly against g6q) -- alt_blocks.slide_title()'s own
     macro-name-stripping regex only ever removes the bare "\\multilingualtext"
     token, then strips every remaining brace indiscriminately, leaving
     "{EN}{DE}" collapse into "ENDE" rather than picking one."""
@@ -1417,7 +1355,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
     # so both the title and the body reflect only the requested language.
     source_text = _resolve_multilingual_text(source_text, language)
 
-    stripped = alt_blocks.COMMENT_RE.sub("", source_text)
+    stripped = COMMENT_RE.sub("", source_text)
     stripped = resolve_deck_conditionals(stripped, version)
     stripped, _notes = alt_blocks.extract_note_calls(stripped)
     body = _expand_local_macros(stripped)
@@ -1432,7 +1370,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
     agenda_title = (_finish(_inline_markdown(agenda_titles[0]).strip())
                     if agenda_titles else "")
 
-    slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
+    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path)
     if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
                              or alt_blocks.TITLEFRAME_RE.search(stripped)):
         title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)
@@ -1462,7 +1400,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
         # _convert_body() below only strips bare macro *names*, leaving
         # brace-argument content (a version string, a raw image path)
         # flattened into the transcript text. The title slide's own title
-        # is already captured separately via _slide_title() above, so only
+        # is already captured separately via slide_title() above, so only
         # its subtitle (the second argument) is real body content; a
         # fullbleedframe slide has no text at all -- its image's own
         # description (now detected by referenced_images(), see
@@ -1585,7 +1523,7 @@ def _section_titles(deck_path: Path) -> list[str]:
     source = deck_path.read_text(encoding="utf-8")
     text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
                                     (deck_path.resolve(),))
-    text = alt_blocks.COMMENT_RE.sub("", text)
+    text = COMMENT_RE.sub("", text)
     titles: list[str] = []
     for match in _SECTION_RE.finditer(text):
         title, _after = alt_blocks.braced_argument(text, match.end() - 1)
@@ -1638,7 +1576,7 @@ def generate_single_slide(
     -- one slide's transcript entry, independent of any real deck (no
     numbering/deck title/undescribed-image-count context beyond this one
     slide), rendered exactly as generate() would render it inside a real
-    deck. `version` silently falls back to VERSION_DURING when it isn't a
+    deck. `version` silently falls back to VIEW_DURING when it isn't a
     student version (e.g. "instructor", picked from the same Render-bar
     combo used for PDF rendering) -- transcripts genuinely don't exist for
     that version at all, so refusing outright would just be an extra click
@@ -1647,20 +1585,20 @@ def generate_single_slide(
     `source_text` -- the editor's current buffer, possibly unsaved -- is
     written to a throwaway temp file under `bare_id`'s own real filename
     stem before render_slide() ever sees it: that function only reads from
-    a real Path, and alt_blocks._slide_title()/entry.takeaway_for() derive
+    a real Path, and alt_blocks.slide_title()/entry.takeaway_for() derive
     this slide's *identity* (its bare id, and therefore its own per-slide
     image-takeaway overrides and transcript summary) from that filename's
     stem, not from anything inside the text itself. A randomly-named temp
     file would silently produce a transcript for a slide with no identity
     at all -- no takeaway overrides, no summary, wrong image lookups."""
     if version not in STUDENT_VERSIONS:
-        version = VERSION_DURING
+        version = VIEW_DURING
 
     entries = alt_images.load_store()
     slide_notes = alt_images.load_slide_notes()
     tmp_dir = Path(tempfile.mkdtemp(prefix="slidemage-transcript-"))
     try:
-        tmp_path = tmp_dir / f"{bare_id}-current.tex"
+        tmp_path = tmp_dir / slide_language.current_name(bare_id)
         tmp_path.write_text(source_text, encoding="utf-8", newline="")
         deck_slide = DeckSlide(number=1, slide_id=bare_id, path=tmp_path, included=True)
         entry = render_slide(deck_slide, version, entries, slide_notes, language=language)
@@ -1699,7 +1637,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     if version not in STUDENT_VERSIONS:
         raise ValueError(
             f"Transcripts are generated for {' and '.join(STUDENT_VERSIONS)} "
-            f"only, not {version!r} — see ALT_TEXT_NOTES.md."
+            f"only, not {version!r}."
         )
 
     language = deck_language_of(deck_path.read_text(encoding="utf-8"))

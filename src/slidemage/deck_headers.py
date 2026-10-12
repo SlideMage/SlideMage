@@ -49,6 +49,7 @@ import re
 import threading
 
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .slide_language import TRANSLATION_LANGUAGES
 
 # regenerate_headers() does a read-modify-write over every slides/*-current
 # .tex file; the GUI runs it on a background thread per edit (see gui.py's
@@ -68,9 +69,6 @@ _LOCK = threading.Lock()
 DECKS_GLOBS = [DECKS_DIR, ARCHIVE_DIR]
 SLIDES_DIR = PROJECT_ROOT / "slides"
 
-SLIDE_CALL_RE = re.compile(
-    r"\\(?:slide|slidefinal|slideversion|omitslide|omitslideversion|conditionalslide|slidestep)"
-    r"(?:\[[^\]]*\])?\{([^-}]+)-[^}]*\}")
 HEADER_RE = re.compile(
     r"%% Included in decks: [^\r\n]*\r?\n%%\r?\n(?:\r?\n)?")
 
@@ -103,12 +101,12 @@ def _regenerate_headers_impl() -> tuple[int, int]:
         deck_name = _deck_display_name(deck_path)
         with open(deck_path, encoding="utf-8", newline="") as f:
             text = f.read()
-        for slide_id in set(SLIDE_CALL_RE.findall(text)):
-            id_to_decks.setdefault(slide_id, set()).add(deck_name)
         from types import SimpleNamespace
         from . import deck_editor, deck_language
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
-        for language in ("EN", "DE"):
+        for call in calls:
+            id_to_decks.setdefault(call.id, set()).add(deck_name)
+        for language in TRANSLATION_LANGUAGES:
             for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
 

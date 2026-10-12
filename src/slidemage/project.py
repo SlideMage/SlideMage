@@ -41,6 +41,7 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     skip = {".build", ".previews", ".backups", "pdf", "__pycache__"}
     if os.path.basename(directory) == "decks":
         skip |= {n for n in names if n.endswith((".pdf", ".synctex.gz"))}
+        skip |= {n for n in names if n.startswith("_") and (Path(directory) / n).is_file()}
     return {n for n in names if n in skip}
 
 
@@ -359,7 +360,7 @@ def record_project_open(root: Path, app_version: str) -> None:
     write_project_json(root, data)
 
 
-def _template_dir(name: str) -> Path | None:
+def template_dir(name: str) -> Path | None:
     """Where the bundled `name` template ("example" or "latex") lives
     right now, or None if this run has neither -- shouldn't happen for
     either supported way of running SlideMage, but a missing template is
@@ -387,7 +388,7 @@ def has_example_template() -> bool:
     something to copy -- both the example project and the LaTeX
     framework it depends on need to be found, or a copy without one of
     them would leave a project that looks complete but can't compile."""
-    return _template_dir("example") is not None and _template_dir("latex") is not None
+    return template_dir("example") is not None and template_dir("latex") is not None
 
 
 def init_project(path: Path, copy_example: bool = True) -> None:
@@ -404,7 +405,7 @@ def init_project(path: Path, copy_example: bool = True) -> None:
     if os.path.lexists(path) and (path.is_symlink() or not path.is_dir()):
         raise ProjectCreationError(path, [path])
 
-    example_dir = _template_dir("example") if copy_example else None
+    example_dir = template_dir("example") if copy_example else None
     if example_dir is not None:
         conflicts = _template_copy_conflicts(example_dir, path)
         if conflicts:
@@ -413,7 +414,7 @@ def init_project(path: Path, copy_example: bool = True) -> None:
         shutil.copytree(
             example_dir, path, dirs_exist_ok=True, ignore=_ignore_template_build_output
         )
-        latex_dir = _template_dir("latex")
+        latex_dir = template_dir("latex")
         sibling_latex = path.parent / "latex"
         copied_latex = latex_dir is not None and not os.path.lexists(sibling_latex)
         if copied_latex:

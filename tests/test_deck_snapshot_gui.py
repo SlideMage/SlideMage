@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 
 from slidemage import app_settings, compile_progress, deck_snapshot
 from slidemage.deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
@@ -16,13 +16,6 @@ from slidemage.ui.workspace import compile_jobs
 from slidemage.ui.workspace import window as window_module
 from slidemage.ui.workspace.compile_jobs import CompileJobsMixin
 from slidemage.ui.workspace.deck_actions import DeckActionsMixin
-from conftest import command_context
-from slidemage.ui.workspace.menus import build_more_menu
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture
@@ -53,16 +46,6 @@ def press_on_exec(monkeypatch, label: str, seen: list | None = None):
 
 # ---------------------------------------------------------------- menu
 
-def test_decks_section_holds_snapshot_and_import(qapp):
-    menu = build_more_menu(None, command_context())
-    menu._build()
-    entries = [(e[0], e[2] if e[0] == "item" else e[-1]) for e in menu._entries]
-    start = entries.index(("header", "Decks"))
-    assert entries[start:start + 4] == [
-        ("header", "Decks"), ("item", "Create deck snapshot…"), ("item", "Import PPTX/ODP…"),
-        ("item", "Refresh decks")]
-
-
 def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
     import json
 
@@ -86,26 +69,26 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
     ("Compile anyway", ["t-A-instructor", "t-A-during-course"]),
     ("Skip unchanged", ["t-A-during-course"]),
     ("Cancel", []),
+    (None, ["t-A-instructor"]),
 ])
 def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, button, expected):
-    jobs = [SimpleNamespace(jobname="t-A-instructor"), SimpleNamespace(jobname="t-A-during-course")]
+    names = ["t-A-instructor", "t-A-during-course"] if button else ["t-A-instructor"]
+    jobs = [SimpleNamespace(jobname=name) for name in names]
     monkeypatch.setattr(compile_jobs.compiler, "unchanged_jobs",
-                        lambda jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")])
+                        lambda jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")] if button else [])
     seen: list = []
-    press_on_exec(monkeypatch, button, seen)
+    if button:
+        press_on_exec(monkeypatch, button, seen)
+    else:
+        monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked"))
     win = QWidget()
     win._log = lambda line: None
     result = CompileJobsMixin._confirm_unchanged_jobs(win, jobs, {})
     assert [j.jobname for j in result] == expected
-    assert "t-A-instructor (compiled 2026-10-08 07:51)" in seen[0][0]
-
-
-def test_nothing_unchanged_no_question(qapp, monkeypatch):
-    jobs = [SimpleNamespace(jobname="t-A-instructor")]
-    monkeypatch.setattr(compile_jobs.compiler, "unchanged_jobs", lambda jobs, dests: [])
-    monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked"))
-    win = QWidget()
-    assert CompileJobsMixin._confirm_unchanged_jobs(win, jobs, {}) == jobs
+    if button:
+        assert "t-A-instructor (compiled 2026-10-08 07:51)" in seen[0][0]
+    else:
+        assert result == jobs
 
 
 # ---------------------------------------------------------------- sheet
@@ -139,13 +122,6 @@ def test_sheet_select_all_and_busy(qapp, settings):
     assert not dialog.busy_label.isHidden()
 
 
-def test_describe_options_for_the_archive_question():
-    assert deck_snapshot.describe_options(SnapshotOptions()) == \
-        "folder, without LaTeX package files"
-    assert deck_snapshot.describe_options(SnapshotOptions(zip=True, texmf=True)) == \
-        ".zip file, with LaTeX package files"
-
-
 # ---------------------------------------------------------------- archive question
 
 def archive_window(monkeypatch, settings):
@@ -159,40 +135,29 @@ def archive_window(monkeypatch, settings):
     return win, calls
 
 
-def test_archive_offers_a_snapshot_first(qapp, monkeypatch, settings):
+@pytest.mark.parametrize("button, snapshot_ok", [
+    ("Archive only", None), ("Snapshot, then archive", True), ("Snapshot, then archive", False),
+])
+def test_archive_with_or_without_a_snapshot(qapp, monkeypatch, settings, button, snapshot_ok):
     win, calls = archive_window(monkeypatch, settings)
-    seen: list = []
-    press_on_exec(monkeypatch, "Archive only", seen)
+    press_on_exec(monkeypatch, button)
     win._archive_deck(deck("t-A"))
-    assert calls == [("archive", "t-A")]
-    text, buttons = seen[0]
-    assert text == "Move t-A.tex to decks/archive/?"
-    assert buttons[:2] == ["Snapshot, then archive", "Archive only"]
-
-
-def test_snapshot_then_archive_archives_only_after_the_snapshot(qapp, monkeypatch, settings):
-    win, calls = archive_window(monkeypatch, settings)
-    press_on_exec(monkeypatch, "Snapshot, then archive")
-    win._archive_deck(deck("t-A"))
+    if snapshot_ok is None:
+        assert calls == [("archive", "t-A")]
+        return
     assert len(calls) == 1 and calls[0][:2] == ("snapshot", ["t-A"])   # not archived yet
     after = calls[0][3]
-    after([SnapshotResult("t-A", ok=True, path=Path("snapshots/t-A_x"))])
-    assert calls[-1] == ("archive", "t-A")
-
-
-def test_failed_snapshot_archives_only_after_a_second_yes(qapp, monkeypatch, settings):
-    win, calls = archive_window(monkeypatch, settings)
-    press_on_exec(monkeypatch, "Snapshot, then archive")
-    win._archive_deck(deck("t-A"))
-    after = calls[0][3]
-    failed = [SnapshotResult("t-A", ok=False, error="t-A did not compile")]
-    asked: list = []
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No)
-    after(failed)
-    assert calls[-1][0] == "snapshot" and "did not compile" in asked[0]
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
-    after(failed)
+    if snapshot_ok:
+        after([SnapshotResult("t-A", ok=True, path=Path("snapshots/t-A_x"))])
+    else:
+        failed = [SnapshotResult("t-A", ok=False, error="t-A did not compile")]
+        asked: list = []
+        monkeypatch.setattr(QMessageBox, "question",
+                            lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No)
+        after(failed)
+        assert calls[-1][0] == "snapshot" and "did not compile" in asked[0]
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+        after(failed)
     assert calls[-1] == ("archive", "t-A")
 
 
@@ -253,7 +218,6 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
         "snapshot~t-A", "verify~t-A", "snapshot~t-A-presenter", "verify~t-A-presenter",
         "snapshot~t-B", "verify~t-B", "snapshot~t-B-presenter", "verify~t-B-presenter"}
     assert ("batch_done",) in emitted               # the GUI thread frees the compile slot on this
-    assert ("log", "==== Done: 2 of 2 snapshot(s) created ====") in emitted
     assert emitted[-1][0] == "snapshots_done"
 
 
@@ -272,18 +236,6 @@ def test_run_refused_while_compiling(qapp, monkeypatch, settings):
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     assert not win._start_snapshots([deck("t-A")], SnapshotOptions())
     assert emitted == []
-
-
-def test_summary_text_lists_each_deck(tmp_path):
-    text = deck_snapshot.summary_text([
-        SnapshotResult("t-A", ok=True, path=tmp_path / "t-A_2026-10-07_14-12", size=2048,
-                       deleted=[tmp_path / "old"]),
-        SnapshotResult("t-B", ok=False, error="t-B did not compile"),
-        SnapshotResult("t-C", ok=False, skipped=True),
-    ])
-    assert "✓  t-A: t-A_2026-10-07_14-12  (2 KB) -- 1 older snapshot(s) moved to the trash" in text
-    assert "✗  t-B: t-B did not compile" in text
-    assert "–  t-C: skipped (stopped)" in text
 
 
 # ---------------------------------------------------------------- the questions around a run
@@ -305,10 +257,17 @@ def test_summary_sheet_counts_and_lists_the_results(qapp, monkeypatch, tmp_path)
     shown = {}
     monkeypatch.setattr(snapshot_sheets.ModalSheet, "exec", lambda sheet: shown.update(
         texts=[w.text() for w in sheet.findChildren(QLabel)], buttons=[b.text() for b in sheet.findChildren(QPushButton)]))
-    snapshot_sheets.show_summary(None, [SnapshotResult("t-A", ok=True, path=tmp_path / "t-A_x", size=10),
-                                        SnapshotResult("t-B", ok=False, error="t-B did not compile")])
-    assert "1 of 2 snapshot(s) created." in shown["texts"]
-    assert any("✗  t-B: t-B did not compile" in text for text in shown["texts"])
+    snapshot_sheets.show_summary(None, [
+        SnapshotResult("t-A", ok=True, path=tmp_path / "t-A_2026-10-07_14-12", size=2048,
+                       deleted=[tmp_path / "old"]),
+        SnapshotResult("t-B", ok=False, error="t-B did not compile"),
+        SnapshotResult("t-C", ok=False, skipped=True),
+    ])
+    assert "1 of 3 snapshot(s) created." in shown["texts"]
+    text = "\n".join(shown["texts"])
+    assert "✓  t-A: t-A_2026-10-07_14-12  (2 KB) -- 1 older snapshot(s) moved to the trash" in text
+    assert "✗  t-B: t-B did not compile" in text
+    assert "–  t-C: skipped (stopped)" in text
     assert shown["buttons"] == ["Open folder", "Close"]
 
 

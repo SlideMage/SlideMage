@@ -9,19 +9,12 @@ from pathlib import Path
 
 import pytest
 
+from conftest import write_test_file as write
+
 from slidemage import compile_records, compiler, deck_scan
 from slidemage.compile_records import fresh_output, write_record
 
 WRAPPER = "\\def\\deckversionoverride{instructor}\n\\input{t-Deck.tex}\n"
-
-
-def write(path: Path, data: str | bytes) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if isinstance(data, bytes):
-        path.write_bytes(data)
-    else:
-        path.write_text(data, encoding="utf-8", newline="")
-    return path
 
 
 @pytest.fixture
@@ -65,6 +58,8 @@ def record(c, wrapper_text=WRAPPER, log=None):
 
 def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     c = compiled
+    assert fresh_output(c["build"], "t-Deck-instructor", WRAPPER) == (
+        None, "no compile on record")
     assert record(c) == c["build"] / "compile-records" / "t-Deck-instructor.json"
     fresh, why = fresh_output(c["build"], "t-Deck-instructor", WRAPPER)
     assert why == ""
@@ -107,11 +102,6 @@ def test_stale_when_settings_or_engine_change(compiled, monkeypatch):
         None, "the TeX engine changed")
 
 
-def test_no_record_no_reuse(compiled):
-    assert fresh_output(compiled["build"], "t-Deck-instructor", WRAPPER) == (
-        None, "no compile on record")
-
-
 def test_file_changed_during_the_compile_is_not_recorded(compiled):
     c = compiled
     record(c)
@@ -149,7 +139,7 @@ def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None)
-    wrapper_text = compiler._wrapper_text(job)
+    wrapper_text = compiler.wrapper_text(job)
     write_record(c["build"], "t-Deck-instructor", c["inv"], c["wrapper"], wrapper_text,
                  c["pdf"], c["started"])
     assert [j.jobname for j, _ in compiler.unchanged_jobs([job], {"t-Deck-instructor": c["pdf"]})] \
@@ -192,7 +182,7 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
     dest = c["root"] / "pdf" / "t-Deck-during-course.pdf"
     key, generation = compiler._register_output(dest)
     assert compiler._mark_output_success(key, generation)
-    compiler._set_build_dir_active(c["inv"], True)
+    compiler.set_build_dir_active(c["inv"], True)
     compiler._relocate_pdf_and_finish(
         c["inv"] / "t-Deck-during-course.pdf", dest, "t-Deck-during-course", job, print,
         build_dir=c["inv"], destination_key=key, generation=generation,

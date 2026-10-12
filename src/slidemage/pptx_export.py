@@ -11,8 +11,8 @@ ink annotations paint in a layer above everything on the slide, so they
 survive regardless of which image beneath them is currently shown.
 Reveal steps are grouped by their shared footer "slide id: XXX" text
 (every beamer overlay of one \\slide{} call carries the identical id --
-see slide_snapshot.py's own _SLIDE_ID_RE/_slide_id_of, reused here almost
-verbatim), each stacked image full-bleed like a single-page slide would
+see slide_snapshot.py's slide_id_of, used here), each stacked image
+full-bleed like a single-page slide would
 be, ordered so the *first* reveal step ends up on top (highest z-order --
 document order in <p:spTree> is what determines it, later added is drawn
 over earlier) and the *last*/fullest reveal step ends up on the bottom.
@@ -39,7 +39,6 @@ docstring for what that ground truth actually looks like.
 """
 from __future__ import annotations
 
-import re
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -49,13 +48,9 @@ from lxml import etree
 from pptx import Presentation
 from pptx.util import Emu
 
-LogCallback = Callable[[str], None]
+from .slide_snapshot import slide_id_of
 
-# Same as slide_snapshot.py's own _SLIDE_ID_RE -- every compiled frame's
-# footer carries this unconditionally (Slidemaster_preamble_base.tex's
-# theme footer template), the same id across every overlay/reveal step of
-# one \slide{} call.
-_SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
+LogCallback = Callable[[str], None]
 
 # Standard PowerPoint 16:9 widescreen slide size, in EMU (914400 EMU/inch)
 # -- 13.333in x 7.5in. Matches this project's own beamer aspectratio=169
@@ -82,11 +77,6 @@ _TARGET_WIDTH_PX = 2560
 _P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
-def _slide_id_of(page: "fitz.Page") -> Optional[str]:
-    match = _SLIDE_ID_RE.search(page.get_text())
-    return match.group(1) if match else None
-
-
 def render_pdf_pages_grouped(pdf_path: Path, out_dir: Path) -> list[list[Path]]:
     """PNGs for every PDF page (written into `out_dir`, created if
     needed), grouped by consecutive pages sharing the same footer slide
@@ -103,7 +93,7 @@ def render_pdf_pages_grouped(pdf_path: Path, out_dir: Path) -> list[list[Path]]:
         current_id: Optional[str] = None
         for index in range(doc.page_count):
             page = doc[index]
-            slide_id = _slide_id_of(page)
+            slide_id = slide_id_of(page)
             zoom = _TARGET_WIDTH_PX / page.rect.width
             pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
             png_path = out_dir / f"page-{index + 1:0{digits}d}.png"

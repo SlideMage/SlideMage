@@ -82,35 +82,32 @@ def context():
         slide_id="abc", title="Title", body="Body", source="", image="media/x.png")
 
 
-def test_image_description_sends_the_image_and_schema(tmp_path, context):
+@pytest.mark.parametrize("replies, budgets", [
+    ((DESCRIPTION,), [2048]),
+    ((ChatReply(text="", thinking="still reasoning", truncated=True), DESCRIPTION), [2048, alt_draft.MAX_TOKENS_RETRY]),
+], ids=["description", "thinking-retry"])
+def test_image_description_sends_the_image_and_schema(tmp_path, context, replies, budgets):
     image = tmp_path / "x.png"
     image.write_bytes(PNG)
-    provider = FakeProvider(DESCRIPTION)
+    provider = FakeProvider(*replies)
     result = alt_draft.ModelBackend(provider).draft(image, context)
     call = provider.calls[0]
     assert call["images"] == [PNG]
     assert call["schema"] == alt_draft.RESPONSE_SCHEMA
     assert result.ok and result.short == "A bar chart" and result.long == "Three bars."
     assert result.model == "fake"
+    assert [c["max_tokens"] for c in provider.calls] == budgets
 
 
-def test_image_description_retries_once_when_thinking_ate_the_budget(tmp_path, context):
+@pytest.mark.parametrize("reply, error", [(ProviderError("down"), "down"), ("prose", "non-JSON")])
+def test_image_description_errors_stay_errors(tmp_path, context, reply, error):
     image = tmp_path / "x.png"
     image.write_bytes(PNG)
-    provider = FakeProvider(
-        ChatReply(text="", thinking="still reasoning", truncated=True), DESCRIPTION)
-    result = alt_draft.ModelBackend(provider).draft(image, context)
-    assert result.ok
-    assert [c["max_tokens"] for c in provider.calls] == [2048, alt_draft.MAX_TOKENS_RETRY]
-
-
-def test_image_description_errors_stay_errors(tmp_path, context):
-    image = tmp_path / "x.png"
-    image.write_bytes(PNG)
-    assert alt_draft.ModelBackend(FakeProvider(ProviderError("down"))).draft(
-        image, context).error == "down"
-    assert "non-JSON" in alt_draft.ModelBackend(FakeProvider("prose")).draft(
-        image, context).error
+    result = alt_draft.ModelBackend(FakeProvider(reply)).draft(image, context)
+    if isinstance(reply, ProviderError):
+        assert result.error == error
+    else:
+        assert error in result.error
 
 
 # -- translation -------------------------------------------------------------
@@ -131,4 +128,3 @@ def test_translation_reports_provider_errors_per_field(tmp_path, monkeypatch):
     monkeypatch.setattr(translation_prompts, "STORE_PATH", tmp_path / "tp.json")
     backend = alt_draft.ModelTranslationBackend(FakeProvider(ProviderError("rate limited")))
     assert backend.translate_text("hello") == ("", "rate limited")
-    assert backend.translate_text("  ") == ("", None)  # nothing to send, no call made

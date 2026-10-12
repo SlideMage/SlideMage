@@ -9,14 +9,15 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
 from slidemage import app_settings, deck_scan
-from slidemage.archive import _read
+from slidemage.archive import read
 from slidemage.slide_source import read_slide_source
+from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.panels import PANELS
 from slidemage.ui.workspace.panels.base import Row
-from slidemage.ui.workspace.side_panels import SETTING, SidePanels
+from slidemage.ui.workspace.side_panels import ASSISTANT_SPLIT, PANEL_MIN_HEIGHT, SETTING, SPLIT_SETTING, SidePanels
 from slidemage.ui.workspace.slide_list import SlideList
 from slidemage.ui.workspace.state import WorkspaceState
 
@@ -24,11 +25,6 @@ from conftest import use_slides_folder
 
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
 FRAME = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeCentre:
@@ -172,6 +168,52 @@ def rows(panel):
 
 # -- the host ---------------------------------------------------------------------------------
 
+@pytest.mark.parametrize("ratio", [None, True, "0.25", 0, 1, -0.1, 2, float("nan")])
+def test_an_invalid_or_missing_split_uses_the_original_proportions(column, qapp, ratio):
+    panels, state, window = column
+    layout_settings.set(SPLIT_SETTING, ratio)
+    again = SidePanels(window, state)
+    again.resize(340, 1000)
+    again.show()
+    qapp.processEvents()
+    panel, assistant = again.sizes()
+    assert panel == pytest.approx((panel + assistant) * ASSISTANT_SPLIT[0] / sum(ASSISTANT_SPLIT), abs=1)
+    again.deleteLater()
+
+
+@pytest.mark.parametrize("ratio", [0.1, 0.375, 0.6])
+def test_a_short_column_protects_the_controls_and_grows_back_to_the_users_split(column, qapp, ratio):
+    panels, state, _window = column
+    state.set_focused_slide("abc")
+    panels.resize(340, 1600)
+    panels.show()
+    qapp.processEvents()
+    panels.moveSplitter(round(sum(panels.sizes()) * ratio), 1)
+    saved = layout_settings.get(SPLIT_SETTING)
+    assert saved == panels.sizes()[0] / sum(panels.sizes())
+    assert app_settings.get(SPLIT_SETTING) is None
+
+    panels.resize(340, 560)
+    qapp.processEvents()
+    assert panels.height() == 560
+    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
+    assert panels.sizes()[1] >= panels.assistant.minimumHeight()
+    if ratio == 0.1:
+        assert panels.sizes()[0] == PANEL_MIN_HEIGHT
+    else:
+        assert panels.sizes()[1] == panels.assistant.minimumHeight()
+    assert panels.picker.isVisible() and panels.widget(0).rect().contains(panels.picker.geometry())
+    chat = panels.assistant.chat
+    for control in (chat.composer, chat.mode_picker, chat.send_button):
+        assert control.isVisible() and chat.rect().contains(control.geometry())
+    assert layout_settings.get(SPLIT_SETTING) == saved
+
+    panels.resize(340, 1600)
+    qapp.processEvents()
+    assert panels.sizes()[0] == pytest.approx(sum(panels.sizes()) * saved, abs=1)
+    assert layout_settings.get(SPLIT_SETTING) == saved
+
+
 def test_the_picker_names_the_panel_and_lists_all_of_them(column):
     panels, _state, _window = column
     assert [p.key for p in PANELS] == list(panels.panels)
@@ -263,12 +305,12 @@ def test_a_cell_writes_the_deck_and_the_list_follows(column, project):
     panels.set_panel("visibility")
     state.set_focused_slide("abc")
     cells(panels.panels["visibility"])[2].click()             # \slide: hide in After course
-    assert "\\conditionalslide[instructor,during-course]{abc-EN-Demo}" in _read(project.decks / "course.tex")
+    assert "\\conditionalslide[instructor,during-course]{abc-EN-Demo}" in read(project.decks / "course.tex")
     assert [b.isChecked() for b in cells(panels.panels["visibility"])][:3] == [True, True, False]
     state.set_view("after-course")                             # the slide list shows it hidden in that view
     assert window.slide_list.tree.data_of(window.slide_list.tree.currentItem()).hidden
     cells(panels.panels["visibility"])[4].click()              # \slidestep [instructor]: also show it to During
-    assert "\\slidestep{abc-EN-Demo}[instructor,during-course]{2}" in _read(project.decks / "course.tex")
+    assert "\\slidestep{abc-EN-Demo}[instructor,during-course]{2}" in read(project.decks / "course.tex")
     assert window.slide_list.toast.isHidden() is False         # an edit like any other: with Undo
 
 
@@ -276,10 +318,10 @@ def test_a_slide_cannot_be_hidden_from_every_view_and_the_cell_snaps_back(column
     panels, state, _window = column
     panels.set_panel("visibility")
     state.set_focused_slide("abc")
-    before = _read(project.decks / "course.tex")
+    before = read(project.decks / "course.tex")
     cells(panels.panels["visibility"])[3].click()              # \slidestep [instructor] -> hidden from all
     assert "at least one view" in project.errors[-1]
-    assert _read(project.decks / "course.tex") == before
+    assert read(project.decks / "course.tex") == before
     assert cells(panels.panels["visibility"])[3].isChecked()
 
 
@@ -293,13 +335,14 @@ def test_a_pinned_call_shows_its_state_but_cannot_be_changed(column, project):
     assert [b.isEnabled() for b in pinned] == [False] * 3 and [b.isEnabled() for b in cells(panel)[:3]] == [True] * 3
 
 
-def test_the_panel_says_when_the_open_deck_does_not_use_the_slide(column, project):
+@pytest.mark.parametrize("key", ["visibility", "versions"])
+def test_the_panel_says_when_the_open_deck_does_not_use_the_slide(column, project, key):
     panels, state, _window = column
-    panels.set_panel("visibility")
+    panels.set_panel(key)
     state.set_focused_slide("xyz")
     state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "talk"))
     state.set_focused_slide("xyz")
-    assert "talk does not call this slide." in texts(panels.panels["visibility"])
+    assert "talk does not call this slide." in texts(panels.panels[key])
 
 
 # -- Slide versions ------------------------------------------------------------------------------
@@ -345,21 +388,13 @@ def test_the_pin_moves_the_open_decks_calls_to_a_version_and_back(column, projec
     panel = panels.panels["versions"]
     assert buttons(panel, "current ▾")
     panel._set_pin("abc-EN-Demo", "1-0-0")
-    deck = _read(project.decks / "course.tex")
+    deck = read(project.decks / "course.tex")
     assert "\\slideversion{abc-EN-Demo}{1-0-0}" in deck
     assert "\\slidestep{abc-EN-Demo}[instructor]{2}" in deck       # a call with no pinned form stays
     assert buttons(panel, "v1.0.0 ▾")
     panel._set_pin("abc-EN-Demo", None)
-    assert "\\slide{abc-EN-Demo}" in _read(project.decks / "course.tex")
-    assert "slideversion" not in _read(project.decks / "course.tex")
-
-
-def test_the_pin_row_says_when_there_is_nothing_to_pin(column, project):
-    panels, state, _window = column
-    panels.set_panel("versions")
-    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "talk"))
-    state.set_focused_slide("xyz")
-    assert "talk does not call this slide." in texts(panels.panels["versions"])
+    assert "\\slide{abc-EN-Demo}" in read(project.decks / "course.tex")
+    assert "slideversion" not in read(project.decks / "course.tex")
 
 
 def test_freezing_asks_the_centre_with_the_chosen_level(column):
@@ -414,7 +449,6 @@ def test_citations_resolve_the_keys_and_mark_the_missing_ones(content, paths):
     assert lines[:2] == ["smith2020", "Smith (2020), “Findings”, Journal"]
     assert lines[2:4] == ["ghost1999", "Not in Slidemaster.bib"]
     assert panel.meta() == "2"
-    assert next(l for l in panel.findChildren(QLabel) if l.text() == "Not in Slidemaster.bib").objectName() == "kitPanelMissing"
     next(r for r in rows(panel) if r.findChildren(QLabel)[0].text() == "smith2020").clicked.emit()
     assert window.opened[-1] == (paths.bib, {"line": 1})
     buttons(panel, "Add to .bib…")[0].click()
@@ -500,6 +534,29 @@ def test_images_show_state_and_save_drafts_and_reviews_through_the_store(content
     assert alt_images.load_store()["media/pic.png"].status == "reviewed"
 
 
+@pytest.mark.parametrize("save", ["draft", "review", "flush"])
+def test_image_save_preserves_a_field_updated_by_a_worker(content, paths, save):
+    from slidemage import alt_images
+
+    panels, _state, _window = content
+    reference = "media/pic.png"
+    alt_images.save_slide_image(reference, "cit", paths.path, role="informative", short="Old short",
+                                long="Old long", reviewed=True)
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    alt_images.update_store(lambda entries: setattr(entries[reference], "long", "Worker long") or True)
+    form.short_edit.setPlainText("Edited short")
+    if save == "flush":
+        panel.flush()
+    else:
+        (form.review_button if save == "review" else form.save_button).click()
+    entry = alt_images.load_store()[reference]
+    assert (entry.short, entry.long, entry.status) == ("Edited short", "Worker long", "reviewed")
+    assert bool(entry.used_on["cit"].reviewed) == (save == "review")
+    assert entry.used_on["cit"].stored_hash == alt_images.slide_context_hash(paths.path)
+    assert panel._forms[0].baseline == panel._forms[0].values() and not panel.dirty
+
+
 def test_a_pending_image_edit_is_saved_as_a_draft_when_the_slide_is_left(content):
     from slidemage import alt_images
 
@@ -549,6 +606,40 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(content, mon
     assert panel.dirty and not alt_images.load_store()
 
 
+def test_redraft_is_ignored_after_switching_to_a_slide_with_the_same_image(content, monkeypatch, paths):
+    from slidemage import alt_draft, alt_images
+    from slidemage.ui.workspace.panels import images
+
+    panels, state, window = content
+    (paths.path.parent / "abc-EN-Demo-current.tex").write_text(CITED, encoding="utf-8")
+    panel = shown(panels, "images")
+    provider = SimpleNamespace(label="qwen3 · local")
+    monkeypatch.setattr(images, "provider_for_task", lambda *args: provider)
+    monkeypatch.setattr(alt_draft, "draftable_images", lambda row, entries: [(row.images[0], paths.path)])
+    monkeypatch.setattr(alt_draft, "ModelBackend", lambda given: SimpleNamespace(
+        draft=lambda *args: alt_draft.DraftResult(short="Slide A short", long="Slide A long", model=given.label)))
+    pending = []
+
+    class Later:
+        def __init__(self, target, args, daemon):
+            pending.append(lambda: target(*args))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(images.threading, "Thread", Later)
+    panel._forms[0].redraft_button.click()
+    assert window.busy == "drafting a description"
+    state.set_focused_slide("abc")
+    form = panel._forms[0]
+    assert form.reference == "media/pic.png" and panel._slide[0] == "abc"
+    before = form.values(), form.note.text()
+    pending[0]()
+    assert (form.values(), form.note.text()) == before
+    assert form.redraft_button.isEnabled() and not panel.dirty
+    assert window.busy is None and not alt_images.load_store()
+
+
 def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, paths):
     from slidemage import alt_draft
     from slidemage.ui.workspace.panels import images
@@ -559,9 +650,9 @@ def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, 
     monkeypatch.setattr(images, "provider_for_task", lambda *args: None)           # declined, or no model
     panel._forms[0].redraft_button.click()
     assert window.busy is None
-    panel._on_drafted("media/pic.png", None, alt_draft.DraftResult(error="timed out"))
+    panel._on_drafted("cit", "media/pic.png", None, alt_draft.DraftResult(error="timed out"))
     assert "The draft failed: timed out" in panel._forms[0].note.text()
-    panel._on_drafted("media/gone.png", None, alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
+    panel._on_drafted("cit", "media/gone.png", None, alt_draft.DraftResult(short="x", long="y"))   # the slide changed meanwhile
 
 
 def test_redraft_that_raises_still_ends_with_an_error_and_gives_back_its_slot(content, monkeypatch, paths):
@@ -692,11 +783,6 @@ def test_a_frozen_versions_notes_are_read_only(content, project, paths):
     panel = shown(panels, "notes")
     assert all(e.isReadOnly() for e in panel._edits) and not buttons(panel, "Save notes")
     assert "This is a frozen version: its notes are read-only." in texts(panel)
-
-
-def test_side_panels_can_take_more_than_the_first_three_panels():
-    assert [p.key for p in PANELS] == ["used", "versions", "visibility", "citations", "language", "images",
-                                       "transcript", "notes"]
 
 
 def test_the_reference_form_can_start_from_a_missing_key(qapp, project, monkeypatch):

@@ -10,6 +10,8 @@ import subprocess
 import sys
 import threading
 
+from .processes import no_console_kwargs
+
 _lock = threading.RLock()
 _process = None
 REQUEST_TIMEOUT = 15.0
@@ -45,11 +47,7 @@ def render(data, sizes, full_size):
             env = dict(os.environ)
             env["PYINSTALLER_SUPPRESS_SPLASH_SCREEN"] = "1"
             env.pop("PYINSTALLER_RESET_ENVIRONMENT", None)
-            kwargs = (
-                {"creationflags": subprocess.CREATE_NO_WINDOW}
-                if os.name == "nt"
-                else {}
-            )
+            kwargs = no_console_kwargs()
             _process = subprocess.Popen(
                 command,
                 stdin=subprocess.PIPE,
@@ -106,7 +104,7 @@ def render(data, sizes, full_size):
             if any(not item.startswith(b'\x89PNG\r\n\x1a\n') for item in images):
                 raise ValueError("Invalid preview PNG payload")
             return images
-        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:  # noqa: F841 -- original error is used when not timed out
             close()
             if expired.is_set():
                 exc = RuntimeError("Preview image request timed out")

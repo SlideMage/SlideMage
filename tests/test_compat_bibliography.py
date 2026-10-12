@@ -103,7 +103,8 @@ def test_update_replaces_the_copy_adds_the_format_to_the_template_and_backs_up(t
     assert not compat.evaluate(root, "v5.32.0").everything
 
 
-def test_nothing_is_changed_while_the_framework_lacks_the_command(tmp_path):
+def test_nothing_is_changed_while_the_framework_lacks_the_command(tmp_path, monkeypatch):
+    monkeypatch.delenv("SLIDEMASTER_LATEX", raising=False)
     root = make(tmp_path, framework_ready=False)
     findings = compat_bibliography.detect(root)
     assert findings and "update it first" in findings[0].message

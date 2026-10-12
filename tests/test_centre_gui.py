@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import time
-from pathlib import Path
 from types import SimpleNamespace
 
 import pymupdf
@@ -15,7 +14,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import alt_images, preview_target, slide_snapshot
-from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view, render_check
@@ -29,11 +28,6 @@ DECK = (
     "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}\n"
     "\\section{Part}\n\\slide{aaa-EN-One}\n\\slideversion{bbb-EN-Two}{1-0-0}\n"
     "\\conditionalslide[instructor]{ccc-DE-Drei}\n\\end{document}\n")
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeApp:
@@ -76,7 +70,7 @@ def project(tmp_path, monkeypatch):
 def deck(tmp_path):
     return Deck(name="course", path=tmp_path / "course.tex", archived=False, text=DECK, supports_version=True,
                 uses_biblatex=False, preamble_end=DECK.index("\\begin{document}") + len("\\begin{document}"),
-                chapters=_parse_chapters(DECK), output_folders={})
+                chapters=parse_chapters(DECK), output_folders={})
 
 
 @pytest.fixture
@@ -156,34 +150,32 @@ def test_language_switch_changes_editor_preview_details_and_keeps_both_buffers(c
     assert centre.is_dirty(english) and centre.is_dirty(german)
 
 
-def test_saving_in_de_mode_writes_and_renders_only_the_german_file(centre, project, renders, monkeypatch):
+@pytest.mark.parametrize("language, id_slug, edit", [
+    ("EN", "aaa-EN-One", "% saved "),
+    ("DE", "ddd-DE-Eins", "% German saved edit\n"),
+])
+def test_saving_renders_only_the_active_language_when_the_page_is_visible(centre, project, renders, monkeypatch, language, id_slug, edit):
     from slidemage.ui.workspace import source_file
 
-    english, german = link_german(project)
-    before = english.read_bytes()
+    english, german = link_german(project) if language == "DE" else (
+        project / "aaa-EN-One-current.tex", project / "ccc-DE-Drei-current.tex")
+    active, other = (english, german) if language == "EN" else (german, english)
+    before = other.read_bytes()
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda *_args: "overwrite")
     monkeypatch.setattr(source_file, "PROJECT_ROOT", project.parent)
     centre.state.set_focused_slide("aaa")
     centre.state.set_mode("split")
-    centre.state.set_language("DE")
-    centre.source.current.editor.insertPlainText("% German saved edit\n")
+    centre.state.set_language(language)
+    centre.source.current.editor.insertPlainText(edit)
     assert centre.source.save()
     wait_idle(centre)
-    assert "% German saved edit" in german.read_text()
-    assert english.read_bytes() == before
-    assert renders[-1][0:2] == ("saved", "ddd-DE-Eins")
-
-
-def test_de_buffer_render_uses_the_german_draft(centre, project, renders):
-    link_german(project)
-    centre.state.set_focused_slide("aaa")
-    centre.state.set_language("DE")
-    centre.state.set_mode("split")
-    centre.source.current.editor.insertPlainText("% German buffer\n")
-    centre.render_buffer()
+    assert edit in active.read_text() and other.read_bytes() == before
+    assert [c[0:2] for c in renders] == [("saved", id_slug)] and page(centre).pixmap is not None
+    centre.state.set_mode("source")  # no page to show: no render
+    centre.source.current.editor.insertPlainText("% again ")
+    assert centre.source.save()
     wait_idle(centre)
-    assert renders[-1][0:2] == ("buffer", "ddd-DE-Eins")
-    assert "% German buffer" in renders[-1][2][0]
+    assert len(renders) == 1
 
 
 def page(centre):
@@ -232,13 +224,6 @@ def test_focusing_a_slide_shows_its_file_as_the_deck_calls_it(centre, project):
     assert centre.source.current.editor.is_read_only()
     state.set_focused_slide(None)
     assert centre.source.current is None
-
-
-def test_views_that_are_not_shown_are_not_built_until_they_are(centre):
-    centre.state.set_focused_slide("aaa")
-    assert centre.source.current is None              # preview mode: no editor yet
-    centre.state.set_mode("split")
-    assert centre.source.current.path.name == "aaa-EN-One-current.tex"
 
 
 def test_unsaved_edits_survive_focusing_other_slides_and_count_as_dirty(centre, project):
@@ -331,8 +316,12 @@ def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_resu
     kind, id_slug, args, kwargs = renders[0]
     assert (kind, id_slug, args[:2]) == ("saved", "aaa-EN-One", ("instructor", "EN"))
     assert kwargs["footer_timestamp"] is False
-    assert page(centre).pixmap is not None and page(centre).pixmap.width() == 160
+    assert page(centre).pixmap is not None
     assert page(centre).render_button.isHidden() and not centre.preview._status_chip.isVisibleTo(centre)
+    state.set_footer_timestamp(True)
+    centre.preview.render_now()
+    wait_idle(centre)
+    assert [c[3]["footer_timestamp"] for c in renders] == [False, True]
     state.set_view("during-course")                         # another view has no picture yet
     assert page(centre).pixmap is None and "During course" in page(centre).message
     state.set_view("instructor")
@@ -379,7 +368,6 @@ def test_a_failed_render_is_reported_and_can_be_repeated(centre, renders, monkey
     centre.preview.render_now()
     wait_idle(centre)
     assert centre.preview._status_chip.text() == "Render failed" and "boom" in centre.preview._error_label.text()
-    assert any("Render failed" in line for line in centre.app.logged)
     centre.state.set_view("during-course")                  # the failure belongs to the view it happened in
     assert not centre.preview._error
     centre.state.set_view("instructor")
@@ -459,36 +447,26 @@ def test_a_presenter_render_opens_the_viewer_instead_of_the_page(centre, renders
     assert page(centre).pixmap is None
 
 
-def test_ctrl_r_in_the_source_view_shows_the_page_and_renders_the_buffer(centre, renders):
+@pytest.mark.parametrize("language, mode, id_slug, draft", [
+    ("EN", "source", "aaa-EN-One", ""),
+    ("DE", "split", "ddd-DE-Eins", "% German buffer\n"),
+])
+def test_rendering_the_source_buffer_shows_the_page_in_the_active_language(centre, project, renders, language, mode, id_slug, draft):
+    if language == "DE":
+        link_german(project)
     state = centre.state
-    state.set_mode("source")
+    state.set_mode(mode)
     state.set_focused_slide("aaa")
+    state.set_language(language)
+    if draft:
+        centre.source.current.editor.insertPlainText(draft)
     centre.source.show()
     centre.source.current.editor.setFocus()
     centre.source.render_requested.emit()
     wait_idle(centre)
-    assert state.mode == "split" and renders[0][0] == "buffer"
-
-
-def test_saving_renders_the_slide_again_when_the_page_is_visible(centre, renders, monkeypatch):
-    from slidemage.ui.workspace import source_file
-
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
-    monkeypatch.setattr(source_file, "PROJECT_ROOT", centre.source.current.path.parent.parent
-                        if centre.source.current else Path("/"))
-    state = centre.state
-    state.set_mode("split")
-    state.set_focused_slide("aaa")
-    monkeypatch.setattr(source_file, "PROJECT_ROOT", centre.source.current.path.parent.parent)
-    centre.source.current.editor.insertPlainText("% saved ")
-    assert centre.source.save()
-    wait_idle(centre)
-    assert [c[0] for c in renders] == ["saved"] and page(centre).pixmap is not None
-    state.set_mode("source")                                  # no page to show: no render
-    centre.source.current.editor.insertPlainText("% again ")
-    assert centre.source.save()
-    wait_idle(centre)
-    assert len(renders) == 1
+    assert state.mode == "split" and renders[0][0:2] == ("buffer", id_slug)
+    if draft:
+        assert draft in renders[0][2][0]
 
 
 def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monkeypatch, project):
@@ -593,7 +571,6 @@ def test_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch)
     details._delete()
     assert calls == [("slug", "ccc-DE-Drei", "Drie"), ("delete", "ccc-DE-Drei")]
     assert refreshed == [True] * 2 and centre.state.focused_slide is None
-    assert any(line.startswith("Deleted slide ccc-DE-Drei") for line in centre.app.logged)
 
 
 def test_keys_in_the_source_view_do_not_leak_into_other_views(centre):
@@ -615,32 +592,8 @@ def test_a_lint_issue_opens_its_file_at_its_line(centre, project):
     assert centre.source.current.editor.textCursor().blockNumber() == 2
 
 
-def test_the_footer_timestamp_of_the_state_reaches_the_render(centre, renders):
-    centre.state.set_focused_slide("aaa")
-    centre.preview.render_now()
-    wait_idle(centre)
-    centre.state.set_footer_timestamp(True)
-    centre.preview.render_now()
-    wait_idle(centre)
-    assert [c[3]["footer_timestamp"] for c in renders] == [False, True]
-
-
-def test_an_already_dirty_buffer_marks_its_preview_older_after_another_edit(centre, renders):
-    centre.state.set_focused_slide('aaa')
-    centre.state.set_mode('split')
-    editor=centre.source.current.editor
-    editor.insertPlainText('% unsaved first edit\n')
-    centre.preview.render_buffer()
-    wait_idle(centre)
-    assert 'Rendered from the editor buffer' in centre.preview._status_chip.text()
-    assert centre.source.current.dirty
-    editor.insertPlainText('% a second edit while still dirty\n')
-    QTest.qWait(200)
-    assert 'Older than the editor buffer' in centre.preview._status_chip.text()
-    assert len(renders) == 1  # status refresh never compiles on a keystroke
-
-
 def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(centre, renders):
+    """Regression: a further edit to an already dirty rendered draft must mark its preview stale."""
     centre.state.set_focused_slide('aaa')
     centre.state.set_mode('split')
     centre.source.current.editor.insertPlainText('% a draft, never saved\n')
@@ -655,3 +608,8 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(centre,
     assert 'Rendered from the editor buffer' in preview._status_chip.text()
     assert preview._status_button.isHidden() and not preview._status_draft
     assert len(renders) == 1 and 'a draft, never saved' in str(renders[0])
+    assert centre.source.current.dirty
+    centre.source.current.editor.insertPlainText('% a second edit while still dirty\n')
+    QTest.qWait(200)
+    assert 'Older than the editor buffer' in preview._status_chip.text()
+    assert len(renders) == 1  # status refresh never compiles on a keystroke

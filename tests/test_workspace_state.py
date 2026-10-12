@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from slidemage import app_settings
 from slidemage.deck_scan import Deck
-from slidemage.ui.workspace.state import MODES, SETTINGS_KEY, UI_LANGUAGES, VIEWS, WorkspaceState
+from slidemage.ui.workspace.state import SETTINGS_KEY, WorkspaceState
 
 
 def make_deck(name: str, text: str = "") -> Deck:
@@ -22,52 +24,24 @@ def record(signal) -> list:
     return seen
 
 
-def test_views_and_languages_are_the_projects_own_names():
-    assert VIEWS == ("instructor", "during-course", "after-course")
-    assert UI_LANGUAGES == ("EN", "DE")
-
-
-def test_a_setter_emits_only_when_the_value_changes():
+@pytest.mark.parametrize("field, initial, changed, equivalent", [
+    ("view", "instructor", "during-course", "during-course"),
+    ("language", "EN", "DE", "DE"),
+    ("focused_slide", None, "1y8", "1y8"),
+    ("selection", (), ("1y8", "1ym"), ["1y8", "1ym"]),
+    ("mode", "preview", "source", "source"),
+    ("dirty", False, True, True),
+])
+def test_a_setter_emits_only_when_the_value_changes(field, initial, changed, equivalent):
     state = WorkspaceState()
-    views, languages = record(state.view_changed), record(state.language_changed)
-    focus, selection = record(state.focused_slide_changed), record(state.selection_changed)
-
-    state.set_view("instructor")                 # already the view
-    state.set_view("during-course")
-    state.set_view("during-course")
-    state.set_language("EN")
-    state.set_language("DE")
-    state.set_language("DE")
-    state.set_focused_slide("1y8")
-    state.set_focused_slide("1y8")
-    state.set_selection(("1y8", "1ym"))
-    state.set_selection(["1y8", "1ym"])          # the same slides, any sequence type
-
-    assert views == ["during-course"] and languages == ["DE"]
-    assert focus == ["1y8"] and selection == [("1y8", "1ym")]
-
-
-def test_unknown_views_languages_and_modes_are_ignored():
-    state = WorkspaceState()
-    seen = record(state.view_changed)
-    state.set_view("presenter")
-    state.set_language("FR")
-    state.set_language("mult")
-    state.set_mode("grid")
-    assert seen == [] and (state.view, state.language, state.mode) == ("instructor", "EN", "preview")
-    assert MODES == ("preview", "split", "source", "details")
-
-
-def test_mode_and_dirty_signal_only_real_changes():
-    state = WorkspaceState()
-    modes, dirty = record(state.mode_changed), record(state.dirty_changed)
-    state.set_mode("preview")
-    state.set_mode("source")
-    state.set_mode("source")
-    state.set_dirty(False)
-    state.set_dirty(True)
-    state.set_dirty(True)
-    assert modes == ["source"] and dirty == [True]
+    seen = {name: record(getattr(state, f"{name}_changed"))
+            for name in ("view", "language", "focused_slide", "selection", "mode", "dirty")}
+    setter = getattr(state, f"set_{field}")
+    setter(initial)
+    setter(changed)
+    setter(equivalent)
+    assert seen == {name: [changed] if name == field else [] for name in seen}
+    assert getattr(state, field) == changed
 
 
 def test_dirty_is_the_or_of_every_source_that_has_unsaved_edits():
@@ -81,39 +55,35 @@ def test_dirty_is_the_or_of_every_source_that_has_unsaved_edits():
     assert not state.dirty and dirty == [True, False]
 
 
-def test_switching_decks_resets_focus_and_selection_and_reports_each_only_if_it_changed():
+def test_switching_decks_resets_focus_and_selection_but_a_rescan_keeps_them():
     state = WorkspaceState()
-    first, second = make_deck("first"), make_deck("second")
+    first, second = make_deck("first", text="old"), make_deck("second")
     decks = record(state.deck_changed)
     focus, selection = record(state.focused_slide_changed), record(state.selection_changed)
 
-    state.set_deck(first)
+    assert state.set_deck(first) is True
     assert decks == [first] and focus == [] and selection == []      # nothing to reset yet
     state.set_focused_slide("1y8")
     state.set_selection(("1y8",))
-    state.set_deck(second)
+    rescanned = make_deck("first", text="new")
+    assert state.set_deck(rescanned) is False
+    assert state.deck is rescanned and state.focused_slide == "1y8"
+    assert decks == [first] and focus == ["1y8"] and selection == [("1y8",)]
+    assert state.set_deck(second) is True
     assert decks == [first, second]
     assert focus == ["1y8", None] and selection == [("1y8",), ()]
     assert state.focused_slide is None and state.selection == ()
 
 
-def test_a_fresh_scan_of_the_open_deck_is_not_a_switch():
+@pytest.mark.parametrize("same_name", [False, True], ids=["distinct-names", "same-name-different-folders"])
+def test_view_language_and_mode_are_remembered_per_deck(same_name):
     state = WorkspaceState()
-    deck = make_deck("course", text="old")
-    state.set_deck(deck)
-    state.set_focused_slide("1y8")
-    decks, focus = record(state.deck_changed), record(state.focused_slide_changed)
-
-    rescanned = make_deck("course", text="new")
-    state.set_deck(rescanned)
-
-    assert state.deck is rescanned and state.focused_slide == "1y8"
-    assert decks == [] and focus == []
-
-
-def test_view_language_and_mode_are_remembered_per_deck():
-    state = WorkspaceState()
-    first, second = make_deck("first"), make_deck("second")
+    state.set_view("after-course")
+    state.set_deck(None)
+    assert app_settings.get(SETTINGS_KEY) is None
+    first, second = make_deck("same" if same_name else "first"), make_deck("same" if same_name else "second")
+    if same_name:  # Regression: live and archived decks must be remembered by path, not name.
+        second.path = Path("decks/archive/same.tex")
     state.set_deck(first)
     state.set_view("after-course")
     state.set_language("DE")
@@ -136,16 +106,6 @@ def test_view_language_and_mode_are_remembered_per_deck():
     assert app_settings.get(SETTINGS_KEY)[str(first.path)] == {"view": "after-course", "language": "DE", "mode": "split"}
 
 
-def test_decks_with_one_name_in_different_folders_are_remembered_apart():
-    state = WorkspaceState()
-    live, archived = make_deck("same"), make_deck("same")
-    archived.path = Path("decks/archive/same.tex")
-    state.set_deck(live)
-    state.set_view("after-course")
-    state.set_deck(archived)
-    assert state.view == "instructor"
-
-
 def test_a_deck_without_a_saved_language_starts_in_its_own():
     state = WorkspaceState()
     state.set_deck(make_deck("german", text="\\decklanguage[de]\n\\begin{document}\n"))
@@ -154,22 +114,8 @@ def test_a_deck_without_a_saved_language_starts_in_its_own():
     assert state.language == "EN"
 
 
-def test_no_deck_leaves_the_settings_alone():
+def test_the_selection_falls_back_to_the_focus():
     state = WorkspaceState()
-    state.set_view("after-course")               # nothing to remember it for
-    state.set_deck(None)
-    assert app_settings.get(SETTINGS_KEY) is None
-
-
-def test_set_deck_says_whether_it_switched_and_the_selection_falls_back_to_the_focus():
-    def make(name):
-        return Deck(name=name, path=Path(f"{name}.tex"), archived=False, text="", supports_version=True,
-                    uses_biblatex=False, preamble_end=0, chapters=[], output_folders={})
-
-    state = WorkspaceState()
-    assert state.set_deck(make("a")) is True
-    assert state.set_deck(make("a")) is False        # a rescan of the open deck
-    assert state.set_deck(make("b")) is True
     assert state.selected_or_focused() == ()
     state.set_focused_slide("1ab")
     assert state.selected_or_focused() == ("1ab",)

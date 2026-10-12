@@ -23,30 +23,17 @@ def pdf(label, age_minutes, run_id=RUN, preferred=False):
     return DeckPdf(label, Path(f"{label}.pdf"), NOW - age_minutes * 60, preferred, run_id)
 
 
-def test_instructor_when_newer_pdfs_come_from_the_same_run():
-    instructor = pdf("Instructor", 90, preferred=True)
-    # presenter compiled first in the same run, the others after the instructor PDF
-    pdfs = [pdf("During-course", 0), pdf("After-course", 30), instructor, pdf("Presenter", 120)]
-    assert pdf_to_open(pdfs) is instructor
-
-
-def test_ask_when_a_newer_pdf_comes_from_another_run():
-    pdfs = [pdf("After-course", 1, run_id="2026-10-08T09:00:00"),
-            pdf("Instructor", 2, preferred=True)]
-    assert pdf_to_open(pdfs) is None
-
-
-def test_ask_when_a_newer_pdf_has_no_run_older_ones_dont_matter():
-    assert pdf_to_open([pdf("After-course", 1, run_id=None),
-                        pdf("Instructor", 2, preferred=True)]) is None
-    instructor = pdf("Instructor", 2, preferred=True)
-    assert pdf_to_open([instructor, pdf("Presenter", 500, run_id=None)]) is instructor
-
-
-def test_only_one_pdf_opens_directly_no_instructor_asks():
-    only = pdf("After-course", 3)
-    assert pdf_to_open([only]) is only
-    assert pdf_to_open([pdf("After-course", 0), pdf("Presenter", 1)]) is None
+@pytest.mark.parametrize("pdfs, chosen", [
+    ([pdf("During-course", 0), pdf("After-course", 30), pdf("Instructor", 90, preferred=True),
+      pdf("Presenter", 120)], 2),
+    ([pdf("After-course", 1, run_id="2026-10-08T09:00:00"), pdf("Instructor", 2, preferred=True)], None),
+    ([pdf("After-course", 1, run_id=None), pdf("Instructor", 2, preferred=True)], None),
+    ([pdf("Instructor", 2, preferred=True), pdf("Presenter", 500, run_id=None)], 0),
+    ([pdf("After-course", 3)], 0),
+    ([pdf("After-course", 0), pdf("Presenter", 1)], None),
+], ids=["same-run", "different-run", "newer-legacy", "older-legacy", "only-pdf", "no-preferred"])
+def test_pdf_choice(pdfs, chosen):
+    assert pdf_to_open(pdfs) is (None if chosen is None else pdfs[chosen])
 
 
 def test_run_id_line_is_left_out_of_the_record_hash():
@@ -77,8 +64,8 @@ def test_compile_job_stamps_its_run(tmp_path):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None, run_id=RUN)
-    assert compile_records.run_id_line(RUN) in compiler._wrapper_text(job)
-    assert "SlideMageRun" not in compiler._wrapper_text(compiler.CompileJob(deck, "instructor", None))
+    assert compile_records.run_id_line(RUN) in compiler.wrapper_text(job)
+    assert "SlideMageRun" not in compiler.wrapper_text(compiler.CompileJob(deck, "instructor", None))
 
 
 @pytest.fixture
@@ -89,7 +76,7 @@ def deck_with_pdfs(tmp_path, monkeypatch):
     (tmp_path / "decks" / "t-A.tex").write_text(
         "\\documentclass{beamer}\n\\deckversionoverride\n\\begin{document}\n\\end{document}\n",
         encoding="utf-8")
-    deck = deck_scan._scan_dir(tmp_path / "decks", False)[0]
+    deck = deck_scan.scan_dir(tmp_path / "decks", False)[0]
     (tmp_path / "pdf").mkdir()
     for name, age_minutes, run_id in (("t-A-instructor", 30, RUN),
                                       ("t-A-after-course", 0, "2026-10-08T09:00:00")):

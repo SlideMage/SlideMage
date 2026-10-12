@@ -13,7 +13,7 @@ from PySide6.QtCore import QStringListModel, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QCompleter, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem
 
-from ... import alt_images, image_review
+from ... import alt_images, image_review, slide_language
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
 from ..kit.widgets import Card, DropdownButton, IconButton, PopoverMenu, SegmentedControl, caption
@@ -58,7 +58,7 @@ class SlideNav(Card):
         self.filter_index = 0
         self.shown: list[image_review.SlideView] = []
         self._counts: list[int] = [0] * len(image_review.FILTERS)
-        self.setFixedWidth(380)
+        self.setFixedWidth(340)
         layout = self.layout()
         layout.setSpacing(10)
 
@@ -122,7 +122,7 @@ class SlideNav(Card):
         self._counts = image_review.filter_counts(views, entries)
         self._show_filter()
         self.summary.setText(image_review.summary_text(views))
-        self._names.setStringList(sorted(view.row.path.name.removesuffix("-current.tex") for view in views))
+        self._names.setStringList(sorted(view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX) for view in views))
         self._icons = {state: marker(state, self._theme.tokens) for state in alt_images.STATE_LABELS}
         self.slide_list.blockSignals(True)
         self.slide_list.clear()

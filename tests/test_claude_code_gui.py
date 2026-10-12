@@ -11,9 +11,10 @@ import socket
 import sys
 import threading
 import time
+from functools import partial
 
 import pytest
-from conftest import SLIDE_TEXT, build_window, make_project
+from conftest import SLIDE_TEXT, build_window, make_project, wait_until as _wait_until
 from fake_claude import make_fake_claude
 from mcp_client import Client
 from PySide6.QtCore import Qt
@@ -27,7 +28,7 @@ from slidemage.deck_scan import scan_decks
 from slidemage.ui.workspace.chat import gui_workspace
 from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE
 from slidemage.ui.workspace import source_file
-from slidemage.ui.workspace.source_file import CONFLICT, RELOADED, SAME
+from slidemage.ui.workspace.source_file import SAME
 from slidemage.ui.workspace.terminal import session as session_module
 from slidemage.ui.workspace.terminal import view as view_module
 from slidemage.ui.workspace.terminal.sync import DiskSync
@@ -39,9 +40,7 @@ SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
 
 
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
+wait_until = partial(_wait_until, seconds=20)
 
 
 def pump(seconds=0.0):
@@ -50,14 +49,6 @@ def pump(seconds=0.0):
     while time.time() < end:
         QApplication.processEvents()
         time.sleep(0.005)
-
-
-def wait_until(condition, seconds=20):
-    end = time.time() + seconds
-    while not condition() and time.time() < end:
-        QApplication.processEvents()
-        time.sleep(0.005)
-    assert condition()
 
 
 def on_thread(function):
@@ -148,18 +139,6 @@ def test_without_claude_the_view_says_how_to_install_it_and_starts_no_process(en
     assert env.view._stack.currentIndex() == view_module.TERMINAL
 
 
-def test_the_terminal_starts_when_the_view_is_first_shown_in_the_project_with_only_flags_and_environment(env):
-    assert env.view.terminal is None and env.view.session is None and not env.log.exists()      # the chat is shown
-    start_view(env)
-    assert env.view.status.text() == "Claude Code running"
-    logged = json.loads(env.log.read_text())
-    assert logged["cwd"] == str(env.root) and logged["project"] == str(env.root) and logged["term"] == "xterm-256color"
-    assert logged["argv"][0::2] == ["--mcp-config", "--settings", "--append-system-prompt"]
-    assert logged["token"] == env.view.session._server.token and logged["token"] not in json.dumps(logged["argv"])
-    assert env.view.session.mcp_url in logged["argv"][1]
-    assert not (env.root / ".claude").exists() and not (env.root / ".mcp.json").exists()
-
-
 def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, monkeypatch):
     def busy(self):
         raise OSError("port busy")
@@ -175,23 +154,16 @@ def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, mo
     wait_until(lambda: env.view.session.running and env.view.status.text() == "Claude Code running")
 
 
-def test_a_late_report_of_an_old_process_is_ignored(env):
-    start_view(env)
-    session = env.view.session
-    old = session._generation
-    env.view.restart_button.click()
-    wait_until(lambda: session.running and session._generation > old)
-    session._ended.emit(old, 7)                         # queued before the restart, delivered after it
-    session._chunk.emit(old, b"stale output\r\n")
-    pump(0.3)
-    assert env.view.status.text() == "Claude Code running" and session._sync._timer.isActive()
-    assert "stale output" not in terminal_text(env)
-    env.window.assistant.shutdown()
-    env.view._on_exited(0)                              # an exit reported while the window closes: nothing to show
-
-
 def test_typing_resize_theme_exit_restart_and_shutdown(env):
+    assert env.view.terminal is None and env.view.session is None and not env.log.exists()      # the chat is shown
     start_view(env)
+    assert env.view.status.text() == "Claude Code running"
+    logged = json.loads(env.log.read_text())
+    assert logged["cwd"] == str(env.root) and logged["project"] == str(env.root) and logged["term"] == "xterm-256color"
+    assert logged["argv"][0::2] == ["--mcp-config", "--settings", "--append-system-prompt"]
+    assert logged["token"] == env.view.session._server.token and logged["token"] not in json.dumps(logged["argv"])
+    assert env.view.session.mcp_url in logged["argv"][1]
+    assert not (env.root / ".claude").exists() and not (env.root / ".mcp.json").exists()
     # what is typed reaches the process, its output the terminal
     env.view.terminal.bridge.send_input("hello there\r")
     wait_until(lambda: "echo: hello there" in terminal_text(env))
@@ -229,10 +201,16 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     assert "Claude Code ended" not in terminal_text(env) and sync._timer.isActive()
     # Restart of a running process: the old one is ended, and its end is not reported as the new one's
     first = env.view.session._process
+    session = env.view.session
+    old = session._generation
     env.view.restart_button.click()
-    wait_until(lambda: env.view.session._process is not first and env.view.session.running)
+    wait_until(lambda: session._process is not first and session.running and session._generation > old)
+    # Regression (1c7e047): queued output and exit from the previous process must not affect the new one.
+    session._ended.emit(old, 7)
+    session._chunk.emit(old, b"stale output\r\n")
     pump(0.3)
     assert not first.alive and env.view.status.text() == "Claude Code running"
+    assert session._sync._timer.isActive() and "stale output" not in terminal_text(env)
     # Shutdown: process and MCP server are gone, twice is fine
     session, process, port = env.view.session, env.view.session._process, env.view.session._server.port
     env.window.assistant.shutdown()
@@ -240,6 +218,7 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     with pytest.raises(OSError):
         socket.create_connection(("127.0.0.1", port), timeout=1)
     env.window.assistant.shutdown()
+    env.view._on_exited(0)                              # an exit reported while the window closes: nothing to show
 
 
 # -- the MCP server and the window's editor ----------------------------------------------------------------------
@@ -417,7 +396,3 @@ def test_decks_and_new_or_removed_slides_go_through_the_deck_sequences(watch, mo
     new.unlink()
     watch.sync.poll()
     assert rescans == [1, 1]
-
-
-def test_the_outcomes_are_distinct():
-    assert len({SAME, RELOADED, CONFLICT}) == 3

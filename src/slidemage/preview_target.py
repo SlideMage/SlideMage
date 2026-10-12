@@ -16,10 +16,9 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 
-from . import slide_preview, slide_snapshot
-from .deck_editor import SLIDES_DIR, SlideCall
+from . import slide_preview, slide_language, slide_snapshot
+from .deck_editor import SLIDES_DIR, VIEW_INSTRUCTOR, SlideCall
 from .deck_scan import Deck
-from .transcript import VERSION_INSTRUCTOR
 
 
 @dataclass(frozen=True)
@@ -34,13 +33,13 @@ class PreviewTarget:
 
     @property
     def bare_id(self) -> str:
-        return slide_snapshot.bare_id(self.id_slug)
+        return slide_language.bare_id(self.id_slug)
 
     @property
     def source_path(self) -> Path:
         """The slide file this call loads."""
-        suffix = f"-v{self.version}" if self.version else "-current"
-        return SLIDES_DIR / f"{self.id_slug}{suffix}.tex"
+        name = slide_language.frozen_name(self.id_slug, self.version) if self.version else slide_language.current_name(self.id_slug)
+        return SLIDES_DIR / name
 
     @property
     def template(self) -> str:
@@ -116,7 +115,7 @@ def render_text(
     A presenter render is the instructor version with beamer's second screen."""
     return slide_preview.render_slide_text_to_pdf(
         target.id_slug, text,
-        deck_version=VERSION_INSTRUCTOR if presenter else view, deck_language=language.lower(),
+        deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
         frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,
         capture_snapshot=capture_snapshot and not target.is_frozen_alone)

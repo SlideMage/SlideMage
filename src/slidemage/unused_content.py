@@ -62,6 +62,8 @@ from pathlib import Path
 from typing import Callable
 
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .slide_language import TRANSLATION_LANGUAGES, current_name
+from .tex_source import COMMENT_RE
 
 MEDIA_DIR = PROJECT_ROOT / "media"
 MEDIA_ARCHIVE_DIR = MEDIA_DIR / "archive"
@@ -84,11 +86,6 @@ def _is_media_metadata_filename(name: str) -> bool:
         name in MEDIA_METADATA_FILENAMES
         or (name.startswith(".alt-text.json.") and name.endswith(".tmp"))
     )
-# Same convention already used for syntax highlighting/other text scans in
-# this project (source_editor.py's own COMMENT_RE, alt_blocks.py's) --
-# an unescaped "%" starts a comment running to end of line; "\%" (a literal
-# percent sign) does not.
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
 
 
 def _strip_comments(text: str) -> str:
@@ -96,20 +93,6 @@ def _strip_comments(text: str) -> str:
     reference that only exists inside a commented-out line no longer
     counts as "in use" -- see module docstring."""
     return COMMENT_RE.sub("", text)
-
-SLIDE_CURRENT_RE = re.compile(
-    r"\\slide\{([^}]+)\}"
-    r"|\\slidefinal\{([^}]+)\}"
-    r"|\\omitslide\{([^}]+)\}"
-    r"|\\conditionalslide(?:\[[^\]]*\])?\{([^}]+)\}"
-    # \slidestep{id-slug}[versions]{steps} -- id-slug comes first here,
-    # unlike \conditionalslide's own [versions]{id-slug} order.
-    r"|\\slidestep\{([^}]+)\}(?:\[[^\]]*\])?\{[^}]*\}"
-)
-SLIDE_VERSION_RE = re.compile(
-    r"\\slideversion\{([^}]+)\}\{([^}]+)\}"
-    r"|\\omitslideversion\{([^}]+)\}\{([^}]+)\}"
-)
 
 LogCallback = Callable[[str], None]
 
@@ -133,20 +116,15 @@ def find_used_slide_filenames() -> set[str]:
     from types import SimpleNamespace
     from . import deck_editor, deck_language
     for text in _deck_texts():
-        for match in SLIDE_CURRENT_RE.finditer(text):
-            slide_id = next(g for g in match.groups() if g is not None)
-            used.add(f"{slide_id}-current.tex")
-        for match in SLIDE_VERSION_RE.finditer(text):
-            id1, ver1, id2, ver2 = match.groups()
-            slide_id, version = (id1, ver1) if id1 is not None else (id2, ver2)
-            used.add(f"{slide_id}-v{version}.tex")
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
-        for language in ("EN", "DE"):
+        # Keep explicit pins even when a translation call is folded into another slot.
+        used.update(call.source_filename for call in calls)
+        for language in TRANSLATION_LANGUAGES:
             for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
                 used.add(slot.call.source_filename)
                 if slot.related_ids:
                     # Current headers identify the partner even when the call pins a version.
-                    used.add(f"{slot.original.id_slug}-current.tex")
+                    used.add(current_name(slot.original.id_slug))
     return used
 
 

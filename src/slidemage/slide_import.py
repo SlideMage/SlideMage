@@ -472,7 +472,7 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
     (python-pptx's own PackageNotFoundError, odfpy's) -- neither is
     caught here, so a caller can show the real underlying error rather
     than a generic "import failed"."""
-    from . import deck_editor, slide_ids
+    from . import deck_editor, slide_ids, slide_language
 
     extractor = {".pptx": extract_pptx, ".odp": extract_odp}.get(source_path.suffix.lower())
     if extractor is None:
@@ -511,7 +511,7 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
         # up using.
         layout, body = slide_content_to_tex(content, image_rel_paths)
         header = slide_ids.build_new_slide_header()
-        dest = slide_ids.SLIDES_DIR / f"{id_slug}-current.tex"
+        dest = slide_ids.SLIDES_DIR / slide_language.current_name(id_slug)
         slide_ids.SLIDES_DIR.mkdir(parents=True, exist_ok=True)
         dest.write_text(header + body + "\n", encoding="utf-8", newline="")
         # Registered immediately, not batched until the end of the loop --

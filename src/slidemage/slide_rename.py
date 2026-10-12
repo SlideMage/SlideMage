@@ -1,7 +1,6 @@
 """Change a slide's own language segment (<id>-<slug> -> <id>-<LANG>-<slug>,
 or <id>-<OLDLANG>-<slug> -> <id>-<LANG>-<slug>), and keep translation
-cross-reference header comments honest afterward. See LANGUAGE_NOTES.md
-for the whole design.
+cross-reference header comments honest afterward.
 
 Two entry points:
 
@@ -30,7 +29,6 @@ add_deck_headers.py's own add-only caution.
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -39,6 +37,7 @@ from typing import Optional
 
 from . import alt_images, deck_headers, slide_ids, slide_language, slide_snapshot
 from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .processes import is_git_repo, is_git_tracked, no_console_kwargs
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
 WORKDECK_PATH = DECKS_DIR / "#workdeck.tex"
@@ -47,7 +46,7 @@ _REFERENCE_DIRS = (DECKS_DIR, ARCHIVE_DIR)
 
 # the slidemage GUI script runs with no console of its own -- same
 # fix, same reason, as compiler.py's/archive.py's own subprocess calls.
-_NO_CONSOLE_KWARGS: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+_NO_CONSOLE_KWARGS: dict = no_console_kwargs()
 
 # Mirrors deck_headers.SLIDE_CALL_RE's own macro set, plus conditionalslide
 # (deck_headers.py's own regex omits it -- a pre-existing gap unrelated to
@@ -61,20 +60,8 @@ _MACROS = (
 )
 
 
-def _is_git_repo() -> bool:
-    return (PROJECT_ROOT / ".git").exists()
-
-
-def _is_git_tracked(path: Path) -> bool:
-    result = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(path.relative_to(PROJECT_ROOT))],
-        cwd=PROJECT_ROOT, capture_output=True, **_NO_CONSOLE_KWARGS,
-    )
-    return result.returncode == 0
-
-
 def _move(src: Path, dest: Path) -> None:
-    if _is_git_repo() and _is_git_tracked(src):
+    if is_git_repo(PROJECT_ROOT) and is_git_tracked(src, PROJECT_ROOT):
         subprocess.run(
             ["git", "mv", str(src.relative_to(PROJECT_ROOT)), str(dest.relative_to(PROJECT_ROOT))],
             cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,
@@ -148,10 +135,10 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
     if new_id_slug == id_slug:
         return id_slug
 
-    current_src = SLIDES_DIR / f"{id_slug}-current.tex"
+    current_src = SLIDES_DIR / slide_language.current_name(id_slug)
     if not current_src.exists():
         raise FileNotFoundError(f"{current_src} does not exist")
-    current_dest = SLIDES_DIR / f"{new_id_slug}-current.tex"
+    current_dest = SLIDES_DIR / slide_language.current_name(new_id_slug)
     if current_dest.exists():
         raise FileExistsError(f"{current_dest} already exists")
 
@@ -232,90 +219,6 @@ def rename_slide_slug(id_slug: str, new_slug: str) -> str:
     of those. Returns the new id-slug (unchanged from id_slug if it
     already had this exact slug)."""
     return _apply_id_slug_rename(id_slug, compute_new_slug(id_slug, new_slug))
-
-
-def set_slide_languages_bulk(id_slugs: list[str], language: str) -> dict[str, str]:
-    """Bulk sibling of set_slide_language() -- e.g. for a one-time "tag
-    every legacy slide as EN" migration pass (see LANGUAGE_NOTES.md).
-    Same rename + reference-rewrite as the single-slide version, but
-    batched for many slides at once rather than looped:
-
-    - Every deck file is read and written **once**, with every applicable
-      rename applied to it in a single regex pass, instead of once per
-      (slide, deck) pair -- calling set_slide_language() in a loop over
-      665 slides would re-read/re-write every deck file 665 times each.
-    - deck_headers.regenerate_headers()/regenerate_translation_links()
-      (each their own full project-wide scan) run **once** at the end,
-      not once per slide.
-    - Destination-collision checks for every slide run *before* any file
-      is actually moved, so a problem partway through the list is caught
-      up front rather than leaving some slides renamed and others not.
-
-    Slides already carrying `language`'s own segment are silently
-    skipped (not an error, not included in the returned mapping) -- safe
-    to call again on a list that partially overlaps a previous run.
-    Returns {old_id_slug: new_id_slug} for every slide actually renamed.
-    """
-    mapping: dict[str, str] = {}
-    for id_slug in id_slugs:
-        new_id_slug = compute_new_id_slug(id_slug, language)
-        if new_id_slug != id_slug:
-            mapping[id_slug] = new_id_slug
-    if not mapping:
-        return {}
-
-    # Validate every rename up front -- a FileExistsError discovered on
-    # slide 400 of 665 after already moving the first 399 would leave the
-    # project in a half-migrated state that's annoying to reason about.
-    planned: list[tuple[Path, Path]] = []
-    for id_slug, new_id_slug in mapping.items():
-        current_src = SLIDES_DIR / f"{id_slug}-current.tex"
-        if not current_src.exists():
-            raise FileNotFoundError(f"{current_src} does not exist")
-        current_dest = SLIDES_DIR / f"{new_id_slug}-current.tex"
-        if current_dest.exists():
-            raise FileExistsError(f"{current_dest} already exists")
-        planned.append((current_src, current_dest))
-        version_prefix_len = len(id_slug)
-        for version_src in SLIDES_DIR.glob(f"{id_slug}-v*.tex"):
-            suffix = version_src.name[version_prefix_len:]
-            version_dest = SLIDES_DIR / f"{new_id_slug}{suffix}"
-            if version_dest.exists():
-                raise FileExistsError(f"{version_dest} already exists")
-            planned.append((version_src, version_dest))
-
-    for src, dest in planned:
-        _move(src, dest)
-
-    # One combined pattern, alternating every old id-slug -- three groups
-    # (macro-name/open-brace prefix, the id-slug itself, closing brace) so
-    # the replacement is a plain dict lookup on group 2, same anchoring
-    # (full-argument match, no substring risk) as _reference_pattern()
-    # above.
-    pattern = re.compile(
-        r"(\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{)("
-        + "|".join(re.escape(s) for s in mapping) + r")(\})"
-    )
-
-    def _repl(m: "re.Match[str]") -> str:
-        return m.group(1) + mapping[m.group(2)] + m.group(3)
-
-    deck_paths = [
-        p for directory in _REFERENCE_DIRS if directory.is_dir()
-        for p in directory.glob("*.tex")
-        if p.name != "#workdeck.tex"
-    ]
-    if WORKDECK_PATH.exists():
-        deck_paths.append(WORKDECK_PATH)
-    for deck_path in deck_paths:
-        text = deck_path.read_bytes().decode("utf-8")
-        new_text = pattern.sub(_repl, text)
-        if new_text != text:
-            deck_path.write_text(new_text, encoding="utf-8", newline="")
-
-    deck_headers.regenerate_headers()
-    regenerate_translation_links()
-    return mapping
 
 
 def _resolve_reference(bare_ref: str) -> Optional[str]:
@@ -402,7 +305,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
     first_ok = new_id[:1] in (slide_ids.RESERVED_FIRST_DIGITS if reserved else slide_ids.ID_ALPHABET)
     if len(new_id) != slide_ids.ID_LENGTH or not first_ok or not all(c in slide_ids.ID_ALPHABET for c in new_id[1:]):
         raise ValueError(f"{new_id!r} must be {slide_ids.ID_LENGTH} characters from {slide_ids.ID_ALPHABET!r}")
-    taken = slide_ids._existing_ids_from_csv() | slide_ids._existing_ids_from_disk()
+    taken = slide_ids.existing_ids_from_csv() | slide_ids.existing_ids_from_disk()
     if new_id.lower() in {i.lower() for i in taken}:
         raise FileExistsError(f"slide id {new_id!r} is already in use")
     old_files = sorted(SLIDES_DIR.glob(f"{old_id}-*.tex"))
@@ -415,8 +318,8 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
         if dest.exists():
             raise FileExistsError(f"{dest} already exists")
         _move(src, dest)
-        if src.name.endswith("-current.tex"):
-            old_slug = src.name[: -len("-current.tex")]
+        if src.name.endswith(slide_language.CURRENT_SUFFIX):
+            old_slug = src.name[: -len(slide_language.CURRENT_SUFFIX)]
             mapping[old_slug] = new_id + old_slug[len(old_id):]
 
     if mapping:
@@ -557,13 +460,13 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
     this function itself deletes unconditionally, no confirmation of its
     own. Returns {"files_removed": n, "deck_references_removed": n} for
     the caller's own confirmation/log message."""
-    current = SLIDES_DIR / f"{id_slug}-current.tex"
+    current = SLIDES_DIR / slide_language.current_name(id_slug)
     if not current.exists():
         raise FileNotFoundError(f"{current} does not exist")
 
     files = sorted(SLIDES_DIR.glob(f"{id_slug}-*.tex"))
     for path in files:
-        if _is_git_repo() and _is_git_tracked(path):
+        if is_git_repo(PROJECT_ROOT) and is_git_tracked(path, PROJECT_ROOT):
             subprocess.run(
                 ["git", "rm", "-q", str(path.relative_to(PROJECT_ROOT))],
                 cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,

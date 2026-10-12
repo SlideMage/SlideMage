@@ -28,9 +28,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
+from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
 from ... import pptx_export
-from ... import slide_ids, slide_snapshot, update_all_previews
+from ... import slide_ids, slide_language, slide_snapshot, update_all_previews
 from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, JobRow, RunStatus, job_title
 from ...compiler import (
     PDF_DIR,
@@ -667,7 +667,7 @@ class CompileJobsMixin:
         cancel = self.cancel_token
         if cancel is None or not self.compiling:
             return
-        self._log("==== Stop requested -- killing current job and skipping the rest ====")
+        self._log(compile_log.stop_requested())
         self._stop_requested = True
         cancel.request_stop()
 
@@ -727,7 +727,7 @@ class CompileJobsMixin:
         all_slides = sorted({slug for slugs in needed.values() for slug in slugs})
         if not self._confirm_build(
                 latex_lint.check_slide_files(
-                    slide_ids.SLIDES_DIR / f"{slug}-current.tex" for slug in all_slides),
+                    slide_ids.SLIDES_DIR / slide_language.current_name(slug) for slug in all_slides),
                 f"{len(all_slides)} slides"):
             return
 

@@ -19,14 +19,13 @@ from typing import Optional
 from PySide6.QtCore import QObject, Signal
 
 from ... import app_settings, deck_settings
+from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
 from ...deck_scan import Deck
-from ...slide_language import LANGUAGES
-from ...transcript import VERSION_AFTER, VERSION_DURING, VERSION_INSTRUCTOR
+from ...slide_language import TRANSLATION_LANGUAGES
 
-VIEWS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 MODES = ("preview", "split", "source", "details")
 # "mult" marks a slide that is the same in every language: not a language to edit in.
-UI_LANGUAGES = tuple(lang for lang in LANGUAGES if lang != "mult")
+UI_LANGUAGES = TRANSLATION_LANGUAGES
 
 # {deck path: {"view": ..., "language": ..., "mode": ...}} in app_settings.json.
 SETTINGS_KEY = "workspace_decks"
@@ -47,7 +46,7 @@ class WorkspaceState(QObject):
         super().__init__(parent)
         self.deck: Optional[Deck] = None
         self.focused_slide: Optional[str] = None
-        self.view = VERSION_INSTRUCTOR
+        self.view = VIEW_INSTRUCTOR
         self.language = UI_LANGUAGES[0]
         self.selection: tuple[str, ...] = ()
         self.mode = MODES[0]
@@ -71,7 +70,7 @@ class WorkspaceState(QObject):
         self.deck = deck
         remembered = self._remembered(deck)
         self.focused_slide, self.selection = None, ()
-        self.view = remembered["view"] if remembered.get("view") in VIEWS else VERSION_INSTRUCTOR
+        self.view = remembered["view"] if remembered.get("view") in VIEWS else VIEW_INSTRUCTOR
         self.language = remembered["language"] if remembered.get("language") in UI_LANGUAGES \
             else self._deck_language(deck)
         self.mode = remembered["mode"] if remembered.get("mode") in MODES else MODES[0]

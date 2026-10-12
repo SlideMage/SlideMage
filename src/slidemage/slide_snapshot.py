@@ -10,7 +10,7 @@ ever something the user needs to interact with).
 The point is purely to let a review UI show *something current-ish* without
 paying a LaTeX compile to do it -- these are a best-effort cache, refreshed
 opportunistically whenever a compile happens to touch that slide, not a
-guaranteed-fresh source of truth. See ALT_TEXT_NOTES.md.
+guaranteed-fresh source of truth.
 
 Requires PyMuPDF (`fitz`) -- the one addition beyond this project's
 previous "PySide6 only" dependency policy (requirements.txt). Justified by
@@ -43,8 +43,8 @@ directory sort and glob-match by slide first, template second -- e.g.
 `22s-*.png` finds both institutions' renders of one slide, which the old
 order couldn't do without a wildcard *before* the id too.
 
-**Gains an optional `<Lang>` segment right after the bare id (2026-08-24,
-see LANGUAGE_NOTES.md)** for a slide whose own id-slug carries a language
+**Gains an optional `<Lang>` segment right after the bare id (2026-08-24)**
+for a slide whose own id-slug carries a language
 segment (`EN`/`DE`/`mult` -- see slide_language.py): `22s-DE-UniGraz-
 1920-1080.png`. Resolved from disk inside snapshot_path() itself, not
 passed in by any caller, so this needed no changes anywhere else in the
@@ -83,7 +83,7 @@ _PNG_LOCK = threading.RLock()
 # to test builds. `\S+` stops at the space before a possible
 # "| omitted from student deck" suffix, so the bare id is always what's
 # captured regardless of that flag.
-_SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
+SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 
 # Every institution template is a one-line \input{} swap on top of an
 # otherwise-shared preamble (confirmed directly, 2026-08-15: all four
@@ -217,8 +217,8 @@ FULL_SIZE = (1920, 1080)
 THUMB_SIZE = (304, 171)
 
 
-def _slide_id_of(page: "fitz.Page") -> str | None:
-    match = _SLIDE_ID_RE.search(page.get_text())
+def slide_id_of(page: "fitz.Page") -> str | None:
+    match = SLIDE_ID_RE.search(page.get_text())
     return match.group(1) if match else None
 
 
@@ -326,7 +326,7 @@ def capture_deck(pdf_path: Path, template: str,
         current_id: str | None = None
         current_page: "fitz.Page | None" = None
         for page in doc:
-            slide_id = _slide_id_of(page)
+            slide_id = slide_id_of(page)
             if slide_id is None:
                 continue
             if slide_id != current_id:
@@ -376,7 +376,7 @@ def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
     "mult" -- a single shared thumbnail regardless of which language a
     deck last rendered it under, a deliberate simplification (not a full
     per-actually-rendered-language cache dimension) documented in
-    LANGUAGE_NOTES.md/README.md: "mult" slides are meant to be light,
+    README.md: "mult" slides are meant to be light,
     mostly-visual content where a stale-language thumbnail is a minor
     cosmetic gap, already covered by this cache's own "best-effort, never
     guaranteed-fresh" disclaimer above."""
@@ -403,17 +403,3 @@ def is_fresh(slide_id: str, slide_path: Path, template: str = DEFAULT_TEMPLATE,
         return png.stat().st_mtime >= slide_path.stat().st_mtime
     except OSError:
         return False
-
-
-def bare_id(id_slug: str) -> str:
-    """The short id a snapshot is keyed under, from a full `id_slug`
-    ("22s-More-Exotic-Bonds", the `\\slide{}`/`\\slideversion{}` macro
-    argument -- also a slide file's stem minus its `-current`/`-vX-Y-Z`
-    suffix). \\setSlideID (Slidemaster_preamble_base.tex) takes everything
-    up to the first "-" as \\slideID, which is what actually lands in a
-    compiled page's footer and therefore what capture_deck()/
-    capture_single_slide() key every snapshot under -- callers with only
-    the full id_slug (deck/slide-editor rows, which need it whole to
-    \\input{} the right file) need this to look one up.
-    """
-    return id_slug.partition("-")[0]

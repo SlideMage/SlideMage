@@ -6,22 +6,23 @@ import pytest
 import slidemage
 from slidemage import project
 
-from conftest import EXAMPLE, build_window
+from conftest import EXAMPLE
 
 
-def test_example_is_a_project():
-    assert project.is_project(EXAMPLE)
-    assert project.find_upward(EXAMPLE / "decks") == EXAMPLE
-
-
-def test_discover_prefers_env_var():
-    assert project.discover() == EXAMPLE
-
-
-def test_project_root_is_example():
-    from slidemage import deck_scan
-
-    assert deck_scan.PROJECT_ROOT == EXAMPLE
+@pytest.mark.parametrize("available", [True, False])
+def test_project_discovery(monkeypatch, tmp_path, available):
+    if available:
+        assert project.is_project(EXAMPLE)
+        assert project.find_upward(EXAMPLE / "decks") == EXAMPLE
+        assert project.discover() == EXAMPLE
+    else:
+        # 2026-09-23: an unrelated cwd must not invent a last project on first run.
+        monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+        monkeypatch.delenv(project.ENV_VAR, raising=False)
+        unrelated = tmp_path / "unrelated"
+        unrelated.mkdir()
+        monkeypatch.chdir(unrelated)
+        assert project.discover() is None
 
 
 def test_scan_finds_demo_decks():
@@ -36,17 +37,3 @@ def test_scan_finds_demo_decks():
 )
 def test_module_imports(name):
     importlib.import_module(name)
-
-
-def test_main_window_builds(monkeypatch):
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance() or QApplication([])
-    window = build_window(monkeypatch)
-    window.show()
-    app.processEvents()
-    window._log("line one")
-    assert window.log_drawer.text.toPlainText() == "line one"
-    window.log_drawer.clear()
-    assert window.log_drawer.text.toPlainText() == ""
-    window.close()

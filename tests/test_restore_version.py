@@ -22,6 +22,22 @@ def _backup_root(tmp_path, monkeypatch):
     monkeypatch.setattr(slide_source, "PROJECT_ROOT", tmp_path)
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("% \\setSlideVersion{9-9-9}\n\\setSlideVersion{1-2-3}\n", (1, 2, 3)),
+    ("text % \\setSlideVersion{9-9-9}\n\\setSlideVersion{1-2-3}\n", (1, 2, 3)),
+    ("% \\setSlideVersion{9-9-9}\n", None),
+    ("\\% \\setSlideVersion{1-2-3}\n\\setSlideVersion{4-5-6}\n", (1, 2, 3)),
+])
+def test_parse_version_returns_the_first_uncommented_marker(text, expected):
+    assert sv.parse_version(text) == expected
+
+
+def test_marker_edits_replace_all_live_markers_and_preserve_comments():
+    text = "% \\setSlideVersion{9-9-9}\n\\setSlideVersion{1-2-3}\nbody\n\\setSlideVersion{4-5-6}\n"
+    assert sv.strip_marker(text) == "% \\setSlideVersion{9-9-9}\nbody\n"
+    assert sv.set_marker(text, (2, 0, 0)) == "% \\setSlideVersion{9-9-9}\n\\setSlideVersion{2-0-0}\nbody\n"
+
+
 def test_restore_archives_current_and_bumps_the_version(tmp_path):
     slides = _slide(tmp_path, HEADER + "\\setSlideVersion{1-1-0}\nnew text\n",
                     {"1-0-0": "%% Included in decks: stale\n%%\n\nold text\n"})

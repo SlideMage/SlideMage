@@ -25,20 +25,20 @@ correct relative path is knowable up front and doesn't need runtime probing.
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
 from .deck_scan import ARCHIVE_DIR, PROJECT_ROOT, Deck
+from .processes import is_git_repo, is_git_tracked, no_console_kwargs
 
 INPUT_PATH_RE = re.compile(r"\\def\\input@path\{\{\.\./\}\}")
 
 # the slidemage GUI script runs with no console of its own, so without
 # this, Windows pops up a new console window for each `git` call below --
 # same fix, same reason, as compiler.py's own subprocess.Popen call.
-_NO_CONSOLE_KWARGS: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+_NO_CONSOLE_KWARGS: dict = no_console_kwargs()
 GRAPHICSPATH_RE = re.compile(r"\\graphicspath\{\{\.\./\}\}")
 BIB_IFFILEEXISTS_RE = re.compile(
     r"\\IfFileExists\{Slidemaster\.bib\}\{\\addbibresource\{Slidemaster\.bib\}\}"
@@ -67,21 +67,7 @@ def _sibling_dependencies(deck: Deck) -> list[str]:
     return siblings
 
 
-def _is_git_repo() -> bool:
-    return (PROJECT_ROOT / ".git").exists()
-
-
-def _is_git_tracked(path: Path) -> bool:
-    result = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(path.relative_to(PROJECT_ROOT))],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        **_NO_CONSOLE_KWARGS,
-    )
-    return result.returncode == 0
-
-
-def _read(path: Path) -> str:
+def read(path: Path) -> str:
     # newline='' passes CRLF through untouched, matching this project's own
     # convention (see add_deck_headers.py's own header comment) -- so the
     # regex substitutions below don't need to know or care which line
@@ -90,7 +76,7 @@ def _read(path: Path) -> str:
         return f.read()
 
 
-def _write(path: Path, text: str) -> None:
+def write(path: Path, text: str) -> None:
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
 
@@ -122,7 +108,7 @@ def archive_deck(deck: Deck) -> Path:
     # file that's never been committed -- a brand-new deck, or any file
     # still untracked -- so that case falls back to a plain move, same as
     # a non-git checkout; there's no history to preserve for it anyway.
-    if _is_git_repo() and _is_git_tracked(deck.path):
+    if is_git_repo(PROJECT_ROOT) and is_git_tracked(deck.path, PROJECT_ROOT):
         subprocess.run(
             [
                 "git", "mv",
@@ -136,7 +122,7 @@ def archive_deck(deck: Deck) -> Path:
     else:
         shutil.move(str(deck.path), str(dest))
 
-    text = _read(dest)
+    text = read(dest)
 
     text, n_input_path = INPUT_PATH_RE.subn(r"\\def\\input@path{{../../}}", text)
     text, n_graphicspath = GRAPHICSPATH_RE.subn(r"\\graphicspath{{../../}}", text)
@@ -159,5 +145,5 @@ def archive_deck(deck: Deck) -> Path:
                 "archived file's bibliography path may be broken; fix by hand."
             )
 
-    _write(dest, text)
+    write(dest, text)
     return dest

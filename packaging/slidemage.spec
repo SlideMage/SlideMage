@@ -15,6 +15,7 @@ ASSETS = ROOT / "src" / "slidemage" / "assets"
 
 # The whole assets/ folder is data: the fonts (assets/fonts), the Claude Code terminal's page and scripts
 # (assets/terminal, loaded by QtWebEngine from a file), the frame thumbnails (assets/frames) and the icons.
+# The release history is also data, stored beside version.py.
 # Everything else the app needs is code: PyInstaller follows the imports. Not the Anthropic SDK, which
 # loads its resource modules lazily, and not QtWebEngine's helper process and resources, which the PySide6
 # hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
@@ -70,7 +71,11 @@ else:
 a = Analysis(
     [str(ROOT / "packaging" / "launch_slidemage.py")],
     pathex=[str(ROOT / "src")],
-    datas=[(str(ASSETS), "slidemage/assets"), *TEMPLATE_DATAS],
+    datas=[
+        (str(ASSETS), "slidemage/assets"),
+        (str(ROOT / "src" / "slidemage" / "CHANGELOG.md"), "slidemage"),
+        *TEMPLATE_DATAS,
+    ],
     hiddenimports=HIDDEN_IMPORTS,
 )
 pyz = PYZ(a.pure)

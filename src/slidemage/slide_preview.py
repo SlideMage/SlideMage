@@ -5,27 +5,25 @@ match how the slide actually looks in context. A slide that is in no deck
 falls back to a generic standalone preamble matching decks/test.tex, this
 project's own demo deck.
 
-Reuses compiler.py's own _build_env()/FATAL_ERROR_RE (the Git-for-Windows
+Reuses compiler.py's own build_env()/FATAL_ERROR_RE (the Git-for-Windows
 Perl PATH fix and the "trust the log, not the exit code" pass/fail check --
 see that module's own docstring for why both are needed) rather than
 duplicating them.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime
 import re
 import shutil
-import subprocess
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import open_path
-from . import slide_snapshot
-from .compiler import BUILD_DIR, FATAL_ERROR_RE, _build_env
-from .deck_editor import VERSION_FILE_RE, format_call
+from . import compile_log, open_path
+from . import slide_language, slide_snapshot
+from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env, run_streamed
+from .deck_editor import format_call
 from .deck_scan import PROJECT_ROOT
 from .preview_metrics import measure, record_line, finish_rules
 
@@ -158,9 +156,9 @@ def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
     call that loads exactly that file -- used by the slide-source editor,
     which only knows its own file path, not a deck-parsed SlideCall."""
     name = path.name
-    if name.endswith("-current.tex"):
-        return "slide", name[: -len("-current.tex")], None
-    m = VERSION_FILE_RE.search(name)
+    if name.endswith(slide_language.CURRENT_SUFFIX):
+        return "slide", name[: -len(slide_language.CURRENT_SUFFIX)], None
+    m = slide_language.FROZEN_RE.search(name)
     if m:
         return "slideversion", name[: m.start()], m.group(1)
     raise ValueError(f"{name}: doesn't look like a slides/ current or version file")
@@ -243,7 +241,7 @@ def _presenter_mode_line(presenter: bool) -> str:
 
 
 @measure('build')
-def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
+def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
                          reuse_build: bool = True) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
@@ -268,14 +266,14 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
         from .preview_build import compile_cached
         dest_pdf = compile_cached(
             wrapper_text, id_slug, log, project_root=PROJECT_ROOT,
-            build_dir=BUILD_DIR, env=_build_env(), fatal_error_re=FATAL_ERROR_RE)
+            build_dir=BUILD_DIR, env=build_env(), fatal_error_re=FATAL_ERROR_RE)
         if snapshot_template is not None:
             try:
                 slide_snapshot.capture_single_slide(
-                    dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
+                    dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
             except Exception as exc:
                 log(f"    (preview snapshot not updated: {exc})")
-        log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
+        log(compile_log.render_passed(id_slug, dest_pdf))
         return dest_pdf
 
     DECKS_DIR.mkdir(parents=True, exist_ok=True)
@@ -336,23 +334,11 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             "latexmk", "-f", f"-jobname={jobname}", f"-outdir={BUILD_DIR.as_posix()}",
             str(rel_wrapper),
         ]
-        env = _build_env()
-        popen_kwargs: dict = {}
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        env = build_env()
 
-        log(f"==== Rendering {id_slug} -> {jobname} ====")
+        log(compile_log.rendering(id_slug, jobname))
         try:
-            proc = subprocess.Popen(
-                cmd, cwd=PROJECT_ROOT, env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                **popen_kwargs,
-            )
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                record_line(line)
-                log(line.rstrip("\n"))
-            proc.wait()
+            run_streamed(cmd, cwd=PROJECT_ROOT, env=env, log=log, on_line=record_line)
             finish_rules()
         except FileNotFoundError:
             raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")
@@ -373,7 +359,7 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
             if log_path.exists():
                 lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
                 tail = "\n".join(lines[-20:])
-            log(f"*** FAIL: render of {id_slug} -- see log tail below ***")
+            log(compile_log.render_failed(id_slug, "see log tail below"))
             raise RuntimeError(f"Render failed for {id_slug}:\n{tail}")
 
         # Move the finished PDF out of .build/ into a fresh, genuinely
@@ -408,11 +394,11 @@ def _compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                 # nomenclature") from every "Preview -> Render now" render,
                 # not just this project's own recently-touched slides.
                 slide_snapshot.capture_single_slide(
-                    dest_pdf, slide_snapshot.bare_id(id_slug), snapshot_template)
+                    dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
             except Exception as exc:
                 log(f"    (preview snapshot not updated: {exc})")
 
-        log(f"==== PASS: render of {id_slug} -> {dest_pdf} ====")
+        log(compile_log.render_passed(id_slug, dest_pdf))
         return dest_pdf
 
 
@@ -494,7 +480,7 @@ def render_slide_to_pdf(
         slide_snapshot.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and overlay is None else None
     )
-    return _compile_and_extract(
+    return compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build,
     )
@@ -557,7 +543,7 @@ def render_slide_text_to_pdf(
     Also refreshes this slide's compile-time PNG snapshot (2026-08-31,
     direct report: "Render to PDF" succeeded but "Preview" then said no
     preview had been generated yet) -- this function used to call
-    _compile_and_extract() without a `snapshot_template`, so it silently
+    compile_and_extract() without a `snapshot_template`, so it silently
     skipped the capture_single_slide() side effect that
     render_slide_to_pdf() above already documents and performs; the
     Preview (preview_target.cached_image()) reads
@@ -590,7 +576,7 @@ def render_slide_text_to_pdf(
         if capture_snapshot and deck_version in (None, "instructor") and not presenter
         and preview_mode == "slide" and overlay is None else None
     )
-    return _compile_and_extract(
+    return compile_and_extract(
         wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build,
     )

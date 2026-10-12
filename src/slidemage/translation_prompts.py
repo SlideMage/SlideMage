@@ -136,10 +136,6 @@ def _save(default: Optional[PromptConfig], prompts: ModelPromptStore) -> None:
     )
 
 
-def save_prompts(prompts: ModelPromptStore) -> None:
-    _save(get_default_prompt(), prompts)
-
-
 def get_prompt(model: str, source_lang: str, target_lang: str) -> Optional[PromptConfig]:
     """The exact model+pair entry only -- None if nothing is configured
     for it specifically, even if a default prompt exists. Use

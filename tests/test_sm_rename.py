@@ -14,9 +14,6 @@ def test_project_names_renamed_theme_names_kept():
     for kept in (r"\gothamset{x}", r"\gothamFrametitleLeftpading", r"\gotham@block",
                  r"\begin{gothamtable}", "Gotham theme"):
         assert kept in out
-
-
-def test_python_and_lua_spellings():
     assert sm_rename.rename_text(r'tex.sprint("\\gothamAltShort{")') == r'tex.sprint("\\SMAltShort{")'
     assert sm_rename.rename_text(r're.compile(r"\\gothamTikz(?:mark|word)")') == \
         r're.compile(r"\\SMTikz(?:mark|word)")'

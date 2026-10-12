@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
-from ...palette import PALETTES
+from .palette import PALETTES
 from .fonts import load_fonts
 from .kit_qss import KIT_ICONS, build_kit_qss
 from .tokens import FONT_ICONS, Tokens, tokens_for

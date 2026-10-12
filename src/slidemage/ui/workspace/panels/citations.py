@@ -12,7 +12,7 @@ from .... import bibliography
 from ....latex_lint import cited_keys
 from ...kit import kit_qss as q
 from ...kit.widgets import Button
-from .base import Row, SidePanel, box, empty_row, text
+from .base import Row, SidePanel, box, empty_row
 
 
 class Citations(SidePanel):

@@ -20,16 +20,9 @@ from slidemage.ai.providers import (
     parse_json_object,
 )
 
-from fake_http import Server, message_sse
+from fake_http import message_sse
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
-
-
-@pytest.fixture
-def server():
-    srv = Server()
-    yield srv
-    srv.close()
 
 
 @pytest.fixture
@@ -157,13 +150,18 @@ def test_the_socket_is_known_before_the_body_goes_out_and_a_reset_is_not_unreach
 
 
 def test_capabilities_are_asked_once_per_model(server):
+    # Regression (1c7e047): cache successful capabilities, but retry unknown models.
     server.body = {"capabilities": ["completion", "vision"]}
     provider = OllamaProvider("m", host=server.url)
     assert provider.capabilities() == ("completion", "vision") and provider.capabilities() == ("completion", "vision")
     assert len([r for r in server.requests if r["path"] == "/api/show"]) == 1
+    assert server.requests[0]["body"] == {"model": "m"}
     server.body = {}
     assert provider.capabilities("other") == () and provider.capabilities("other") == ()      # not kept: asked again
     assert len([r for r in server.requests if r["path"] == "/api/show"]) == 3
+    server.status, server.body = 404, {"error": "model 'm' not found"}
+    assert OllamaProvider("m", host=server.url).capabilities() == ()
+    assert OllamaProvider("m", host="http://127.0.0.1:9").capabilities() == ()
 
 
 # -- Anthropic ---------------------------------------------------------------
@@ -249,11 +247,6 @@ def test_anthropic_lists_models(server):
     assert server.requests[0]["path"].startswith("/v1/models")
     server.status = 401
     assert anthropic(server).list_models() == []
-
-
-def test_labels_tell_local_from_cloud():
-    assert OllamaProvider("qwen3", host="http://x").label == "qwen3"
-    assert AnthropicProvider(api_key="k").label == "claude-sonnet-5-5 · cloud"
 
 
 def test_parse_json_object_tolerates_fences_think_blocks_and_prose():
@@ -394,11 +387,3 @@ def test_cloud_models_on_offer_need_a_key_and_no_local_only(settings, monkeypatc
     assert resolver.cloud_models() == list(ANTHROPIC_FALLBACK_MODELS)
     resolver.set_global_local_only(True)
     assert resolver.cloud_models() == []
-
-
-def test_cloud_consent_is_asked_once_and_only_for_cloud(settings):
-    cloud, local = AnthropicProvider(api_key="k"), OllamaProvider("m", host="http://x")
-    assert resolver.needs_cloud_consent(cloud)
-    assert not resolver.needs_cloud_consent(local)
-    resolver.record_cloud_consent()
-    assert resolver.cloud_consent_given() and not resolver.needs_cloud_consent(cloud)

@@ -16,7 +16,7 @@ v4.1.0 (direct instruction): an update mode per user and machine --
 config_dir(), never in the project. A release that breaks with the past
 is always asked about, even in "auto" mode: see plan_update(). A release
 is breaking when its notes contain a paragraph starting "BREAKING:" (or a
-"## Breaking changes" section) -- version.py's history entry supplies
+"## Breaking changes" section) -- CHANGELOG.md's history entry supplies
 them, packaging/release_notes.py enforces the marker for a major bump --
 or when its major version number is higher than the running one.
 """

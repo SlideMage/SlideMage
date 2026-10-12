@@ -2,23 +2,16 @@
 text search of the project's files."""
 from __future__ import annotations
 
-import time
 from dataclasses import replace
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
 
-from conftest import build_window
+from conftest import build_window, wait_until
 from slidemage import slide_ids
 from slidemage.ui.workspace import palette as palette_module
 from slidemage.ui.workspace.palette import CHAT, GO_TO_DECK, GO_TO_SLIDE, TEXT_HITS, matches, words_of
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture
@@ -28,14 +21,6 @@ def window(qapp, monkeypatch):
     window.palette._debounce.setInterval(0)
     yield window
     window.palette.stop_search()
-
-
-def wait_until(condition, seconds=5):
-    end = time.time() + seconds
-    while not condition() and time.time() < end:
-        QApplication.processEvents()
-        time.sleep(0.01)
-    assert condition()
 
 
 def labels(palette, group=None):
@@ -67,7 +52,11 @@ def test_every_word_must_match_the_label_or_the_group():
 def test_it_opens_on_every_visible_command_grouped_and_closes_on_escape(window):
     palette = window.palette
     window.slide_list.tree.setCurrentItem(window.slide_list.tree.slide_items()[0])
-    palette.open()
+    window.commands.run("palette", window)
+    assert palette.isVisible()
+    window.commands.run("palette", window)
+    assert not palette.isVisible()
+    window.commands.run("palette", window)
     assert palette.isVisible()
     focused = window.state.focused_slide
     assert groups(palette) == ["View & build", f"Slide {focused}", "Deck", "Project"]
@@ -144,13 +133,6 @@ def test_a_disabled_command_is_listed_but_does_not_run(window):
     assert palette.isVisible()
 
 
-def test_the_shortcut_toggles_the_palette(window):
-    window.commands.run("palette", window)
-    assert window.palette.isVisible()
-    window.commands.run("palette", window)
-    assert not window.palette.isVisible()
-
-
 # -- go to slide and deck ----------------------------------------------------------------
 
 def test_a_slide_of_the_deck_is_found_by_id_or_title_and_focused(window):
@@ -162,23 +144,13 @@ def test_a_slide_of_the_deck_is_found_by_id_or_title_and_focused(window):
     assert entry.label == f"{row.call.id} · {row.title}" and entry.meta == row.call.id_slug
     type_text(palette, row.title.split()[0])
     assert any(e.label == f"{row.call.id} · {row.title}" for e in palette._entries)
+    slide_list = window.slide_list
+    slide_list.find.setText(slide_list.rows()[0].call.id)
+    item = next(i for i in slide_list.tree.slide_items() if slide_list.tree.data_of(i).call.id == row.call.id)
+    assert item.isHidden()
     type_text(palette, row.call.id)
     palette._run(palette._entries.index(next(e for e in palette._entries if e.group == GO_TO_SLIDE)))
     assert window.state.focused_slide == row.call.id
-
-
-def test_going_to_a_slide_shows_it_in_the_list_though_the_find_box_hides_it(window):
-    palette, slide_list = window.palette, window.slide_list
-    rows = slide_list.rows()
-    target = rows[-1]
-    slide_list.find.setText(rows[0].call.id)
-    item = next(i for i in slide_list.tree.slide_items() if slide_list.tree.data_of(i) is not None
-                and slide_list.tree.data_of(i).call.id == target.call.id)
-    assert item.isHidden()
-    palette.open()
-    type_text(palette, target.call.id)
-    palette._run(palette._entries.index(next(e for e in palette._entries if e.group == GO_TO_SLIDE)))
-    assert window.state.focused_slide == target.call.id
     assert slide_list.find.text() == "" and not item.isHidden() and slide_list.tree.currentItem() is item
 
 
@@ -209,24 +181,22 @@ def test_another_deck_is_found_by_name_and_switched_to(window):
 
 # -- text in the project's files ------------------------------------------------------------
 
-def test_a_short_text_is_not_searched_and_has_no_chat_entry(window):
-    palette = window.palette
-    palette.open()
-    type_text(palette, "ci")
-    assert palette._worker is None and not palette._debounce.isActive()
-    assert not [e for e in palette._entries if e.group in (TEXT_HITS, CHAT)]
-
-
 def test_from_three_characters_the_files_are_searched_and_a_hit_opens_at_its_line(window, monkeypatch):
     opened = []
     monkeypatch.setattr(window, "open_slide_editor", lambda path, on_saved=None, line=None: opened.append((path, line)))
     palette = window.palette
     palette.open()
+    type_text(palette, "ci")
+    assert palette._worker is None and not palette._debounce.isActive()
+    assert not [e for e in palette._entries if e.group in (TEXT_HITS, CHAT)]
     type_text(palette, "citation")
+    press(palette, Qt.Key.Key_Up)  # choose the chat row; hits will be inserted above it
+    current = palette._entries[palette._current].label
     chat = palette._entries[-1]
     assert (chat.group, chat.label, chat.enabled) == (CHAT, "Ask the chat: “citation”", True)
     assert palette._debounce.isActive()
     wait_until(lambda: palette._hits_query == "citation")
+    assert palette._entries[palette._current].label == current
     hits = [e for e in palette._entries if e.group.startswith(TEXT_HITS)]
     assert hits and len(hits) <= palette_module.MAX_HITS and all(e.detail and e.meta.startswith("line ") for e in hits)
     assert palette._entries[-1] is not hits[-1] and palette._entries[-1].group == CHAT      # the chat stays last
@@ -247,14 +217,3 @@ def test_typing_on_discards_the_hits_of_the_old_text_and_closing_stops_the_searc
     assert palette._worker is not None
     palette.hide()
     assert palette._worker is None and not palette._debounce.isActive()
-
-
-def test_the_entry_that_was_current_stays_when_the_hits_arrive(window):
-    palette = window.palette
-    palette.open()
-    type_text(palette, "view")
-    press(palette, Qt.Key.Key_Down)
-    current = palette._entries[palette._current].label
-    palette._hits = []
-    palette._refresh()
-    assert palette._entries[palette._current].label == current

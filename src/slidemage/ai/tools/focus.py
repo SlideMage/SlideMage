@@ -32,8 +32,8 @@ def get_focus(ctx: ToolContext, args: dict) -> str:
         return "\n".join(lines)
     name = relative(ctx.root, path.resolve())
     is_open, dirty = ctx.workspace.is_open(path), ctx.workspace.is_dirty(path)
-    lines.append(f"File shown: {name}" + (f" (unsaved edits in the editor: the file on disk is older; "
-                                          f"read_buffer shows them)" if dirty else ""))
+    lines.append(f"File shown: {name}" + (" (unsaved edits in the editor: the file on disk is older; "
+                                          "read_buffer shows them)" if dirty else ""))
     if path.suffix == ".tex":
         text = current_text(ctx.workspace, path)
         errors = [i for i in latex_lint.lint_text(text, path.name, path) if i.severity == latex_lint.ERROR]

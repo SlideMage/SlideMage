@@ -10,18 +10,13 @@ import subprocess
 import sys
 
 import pytest
-from conftest import SLIDE_TEXT, make_project
+from conftest import SLIDE_TEXT
 
 from slidemage.ai import claude_hook
 from slidemage.ai.tools.edits import PROTECTED_MESSAGE
 
 CURRENT = "abc-EN-Hello-current.tex"
 FROZEN = "abc-EN-Hello-v1-0-0.tex"
-
-
-@pytest.fixture
-def root(tmp_path, monkeypatch):
-    return make_project(monkeypatch, tmp_path / "project")
 
 
 def event(root, tool, name=CURRENT, **tool_input):
@@ -34,9 +29,13 @@ def edit(root, old, new, name=CURRENT, **more):
     return event(root, "Edit", name, old_string=old, new_string=new, **more)
 
 
-def test_an_edit_of_the_body_is_allowed(root):
-    assert claude_hook.blocked_reason(edit(root, "First point", "1st point")) is None
-    assert claude_hook.blocked_reason(edit(root, "\\item First point", "\\item First\n\t\t\\item inserted")) is None
+@pytest.mark.parametrize("old, new", [
+    ("First point", "1st point"),
+    ("\\item First point", "\\item First\n\t\t\\item inserted"),
+    ("First point\r\n\t\t\\item Second point", "x"),
+])
+def test_an_edit_of_the_body_is_allowed(root, old, new):
+    assert claude_hook.blocked_reason(edit(root, old, new)) is None
 
 
 @pytest.mark.parametrize("old, new", [
@@ -44,15 +43,10 @@ def test_an_edit_of_the_body_is_allowed(root):
     ("\\setSlideVersion{1-0-0}", "\\setSlideVersion{2-0-0}"),
     ("\\hbox{overlay}", "\\hbox{changed}"),                                       # inside \vbox to 0pt{...}
     ("\\setSlideVersion{1-0-0}\r\n", ""),                                         # deleting a protected line
+    ("\\setSlideVersion{1-0-0}\r\n\\begin", "\\begin"),
 ])
 def test_an_edit_of_a_protected_part_is_blocked(root, old, new):
     assert claude_hook.blocked_reason(edit(root, old, new)) == PROTECTED_MESSAGE
-
-
-def test_crlf_in_the_file_or_the_tool_input_makes_no_difference(root):
-    assert SLIDE_TEXT.count("\r\n") > 3
-    assert claude_hook.blocked_reason(edit(root, "First point\r\n\t\t\\item Second point", "x")) is None
-    assert claude_hook.blocked_reason(edit(root, "\\setSlideVersion{1-0-0}\r\n\\begin", "\\begin")) == PROTECTED_MESSAGE
 
 
 def test_replace_all_counts_every_occurrence(root):
@@ -99,9 +93,6 @@ def test_what_is_not_a_slide_or_cannot_be_judged_is_allowed(root):
     assert claude_hook.blocked_reason(event(root, "Bash")) is None
     assert claude_hook.blocked_reason({"tool_name": "Edit", "tool_input": "garbage"}) is None
     assert claude_hook.blocked_reason({}) is None
-
-
-def test_an_ambiguous_edit_is_left_to_claude_code_to_reject(root):
     assert claude_hook.blocked_reason(edit(root, "point", "idea")) is None     # twice in the file, no replace_all
 
 
@@ -132,25 +123,20 @@ def test_main_never_blocks_because_of_its_own_trouble(monkeypatch, capsys):
     assert run_main(monkeypatch, capsys, "[]")[0] == 0
 
 
-def test_the_command_as_claude_code_runs_it(tmp_path):
-    """The hook as a real process, the way the settings JSON starts it, in a project with a slide."""
+@pytest.mark.parametrize("argv, tool, name, arguments, reason", [
+    (["-m", "slidemage.ai.claude_hook"], "Edit", CURRENT,
+     {"old_string": "\\setSlideVersion{1-0-0}", "new_string": ""}, b"protected part"),
+    (["-m", "slidemage", "--claude-hook"], "Write", FROZEN, {"content": "x"}, b"frozen version"),
+], ids=["module-command", "frozen-build-flag"])
+def test_the_command_as_claude_code_runs_it(tmp_path, argv, tool, name, arguments, reason):
+    """Both source and frozen-build entry points block edits in a real process without a window."""
     project = make_project_in(tmp_path)
-    payload = json.dumps({"cwd": str(project), "tool_name": "Edit", "tool_input": {
-        "file_path": str(project / "slides" / CURRENT), "old_string": "\\setSlideVersion{1-0-0}", "new_string": ""}})
-    env = {**os.environ, "SLIDEMASTER_PROJECT": str(project)}
-    done = subprocess.run([sys.executable, "-m", "slidemage.ai.claude_hook"], input=payload.encode(), env=env,
+    payload = json.dumps({"cwd": str(project), "tool_name": tool, "tool_input": {
+        "file_path": str(project / "slides" / name), **arguments}})
+    env = {**os.environ, "SLIDEMASTER_PROJECT": str(project), "QT_QPA_PLATFORM": "offscreen"}
+    done = subprocess.run([sys.executable, *argv], input=payload.encode(), env=env,
                           capture_output=True, timeout=60)
-    assert done.returncode == 2 and b"protected part" in done.stderr
-
-
-def test_the_program_runs_the_hook_with_the_flag_as_the_frozen_build_does(tmp_path):
-    """`SlideMage --claude-hook` (the frozen executable has no `-m`): same answer, and no window."""
-    project = make_project_in(tmp_path)
-    payload = json.dumps({"cwd": str(project), "tool_name": "Write", "tool_input": {
-        "file_path": str(project / "slides" / FROZEN), "content": "x"}})
-    done = subprocess.run([sys.executable, "-m", "slidemage", "--claude-hook"], input=payload.encode(), capture_output=True,
-                          env={**os.environ, "SLIDEMASTER_PROJECT": str(project), "QT_QPA_PLATFORM": "offscreen"}, timeout=60)
-    assert done.returncode == 2 and b"frozen version" in done.stderr
+    assert done.returncode == 2 and reason in done.stderr
 
 
 def make_project_in(tmp_path):

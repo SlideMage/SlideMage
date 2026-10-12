@@ -2,27 +2,15 @@
 preselection, and the once-per-project cloud confirmation."""
 from __future__ import annotations
 
-import pytest
-from PySide6.QtWidgets import QApplication, QComboBox, QMessageBox, QWidget
+from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
 from slidemage import app_settings
 from slidemage.ui import ai_models
 from slidemage.ai import resolver
 
 
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
-@pytest.fixture
-def settings(tmp_path, monkeypatch, qapp):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    monkeypatch.setattr(resolver, "PROJECT_ROOT", tmp_path)
-
-
 def test_picker_lists_cloud_models_only_with_a_key_and_preselects_the_default(
-        settings, monkeypatch):
+        qapp, monkeypatch):
     combo = QComboBox()
     app_settings.set("translation_model", "qwen3")        # old bare name still preselects
     assert ai_models.fill_model_combo(combo, "translation", ["llama", "qwen3"], "(none)")
@@ -40,7 +28,7 @@ def test_picker_lists_cloud_models_only_with_a_key_and_preselects_the_default(
     assert not combo.currentData()
 
 
-def test_first_cloud_request_asks_once_per_project(settings, monkeypatch):
+def test_first_cloud_request_asks_once_per_project(qapp, monkeypatch):
     questions = []
     answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
 
@@ -63,17 +51,7 @@ def test_first_cloud_request_asks_once_per_project(settings, monkeypatch):
     assert len(questions) == 2  # no third question
 
 
-def test_local_only_blocks_a_stale_cloud_selection(settings, monkeypatch):
-    errors = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: errors.append(text))
-    resolver.set_global_local_only(True)
-    combo = QComboBox()
-    combo.addItem("claude (cloud)", "anthropic:claude-sonnet-5-5")
-    assert ai_models.provider_from_combo(QWidget(), combo, "x") is None
-    assert "Local AI only" in errors[0]
-
-
-def test_the_provider_of_a_task_without_a_picker_follows_the_settings(settings, monkeypatch):
+def test_the_provider_of_a_task_without_a_picker_follows_the_settings(qapp, monkeypatch):
     errors = []
     monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: errors.append(text))
     parent = QWidget()

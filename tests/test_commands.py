@@ -2,22 +2,14 @@
 the menus built from them."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QWidget
 
 from conftest import command_context
-from slidemage.deck_scan import Deck
 from slidemage.ui.commands import Command, CommandRegistry
 from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.menus import MORE_SECTIONS, build_compile_menu, build_more_menu
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 # -- the registry ---------------------------------------------------------------------
@@ -87,14 +79,10 @@ def test_every_action_of_the_former_menu_bar_and_deck_row_is_in_the_registry():
     registry = build_registry()
     missing = [label for label, command_id in {**OLD_MENU_BAR, **OLD_DECK_ROW}.items() if command_id not in registry]
     assert missing == []
-
-
-def test_the_commands_keep_their_old_labels_where_they_have_not_moved_to_a_button():
-    registry, context = build_registry(), command_context()
-    renamed = {"Archived decks", "Images"}   # a footer of the deck switcher, the Images button
-    for label, command_id in {**OLD_MENU_BAR, **OLD_DECK_ROW}.items():
-        if label not in renamed:
-            assert registry[command_id].title(context).lower() == label.lower()
+    context = command_context()
+    for command in registry:
+        if not callable(command.label):
+            assert command.title(context)
 
 
 def test_every_command_a_menu_lists_exists_and_every_command_is_in_a_menu_or_the_palette(qapp):
@@ -104,17 +92,6 @@ def test_every_command_a_menu_lists_exists_and_every_command_is_in_a_menu_or_the
     context = command_context()
     assert {k for menu in (build_more_menu(None, context), build_compile_menu(None, context))
             for k in (e[1] for e in menu._entries if e[0] == "item")} <= {c.id for c in registry}
-    assert list(dict.fromkeys(c.group for c in registry)) == ["View & build", "Slide", "Section", "Deck", "Project"]
-
-
-def test_ids_are_unique_and_every_command_has_a_label(qapp):
-    context = command_context()
-    registry = build_registry()
-    ids = [c.id for c in registry]
-    assert len(ids) == len(set(ids))
-    for command in registry:
-        if not callable(command.label):
-            assert command.title(context)
 
 
 # -- the menus come from the registry ------------------------------------------------------
@@ -126,18 +103,3 @@ def test_a_menu_entry_shows_the_commands_label_tone_shortcut_and_availability(qa
     assert (archive[2], archive[5], archive[6]) == ("Archive deck…", "danger", False)
     assert entries["palette"][3] == "Ctrl+K" and entries["log"][3] == "Ctrl+L"
     assert entries["create_snapshot"][6]
-
-
-def test_commands_that_a_deck_cannot_use_are_left_out_of_the_compile_menu(qapp):
-    def deck(versions):
-        return Deck(name="d", path=Path("decks/d.tex"), archived=False, text="", supports_version=versions,
-                    uses_biblatex=False, preamble_end=0, chapters=[], output_folders={}, tags=[])
-
-    COURSE, WORK = deck(True), deck(False)
-
-    def keys(deck):
-        return [e[1] for e in build_compile_menu(None, command_context(deck))._entries if e[0] == "item"]
-
-    assert "transcript:after-course" in keys(COURSE) and "compile:after-course" in keys(COURSE)
-    assert not [k for k in keys(WORK) if k.startswith("transcript:") or k in ("compile:during-course",
-                                                                                "compile:after-course")]

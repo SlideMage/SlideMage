@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QPlainTextEdit, QSpinBox, QStackedWidget
 
-from ... import alt_draft, draft_prompts
+from ... import alt_draft, draft_prompts, slide_language
 from ... import translation_prompts as tp
 from ..kit.widgets import Button, Field, Page, SegmentedControl, caption, columns, row, set_property
 
@@ -99,7 +99,8 @@ class TranslationPage(Page):
         self.model_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.model_combo.setMinimumContentsLength(16)
         self.source_combo, self.target_combo = QComboBox(), QComboBox()
-        for combo, codes in ((self.source_combo, ("en", "de")), (self.target_combo, ("de", "en"))):
+        languages = tuple(lang.lower() for lang in slide_language.TRANSLATION_LANGUAGES)
+        for combo, codes in ((self.source_combo, languages), (self.target_combo, languages[::-1])):
             combo.setEditable(True)
             combo.addItems(codes)
             combo.setMinimumWidth(80)       # an editable combo sizes itself to its two letters otherwise

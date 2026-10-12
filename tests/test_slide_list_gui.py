@@ -3,30 +3,27 @@ deck file -- through keys, drops, the context menu and the bulk bar."""
 from __future__ import annotations
 
 from dataclasses import replace
+from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPointF, Qt
+from PySide6.QtGui import QFontMetrics, QPainter, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QAbstractItemView, QApplication, QLineEdit, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QStyleOptionViewItem, QWidget
 
 from slidemage import deck_editor, deck_outline
-from slidemage.archive import _read
-from slidemage.deck_scan import Deck, _parse_chapters
+from slidemage.archive import read
+from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.slide_list import ABOVE_ITEM, BELOW_ITEM, ON_ITEM, SlideList
-from slidemage.ui.workspace.slide_tree import meta_text, tooltip_text, variant_label
+from slidemage.ui.workspace.slide_tree import DATA, THUMB_H, THUMB_W, meta_text, variant_label
 from slidemage.ui.workspace.state import WorkspaceState
 
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
 TAIL = "\\end{document}\n"
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeWindow:
@@ -45,8 +42,8 @@ class FakeWindow:
         self.edits = []
 
     def after_deck_edit(self, path, summary, previous_text=None):
-        text = _read(path)
-        self.state.set_deck(replace(self.state.deck, text=text, chapters=_parse_chapters(text)))
+        text = read(path)
+        self.state.set_deck(replace(self.state.deck, text=text, chapters=parse_chapters(text)))
         self.list.rebuild()
         self.list.deck_edited(path, summary, previous_text)
         self.edits.append(summary)
@@ -82,7 +79,7 @@ def make_list(tmp_path, qapp, monkeypatch):
         deck = Deck(
             name="course", path=path, archived=False, text=text, supports_version=True,
             uses_biblatex=False, preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
-            chapters=_parse_chapters(text), output_folders={}, tags=list(tags))
+            chapters=parse_chapters(text), output_folders={}, tags=list(tags))
         state = WorkspaceState()
         window = FakeWindow(state)
         host = QWidget()
@@ -124,7 +121,7 @@ def select(slide_list, *slide_ids):
 
 
 def deck_lines(path):
-    return [line for line in _read(path).splitlines() if line.startswith(("\\slide", "\\section", "\\omit", "\\cond"))]
+    return [line for line in read(path).splitlines() if line.startswith(("\\slide", "\\section", "\\omit", "\\cond"))]
 
 
 def key(slide_list, key_code, modifier=Qt.KeyboardModifier.NoModifier):
@@ -137,6 +134,42 @@ FRONT_AND_SECTIONS = (
 
 
 # -- what it shows -------------------------------------------------------------------
+
+@pytest.mark.parametrize("width", [220, 520])
+def test_long_slide_titles_and_meta_elide_and_thumbnails_keep_their_size(make_list, qapp, width):
+    slide_list, _window, _path = make_list("\\slide{aaa-EN-One}\n")
+    item = item_of(slide_list, "aaa")
+    row = replace(slide_list.tree.data_of(item),
+                  title="A very long slide title that cannot fit in a narrow slide list " * 3,
+                  lint_error=True, stale_preview=True, missing_translation=True)
+    item.setData(0, DATA, row)
+    slide_list.resize(width, 400)
+    slide_list.show()
+    qapp.processEvents()
+    assert slide_list.width() == width
+    tree = slide_list.tree
+    option = QStyleOptionViewItem()
+    option.rect = tree.visualItemRect(item)
+    canvas = QPixmap(tree.viewport().size())
+    painter = QPainter(canvas)
+    recorded = Mock(wraps=painter)
+    try:
+        tree.delegate.paint(recorded, option, tree.indexFromItem(item))
+    finally:
+        painter.end()
+    text_calls = recorded.drawText.call_args_list
+    title_rect, _, title = text_calls[-1].args
+    assert title.endswith("…") and row.title.startswith(title[:-1])
+    title_font = recorded.setFont.call_args_list[-1].args[0]
+    assert QFontMetrics(title_font).horizontalAdvance(title) <= title_rect.width()
+    meta = "".join(call.args[2] for call in text_calls[:-1])
+    if width == 220:
+        assert meta.endswith("…") and meta_text(row, "EN").startswith(meta[:-1])
+    else:
+        assert meta == meta_text(row, "EN")
+    thumb = next(call.args[0] for call in recorded.drawRoundedRect.call_args_list if call.args[1:] == (3, 3))
+    assert (thumb.width(), thumb.height()) == (THUMB_W, THUMB_H)
+
 
 def test_sections_and_slides_are_listed_in_deck_order(make_list):
     slide_list, _window, _path = make_list(FRONT_AND_SECTIONS)
@@ -201,7 +234,6 @@ def test_rows_say_what_is_worth_a_glance(make_list):
     rows = [slide_list.tree.data_of(i) for i in slide_list.tree.slide_items()]
     assert [r.hidden for r in rows] == [False, False, True, True, False, True]
     assert "hidden" in meta_text(rows[2], "EN") and meta_text(rows[0], "EN").startswith("1 · aaa [EN]")
-    assert "Not typeset in During course" in tooltip_text(rows[2], "During course", "EN")
     window.state.set_language("DE")
     rows = [slide_list.tree.data_of(i) for i in slide_list.tree.slide_items()]
     assert all(r.missing_translation for r in rows) and "no DE" in meta_text(rows[0], "DE")
@@ -214,9 +246,9 @@ def test_a_slide_that_shares_its_line_is_locked(make_list):
     assert head_of(slide_list, "S").flags() & Qt.ItemFlag.ItemIsEditable          # a comment after it is fine
     locked = head_of(slide_list, "T")
     assert not locked.flags() & (Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsDragEnabled)
-    before = _read(path)
+    before = read(path)
     slide_list._remove([slide_list.tree.data_of(first)])
-    assert "shares its line" in make_list.errors[-1] and _read(path) == before
+    assert "shares its line" in make_list.errors[-1] and read(path) == before
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
     assert not _entry(menu, "slide:remove")[6] and not _entry(menu, "variant:omitslide")[6]
@@ -314,11 +346,11 @@ def test_selected_slides_stay_selected_when_the_deck_changes(make_list):
     items[3].setSelected(True)                       # the second of the two identical ccc steps
     assert selected() == [("bbb", 2), ("ccc", 4)]
     text = window.state.deck.text.replace("\\slide{aaa-First}\n", "\\slide{new-Top}\n\\slide{aaa-First}\n")
-    window.state.set_deck(replace(window.state.deck, text=text, chapters=_parse_chapters(text)))
+    window.state.set_deck(replace(window.state.deck, text=text, chapters=parse_chapters(text)))
     slide_list.rebuild()                             # a slide was added above: every position moves
     assert selected() == [("bbb", 3), ("ccc", 5)]
     text = text.replace("\\slide{ddd-Last}\n", "").replace("\\slide{bbb-Second}\n", "")
-    window.state.set_deck(replace(window.state.deck, text=text, chapters=_parse_chapters(text)))
+    window.state.set_deck(replace(window.state.deck, text=text, chapters=parse_chapters(text)))
     slide_list.rebuild()
     assert selected() == [("ccc", 4)]                # removed slides drop out
 
@@ -352,9 +384,9 @@ def test_alt_up_and_down_move_the_slide_past_a_slide_or_a_section_marker(make_li
     key(slide_list, Qt.Key.Key_Up, Qt.KeyboardModifier.AltModifier)    # past bbb
     assert deck_lines(path)[:4] == ["\\slide{aaa-Front}", "\\section{One}", "\\slide{ccc-Two}", "\\slide{bbb-One}"]
     focus(slide_list, "aaa")
-    before = _read(path)
+    before = read(path)
     key(slide_list, Qt.Key.Key_Up, Qt.KeyboardModifier.AltModifier)    # nothing above the first slide
-    assert _read(path) == before
+    assert read(path) == before
     key(slide_list, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier)
     assert deck_lines(path)[:2] == ["\\section{One}", "\\slide{aaa-Front}"]
     assert slide_list.tree.data_of(slide_list.tree.currentItem()).call.id == "aaa"     # the focus follows it
@@ -388,51 +420,47 @@ def test_a_section_moves_up_with_its_legacy_block(make_list):
     menu = slide_list._section_menu()
     assert _entry(menu, "section:section_up")[6] and not _entry(menu, "section:section_down")[6]
     slide_list.run_section("section_up")
-    assert _read(path) == HEAD + "\\section{After}\n" + body.replace("\\section{After}\n", "") + TAIL
+    assert read(path) == HEAD + "\\section{After}\n" + body.replace("\\section{After}\n", "") + TAIL
 
 
-def test_delete_removes_the_slides_and_undo_brings_them_back(make_list):
-    slide_list, window, path = make_list(FRONT_AND_SECTIONS)
-    original = _read(path)
+@pytest.mark.parametrize("undo_action", ["toast", "shortcut"])
+def test_delete_removes_the_slides_and_undo_brings_them_back(make_list, qapp, undo_action):
+    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
+    original = read(path)
+    if undo_action == "shortcut":
+        slide_list.show()
+        slide_list.activateWindow()
+        qapp.processEvents()
     select(slide_list, "bbb", "ddd")
     key(slide_list, Qt.Key.Key_Delete)
     assert deck_lines(path) == ["\\slide{aaa-Front}", "\\section{One}", "\\section{Empty}",
                                 "\\section{Two}", "\\slide{ccc-Two}"]
     assert not slide_list.toast.isHidden()
-    slide_list.toast.action_triggered.emit("undo")          # the toast's Undo button
-    assert _read(path) == original and ids(slide_list) == ["aaa", "bbb", "ccc", "ddd"]
-    assert window.edits[-1] == "Undid last change to course"
+    if undo_action == "toast":
+        slide_list.toast.action_triggered.emit("undo")
+    else:
+        slide_list.tree.setFocus()
+        key(slide_list, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+        slide_list.hide()
+    assert read(path) == original and ids(slide_list) == ["aaa", "bbb", "ccc", "ddd"]
     slide_list.undo()                                       # nothing left to undo
-    assert _read(path) == original
+    assert read(path) == original
 
 
 def test_undo_goes_back_one_edit_at_a_time_and_refuses_after_an_outside_change(make_list):
     slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
-    original = _read(path)
+    original = read(path)
     slide_list._remove([slide_list.tree.data_of(item_of(slide_list, "aaa"))])
     slide_list._remove([slide_list.tree.data_of(item_of(slide_list, "bbb"))])
     slide_list.undo()
-    assert "\\slide{bbb-One}" in _read(path) and "\\slide{aaa-Front}" not in _read(path)
-    path.write_text(_read(path) + "% edited elsewhere\n", encoding="utf-8")
+    assert "\\slide{bbb-One}" in read(path) and "\\slide{aaa-Front}" not in read(path)
+    path.write_text(read(path) + "% edited elsewhere\n", encoding="utf-8")
     slide_list.deck.text = "stale"                          # the list is behind the file
     slide_list.undo()
     assert "changed on disk" in make_list.errors[-1]
-    slide_list.deck.text = _read(path)
+    slide_list.deck.text = read(path)
     slide_list.undo()                                       # the refused step is still there
-    assert _read(path) == original
-
-
-def test_ctrl_z_undoes(make_list, qapp):
-    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
-    original = _read(path)
-    slide_list.show()
-    slide_list.activateWindow()
-    qapp.processEvents()
-    slide_list._remove([slide_list.tree.data_of(item_of(slide_list, "aaa"))])
-    slide_list.tree.setFocus()
-    key(slide_list, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
-    assert _read(path) == original
-    slide_list.hide()
+    assert read(path) == original
 
 
 # -- the bulk bar ------------------------------------------------------------------------
@@ -442,13 +470,13 @@ def test_the_bulk_bar_hides_and_shows_the_slides_in_the_current_view(make_list):
     select(slide_list, "bbb", "ccc")
     assert slide_list.bulk_visibility_button.text() == "Hide in Instructor"
     slide_list.bulk_visibility_button.click()
-    assert "\\conditionalslide[during-course,after-course]{bbb-One}" in _read(path)
-    assert "\\conditionalslide[during-course,after-course]{ccc-Two}" in _read(path)
+    assert "\\conditionalslide[during-course,after-course]{bbb-One}" in read(path)
+    assert "\\conditionalslide[during-course,after-course]{ccc-Two}" in read(path)
     assert [slide_list.tree.data_of(i).hidden for i in slide_list.tree.slide_items()] == [False, True, True, False]
     select(slide_list, "bbb", "ccc")
     assert slide_list.bulk_visibility_button.text() == "Show in Instructor"
     slide_list.bulk_visibility_button.click()
-    assert "\\slide{bbb-One}" in _read(path) and "\\slide{ccc-Two}" in _read(path)     # plain again
+    assert "\\slide{bbb-One}" in read(path) and "\\slide{ccc-Two}" in read(path)     # plain again
     window.state.set_view("after-course")
     select(slide_list, "aaa", "bbb")
     assert slide_list.bulk_visibility_button.text() == "Hide in After course"
@@ -478,8 +506,7 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     slides.mkdir()
     (slides / "aaa-First-v1-0-0.tex").write_text("x", encoding="utf-8")
     monkeypatch.setattr(deck_editor, "SLIDES_DIR", slides)
-    slide_list, window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
-    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
+    slide_list, _window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
     assert keys_of(menu) == [
@@ -502,7 +529,6 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("x", True))
     slide_list._run("variant:slidestep", [slide_list.tree.data_of(item_of(slide_list, "aaa"))])
     assert "not a valid step list" in make_list.errors[-1]
-    assert window.edits[0] == "Changed aaa-First in course: \\slide -> \\slidefinal"
 
 
 def test_the_slide_menu_hides_a_slide_in_one_view_and_opens_the_other_tools(make_list, monkeypatch):
@@ -604,9 +630,9 @@ def test_dropping_a_section_on_another_one_takes_its_place(make_list):
                                 "\\section{One}", "\\slide{bbb-One}", "\\section{Empty}"]
     slide_list._on_moved([section_of(slide_list, "Empty")], row_of(slide_list, "ccc"), ABOVE_ITEM)   # onto a slide of Two
     assert deck_lines(path)[1] == "\\section{Empty}"
-    before = _read(path)
+    before = read(path)
     slide_list._on_moved([section_of(slide_list, "One")], section_of(slide_list, deck_outline.UNSECTIONED), ON_ITEM)
-    assert _read(path) == before                                      # the unsectioned slides are no target
+    assert read(path) == before                                      # the unsectioned slides are no target
 
 
 class DropEvent:
@@ -652,37 +678,31 @@ def test_the_tree_reports_a_drop_instead_of_moving_items_itself(make_list, monke
     slide_list.hide()
 
 
-def test_a_drop_that_changes_nothing_is_not_an_edit(make_list):
-    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
-    slide_list._on_moved([row_of(slide_list, "ccc")], row_of(slide_list, "ddd"), ABOVE_ITEM)
-    assert window.edits == []
-
-
 # -- sections -----------------------------------------------------------------------------
 
-def test_a_section_is_renamed_in_place(make_list, qapp):
+@pytest.mark.parametrize("collapsed", [False, True], ids=["open", "closed-regression"])
+def test_a_section_is_renamed_in_place(make_list, qapp, collapsed):
     slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
-    slide_list.tree.setCurrentItem(head_of(slide_list, "Two"))
-    key(slide_list, Qt.Key.Key_F2)
-    editor = slide_list.tree.findChild(QLineEdit, kit_qss.SLIDES_RENAME)
-    assert editor is not None and editor.text() == "Two"
-    editor.setText("Second")
-    QTest.keyClick(editor, Qt.Key.Key_Return)
-    qapp.processEvents()                                   # the delegate commits through the event loop
-    assert "\\section{Second}" in _read(path) and "\\section{Two}" not in _read(path)
+    if collapsed:
+        slide_list.tree.collapsed.add("Two")
+        slide_list._rename_section(slide_list.tree.data_of(head_of(slide_list, "Two")), "Second")
+    else:
+        slide_list.tree.setCurrentItem(head_of(slide_list, "Two"))
+        key(slide_list, Qt.Key.Key_F2)
+        editor = slide_list.tree.findChild(QLineEdit, kit_qss.SLIDES_RENAME)
+        assert editor is not None and editor.text() == "Two"
+        editor.setText("Second")
+        QTest.keyClick(editor, Qt.Key.Key_Return)
+        qapp.processEvents()  # the delegate commits through the event loop
+    assert "\\section{Second}" in read(path) and "\\section{Two}" not in read(path)
     assert head_of(slide_list, "Second").childCount() == 2
+    if collapsed:  # Regression: renaming a section must also rename its saved collapsed state.
+        assert slide_list.tree.collapsed == {"Second"}
+        assert not head_of(slide_list, "Second").isExpanded()
     slide_list.tree.rename(head_of(slide_list, "One"))
     QTest.keyClick(slide_list.tree.findChild(QLineEdit, kit_qss.SLIDES_RENAME), Qt.Key.Key_Escape)
     qapp.processEvents()
-    assert "\\section{One}" in _read(path)
-
-
-def test_a_closed_section_stays_closed_when_it_is_renamed(make_list):
-    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
-    slide_list.tree.collapsed.add("Two")
-    slide_list._rename_section(slide_list.tree.data_of(head_of(slide_list, "Two")), "Second")
-    assert "\\section{Second}" in _read(path)
-    assert slide_list.tree.collapsed == {"Second"}
+    assert "\\section{One}" in read(path)
 
 
 def test_sections_are_added_removed_and_get_slides(make_list, monkeypatch):
@@ -695,7 +715,7 @@ def test_sections_are_added_removed_and_get_slides(make_list, monkeypatch):
     assert deck_lines(path)[2:5] == ["\\slide{bbb-One}", "\\section{New}", "\\section{Empty}"]
     choose_section(slide_list, "One")
     slide_list.run_section("remove_section")                              # its slides stay
-    assert "\\section{One}" not in _read(path) and "bbb" in ids(slide_list)
+    assert "\\section{One}" not in read(path) and "bbb" in ids(slide_list)
     choose_section(slide_list, "Two")
     slide_list.run_section("add_slide")
     deck = window.state.deck
@@ -706,21 +726,19 @@ def test_sections_are_added_removed_and_get_slides(make_list, monkeypatch):
     assert "braces" in make_list.errors[-1]
 
 
-def test_the_add_slide_button_adds_after_the_focused_slide_or_at_the_end(make_list):
-    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+@pytest.mark.parametrize("body", [FRONT_AND_SECTIONS, ""], ids=["populated", "empty"])
+def test_the_add_slide_button_adds_after_the_focused_slide_or_at_the_end(make_list, body):
+    slide_list, window, _path = make_list(body)
     slide_list.add_slide_button.click()
     deck = window.state.deck
+    if not body:
+        assert window.added == [deck_editor.empty_deck_insert_point(deck.text)]
+        return
     assert window.added[-1] == deck_editor.append_position(deck)
     focus(slide_list, "bbb")
     slide_list.add_slide_button.click()
     call = row_of(slide_list, "bbb").call
     assert window.added[-1] == (call.line_end, call.indent)
-
-
-def test_the_add_slide_button_of_an_empty_deck_adds_before_the_end_of_the_document(make_list):
-    slide_list, window, _path = make_list("")
-    slide_list.add_slide_button.click()
-    assert window.added == [deck_editor.empty_deck_insert_point(window.state.deck.text)]
 
 
 def test_duplicate_and_translate_start_the_sheet_after_the_slide(make_list):

@@ -13,14 +13,13 @@ import json
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 import time
 import re
 import threading
 import errno
 from .preview_metrics import measure, stage, record_line, finish_rules
-from . import preview_format
+from . import compiler, preview_format
 
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
@@ -285,19 +284,19 @@ def _compile_reserved(wrapper_text, id_slug, log, *, project_root, env, fatal_er
     previous_pdf = pdf.stat().st_mtime_ns if pdf.exists() else None
     output_tail = deque(maxlen=200)
     log(f'==== Rendering {id_slug} (reusable build) ====')
-    kwargs = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
+
+    def on_line(line):
+        output_tail.append(line)
+        record_line(line)
+
     with stage('latexmk'):
         try:
-            proc = subprocess.Popen(cmd, cwd=project_root, env=env,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, errors='replace', **kwargs)
+            returncode = compiler.run_streamed(
+                cmd, cwd=project_root, env=env, log=log, on_line=on_line,
+                errors='replace', bufsize=-1,
+            )
         except FileNotFoundError as exc:
             raise RuntimeError('latexmk not found on PATH') from exc
-        for line in proc.stdout:
-            output_tail.append(line)
-            record_line(line)
-            log(line.rstrip('\n'))
-        proc.wait()
         finish_rules()
     pdf = cache / (jobname + '.pdf')
     logfile = cache / (jobname + '.log')
@@ -306,11 +305,11 @@ def _compile_reserved(wrapper_text, id_slug, log, *, project_root, env, fatal_er
     # its rerun limit (e.g. the manual's oscillating .top correction).
     # Preserve that behavior only for a PDF actually produced this run;
     # every other nonzero status still fails, including stale outputs.
-    rerun_limit = (proc.returncode and pdf.exists()
+    rerun_limit = (returncode and pdf.exists()
                    and pdf.stat().st_mtime_ns != previous_pdf
                    and 'Maximum runs of' in ''.join(output_tail)
                    and 'needed too many passes' in ''.join(output_tail))
-    if ((proc.returncode and not rerun_limit) or not pdf.exists() or not pdf.stat().st_size
+    if ((returncode and not rerun_limit) or not pdf.exists() or not pdf.stat().st_size
             or not contents or fatal_error_re.search(contents)):
         # Never return a previous successful PDF after an unsuccessful edit.
         raise RuntimeError(f'Render failed for {id_slug}:\n' + '\n'.join(contents.splitlines()[-25:]))

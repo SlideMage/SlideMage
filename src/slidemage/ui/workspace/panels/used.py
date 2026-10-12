@@ -8,7 +8,7 @@ from ....slide_usage import DeckUsage, call_text, find_usage
 from ...kit import kit_qss as q
 from ..menus import VIEW_LABELS
 from ..state import VIEWS
-from .base import Row, SidePanel, box, empty_row, text
+from .base import Row, SidePanel, box, empty_row
 
 
 class UsedInDecks(SidePanel):

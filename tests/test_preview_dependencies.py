@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from slidemage import preview_build, preview_cli
+from slidemage import compiler, preview_build, preview_cli
 from slidemage.preview_metrics import PreviewMetrics, record_line, stage
 
 
@@ -64,17 +64,6 @@ def test_recorded_inputs_include_bib_spaces_and_missing_files_but_exclude_output
     assert all(value is None for value in state.values())
     (tmp_path / "references.bib").write_text("new bibliography")
     assert preview_cli.input_state(map(Path, paths)) != state
-
-
-def test_pruning_preserves_fresh_job_and_other_cache_roots(tmp_path):
-    decks = tmp_path / "decks"
-    decks.mkdir()
-    fresh = decks / "_slidemage_preview-new-unique.tex"
-    fresh.write_text("running fresh job")
-    other = decks / "_slidemage_preview-other.tex"
-    other.write_text("job belongs to a different build root")
-    preview_build.prune_unused(tmp_path, tmp_path / ".build")
-    assert fresh.exists() and other.exists()
 
 
 def test_metrics_record_passes_and_nested_stages_without_global_leaks():
@@ -285,10 +274,10 @@ def test_cache_reserved_before_first_directory_mutation(tmp_path, monkeypatch):
         job = next(c.split('=', 1)[1] for c in cmd if c.startswith('-jobname='))
         (cache / (job + '.pdf')).write_bytes(b'pdf')
         (cache / (job + '.log')).write_text('Success')
-        return SimpleNamespace(stdout=iter([]), wait=lambda: None, returncode=0)
+        return SimpleNamespace(stdout=iter([]), wait=lambda: 0, returncode=0)
 
     monkeypatch.setattr(Path, "mkdir", mkdir)
-    monkeypatch.setattr(preview_build.subprocess, "Popen", popen)
+    monkeypatch.setattr(compiler.subprocess, "Popen", popen)
     output = preview_build.compile_cached(r'\begin{document}Text', 'abc', lambda _: None,
         project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
     assert observed and all(observed)

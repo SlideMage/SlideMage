@@ -63,6 +63,7 @@ from pathlib import Path
 
 from . import alt_blocks
 from .deck_scan import PROJECT_ROOT
+from .tex_source import COMMENT_RE
 
 STORE_PATH = PROJECT_ROOT / "media" / "alt-text.json"
 FORMAT_VERSION = 2
@@ -95,11 +96,6 @@ STATE_LABELS = {
     STATE_STALE: "Needs re-check",
     STATE_REVIEWED: "Reviewed",
 }
-
-# Same reasoning as alt_blocks._image_hash: hashing every referenced image
-# on every rescan is expensive, so cache by (path, size, mtime).
-_image_hash_cache: dict[tuple[str, int, int], str] = {}
-
 
 @dataclass
 class SlideUse:
@@ -140,7 +136,7 @@ class ImageEntry:
     # even though it carries no alt text, confirmed directly against a real
     # slide (dh6-Private-Equity-Categorization) that already hand-authors
     # exactly that combination. Auto-pulled into a compiled slide's own
-    # footnote wherever this image is used -- see ALT_TEXT_NOTES.md.
+    # footnote wherever this image is used.
     source: str = ""
     # Which vision model produced the current short/long, when one did.
     # Cleared on human review -- once checked, the text is yours.
@@ -154,7 +150,7 @@ class ImageEntry:
     # German counterparts (2026-08-24), produced by translating the
     # already-finalized English text (alt_draft.translate_to_german())
     # rather than an independent vision-model draft, per direct
-    # instruction -- see LANGUAGE_NOTES.md. `source_de` is a genuine
+    # instruction. `source_de` is a genuine
     # default+override, the same shape takeaway_default/SlideUse.takeaway
     # already use: "" means "same citation in both languages" (most
     # citations are proper nouns/publication names that don't translate),
@@ -272,7 +268,7 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
     return d
 
 
-def _entry_from_dict(image: str, d: dict) -> ImageEntry:
+def entry_from_dict(image: str, d: dict) -> ImageEntry:
     used_on = {
         slide_id: SlideUse(
             takeaway=(u.get("takeaway") or ""),
@@ -308,7 +304,7 @@ def load_store() -> dict[str, ImageEntry]:
         return {}
     raw = json.loads(STORE_PATH.read_text(encoding="utf-8"))
     images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
-    return {image: _entry_from_dict(image, d) for image, d in images.items()}
+    return {image: entry_from_dict(image, d) for image, d in images.items()}
 
 
 @dataclass
@@ -318,7 +314,7 @@ class SlideNotes:
     top of that slide's section (before its body text) so a reader gets
     oriented before the bullet points. Keyed by the same bare slide id
     used everywhere else (alt_blocks.scan_slides_raw()'s SlideRow.slide_id,
-    slide_snapshot.bare_id()) -- unlike ImageEntry, this has nothing to do
+    slide_language.bare_id()) -- unlike ImageEntry, this has nothing to do
     with any particular image, so it lives in its own top-level "slides"
     section of the same JSON file rather than inside `used_on`.
     """
@@ -636,24 +632,6 @@ def lookup(entries: dict[str, ImageEntry], reference: str) -> ImageEntry | None:
 # Staleness
 # --------------------------------------------------------------------------
 
-def _image_hash(path: Path) -> str:
-    stat = path.stat()
-    key = (str(path), stat.st_size, stat.st_mtime_ns)
-    cached = _image_hash_cache.get(key)
-    if cached is not None:
-        return cached
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    _image_hash_cache[key] = digest
-    return digest
-
-
-def content_hash(image_path: Path) -> str:
-    """The image's own bytes only -- what invalidates an ImageEntry's
-    reviewed status. No slide text involved: the description belongs to
-    the picture, not to any one slide that happens to show it."""
-    return _image_hash(image_path)[:12]
-
-
 def tikz_source_hash(source: str) -> str:
     """content_hash()'s counterpart for a tikz illustration, which has no
     file/bytes to hash -- its own tikz source (already comment-stripped by
@@ -685,7 +663,7 @@ def slide_context_hash(slide_path: Path) -> str:
     nothing describing an image lives in the slide file at all now.
     """
     text = slide_path.read_text(encoding="utf-8")
-    stripped = alt_blocks.COMMENT_RE.sub("", text)
+    stripped = COMMENT_RE.sub("", text)
     normalized = "\n".join(
         line.strip() for line in stripped.splitlines() if line.strip()
     )
@@ -780,15 +758,19 @@ def set_takeaway_default(image: str, slide_id: str, text: str) -> ImageEntry | N
 
 def save_slide_image(
     image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
+    baseline: tuple[str, str, str] | None = None,
 ) -> None:
     """Store what was written for one image on one slide: its role and English short and long
     description (an entry is made if the image has none yet), reviewed or as a draft as in
-    stamp_review(). Everything else of the entry (takeaway, German text, source) is left as it is."""
+    stamp_review(). With a form baseline, only changed fields are copied, as in image_review.apply_form_edit().
+    Everything else of the entry (takeaway, German text, source) is left as it is."""
     slide_hash = slide_context_hash(slide_path)
 
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         entry = entries.setdefault(image, ImageEntry(image=image))
-        entry.role, entry.short, entry.long = role, short, long
+        for i, (name, value) in enumerate((("role", role), ("short", short), ("long", long))):
+            if baseline is None or value != baseline[i]:
+                setattr(entry, name, value)
         stamp_review(entry, entry.used_on.setdefault(slide_id, SlideUse()), reviewed, slide_hash)
         return True
 

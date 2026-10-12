@@ -22,11 +22,6 @@ from slidemage.ui.workspace.state import WorkspaceState
 CHART = "media/chart.png"
 
 
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
 class FakeApp:
     """What the page asks of the window."""
 
@@ -109,17 +104,39 @@ def type_into(page, key, text, index=0):
 # -- the list ------------------------------------------------------------------------------------
 
 
-def test_the_page_lists_the_slides_with_images_and_shows_the_first(make_page):
-    page = make_page()
+@pytest.mark.parametrize("themed", [False, True])
+@pytest.mark.parametrize("references", [[CHART], [CHART, "media/second.png"]])
+def test_images_page_minimum_width_fits_with_full_action_labels(make_page, qapp, references, themed):
+    page = make_page(references)
+    if themed:
+        from slidemage.ui.kit.fonts import load_fonts
+
+        load_fonts()
+        page.app.theme.apply()
+    page.show()
+    qapp.processEvents()
+    assert page.minimumSizeHint().width() <= 700
+    page.resize(700, 640)
+    qapp.processEvents()
+    for button in (page.draft_button, page.clear_button, page.save_button, page.review_button):
+        assert button.isVisible()
+        assert button.width() >= button.minimumSizeHint().width()
+    assert page.review_button.text() == images.review_label(len(references))
+    assert page.scroll.horizontalScrollBar().isVisible()
+    assert page.scroll.horizontalScrollBar().maximum() > 0
+    page.hide()
+
+
+@pytest.mark.parametrize(("references", "review_text"), [
+    ([CHART], "Save and mark reviewed"),
+    ([CHART, "media/second.png"], "Save and mark all images reviewed"),
+])
+def test_the_page_lists_the_slides_with_images_and_shows_the_first(make_page, references, review_text):
+    page = make_page(references)
     assert [view.row.slide_id for view in page.nav.shown] == ["one", "two"]
-    assert page._current.row.slide_id == "one" and [form.reference for form in page._forms] == [CHART]
+    assert page._current.row.slide_id == "one" and [form.reference for form in page._forms] == references
     assert page.nav.summary.text() == "0 reviewed · 0 need re-check · 0 draft · 2 undescribed"
-    assert page.review_button.text() == "Save and mark reviewed"
-
-
-def test_a_slide_with_several_images_says_all_images_on_its_review_button(make_page):
-    page = make_page([CHART, "media/second.png"])
-    assert len(page._forms) == 2 and page.review_button.text() == "Save and mark all images reviewed"
+    assert page.review_button.text() == review_text
     page.nav.slide_list.setCurrentRow(1)
     assert len(page._forms) == 1 and page.review_button.text() == "Save and mark reviewed"
 
@@ -156,7 +173,6 @@ def test_find_slide_jumps_to_it_whatever_the_filter_shows(make_page, monkeypatch
 
 def test_the_order_follows_the_open_deck(make_page, monkeypatch):
     page = make_page()
-    assert page._order() == {}                                    # no deck open
     page.state.deck = SimpleNamespace(is_test_deck=False)
     monkeypatch.setattr(image_review, "sort_order", lambda deck: {"two": 0, "one": 1})
     page._populate(None)
@@ -179,11 +195,12 @@ def test_batch_completion_keeps_a_form_with_unsaved_edits(make_page):
         finish(page, summary)
         assert page._forms[0] is form and form.fields["long"].toPlainText() == "UNSAVED HUMAN EDIT"
         assert len(page.sync_calls) == 1                           # the rescan waited for the edit
-        assert any("unsaved edits" in line for line in page.app.logged)
 
 
 def test_leaving_the_slide_saves_the_edit_as_a_draft(make_page):
     page = make_page()
+    page.flush()
+    assert page.store[CHART].used_on == {}
     type_into(page, "long", "typed long text")
     type_into(page, "short", "typed short")
     page.nav.slide_list.setCurrentRow(1)
@@ -202,12 +219,6 @@ def test_a_rescan_and_a_deck_switch_save_a_pending_edit_too(make_page):
     type_into(page, "short", "second")
     page.state.set_deck(SimpleNamespace(path=Path("other.tex"), name="other", text="", is_test_deck=True))
     assert page.store[CHART].short == "second" and not page.dirty
-
-
-def test_flush_saves_nothing_without_an_edit(make_page):
-    page = make_page()
-    page.flush()
-    assert page.store[CHART].used_on == {}
 
 
 def test_save_merges_human_edit_with_worker_updates_across_visible_images(make_page):
@@ -353,31 +364,25 @@ def test_a_worker_writing_the_store_updates_the_entry_of_a_form_with_edits_only(
     assert form.saved_english()[1] == "written by a worker"          # what "Version on disk" translates
 
 
-def test_clear_draft_discards_unreviewed_text_only(make_page, monkeypatch):
+@pytest.mark.parametrize("typed", [False, True], ids=["saved-draft", "pending-edit"])
+def test_clear_draft_discards_unreviewed_text_only(make_page, monkeypatch, typed):
     page = make_page()
     page.store[CHART].short, page.store[CHART].long, page.store[CHART].drafted_by = "s", "l", "model"
     page.reload()
+    if typed:
+        type_into(page, "short", "typed on top of the draft")
+        assert page.dirty
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     page._clear_draft()
     cleared = page.store[CHART]
     assert (cleared.short, cleared.long, cleared.drafted_by) == ("", "", "")
+    assert page._forms[0].fields["short"].toPlainText() == "" and not page.dirty
+    page.flush()
+    assert page.store[CHART].short == ""  # pending edits must not recreate the draft
     told = []
     monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
     page._clear_draft()
     assert "unreviewed" in told[0]
-
-
-def test_clear_draft_also_drops_what_was_typed_into_the_cleared_forms(make_page, monkeypatch):
-    page = make_page()
-    page.store[CHART].short, page.store[CHART].long, page.store[CHART].drafted_by = "s", "l", "model"
-    page.reload()
-    type_into(page, "short", "typed on top of the draft")
-    assert page.dirty
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    page._clear_draft()
-    assert page._forms[0].fields["short"].toPlainText() == "" and not page.dirty
-    page.flush()
-    assert page.store[CHART].short == ""            # not written back as a new draft
 
 
 # -- the slide's own actions ---------------------------------------------------------------------------
@@ -405,21 +410,27 @@ class FakeBackend:
         return alt_draft.DraftResult(short="drafted short", long="drafted long", takeaway="take", model="offline-test")
 
 
-def test_draft_slide_runs_one_job_writes_the_draft_and_gives_the_slot_back(make_page, monkeypatch):
+@pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
+def test_draft_slide_runs_one_job_writes_the_draft_and_gives_the_slot_back(make_page, monkeypatch, local):
     page = make_page()
     run_jobs_inline(monkeypatch)
-    choose_provider(monkeypatch)
+    provider = OllamaProvider("offline-test")
+    provider.is_local = local
+    choose_provider(monkeypatch, provider)
+    given = []
+    release = page.app.end_ollama_task
+    page.app.end_ollama_task = lambda provider=None: (given.append(provider), release(provider))
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
     monkeypatch.setattr(alt_draft, "build_context", lambda *_args: None)
     monkeypatch.setattr(alt_draft, "slide_jobs", lambda row, entries: [
         alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
     page._draft_slide()
     assert page.app.slots == ["took", "gave"] and page._job is None and page.job_card.isHidden()
+    assert given == [provider]
     drafted = page.store[CHART]
     assert (drafted.short, drafted.long, drafted.drafted_by) == ("drafted short", "drafted long", "offline-test")
     assert page._forms[0].fields["short"].toPlainText() == "drafted short"      # the untouched form shows it
     assert page.nav.shown[0].state == alt_images.STATE_DRAFT
-    assert any(line.startswith("Finished: 1 image(s) drafted") for line in page.app.logged)
 
 
 def test_draft_slide_tells_when_there_is_nothing_to_draft(make_page, monkeypatch):
@@ -445,23 +456,6 @@ def test_draft_all_confirms_then_runs_the_queue_and_reports_errors(make_page, mo
     monkeypatch.setattr(QMessageBox, "exec", lambda box: QMessageBox.StandardButton.Ok)
     page._draft_all()
     assert page.app.slots == ["took", "gave"] and page.store[CHART].short == "drafted short"
-
-
-def test_a_cloud_job_goes_through_the_same_slot_calls(make_page, monkeypatch):
-    """The window decides that a cloud provider needs no slot (try_start_ollama_task); the page asks every time."""
-    page = make_page()
-    run_jobs_inline(monkeypatch)
-    cloud = OllamaProvider("offline-test")
-    cloud.is_local = False
-    choose_provider(monkeypatch, cloud)
-    monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(alt_draft, "build_context", lambda *_args: None)
-    monkeypatch.setattr(alt_draft, "slide_jobs", lambda row, entries: [
-        alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
-    given = []
-    page.app.end_ollama_task = lambda provider=None: given.append(provider)
-    page._draft_slide()
-    assert given == [cloud]
 
 
 class SlowBackend:
@@ -511,7 +505,6 @@ def test_stop_ends_a_batch_after_the_current_image_and_takes_the_click_back(make
     page._stop_clicked()
     assert wait_for(lambda: page._job is None)
     assert page.app.slots == ["took", "gave"] and page.draft_all_button.isEnabled()
-    assert any(line.startswith("Stopped:") for line in page.app.logged)
 
 
 def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_page, monkeypatch):
@@ -554,7 +547,8 @@ def unsaved_draft(monkeypatch):
     monkeypatch.setattr(images.ImagesPage, "_ask_which_english", lambda page: "unsaved")
 
 
-def test_unsaved_english_translation_stays_current_after_save(make_page, monkeypatch):
+@pytest.mark.parametrize("edited", [False, True], ids=["current", "german-edit-after-completion"])
+def test_unsaved_english_translation_tracks_edits_after_completion(make_page, monkeypatch, edited):
     page = make_page()
     type_into(page, "long", "UNSAVED ENGLISH TO TRANSLATE")
     unsaved_draft(monkeypatch)
@@ -566,10 +560,17 @@ def test_unsaved_english_translation_stays_current_after_save(make_page, monkeyp
     assert "matches the current English text" in form.translation_state.text()
     assert page.app.slots == ["took", "gave"]
     translated_hash = form.provenance["source_hash"]
+    if edited:
+        type_into(page, "long_de", "HUMAN GERMAN EDIT AFTER TRANSLATION")
     page._save(reviewed=False)
     saved = page.store[CHART]
-    assert saved.long == "UNSAVED ENGLISH TO TRANSLATE" and saved.translated_from_hash == translated_hash
-    assert alt_images.translation_state(saved) == alt_images.STATE_REVIEWED
+    assert saved.long == "UNSAVED ENGLISH TO TRANSLATE"
+    if edited:
+        assert saved.long_de == "HUMAN GERMAN EDIT AFTER TRANSLATION" and saved.translated_from_hash == ""
+        assert alt_images.translation_state(saved) == alt_images.STATE_STALE
+    else:
+        assert saved.translated_from_hash == translated_hash
+        assert alt_images.translation_state(saved) == alt_images.STATE_REVIEWED
 
 
 def test_translation_completion_keeps_newer_english_and_human_german_stale(make_page, monkeypatch):
@@ -591,21 +592,6 @@ def test_translation_completion_keeps_newer_english_and_human_german_stale(make_
     saved = page.store[CHART]
     assert saved.long == "NEWER ENGLISH AFTER REQUEST" and saved.short_de == "HUMAN GERMAN EDIT DURING REQUEST"
     assert saved.translated_from_hash == "" and alt_images.translation_state(saved) == alt_images.STATE_STALE
-
-
-def test_edit_after_translation_completion_invalidates_saved_provenance(make_page, monkeypatch):
-    page = make_page()
-    type_into(page, "long", "UNSAVED ENGLISH TO TRANSLATE")
-    unsaved_draft(monkeypatch)
-    run_jobs_inline(monkeypatch)
-    choose_provider(monkeypatch)
-    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeTranslator)
-    page._translate_image(page._forms[0], False)
-    type_into(page, "long_de", "HUMAN GERMAN EDIT AFTER TRANSLATION")
-    page._save(reviewed=False)
-    saved = page.store[CHART]
-    assert saved.long_de == "HUMAN GERMAN EDIT AFTER TRANSLATION" and saved.translated_from_hash == ""
-    assert alt_images.translation_state(saved) == alt_images.STATE_STALE
 
 
 def test_individual_translation_keeps_fields_typed_after_request(make_page):

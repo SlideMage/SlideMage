@@ -25,7 +25,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMessageBox, QSplitter, QStackedWidget
 
-from ... import deck_editor, deck_outline, slide_language, slide_preview, slide_source, slide_versioning
+from ... import deck_outline, slide_language, slide_preview, slide_source, slide_versioning
 from ...deck_editor import SLIDES_DIR
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import bare_id, current_path_for_bare_id
@@ -152,7 +152,7 @@ class CentreColumn(QFrame):
 
     def restore_version(self, frozen: Path) -> None:
         """"Make this the current version": slide_versioning.restore_version()."""
-        match = deck_editor.VERSION_FILE_RE.search(frozen.name)
+        match = slide_language.FROZEN_RE.search(frozen.name)
         id_slug = frozen.name[:match.start()] if match else ""
         current = frozen.parent / slide_language.current_name(id_slug)
         if not match or not current.is_file():

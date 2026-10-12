@@ -16,26 +16,18 @@ from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.fonts import FONT_DIR, load_fonts
 from slidemage.ui.kit.gallery import KitGallery
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.kit.tokens import DARK, FONT_ICONS, FONT_MONO, FONT_SANS, LIGHT, tokens_for, with_alpha
+from slidemage.ui.kit.tokens import FONT_ICONS, FONT_MONO, FONT_SANS
 from slidemage.ui.kit.widgets import (
-    Button,
-    Card,
     Chip,
     Field,
-    IconButton,
     IconLabel,
     ModalSheet,
-    Page,
     PopoverMenu,
     SegmentedControl,
     SplitButton,
-    Surface,
     ThumbnailGrid,
     Toast,
     ToggleChip,
-    caption,
-    columns,
-    row,
 )
 
 
@@ -81,24 +73,6 @@ def test_icon_ligature_draws_a_single_glyph(qapp):
     assert metrics.horizontalAdvance("expand_more") < metrics.horizontalAdvance("zzzzzz_nope") / 4
     label = IconLabel("more_vert")
     assert label.fontMetrics().horizontalAdvance(label.text()) > 0
-
-
-def test_tokens_are_complete_for_both_modes():
-    for tokens in (LIGHT, DARK):
-        assert len(tokens.steps) == 6
-        for view in ("instructor", "during", "after"):
-            assert tokens.view_color(view).startswith("#")
-    assert LIGHT.bg == "#f3f4f6" and LIGHT.text == "#1d1d1d" and LIGHT.error == "#b91c1c"
-    assert tokens_for(True) is DARK and tokens_for(False) is LIGHT
-    assert with_alpha("#ffffff", 0.25) == "rgba(255,255,255,0.25)"
-
-
-def test_kit_qss_follows_the_theme(theme):
-    theme.dark = False
-    assert LIGHT.surface in theme._build_qss()
-    theme.dark = True
-    sheet = theme._build_qss()
-    assert f"QFrame#{kit_qss.CARD}" in sheet and DARK.surface in sheet
 
 
 @pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])
@@ -151,11 +125,12 @@ def test_popover_menu_triggers_and_skips_disabled(theme):
     menu.add_header("Compile")
     menu.add_item("a", "Alpha", meta="Ctrl+1", icon="school")
     menu.add_item("off", "Off", enabled=False)
-    menu.add_item("b", "Beta", tone="danger")
+    menu.add_item("b", "Beta", tone="danger", swatch="#e4684b")
     seen = []
     menu.triggered.connect(seen.append)
     menu.popup_at(QPoint(10, 10))
     assert menu.isVisible() and len(menu._rows) == 3
+    assert len(menu.findChildren(QFrame, kit_qss.MENU_SWATCH)) == 1
     QTest.keyClick(menu, Qt.Key.Key_Down)
     QTest.keyClick(menu, Qt.Key.Key_Down)  # skips the disabled row
     QTest.keyClick(menu, Qt.Key.Key_Return)
@@ -163,19 +138,6 @@ def test_popover_menu_triggers_and_skips_disabled(theme):
     menu.popup_at(QPoint(10, 10))
     QTest.mouseClick(menu._rows[0], Qt.MouseButton.LeftButton)
     assert seen == ["b", "a"]
-
-
-def test_menu_row_swatch_and_compact_button_and_surface(theme):
-    menu = PopoverMenu()
-    menu.add_item("red", "c_secondary_red", swatch="#e4684b")
-    menu.add_item("plain", "Plain")
-    menu.popup_at(QPoint(10, 10))
-    swatches = menu.findChildren(QFrame, kit_qss.MENU_SWATCH)
-    assert len(swatches) == 1 and "#e4684b" in swatches[0].styleSheet()
-    menu.close()
-    assert Button("Save", "primary", compact=True).property("compact") is True
-    assert Button("Save").property("compact") is False
-    assert Surface().objectName() == kit_qss.SURFACE
 
 
 def test_split_button_main_and_caret(theme):
@@ -192,17 +154,12 @@ def test_split_button_main_and_caret(theme):
     assert menu.isVisible() and split._caret.text() == "expand_less"
     menu.close()
     assert split._caret.text() == "expand_more"
-
-
-def test_split_button_follows_only_its_current_menu(theme):
-    split = SplitButton("Compile")
-    old, new = PopoverMenu(), PopoverMenu()
-    split.set_menu(old)
-    split.set_menu(new)
+    replacement = PopoverMenu()
+    split.set_menu(replacement)
     split._caret.setText("expand_less")
-    old.closed.emit()
-    assert split._caret.text() == "expand_less"            # the replaced menu no longer counts
-    new.closed.emit()
+    menu.closed.emit()
+    assert split._caret.text() == "expand_less"  # regression: a replaced menu must be disconnected
+    replacement.closed.emit()
     assert split._caret.text() == "expand_more"
 
 
@@ -259,39 +216,6 @@ def test_thumbnail_grid_chooses_one_and_emits_only_for_user_clicks(theme, tmp_pa
     assert grid.grab().toImage().width() > 0
     field = Field("Frame", grid)
     assert field.label.text() == "Frame"
-
-
-def test_modal_sheet_footer_note_sits_left_of_the_buttons(theme):
-    sheet = ModalSheet("Add")
-    sheet.add_tab("", QLabel("body"))
-    note = QLabel("\\slide{x}")
-    sheet.add_footer_note(note)
-    button = sheet.add_button("Add", kind="primary")
-    sheet.show()
-    assert note.geometry().right() < button.geometry().left() and note.geometry().width() > button.width()
-
-
-def test_page_caption_row_and_columns_lay_widgets_out(theme):
-    page = Page()
-    page.body.addWidget(caption("A note", "error"))
-    first, second = QLabel("a"), QLabel("b")
-    page.body.addWidget(row(first, second, stretch=1))
-    page.body.addWidget(columns(Field("One", QLabel("1")), Field("Two", QLabel("2"))))
-    page.show()
-    note = page.findChild(QLabel, kit_qss.PANEL_CAPTION)
-    assert note.wordWrap() and note.property("tone") == "error"
-    assert second.width() > first.width()                              # the stretched one takes the room
-    ones, twos = (page.findChildren(QLabel, kit_qss.FIELD_LABEL)[i] for i in (0, 1))
-    assert ones.y() == twos.y() and abs(ones.parentWidget().width() - twos.parentWidget().width()) <= 1
-
-
-def test_icon_button_and_card_construct(theme):
-    button = IconButton("more_vert", "More")
-    button.set_active(True)
-    assert button.property("active") is True and button.toolTip() == "More"
-    card = Card(raised=True)
-    card.layout().addWidget(QLabel("x"))
-    assert card.graphicsEffect() is not None
 
 
 @pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])

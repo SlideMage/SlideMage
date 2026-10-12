@@ -31,6 +31,19 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import compile_passes, latex_lint
+from .compile_log import (
+    COMPILING_RE as _COMPILING_RE,
+    FAIL_PREFIX_RE as _FAIL_RE,
+    FINISHED_RE as _FINISHED_RE,
+    MOVING_RE as _MOVING_RE,
+    PASS_RE as _PASS_RE,
+    RENDER_FAIL_RE as _RENDER_FAIL_RE,
+    RENDER_PASS_RE as _RENDER_PASS_RE,
+    RENDERING_RE as _RENDERING_RE,
+    SKIPPED_RE as _SKIPPED_RE,
+    STOPPED_RE as _STOPPED_RE,
+)
+from .tex_source import INPUT_RE, masked_same_length
 
 PASSES_WITH_BIBLIOGRAPHY = 4
 PASSES_WITHOUT_BIBLIOGRAPHY = 3
@@ -38,23 +51,6 @@ SINGLE_RENDER_PASSES = 3
 
 _RUN_RE = re.compile(r"^Run number (\d+) of rule '([^']+)'")
 _SLIDE_OPEN_RE = re.compile(r"\(\S*?/slides/[0-9A-Za-z]{3}-")
-_COMPILING_RE = re.compile(r"^==== Compiling \S+ -> (\S+) ====")
-_RENDERING_RE = re.compile(r"^==== Rendering (\S+) -> (\S+) ====")
-_MOVING_RE = re.compile(r"^==== MOVING: (\S+) ->")
-_FAIL_RE = re.compile(r"^\*\*\* FAIL: (\S+) --")
-_RENDER_PASS_RE = re.compile(r"^==== PASS: render of (\S+) ->")
-_RENDER_FAIL_RE = re.compile(r"^\*\*\* FAIL: render of (\S+) --")
-_STOPPED_RE = re.compile(r"^==== (Stopped:|Stop requested)")
-# A queued job the user took out of the run.
-_SKIPPED_RE = re.compile(r"^==== Skipped: (\S+) ====")
-# A job that ends without publishing a PDF (deck_snapshot's reference and
-# verification compiles) says so explicitly.
-_FINISHED_RE = re.compile(r"^==== Finished: (\S+) ====")
-# A job's PASS line ends it as well: a page compile (partial_compile.py)
-# patches its PDF itself and never logs "MOVING" (v5.35.1 -- its busy bar
-# kept running after the compile). A whole-deck job's PASS comes after its
-# MOVING line, when the job is no longer the current one: no effect.
-_PASS_RE = re.compile(r"^==== PASS: (\S+) ->")
 
 _HOLD_BELOW_DONE = 0.99
 
@@ -94,17 +90,17 @@ def count_job_slides(deck, version: Optional[str], chapter, language: Optional[s
         call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
-        if latex_lint._slide_included(call, version):
+        if call.included_in(version):
             total += 1
     if deck.preamble_end is not None and resolved_deck.text == text:
-        body = latex_lint._masked_same_length(text)[deck.preamble_end:]
-        for m in latex_lint._INPUT_RE.finditer(body):
+        body = masked_same_length(text)[deck.preamble_end:]
+        for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
             frag = latex_lint.DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
-                total += sum(1 for s in deck_language.slots(latex_lint._calls_in(frag_text, []), language)
-                             if latex_lint._slide_included(s.call, version))
+                total += sum(1 for s in deck_language.slots(deck_language.calls_in(frag_text, []), language)
+                             if s.call.included_in(version))
     return total
 
 

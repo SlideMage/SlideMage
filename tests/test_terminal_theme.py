@@ -33,8 +33,5 @@ def test_every_colour_reads_on_the_background(tokens):
         assert contrast(theme[name], theme["background"]) >= 3.0, name
         assert contrast(theme[f"bright{name.capitalize()}"], theme["background"]) >= 3.0, name
     assert contrast(theme["foreground"], theme["background"]) >= 7
-
-
-def test_the_json_is_what_the_page_applies():
-    assert json.loads(theme_json(DARK))["background"] == DARK.surface
-    assert json.loads(theme_json(LIGHT))["selectionBackground"].startswith("rgba(")
+    assert json.loads(theme_json(tokens)) == theme
+    assert theme["selectionBackground"].startswith("rgba(")

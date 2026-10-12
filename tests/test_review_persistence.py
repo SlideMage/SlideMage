@@ -76,7 +76,9 @@ def test_archive_takes_the_images_of_archived_slides_in_one_run(tmp_path, monkey
     assert (media_dir / "kept.png").is_file()
 
 
-def test_init_project_preflights_template_collisions(tmp_path, monkeypatch):
+@pytest.mark.parametrize("collision", [True, False])
+def test_init_project_preserves_existing_files(tmp_path, monkeypatch, collision):
+    """Code-review regression: preflight collisions and preserve unrelated files/assets."""
     from slidemage import project
 
     template = tmp_path / "template"
@@ -84,49 +86,36 @@ def test_init_project_preflights_template_collisions(tmp_path, monkeypatch):
     (template / "slides").mkdir()
     (template / "decks" / "demo.tex").write_text("template")
     (template / "slides" / "new.tex").write_text("new slide")
+    generated = ("_slidemage_preview-x.tex", "_slidemage_snapshot-x.tex")
+    for name in generated:
+        (template / "decks" / name).write_text("generated wrapper")
+    (template / "decks" / "_kept").mkdir()
+    (template / "decks" / "_kept" / "_nested.tex").write_text("nested asset")
+    (template / "_kept.tex").write_text("root asset")
     latex_template = tmp_path / "latex-template"
     latex_template.mkdir()
     (latex_template / "framework.sty").write_text("framework")
-    monkeypatch.setattr(
-        project, "_template_dir",
-        lambda name: {"example": template, "latex": latex_template}.get(name),
-    )
-
+    monkeypatch.setattr(project, "template_dir",
+                        lambda name: {"example": template, "latex": latex_template}.get(name))
     target = tmp_path / "existing-project"
     (target / "decks").mkdir(parents=True)
-    user_file = target / "decks" / "demo.tex"
-    user_file.write_text("user data")
-
-    with pytest.raises(project.ProjectCreationError) as error:
-        project.init_project(target, copy_example=True)
-
-    assert user_file.read_text() == "user data"
-    assert not (target / "slides" / "new.tex").exists()
-    assert str(user_file) in str(error.value)
-
-
-def test_init_project_preserves_unrelated_existing_files(tmp_path, monkeypatch):
-    from slidemage import project
-
-    template = tmp_path / "template"
-    (template / "decks").mkdir(parents=True)
-    (template / "decks" / "demo.tex").write_text("template")
-    latex_template = tmp_path / "latex-template"
-    latex_template.mkdir()
-    monkeypatch.setattr(
-        project, "_template_dir",
-        lambda name: {"example": template, "latex": latex_template}.get(name),
-    )
-
-    target = tmp_path / "project-with-notes"
-    target.mkdir()
     note = target / "keep.txt"
     note.write_text("my notes")
-
-    project.init_project(target, copy_example=True)
-
+    if collision:
+        user_file = target / "decks" / "demo.tex"
+        user_file.write_text("user data")
+        with pytest.raises(project.ProjectCreationError) as error:
+            project.init_project(target, copy_example=True)
+        assert user_file.read_text() == "user data"
+        assert not (target / "slides" / "new.tex").exists()
+        assert str(user_file) in str(error.value)
+    else:
+        project.init_project(target, copy_example=True)
+        assert (target / "decks" / "demo.tex").read_text() == "template"
+        assert all(not (target / "decks" / name).exists() for name in generated)
+        assert (target / "decks" / "_kept" / "_nested.tex").read_text() == "nested asset"
+        assert (target / "_kept.tex").read_text() == "root asset"
     assert note.read_text() == "my notes"
-    assert (target / "decks" / "demo.tex").read_text() == "template"
 
 
 def _temporary_store(monkeypatch, tmp_path):

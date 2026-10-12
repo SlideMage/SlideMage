@@ -54,7 +54,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import app_settings, compile_records, compiler, project
+from . import app_settings, compile_log, compile_records, compiler, project
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
@@ -66,7 +66,9 @@ from .compile_records import (
     parse_fls,
     sha256 as _sha256,
 )
+from .deck_editor import VIEWS
 from .deck_scan import PROJECT_ROOT, Deck
+from .processes import no_console_kwargs
 
 SNAPSHOTS_DIRNAME = "snapshots"
 SNAPSHOT_FORMAT = 1
@@ -245,16 +247,12 @@ def _dir_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
-def _popen_kwargs() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-
-
 def _run_text(cmd: list[str], cwd: Optional[Path] = None, any_exit_code: bool = False) -> str:
     """A command's stdout ("" if it can't run, or exits with an error unless
     `any_exit_code`) -- for version strings and kpsewhich lookups."""
     try:
         result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                                errors="replace", timeout=30, **_popen_kwargs())
+                                errors="replace", timeout=30, **no_console_kwargs())
     except (OSError, subprocess.SubprocessError):
         return ""
     return result.stdout if result.returncode == 0 or any_exit_code else ""
@@ -392,7 +390,7 @@ def snapshot_jobs(deck: Deck, options: SnapshotOptions) -> list[CompileJob]:
     """The compiles a snapshot captures: every version of the deck (or the one
     version-less compile) and, by default, the presenter PDF."""
     appendix = deck.appendix_toc if options.appendix_toc is None else options.appendix_toc
-    versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
+    versions = list(VIEWS) if deck.supports_version else [None]
     jobs = [CompileJob(deck, v, None, footer_timestamp=options.footer_timestamp,
                        appendix_toc=appendix) for v in versions]
     if options.presenter:
@@ -444,7 +442,7 @@ def tex_roots() -> list[Path]:
 
 
 def _isolated_env(epoch: int, framework_dir: Optional[Path] = None) -> dict:
-    env = compiler._build_env()
+    env = compiler.build_env()
     for name in ISOLATING_ENV_VARS:
         env.pop(name, None)
     if framework_dir is not None:
@@ -466,21 +464,10 @@ def run_recorded_compile(
     cmd = ["latexmk", "-f", "-recorder", f"-jobname={jobname}",
            f"-auxdir={out}", f"-outdir={out}", _rel(wrapper, cwd)]
     try:
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, errors="replace",
-                                bufsize=1, **_popen_kwargs())
+        compiler.run_streamed(cmd, cwd=cwd, env=env, log=log, cancel=cancel,
+                              errors="replace")
     except FileNotFoundError as exc:
         raise SnapshotError("latexmk not found on PATH -- is a TeX distribution installed?") from exc
-    if cancel is not None:
-        cancel._set_process(proc)
-    try:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            log(line.rstrip("\n"))
-        proc.wait()
-    finally:
-        if cancel is not None:
-            cancel._set_process(None)
     if cancel is not None and cancel.is_set():
         raise SnapshotError("stopped by user")
     pdf = build_dir / f"{jobname}.pdf"
@@ -799,7 +786,7 @@ def environment_differences(recorded: dict, current: dict) -> list[str]:
 def _git(root: Path, *args: str) -> Optional[str]:
     try:
         result = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
-                                text=True, errors="replace", timeout=30, **_popen_kwargs())
+                                text=True, errors="replace", timeout=30, **no_console_kwargs())
     except (OSError, subprocess.SubprocessError):
         return None
     return result.stdout if result.returncode == 0 else None
@@ -821,8 +808,8 @@ def _project_git_state(root: Path, rels: Iterable[str]) -> dict:
 
 def _app_info() -> dict:
     from . import version
-    commit = version._run_git("rev-parse", "--short", "HEAD") or ""
-    dirty = bool(version._run_git("status", "--porcelain", "--untracked-files=no"))
+    commit = version.run_git("rev-parse", "--short", "HEAD") or ""
+    dirty = bool(version.run_git("status", "--porcelain", "--untracked-files=no"))
     return {"version": version.VERSION_NUMBER, "commit": commit,
             "dirty": dirty if commit else False, "frozen": bool(getattr(sys, "frozen", False))}
 
@@ -990,12 +977,12 @@ def _scratch_dir(kind: str) -> Iterator[Path]:
     not %TEMP%), protected from the GUI's temp-file cleanup while in use."""
     path = compiler.BUILD_DIR / f"snapshot-{kind}-{uuid.uuid4().hex}"
     path.mkdir(parents=True)
-    compiler._set_build_dir_active(path, True)
+    compiler.set_build_dir_active(path, True)
     try:
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
-        compiler._set_build_dir_active(path, False)
+        compiler.set_build_dir_active(path, False)
 
 
 def first_difference(reference: str, rendered: str, width: int = 60) -> str:
@@ -1074,7 +1061,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
             if seed.is_file():
                 shutil.copy2(seed, build / seed.name)
             key = progress_key(jobname, verify=True)
-            log(f"==== Compiling {manifest.get('deck_name', '?')} -> {key} ====")
+            log(compile_log.compiling(manifest.get('deck_name', '?'), key))
             log("    (verifying: rendering from the snapshot itself)")
             env = _isolated_env(int(job.get("source_date_epoch", default_epoch)), framework)
             try:
@@ -1085,7 +1072,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
                 report.problems.append(str(exc))
                 continue
             finally:
-                log(f"==== Finished: {key} ====")
+                log(compile_log.finished(key))
             outputs.append(out)
             for path in out.inputs + out.bib_sources:
                 if is_within(path, snapshot_root) or is_within(path, build):
@@ -1155,7 +1142,7 @@ def create_snapshot(
     name = snapshot_name(deck.name, when, directory, options.zip)
     partial = directory / f"{PARTIAL_PREFIX}{name}"
     build_root = compiler.BUILD_DIR / f"snapshot-{uuid.uuid4().hex}"
-    compiler._set_build_dir_active(build_root, True)
+    compiler.set_build_dir_active(build_root, True)
     jobs = snapshot_jobs(deck, options)
     wrappers: list[Path] = []
     try:
@@ -1169,18 +1156,18 @@ def create_snapshot(
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
             key = progress_key(job.jobname)
-            wrapper_text = compiler._wrapper_text(job)
+            wrapper_text = compiler.wrapper_text(job)
             wrapper_texts.append(wrapper_text)
             if options.reuse:
                 fresh, why = compile_records.fresh_output(compiler.BUILD_DIR, job.jobname,
                                                           wrapper_text)
                 if fresh is not None:
                     progress(f"{job.jobname} unchanged ({i} of {len(jobs)})")
-                    log(f"==== Compiling {deck.name} -> {key} ====")
+                    log(compile_log.compiling(deck.name, key))
                     log(f"    ({job.jobname}: nothing it uses changed since its compile of "
                         f"{fresh.created[:16].replace('T', ' ')} -- using "
                         f"{fresh.pdf} instead of compiling it again)")
-                    log(f"==== Finished: {key} ====")
+                    log(compile_log.finished(key))
                     outputs.append(_JobOutput(
                         job_name=job.jobname, pdf=fresh.pdf, inputs=fresh.inputs,
                         log_text=fresh.log_text, bib_sources=fresh.bib_sources,
@@ -1189,7 +1176,7 @@ def create_snapshot(
                     continue
                 log(f"    ({job.jobname} is compiled: {why})")
             progress(f"compiling {job.jobname} ({i} of {len(jobs)})")
-            log(f"==== Compiling {deck.name} -> {key} ====")
+            log(compile_log.compiling(deck.name, key))
             wrapper = deck.path.parent / wrapper_name(job.jobname)
             wrappers.append(wrapper)
             wrapper.write_text(wrapper_text, encoding="utf-8", newline="")
@@ -1198,7 +1185,7 @@ def create_snapshot(
                     project_root, wrapper, job.jobname, build_root / job.jobname, env, log, cancel))
             finally:
                 wrapper.unlink(missing_ok=True)
-                log(f"==== Finished: {key} ====")
+                log(compile_log.finished(key))
 
         # 2. What to copy.
         from . import deck_language
@@ -1334,7 +1321,7 @@ def create_snapshot(
         for wrapper in wrappers:
             wrapper.unlink(missing_ok=True)
         shutil.rmtree(build_root, ignore_errors=True)
-        compiler._set_build_dir_active(build_root, False)
+        compiler.set_build_dir_active(build_root, False)
         if not result.ok and partial.exists():
             shutil.rmtree(partial, ignore_errors=True)
     log(f"*** Snapshot of {deck.name} FAILED: {result.error} ***")

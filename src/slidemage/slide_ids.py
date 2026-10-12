@@ -12,12 +12,13 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from . import slide_language
+from . import project, slide_language
 from .deck_scan import PROJECT_ROOT
 
 SLIDE_IDS_CSV = PROJECT_ROOT / "slide_ids.csv"
 SLIDES_DIR = PROJECT_ROOT / "slides"
-TEMPLATE_PATH = PROJECT_ROOT / ".scripts" / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
+TEMPLATE_RELATIVE = Path(".scripts") / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
+TEMPLATE_PATH = PROJECT_ROOT / TEMPLATE_RELATIVE
 
 # Matches the *unadorned* two-line "Included in decks" block only -- unlike
 # deck_headers.HEADER_RE, deliberately does NOT also consume a trailing
@@ -108,7 +109,7 @@ def reserved_id_reason(slide_id: str) -> Optional[str]:
 ID_FROM_FILENAME_RE = re.compile(r"^([^-]+)-.*\.tex$")
 
 
-def _existing_ids_from_csv() -> set[str]:
+def existing_ids_from_csv() -> set[str]:
     if not SLIDE_IDS_CSV.exists():
         return set()
     with open(SLIDE_IDS_CSV, encoding="utf-8", newline="") as f:
@@ -118,7 +119,7 @@ def _existing_ids_from_csv() -> set[str]:
     return ids
 
 
-def _existing_ids_from_disk() -> set[str]:
+def existing_ids_from_disk() -> set[str]:
     if not SLIDES_DIR.is_dir():
         return set()
     ids = set()
@@ -134,7 +135,7 @@ def list_id_slugs() -> list[str]:
     the Add slide sheet's slide picker."""
     if not SLIDES_DIR.is_dir():
         return []
-    suffix = "-current.tex"
+    suffix = slide_language.CURRENT_SUFFIX
     return sorted(
         p.name[: -len(suffix)]
         for p in SLIDES_DIR.glob(f"*{suffix}")
@@ -156,7 +157,7 @@ def mint_slide_id(reserved: Optional[str] = None) -> str:
     demo slide id instead: that digit, a letter, then any character."""
     if reserved is not None and reserved not in RESERVED_FIRST_DIGITS:
         raise ValueError(f"reserved must be one of {RESERVED_FIRST_DIGITS!r}, got {reserved!r}")
-    existing = {i.lower() for i in _existing_ids_from_csv() | _existing_ids_from_disk()}
+    existing = {i.lower() for i in existing_ids_from_csv() | existing_ids_from_disk()}
     while True:
         if reserved is None:
             candidate = random.choice(ID_FIRST_ALPHABET) + "".join(
@@ -221,8 +222,8 @@ def create_slide_file(
     """Create slides/<id>-<LANG>-<slug>-current.tex (added 2026-08-24:
     `language`, one of slide_language.LANGUAGES, is always encoded into
     the filename itself -- Slidemaster_preamble_base.tex's own
-    \\setSlideLanguageFromSlug parses it back out at compile time, see
-    LANGUAGE_NOTES.md). The content is `body` when given (e.g. another slide's
+    \\setSlideLanguageFromSlug parses it back out at compile time).
+    The content is `body` when given (e.g. another slide's
     slide_body()), else the packaged starter template (mirrors slide.new.R);
     this function writes its own fresh header. When
     `cross_ref_id_slug` is given, writes a "%% Translation of: ..." header
@@ -232,7 +233,7 @@ def create_slide_file(
     file is already there."""
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
-    dest = SLIDES_DIR / f"{slide_id}-{language}-{slug}-current.tex"
+    dest = SLIDES_DIR / slide_language.current_name(f"{slide_id}-{language}-{slug}")
     if dest.exists():
         raise FileExistsError(f"{dest} already exists")
     SLIDES_DIR.mkdir(parents=True, exist_ok=True)
@@ -244,8 +245,17 @@ def create_slide_file(
 
 
 def read_template() -> str:
-    """The project's starter slide (.scripts/R_Slidemaster/inst/templates/slide-template.tex)."""
-    return TEMPLATE_PATH.read_bytes().decode("utf-8")
+    """The project's starter slide, or the bundled example's when absent."""
+    if TEMPLATE_PATH.is_file():
+        return TEMPLATE_PATH.read_bytes().decode("utf-8")
+    example = project.template_dir("example")
+    if example is not None:
+        template = example / TEMPLATE_RELATIVE
+        if template.is_file():
+            return template.read_bytes().decode("utf-8")
+    raise FileNotFoundError(
+        f"No slide template found at {TEMPLATE_PATH} or in the bundled example project."
+    )
 
 
 def add_translation_backreference(source_path: Path, language: str, new_id_slug: str) -> None:

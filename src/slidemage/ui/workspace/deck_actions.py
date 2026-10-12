@@ -220,7 +220,7 @@ class DeckActionsMixin:
         if group != deck.group or group not in deck.tags:
             try:
                 deck_editor.set_deck_tags(
-                    dest, deck_editor._read(dest), self._tags_with_group(deck.tags, group))
+                    dest, deck_editor.read(dest), self._tags_with_group(deck.tags, group))
                 self._log(f"Tagged {dest.stem} as {group}")
             except (deck_editor.StaleFileError, ValueError, OSError) as exc:
                 QMessageBox.warning(

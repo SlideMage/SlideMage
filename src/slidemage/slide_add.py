@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename
+from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename, slide_versioning
 from .ai.providers import ChatProvider
 from .slide_import import escape_latex
 
@@ -57,7 +57,7 @@ TRANSLATION_MAX_TOKENS = 4096
 
 def slide_path(id_slug: str) -> Path:
     """The live file of a slide."""
-    return slide_ids.SLIDES_DIR / f"{id_slug}-current.tex"
+    return slide_ids.SLIDES_DIR / slide_language.current_name(id_slug)
 
 
 def frame_thumbnail(frame: str) -> Path:
@@ -95,6 +95,8 @@ def create_copy(
     source = slide_path(source_id_slug)
     if body is None:
         body = slide_ids.slide_body(source)
+    # A fresh id starts its own version history, just like a template-seeded slide.
+    body = slide_versioning.strip_marker(body)
     if language is None:
         return _create(slug, slide_language.own_language(source_id_slug) or "EN", body)
     created = _create(slug, language, body, translation_of=source_id_slug)
@@ -186,8 +188,9 @@ class ProjectSlide:
 def project_slides() -> list[ProjectSlide]:
     """Every slide of the project, sorted by id-slug."""
     slides = []
+    links = slide_language.TranslationLinks()
     for id_slug in slide_ids.list_id_slugs():
         path = slide_path(id_slug)
         slides.append(ProjectSlide(id_slug, deck_outline.slide_file_title(path, id_slug),
-                                   slide_language.badge_for(id_slug, path).text()))
+                                   slide_language.badge_for(id_slug, links=links).text()))
     return slides

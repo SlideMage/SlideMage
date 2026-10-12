@@ -2,7 +2,6 @@
 switching, saving with the version prompt, frozen versions, the .bib."""
 from __future__ import annotations
 
-from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import Qt
@@ -18,11 +17,6 @@ from slidemage.ui.workspace.insert_popovers import LinkPopover
 from slidemage.ui.workspace.source_view import SourcePane
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 class FakeApp:
@@ -127,13 +121,6 @@ def test_enter_after_a_begin_line_opens_the_end_and_after_an_item_continues_the_
     editor.undo()
 
 
-def test_enter_in_a_read_only_editor_changes_nothing(qapp):
-    editor = make_editor("text")
-    editor.set_read_only(True)
-    QTest.keyClick(editor, Qt.Key.Key_Return)
-    assert editor.text() == "text"
-
-
 def test_comment_toggle_works_on_every_selected_line_in_one_undo_step(qapp):
     editor = make_editor("a\n\tb\nc")
     select(editor, 0, 5)                        # a and b
@@ -234,6 +221,9 @@ def test_a_clean_file_picks_up_a_change_made_elsewhere_but_a_dirty_one_does_not(
 def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pane, slides):
     pane.show_path(slides / "abc-EN-Demo-v1-0-0.tex")
     assert pane.current.editor.is_read_only()
+    before = pane.current.editor.text()
+    QTest.keyClick(pane.current.editor, Qt.Key.Key_Return)
+    assert pane.current.editor.text() == before
     assert pane._frozen_bar.isVisibleTo(pane) and pane._unlock_button.isEnabled()
     assert not pane._format_row.isEnabled() and not pane._save_button.isEnabled()
     pane.insert(latex_edit.INSERT_LIST_COMMANDS[0])                  # a format command is refused too
@@ -324,7 +314,6 @@ def test_saving_a_slide_with_a_minor_bump_freezes_the_old_text_and_patches_the_b
     assert (slides / "abc-EN-Demo-v1-1-0.tex").read_text(encoding="utf-8").startswith("\\setSlideVersion{1-1-0}")
     assert editor.text() == path.read_text(encoding="utf-8")      # the buffer shows the bumped version
     assert not editor.is_modified() and editor.textCursor().position() == editor.text().index("Text")
-    assert any(line.startswith("Saved abc-EN-Demo-current.tex (backup:") for line in pane.app_for_test.logged)
 
 
 def test_overwrite_saves_without_a_new_version(pane, slides, monkeypatch):

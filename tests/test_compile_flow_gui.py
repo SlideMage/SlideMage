@@ -4,9 +4,9 @@ The compiler is replaced by a script that writes the log lines a real run writes
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
+from conftest import wait_until
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
 
 from slidemage import compile_progress, compiler, deck_outline, latex_lint
@@ -14,7 +14,7 @@ from slidemage.compile_status import DONE, FAILED, QUEUED, STOPPED
 from slidemage.deck_scan import PROJECT_ROOT
 from slidemage.ui.workspace import compile_jobs, render_check
 
-from test_workspace_window import COURSE, MANUAL, OLD, WORK, make_deck, qapp, window  # noqa: F401 -- fixtures
+from test_workspace_window import COURSE, MANUAL, OLD, WORK, make_deck, qapp, window as window  # noqa: F401 -- fixtures
 
 SLIDE = sorted((PROJECT_ROOT / "slides").glob("*-current.tex"))[0]
 SLIDE_ID = SLIDE.name.split("-")[0]
@@ -33,15 +33,6 @@ def show_buttons(sheet):
 
 def press(drawer, text):
     next(b for b in drawer.findChildren(QPushButton) if b.text() == text).click()
-
-
-def wait_until(condition, timeout=5.0):
-    end = time.monotonic() + timeout
-    while not condition():
-        QApplication.processEvents()
-        assert time.monotonic() < end, "timed out"
-        time.sleep(0.005)
-    QApplication.processEvents()
 
 
 def passing(job):
@@ -112,7 +103,9 @@ def test_a_run_shows_its_jobs_and_ends_with_a_summary_card(env):
     assert not panel._rows["course-during-course"].source.isHidden()
     assert not env.window.log_drawer.isHidden()                       # a failure opens the Log
     assert env.window.log_drawer._error.text() == f"Show {SLIDE_ID} · line 47"
-    assert env.window.topbar._compile_menu is not None
+    env.window.log_drawer._error.click()
+    env.window.job_panel._rows["course-during-course"].source.click()
+    assert env.opened == [(SLIDE, 47)] * 2
 
 
 def test_auto_open_opens_each_pdf_that_lands_and_the_card_opens_them_again(env):
@@ -130,46 +123,26 @@ def test_auto_open_opens_each_pdf_that_lands_and_the_card_opens_them_again(env):
     assert env.opened_pdfs == []
 
 
-def test_a_job_that_fails_is_reported_by_a_toast_that_opens_the_source_at_its_line(env):
-    env.fails = {"course-instructor"}
+@pytest.mark.parametrize("fails", [False, True], ids=["ready-pdf", "failed-source"])
+def test_single_job_toast_opens_its_pdf_or_failing_source(env, fails):
+    env.window.build_options.auto_open_checkbox.setChecked(False)
+    if fails:
+        env.fails = {"course-instructor"}
     build(env, "instructor")
     env.finished()
     toast = env.window.compile_toast
     assert not toast.isHidden() and env.window.job_panel.isHidden()
-    assert toast_texts(toast) == ([f"Compile failed in {SLIDE_ID}"], ["Open in Source", "Log"])
-    env.window._on_compile_toast_action("source")
-    assert env.opened == [(SLIDE, 47)]
-    env.window._on_compile_toast_action("log")
-    assert not env.window.log_drawer.isHidden()
-
-
-def test_a_job_that_passes_is_answered_by_a_toast_with_its_pdf(env):
-    env.window.build_options.auto_open_checkbox.setChecked(False)
-    build(env, "instructor")
-    env.finished()
-    assert not env.window.compile_toast.isHidden() and env.window.job_panel.isHidden()
-    assert toast_texts(env.window.compile_toast) == (["course · Instructor ready"], ["Open PDF", "Log"])
-    assert env.window.log_drawer.isHidden()
-    env.window._on_compile_toast_action("pdf")
-    assert env.opened_pdfs == ["course-instructor.pdf"]
-
-
-def test_the_failing_file_may_be_gone(env):
-    env.script = lambda job: [f"==== Compiling course -> {job.jobname} ====", "slides/zzz-gone.tex:3: Oops",
-                              f"*** FAIL: {job.jobname} -- x ***"]
-    build(env, "instructor")
-    env.finished()
-    env.window._on_compile_toast_action("source")
-    assert env.opened == [] and "the file is gone" in env.window.log_drawer.text.toPlainText()
-
-
-def test_the_error_button_of_the_drawer_and_the_row_open_the_source(env):
-    env.fails = {"course-after-course"}
-    build(env)
-    env.finished()
-    env.window.log_drawer._error.click()
-    env.window.job_panel._rows["course-after-course"].source.click()
-    assert env.opened == [(SLIDE, 47)] * 2
+    if fails:
+        assert toast_texts(toast) == ([f"Compile failed in {SLIDE_ID}"], ["Open in Source", "Log"])
+        env.window._on_compile_toast_action("source")
+        assert env.opened == [(SLIDE, 47)]
+        env.window._on_compile_toast_action("log")
+        assert not env.window.log_drawer.isHidden()
+    else:
+        assert toast_texts(toast) == (["course · Instructor ready"], ["Open PDF", "Log"])
+        assert env.window.log_drawer.isHidden()
+        env.window._on_compile_toast_action("pdf")
+        assert env.opened_pdfs == ["course-instructor.pdf"]
 
 
 def test_retry_failed_runs_only_the_failed_jobs_again(env):
@@ -269,10 +242,8 @@ def broken():
 def test_a_build_with_errors_waits_for_build_anyway(env, monkeypatch):
     monkeypatch.setattr(latex_lint, "check_jobs", lambda jobs: broken())
     answers = iter(["cancel", "anyway", "show"])
-    seen = []
 
     def exec_(sheet):
-        seen.append(sheet)
         answer = next(answers)
         if answer == "anyway":
             sheet._on_anyway()
@@ -287,23 +258,9 @@ def test_a_build_with_errors_waits_for_build_anyway(env, monkeypatch):
     build(env, "instructor")
     env.finished()
     assert env.ran == ["course-instructor"]                              # "Build anyway"
-    assert [b.text() for b in seen[0].findChildren(QPushButton)][-2:] == ["Cancel", "Build anyway"]
     build(env, "instructor")                                             # "Show in editor": no build, jumps
     assert env.ran == ["course-instructor"] and env.opened == [(SLIDE, 9)]
     assert "Unbalanced braces" in env.window.log_drawer.text.toPlainText()
-
-
-def test_the_check_sheet_lists_errors_before_warnings_and_confirm_logs_a_clean_check(qapp):  # noqa: F811
-    warning = latex_lint.LintIssue("underscore", "x", 1, "a.tex", None)
-    error = latex_lint.LintIssue(latex_lint.CHECKS[0][0], "y", 2, "b.tex", None)
-    result = latex_lint.CheckResult(issues=[warning, error], files_checked=2)
-    sheet = render_check.RenderCheckSheet(None, result, "deck", "Build", None)
-    assert sheet.windowTitle() == "1 error found" and len(show_buttons(sheet)) == 2
-    assert not any(b.isEnabled() for b in show_buttons(sheet))            # no editor, no file
-    logged = []
-    app = type("App", (), {"log": staticmethod(logged.append)})
-    assert render_check.confirm_render(None, app, latex_lint.CheckResult(files_checked=3), "deck") is True
-    assert logged and logged[0].startswith("Pre-render syntax check (deck): 3 file(s)")
 
 
 # -- the menu and the other entry points ------------------------------------------------

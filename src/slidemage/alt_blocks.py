@@ -17,13 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from .deck_scan import PROJECT_ROOT
-
-# Same approximation deck_headers.py's neighbours use: an unescaped "%"
-# through end of line, "unescaped" taken as "not immediately preceded by a
-# single backslash". The classic even/odd-backslash case ("\\%") is not
-# handled -- see source_editor.py's COMMENT_RE for the full reasoning; it
-# matters even less here, where the result is only ever hashed or scanned.
-COMMENT_RE = re.compile(r"(?<!\\)%.*")
+from .tex_source import COMMENT_RE
 
 INCLUDEGRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
 
@@ -152,7 +146,7 @@ def _control_sequence_at(text: str, index: int) -> tuple[str, int] | None:
     return "", cursor + 1
 
 
-def _iter_tex_commands(text: str):
+def iter_tex_commands(text: str):
     """Yield active TeX control words as (name, start, end) triples.
 
     Comments, \\verb literals, and the token consumed by \\string are skipped
@@ -194,7 +188,7 @@ def _iter_tex_commands(text: str):
         cursor = end
 
 
-def _delimited_group_end(text: str, open_index: int, opening: str, closing: str) -> int | None:
+def delimited_group_end(text: str, open_index: int, opening: str, closing: str) -> int | None:
     """Find the end of a balanced optional angle or square group."""
     if open_index >= len(text) or text[open_index] != opening:
         return None
@@ -220,20 +214,21 @@ def _delimited_group_end(text: str, open_index: int, opening: str, closing: str)
     return None
 
 
-def extract_note_calls(text: str) -> tuple[str, list[str]]:
+def extract_note_calls(text: str, *, mask: bool = False) -> tuple[str, list[str]]:
     r"""Remove Beamer \note commands with optional overlay/options.
 
     Supported forms include \note {...}, \note<2>{...}, and
     \note<2>[item]{...}. The argument uses the same nested-brace parser
     as other slide macros. Control-sequence tokenization avoids matching
     longer names such as \noteworthy or escaped/stringified examples.
+    With `mask=True`, replace notes with spaces while preserving offsets and newlines.
     """
     remainder: list[str] = []
     arguments: list[str] = []
     index = 0
     copied_through = 0
 
-    for name, found, command_end in _iter_tex_commands(text):
+    for name, found, command_end in iter_tex_commands(text):
         if name != "note" or found < index:
             continue
 
@@ -246,7 +241,7 @@ def extract_note_calls(text: str) -> tuple[str, list[str]]:
             if marker in seen:
                 break
             seen.add(marker)
-            after_group = _delimited_group_end(
+            after_group = delimited_group_end(
                 text, cursor, marker, ">" if marker == "<" else "]"
             )
             if after_group is None:
@@ -260,6 +255,8 @@ def extract_note_calls(text: str) -> tuple[str, list[str]]:
             continue
 
         remainder.append(text[copied_through:found])
+        if mask:
+            remainder.append(re.sub(r"[^\n]", " ", text[found:after]))
         arguments.append(content)
         copied_through = after
         index = after
@@ -271,7 +268,7 @@ def extract_note_calls(text: str) -> tuple[str, list[str]]:
 def extract_macro_calls(text: str, macro: str) -> tuple[str, list[str]]:
     """Remove every `\\macro{...}` from `text`; return (remainder, arguments).
 
-    Brace-matched, for the reason spelled out in `_slide_title` below: a
+    Brace-matched, for the reason spelled out in `slide_title` below: a
     non-greedy `\\macro\\{(.*?)\\}` stops at the first closing brace, which is
     the wrong one whenever the argument itself contains a braced macro.
     """
@@ -312,7 +309,7 @@ def frame_type(source: str) -> Optional[str]:
     return "titleframe" if TITLEFRAME_RE.search(stripped) else None
 
 
-def _slide_title(source: str, slide_path: Path) -> tuple[str, str]:
+def slide_title(source: str, slide_path: Path) -> tuple[str, str]:
     """(slide id, human title). Frame title if parseable, else the filename.
 
     The title argument is brace-matched, not regex-matched. 70 slide files
@@ -478,7 +475,7 @@ def referenced_images(source: str) -> list[str]:
 
     for match in SIDEIMAGEFRAME_RE.finditer(stripped):
         # match consumes through the *opening* brace of the title argument
-        # (same convention FRAME_OPEN_RE/_slide_title above already use) --
+        # (same convention FRAME_OPEN_RE/slide_title above already use) --
         # skip past the title, then the very next brace group is the path.
         _title, after_title = braced_argument(stripped, match.end() - 1)
         cursor = after_title
@@ -641,6 +638,6 @@ def scan_slides_raw(slides_dir: Path | None = None) -> list[SlideRow]:
         images = referenced_images(text)
         if not images:
             continue
-        slide_id, title = _slide_title(text, path)
+        slide_id, title = slide_title(text, path)
         results.append(SlideRow(path=path, slide_id=slide_id, title=title, images=images))
     return results

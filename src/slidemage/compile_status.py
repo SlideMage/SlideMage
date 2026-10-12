@@ -28,19 +28,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .compile_log import (
+    COMPILING_RE as _COMPILING_RE,
+    FAIL_RE as _FAIL_RE,
+    FINISHED_RE as _FINISHED_RE,
+    MOVING_RE as _MOVING_RE,
+    PASS_RE as _PASS_RE,
+    SKIPPED_RE as _SKIPPED_RE,
+    STOPPED_ALL_RE as _STOPPED_ALL_RE,
+)
 from .compiler import CompileJob, job_label
 from .partial_compile import format_page_spec
 from .slide_language import bare_id
 
 QUEUED, RUNNING, MOVING, DONE, FAILED, STOPPED = "queued", "running", "moving", "done", "failed", "stopped"
 
-_COMPILING_RE = re.compile(r"^==== Compiling \S+ -> (\S+) ====")
-_MOVING_RE = re.compile(r"^==== MOVING: (\S+) ->")
-_PASS_RE = re.compile(r"^==== PASS: (\S+) ->")
-_FAIL_RE = re.compile(r"^\*\*\* FAIL: (\S+) -- (.*?)(?: \*\*\*)?$")
-_FINISHED_RE = re.compile(r"^==== Finished: (\S+) ====")
-_SKIPPED_RE = re.compile(r"^==== Skipped: (\S+) ====")
-_STOPPED_ALL_RE = re.compile(r"^==== Stopped: ")
 # "slides/1ab-EN-Title-current.tex:47: Undefined control sequence." (-file-line-error)
 _ERROR_RE = re.compile(r"^(?P<file>\S.*?\.tex):(?P<line>\d+): (?P<message>\S.*)$")
 # The wrapper a compile writes next to the deck (compiler.py) is deleted afterwards.

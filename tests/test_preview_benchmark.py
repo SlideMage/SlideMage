@@ -70,7 +70,7 @@ def test_interrupted_attempt_restarts_cold_and_restores_source(tmp_path, modules
     monkeypatch.setattr(compare.deck_scan, "scan_decks", lambda: [deck])
     monkeypatch.setattr(compare.deck_editor, "parse_slide_calls", lambda _: [call])
     monkeypatch.setattr(compare.deck_editor, "is_commented_out", lambda *a: False)
-    monkeypatch.setattr(compare.slide_preview, "_build_env", lambda: {})
+    monkeypatch.setattr(compare.slide_preview, "build_env", lambda: {})
     monkeypatch.setattr(compare, "implementation_identity", lambda package, options, env: dict(source="fixed", options=options))
     monkeypatch.setattr(compare, "signature", lambda path: [(320, 180, hashlib.sha256(path.read_bytes()).hexdigest())])
     caches, stop_once = [], [True]

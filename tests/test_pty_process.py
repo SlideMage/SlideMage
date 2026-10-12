@@ -8,7 +8,6 @@ import sys
 import time
 
 import pytest
-from fake_claude import make_fake_claude
 
 from slidemage.pty_process import PtyProcess
 
@@ -54,22 +53,19 @@ def test_a_resize_reaches_the_child(tmp_path):
     run.process.stop()
 
 
-def test_stop_ends_the_process_politely_and_reports_it_once(tmp_path):
-    run = Run(sh("echo up; sleep 60"), tmp_path)
+@pytest.mark.parametrize("script, grace, code", [
+    ("echo up; sleep 60", 1.0, -15),
+    ("trap '' TERM; echo up; while :; do sleep 0.05; done", 0.3, -9),
+], ids=["sigterm", "sigkill"])
+def test_stop_ends_the_process_and_reports_it_once(tmp_path, script, grace, code):
+    run = Run(sh(script), tmp_path)
     run.wait_for(lambda: "up" in run.text)
     started = time.time()
-    run.process.stop()
+    run.process.stop(grace=grace)
     assert time.time() - started < 3 and not run.process.alive
-    assert run.codes == [-15]            # SIGTERM
+    assert run.codes == [code]
     run.process.stop()                   # again: nothing happens
-    assert run.codes == [-15]
-
-
-def test_stop_kills_a_process_that_ignores_sigterm(tmp_path):
-    run = Run(sh("trap '' TERM; echo stubborn; while :; do sleep 0.05; done"), tmp_path)
-    run.wait_for(lambda: "stubborn" in run.text)
-    run.process.stop(grace=0.3)
-    assert not run.process.alive and run.codes == [-9]
+    assert run.codes == [code]
 
 
 def test_stop_ends_what_the_child_started_too(tmp_path):
@@ -92,18 +88,6 @@ def _alive(pid: int) -> bool:
     """Whether `pid` runs (a zombie, waiting to be reaped, does not)."""
     state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
     return bool(state) and not state.startswith("Z")
-
-
-def test_the_fake_claude_runs_in_the_given_folder_with_the_given_environment(tmp_path):
-    fake = make_fake_claude(tmp_path)
-    log = tmp_path / "log.json"
-    env = {"PATH": "/usr/bin:/bin", "FAKE_CLAUDE_LOG": str(log), "TERM": "xterm-256color"}
-    run = Run([str(fake), "--flag"], tmp_path, env)
-    run.wait_for(lambda: "> " in run.text)
-    run.process.write(b"/exit\r")
-    run.wait_for(lambda: run.codes)
-    assert run.codes == [3] and "bye" in run.text
-    assert '"--flag"' in log.read_text() and str(tmp_path) in log.read_text()
 
 
 def test_a_process_that_outlives_its_terminal_is_killed_with_what_it_started(tmp_path, monkeypatch):

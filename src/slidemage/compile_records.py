@@ -47,6 +47,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from .processes import no_console_kwargs
+from .slide_language import TRANSLATION_LANGUAGES
+
 RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
 # The auxiliary files kept with a record (aux_dir()).
@@ -177,17 +180,13 @@ def version_lines(log_text: str) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-def _popen_kwargs() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-
-
 @functools.lru_cache(maxsize=1)
 def engine_version() -> str:
     """lualatex's version line ("This is LuaHBTeX, Version 1.22.0 (MiKTeX
     25.4)"), once per run of SlideMage; "" if it can't be run."""
     try:
         result = subprocess.run(["lualatex", "--version"], capture_output=True, text=True,
-                                errors="replace", timeout=30, **_popen_kwargs())
+                                errors="replace", timeout=30, **no_console_kwargs())
     except (OSError, subprocess.SubprocessError):
         return ""
     lines = result.stdout.splitlines() if result.returncode == 0 else []
@@ -262,11 +261,11 @@ def write_record(
         inline_inputs = [deck_path] if deck_path is not None else []
         if deck_path is not None and deck_path.is_file():
             from . import deck_language, deck_scan
-            deck = next((d for d in deck_scan._scan_dir(deck_path.parent, False) if d.path == deck_path), None)
+            deck = next((d for d in deck_scan.scan_dir(deck_path.parent, False) if d.path == deck_path), None)
             if deck is not None:
                 # Include dependencies in either language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.
-                for language in ("EN", "DE"):
+                for language in TRANSLATION_LANGUAGES:
                     _resolved, inputs = deck_language.compile_deck(deck, language)
                     inline_inputs.extend(inputs)
         for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:

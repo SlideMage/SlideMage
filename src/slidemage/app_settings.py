@@ -30,7 +30,6 @@ from .deck_scan import PROJECT_ROOT
 STORE_PATH = PROJECT_ROOT / ".slidemage" / "app_settings.json"
 
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
-OTHER_MODEL_SETTING_KEY = "other_model"
 # Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
 # rather than imported from either -- this module sits below both of them
 # in the import graph (they import get_ollama_host() from here), so it
@@ -63,16 +62,6 @@ def set(key: str, value: Any) -> None:
     settings = load()
     settings[key] = value
     save(settings)
-
-
-def get_other_model() -> str | None:
-    """The shared non-translation model, with a legacy preference fallback."""
-    settings = load()
-    for key in (OTHER_MODEL_SETTING_KEY, "drafting_model", "ai_draft_model",
-                "syntax_check_model"):
-        if settings.get(key):
-            return settings[key]
-    return None
 
 
 def get_ollama_host() -> str:
