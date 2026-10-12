@@ -15,8 +15,9 @@ from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout
 
 from ....ai import claude_launch
+from ....ai.claude_scope import DECK, SLIDE
 from ...kit import kit_qss as q
-from ...kit.widgets import Button, Chip, Surface, caption
+from ...kit.widgets import Button, Chip, SegmentedControl, Surface, caption
 from ..state import WorkspaceState
 
 HINT, TERMINAL = 0, 1
@@ -72,6 +73,14 @@ class ClaudeCodeView(Surface):
     def _build_status_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
+        labels = {SLIDE: "Slide", DECK: "Deck"}
+        self.scope = SegmentedControl(tuple(labels.items()), current=SLIDE)
+        self.scope.set_labels(labels, compact=True, tooltips={   # compact: fits the narrowest column
+            SLIDE: "Claude Code works only on the slide you are looking at: it is told to read nothing else, "
+                   "and edits of other slides or decks are refused.",
+            DECK: "Claude Code may look at and change any slide of the open deck."})
+        self.scope.changed.connect(self._on_scope)
+        row.addWidget(self.scope)
         self.status = Chip("Starting…", "muted")
         row.addWidget(self.status)
         row.addStretch(1)
@@ -81,6 +90,10 @@ class ClaudeCodeView(Surface):
         self.restart_button.clicked.connect(self.restart)
         row.addWidget(self.restart_button)
         return row
+
+    def _on_scope(self, scope: str) -> None:
+        if self.session is not None:
+            self.session.set_scope(scope)
 
     # -- starting and stopping --------------------------------------------------------------------
 
@@ -111,6 +124,7 @@ class ClaudeCodeView(Surface):
         from .web import TerminalWidget
 
         self.session = ClaudeCodeSession(self.app, claude, self)
+        self.session.scope = self.scope.current()
         self.terminal = TerminalWidget(self.app.theme.tokens)
         self._terminal_layout.addWidget(self.terminal, 1)
         self.terminal.ready.connect(self._on_ready)
@@ -132,12 +146,12 @@ class ClaudeCodeView(Surface):
         try:
             self.session.start(*self._size)
         except Exception as exc:  # noqa: BLE001 -- the MCP server could not bind, the program could not start
-            self.status.set_text("Claude Code could not start")
+            self.status.set_text("Could not start")
             self.status.set_tone("error")
             self.terminal.write(f"\r\n\x1b[31m[Claude Code could not be started: {exc}. "
                                 "Use Restart to try again.]\x1b[0m\r\n".encode("utf-8", "replace"))
             return
-        self.status.set_text("Claude Code running")
+        self.status.set_text("Running")
         self.status.set_tone("ok")
         self.terminal.focus_terminal()
 
@@ -150,7 +164,7 @@ class ClaudeCodeView(Surface):
     def _on_exited(self, code: int) -> None:
         if self.terminal is None:       # reported while the window was closing
             return
-        self.status.set_text(f"Claude Code ended (exit code {code})")
+        self.status.set_text(f"Ended (exit code {code})")
         self.status.set_tone("muted" if code in (0, 143) else "warning")
         self.terminal.write(b"\r\n\x1b[2m[Claude Code ended. Use Restart to start it again.]\x1b[0m\r\n")
 

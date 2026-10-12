@@ -23,19 +23,43 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QMessageBox, QSplitter, QStackedWidget
+from PySide6.QtWidgets import (
+    QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
 
 from ... import deck_outline, slide_language, slide_preview, slide_source, slide_versioning
 from ...deck_editor import SLIDES_DIR
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import bare_id, current_path_for_bare_id
 from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
+from .. import layout_settings
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
 from .source_file import RELOADED
 from .source_view import SourcePane
 from .state import WorkspaceState
+
+
+# Settings key of the share of the width the Source view gets in the Split view.
+SPLIT_SETTING = "source_preview_split"
+DEFAULT_SPLIT = 0.5
+
+
+class _ResetHandle(QSplitterHandle):
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.splitter().reset_requested.emit()
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+class _SourcePreviewSplitter(QSplitter):
+    """Source | Preview; a double-click on the divider gives each half the width again."""
+    reset_requested = Signal()
+
+    def createHandle(self) -> QSplitterHandle:
+        return _ResetHandle(self.orientation(), self)
 
 
 class CentreColumn(QFrame):
@@ -51,8 +75,14 @@ class CentreColumn(QFrame):
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self.source.buffer)
         self.details = DetailsPane(app, state, self.is_dirty)
-        self._split = QSplitter(Qt.Orientation.Horizontal)
+        ratio = layout_settings.get(SPLIT_SETTING)
+        self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
+                             and 0.1 <= ratio <= 0.9 else DEFAULT_SPLIT)
+        self._split = _SourcePreviewSplitter(Qt.Orientation.Horizontal)
         self._split.setChildrenCollapsible(False)
+        self._split.setHandleWidth(9)   # a thin line (kit_qss) with room to grab
+        self._split.splitterMoved.connect(self._remember_split)
+        self._split.reset_requested.connect(self._reset_split)
         self._split.setObjectName(q.SURFACE)
         self._split.addWidget(self.source)
         self._split.addWidget(self.preview)
@@ -282,7 +312,7 @@ class CentreColumn(QFrame):
         self.preview.setVisible(mode in ("preview", "split"))
         self._pages.setCurrentWidget(self.details if mode == "details" else self._split)
         if mode == "split" and not was_split:
-            self._split.setSizes([1, 1])   # half and half on entering; not again while the handle is dragged
+            self._apply_split()   # the remembered share on entering; not again while the handle is dragged
         message = self._empty_message()
         if mode in ("source", "split"):
             self.source.set_message(message)
@@ -294,6 +324,21 @@ class CentreColumn(QFrame):
             row = self._focused_row()
             id_slug = row.call.id_slug if row else self._file_slide()[0]
             self.details.show_slide(id_slug, row, self._details_message(message))
+
+    def _apply_split(self) -> None:
+        # Weights, so the share holds when the window is resized.
+        self._split.setSizes([round(10_000 * self._split_ratio), round(10_000 * (1 - self._split_ratio))])
+
+    def _remember_split(self, _position: int = 0, _index: int = 0) -> None:
+        source, preview = self._split.sizes()
+        if source and preview:
+            self._split_ratio = source / (source + preview)
+            layout_settings.set(SPLIT_SETTING, self._split_ratio)
+
+    def _reset_split(self) -> None:
+        self._split_ratio = DEFAULT_SPLIT
+        layout_settings.set(SPLIT_SETTING, DEFAULT_SPLIT)
+        self._apply_split()
 
     def _file_slide(self) -> tuple[str, Optional[str]]:
         """(id-slug, version) of the slide file shown, or ("", None) if it is no slide's."""

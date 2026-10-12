@@ -55,7 +55,8 @@ def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tm
         "type": "http", "url": URL, "headers": {"Authorization": "Bearer ${SLIDEMAGE_MCP_TOKEN}"}}}}
     settings = json.loads(flags["--settings"])
     assert settings["hooks"] == {"PreToolUse": [{"matcher": "Edit|Write|MultiEdit", "hooks": [
-        {"type": "command", "command": "HOOK COMMAND"}]}]}
+        {"type": "command", "command": "HOOK COMMAND"}]}],
+        "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "HOOK COMMAND"}]}]}
     assert settings["permissions"]["allow"] == [f"mcp__slidemage__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]
     assert "add_slide" not in " ".join(settings["permissions"]["allow"])        # it changes files: Claude asks
     assert "get_focus" in flags["--append-system-prompt"] and "hook" in flags["--append-system-prompt"]

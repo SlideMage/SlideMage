@@ -1,6 +1,6 @@
 """Render the workspace offscreen in light and dark on an isolated example copy.
 
-Usage: .venv/bin/python tools/ui_screenshots.py [OUTPUT] [--sizes WxH ...]
+Usage: .venv/bin/python tools/ui_screenshots.py [OUTPUT] [--sizes WxH ...] [--mode preview|split|source|details]
 Defaults: 1024x640 1280x800 1600x900 1920x1080; OUTPUT is a printed temp folder.
 The temporary project and settings are removed afterwards; PNGs remain in OUTPUT.
 """
@@ -29,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("output", nargs="?", type=Path, help="PNG folder (default: a new temp folder)")
     parser.add_argument("--sizes", nargs="+", type=window_size,
                         default=[(1024, 640), (1280, 800), (1600, 900), (1920, 1080)])
+    parser.add_argument("--mode", choices=("preview", "split", "source", "details"),
+                        help="centre view to show (default: the remembered one)")
     args = parser.parse_args(argv)
     output = args.output or Path(tempfile.mkdtemp(prefix="slidemage-ui-screenshots-"))
     output = output.resolve()
@@ -69,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
             theme = ThemeManager(dark=dark)
             theme.apply()
             window = WorkspaceWindow(theme)
+            if args.mode:
+                window.state.set_mode(args.mode)
             try:
                 for width, height in args.sizes:
                     window.resize(width, height)

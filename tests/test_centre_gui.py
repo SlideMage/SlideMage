@@ -613,3 +613,26 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(centre,
     QTest.qWait(200)
     assert 'Older than the editor buffer' in preview._status_chip.text()
     assert len(renders) == 1  # status refresh never compiles on a keystroke
+
+
+def test_split_divider_share_is_remembered_and_double_click_resets_it(centre):
+    from slidemage.ui import layout_settings
+    from slidemage.ui.workspace import centre as centre_mod
+
+    centre.resize(1600, 700)
+    centre.show()
+    centre.state.set_mode("split")
+    split = centre._split
+    split.setSizes([900, 600])
+    split.splitterMoved.emit(900, 1)
+    assert layout_settings.get(centre_mod.SPLIT_SETTING) == pytest.approx(0.6, abs=0.02)
+
+    centre.state.set_mode("preview")
+    centre.state.set_mode("split")   # entering Split again keeps the dragged share
+    source, preview = split.sizes()
+    assert source / (source + preview) == pytest.approx(0.6, abs=0.02)
+
+    split.reset_requested.emit()
+    source, preview = split.sizes()
+    assert source / (source + preview) < 0.59   # back towards half (the views' minimum widths may hold it a little)
+    assert layout_settings.get(centre_mod.SPLIT_SETTING) == 0.5

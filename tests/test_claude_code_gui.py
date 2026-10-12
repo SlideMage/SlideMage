@@ -146,18 +146,18 @@ def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, mo
     original = session_module.McpServer.start
     monkeypatch.setattr(session_module.McpServer, "start", busy)
     env.window.assistant.show_view(CLAUDE_CODE)
-    wait_until(lambda: env.view.status.text() == "Claude Code could not start")
+    wait_until(lambda: env.view.status.text() == "Could not start")
     wait_until(lambda: "could not be started" in terminal_text(env).replace("\n", " "))     # the terminal is narrow
     assert not env.view.session.running
     monkeypatch.setattr(session_module.McpServer, "start", original)      # the port is free again: Restart works
     env.view.restart_button.click()
-    wait_until(lambda: env.view.session.running and env.view.status.text() == "Claude Code running")
+    wait_until(lambda: env.view.session.running and env.view.status.text() == "Running")
 
 
 def test_typing_resize_theme_exit_restart_and_shutdown(env):
     assert env.view.terminal is None and env.view.session is None and not env.log.exists()      # the chat is shown
     start_view(env)
-    assert env.view.status.text() == "Claude Code running"
+    assert env.view.status.text() == "Running"
     logged = json.loads(env.log.read_text())
     assert logged["cwd"] == str(env.root) and logged["project"] == str(env.root) and logged["term"] == "xterm-256color"
     assert logged["argv"][0::2] == ["--mcp-config", "--settings", "--append-system-prompt"]
@@ -196,7 +196,7 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     assert not env.view.session.running and "Claude Code ended" in terminal_text(env) and not sync._timer.isActive()
     # Restart: a new process in a reset terminal
     env.view.restart_button.click()
-    wait_until(lambda: env.view.session.running and env.view.status.text() == "Claude Code running")
+    wait_until(lambda: env.view.session.running and env.view.status.text() == "Running")
     wait_until(lambda: "Fake Claude Code" in terminal_text(env))
     assert "Claude Code ended" not in terminal_text(env) and sync._timer.isActive()
     # Restart of a running process: the old one is ended, and its end is not reported as the new one's
@@ -209,7 +209,7 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     session._ended.emit(old, 7)
     session._chunk.emit(old, b"stale output\r\n")
     pump(0.3)
-    assert not first.alive and env.view.status.text() == "Claude Code running"
+    assert not first.alive and env.view.status.text() == "Running"
     assert session._sync._timer.isActive() and "stale output" not in terminal_text(env)
     # Shutdown: process and MCP server are gone, twice is fine
     session, process, port = env.view.session, env.view.session._process, env.view.session._server.port
@@ -236,6 +236,21 @@ def test_claude_code_reads_the_unsaved_buffer_and_the_focus_through_mcp(env):
     assert "% typed in the editor" not in env.path.read_text()           # the disk is older
     env.window.state.set_focused_slide("abd")                            # the focus is read afresh per call
     assert "Focused slide id: abd" in on_thread(lambda: client.text("get_focus"))
+
+
+def test_the_scope_switch_and_the_focus_reach_the_hooks(env):
+    from slidemage.ai import claude_scope
+
+    start_view(env)
+    env.window.open_slide_editor(env.path)
+    focus_file = env.view.session._focus_file
+    wait_until(lambda: (claude_scope.load(focus_file) or {}).get("slide") == SLIDE)
+    assert claude_scope.load(focus_file)["scope"] == claude_scope.SLIDE
+    assert "THIS SLIDE" in claude_scope.prompt_context(claude_scope.load(focus_file))
+    env.view.scope._buttons[claude_scope.DECK].click()                  # the user switches to Deck
+    assert claude_scope.load(focus_file)["scope"] == claude_scope.DECK
+    env.window.assistant.shutdown()
+    assert not focus_file.exists()                                       # removed with the session
 
 
 # -- the watch over the files Claude Code changes ------------------------------------------------------------------

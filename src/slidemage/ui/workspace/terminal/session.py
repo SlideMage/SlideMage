@@ -9,13 +9,15 @@ and is safe to call twice; `shutdown()` also stops the server.
 """
 from __future__ import annotations
 
+import os
+import tempfile
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from .... import compiler
-from ....ai import claude_launch
+from ....ai import claude_launch, claude_scope
 from ....ai.agent_types import EDIT_AUTO
 from ....ai.mcp_server import McpServer
 from ....ai.tools import CLAUDE_CODE_TOOLS, ToolBox, build_toolbox
@@ -34,6 +36,13 @@ class ClaudeCodeSession(QObject):
     def __init__(self, window, claude: Path, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.claude = claude
+        self._window = window
+        self.scope = claude_scope.SLIDE             # how far a request may reach (the view's switch)
+        self._focus_file: Path | None = None        # what the hooks read: the focus and the scope
+        self._published: dict | None = None
+        self._timer = QTimer(self)                  # the focus also moves without a signal (a file opened)
+        self._timer.setInterval(400)
+        self._timer.timeout.connect(self.publish_focus)
         self._workspace = GuiWorkspace(window)      # its own focus, apart from the chat's
         self._server: McpServer | None = None
         self._process: PtyProcess | None = None
@@ -58,8 +67,14 @@ class ClaudeCodeSession(QObject):
             server = McpServer(self._toolbox)
             server.start()              # kept only once it listens, so that a failed start can be retried
             self._server = server
+        if self._focus_file is None:
+            handle, name = tempfile.mkstemp(prefix="slidemage-focus-", suffix=".json")
+            os.close(handle)
+            self._focus_file = Path(name)
+        self.publish_focus(force=True)
+        self._timer.start()
         command = claude_launch.build_command(self.claude, self._server.url)
-        env = claude_launch.environment(self._server.token, PROJECT_ROOT, self.claude)
+        env = claude_launch.environment(self._server.token, PROJECT_ROOT, self.claude, focus_file=self._focus_file)
         with self._lock:
             self._generation += 1
             generation = self._generation
@@ -67,6 +82,27 @@ class ClaudeCodeSession(QObject):
             command, PROJECT_ROOT, env, lambda data: self._on_output(generation, data),
             lambda code: self._on_exit(generation, code), cols, rows)
         self._sync.start()
+
+    def set_scope(self, scope: str) -> None:
+        self.scope = scope
+        self.publish_focus()
+
+    def publish_focus(self, force: bool = False) -> None:
+        """Write what the user is looking at and the scope for the hooks, when it changed (GUI thread)."""
+        if self._focus_file is None:
+            return
+        window, state = self._window, self._window.state
+        slide = window.centre.path         # publish() keeps it only if it is a slide
+        deck = state.deck.path if state.deck is not None and not state.deck.is_test_deck else None
+        values = (self.scope, state.focused_slide, slide, deck, state.view, state.language,
+                  slide is not None and window.centre.is_dirty(slide))
+        if values == self._published and not force:
+            return
+        self._published = values
+        try:
+            claude_scope.publish(self._focus_file, values[0], PROJECT_ROOT, *values[1:])
+        except OSError:
+            pass
 
     def write(self, data: bytes) -> None:
         if self._process is not None:
@@ -80,6 +116,7 @@ class ClaudeCodeSession(QObject):
         """End the process, if there is one; its late output and exit are not reported."""
         with self._lock:
             self._generation += 1
+        self._timer.stop()
         self._sync.stop(last_look=last_look)
         process, self._process = self._process, None
         if process is not None:
@@ -92,6 +129,9 @@ class ClaudeCodeSession(QObject):
         if self._server is not None:
             self._server.stop()
             self._server = None
+        if self._focus_file is not None:
+            self._focus_file.unlink(missing_ok=True)
+            self._focus_file = None
 
     def _toolbox(self) -> ToolBox:
         """The tools for one MCP call, looking at the window as it is now."""

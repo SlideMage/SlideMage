@@ -406,6 +406,13 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.inverse};
             border-radius: 3px;
         }}
+        QSplitter#{SURFACE}::handle:horizontal {{
+            background: {t.line};
+            margin: 0 4px;
+        }}
+        QSplitter#{SURFACE}::handle:horizontal:hover, QSplitter#{SURFACE}::handle:horizontal:pressed {{
+            background: {t.text_4};
+        }}
         QScrollBar:vertical {{
             background: transparent;
             width: 8px;

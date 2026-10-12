@@ -13,10 +13,12 @@ call that is fine, and a crash is only a warning. It cannot see what a Bash comm
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 from ..deck_scan import PROJECT_ROOT
+from . import claude_scope
 from .tools.edits import protected_problem, slide_kind
 
 BLOCK = 2
@@ -74,6 +76,9 @@ def blocked_reason(event: dict) -> str | None:
         path = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
     except (OSError, RuntimeError):
         return None
+    outside = claude_scope.edit_problem(claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV)), PROJECT_ROOT, path)
+    if outside:
+        return outside
     kind = slide_kind(path)
     if kind == "frozen":
         return FROZEN_MESSAGE.format(name=path.name)
@@ -91,6 +96,11 @@ def blocked_reason(event: dict) -> str | None:
 def main() -> int:
     try:
         event = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
+        if isinstance(event, dict) and event.get("hook_event_name") == "UserPromptSubmit":
+            data = claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV))
+            if data:
+                print(claude_scope.prompt_context(data))   # stdout becomes context for this prompt
+            return 0
         reason = blocked_reason(event) if isinstance(event, dict) else None
     except Exception as exc:  # noqa: BLE001 -- not the hook's business to stop a call that is fine
         print(f"SlideMage hook: {type(exc).__name__}: {exc}", file=sys.stderr)
