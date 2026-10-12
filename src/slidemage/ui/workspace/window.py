@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QByteArray, QSize, Qt
+from PySide6.QtCore import QByteArray, QSize, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QSplitterHandle,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -48,19 +49,37 @@ from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
+from . import side_panels, slide_list
 from .actions import build_registry
 from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
 from .deck_actions import DeckActionsMixin
 from .maintenance import MaintenanceMixin
 from .palette import CommandPalette
-from .side_panels import MAX_WIDTH, WIDTH, WIDTH_SETTING, SidePanels, remembered_width
+from .side_panels import SidePanels
 from .slide_list import SlideList
 from .state import WorkspaceState
 from .topbar import TopBar
 
 # Settings key of the deck that was open when the app was last closed.
 LAST_DECK_KEY = "last_deck"
+
+
+class _ColumnHandle(QSplitterHandle):
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            splitter = self.splitter()
+            splitter.reset_column.emit(splitter.indexOf(self))
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+class _ColumnSplitter(QSplitter):
+    reset_column = Signal(int)
+
+    def createHandle(self) -> QSplitterHandle:
+        return _ColumnHandle(self.orientation(), self)
 
 
 class _CurrentPageStack(QStackedWidget):
@@ -119,7 +138,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
             outer.addWidget(snapshot_banner)
 
         # Left: the slide list, right: side panels with the assistant (chat) area below them.
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
         self.side_panels = SidePanels(self, self.state)
@@ -138,8 +157,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
         self.splitter.setStretchFactor(1, 1)
+        self.splitter.setCollapsible(0, False)
         self.splitter.setCollapsible(2, False)
         self.splitter.splitterMoved.connect(self._on_splitter_moved)
+        self.splitter.reset_column.connect(self._reset_column_width)
         self._columns_sized = False
         workspace = QWidget()
         workspace_layout = QHBoxLayout(workspace)
@@ -187,23 +208,31 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         frame.moveCenter(available.center())
         self.move(frame.topLeft())
 
-    # -- the right column's width ----------------------------------------------
+    # -- column widths ---------------------------------------------------------
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if not self._columns_sized:
             self._columns_sized = True
-            self.set_right_column_width(remembered_width())
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width())
 
-    def set_right_column_width(self, width: int) -> None:
-        """Give the right column `width` px (within its limits) at the centre's expense."""
-        width = min(max(width, WIDTH), MAX_WIDTH)
-        left = self.slide_list.minimumWidth()      # the slide list has a fixed width
-        self.splitter.setSizes([left, max(sum(self.splitter.sizes()) - left - width, 1), width])
+    def set_column_widths(self, *, left: Optional[int] = None, right: Optional[int] = None) -> None:
+        """Size either column within its limits, taking the difference from the centre."""
+        sizes = self.splitter.sizes()
+        left = min(max(sizes[0] if left is None else left, slide_list.MIN_WIDTH), slide_list.MAX_WIDTH)
+        right = min(max(sizes[2] if right is None else right, side_panels.WIDTH), side_panels.MAX_WIDTH)
+        self.splitter.setSizes([left, max(sum(sizes) - left - right, 1), right])
+
+    def _reset_column_width(self, index: int) -> None:
+        self.set_column_widths(left=slide_list.WIDTH if index == 1 else None,
+                               right=side_panels.WIDTH if index == 2 else None)
+        self._on_splitter_moved(0, index)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
-        if self.side_panels.isVisible():       # the Images page hides the column: not the user's choice
-            layout_settings.set(WIDTH_SETTING, self.splitter.sizes()[2])
+        # The Images page hides the columns: not the user's choice.
+        for index, column, settings in ((0, self.slide_list, slide_list), (2, self.side_panels, side_panels)):
+            if column.isVisible():
+                layout_settings.set(settings.WIDTH_SETTING, self.splitter.sizes()[index])
 
     # -- commands --------------------------------------------------------------
 

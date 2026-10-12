@@ -7,7 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QRect, QSize
+from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from slidemage import app_settings
@@ -16,7 +17,7 @@ from slidemage.deck_scan import Chapter, Deck
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
-from slidemage.ui.workspace import window as window_module
+from slidemage.ui.workspace import side_panels, slide_list, window as window_module
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
     build_deck_menu,
@@ -782,12 +783,10 @@ def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(
 
 
 def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeypatch):
-    from slidemage.ui.workspace import side_panels
-
     first = build_window(monkeypatch)
     first.resize(2400, 800)
     first.show()
-    first.set_right_column_width(520)
+    first.set_column_widths(right=520)
     first.splitter.splitterMoved.emit(0, 2)                                 # what a drag of the handle sends
     assert first.side_panels.width() == 520 and layout_settings.get(side_panels.WIDTH_SETTING) == 520
     assert app_settings.get(side_panels.WIDTH_SETTING) is None
@@ -797,9 +796,71 @@ def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeyp
     assert second.side_panels.width() == 520
 
 
-def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
-    from slidemage.ui.workspace import side_panels
+@pytest.mark.parametrize("width, expected", [(0, 220), (220, 220), (360, 360), (520, 520), (1000, 520)])
+def test_the_left_splitter_handle_resizes_within_limits_at_the_centres_expense(window, width, expected):
+    window.resize(2400, 800)
+    window.show()
+    before = window.splitter.sizes()
+    assert before[0] == slide_list.WIDTH
+    window.splitter.moveSplitter(width, 1)
+    left, centre, right = window.splitter.sizes()
+    assert left == window.slide_list.width() == expected
+    assert right == before[2]
+    assert centre == before[1] + before[0] - left
 
+
+@pytest.mark.parametrize("handle", [1, 2])
+def test_moving_either_handle_saves_both_column_widths_and_restores_them(window, monkeypatch, handle):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    position = window.splitter.handle(handle).x()
+    window.splitter.moveSplitter(position + 40, handle)
+    left, _, right = window.splitter.sizes()
+    assert (left, right) == ((440, 520) if handle == 1 else (400, 480))
+    assert layout_settings.get(slide_list.WIDTH_SETTING) == left
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == right
+    assert app_settings.get(slide_list.WIDTH_SETTING) is None
+    second = build_window(monkeypatch)
+    second.resize(2400, 800)
+    second.show()
+    assert (second.slide_list.width(), second.side_panels.width()) == (left, right)
+    second.set_column_widths(right=600)
+    assert second.slide_list.width() == left
+
+
+@pytest.mark.parametrize("handle", [1, 2])
+def test_double_clicking_a_column_handle_resets_only_its_column_and_remembers_it(window, handle):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    QTest.mouseDClick(window.splitter.handle(handle), Qt.MouseButton.LeftButton)
+    expected = (slide_list.WIDTH, 520) if handle == 1 else (400, side_panels.WIDTH)
+    assert (window.slide_list.width(), window.side_panels.width()) == expected
+    assert layout_settings.get(slide_list.WIDTH_SETTING) == expected[0]
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == expected[1]
+
+
+@pytest.mark.parametrize("value, expected", [(None, 280), (100, 220), (400, 400), (1000, 520), ("wide", 280)])
+def test_the_left_column_restores_widths_within_its_limits(window, value, expected):
+    layout_settings.set(slide_list.WIDTH_SETTING, value)
+    window.resize(2400, 800)
+    window.show()
+    assert window.slide_list.width() == expected
+
+
+def test_hidden_columns_keep_their_remembered_widths(window):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, 1)
+    window.stack.setCurrentWidget(window.images_page)
+    window.splitter.splitterMoved.emit(0, 1)
+    assert layout_settings.get(slide_list.WIDTH_SETTING) == 400
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
+
+
+def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
     app_settings.set(side_panels.WIDTH_SETTING, 520)
     first = build_window(monkeypatch)
     first.resize(2400, 800)
@@ -812,7 +873,7 @@ def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch
     second.resize(2400, 800)
     second.show()
     assert second.side_panels.width() == 520
-    second.set_right_column_width(580)
+    second.set_column_widths(right=580)
     second.splitter.splitterMoved.emit(0, 2)
     assert layout_settings.get(side_panels.WIDTH_SETTING) == 580
     assert app_settings.get(side_panels.WIDTH_SETTING) == 600
@@ -820,8 +881,6 @@ def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch
 
 @pytest.mark.parametrize("value, expected", [(None, 340), (200, 340), (1000, 900), ("wide", 340)])
 def test_the_right_column_keeps_its_width_limits(value, expected):
-    from slidemage.ui.workspace import side_panels
-
     layout_settings.set(side_panels.WIDTH_SETTING, value)
     assert side_panels.remembered_width() == expected
 

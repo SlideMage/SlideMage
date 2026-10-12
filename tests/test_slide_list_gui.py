@@ -3,10 +3,12 @@ deck file -- through keys, drops, the context menu and the bulk bar."""
 from __future__ import annotations
 
 from dataclasses import replace
+from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPointF, Qt
+from PySide6.QtGui import QFontMetrics, QPainter, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QStyleOptionViewItem, QWidget
 
 from slidemage import deck_editor, deck_outline
 from slidemage.archive import read
@@ -17,7 +19,7 @@ from slidemage.ui.kit.widgets import Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.slide_list import ABOVE_ITEM, BELOW_ITEM, ON_ITEM, SlideList
-from slidemage.ui.workspace.slide_tree import meta_text, variant_label
+from slidemage.ui.workspace.slide_tree import DATA, THUMB_H, THUMB_W, meta_text, variant_label
 from slidemage.ui.workspace.state import WorkspaceState
 
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
@@ -132,6 +134,42 @@ FRONT_AND_SECTIONS = (
 
 
 # -- what it shows -------------------------------------------------------------------
+
+@pytest.mark.parametrize("width", [220, 520])
+def test_long_slide_titles_and_meta_elide_and_thumbnails_keep_their_size(make_list, qapp, width):
+    slide_list, _window, _path = make_list("\\slide{aaa-EN-One}\n")
+    item = item_of(slide_list, "aaa")
+    row = replace(slide_list.tree.data_of(item),
+                  title="A very long slide title that cannot fit in a narrow slide list " * 3,
+                  lint_error=True, stale_preview=True, missing_translation=True)
+    item.setData(0, DATA, row)
+    slide_list.resize(width, 400)
+    slide_list.show()
+    qapp.processEvents()
+    assert slide_list.width() == width
+    tree = slide_list.tree
+    option = QStyleOptionViewItem()
+    option.rect = tree.visualItemRect(item)
+    canvas = QPixmap(tree.viewport().size())
+    painter = QPainter(canvas)
+    recorded = Mock(wraps=painter)
+    try:
+        tree.delegate.paint(recorded, option, tree.indexFromItem(item))
+    finally:
+        painter.end()
+    text_calls = recorded.drawText.call_args_list
+    title_rect, _, title = text_calls[-1].args
+    assert title.endswith("…") and row.title.startswith(title[:-1])
+    title_font = recorded.setFont.call_args_list[-1].args[0]
+    assert QFontMetrics(title_font).horizontalAdvance(title) <= title_rect.width()
+    meta = "".join(call.args[2] for call in text_calls[:-1])
+    if width == 220:
+        assert meta.endswith("…") and meta_text(row, "EN").startswith(meta[:-1])
+    else:
+        assert meta == meta_text(row, "EN")
+    thumb = next(call.args[0] for call in recorded.drawRoundedRect.call_args_list if call.args[1:] == (3, 3))
+    assert (thumb.width(), thumb.height()) == (THUMB_W, THUMB_H)
+
 
 def test_sections_and_slides_are_listed_in_deck_order(make_list):
     slide_list, _window, _path = make_list(FRONT_AND_SECTIONS)
