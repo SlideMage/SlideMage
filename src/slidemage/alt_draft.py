@@ -29,15 +29,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
-from . import alt_blocks, alt_images, draft_prompts, media_render, project, tikz_render, translation_prompts
+from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
+from .project import ProjectContext
 from .tex_source import COMMENT_RE
 
 # Formats Ollama's vision path can read directly.
 DRAFTABLE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
 
 
-def _resolve_describable(resolved: Path) -> Path | None:
+def _resolve_describable(ctx: ProjectContext, resolved: Path) -> Path | None:
     """`resolved` itself if Ollama's vision path can already read it, the
     path to its rendered PNG if it's a .pdf (rendered on demand and
     cached -- see media_render.py; the *slide's* own \\includegraphics
@@ -49,13 +50,13 @@ def _resolve_describable(resolved: Path) -> Path | None:
         return resolved
     if suffix == ".pdf":
         try:
-            return media_render.ensure_rendered(project.transitional_context(), resolved)
+            return media_render.ensure_rendered(ctx, resolved)
         except RuntimeError:
             return None
     return None
 
 
-def _resolve_for_drafting(reference: str) -> Path | None:
+def _resolve_for_drafting(ctx: ProjectContext, reference: str) -> Path | None:
     """The PNG to feed the vision model for one reference -- a real image
     (resolved off disk, then through _resolve_describable() above) or a
     tikz illustration (rendered fresh via tikz_render.py, which is also
@@ -70,11 +71,11 @@ def _resolve_for_drafting(reference: str) -> Path | None:
     """
     if reference.startswith(alt_blocks.TIKZ_PREFIX):
         try:
-            return tikz_render.ensure_rendered(project.transitional_context(), reference)
+            return tikz_render.ensure_rendered(ctx, reference)
         except RuntimeError:
             return None
-    resolved = alt_blocks.resolve_image(reference)
-    return _resolve_describable(resolved) if resolved is not None else None
+    resolved = alt_blocks.resolve_image(ctx, reference)
+    return _resolve_describable(ctx, resolved) if resolved is not None else None
 
 
 # The schema Ollama constrains the model's output to. Structured output
@@ -147,12 +148,12 @@ replace it with a description of the range and shape.
 """
 
 
-def effective_system_prompt() -> str:
+def effective_system_prompt(ctx: ProjectContext) -> str:
     """What ModelBackend should actually send as its system prompt: the
     user's own saved override (Preferences dialog, draft_prompts.py) if
     they've set one, else this module's own hardcoded SYSTEM_PROMPT
     above."""
-    return draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) or SYSTEM_PROMPT
+    return draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) or SYSTEM_PROMPT
 
 
 USER_TEMPLATE = """\
@@ -283,7 +284,7 @@ def _flatten_latex(text: str) -> str:
     )
 
 
-def build_context(slide_path: Path, reference: str) -> SlideContext:
+def build_context(ctx: ProjectContext, slide_path: Path, reference: str) -> SlideContext:
     """Assemble what the model is told about one image's slide.
 
     `\\note{}` content is deliberately **excluded**. Instructor notes often
@@ -313,7 +314,7 @@ def build_context(slide_path: Path, reference: str) -> SlideContext:
             body = body[after_title:end.start()]
     body = _flatten_latex(body)
 
-    entries = alt_images.load_store()
+    entries = alt_images.load_store(ctx)
     entry = alt_images.lookup(entries, reference)
 
     return SlideContext(
@@ -393,6 +394,7 @@ class ModelBackend:
     Ollama (no API key, no per-image cost, nothing leaves the machine) or
     Claude. Output is the same unreviewed draft either way."""
 
+    ctx: ProjectContext
     provider: ChatProvider
     # 16k rather than the model's native 256k: one image plus a few hundred
     # words of slide context never approaches that, and the KV cache for a
@@ -433,7 +435,7 @@ class ModelBackend:
 
     def __post_init__(self) -> None:
         if self.system_prompt is None:
-            self.system_prompt = effective_system_prompt()
+            self.system_prompt = effective_system_prompt(self.ctx)
 
     @property
     def label(self) -> str:
@@ -491,7 +493,7 @@ class ModelBackend:
             shown = attempt.content or attempt.thinking
             if not shown:
                 message = "Model returned an empty response"
-            elif self.system_prompt != effective_system_prompt():
+            elif self.system_prompt != effective_system_prompt(self.ctx):
                 # Value comparison, not identity: since __post_init__ above
                 # resolves a None default through effective_system_prompt()
                 # itself, comparing "is not SYSTEM_PROMPT" would misfire the
@@ -601,7 +603,7 @@ class ImageJob:
     slide_path: Path
 
 
-def draftable_images(row: alt_blocks.SlideRow,
+def draftable_images(ctx: ProjectContext, row: alt_blocks.SlideRow,
                      entries: dict[str, "alt_images.ImageEntry"]) -> list[tuple[str, Path]]:
     """(reference, resolved path) for one slide's images worth sending to a
     model. Skips decorative ones (nothing to describe) and any format
@@ -612,20 +614,20 @@ def draftable_images(row: alt_blocks.SlideRow,
         entry = alt_images.lookup(entries, reference)
         if entry is not None and entry.is_decorative:
             continue
-        describable = _resolve_for_drafting(reference)
+        describable = _resolve_for_drafting(ctx, reference)
         if describable is None:
             continue
         out.append((reference, describable))
     return out
 
 
-def slide_jobs(row: alt_blocks.SlideRow, entries: dict[str, "alt_images.ImageEntry"]) -> list[ImageJob]:
+def slide_jobs(ctx: ProjectContext, row: alt_blocks.SlideRow, entries: dict[str, "alt_images.ImageEntry"]) -> list[ImageJob]:
     """The drafting queue for one slide's own images (run_batch() drafts it like any other)."""
     return [ImageJob(reference, resolved, row.slide_id, row.path)
-            for reference, resolved in draftable_images(row, entries)]
+            for reference, resolved in draftable_images(ctx, row, entries)]
 
 
-def apply_one_draft(image: str, result: DraftResult, model_label: str, hint: str | None = None) -> bool:
+def apply_one_draft(ctx: ProjectContext, image: str, result: DraftResult, model_label: str, hint: str | None = None) -> bool:
     """Write one image's draft into the shared store as unreviewed. True if
     written. `hint`, when given (an empty one clears it), is stored with the draft.
 
@@ -659,10 +661,11 @@ def apply_one_draft(image: str, result: DraftResult, model_label: str, hint: str
             entry.hint = hint
         return True
 
-    return alt_images.update_store(mutate)
+    return alt_images.update_store(ctx, mutate)
 
 
 def images_needing_drafts(
+    ctx: ProjectContext,
     *,
     redraft: bool = False,
     redraft_unless_model: str = "",
@@ -694,8 +697,8 @@ def images_needing_drafts(
       unless the caller passes the blanket `redraft=True`.
     """
     wanted = {sid.lower() for sid in slide_ids} if slide_ids else None
-    entries = alt_images.load_store()
-    rows = alt_blocks.scan_slides_raw()
+    entries = alt_images.load_store(ctx)
+    rows = alt_blocks.scan_slides_raw(ctx)
     row_by_id = {row.slide_id: row for row in rows}
 
     queue: list[ImageJob] = []
@@ -703,7 +706,7 @@ def images_needing_drafts(
         entry = entries[image]
         if entry.status == alt_images.STATUS_REVIEWED or entry.is_decorative:
             continue
-        describable = _resolve_for_drafting(image)
+        describable = _resolve_for_drafting(ctx, image)
         if describable is None:
             continue
         if not entry.used_on:
@@ -748,6 +751,7 @@ class BatchSummary:
 
 
 def run_batch(
+    ctx: ProjectContext,
     queue: list[ImageJob],
     backend: DraftBackend,
     *,
@@ -773,7 +777,7 @@ def run_batch(
 
         summary.attempted += 1
         try:
-            context = build_context(job.slide_path, job.image)
+            context = build_context(ctx, job.slide_path, job.image)
             result = backend.draft(job.resolved, context)
         except Exception as exc:                     # never kill the batch
             summary.failed += 1
@@ -790,7 +794,7 @@ def run_batch(
         elif result.role_suggestion == alt_images.ROLE_DECORATIVE:
             summary.errors.append(f"{job.image}: model suggests this image is decorative")
 
-        written = apply_one_draft(job.image, result, backend.label)
+        written = apply_one_draft(ctx, job.image, result, backend.label)
         if written:
             summary.written += 1
         elif result.ok:
@@ -913,6 +917,7 @@ class ModelTranslationBackend:
     here respond far more reliably to one self-contained instruction+text
     block than to a system/user split."""
 
+    ctx: ProjectContext
     provider: ChatProvider
     num_ctx: int = 8192
     think: bool = False
@@ -934,7 +939,7 @@ class ModelTranslationBackend:
             return "", None
 
         config = translation_prompts.get_effective_prompt(
-            self.provider.model, self.source_lang, self.target_lang)
+            self.ctx, self.provider.model, self.source_lang, self.target_lang)
         try:
             reply = self.provider.chat(
                 [{"role": "user", "content": config.build_message(text)}],
@@ -990,7 +995,7 @@ class ModelTranslationBackend:
         )
 
 
-def apply_one_translation(image: str, result: TranslationResult, model_label: str) -> bool:
+def apply_one_translation(ctx: ProjectContext, image: str, result: TranslationResult, model_label: str) -> bool:
     """Write one image's German translation into the shared store. True if
     written. Mirrors apply_one_draft()'s update_store()-based atomicity,
     but refuses only when the *English* text has moved on since `result`
@@ -1027,10 +1032,10 @@ def apply_one_translation(image: str, result: TranslationResult, model_label: st
         entry.translated_from_hash = current_hash
         return True
 
-    return alt_images.update_store(mutate)
+    return alt_images.update_store(ctx, mutate)
 
 
-def images_needing_translation() -> list[str]:
+def images_needing_translation(ctx: ProjectContext) -> list[str]:
     """Every image reference (store key) whose German text is missing or
     stale relative to its current English text -- the translation
     counterpart to images_needing_drafts(). Derived fresh from the store
@@ -1045,7 +1050,7 @@ def images_needing_translation() -> list[str]:
     failure -- an empty request that can never produce a non-empty
     long_de, so TranslationResult.ok is false and it shows up as a
     spurious "failed" line in every batch summary."""
-    entries = alt_images.load_store()
+    entries = alt_images.load_store(ctx)
     return [
         image for image, entry in sorted(entries.items())
         if (entry.short or entry.long)
@@ -1065,6 +1070,7 @@ class TranslationBatchSummary:
 
 
 def run_translation_batch(
+    ctx: ProjectContext,
     queue: list[str],
     backend: TranslationBackend,
     *,
@@ -1079,7 +1085,7 @@ def run_translation_batch(
     finished)."""
     summary = TranslationBatchSummary()
     started = time.monotonic()
-    entries = alt_images.load_store()
+    entries = alt_images.load_store(ctx)
 
     for index, image in enumerate(queue, start=1):
         if should_stop is not None and should_stop():
@@ -1104,7 +1110,7 @@ def run_translation_batch(
         if not result.ok:
             summary.errors.append(f"{image}: {result.error}")
 
-        written = apply_one_translation(image, result, backend.label)
+        written = apply_one_translation(ctx, image, result, backend.label)
         if written:
             summary.written += 1
         else:

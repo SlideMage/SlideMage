@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .. import alt_draft, alt_images, translation_prompts
+from ..project import ProjectContext
 from . import claude_runner, claude_tasks
 
 # The tasks of the bubbles. Their rules are the user's own prompts, which the backends put in at each call.
@@ -25,6 +26,7 @@ TRANSLATE = claude_tasks.Task("translate_images", "", {
 
 @dataclass
 class _ClaudeBackend:
+    ctx: ProjectContext
     claude: Path
     model: str = claude_runner.MODEL
     effort: str = claude_runner.EFFORT
@@ -47,7 +49,7 @@ class ClaudeDraftBackend(_ClaudeBackend):
         started = time.monotonic()
         if image_path.suffix.lower() not in claude_runner.MEDIA_TYPES:
             return alt_draft.DraftResult(model=self.label, error=f"Claude cannot read {image_path.suffix} images")
-        answer, error = self._ask(replace(DESCRIBE, rules=alt_draft.effective_system_prompt()),
+        answer, error = self._ask(replace(DESCRIBE, rules=alt_draft.effective_system_prompt(self.ctx)),
                                   alt_draft.build_prompt(context), claude_runner.IMAGE_DEADLINE_S, (image_path,))
         elapsed = time.monotonic() - started
         if error:
@@ -62,7 +64,7 @@ class ClaudeTranslationBackend(_ClaudeBackend):
     def translate(self, entry: alt_images.ImageEntry) -> alt_draft.TranslationResult:
         started = time.monotonic()
         source_hash = alt_images.en_text_hash(entry)       # of the text translated, as in ModelTranslationBackend
-        prompt = translation_prompts.get_effective_prompt(self.model, "en", "de").prompt
+        prompt = translation_prompts.get_effective_prompt(self.ctx, self.model, "en", "de").prompt
         request = "\n\n".join(("Translate the fields of this image description. A field that is empty stays empty.",
                                f"short:\n{entry.short}", f"long:\n{entry.long}", f"takeaway:\n{entry.takeaway_default}"))
         answer, error = self._ask(replace(TRANSLATE, rules=prompt), request, claude_runner.TEXT_DEADLINE_S)

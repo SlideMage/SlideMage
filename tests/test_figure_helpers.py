@@ -1,7 +1,7 @@
 """The v5.x figure helpers name their image as an argument: the image scan and
 the pre-render check must see it."""
-from conftest import use_project
 from slidemage import alt_blocks, latex_lint
+from slidemage.project import ProjectContext
 
 
 SLIDE = (
@@ -21,6 +21,6 @@ def test_referenced_images_finds_the_figure_helpers():
 
 
 def test_lint_reports_a_missing_figure_helper_image(tmp_path, monkeypatch):
-    use_project(monkeypatch, tmp_path)
-    missing = sorted(i.message for i in latex_lint.lint_text(SLIDE) if i.code == "image")
+    ctx = ProjectContext.at(tmp_path)
+    missing = sorted(i.message for i in latex_lint.lint_text(ctx, SLIDE) if i.code == "image")
     assert missing == [f"image file 'media/{n}.png' does not exist" for n in "abcd"]

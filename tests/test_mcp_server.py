@@ -8,9 +8,9 @@ import base64
 import pytest
 from agent_fakes import FakeWorkspace
 from conftest import SLIDE_TEXT
+from slidemage.project import ProjectContext
 from mcp_client import Client
 
-from slidemage.project import transitional_context
 from slidemage import compiler, preview_target, slide_snapshot
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ai.mcp_server import PROTOCOL_VERSIONS, McpServer
@@ -18,13 +18,18 @@ from slidemage.ai.tools import CLAUDE_CODE_READ_ONLY, CLAUDE_CODE_TOOLS, build_t
 from slidemage.ai.workspace import WorkspaceContext
 from slidemage.deck_scan import scan_decks
 
+
+@pytest.fixture
+def ctx(root):
+    return ProjectContext.at(root)
+
 SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
 
 
 @pytest.fixture
 def mcp(root):
-    deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
+    deck = next(d for d in scan_decks(ProjectContext.at(root)) if d.name == "test")
     workspace = FakeWorkspace(root, WorkspaceContext(deck=deck, slide_id="abc", path=root / SLIDE))
     server = McpServer(lambda: build_toolbox(workspace, lambda _e: None, compiler.CancelToken(), EDIT_AUTO,
                                              tools=CLAUDE_CODE_TOOLS))

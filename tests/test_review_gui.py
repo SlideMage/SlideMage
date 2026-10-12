@@ -13,7 +13,7 @@ from slidemage.ui.workspace import window as window_module
 from slidemage.ai.providers import OllamaProvider
 from slidemage.ui.dialogs.open_project import OpenProjectSheet
 
-from conftest import build_window, use_project
+from conftest import build_window
 
 
 def _mock_ollama_lists(monkeypatch) -> None:
@@ -31,7 +31,7 @@ def _write_slide(path: Path, text: str = "\\slide{abc-EN-Test}\nBODY\n") -> Path
 
 
 def _open_dirty_source(window, path: Path, monkeypatch):
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     window.open_slide_editor(path)
     file = window.centre.source.current
     cursor = file.editor.textCursor()
@@ -98,7 +98,6 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     old_run.mkdir()
     (old_run / "output.pdf").write_bytes(b"old")
     monkeypatch.setattr(housekeeping.compiler, "removable_build_entries", lambda ctx: [old_file, old_run])
-    use_project(monkeypatch, tmp_path)
     (tmp_path / "decks").mkdir()
     (tmp_path / ".temp").mkdir()
     monkeypatch.setattr(

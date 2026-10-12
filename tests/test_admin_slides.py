@@ -5,7 +5,6 @@ from dataclasses import replace
 
 import pytest
 
-from conftest import use_project
 from slidemage import admin_slides, course_schedule, deck_editor, slide_ids
 from slidemage.course_schedule import CourseDetail, CourseGroup, CourseSession, Lecturer
 from slidemage.deck_scan import Deck
@@ -40,9 +39,8 @@ def make_deck(tmp_path, language="de"):
 
 @pytest.fixture
 def new_slides(tmp_path, monkeypatch):
-    use_project(monkeypatch, tmp_path)
     ids = iter(["abc", "def"])
-    monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: next(ids))
+    monkeypatch.setattr(slide_ids, "mint_slide_id", lambda _ctx: next(ids))
 
 
 def test_schedule_positions_follow_regular_slide_calls(tmp_path):
@@ -105,7 +103,7 @@ def test_the_two_parts_of_a_fetch_fail_independently(monkeypatch):
 
 
 @pytest.mark.parametrize("language", ["de", "en"])
-def test_insertion_creates_editable_slides_and_deck_calls_in_order(tmp_path, new_slides, language):
+def test_insertion_creates_editable_slides_and_deck_calls_in_order(ctx, tmp_path, new_slides, language):
     deck = make_deck(tmp_path, language=language)
     position = deck_editor.slide_insert_positions(deck)[0]
     specs = [
@@ -113,7 +111,7 @@ def test_insertion_creates_editable_slides_and_deck_calls_in_order(tmp_path, new
         ("Course-Sessions", admin_slides.build_sessions_slide_source(r"\begin{tabular}{ll}Datum & Zeit \\ \end{tabular}", language)),
     ]
 
-    slide_paths = admin_slides.insert_admin_slides(deck, position, specs, language)
+    slide_paths = admin_slides.insert_admin_slides(ctx, deck, position, specs, language)
 
     tag = language.upper()
     assert [path.name for path in slide_paths] == [
@@ -125,16 +123,16 @@ def test_insertion_creates_editable_slides_and_deck_calls_in_order(tmp_path, new
     assert '"def"' in (tmp_path / "slide_ids.csv").read_text(encoding="utf-8")
 
 
-def test_failure_on_a_later_slide_leaves_deck_untouched(tmp_path, monkeypatch, new_slides):
+def test_failure_on_a_later_slide_leaves_deck_untouched(ctx, tmp_path, monkeypatch, new_slides):
     deck = make_deck(tmp_path)
     # Same ID twice: the second slide file already exists, so its open("x") fails.
-    monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: "abc")
+    monkeypatch.setattr(slide_ids, "mint_slide_id", lambda _ctx: "abc")
     position = deck_editor.slide_insert_positions(deck)[0]
     specs = [("Title-Slide", admin_slides.build_title_slide_source("A")),
              ("Title-Slide", admin_slides.build_title_slide_source("B"))]
 
     with pytest.raises(FileExistsError):
-        admin_slides.insert_admin_slides(deck, position, specs)
+        admin_slides.insert_admin_slides(ctx, deck, position, specs)
 
     assert deck.path.read_text(encoding="utf-8") == deck.text
     assert not list((tmp_path / "slides").glob("*.tex"))
@@ -152,13 +150,13 @@ def test_insert_slide_calls_at_end_of_file_without_newline(tmp_path):
     )
 
 
-def test_stale_deck_keeps_external_change_and_removes_new_slide(tmp_path, new_slides):
+def test_stale_deck_keeps_external_change_and_removes_new_slide(ctx, tmp_path, new_slides):
     deck = make_deck(tmp_path)
     position = deck_editor.slide_insert_positions(deck)[0]
     deck.path.write_text(deck.text + "% external edit\n", encoding="utf-8", newline="")
 
     with pytest.raises(deck_editor.StaleFileError):
-        admin_slides.insert_admin_slides(
+        admin_slides.insert_admin_slides(ctx, 
             deck, position, [("Course-Sessions", admin_slides.build_sessions_slide_source("Table"))])
 
     assert "% external edit" in deck.path.read_text(encoding="utf-8")

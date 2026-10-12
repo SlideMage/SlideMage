@@ -28,7 +28,7 @@ class Citations(SidePanel):
 
     def build(self, id_slug: str) -> None:
         keys = cited_keys(self.slide_text())
-        entries = bibliography.load()
+        entries = bibliography.load(self.app.project.bibliography_path)
         frame, layout = box()
         if not keys:
             empty_row(layout, "No citations on this slide.")
@@ -52,7 +52,7 @@ class Citations(SidePanel):
         self.place(frame)
 
     def _show(self, key: str) -> None:
-        self.app.open_slide_editor(self.app.project.bibliography_path, line=bibliography.entry_line(key))
+        self.app.open_slide_editor(self.app.project.bibliography_path, line=bibliography.entry_line(key, self.app.project.bibliography_path))
 
     def _add(self, key: str) -> None:
         self.actions.add_reference(key)

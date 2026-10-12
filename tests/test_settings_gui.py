@@ -13,20 +13,20 @@ from slidemage.ai import credentials, ollama_admin, resolver
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.dialogs.settings import CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
-from conftest import use_project, wait_until
+from conftest import EXAMPLE_PROJECT, wait_until
 from test_templates import _framework, _project
-from slidemage.project import transitional_context
+from slidemage.project import ProjectContext
 
 INSTALLED = [InstalledModel("general-text", 2_000_000_000, "", ("tools",)), InstalledModel("translator", 1_000_000, ""),
              InstalledModel("vision", 7_000_000_000, "", ("vision",)), InstalledModel("vision-2", 5_000_000, "", ("vision",))]
 
 
 class FakeApp(QWidget):
-    project = property(lambda self: transitional_context())
     """The window as far as Settings uses it."""
 
-    def __init__(self):
+    def __init__(self, project=EXAMPLE_PROJECT):
         super().__init__()
+        self.project = project
         self.theme = ThemeManager()
         self.calls, self.logged, self.slots, self.slot_free = [], [], [], True
         self.set_dark_mode = lambda value: self.calls.append(("dark", value))
@@ -99,8 +99,8 @@ def test_dark_mode_and_tab_width_reach_the_window_as_they_change(qapp):
 
 def test_the_render_template_offers_the_project_templates_and_saves_the_choice(tmp_path, monkeypatch, qapp):
     _framework(tmp_path / "latex", "slidemage")
-    context = use_project(monkeypatch, _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
-    app = FakeApp()
+    context = ProjectContext.at(_project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
+    app = FakeApp(context)
     sheet = open_sheet(qapp, app)
     combo = sheet.general.template_combo
     assert [combo.itemData(i) for i in range(combo.count())] == ["uni-graz", "uni-ibk", "mci", "slidemage"]
@@ -140,7 +140,7 @@ def choose(sheet, task, model):
 
 
 def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missing(qapp):
-    app_settings.set(transitional_context(), app_settings.MODEL_SETTINGS["translation"], "ollama:gone")
+    app_settings.set(EXAMPLE_PROJECT, app_settings.MODEL_SETTINGS["translation"], "ollama:gone")
     sheet = open_sheet(qapp)
     assert sheet.available_models == [m.name for m in INSTALLED]
     assert sheet.vision_models == ["vision", "vision-2"]
@@ -155,7 +155,7 @@ def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missin
         "", "ollama:general-text", *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
     translation = sheet.models.combos["translation"]
     assert translation.currentData() == "ollama:gone" and translation.currentText() == "gone (not available)"
-    assert app_settings.default_model(transitional_context(), "translation") == "ollama:gone"      # an unreachable model never rewrites it
+    assert app_settings.default_model(EXAMPLE_PROJECT, "translation") == "ollama:gone"      # an unreachable model never rewrites it
 
 
 def test_an_unreachable_ollama_is_said_and_costs_no_setting(monkeypatch, qapp):
@@ -172,10 +172,10 @@ def test_choosing_a_default_saves_it_for_that_task_only(qapp):
     cloud = sheet.models.combos["translation"]
     cloud.setCurrentIndex(cloud.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"))
     cloud.activated.emit(cloud.currentIndex())
-    assert app_settings.default_model(transitional_context(), "syntax_check") == "ollama:general-text"
-    assert app_settings.default_model(transitional_context(), "image_description") == "ollama:vision-2"
-    assert app_settings.default_model(transitional_context(), "translation") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
-    assert app_settings.default_model(transitional_context(), "chat") == ""
+    assert app_settings.default_model(EXAMPLE_PROJECT, "syntax_check") == "ollama:general-text"
+    assert app_settings.default_model(EXAMPLE_PROJECT, "image_description") == "ollama:vision-2"
+    assert app_settings.default_model(EXAMPLE_PROJECT, "translation") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
+    assert app_settings.default_model(EXAMPLE_PROJECT, "chat") == ""
 
 
 def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
@@ -191,7 +191,7 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     choose(sheet, "syntax_check", "general-text")
     choose(sheet, "image_description", "vision-2")
     choose(sheet, "translation", "translator")
-    app_settings.set_ollama_host(transitional_context(), "http://ollama.example:11434")
+    app_settings.set_ollama_host(EXAMPLE_PROJECT, "http://ollama.example:11434")
 
     (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
     file = SourceFile(app, tmp_path / "slide.tex")       # holds the open "Ask AI to fix" panel
@@ -320,7 +320,7 @@ def test_local_only_hides_the_cloud_models_at_once(qapp):
     assert translation.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}") != -1
 
     cloud.local_only_check.setChecked(True)
-    assert resolver.global_local_only() and "off in this project" in cloud.project_note.text()
+    assert resolver.global_local_only(EXAMPLE_PROJECT) and "off in this project" in cloud.project_note.text()
     loaded(sheet, qapp)
     assert [translation.itemData(i) for i in range(translation.count())] == ["", *(f"ollama:{m.name}" for m in INSTALLED)]
 
@@ -332,22 +332,22 @@ def test_local_only_hides_the_cloud_models_at_once(qapp):
 def test_this_project_can_override_the_global_switch_either_way(qapp):
     sheet = open_sheet(qapp, tab=CLOUD)
     cloud = sheet.cloud
-    assert cloud.project_choice.current() == "follow" and resolver.project_local_only() is None
+    assert cloud.project_choice.current() == "follow" and resolver.project_local_only(EXAMPLE_PROJECT) is None
     cloud.project_choice.changed.emit("local")
-    assert resolver.project_local_only() is True and resolver.local_only()
+    assert resolver.project_local_only(EXAMPLE_PROJECT) is True and resolver.local_only(EXAMPLE_PROJECT)
     assert "off in this project" in cloud.project_note.text()
-    resolver.set_global_local_only(True)
+    resolver.set_global_local_only(EXAMPLE_PROJECT, True)
     cloud.project_choice.changed.emit("cloud")
-    assert resolver.project_local_only() is False and not resolver.local_only()
+    assert resolver.project_local_only(EXAMPLE_PROJECT) is False and not resolver.local_only(EXAMPLE_PROJECT)
     assert "once an API key is set" in cloud.project_note.text()
     cloud.project_choice.changed.emit("follow")
-    assert resolver.project_local_only() is None and resolver.local_only()      # the global switch again
+    assert resolver.project_local_only(EXAMPLE_PROJECT) is None and resolver.local_only(EXAMPLE_PROJECT)      # the global switch again
 
 
 def test_the_override_of_a_project_is_shown_when_the_sheet_opens(qapp):
-    resolver.set_project_local_only(False)
+    resolver.set_project_local_only(EXAMPLE_PROJECT, False)
     assert open_sheet(qapp).cloud.project_choice.current() == "cloud"
-    resolver.set_project_local_only(True)
+    resolver.set_project_local_only(EXAMPLE_PROJECT, True)
     assert open_sheet(qapp).cloud.project_choice.current() == "local"
 
 
@@ -362,16 +362,16 @@ def test_the_key_message_says_where_a_key_will_live_without_a_keychain(qapp, mon
     sheet.cloud.key_edit.setText("sk-ant-fake-1")
     sheet.cloud._on_key_save()
     assert sheet.cloud.key_edit.text() == ""
-    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) == "sk-ant-fake-1"
-    assert credentials.get_api_key().source == "settings file"
+    assert app_settings.get(EXAMPLE_PROJECT, credentials.FILE_SETTING_KEY) == "sk-ant-fake-1"
+    assert credentials.get_api_key(EXAMPLE_PROJECT).source == "settings file"
     assert "Key stored in the settings file" in status.text() and "keyring" in status.text()
     assert "sk-ant-fake-1" not in status.text()                    # the key itself is never shown
 
     sheet.cloud._on_key_remove()
-    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) is None and "No API key set" in status.text()
+    assert app_settings.get(EXAMPLE_PROJECT, credentials.FILE_SETTING_KEY) is None and "No API key set" in status.text()
 
 
-def test_the_key_message_with_a_keychain_and_with_the_environment_variable(monkeypatch, qapp):
+def test_the_key_message_with_a_keychain_and_with_the_environment_variable(ctx, monkeypatch, qapp):
     keyring = FakeKeyring()
     monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
     sheet = open_sheet(qapp, tab=CLOUD)
@@ -381,7 +381,7 @@ def test_the_key_message_with_a_keychain_and_with_the_environment_variable(monke
     sheet.cloud.key_edit.setText("sk-ant-fake-2")
     sheet.cloud._on_key_save()
     assert status.text() == "Key stored in the system keychain."
-    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) is None and credentials.get_api_key().source == "keychain"
+    assert app_settings.get(ctx, credentials.FILE_SETTING_KEY) is None and credentials.get_api_key(ctx).source == "keychain"
 
     monkeypatch.setenv(credentials.ENV_VAR, "sk-ant-fake-env")
     sheet.cloud._on_key_remove()                  # refreshes: the variable is still there and wins
@@ -391,7 +391,7 @@ def test_the_key_message_with_a_keychain_and_with_the_environment_variable(monke
     assert "No API key set" in status.text() and not keyring.store
 
 
-def test_a_keychain_entry_that_cannot_be_removed_is_reported_not_swallowed(monkeypatch, qapp):
+def test_a_keychain_entry_that_cannot_be_removed_is_reported_not_swallowed(ctx, monkeypatch, qapp):
     keyring = FakeKeyring()
     keyring.store[("SlideMage", "anthropic-api-key")] = "sk-ant-old"
     monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
@@ -401,15 +401,15 @@ def test_a_keychain_entry_that_cannot_be_removed_is_reported_not_swallowed(monke
 
     keyring.delete_password = refuse
     with pytest.raises(OSError, match="locked"):
-        credentials.set_api_key("")
-    assert credentials.get_api_key().value == "sk-ant-old"            # still there, and the caller was told
+        credentials.set_api_key(ctx, "")
+    assert credentials.get_api_key(ctx).value == "sk-ant-old"            # still there, and the caller was told
     keyring.priority = 0                                              # the save fails; the old entry still shadows
     with pytest.raises(OSError):
-        credentials.set_api_key("sk-ant-new")
-    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) == "sk-ant-new"
+        credentials.set_api_key(ctx, "sk-ant-new")
+    assert app_settings.get(ctx, credentials.FILE_SETTING_KEY) == "sk-ant-new"
     del keyring.delete_password                                       # a keychain that lets go: nothing shadows the file
-    assert credentials.set_api_key("sk-ant-newer") == credentials.SOURCE_FILE
-    assert credentials.get_api_key().value == "sk-ant-newer" and not keyring.store
+    assert credentials.set_api_key(ctx, "sk-ant-newer") == credentials.SOURCE_FILE
+    assert credentials.get_api_key(ctx).value == "sk-ant-newer" and not keyring.store
 
 
 # -- Ollama ------------------------------------------------------------------------------------
@@ -431,11 +431,11 @@ def test_a_changed_host_is_saved_and_the_models_are_asked_for_again(qapp):
     sheet.ollama.changed.connect(lambda: asked.append(1))
     sheet.ollama.host_edit.setText("http://ollama.example:11434")
     sheet.ollama.host_edit.editingFinished.emit()
-    assert app_settings.get_ollama_host(transitional_context()) == "http://ollama.example:11434" and asked == [1]
+    assert app_settings.get_ollama_host(EXAMPLE_PROJECT) == "http://ollama.example:11434" and asked == [1]
     sheet.ollama.host_edit.setText("")             # empty clears the override
     sheet.ollama.host_edit.editingFinished.emit()
-    assert app_settings.get(transitional_context(), app_settings.OLLAMA_HOST_SETTING_KEY) is None
-    assert sheet.ollama.host_edit.text() == app_settings.get_ollama_host(transitional_context())
+    assert app_settings.get(EXAMPLE_PROJECT, app_settings.OLLAMA_HOST_SETTING_KEY) is None
+    assert sheet.ollama.host_edit.text() == app_settings.get_ollama_host(EXAMPLE_PROJECT)
 
 
 @pytest.mark.parametrize("operation, message", [("delete", "in use"), ("update", "no space")])
@@ -445,7 +445,7 @@ def test_model_changes_run_on_a_thread_and_refresh_the_list(monkeypatch, qapp, o
     tab = sheet.ollama
     changed, asked, processed = [], [], []
 
-    def change(model, on_progress=None):
+    def change(model, host, on_progress=None):
         processed.append(model)
         if on_progress:
             on_progress(f"pulling {model}")
@@ -482,7 +482,7 @@ def test_declining_the_delete_question_deletes_nothing(monkeypatch, qapp):
     app = FakeApp()
     tab = open_sheet(qapp, app, tab=OLLAMA).ollama
     deleted = []
-    monkeypatch.setattr(ollama_admin, "delete_model", lambda model: deleted.append(model) or (True, ""))
+    monkeypatch.setattr(ollama_admin, "delete_model", lambda model, host: deleted.append(model) or (True, ""))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
     tab.models_list.item(0).setSelected(True)
     tab._on_delete()
@@ -493,7 +493,7 @@ def test_a_request_that_blows_up_still_enables_the_list_again(monkeypatch, qapp)
     app = FakeApp()
     tab = open_sheet(qapp, app, tab=OLLAMA).ollama
 
-    def explode(model, on_progress=None):
+    def explode(model, host, on_progress=None):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ollama_admin, "update_model", explode)
@@ -511,8 +511,8 @@ def test_a_busy_ollama_slot_stops_a_delete_and_an_update(monkeypatch, qapp):
     app = FakeApp()
     app.slot_free = False
     tab = open_sheet(qapp, app, tab=OLLAMA).ollama
-    monkeypatch.setattr(ollama_admin, "delete_model", lambda model: pytest.fail("deleted while busy"))
-    monkeypatch.setattr(ollama_admin, "update_model", lambda model, on_progress=None: pytest.fail("updated while busy"))
+    monkeypatch.setattr(ollama_admin, "delete_model", lambda model, host: pytest.fail("deleted while busy"))
+    monkeypatch.setattr(ollama_admin, "update_model", lambda model, host, on_progress=None: pytest.fail("updated while busy"))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     tab.models_list.item(0).setSelected(True)
     tab._on_delete()
@@ -522,8 +522,8 @@ def test_a_busy_ollama_slot_stops_a_delete_and_an_update(monkeypatch, qapp):
 
 # -- Prompts -----------------------------------------------------------------------------------
 
-def test_a_prompt_is_unsaved_until_its_own_save_button(qapp):
-    app = FakeApp()
+def test_a_prompt_is_unsaved_until_its_own_save_button(ctx, qapp):
+    app = FakeApp(ctx)
     sheet = open_sheet(qapp, app, tab=PROMPTS)
     page = sheet.prompts.image
     assert page.editor.edit.toPlainText() == alt_draft.SYSTEM_PROMPT
@@ -531,24 +531,24 @@ def test_a_prompt_is_unsaved_until_its_own_save_button(qapp):
 
     page.editor.edit.setPlainText("Describe it plainly.")
     assert page.dirty() and page.editor.save_button.isEnabled() and page.editor.status.text() == "Unsaved changes"
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+    assert draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) is None
     page.editor.save_button.click()
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) == "Describe it plainly."
+    assert draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) == "Describe it plainly."
     assert not page.dirty() and "Saved image description prompt" in app.logged
 
     page.editor.reset_button.click()               # back to the program's own, which saving clears
     assert page.dirty()
     page.editor.save_button.click()
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+    assert draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) is None
 
 
-def test_an_empty_prompt_is_refused_where_it_was_typed(qapp):
+def test_an_empty_prompt_is_refused_where_it_was_typed(ctx, qapp):
     sheet = open_sheet(qapp, tab=PROMPTS)
     page = sheet.prompts.image
     page.editor.edit.setPlainText("   ")
     page.editor.save_button.click()
     assert page.editor.status.text() == "The prompt text is required." and page.dirty()
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+    assert draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) is None
 
 
 def test_closing_with_unsaved_prompt_text_asks_what_to_do(monkeypatch, qapp):
@@ -561,22 +561,22 @@ def test_closing_with_unsaved_prompt_text_asks_what_to_do(monkeypatch, qapp):
 
     answer(monkeypatch, "Cancel")
     sheet.reject()
-    assert sheet.isVisible() and draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+    assert sheet.isVisible() and draft_prompts.get_custom_prompt(EXAMPLE_PROJECT, draft_prompts.KIND_IMAGE_DRAFT) is None
 
     answer(monkeypatch, "Save")
     sheet.reject()
     assert not sheet.isVisible()
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) == "Mine"
-    assert tp.get_default_prompt().prompt == "Translate it"
+    assert draft_prompts.get_custom_prompt(EXAMPLE_PROJECT, draft_prompts.KIND_IMAGE_DRAFT) == "Mine"
+    assert tp.get_default_prompt(EXAMPLE_PROJECT).prompt == "Translate it"
 
 
-def test_discarding_closes_without_saving_and_a_refused_save_keeps_the_sheet_open(monkeypatch, qapp):
+def test_discarding_closes_without_saving_and_a_refused_save_keeps_the_sheet_open(ctx, monkeypatch, qapp):
     sheet = open_sheet(qapp, tab=PROMPTS)
     sheet.show()
     sheet.prompts.image.editor.edit.setPlainText("Mine")
     answer(monkeypatch, "Discard")
     sheet.reject()
-    assert not sheet.isVisible() and draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+    assert not sheet.isVisible() and draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) is None
 
     sheet = open_sheet(qapp, tab=PROMPTS)
     sheet.show()
@@ -602,7 +602,7 @@ def translation(sheet):
 
 
 def test_the_translation_chooser_lists_the_default_the_overrides_and_a_new_one(qapp):
-    tp.set_prompt("translator", "en", "de", tp.PromptConfig("Translate it.", 2))
+    tp.set_prompt(EXAMPLE_PROJECT, "translator", "en", "de", tp.PromptConfig("Translate it.", 2))
     sheet = open_sheet(qapp, tab=PROMPTS)
     assert sheet.prompts.stack.currentWidget() is sheet.prompts.image
     sheet.prompts.chooser.changed.emit("translation")
@@ -611,7 +611,7 @@ def test_the_translation_chooser_lists_the_default_the_overrides_and_a_new_one(q
     assert [page.chooser.itemText(i) for i in range(page.chooser.count())] == [
         "Default (models with no override)", "translator: en → de", "New override…"]
     assert page.choice() == "default" and page.keys.isHidden() and page.delete_button.isHidden()
-    assert page.editor.edit.toPlainText() == tp.effective_default_prompt().prompt
+    assert page.editor.edit.toPlainText() == tp.effective_default_prompt(EXAMPLE_PROJECT).prompt
 
     page.chooser.setCurrentIndex(1)
     assert page.choice() == ("translator", "en", "de") and page.keys.isHidden() and not page.delete_button.isHidden()
@@ -621,46 +621,46 @@ def test_the_translation_chooser_lists_the_default_the_overrides_and_a_new_one(q
     assert page.choice() == "new" and not page.keys.isHidden() and page.editor.edit.toPlainText() == ""
 
 
-def test_the_default_translation_prompt_is_saved_with_its_blank_lines(qapp):
-    app = FakeApp()
+def test_the_default_translation_prompt_is_saved_with_its_blank_lines(ctx, qapp):
+    app = FakeApp(ctx)
     page = translation(open_sheet(qapp, app, tab=PROMPTS))
     page.editor.edit.setPlainText("Translate.")
     page.blank_spin.setValue(3)
     assert page.dirty() and page.editor.status.text() == "Unsaved changes"
     page.editor.save_button.click()
-    assert tp.get_default_prompt() == tp.PromptConfig("Translate.", 3) and not page.dirty()
+    assert tp.get_default_prompt(ctx) == tp.PromptConfig("Translate.", 3) and not page.dirty()
 
 
-def test_a_new_override_needs_its_model_languages_and_text_and_is_selected_once_saved(qapp):
-    app = FakeApp()
+def test_a_new_override_needs_its_model_languages_and_text_and_is_selected_once_saved(ctx, qapp):
+    app = FakeApp(ctx)
     sheet = open_sheet(qapp, app, tab=PROMPTS)
     page = translation(sheet)
     assert [page.model_combo.itemText(i) for i in range(page.model_combo.count())] == sheet.available_models
     page.chooser.setCurrentIndex(page.chooser.count() - 1)
     page.editor.edit.setPlainText("For this model.")
     page.editor.save_button.click()
-    assert "all required" in page.editor.status.text() and tp.list_configs() == []
+    assert "all required" in page.editor.status.text() and tp.list_configs(ctx) == []
 
     page.model_combo.setCurrentText("translator")
     page.editor.save_button.click()
-    assert [c[:3] for c in tp.list_configs()] == [("translator", "en", "de")]
+    assert [c[:3] for c in tp.list_configs(ctx)] == [("translator", "en", "de")]
     assert page.choice() == ("translator", "en", "de") and not page.dirty() and page.keys.isHidden()
 
     page.editor.edit.setPlainText("Changed.")
     page.editor.save_button.click()
-    assert tp.get_prompt("translator", "en", "de").prompt == "Changed."
+    assert tp.get_prompt(ctx, "translator", "en", "de").prompt == "Changed."
 
 
 def test_an_override_is_deleted_after_a_question_and_the_default_takes_over(monkeypatch, qapp):
-    tp.set_prompt("translator", "en", "de", tp.PromptConfig("Translate it.", 2))
+    tp.set_prompt(EXAMPLE_PROJECT, "translator", "en", "de", tp.PromptConfig("Translate it.", 2))
     page = translation(open_sheet(qapp, tab=PROMPTS))
     page.chooser.setCurrentIndex(1)
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
     page.delete_button.click()
-    assert tp.list_configs()
+    assert tp.list_configs(EXAMPLE_PROJECT)
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     page.delete_button.click()
-    assert tp.list_configs() == [] and page.choice() == "default"
+    assert tp.list_configs(EXAMPLE_PROJECT) == [] and page.choice() == "default"
 
 
 def test_the_model_list_of_the_translation_page_follows_the_models_and_keeps_what_was_typed(qapp):

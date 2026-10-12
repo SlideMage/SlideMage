@@ -61,14 +61,15 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from . import alt_blocks, project
+from . import alt_blocks
+from .project import ProjectContext
 from .tex_source import COMMENT_RE
 
 FORMAT_VERSION = 2
 
 
-def _store_path() -> Path:
-    return project.transitional_context().media_dir / "alt-text.json"
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.media_dir / "alt-text.json"
 
 
 ROLE_DECORATIVE = "decorative"
@@ -301,11 +302,11 @@ def entry_from_dict(image: str, d: dict) -> ImageEntry:
     )
 
 
-def load_store() -> dict[str, ImageEntry]:
+def load_store(ctx: ProjectContext) -> dict[str, ImageEntry]:
     """Read the store, keyed by root-relative image path. {} if absent."""
-    if not _store_path().is_file():
+    if not _store_path(ctx).is_file():
         return {}
-    raw = json.loads(_store_path().read_text(encoding="utf-8"))
+    raw = json.loads(_store_path(ctx).read_text(encoding="utf-8"))
     images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
     return {image: entry_from_dict(image, d) for image, d in images.items()}
 
@@ -325,17 +326,17 @@ class SlideNotes:
     summary: str = ""
 
 
-def _read_raw() -> dict:
-    if not _store_path().is_file():
+def _read_raw(ctx: ProjectContext) -> dict:
+    if not _store_path(ctx).is_file():
         return {}
     try:
-        return json.loads(_store_path().read_text(encoding="utf-8"))
+        return json.loads(_store_path(ctx).read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
 
 
-def load_slide_notes() -> dict[str, SlideNotes]:
-    raw = _read_raw()
+def load_slide_notes(ctx: ProjectContext) -> dict[str, SlideNotes]:
+    raw = _read_raw(ctx)
     slides = raw.get("slides", {})
     return {
         slide_id: SlideNotes(summary=(d.get("summary") or ""))
@@ -356,19 +357,19 @@ def load_slide_notes() -> dict[str, SlideNotes]:
 _store_lock = threading.Lock()
 
 
-def update_store(mutate) -> bool:
+def update_store(ctx: ProjectContext, mutate) -> bool:
     """Atomically load, let `mutate(entries) -> bool` change it in place,
     and save only if it returned True. Single-entry edits use this path;
     sync_store() takes the same lock around its full scan and bulk update."""
     with _store_lock:
-        entries = load_store()
+        entries = load_store(ctx)
         changed = mutate(entries)
         if changed:
-            save_store(entries)
+            save_store(ctx, entries)
         return changed
 
 
-def delete_entry(image: str) -> bool:
+def delete_entry(ctx: ProjectContext, image: str) -> bool:
     """Drops `image`'s whole entry (role/short/long/takeaway_default/
     used_on -- everything) from the store, atomically. For the Images tab's
     "Replace image…" flow (2026-09-18): once every slide that used to
@@ -378,19 +379,19 @@ def delete_entry(image: str) -> bool:
     `image` wasn't in the store to begin with."""
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         return entries.pop(image, None) is not None
-    return update_store(mutate)
+    return update_store(ctx, mutate)
 
 
-def update_slide_notes(mutate) -> bool:
+def update_slide_notes(ctx: ProjectContext, mutate) -> bool:
     """Same atomic load-mutate-save contract as update_store(), for the
     "slides" section instead of "images" -- same shared file, same lock,
     so a slide-notes save and an image save can never interleave and lose
     each other's change."""
     with _store_lock:
-        notes = load_slide_notes()
+        notes = load_slide_notes(ctx)
         changed = mutate(notes)
         if changed:
-            _save_slide_notes(notes)
+            _save_slide_notes(ctx, notes)
         return changed
 
 
@@ -411,9 +412,9 @@ def atomic_write_text(path: Path, text: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
-def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
-    _store_path().parent.mkdir(parents=True, exist_ok=True)
-    raw = _read_raw()
+def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None:
+    _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
+    raw = _read_raw(ctx)
     raw["version"] = FORMAT_VERSION
     # Empty summaries aren't worth a row -- keeps the file from
     # accumulating dead entries for a slide someone typed into and then
@@ -427,19 +428,19 @@ def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
     # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
     atomic_write_text(
-        _store_path(),
+        _store_path(ctx),
         json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
     )
 
 
-def save_store(entries: dict[str, ImageEntry]) -> None:
-    _store_path().parent.mkdir(parents=True, exist_ok=True)
+def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
+    _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
     # save_store() only ever receives the "images" half (that's the shape
     # every existing caller works with) -- reading the file's current
     # "slides" section first and carrying it forward unchanged is what
     # stops an image save from silently wiping out slide summaries saved
     # through update_slide_notes(), and vice versa.
-    existing_slides = _read_raw().get("slides", {})
+    existing_slides = _read_raw(ctx).get("slides", {})
     payload = {
         "version": FORMAT_VERSION,
         "images": {
@@ -448,10 +449,10 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
         "slides": existing_slides,
     }
     atomic_write_text(
-        _store_path(),
+        _store_path(ctx),
         json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
     )
-    _write_compile_csv(entries)
+    _write_compile_csv(ctx, entries)
 
 
 # `media/alt-text.csv` used to be the store itself (alt_manifest.py); it is
@@ -464,7 +465,7 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
 # store wrote, so nothing on the Lua side needed to change at all.
 
 
-def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
+def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
     import csv as _csv
 
     def _clean(text: str) -> str:
@@ -477,7 +478,7 @@ def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
         # a pasted newline, so they get the same guard.
         return text.replace("\n", " ").replace("\r", " ")
 
-    with (project.transitional_context().media_dir / "alt-text.csv").open("w", newline="", encoding="utf-8") as handle:
+    with (ctx.media_dir / "alt-text.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = _csv.writer(handle)
         # Widened 2026-08-24 (was image,role,status,short_alt,source) to
         # carry both languages in one file rather than a second CSV/second
@@ -514,9 +515,8 @@ def _guess_role(image: str) -> str:
     return ROLE_INFORMATIVE
 
 
-def scan_images() -> list[str]:
+def scan_images(ctx: ProjectContext) -> list[str]:
     """Every includable image in the project, as root-relative posix paths."""
-    ctx = project.transitional_context()
     found: list[str] = []
     for dirname in IMAGE_DIRS:
         directory = ctx.root / dirname
@@ -540,27 +540,27 @@ class SyncReport:
         return bool(self.added or self.new_uses)
 
 
-def sync_store() -> SyncReport:
+def sync_store(ctx: ProjectContext) -> SyncReport:
     """Add-only sync, serialized with every other store writer.
 
     Holding the shared lock across scanning prevents an older snapshot from
     replacing image drafts or slide notes saved while the scan runs.
     """
     with _store_lock:
-        return _sync_store_locked()
+        return _sync_store_locked(ctx)
 
 
-def _sync_store_locked() -> SyncReport:
-    entries = load_store()
+def _sync_store_locked(ctx: ProjectContext) -> SyncReport:
+    entries = load_store(ctx)
     report = SyncReport()
 
-    on_disk = scan_images()
+    on_disk = scan_images(ctx)
     for image in on_disk:
         if image not in entries:
             entries[image] = ImageEntry(image=image, role=_guess_role(image))
             report.added.append(image)
 
-    rows = alt_blocks.scan_slides_raw()
+    rows = alt_blocks.scan_slides_raw(ctx)
 
     # Tikz illustrations have no file for scan_images() to find -- their own
     # \begin{tikzillustration}{ID} call, already surfaced in row.images by
@@ -602,7 +602,7 @@ def _sync_store_locked() -> SyncReport:
                 report.stale_uses.append((image, slide_id))
 
     if report.changed:
-        save_store(entries)
+        save_store(ctx, entries)
     return report
 
 
@@ -739,7 +739,7 @@ def stamp_review(entry: ImageEntry, use: SlideUse, reviewed: bool, slide_hash: s
         use.reviewed = ""
 
 
-def set_takeaway_default(image: str, slide_id: str, text: str) -> ImageEntry | None:
+def set_takeaway_default(ctx: ProjectContext, image: str, slide_id: str, text: str) -> ImageEntry | None:
     """Make `text` the image's takeaway default; this slide then follows it instead of holding an
     override of its own. Returns the updated entry, None if the image has no entry."""
     found: list[ImageEntry] = []
@@ -755,12 +755,12 @@ def set_takeaway_default(image: str, slide_id: str, text: str) -> ImageEntry | N
         found.append(entry)
         return True
 
-    update_store(mutate)
+    update_store(ctx, mutate)
     return found[0] if found else None
 
 
 def save_slide_image(
-    image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
+    ctx: ProjectContext, image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
     baseline: tuple[str, str, str] | None = None,
 ) -> None:
     """Store what was written for one image on one slide: its role and English short and long
@@ -777,4 +777,4 @@ def save_slide_image(
         stamp_review(entry, entry.used_on.setdefault(slide_id, SlideUse()), reviewed, slide_hash)
         return True
 
-    update_store(mutate)
+    update_store(ctx, mutate)

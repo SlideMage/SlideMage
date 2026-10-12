@@ -2,9 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from conftest import use_project
-from slidemage.project import transitional_context
 from slidemage import alt_blocks, deck_language, deck_scan, transcript
+from slidemage.project import ProjectContext
 
 
 def test_note_parser_removes_complete_commands_without_matching_literals():
@@ -33,7 +32,7 @@ def test_note_parser_removes_complete_commands_without_matching_literals():
     assert r"\verb|\note{verbatim literal}|" in clean
 
 
-def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(tmp_path: Path):
+def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(ctx, tmp_path: Path):
     deck = tmp_path / "deck.tex"
     deck.write_text(
         r"\slide{aaa-EN-Always}"
@@ -44,10 +43,10 @@ def test_resolve_deck_visibility_distinguishes_missing_and_empty_lists(tmp_path:
         r"\omitslide{fff-EN-Instructor}"
         r"\omitslideversion{ggg-EN-Instructor}{1-0-0}", encoding="utf-8")
     for version in transcript.STUDENT_VERSIONS:
-        slides = transcript.resolve_deck(deck, version)
+        slides = transcript.resolve_deck(ctx, deck, version)
         assert [(s.slide_id, s.number) for s in slides if s.included] == [
             ("aaa", 1), ("ccc", 3), ("eee", 4)]
-    assert [s.slide_id for s in transcript.resolve_deck(deck, "instructor") if s.included] == [
+    assert [s.slide_id for s in transcript.resolve_deck(ctx, deck, "instructor") if s.included] == [
         "aaa", "ccc", "eee", "fff", "ggg"]
     assert [(s.slide_id, s.number, s.included) for s in slides] == [
         ("aaa", 1, True), ("bbb", 2, False), ("ccc", 3, True),
@@ -90,9 +89,9 @@ def test_resolve_deck_expands_relative_and_project_includes_in_order(
     (project / "shared-list.tex").write_text(
         r"\slide{ROOT-EN-Fifth}", encoding="utf-8"
     )
-    use_project(monkeypatch, project)
+    ctx = ProjectContext.at(project)
 
-    slides = transcript.resolve_deck(decks / "deck.tex", "during-course")
+    slides = transcript.resolve_deck(ctx, decks / "deck.tex", "during-course")
 
     assert [(slide.slide_id, slide.number) for slide in slides] == [
         ("AAA", 1),
@@ -114,9 +113,9 @@ def test_resolve_deck_supports_body_only_fragments(tmp_path: Path, monkeypatch):
     child = project / "child.tex"
     fragment.write_text(r"\slide{BODY-EN-One}\input{child}", encoding="utf-8")
     child.write_text(r"\slide{BODY-EN-Two}", encoding="utf-8")
-    use_project(monkeypatch, project)
+    ctx = ProjectContext.at(project)
 
-    slides = transcript.resolve_deck(fragment, "during-course")
+    slides = transcript.resolve_deck(ctx, fragment, "during-course")
 
     assert [(slide.slide_id, slide.number) for slide in slides] == [
         ("BODY", 1),
@@ -153,14 +152,14 @@ def test_resolve_deck_reports_missing_and_cyclic_includes(
     deck.write_text(deck_text, encoding="utf-8")
     (decks / "cycle-a.tex").write_text(r"\input{cycle-b}", encoding="utf-8")
     (decks / "cycle-b.tex").write_text(r"\input{cycle-a}", encoding="utf-8")
-    use_project(monkeypatch, project)
+    ctx = ProjectContext.at(project)
 
     scanned = deck_scan.read_deck(deck)
     # Compilation retains its existing permissive default.
-    assert deck_language.compile_deck(scanned, "EN")[0].text == scanned.text
+    assert deck_language.compile_deck(ctx, scanned, "EN")[0].text == scanned.text
 
     with pytest.raises(error_type, match=message):
-        transcript.resolve_deck(deck, "during-course")
+        transcript.resolve_deck(ctx, deck, "during-course")
 
 
 def test_shipped_manual_resolves_every_slide_in_both_student_versions(monkeypatch):
@@ -170,15 +169,15 @@ def test_shipped_manual_resolves_every_slide_in_both_student_versions(monkeypatc
     # Explicit language partners count only in their original logical slot.
     repo_root = Path(__file__).resolve().parents[1]
     project_root = repo_root / "example"
-    use_project(monkeypatch, project_root)
+    ctx = ProjectContext.at(project_root)
 
-    deck = next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == 'slidemage-manual')
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == 'slidemage-manual')
     calls = [slot.call for slot in deck_language.deck_slots(
-        deck, transcript.deck_language_of(deck.text).upper())]
+        ctx, deck, transcript.deck_language_of(deck.text).upper())]
 
     for version in transcript.STUDENT_VERSIONS:
         slides = transcript.resolve_deck(
-            project_root / "decks" / "slidemage-manual.tex", version
+            ctx, project_root / "decks" / "slidemage-manual.tex", version
         )
         included = [slide for slide in slides if slide.included]
         expected = sum(c.included_in(version) for c in calls)
@@ -195,13 +194,12 @@ def translated_project(tmp_path: Path, monkeypatch):
         "%% DE translation: ddd-DE-Eins\n", encoding="utf-8")
     (slides / "ddd-DE-Eins-current.tex").write_text(
         "%% Translation of: aaa-EN-One\n", encoding="utf-8")
-    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
 @pytest.mark.parametrize("call", [r"\slide{aaa-EN-One}", r"\slideversion{aaa-EN-One}{1-0-0}"])
 @pytest.mark.parametrize("command", ["input", "include"])
-def test_resolve_german_deck_uses_linked_partner(translated_project: Path, call, command):
+def test_resolve_german_deck_uses_linked_partner(ctx, translated_project: Path, call, command):
     decks = translated_project / "decks"
     (decks / "list.tex").write_text(call, encoding="utf-8")
     deck = decks / "deck.tex"
@@ -209,7 +207,7 @@ def test_resolve_german_deck_uses_linked_partner(translated_project: Path, call,
         r"\documentclass{beamer}\decklanguage[de]\begin{document}"
         + rf"\{command}{{list}}" + r"\end{document}", encoding="utf-8")
 
-    slides = transcript.resolve_deck(deck, "after-course")
+    slides = transcript.resolve_deck(ctx, deck, "after-course")
 
     assert [(s.number, s.slide_id, s.path, s.included, s.chapter) for s in slides] == [
         (1, "ddd", translated_project / "slides/ddd-DE-Eins-current.tex", True, 0)]
@@ -219,7 +217,7 @@ def test_resolve_german_deck_uses_linked_partner(translated_project: Path, call,
     ("en", "aaa", "aaa-EN-One-current.tex"),
     ("de", "ddd", "ddd-DE-Eins-current.tex"),
 ])
-def test_resolve_deck_folds_explicit_partner_in_original_slot(
+def test_resolve_deck_folds_explicit_partner_in_original_slot(ctx, 
     translated_project: Path, language, slide_id, filename
 ):
     deck = translated_project / "decks/deck.tex"
@@ -229,7 +227,7 @@ def test_resolve_deck_folds_explicit_partner_in_original_slot(
         r"\section{Last}\slide{ddd-DE-Eins}\slide{bbb-EN-Two}\end{document}",
         encoding="utf-8")
 
-    slides = transcript.resolve_deck(deck, "after-course")
+    slides = transcript.resolve_deck(ctx, deck, "after-course")
 
     assert [(s.number, s.slide_id, s.chapter) for s in slides] == [
         (1, slide_id, 1), (2, "bbb", 2)]
@@ -242,7 +240,7 @@ def test_resolve_deck_folds_explicit_partner_in_original_slot(
     "% \\slide{bbb-EN-Hidden}\n",
     r"\note{outer {\slide{bbb-EN-Hidden}}}",
 ])
-def test_resolve_deck_ignores_inactive_and_note_calls(tmp_path: Path, inactive):
+def test_resolve_deck_ignores_inactive_and_note_calls(ctx, tmp_path: Path, inactive):
     deck = tmp_path / "deck.tex"
     deck.write_text(
         r"\documentclass{beamer}\begin{document}\slide{aaa-EN-First}"
@@ -250,12 +248,12 @@ def test_resolve_deck_ignores_inactive_and_note_calls(tmp_path: Path, inactive):
 
     scanned = deck_scan.read_deck(deck)
     assert [c.id for c in deck_language.active_calls(scanned)] == ["aaa", "ccc"]
-    slides = transcript.resolve_deck(deck, "after-course")
+    slides = transcript.resolve_deck(ctx, deck, "after-course")
 
     assert [(s.number, s.slide_id) for s in slides] == [(1, "aaa"), (2, "ccc")]
 
 
-def test_resolve_deck_ignores_note_calls_and_includes_in_fragments(translated_project: Path):
+def test_resolve_deck_ignores_note_calls_and_includes_in_fragments(ctx, translated_project: Path):
     decks = translated_project / "decks"
     fragment = decks / "list.tex"
     fragment.write_text(
@@ -266,7 +264,7 @@ def test_resolve_deck_ignores_note_calls_and_includes_in_fragments(translated_pr
         r"\documentclass{beamer}\decklanguage[de]\begin{document}"
         r"\input{list}\end{document}", encoding="utf-8")
 
-    slides = transcript.resolve_deck(deck, "after-course")
+    slides = transcript.resolve_deck(ctx, deck, "after-course")
 
     assert [(s.number, s.slide_id) for s in slides] == [(1, "ddd")]
     scanned = deck_scan.read_deck(deck)

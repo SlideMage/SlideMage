@@ -8,12 +8,10 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget
 
-from conftest import use_project
 from slidemage import housekeeping, unused_content
 from slidemage.ui.dialogs import housekeeping as sheet_module
 from slidemage.ui.dialogs.housekeeping import ARCHIVE_PAGE, HousekeepingJobs, HousekeepingSheet
 from slidemage.ui.workspace import maintenance
-from slidemage.project import transitional_context
 
 
 @pytest.fixture
@@ -33,34 +31,33 @@ def folders(tmp_path, monkeypatch):
     (root / "slides" / "abd-EN-Gone-current.tex").write_text("x", encoding="utf-8")
     (root / "media" / "kept.png").write_bytes(b"i")
     (root / "media" / "gone.png").write_bytes(b"i")
-    use_project(monkeypatch, root)
     return root
 
 
 # -- housekeeping.py -------------------------------------------------------------------------------
 
-def test_the_temp_files_are_the_build_items_the_wrappers_and_the_scratch_folder(folders):
-    found = housekeeping.find_temp_files(transitional_context())
+def test_the_temp_files_are_the_build_items_the_wrappers_and_the_scratch_folder(folders, ctx):
+    found = housekeeping.find_temp_files(ctx)
     assert [p.name for p in found.build] == ["legacy.log", "t-Deck-instructor-abc"]
     assert [p.name for p in found.wrappers] == ["_slidemage_t.tex"]
     assert [p.name for p in found.scratch] == ["scratch.pptx"]
     assert found.count == 4 and found
-    housekeeping.remove_temp_files(transitional_context(), found)
-    assert not housekeeping.find_temp_files(transitional_context())
+    housekeeping.remove_temp_files(ctx, found)
+    assert not housekeeping.find_temp_files(ctx)
     assert (folders / "decks" / "deck.tex").is_file()           # a real deck stays
 
 
-def test_pdf_files_lists_only_files_and_delete_removes_them(folders):
+def test_pdf_files_lists_only_files_and_delete_removes_them(folders, ctx):
     (folders / "pdf" / "sub").mkdir()
-    assert sorted(p.name for p in housekeeping.pdf_files(transitional_context())) == ["a.pdf", "b.pdf"]
-    housekeeping.delete_files(housekeeping.pdf_files(transitional_context()))
-    assert housekeeping.pdf_files(transitional_context()) == []
+    assert sorted(p.name for p in housekeeping.pdf_files(ctx)) == ["a.pdf", "b.pdf"]
+    housekeeping.delete_files(housekeeping.pdf_files(ctx))
+    assert housekeeping.pdf_files(ctx) == []
 
 
-def test_archive_files_moves_only_what_it_is_given(folders):
-    media, slides = unused_content.find_unused_media(transitional_context()), unused_content.find_unused_slides(transitional_context())
+def test_archive_files_moves_only_what_it_is_given(folders, ctx):
+    media, slides = unused_content.find_unused_media(ctx), unused_content.find_unused_slides(ctx)
     assert [p.name for p in media] == ["gone.png"] and [p.name for p in slides] == ["abd-EN-Gone-current.tex"]
-    assert unused_content.archive_files(transitional_context(), [], slides, lambda _line: None) == (0, 1)
+    assert unused_content.archive_files(ctx, [], slides, lambda _line: None) == (0, 1)
     assert (folders / "media" / "gone.png").is_file() and (folders / "slides" / "archive" / slides[0].name).is_file()
 
 
@@ -71,28 +68,30 @@ NO_JOBS = HousekeepingJobs(lambda: None, lambda: None, lambda: 0)
 
 class Window(QWidget):
     compiling = False
-    project = property(lambda self: transitional_context())
+    def __init__(self, project):
+        super().__init__()
+        self.project = project
 
     def log(self, _line):
         pass
 
 
-def test_empty_pdf_asks_first(folders, monkeypatch, qapp):
-    window = Window()
+def test_empty_pdf_asks_first(folders, monkeypatch, qapp, ctx):
+    window = Window(ctx)
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
     maintenance.empty_pdf_folder(window)
-    assert len(housekeeping.pdf_files(transitional_context())) == 2
+    assert len(housekeeping.pdf_files(ctx)) == 2
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
     maintenance.empty_pdf_folder(window)
-    assert housekeeping.pdf_files(transitional_context()) == []
+    assert housekeeping.pdf_files(ctx) == []
 
 
-def test_remove_temp_files_is_refused_while_compiling(folders, monkeypatch, qapp):
-    window = Window()
+def test_remove_temp_files_is_refused_while_compiling(folders, monkeypatch, qapp, ctx):
+    window = Window(ctx)
     window.compiling = True
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     maintenance.remove_temp_files(window)
-    assert housekeeping.find_temp_files(transitional_context())
+    assert housekeeping.find_temp_files(ctx)
 
 
 # -- the sheet ---------------------------------------------------------------------------------------
@@ -102,9 +101,9 @@ def rows(sheet):
             "links": sheet.links}
 
 
-def test_rows_with_nothing_to_do_are_disabled_and_a_compile_blocks_the_dangerous_ones(folders, qapp):
-    housekeeping.delete_files(housekeeping.pdf_files(transitional_context()))
-    window = Window()
+def test_rows_with_nothing_to_do_are_disabled_and_a_compile_blocks_the_dangerous_ones(folders, qapp, ctx):
+    housekeeping.delete_files(housekeeping.pdf_files(ctx))
+    window = Window(ctx)
     window.compiling = True
     sheet = HousekeepingSheet(window, NO_JOBS)
     state = {name: row.button.isEnabled() for name, row in rows(sheet).items()}
@@ -112,9 +111,9 @@ def test_rows_with_nothing_to_do_are_disabled_and_a_compile_blocks_the_dangerous
     assert sheet.pdf.sub.text() == "pdf/ is empty"
 
 
-def test_the_buttons_run_the_windows_actions_and_the_sheet_follows(folders, qapp):
-    window = Window()
-    jobs = HousekeepingJobs(lambda: housekeeping.delete_files(housekeeping.pdf_files(transitional_context())), lambda: None, lambda: 3)
+def test_the_buttons_run_the_windows_actions_and_the_sheet_follows(folders, qapp, ctx):
+    window = Window(ctx)
+    jobs = HousekeepingJobs(lambda: housekeeping.delete_files(housekeeping.pdf_files(ctx)), lambda: None, lambda: 3)
     sheet = HousekeepingSheet(window, jobs)
     assert all(row.button.isEnabled() for row in rows(sheet).values())
     sheet.pdf.button.click()
@@ -131,8 +130,8 @@ def wait_for_archive(sheet):
     QApplication.sendPostedEvents()
 
 
-def test_archive_review_lists_the_files_and_moves_the_ticked_ones(folders, qapp):
-    window = Window()
+def test_archive_review_lists_the_files_and_moves_the_ticked_ones(folders, qapp, ctx):
+    window = Window(ctx)
     sheet = HousekeepingSheet(window, NO_JOBS, ARCHIVE_PAGE)
     assert sheet.windowTitle() == "Archive unused content" and sheet.files.count() == 2
     assert sheet.archive_button.text() == "Archive 2 files"
@@ -152,8 +151,8 @@ def test_archive_review_lists_the_files_and_moves_the_ticked_ones(folders, qapp)
     assert sheet.archive.sub.text() == "Moved 1 media file to media/archive/ and 0 slides to slides/archive/"
 
 
-def test_closing_the_sheet_lets_a_running_move_finish(folders, qapp):
-    sheet = HousekeepingSheet(Window(), NO_JOBS, ARCHIVE_PAGE)
+def test_closing_the_sheet_lets_a_running_move_finish(folders, qapp, ctx):
+    sheet = HousekeepingSheet(Window(ctx), NO_JOBS, ARCHIVE_PAGE)
     sheet.archive_button.click()
     sheet.reject()                                   # the move is short: the sheet gives it a moment, then lets go
     assert sheet._worker is None

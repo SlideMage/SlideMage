@@ -21,7 +21,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from .. import app_settings, project
+from .. import app_settings
+from ..project import ProjectContext
 
 ENV_VAR = "ANTHROPIC_API_KEY"
 KEYRING_SERVICE = "SlideMage"
@@ -71,20 +72,20 @@ def _keychain_get() -> str:
         return ""
 
 
-def get_api_key() -> ApiKey | None:
+def get_api_key(ctx: ProjectContext) -> ApiKey | None:
     value = os.environ.get(ENV_VAR, "").strip()
     if value:
         return ApiKey(value, SOURCE_ENV)
     value = _keychain_get().strip()
     if value:
         return ApiKey(value, SOURCE_KEYCHAIN)
-    value = str(app_settings.get(project.transitional_context(), FILE_SETTING_KEY) or "").strip()
+    value = str(app_settings.get(ctx, FILE_SETTING_KEY) or "").strip()
     if value:
         return ApiKey(value, SOURCE_FILE)
     return None
 
 
-def set_api_key(key: str) -> str:
+def set_api_key(ctx: ProjectContext, key: str) -> str:
     """Store `key` (empty clears it from the keychain and the settings
     file; the environment variable is not ours to change). Returns where it
     was stored: SOURCE_KEYCHAIN or SOURCE_FILE, "" when cleared. The key is
@@ -92,7 +93,6 @@ def set_api_key(key: str) -> str:
     older keychain entry is removed when the new key goes to the file, and
     an OSError says so if the keychain refuses to let go of one (the file is
     updated regardless)."""
-    ctx = project.transitional_context()
     key = key.strip()
     module = _keyring()
     in_keychain = False

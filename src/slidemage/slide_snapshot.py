@@ -340,7 +340,7 @@ def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
         doc.close()
 
 
-def _own_language_for_bare_id(bare_id_: str) -> str | None:
+def _own_language_for_bare_id(ctx: project.ProjectContext, bare_id_: str) -> str | None:
     """Resolves a bare id to its current on-disk id-slug and returns that
     slide's own language segment (EN/DE/mult, slide_language.own_language)
     -- None for a legacy, not-yet-migrated slide. Used to key the preview
@@ -350,7 +350,7 @@ def _own_language_for_bare_id(bare_id_: str) -> str | None:
     *own* language never depends on which deck/template compiled it --
     only an "mult" slide's actually-*rendered* language would, and this
     cache deliberately doesn't split on that, see snapshot_path())."""
-    id_slug = slide_language.current_id_slug_for_bare_id(bare_id_)
+    id_slug = slide_language.current_id_slug_for_bare_id(ctx, bare_id_)
     if id_slug is None:
         return None
     return slide_language.own_language(id_slug)
@@ -381,7 +381,7 @@ def snapshot_path(ctx: project.ProjectContext, slide_id: str, template: str = DE
     # `id_slug` (a deck call's own) saves looking the slide up on disk: a
     # whole slide list asks for hundreds of these at once.
     language = (slide_language.own_language(id_slug) if id_slug
-                else _own_language_for_bare_id(slide_id))
+                else _own_language_for_bare_id(ctx, slide_id))
     lang_segment = f"-{language}" if language else ""
     return ctx.slide_previews_dir / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
 

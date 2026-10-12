@@ -125,7 +125,7 @@ class OllamaTab(Page):
         results: Results = []
         try:
             for model in models:
-                ok, error = ollama_admin.delete_model(model)
+                ok, error = ollama_admin.delete_model(model, app_settings.get_ollama_host(self.app.project))
                 results.append((model, ok, error or "Unknown error"))
                 if ok:
                     self.app.log(f"Deleted Ollama model {model}")
@@ -156,7 +156,8 @@ class OllamaTab(Page):
         try:
             for model in models:
                 self.app.log(f"Updating Ollama model {model}…")
-                ok, error = ollama_admin.update_model(model, on_progress=self.app.log)
+                ok, error = ollama_admin.update_model(model, app_settings.get_ollama_host(self.app.project),
+                                                    on_progress=self.app.log)
                 results.append((model, ok, error))
                 self.app.log(
                     f"Updated Ollama model {model}" if ok else f"Failed to update {model}: {error}")

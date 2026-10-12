@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import alt_blocks, alt_draft, alt_images, media_render, project, slide_source, tikz_render
+from . import alt_blocks, alt_draft, alt_images, media_render, slide_source, tikz_render
 from .deck_editor import parse_slide_calls
 from .deck_scan import Deck
+from .project import ProjectContext
 
 FILTER_ALL = 1   # index of "All slides with images" in FILTERS
 
@@ -76,10 +77,10 @@ def slide_state(row: alt_blocks.SlideRow, entries: dict[str, alt_images.ImageEnt
     return min(states, key=_STATE_RANK.__getitem__, default=alt_images.STATE_REVIEWED)
 
 
-def scan_views(entries: dict[str, alt_images.ImageEntry]) -> list[SlideView]:
+def scan_views(ctx: ProjectContext, entries: dict[str, alt_images.ImageEntry]) -> list[SlideView]:
     """Every slide that shows at least one image."""
     views = []
-    for row in alt_blocks.scan_slides_raw():
+    for row in alt_blocks.scan_slides_raw(ctx):
         slide_hash = alt_images.slide_context_hash(row.path)
         views.append(SlideView(row, slide_state(row, entries, slide_hash), slide_hash))
     return views
@@ -205,7 +206,7 @@ def apply_form_edit(entry: alt_images.ImageEntry, slide_id: str, edit: FormEdit)
     return use
 
 
-def save_slide_forms(slide_id: str, slide_path: Path, edits: list[FormEdit], *, reviewed: bool) -> None:
+def save_slide_forms(ctx: ProjectContext, slide_id: str, slide_path: Path, edits: list[FormEdit], *, reviewed: bool) -> None:
     """Store the forms of one slide's images, then stamp its use of each as alt_images.stamp_review()
     does. The slide hash is taken now, not at scan time: the slide may have been edited since, and a
     stale hash would mark it reviewed against text nobody looked at."""
@@ -218,7 +219,7 @@ def save_slide_forms(slide_id: str, slide_path: Path, edits: list[FormEdit], *, 
             alt_images.stamp_review(entry, use, reviewed, slide_hash)
         return True
 
-    alt_images.update_store(mutate)
+    alt_images.update_store(ctx, mutate)
 
 
 def source_hash(short: str, long: str, takeaway: str) -> str:
@@ -268,22 +269,22 @@ def media_name_problem(stem: str) -> str:
     return ""
 
 
-def media_destination(name: str) -> Path:
-    return project.transitional_context().root / "media" / name
+def media_destination(ctx: ProjectContext, name: str) -> Path:
+    return ctx.media_dir / name
 
 
-def free_media_stem(stem: str, suffix: str) -> str:
+def free_media_stem(ctx: ProjectContext, stem: str, suffix: str) -> str:
     """`stem`, or `stem-2`, `stem-3` ... : the first for which media/<it><suffix> does not exist yet."""
     candidate, number = stem, 2
-    while media_destination(candidate + suffix).exists():
+    while media_destination(ctx, candidate + suffix).exists():
         candidate, number = f"{stem}-{number}", number + 1
     return candidate
 
 
-def copy_into_media(source: Path, name: str) -> Path:
+def copy_into_media(ctx: ProjectContext, source: Path, name: str) -> Path:
     """Copy `source` to media/`name`, which must not exist yet (an image is never overwritten);
     OSError if that fails."""
-    destination = media_destination(name)
+    destination = media_destination(ctx, name)
     if destination.exists():
         raise FileExistsError(f"media/{name} already exists")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -291,7 +292,7 @@ def copy_into_media(source: Path, name: str) -> Path:
     return destination
 
 
-def repoint_slides(entry: alt_images.ImageEntry, entries: dict[str, alt_images.ImageEntry],
+def repoint_slides(ctx: ProjectContext, entry: alt_images.ImageEntry, entries: dict[str, alt_images.ImageEntry],
                    targets: dict[str, Path], rows: dict[str, alt_blocks.SlideRow],
                    old_reference: str, new_reference: str, *,
                    unsaved: Callable[[Path], bool] = lambda path: False) -> tuple[list[str], list[str]]:
@@ -319,7 +320,7 @@ def repoint_slides(entry: alt_images.ImageEntry, entries: dict[str, alt_images.I
             if count == 0:
                 failures.append(f"{slide_id}: reference not found in {path.name} as written")
                 continue
-            slide_source.save_slide_source(path, new_text, eol, expected_text=text)    # line ends kept, backup made
+            slide_source.save_slide_source(ctx, path, new_text, eol, expected_text=text)    # line ends kept, backup made
         except (OSError, UnicodeDecodeError, slide_source.StaleFileError) as exc:
             failures.append(f"{slide_id}: {exc}")
             continue
@@ -359,23 +360,23 @@ def _first_line(error: Exception, limit: int = 160) -> str:
     return line if len(line) <= limit else line[:limit - 1] + "…"
 
 
-def preview_for(reference: str, log: Callable[[str], None] | None = None) -> Preview:
+def preview_for(ctx: ProjectContext, reference: str, log: Callable[[str], None] | None = None) -> Preview:
     """What to show for an image reference: the file itself, its rendered page (.pdf) or the rendered
     tikz illustration. `log` receives the reason a render failed."""
     if reference.startswith(alt_blocks.TIKZ_PREFIX):
         try:
-            return Preview(tikz_render.ensure_rendered(project.transitional_context(), reference, log=log))
+            return Preview(tikz_render.ensure_rendered(ctx, reference, log=log))
         except RuntimeError as exc:
             if log is not None:
                 log(f"*** {exc} ***")
             return Preview(None, problem=f"Could not render the tikz illustration: {_first_line(exc)}")
-    resolved = alt_blocks.resolve_image(reference)
+    resolved = alt_blocks.resolve_image(ctx, reference)
     if resolved is None:
         return Preview(None, problem=f"Image not found on disk: {reference}")
     suffix = resolved.suffix.lower()
     if suffix == ".pdf":
         try:
-            return Preview(media_render.ensure_rendered(project.transitional_context(), resolved), resolved)
+            return Preview(media_render.ensure_rendered(ctx, resolved), resolved)
         except RuntimeError as exc:
             if log is not None:
                 log(f"*** {exc} ***")

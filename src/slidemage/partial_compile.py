@@ -190,10 +190,10 @@ class PartialPlan:
         return [f for f in self.frames if f not in self.requested]
 
 
-def _deck_calls(job: CompileJob) -> list[SlideCall]:
+def _deck_calls(ctx: project.ProjectContext, job: CompileJob) -> list[SlideCall]:
     from . import deck_language
     deck, _ = deck_language.expand_fragments(job.deck)
-    return [s.call for s in deck_language.deck_slots(deck, deck_language.language_for_job(job))]
+    return [s.call for s in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job))]
 
 
 @dataclass
@@ -208,7 +208,7 @@ class _FullCompile:
     unmatched: list[FrameGroup]      # frames not from a slide call (the generated appendix)
 
 
-def _full_compile(job: CompileJob, build_dir: Path) -> _FullCompile:
+def _full_compile(ctx: project.ProjectContext, job: CompileJob) -> _FullCompile:
     if job.chapter is not None:
         raise PartialError("Page compiles work on whole-deck versions, not per-chapter PDFs.")
     # The deck as it is on disk now (the deck table's copy may be older).
@@ -217,8 +217,8 @@ def _full_compile(job: CompileJob, build_dir: Path) -> _FullCompile:
     if fresh is None:
         raise PartialError(f"{job.deck.path.name} is no longer a deck file.")
     job.deck = fresh
-    record = compile_records.read_record(build_dir, job.jobname)
-    aux = compile_records.aux_dir(build_dir, job.jobname)
+    record = compile_records.read_record(ctx.build_dir, job.jobname)
+    aux = compile_records.aux_dir(ctx.build_dir, job.jobname)
     if record is None or not (aux / f"{job.jobname}.aux").is_file():
         raise PartialError(f"{job.jobname} has no whole-deck compile on record yet -- compile "
                            "the whole deck once (SlideMage v5.35.0 or later), then pages.")
@@ -237,7 +237,7 @@ def _full_compile(job: CompileJob, build_dir: Path) -> _FullCompile:
             break
 
     groups = frame_groups(page_infos(full_pdf))
-    calls = [c for c in _deck_calls(job) if c.included_in(job.version)]
+    calls = [c for c in _deck_calls(ctx, job) if c.included_in(job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
     unmatched: list[FrameGroup] = []
     ptr = 0
@@ -258,10 +258,10 @@ def frames_for_slides(ctx: project.ProjectContext, job: CompileJob, slide_ids: l
     when there is no usable whole-deck compile to read them from. A slide that
     is not in that PDF (not typeset in the version) has no frames."""
     wanted = {i.lower() for i in slide_ids}
-    full = _full_compile(job, ctx.build_dir)
+    full = _full_compile(ctx, job)
     from . import deck_language
     deck, _ = deck_language.expand_fragments(job.deck)
-    for slot in deck_language.deck_slots(deck, deck_language.language_for_job(job)):
+    for slot in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job)):
         if any(slot.matches(i) for i in slide_ids):
             wanted.add(slot.call.id.lower())
     return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
@@ -269,7 +269,7 @@ def frames_for_slides(ctx: project.ProjectContext, job: CompileJob, slide_ids: l
 
 def plan(ctx: project.ProjectContext, job: CompileJob, spec: str | list[int]) -> PartialPlan:
     requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
-    full = _full_compile(job, ctx.build_dir)
+    full = _full_compile(ctx, job)
     record, aux, full_pdf, deck_changed_at = full.record, full.aux, full.pdf, full.deck_changed_at
     matched, unmatched = full.matched, full.unmatched
     by_frame = {f: (g, c) for g, c in matched for f in g.frames}

@@ -141,7 +141,7 @@ def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
             "revert them first, so this change and that editor can't overwrite each other.",
         )
         return
-    sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(), tab=tab)
+    sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab)
     if not sheet.exec():
         return
     if sheet.action == INSERT:
@@ -170,7 +170,7 @@ def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings)
 def insert_admin_slides(window, deck: Deck, admin: AdminSlidesTab) -> None:
     try:
         slide_paths = admin_slides.insert_admin_slides(
-            deck, admin.position, admin.slide_specs, admin.language)
+            window.project, deck, admin.position, admin.slide_specs, admin.language)
     except (OSError, ValueError, deck_editor.StaleFileError) as exc:
         QMessageBox.critical(window, "Admin slides failed", str(exc))
         return
@@ -222,7 +222,7 @@ def on_duplicate_deck(window, deck: Deck) -> None:
         return
     new_name, group = sheet.name, sheet.group
     try:
-        dest = deck_duplicate.duplicate_deck(deck, new_name)
+        dest = deck_duplicate.duplicate_deck(window.project, deck, new_name)
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "Duplicate failed", str(exc))
         return
@@ -250,11 +250,11 @@ def generate_deck_transcript(window, deck: Deck, version: str, *, quiet: bool = 
     regex-based render, not a LaTeX compile, so no thread is needed.
     quiet=True skips the completion dialog on success (batch runs).
     Returns whether it succeeded."""
-    target_dir, stem = transcript.resolve_transcript_location(deck, deck.path, version)
+    target_dir, stem = transcript.resolve_transcript_location(window.project, deck, deck.path, version)
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
         md_path, html_path, result = transcript.write_transcript(
-            deck.path, version, directory=target_dir, filename_stem=stem)
+            window.project, deck.path, version, directory=target_dir, filename_stem=stem)
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "Transcript failed", f"{deck.name} ({version}):\n{exc}")
         window.log(f"*** Transcript generation failed for {deck.path.stem} ({version}): {exc} ***")

@@ -9,12 +9,12 @@ Two entry points:
   move, same fallback archive.py already established), rewrites every
   \\slide-family reference to the old id-slug across every deck (including
   #workdeck.tex, unlike deck_headers.py's own header regeneration which
-  deliberately excludes it), then re-runs deck_headers.regenerate_headers()
+  deliberately excludes it), then re-runs deck_headers.regenerate_headers(ctx)
   and regenerate_translation_links() so both kinds of derived text stay in
   sync with the rename.
 
 - regenerate_translation_links(): mirrors
-  deck_headers.regenerate_headers()'s own "recompute from disk state,
+  deck_headers.regenerate_headers(ctx)'s own "recompute from disk state,
   don't trust old text" approach, but per translation cross-reference
   header line rather than per deck-inclusion header block. Run standalone
   (its own SlideMage toolbar button) or automatically after a rename /
@@ -35,7 +35,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from . import alt_images, deck_headers, project, slide_ids, slide_language
+from . import alt_images, deck_headers, slide_ids, slide_language
+from .project import ProjectContext
 from .processes import is_git_repo, is_git_tracked, no_console_kwargs
 
 # Decks and archived decks can hold \slide{}-family references.
@@ -56,8 +57,7 @@ _MACROS = (
 )
 
 
-def _move(src: Path, dest: Path) -> None:
-    ctx = project.transitional_context()
+def _move(ctx: ProjectContext, src: Path, dest: Path) -> None:
     if is_git_repo(ctx.root) and is_git_tracked(src, ctx.root):
         subprocess.run(
             ["git", "mv", str(src.relative_to(ctx.root)), str(dest.relative_to(ctx.root))],
@@ -92,22 +92,22 @@ def _reference_pattern(id_slug: str) -> re.Pattern:
     )
 
 
-def count_references(id_slug: str) -> int:
+def count_references(ctx: ProjectContext, id_slug: str) -> int:
     """How many \\slide-family calls, across every deck (including
     #workdeck.tex), currently reference this id-slug -- for a
     confirmation dialog before set_slide_language() rewrites them."""
     pattern = _reference_pattern(id_slug)
     total = 0
-    deck_paths = _reference_decks()
+    deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
         text = deck_path.read_bytes().decode("utf-8")
         total += len(pattern.findall(text))
     return total
 
 
-def _reference_decks() -> list[Path]:
+def _reference_decks(ctx: ProjectContext) -> list[Path]:
     """Every deck file that can call a slide: the decks and the archived decks, #workdeck.tex among them."""
-    return [p for directory in project.transitional_context().deck_folders if directory.is_dir()
+    return [p for directory in ctx.deck_folders if directory.is_dir()
             for p in directory.glob("*.tex")]
 
 
@@ -120,7 +120,7 @@ def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str)
     return n
 
 
-def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
+def _apply_id_slug_rename(ctx: ProjectContext, id_slug: str, new_id_slug: str) -> str:
     """Shared machinery behind both set_slide_language() and
     rename_slide_slug() below: move slides/<id_slug>-current.tex (and every
     frozen -vX-Y-Z.tex sibling) to <new_id_slug>'s own filenames, rewrite
@@ -132,7 +132,6 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
     registration, are untouched either way (that's rename_slide_id()'s own,
     separate job). Returns new_id_slug unchanged, for a symmetric call
     signature with both callers."""
-    ctx = project.transitional_context()
     if new_id_slug == id_slug:
         return id_slug
 
@@ -153,25 +152,25 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
         renames.append((version_src, version_dest))
 
     for src, dest in renames:
-        _move(src, dest)
+        _move(ctx, src, dest)
 
-    deck_paths = _reference_decks()
+    deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
         _rewrite_references_in_file(deck_path, id_slug, new_id_slug)
 
-    deck_headers.regenerate_headers()
-    regenerate_translation_links()
+    deck_headers.regenerate_headers(ctx)
+    regenerate_translation_links(ctx)
     return new_id_slug
 
 
-def set_slide_language(id_slug: str, language: str) -> str:
+def set_slide_language(ctx: ProjectContext, id_slug: str, language: str) -> str:
     """Renames slides/<id_slug>-current.tex (and every frozen
     -vX-Y-Z.tex sibling) to carry `language`'s segment, rewrites every
     reference across every deck, and regenerates both derived-text kinds
     (deck-inclusion headers, translation cross-references). Returns the
     new id-slug (unchanged from id_slug if it already carried this exact
     language segment)."""
-    return _apply_id_slug_rename(id_slug, compute_new_id_slug(id_slug, language))
+    return _apply_id_slug_rename(ctx, id_slug, compute_new_id_slug(id_slug, language))
 
 
 _SLUG_RE = re.compile(r"[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*")
@@ -204,7 +203,7 @@ def compute_new_slug(id_slug: str, new_slug: str) -> str:
     return f"{bare_id}-{language}-{new_slug}" if language else f"{bare_id}-{new_slug}"
 
 
-def rename_slide_slug(id_slug: str, new_slug: str) -> str:
+def rename_slide_slug(ctx: ProjectContext, id_slug: str, new_slug: str) -> str:
     """Give a slide a new descriptive slug, keeping its bare id (and
     language segment, if any) unchanged -- for the "Rename slide" button
     (2026-09-23, direct instruction), which only ever changes the
@@ -213,14 +212,14 @@ def rename_slide_slug(id_slug: str, new_slug: str) -> str:
     job). Same move + reference-rewrite + header-regen machinery as both
     of those. Returns the new id-slug (unchanged from id_slug if it
     already had this exact slug)."""
-    return _apply_id_slug_rename(id_slug, compute_new_slug(id_slug, new_slug))
+    return _apply_id_slug_rename(ctx, id_slug, compute_new_slug(id_slug, new_slug))
 
 
-def _resolve_reference(bare_ref: str) -> Optional[str]:
-    return slide_language.current_id_slug_for_bare_id(slide_language.bare_id(bare_ref))
+def _resolve_reference(ctx: ProjectContext, bare_ref: str) -> Optional[str]:
+    return slide_language.current_id_slug_for_bare_id(ctx, slide_language.bare_id(bare_ref))
 
 
-def regenerate_translation_links() -> tuple[int, list[str]]:
+def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
     """Rescan every slides/*-current.tex file's own "%% Translation of:
     ..." / "%% <LANG> translation: ..." header lines and refresh each to
     point at its target's *current* id-slug/language. Returns (files
@@ -230,14 +229,14 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
     changed = 0
     missing: list[str] = []
 
-    for path in sorted(project.transitional_context().slides_dir.glob("*-current.tex")):
+    for path in sorted(ctx.slides_dir.glob("*-current.tex")):
         own_name = path.name[: -len(slide_language.CURRENT_SUFFIX)]
         text = path.read_bytes().decode("utf-8")
         new_text = text
 
         m = slide_language.TRANSLATION_OF_RE.search(new_text)
         if m:
-            resolved = _resolve_reference(m.group(1))
+            resolved = _resolve_reference(ctx, m.group(1))
             if resolved is None:
                 missing.append(
                     f"{own_name}: \"Translation of: {m.group(1)}\" no longer "
@@ -247,7 +246,7 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
                 new_text = new_text[: m.start(1)] + resolved + new_text[m.end(1):]
 
         def _lang_repl(lm: "re.Match[str]") -> str:
-            resolved = _resolve_reference(lm.group(2))
+            resolved = _resolve_reference(ctx, lm.group(2))
             if resolved is None:
                 missing.append(
                     f"{own_name}: \"{lm.group(1)} translation: {lm.group(2)}\" no "
@@ -267,7 +266,7 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
     return changed, missing
 
 
-def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[str, str]:
+def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: bool = False) -> dict[str, str]:
     """Give a slide a new 3-character id (2026-09-21, direct instruction:
     "838"/"538" are all-digit ids, which slide_ids.illegal_id_reason() now
     rules out for good). Everything that carries the bare id follows:
@@ -293,7 +292,6 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
 
     Returns {old id-slug: new id-slug} for every renamed slide.
     """
-    ctx = project.transitional_context()
     check = slide_ids.reserved_id_reason if reserved else slide_ids.regular_id_reason
     reason = check(new_id)
     if reason:
@@ -301,7 +299,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
     first_ok = new_id[:1] in (slide_ids.RESERVED_FIRST_DIGITS if reserved else slide_ids.ID_ALPHABET)
     if len(new_id) != slide_ids.ID_LENGTH or not first_ok or not all(c in slide_ids.ID_ALPHABET for c in new_id[1:]):
         raise ValueError(f"{new_id!r} must be {slide_ids.ID_LENGTH} characters from {slide_ids.ID_ALPHABET!r}")
-    taken = slide_ids.existing_ids_from_csv() | slide_ids.existing_ids_from_disk()
+    taken = slide_ids.existing_ids_from_csv(ctx) | slide_ids.existing_ids_from_disk(ctx)
     if new_id.lower() in {i.lower() for i in taken}:
         raise FileExistsError(f"slide id {new_id!r} is already in use")
     old_files = sorted(ctx.slides_dir.glob(f"{old_id}-*.tex"))
@@ -313,7 +311,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
         dest = ctx.slides_dir / (new_id + src.name[len(old_id):])
         if dest.exists():
             raise FileExistsError(f"{dest} already exists")
-        _move(src, dest)
+        _move(ctx, src, dest)
         if src.name.endswith(slide_language.CURRENT_SUFFIX):
             old_slug = src.name[: -len(slide_language.CURRENT_SUFFIX)]
             mapping[old_slug] = new_id + old_slug[len(old_id):]
@@ -323,7 +321,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
             r"(\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{)("
             + "|".join(re.escape(s) for s in mapping) + r")(\})"
         )
-        deck_paths = _reference_decks()
+        deck_paths = _reference_decks(ctx)
         for deck_path in deck_paths:
             text = deck_path.read_bytes().decode("utf-8")
             new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
@@ -345,7 +343,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
                 changed = True
         return changed
 
-    alt_images.update_store(_move_uses)
+    alt_images.update_store(ctx, _move_uses)
 
     def _move_notes(notes) -> bool:
         if old_id in notes:
@@ -353,7 +351,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
             return True
         return False
 
-    alt_images.update_slide_notes(_move_notes)
+    alt_images.update_slide_notes(ctx, _move_notes)
 
     if ctx.slide_previews_dir.is_dir():
         for src in ctx.slide_previews_dir.glob(f"{old_id}-*.png"):
@@ -361,13 +359,13 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
             if not dest.exists():
                 src.rename(dest)
 
-    slide_ids.append_slide_id(new_id)
-    deck_headers.regenerate_headers()
-    regenerate_translation_links()
+    slide_ids.append_slide_id(ctx, new_id)
+    deck_headers.regenerate_headers(ctx)
+    regenerate_translation_links(ctx)
     return mapping
 
 
-def deck_names_referencing(id_slug: str) -> list[str]:
+def deck_names_referencing(ctx: ProjectContext, id_slug: str) -> list[str]:
     """Deck names (filename stem, including #workdeck.tex/archived decks)
     that reference id_slug via any \\slide-family call -- for the "Delete
     slide" button's confirmation dialog (2026-09-23, direct instruction:
@@ -376,7 +374,7 @@ def deck_names_referencing(id_slug: str) -> list[str]:
     to lose a reference before confirming, not just a bare count."""
     pattern = _reference_pattern(id_slug)
     names: list[str] = []
-    deck_paths = _reference_decks()
+    deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
         text = deck_path.read_bytes().decode("utf-8")
         if pattern.search(text):
@@ -421,7 +419,7 @@ def _remove_references_in_file(deck_path: Path, id_slug: str) -> int:
     return n
 
 
-def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[str, int]:
+def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: bool = True) -> dict[str, int]:
     """Permanently deletes slides/<id_slug>-current.tex and every frozen
     -vX-Y-Z.tex sibling from disk (git rm when tracked, else a plain
     unlink) -- for the "Delete slide" button (2026-09-23, direct
@@ -447,7 +445,6 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
     this function itself deletes unconditionally, no confirmation of its
     own. Returns {"files_removed": n, "deck_references_removed": n} for
     the caller's own confirmation/log message."""
-    ctx = project.transitional_context()
     current = ctx.slides_dir / slide_language.current_name(id_slug)
     if not current.exists():
         raise FileNotFoundError(f"{current} does not exist")
@@ -464,7 +461,7 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
 
     deck_refs_removed = 0
     if remove_deck_references:
-        deck_paths = _reference_decks()
+        deck_paths = _reference_decks(ctx)
         for deck_path in deck_paths:
             deck_refs_removed += _remove_references_in_file(deck_path, id_slug)
 
@@ -478,7 +475,7 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
                 changed = True
         return changed
 
-    alt_images.update_store(_drop_uses)
+    alt_images.update_store(ctx, _drop_uses)
 
     def _drop_notes(notes) -> bool:
         if bare_id in notes:
@@ -486,8 +483,8 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
             return True
         return False
 
-    alt_images.update_slide_notes(_drop_notes)
+    alt_images.update_slide_notes(ctx, _drop_notes)
 
-    deck_headers.regenerate_headers()
-    regenerate_translation_links()
+    deck_headers.regenerate_headers(ctx)
+    regenerate_translation_links(ctx)
     return {"files_removed": len(files), "deck_references_removed": deck_refs_removed}

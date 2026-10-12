@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_blocks, deck_editor, deck_language, latex_lint, project, slide_language, slide_snapshot
+from . import alt_blocks, deck_editor, deck_language, latex_lint, slide_language, slide_snapshot
+from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
 
@@ -65,10 +66,10 @@ def forget_lint() -> None:
     _source_cache.clear()
 
 
-def _source_facts(call: SlideCall) -> tuple[bool, str]:
+def _source_facts(ctx: ProjectContext, call: SlideCall) -> tuple[bool, str]:
     """(the source has a lint error, the slide's title): the frame title, else
     the slug without its language segment ("EN-Quote-Demo" -> "Quote Demo")."""
-    path = project.transitional_context().slides_dir / call.source_filename
+    path = ctx.slides_dir / call.source_filename
     try:
         mtime = path.stat().st_mtime_ns
     except OSError:
@@ -76,7 +77,7 @@ def _source_facts(call: SlideCall) -> tuple[bool, str]:
         return True, _title("", call.id_slug)
     cached = _source_cache.get(path)
     if cached is None or cached[0] != mtime:
-        errors = any(i.severity == latex_lint.ERROR for i in latex_lint.lint_file(path))
+        errors = any(i.severity == latex_lint.ERROR for i in latex_lint.lint_file(ctx, path))
         text = path.read_text(encoding="utf-8", errors="replace")
         cached = _source_cache[path] = (mtime, errors, _title(text, call.id_slug))
     return cached[1], cached[2]
@@ -93,13 +94,13 @@ def slide_file_title(path: Path, id_slug: str) -> str:
     return _title(path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
 
 
-def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
+def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
          links: slide_language.TranslationLinks) -> SlideRow:
     call = slot.call
-    path = project.transitional_context().slides_dir / call.source_filename
-    png = slide_snapshot.snapshot_path(project.transitional_context(), call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
-    badge = slide_language.badge_for(call.id_slug, links=links)
-    lint_error, title = _source_facts(call)
+    path = ctx.slides_dir / call.source_filename
+    png = slide_snapshot.snapshot_path(ctx, call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
+    badge = slide_language.badge_for(ctx, call.id_slug, links=links)
+    lint_error, title = _source_facts(ctx, call)
     return SlideRow(
         call=call,
         key=key,
@@ -123,20 +124,20 @@ def _call_key(call: SlideCall) -> tuple:
             tuple(call.conditions) if call.conditions else None, call.steps)
 
 
-def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
+def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> list[SectionRow]:
     """The sections of `deck` in file order, as seen in `view` (a deck version)
     while editing in `language` ("EN"/"DE")."""
     template = slide_snapshot.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     occurrences: dict[tuple, int] = {}
-    links = slide_language.TranslationLinks(project.transitional_context().slides_dir)
+    links = slide_language.TranslationLinks(ctx.slides_dir)
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     for position, slot in enumerate(slots, start=1):
         call = slot.original
         base = _call_key(call)
         occurrences[base] = occurrences.get(base, 0) + 1
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
-            _row(slot, base + (occurrences[base] - 1,), position, template, view, language, links))
+            _row(ctx, slot, base + (occurrences[base] - 1,), position, template, view, language, links))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -146,14 +147,14 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
     return sections
 
 
-def slide_row(deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
+def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
     """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
     template = slide_snapshot.detect_template(deck.preamble_text)
-    links = slide_language.TranslationLinks(project.transitional_context().slides_dir)
+    links = slide_language.TranslationLinks(ctx.slides_dir)
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     for position, slot in enumerate(slots, start=1):
         if slot.matches(slide_id):
-            return _row(slot, _call_key(slot.original) + (0,), position, template, view, language, links)
+            return _row(ctx, slot, _call_key(slot.original) + (0,), position, template, view, language, links)
     return None
 
 

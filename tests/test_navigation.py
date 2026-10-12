@@ -1,16 +1,17 @@
 """Navigation for readers: \\SMChapterAgenda in transcripts, \\deckappendixtoc."""
 from pathlib import Path
 
-from conftest import use_project, write_test_file as _write
+from conftest import write_test_file as _write
 from slidemage import alt_images, deck_scan, transcript
+from slidemage.project import ProjectContext
 
 
 def test_transcript_lists_the_chapter_slides_on_the_agenda(tmp_path: Path, monkeypatch):
     project = tmp_path / "project"
     slides = project / "slides"
-    use_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(alt_images, "load_store", lambda: {})
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+    ctx = ProjectContext.at(tmp_path / "project")
+    monkeypatch.setattr(alt_images, "load_store", lambda _ctx: {})
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     _write(slides / "1aa-EN-Contents-current.tex",
            "\\begin{standardframe}{Contents}\\SMDeckAgenda\\end{standardframe}")
     _write(slides / "1ab-EN-Chapter-One-current.tex",
@@ -31,11 +32,11 @@ def test_transcript_lists_the_chapter_slides_on_the_agenda(tmp_path: Path, monke
                  "\\section{Chapter two}\n\\slide{1ag-EN-Later}\n"
                  "\\end{document}\n")
 
-    resolved = transcript.resolve_deck(deck, "during-course")
+    resolved = transcript.resolve_deck(ctx, deck, "during-course")
     assert [(s.slide_id, s.chapter) for s in resolved] == [
         ("1aa", 0), ("1ab", 1), ("1ac", 1), ("1ad", 1), ("1af", 1), ("1af", 1), ("1ag", 2)]
 
-    result = transcript.generate(deck, "during-course")
+    result = transcript.generate(ctx, deck, "during-course")
     agenda = next(s for s in result.slides if s.slide_id == "1ab")
     assert agenda.body == ("**This chapter's slides:**\n\n- First slide (slide 3)\n"
                            "- A quote (slide 4)\n- Steps (slide 5)")
@@ -45,11 +46,11 @@ def test_transcript_lists_the_chapter_slides_on_the_agenda(tmp_path: Path, monke
     assert "SMDeckAgenda" not in contents.body and "\x02" not in contents.body
 
 
-def test_single_slide_transcript_drops_the_agenda_placeholder(monkeypatch):
-    monkeypatch.setattr(alt_images, "load_store", lambda: {})
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+def test_single_slide_transcript_drops_the_agenda_placeholder(ctx, monkeypatch):
+    monkeypatch.setattr(alt_images, "load_store", lambda _ctx: {})
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     result = transcript.generate_single_slide(
-        "\\begin{sectionframe}{Chapter}\\SMChapterAgenda\\end{sectionframe}", "1ab",
+        ctx, "\\begin{sectionframe}{Chapter}\\SMChapterAgenda\\end{sectionframe}", "1ab",
         "during-course", "en")
     assert "\x02" not in result.markdown
 
@@ -57,9 +58,9 @@ def test_single_slide_transcript_drops_the_agenda_placeholder(monkeypatch):
 def test_transcript_lists_the_subsections_on_a_subsection_agenda(tmp_path: Path, monkeypatch):
     project = tmp_path / "project"
     slides = project / "slides"
-    use_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(alt_images, "load_store", lambda: {})
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+    ctx = ProjectContext.at(tmp_path / "project")
+    monkeypatch.setattr(alt_images, "load_store", lambda _ctx: {})
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     _write(slides / "1ab-EN-Chapter-One-current.tex",
            "\\begin{sectionframe}{Chapter one}\\SMSubsectionAgenda[\\dimexpr\\linewidth-1cm\\relax]"
            "\\end{sectionframe}")
@@ -77,26 +78,26 @@ def test_transcript_lists_the_subsections_on_a_subsection_agenda(tmp_path: Path,
                  "\\section{Chapter two}\n\\subsection{Delta}\n\\slide{1ag-EN-Elsewhere}\n"
                  "\\end{document}\n")
 
-    resolved = transcript.resolve_deck(deck, "during-course")
+    resolved = transcript.resolve_deck(ctx, deck, "during-course")
     assert [(s.slide_id, s.chapter, s.subsection) for s in resolved] == [
         ("1ab", 1, 0), ("1ac", 1, 1), ("1ad", 1, 1), ("1ae", 1, 2), ("1af", 1, 3), ("1ag", 2, 1)]
 
-    result = transcript.generate(deck, "during-course")
+    result = transcript.generate(ctx, deck, "during-course")
     agenda = next(s for s in result.slides if s.slide_id == "1ab")
     # Beta has no slide in this version, so it is not listed (as in the PDF);
     # each subsection carries the number of its first slide
     assert agenda.body == ("**This chapter's sections:**\n\n- Alpha & more (slide 2)\n"
                            "- Gamma (slide 5)")
-    instructor = transcript.resolve_deck(deck, "instructor")
+    instructor = transcript.resolve_deck(ctx, deck, "instructor")
     assert [s.subsection for s in instructor] == [0, 1, 1, 2, 3, 1]
     assert "\x02" not in agenda.body
 
 
-def test_single_slide_transcript_drops_the_subsection_agenda_placeholder(monkeypatch):
-    monkeypatch.setattr(alt_images, "load_store", lambda: {})
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+def test_single_slide_transcript_drops_the_subsection_agenda_placeholder(ctx, monkeypatch):
+    monkeypatch.setattr(alt_images, "load_store", lambda _ctx: {})
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     result = transcript.generate_single_slide(
-        "\\begin{sectionframe}{Chapter}\\SMSubsectionAgenda\\end{sectionframe}", "1ab",
+        ctx, "\\begin{sectionframe}{Chapter}\\SMSubsectionAgenda\\end{sectionframe}", "1ab",
         "during-course", "en")
     assert "\x02" not in result.markdown and "SMSubsectionAgenda" not in result.markdown
 

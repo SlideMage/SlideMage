@@ -291,7 +291,7 @@ class ChatView(Surface):
         if route.problem:       # the note under the message box says why
             return None
         try:
-            return resolver.provider_for(route.spec)
+            return resolver.provider_for(self.state.project, route.spec)
         except ProviderError as exc:
             self._add(Notice(str(exc), "error"))
             return None
@@ -454,7 +454,7 @@ class ChatView(Surface):
         opens, for the next time)."""
         current = current_route(self.state.project).spec
         self._load_local_models()
-        local_only, has_key = resolver.local_only(), credentials.get_api_key() is not None
+        local_only, has_key = resolver.local_only(self.state.project), credentials.get_api_key(self.state.project) is not None
         menu = PopoverMenu(self, min_width=270)
         menu.add_header("Cloud")
         for model in ANTHROPIC_FALLBACK_MODELS:

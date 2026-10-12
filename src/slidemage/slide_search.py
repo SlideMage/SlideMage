@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import alt_blocks, project
+from . import alt_blocks
 from .slide_language import CURRENT_SUFFIX
 
 # Characters of context kept on each side of the match: a palette row shows one line.
@@ -47,7 +47,7 @@ def project_files(root: Path) -> list[Path]:
 
 
 def search_project(
-    query: str, root: Path | None = None, cancelled: Callable[[], bool] = lambda: False,
+    query: str, root: Path, cancelled: Callable[[], bool] = lambda: False,
     allow: Callable[[Path], bool] = lambda path: True,
 ) -> list[SearchHit]:
     """One hit per file that contains `query` (case-insensitive): "which file has
@@ -56,7 +56,6 @@ def search_project(
     query = query.strip()
     if not query:
         return []
-    root = root or project.transitional_context().root
     needle = query.lower()
     hits: list[SearchHit] = []
     for path in project_files(root):

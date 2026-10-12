@@ -5,8 +5,8 @@ import json
 import urllib.error
 
 import pytest
-from conftest import use_project
-from slidemage.project import transitional_context
+from slidemage.project import ProjectContext
+from conftest import EXAMPLE_PROJECT
 
 
 def _install_ollama(monkeypatch, show_body, *, create_error=None):
@@ -63,22 +63,22 @@ def test_applying_translation_checks_source_hash_and_updates_german(
     """A Translate all snapshot must not overwrite German after the English changes."""
     from slidemage import alt_draft, alt_images
 
-    use_project(monkeypatch, tmp_path)
+    ctx = ProjectContext.at(tmp_path)
     entry = alt_images.ImageEntry(
         image="media/chart.png", short="English short", long="Original English",
         takeaway_default=takeaway, long_de=german_long, takeaway_default_de=german_takeaway,
     )
     source_hash = alt_images.en_text_hash(entry)
-    alt_images.save_store({entry.image: entry})
+    alt_images.save_store(ctx, {entry.image: entry})
     if edited:
         # The batch took its source hash before this edit (regression: 34cdbd7).
-        alt_images.update_store(lambda entries: setattr(entries[entry.image], "long", "Edited English") or True)
+        alt_images.update_store(ctx, lambda entries: setattr(entries[entry.image], "long", "Edited English") or True)
     result = alt_draft.TranslationResult(
         short_de="Kurzer Text", long_de="translated text", takeaway_de=translated_takeaway,
         model="test", source_hash=source_hash,
     )
-    written = alt_draft.apply_one_translation(entry.image, result, "test model")
-    current = alt_images.load_store()[entry.image]
+    written = alt_draft.apply_one_translation(ctx, entry.image, result, "test model")
+    current = alt_images.load_store(ctx)[entry.image]
     assert written is (not edited)
     if edited:
         assert current.long_de == german_long
@@ -340,7 +340,7 @@ def test_the_admin_calls_never_raise_whatever_the_server_does(monkeypatch):
 def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
     """2026-09-23 review finding: the Ollama host was a hardcoded constant
     duplicated in alt_draft.py and ai_draft.py, with no way to point this
-    app at a non-default Ollama server. app_settings.get_ollama_host(transitional_context())
+    app at a non-default Ollama server. app_settings.get_ollama_host(EXAMPLE_PROJECT)
     resolves it; OllamaProvider reads it when constructed instead of
     freezing a constant at class-definition time."""
     from slidemage import app_settings
@@ -348,23 +348,23 @@ def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
 
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-    assert app_settings.get_ollama_host(transitional_context()) == "http://localhost:11434"
+    assert app_settings.get_ollama_host(EXAMPLE_PROJECT) == "http://localhost:11434"
 
-    app_settings.set_ollama_host(transitional_context(), "http://gpu-box:9999")
-    assert app_settings.get_ollama_host(transitional_context()) == "http://gpu-box:9999"
-    assert OllamaProvider("m").host == "http://gpu-box:9999"
+    app_settings.set_ollama_host(EXAMPLE_PROJECT, "http://gpu-box:9999")
+    assert app_settings.get_ollama_host(EXAMPLE_PROJECT) == "http://gpu-box:9999"
+    assert OllamaProvider.for_project(EXAMPLE_PROJECT, "m").host == "http://gpu-box:9999"
 
     # An explicit host= still wins over the saved setting.
     assert OllamaProvider("m", host="http://explicit").host == "http://explicit"
 
     # Clearing it falls back through $OLLAMA_HOST, then the plain default.
-    app_settings.set_ollama_host(transitional_context(), "")
-    assert app_settings.get_ollama_host(transitional_context()) == "http://localhost:11434"
+    app_settings.set_ollama_host(EXAMPLE_PROJECT, "")
+    assert app_settings.get_ollama_host(EXAMPLE_PROJECT) == "http://localhost:11434"
     monkeypatch.setenv("OLLAMA_HOST", "http://from-env:8000")
-    assert app_settings.get_ollama_host(transitional_context()) == "http://from-env:8000"
+    assert app_settings.get_ollama_host(EXAMPLE_PROJECT) == "http://from-env:8000"
 
 
-def test_draft_prompt_is_customizable_and_persists(monkeypatch, tmp_path):
+def test_draft_prompt_is_customizable_and_persists(ctx, monkeypatch, tmp_path):
     """2026-09-23 review finding: alt_draft.py's image-description prompt
     was a hardcoded SYSTEM_PROMPT constant -- unlike translation_prompts.py's
     already-customizable prompts, there was no way to tune it without
@@ -373,18 +373,18 @@ def test_draft_prompt_is_customizable_and_persists(monkeypatch, tmp_path):
     from slidemage.ai.providers import OllamaProvider
 
 
-    assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
+    assert alt_draft.effective_system_prompt(ctx) == alt_draft.SYSTEM_PROMPT
 
-    draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "Custom draft prompt.")
-    assert alt_draft.effective_system_prompt() == "Custom draft prompt."
+    draft_prompts.set_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT, "Custom draft prompt.")
+    assert alt_draft.effective_system_prompt(ctx) == "Custom draft prompt."
 
     # A freshly constructed backend with no explicit system_prompt picks
     # up the current custom default; an explicit one still overrides it.
     provider = OllamaProvider("m")
-    assert alt_draft.ModelBackend(provider).system_prompt == "Custom draft prompt."
-    assert alt_draft.ModelBackend(provider, system_prompt="one-off").system_prompt == "one-off"
+    assert alt_draft.ModelBackend(ctx, provider).system_prompt == "Custom draft prompt."
+    assert alt_draft.ModelBackend(ctx, provider, system_prompt="one-off").system_prompt == "one-off"
 
     # Clearing (empty string) reverts to the hardcoded default.
-    draft_prompts.set_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT, "")
-    assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
-    assert draft_prompts.get_custom_prompt(draft_prompts.KIND_IMAGE_DRAFT) is None
+    draft_prompts.set_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT, "")
+    assert alt_draft.effective_system_prompt(ctx) == alt_draft.SYSTEM_PROMPT
+    assert draft_prompts.get_custom_prompt(ctx, draft_prompts.KIND_IMAGE_DRAFT) is None

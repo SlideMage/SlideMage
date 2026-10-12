@@ -14,7 +14,7 @@ from slidemage.ui.workspace.menus import MORE_SECTIONS, build_compile_menu, buil
 
 # -- the registry ---------------------------------------------------------------------
 
-def test_commands_are_found_by_id_and_an_id_is_used_once():
+def test_commands_are_found_by_id_and_an_id_is_used_once(ctx):
     registry = CommandRegistry()
     registry.add(Command("a", "A", "First", lambda ctx: None))
     registry.add(Command("b", "B", "Second", lambda ctx: None))
@@ -32,7 +32,7 @@ def test_a_command_runs_only_while_it_is_visible_and_enabled():
     assert registry.run("go", "on") and ran == ["on"]
 
 
-def test_label_and_metadata_may_depend_on_the_context_and_the_shortcut_is_the_fallback_meta(qapp):
+def test_label_and_metadata_may_depend_on_the_context_and_the_shortcut_is_the_fallback_meta(ctx, qapp):
     command = Command("x", lambda ctx: f"Label {ctx}", "G", lambda ctx: None, meta=lambda ctx: f"meta {ctx}",
                       shortcut="Ctrl+L")
     assert command.title(3) == "Label 3" and command.info(3) == "meta 3"

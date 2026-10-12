@@ -55,6 +55,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from .project import ProjectContext
+
 MANIFEST_PATH = Path(".slidemage") / "bundled_copies.json"
 BACKUP_DIR = Path(".slidemage") / "backups"
 
@@ -296,12 +298,12 @@ def dismiss(project_root: Path, app_version: str) -> None:
 
 # -- applying ----------------------------------------------------------------
 
-def apply_update(project_root: Path, part: Part, app_version: str,
+def apply_update(ctx: ProjectContext, part: Part, app_version: str,
                  now: Optional[datetime] = None) -> Path:
     """Carry out `part`; returns the backup folder (created only if anything
     was replaced or removed)."""
     stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
-    backup = project_root / BACKUP_DIR / stamp / part.name
+    backup = ctx.root / BACKUP_DIR / stamp / part.name
     for rel in part.update + part.remove:
         dest = backup / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -320,17 +322,17 @@ def apply_update(project_root: Path, part: Part, app_version: str,
     for rel in part.remove:
         (part.target / rel).unlink()
 
-    data = read_manifest(project_root)
+    data = read_manifest(ctx.root)
     entry = {"app_version": app_version, "files": dict(part.bundle_hashes)}
     if part.name == FRAMEWORK:
-        entry["dir"] = _relative_dir(project_root, part.target)
+        entry["dir"] = _relative_dir(ctx.root, part.target)
     data[part.name] = entry
     data.pop("dismissed_app_version", None)
-    write_manifest(project_root, data)
+    write_manifest(ctx.root, data)
 
     if part.name == MANUAL:
-        _merge_slide_ids(project_root, part)
-        _merge_image_descriptions(part)
+        _merge_slide_ids(ctx.root, part)
+        _merge_image_descriptions(ctx, part)
     return backup
 
 
@@ -360,7 +362,7 @@ def _merge_slide_ids(project_root: Path, part: Part) -> None:
             f.write(f'"{slide_id}"\r\n')
 
 
-def _merge_image_descriptions(part: Part) -> None:
+def _merge_image_descriptions(ctx: ProjectContext, part: Part) -> None:
     """Add the manual's image descriptions the project lacks; replace the
     unreviewed descriptions of images this update replaced. Goes through
     alt_images (the running app's project store, which regenerates the CSV)."""
@@ -384,7 +386,7 @@ def _merge_image_descriptions(part: Part) -> None:
                 changed = True
         return changed
 
-    alt_images.update_store(mutate)
+    alt_images.update_store(ctx, mutate)
 
 
 def summary_lines(part: Part) -> list[str]:

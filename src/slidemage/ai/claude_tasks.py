@@ -16,6 +16,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from .. import latex_lint, slide_source
+from ..project import ProjectContext
 from .tools.edits import protected_problem
 
 LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
@@ -223,8 +224,8 @@ def _apply_edits(text: str, edits: list[dict]) -> tuple[str, list[str]]:
     return "".join(out) + text[end:], []
 
 
-def _errors(text: str) -> Counter:
-    return Counter((i.code, i.message) for i in latex_lint.lint_text(text) if i.severity == latex_lint.ERROR)
+def _errors(ctx: ProjectContext, text: str) -> Counter:
+    return Counter((i.code, i.message) for i in latex_lint.lint_text(ctx, text) if i.severity == latex_lint.ERROR)
 
 
 _STRUCTURE_RE = re.compile(
@@ -260,7 +261,7 @@ def _new_text(task: Task, captured: str, value) -> tuple[str, list[str]]:
     return value, []
 
 
-def check(task: Task, captured: str, answer: dict | None) -> tuple[str, list[str]]:
+def check(ctx: ProjectContext, task: Task, captured: str, answer: dict | None) -> tuple[str, list[str]]:
     """(new text, problems) for the model's `answer` to `task` on `captured`. With problems the text is
     `captured` and the problems are what to tell the model; without, the text is the result, equal to
     `captured` when there is nothing to change."""
@@ -271,7 +272,7 @@ def check(task: Task, captured: str, answer: dict | None) -> tuple[str, list[str
         return new, []
     if problem := protected_problem(captured, new) or (task.keeps_structure and _structure_problem(captured, new)):
         return captured, [problem]
-    added = _errors(new) - _errors(captured)
+    added = _errors(ctx, new) - _errors(ctx, captured)
     if added:
         return captured, [f"the new text has a LaTeX error ({code}): {message}" for code, message in added]
     return new, []

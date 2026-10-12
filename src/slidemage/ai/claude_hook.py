@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from .. import project
+from ..project import ProjectContext
 from . import claude_scope
 from .tools.edits import protected_problem, slide_kind
 
@@ -65,9 +66,8 @@ def _result(tool: str, args: dict, before: str) -> str | None:
     return text
 
 
-def blocked_reason(event: dict) -> str | None:
+def blocked_reason(ctx: ProjectContext, event: dict) -> str | None:
     """Why the hook call `event` (Claude Code's JSON) must be blocked, or None to let it go."""
-    ctx = project.transitional_context()
     tool, args = event.get("tool_name"), event.get("tool_input")
     raw = args.get("file_path") if isinstance(args, dict) else None
     if tool not in FILE_TOOLS or not isinstance(raw, str):
@@ -80,7 +80,7 @@ def blocked_reason(event: dict) -> str | None:
     outside = claude_scope.edit_problem(claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV)), ctx.root, path)
     if outside:
         return outside
-    kind = slide_kind(path)
+    kind = slide_kind(ctx, path)
     if kind == "frozen":
         return FROZEN_MESSAGE.format(name=path.name)
     if kind != "current":
@@ -102,7 +102,7 @@ def main() -> int:
             if data:
                 print(claude_scope.prompt_context(data))   # stdout becomes context for this prompt
             return 0
-        reason = blocked_reason(event) if isinstance(event, dict) else None
+        reason = blocked_reason(project.from_environment(), event) if isinstance(event, dict) else None
     except Exception as exc:  # noqa: BLE001 -- not the hook's business to stop a call that is fine
         print(f"SlideMage hook: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1

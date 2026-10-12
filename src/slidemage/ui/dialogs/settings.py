@@ -62,9 +62,14 @@ class _ModelLoader(QThread):
 
     loaded = Signal(object, object, object)       # this loader, [InstalledModel], [model id]
 
+    def __init__(self, project: ProjectContext) -> None:
+        super().__init__()
+        self.project = project
+
     def run(self) -> None:
-        installed = OllamaProvider().installed(detailed=True)
-        cloud = [] if resolver.local_only() else AnthropicProvider().list_models() or list(ANTHROPIC_FALLBACK_MODELS)
+        installed = OllamaProvider.for_project(self.project).installed(detailed=True)
+        cloud = [] if resolver.local_only(self.project) else (
+            AnthropicProvider.for_project(self.project).list_models() or list(ANTHROPIC_FALLBACK_MODELS))
         self.loaded.emit(self, installed, cloud)
 
 
@@ -166,8 +171,8 @@ class ModelsTab(Page):
                 fields.append(Field(label, combo))
             layout.addWidget(columns(*fields))
         self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
-                                        current=translation_style.de_address())
-        self.address.changed.connect(translation_style.set_de_address)
+                                        current=translation_style.de_address(project))
+        self.address.changed.connect(lambda value: translation_style.set_de_address(project, value))
         layout.addWidget(Field("German address in Claude Code translations (this project)", self.address))
         layout.addWidget(caption(
             f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, one \"English = "
@@ -199,18 +204,19 @@ class ModelsTab(Page):
 class CloudTab(Page):
     cloud_changed = Signal()         # Local AI only or the API key changed: the model lists differ now
 
-    def __init__(self) -> None:
+    def __init__(self, project: ProjectContext) -> None:
         super().__init__()
+        self.project = project
         layout = self.body
         layout.addWidget(caption(
             "A cloud model (Claude) receives whatever its task sends: slide text, images. The first cloud "
             "request in a project asks for confirmation."))
         self.local_only_check = QCheckBox("Local AI only: never use a cloud model")
-        self.local_only_check.setChecked(resolver.global_local_only())
+        self.local_only_check.setChecked(resolver.global_local_only(project))
         self.local_only_check.toggled.connect(self._on_local_only)
         layout.addWidget(Field("Every project", self.local_only_check))
 
-        override = resolver.project_local_only()
+        override = resolver.project_local_only(project)
         self.project_choice = SegmentedControl(
             PROJECT_CHOICES, current="follow" if override is None else "local" if override else "cloud")
         self.project_choice.changed.connect(self._on_project_choice)
@@ -232,8 +238,8 @@ class CloudTab(Page):
         self._refresh_notes()
 
     def _refresh_notes(self) -> None:
-        key = credentials.get_api_key()
-        if resolver.local_only():
+        key = credentials.get_api_key(self.project)
+        if resolver.local_only(self.project):
             self.project_note.setText("Cloud models are off in this project.")
         else:
             self.project_note.setText(
@@ -265,11 +271,11 @@ class CloudTab(Page):
         self.cloud_changed.emit()
 
     def _on_local_only(self, checked: bool) -> None:
-        resolver.set_global_local_only(checked)
+        resolver.set_global_local_only(self.project, checked)
         self._on_cloud_changed()
 
     def _on_project_choice(self, key: str) -> None:
-        resolver.set_project_local_only(PROJECT_OVERRIDES[key])
+        resolver.set_project_local_only(self.project, PROJECT_OVERRIDES[key])
         self._on_cloud_changed()
 
     def _on_key_save(self) -> None:
@@ -283,7 +289,7 @@ class CloudTab(Page):
 
     def _store_key(self, key: str) -> None:
         try:
-            credentials.set_api_key(key)
+            credentials.set_api_key(self.project, key)
         except OSError as exc:
             QMessageBox.warning(self, "API key", f"Couldn't save the API key: {exc}")
             return
@@ -304,7 +310,7 @@ class SettingsSheet(ModalSheet):
         self._reload_pending = False
         self.general = GeneralTab(app)
         self.models = ModelsTab(app.project)
-        self.cloud = CloudTab()
+        self.cloud = CloudTab(app.project)
         self.ollama = OllamaTab(app)
         self.prompts = PromptsTab(app)
         for label, tab_widget in (("General", self.general), ("AI models", self.models), ("Cloud", self.cloud),
@@ -321,7 +327,7 @@ class SettingsSheet(ModalSheet):
         if self._loader is not None:
             self._reload_pending = True
             return
-        loader = _ModelLoader()
+        loader = _ModelLoader(self.app.project)
         loader.loaded.connect(self._on_models)
         self._loader = loader
         background.start_detached(loader)

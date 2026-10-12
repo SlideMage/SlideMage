@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from ... import alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
 from ...ai.providers import ChatProvider, OllamaProvider
 from ...deck_scan import Deck
+from ...project import ProjectContext
 from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
@@ -63,13 +64,14 @@ class _TranslateWorker(QThread):
 
     translated = Signal(object, str, object)     # this worker, the text, the error (None if none)
 
-    def __init__(self, provider: ChatProvider, body: str) -> None:
+    def __init__(self, ctx: ProjectContext, provider: ChatProvider, body: str) -> None:
         super().__init__()
+        self.ctx = ctx
         self.provider = provider
         self.body = body
 
     def run(self) -> None:
-        text, error = slide_add.translate_body(self.provider, self.body)
+        text, error = slide_add.translate_body(self.ctx, self.provider, self.body)
         self.translated.emit(self, text, error)
 
 
@@ -89,7 +91,7 @@ class AddSlideSheet(ModalSheet):
         self._models_filled = False
         self._worker: Optional[_TranslateWorker] = None
         self._provider: Optional[ChatProvider] = None
-        self._slides = slide_add.project_slides()
+        self._slides = slide_add.project_slides(self.app.project)
         self._template = slide_snapshot.detect_template(deck.preamble_text)
 
         body = Surface()
@@ -303,7 +305,7 @@ class AddSlideSheet(ModalSheet):
             if self.chosen_load() == "frozen" and self.version.currentData() is None:
                 return "This slide has no frozen version."
         else:
-            if self.app.centre.is_dirty(slide_add.slide_path(self.picked())):
+            if self.app.centre.is_dirty(slide_add.slide_path(self.app.project, self.picked())):
                 return "Save this slide's unsaved changes first: the copy is made from the saved file."
             if not slide_add.SLUG_RE.match(self.slug()):
                 return SLUG_HINT
@@ -369,7 +371,7 @@ class AddSlideSheet(ModalSheet):
         self.version.blockSignals(True)
         self.version.clear()
         if slide:
-            for version in deck_editor.available_versions(slide):
+            for version in deck_editor.available_versions(self.app.project, slide):
                 self.version.addItem(slide_versioning.version_label(version), version)
         self.version.blockSignals(False)
         self.target.blockSignals(True)
@@ -454,17 +456,17 @@ class AddSlideSheet(ModalSheet):
             if source == "existing":
                 self._finish(self.picked(), None)
             elif source == "new":
-                created = slide_add.create_new(self.slug(), self.language.current() or "EN",
+                created = slide_add.create_new(self.app.project, self.slug(), self.language.current() or "EN",
                                                self.frames.current() or slide_add.STANDARD_FRAME,
                                                self.title_edit.text())
                 self._finish(created.id_slug, created.path)
             elif source == "duplicate":
-                created = slide_add.create_copy(self.picked(), self.slug())
+                created = slide_add.create_copy(self.app.project, self.picked(), self.slug())
                 self._finish(created.id_slug, created.path)
             elif self.wants_translation():
                 self._start_translation()
             else:
-                created = slide_add.create_copy(self.picked(), self.slug(), self.chosen_target())
+                created = slide_add.create_copy(self.app.project, self.picked(), self.slug(), self.chosen_target())
                 self._finish(created.id_slug, created.path)
         except (OSError, ValueError) as exc:     # FileExistsError is an OSError
             self._set_status(str(exc), error=True)
@@ -490,11 +492,11 @@ class AddSlideSheet(ModalSheet):
     # -- translating ------------------------------------------------------------------------------
 
     def _start_translation(self) -> None:
-        provider = provider_from_combo(self, self.model, "the slide's LaTeX body")
+        provider = provider_from_combo(self, self.app.project, self.model, "the slide's LaTeX body")
         if provider is None or not self.app.try_start_ollama_task("translating a slide", provider):
             return
         self._provider = provider
-        self._worker = _TranslateWorker(provider, slide_add.source_body(self.picked()))
+        self._worker = _TranslateWorker(self.app.project, provider, slide_add.source_body(self.app.project, self.picked()))
         self._worker.translated.connect(self._on_translated)
         self._busy(f"Translating with {provider.label}…")
         self._worker.start()
@@ -524,7 +526,7 @@ class AddSlideSheet(ModalSheet):
                              error=True)
             return
         try:
-            created = slide_add.create_copy(self.picked(), self.slug(), self.chosen_target(), body=text)
+            created = slide_add.create_copy(self.app.project, self.picked(), self.slug(), self.chosen_target(), body=text)
         except (OSError, ValueError) as exc:
             self._sync()
             self._set_status(str(exc), error=True)

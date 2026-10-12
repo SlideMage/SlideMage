@@ -235,7 +235,7 @@ def check_bundled_copies(window) -> None:
 def apply_bundled_parts(window, parts: list) -> None:
     for part in parts:
         try:
-            backup = bundled_copies.apply_update(window.project.root, part, version_mod.VERSION_NUMBER)
+            backup = bundled_copies.apply_update(window.project, part, version_mod.VERSION_NUMBER)
         except OSError as exc:
             QMessageBox.critical(window, "Update failed", f"{part.label}: {exc}")
             continue
@@ -531,7 +531,7 @@ def on_sync_translation_links(window) -> int:
     disk state -- pure text scanning over slides/, no compile
     involved, so (unlike Update previews) this runs synchronously rather
     than on a background thread. Returns the number of files updated."""
-    changed, missing = slide_rename.regenerate_translation_links()
+    changed, missing = slide_rename.regenerate_translation_links(window.project)
     window.log(f"Sync translation links: {changed} file(s) updated")
     for line in missing:
         window.log(f"    (unresolved: {line})")

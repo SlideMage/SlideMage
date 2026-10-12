@@ -200,7 +200,7 @@ class CentreColumn(QFrame):
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
-            archived, version = slide_versioning.restore_version(current, id_slug, frozen)
+            archived, version = slide_versioning.restore_version(self.state.project, current, id_slug, frozen)
         except slide_versioning.RestoreError as exc:
             QMessageBox.warning(self.app, "Cannot restore", str(exc))
             return
@@ -227,11 +227,11 @@ class CentreColumn(QFrame):
             return
         text, _eol = slide_source.read_slide_source(current)
         final, frozen_as = slide_versioning.plan_save(slide_versioning.parse_version(text), level)
-        asked = ask_deck_versions(self.app, id_slug, text, final, frozen_as)
+        asked = ask_deck_versions(self.app, self.state.project, id_slug, text, final, frozen_as)
         if asked is None:
             return
         try:
-            frozen, version = slide_versioning.freeze_current(current, id_slug, level)
+            frozen, version = slide_versioning.freeze_current(self.state.project, current, id_slug, level)
         except (ValueError, slide_source.StaleFileError) as exc:
             QMessageBox.warning(self.app, "Cannot freeze", str(exc))
             return
@@ -281,7 +281,7 @@ class CentreColumn(QFrame):
         deck = state.deck
         if deck is None or deck.is_test_deck or state.focused_slide is None:
             return None
-        return deck_outline.slide_row(deck, state.focused_slide, state.view, state.language)
+        return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language)
 
     def _focused_path(self) -> Optional[Path]:
         """The file of the focused slide, if it has one: what the deck's call loads, else the
@@ -289,7 +289,7 @@ class CentreColumn(QFrame):
         row = self._focused_row()
         slide_id = self.state.focused_slide
         path = self.state.project.slides_dir / row.call.source_filename if row is not None \
-            else current_path_for_bare_id(slide_id) if slide_id else None
+            else current_path_for_bare_id(self.state.project, slide_id) if slide_id else None
         return path if path is not None and path.is_file() else None
 
     def _empty_message(self) -> str:

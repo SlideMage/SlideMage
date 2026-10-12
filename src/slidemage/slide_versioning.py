@@ -28,6 +28,7 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
+from .project import ProjectContext
 from .slide_language import FROZEN_RE, frozen_name
 from .tex_source import is_commented
 
@@ -160,7 +161,7 @@ def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional
     return dest
 
 
-def freeze_current(current_path: Path, id_slug: str, level: BumpLevel) -> tuple[Path, Version]:
+def freeze_current(ctx: ProjectContext, current_path: Path, id_slug: str, level: BumpLevel) -> tuple[Path, Version]:
     """Freeze the slide's current content under its own tracked version and move
     the slide on to the next one (`level`), as a Save does -- but with no change
     to the content. Returns (the frozen file, the new version). Raises ValueError
@@ -172,7 +173,7 @@ def freeze_current(current_path: Path, id_slug: str, level: BumpLevel) -> tuple[
     frozen = freeze_slide(current_path, id_slug, freeze_as)
     if frozen is None:
         raise ValueError(f"v{format_dot(freeze_as)} of {id_slug} is already frozen, so the current content cannot be.")
-    slide_source.save_slide_source(current_path, set_marker(text, final), eol, expected_text=text)
+    slide_source.save_slide_source(ctx, current_path, set_marker(text, final), eol, expected_text=text)
     return frozen, final
 
 
@@ -180,7 +181,7 @@ class RestoreError(ValueError):
     """restore_version() cannot do it; the message says why."""
 
 
-def restore_version(current_path: Path, id_slug: str, version_path: Path) -> tuple[Optional[Path], Version]:
+def restore_version(ctx: ProjectContext, current_path: Path, id_slug: str, version_path: Path) -> tuple[Optional[Path], Version]:
     """Make a frozen version's content the slide's current content (v5.22.0,
     direct instruction), archiving what is current now.
 
@@ -228,5 +229,5 @@ def restore_version(current_path: Path, id_slug: str, version_path: Path) -> tup
         new_text = HEADER_RE.sub(lambda _m: header.group(0), new_text, count=1) \
             if HEADER_RE.search(new_text) else header.group(0) + new_text
     new_text = set_marker(new_text, new_version)
-    slide_source.save_slide_source(current_path, new_text, eol, expected_text=cur_text)
+    slide_source.save_slide_source(ctx, current_path, new_text, eol, expected_text=cur_text)
     return archived, new_version

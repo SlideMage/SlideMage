@@ -113,16 +113,18 @@ def main(argv: list[str] | None = None) -> int:
     from slidemage import latex_lint, slide_ids, slide_source
     from slidemage.ai import claude_launch, claude_runner, claude_tasks
     from slidemage.ai.workspace import Workspace
+    from slidemage.project import ProjectContext
 
     claude = claude_launch.find_claude()
     if claude is None:
         print("claude not found")
         return 1
     version = subprocess.run([str(claude), "--version"], capture_output=True, text=True).stdout.strip()
-    workspace = Workspace(project)
+    ctx = ProjectContext.at(project)
+    workspace = Workspace(ctx)
 
     def errors(text: str) -> int:
-        return sum(i.severity == latex_lint.ERROR for i in latex_lint.lint_text(text))
+        return sum(i.severity == latex_lint.ERROR for i in latex_lint.lint_text(ctx, text))
 
     paths = {s: project / "slides" / f"{s}-current.tex" for s in SLIDES}
     clean = {s: slide_source.read_slide_source(p)[0] for s, p in paths.items()}
@@ -147,9 +149,9 @@ def main(argv: list[str] | None = None) -> int:
                     request = claude_tasks.translate_request(captured, "EN", "DE", "Sie")
                 else:
                     captured = broken[slide]
-                    request = claude_tasks.fix_request(captured, latex_lint.lint_text(captured))
+                    request = claude_tasks.fix_request(captured, latex_lint.lint_text(ctx, captured))
                 started = time.monotonic()
-                outcome = claude_runner.run_task(claude, task, captured, request, **SETUPS[setup])
+                outcome = claude_runner.run_task(ctx, claude, task, captured, request, **SETUPS[setup])
                 row = Row(setup, task_name, slide, outcome)
                 if task_name == "translate" and outcome.status == claude_runner.DONE:
                     (work / "translations" / f"{setup}-{slide}-DE.tex").write_text(outcome.text, encoding="utf-8")
@@ -292,10 +294,10 @@ def run_ui(claude, work: Path, paths: dict[str, Path], clean: dict[str, str], br
         return True
 
     path = next(iter(paths.values())).parent / f"{IMAGE_SLIDE}-current.tex"
-    alt_images.update_store(forget)
+    alt_images.update_store(window.project, forget)
     show(path, slide_source.read_slide_source(path)[0])
     row = click("describe", IMAGE_SLIDE[:3], DESCRIBE, lambda: bubbles(window), preview_expected=False)
-    entry = alt_images.load_store()[IMAGE]
+    entry = alt_images.load_store(window.project)[IMAGE]
     row.notes.append(f"short: {entry.short[:120]}")
     (work / "ui" / "image.txt").write_text(f"{entry.short}\n\n{entry.long}\n", encoding="utf-8")
     rows.append(row)

@@ -4,10 +4,9 @@ import pkgutil
 import pytest
 
 import slidemage
-from slidemage.project import transitional_context
 from slidemage import project
 
-from conftest import EXAMPLE
+from conftest import EXAMPLE_PROJECT, EXAMPLE
 
 
 @pytest.mark.parametrize("available", [True, False])
@@ -30,7 +29,7 @@ def test_project_discovery(monkeypatch, tmp_path, available):
 def test_scan_finds_demo_decks():
     from slidemage import deck_scan
 
-    names = {deck.path.name for deck in deck_scan.scan_decks(transitional_context())}
+    names = {deck.path.name for deck in deck_scan.scan_decks(EXAMPLE_PROJECT)}
     assert "slidemage-manual.tex" in names
 
 

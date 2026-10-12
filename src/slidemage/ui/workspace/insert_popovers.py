@@ -15,6 +15,7 @@ from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem
 
 from ... import bibliography, latex_edit, snippets
+from ...project import ProjectContext
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Popover, SegmentedControl
 
@@ -95,16 +96,17 @@ class CodeFilePopover(_FormPopover):
     The file lies in snippets/ (a path relative to the project folder); an existing one is
     picked from the list, a new name is created on Insert."""
 
-    def __init__(self, slide_id: str) -> None:
+    def __init__(self, project: ProjectContext, slide_id: str) -> None:
         super().__init__("Insert code file", min_width=380)
+        self.project = project
         hint = _note()
         hint.setText("Shows LaTeX source from a file in the project's snippets/ folder, so the slide "
                      "needs no [fragile] frame.")
         self.body.addWidget(hint)
         self.path = QComboBox()
         self.path.setEditable(True)
-        self.path.addItems(snippets.list_snippets())
-        self.path.setEditText(snippets.next_snippet(slide_id) if slide_id else "snippets/")
+        self.path.addItems(snippets.list_snippets(project))
+        self.path.setEditText(snippets.next_snippet(project, slide_id) if slide_id else "snippets/")
         self.path.lineEdit().returnPressed.connect(self._on_insert)
         self.path.currentTextChanged.connect(self._update_note)
         self.body.addWidget(self.path)
@@ -118,7 +120,7 @@ class CodeFilePopover(_FormPopover):
     def _update_note(self, _text: str = "") -> None:
         text = self.path.currentText().strip()
         try:
-            exists = snippets.resolve(text).is_file()
+            exists = snippets.resolve(self.project, text).is_file()
         except ValueError:
             exists = False
         self.create.setChecked(not exists)
@@ -127,9 +129,9 @@ class CodeFilePopover(_FormPopover):
 
     def build(self) -> str:
         path = self.path.currentText().strip()
-        snippets.resolve(path)       # a ValueError if it lies outside snippets/
+        snippets.resolve(self.project, path)       # a ValueError if it lies outside snippets/
         if self.create.isChecked():
-            snippets.create(path)
+            snippets.create(self.project, path)
         return latex_edit.code_file_call(path, self.keys.text())
 
 
@@ -140,11 +142,11 @@ class CitationPopover(Popover):
     chosen = Signal(str)
     add_reference_requested = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, project: ProjectContext) -> None:
         super().__init__(min_width=460)
         self.body.setContentsMargins(10, 10, 10, 8)
         self.body.setSpacing(8)
-        self._entries = bibliography.load()
+        self._entries = bibliography.load(project.bibliography_path)
         top = QHBoxLayout()
         top.addWidget(QLabel("Insert as"))
         self.styles = SegmentedControl([(key or "key", label) for key, label in CITATION_STYLES],

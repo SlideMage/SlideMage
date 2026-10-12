@@ -51,7 +51,7 @@ def test_the_slides_are_imported_into_the_chosen_deck(sheet, monkeypatch):
     calls = []
     summary = SimpleNamespace(imported=[1, 2, 3], skipped_blank=1)
     monkeypatch.setattr(slide_import, "import_presentation",
-                        lambda path, deck, language, log=None: calls.append((path.name, deck.name, language)) or summary)
+                        lambda _ctx, path, deck, language, log=None: calls.append((path.name, deck.name, language)) or summary)
     sheet.file_edit.setText(str(sheet.tmp / "talk.pptx"))
     sheet.deck_combo.setCurrentText("alpha")
     sheet.language.set_current("DE")

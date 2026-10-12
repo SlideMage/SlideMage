@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import alt_blocks, project
+from . import alt_blocks
+from .project import ProjectContext
 from .tex_source import masked_same_length
 
 
@@ -64,7 +65,7 @@ def check_fresh(path: Path, expected_text: str) -> None:
 
 
 def save_slide_source(
-    path: Path, new_text: str, eol: str, expected_text: str | None = None
+    ctx: ProjectContext, path: Path, new_text: str, eol: str, expected_text: str | None = None
 ) -> Path:
     """Back up the file's current on-disk bytes verbatim, then write
     new_text back with every line re-terminated with `eol`. Returns the
@@ -102,7 +103,7 @@ def save_slide_source(
         check_fresh(path, expected_text)
     backup_path = None
     if path.exists():
-        backup_dir = project.transitional_context().slide_backups_dir / path.name
+        backup_dir = ctx.slide_backups_dir / path.name
         backup_dir.mkdir(parents=True, exist_ok=True)
         backup_path = _unique_backup_path(backup_dir)
         shutil.copy2(path, backup_path)
@@ -114,12 +115,12 @@ def save_slide_source(
     return backup_path
 
 
-def last_saved(path: Path) -> datetime | None:
+def last_saved(ctx: ProjectContext, path: Path) -> datetime | None:
     """When the slide was last saved through save_slide_source(): the newest backup of
     slides/.backups/<filename>/, whose name is the time of the save. None for a file never saved
     that way. (A file's mtime would also move when the header sync or a rename rewrites it.)"""
     stamps = []
-    for backup in (project.transitional_context().slide_backups_dir / path.name).glob("*.tex"):
+    for backup in (ctx.slide_backups_dir / path.name).glob("*.tex"):
         try:
             stamps.append(datetime.strptime(backup.stem[:15], "%Y%m%d-%H%M%S"))
         except ValueError:

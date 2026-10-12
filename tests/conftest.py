@@ -5,7 +5,6 @@ import tempfile
 import time
 from pathlib import Path
 
-from slidemage import project
 from slidemage.project import ProjectContext, _ignore_template_build_output
 
 
@@ -15,7 +14,6 @@ atexit.register(shutil.rmtree, _SESSION_DIR, ignore_errors=True)
 EXAMPLE = _SESSION_DIR / "example"
 shutil.copytree(_REPO_ROOT / "example", EXAMPLE, ignore=_ignore_template_build_output)
 EXAMPLE_PROJECT = ProjectContext.at(EXAMPLE)
-project.use(EXAMPLE_PROJECT)    # for the modules that still read project.transitional_context()
 # Both .latexmkrc files and preview discovery honor this; no framework copy or
 # symlink is needed, including on Windows where symlinks may need privileges.
 os.environ["SLIDEMASTER_LATEX"] = str(_REPO_ROOT / "latex")
@@ -58,10 +56,8 @@ def _isolated_temp_dir(monkeypatch, tmp_path_factory):
 
 @pytest.fixture(autouse=True)
 def _fresh_example_state():
-    """Every test starts on the example project with what the app keeps inside a project
-    (settings, prompts, project.json) empty, so a test neither changes the example's own state nor
-    depends on it. (The command lines in preview_cli and deck_snapshot choose a project, too.)"""
-    project.use(EXAMPLE_PROJECT)
+    """Every test starts with what the app keeps inside the example project (settings, prompts,
+    project.json) empty, so a test neither changes the example's own state nor depends on it."""
     shutil.rmtree(EXAMPLE_PROJECT.settings_dir, ignore_errors=True)
 
 
@@ -147,14 +143,6 @@ def pytest_sessionfinish(session):
     app.processEvents()
 
 
-def use_project(monkeypatch, root):
-    """Make `root` the project of the modules that still read project.transitional_context();
-    returns its ProjectContext. The migrated modules take the context as an argument instead."""
-    context = ProjectContext.at(root)
-    monkeypatch.setattr(project, "_transitional", context)
-    return context
-
-
 TEMPLATE = "\\begin{standardframe}{Title}\r\n\t\\begin{itemize}\r\n\t\t\\item\r\n\t\\end{itemize}\r\n\\end{standardframe}\r\n"
 
 
@@ -164,14 +152,14 @@ def use_new_slide_files(monkeypatch, root):
     calls are in the returned list."""
     from slidemage import slide_rename
 
-    context = use_project(monkeypatch, root)
+    context = ProjectContext.at(root)
     context.slides_dir.mkdir(exist_ok=True)
     context.slide_ids_csv.write_bytes(b'"id"\r\n')
     template = context.slide_template_path
     template.parent.mkdir(parents=True, exist_ok=True)
     template.write_bytes(TEMPLATE.encode("utf-8"))
     relinked = []
-    monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: relinked.append(True))
+    monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda _ctx: relinked.append(True))
     return relinked
 
 
@@ -210,6 +198,12 @@ def make_project(monkeypatch, root):
 def root(tmp_path, monkeypatch):
     """The shared throwaway project for agent tools, MCP and the Claude hook."""
     return make_project(monkeypatch, tmp_path / "project")
+
+
+@pytest.fixture
+def ctx(tmp_path):
+    """The project that tests build their files in directly under tmp_path."""
+    return ProjectContext.at(tmp_path)
 
 
 @pytest.fixture

@@ -10,13 +10,11 @@ from slidemage import latex_edit
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace.insert_popovers import CitationPopover, CodeFilePopover
 from slidemage.ui.workspace.source_view import SourcePane
-from conftest import use_project
-from slidemage.project import transitional_context
 
 
 class FakeApp:
-    project = property(lambda self: transitional_context())
-    def __init__(self):
+    def __init__(self, project):
+        self.project = project
         self.theme = ThemeManager()
         self.logged = []
 
@@ -45,13 +43,12 @@ def project(tmp_path, monkeypatch):
         "  year = {1952},\n  journaltitle = {Journal of Finance}}\n\n"
         "@book{sharpe1964,\n  author = {Sharpe, W.},\n  title = {Capital Asset Prices},\n  year = {1964}}\n",
         encoding="utf-8")
-    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
 @pytest.fixture
-def pane(qapp, project):
-    pane = SourcePane(FakeApp())
+def pane(ctx, qapp, project):
+    pane = SourcePane(FakeApp(ctx))
     pane.show_path(project / "slides" / "abc-EN-Demo-current.tex")
     return pane
 

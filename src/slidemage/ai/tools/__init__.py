@@ -4,7 +4,6 @@ SlideMage tools: slidemage.py; the shape of a tool: base.py."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 
 from ... import compiler
 from ..agent_types import EDIT_ASK, AgentEvent
@@ -30,6 +29,6 @@ __all__ = ["CLAUDE_CODE_READ_ONLY", "CLAUDE_CODE_TOOLS", "TOOLS", "Tool", "ToolB
 
 def build_toolbox(
     workspace: Workspace, emit: Callable[[AgentEvent], None], cancel: compiler.CancelToken,
-    mode: str = EDIT_ASK, root: Path | None = None, tools: list[Tool] | None = None,
+    mode: str = EDIT_ASK, tools: list[Tool] | None = None,
 ) -> ToolBox:
-    return ToolBox(tools or TOOLS, ToolContext((root or workspace.root).resolve(), workspace, emit, cancel, mode))
+    return ToolBox(tools or TOOLS, ToolContext(workspace.project, workspace, emit, cancel, mode))

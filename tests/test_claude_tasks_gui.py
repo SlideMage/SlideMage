@@ -11,9 +11,9 @@ import sys
 import threading
 
 import pytest
+from slidemage.project import ProjectContext
 from PySide6.QtWidgets import QPlainTextEdit
-from conftest import SLIDE_TEXT, use_project
-from slidemage.project import transitional_context
+from conftest import SLIDE_TEXT
 from test_claude_code_gui import env as claude_env, pump, start_view, wait_until  # noqa: F401 -- a fixture
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, add_pictures
 
@@ -50,8 +50,12 @@ class Fake:
 
 
 @pytest.fixture
+def ctx(claude_env):  # noqa: F811
+    return ProjectContext.at(claude_env.root)
+
+
+@pytest.fixture
 def fake(claude_env, tmp_path, monkeypatch):  # noqa: F811
-    use_project(monkeypatch, claude_env.root)
     start_view(claude_env)
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(tmp_path / "tasks.jsonl"))   # not the terminal's log
     return Fake(claude_env, tmp_path, monkeypatch)
@@ -216,7 +220,7 @@ def test_a_failure_is_reported_as_it_is(fake):
 
 # -- translating --------------------------------------------------------------------------------------------
 
-def test_a_translation_creates_the_partner_after_the_source_and_links_both(fake):
+def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, fake):
     env = fake.env
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
@@ -233,8 +237,8 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(fake)
     assert f"%% DE translation: {new_id_slug}\n" in source and source != LF
     assert (env.root / SLIDE).read_bytes() == SLIDE_TEXT.encode()
     assert env.window.centre.path == partner                              # shown
-    link = slide_language.translation_link("abc-EN-Hello")                # found although the source is unsaved
-    assert link is not None and link.partner == new_id_slug and not any(b.label.startswith("Translate") for b in tasks_module._offers(
+    link = slide_language.translation_link(ctx, "abc-EN-Hello")                # found although the source is unsaved
+    assert link is not None and link.partner == new_id_slug and not any(b.label.startswith("Translate") for b in tasks_module._offers(ctx, 
         tasks_module._focus(env.window), link))
     env.window.centre.open_file(env.path)
     wait_until(lambda: buttons(env) == ["Better title"])
@@ -294,9 +298,9 @@ def test_a_slide_that_is_not_in_the_deck_still_gets_its_translation(fake):
     assert len(german_files(env)) == 1 and deck.read_text().count("\\slide") == 1
 
 
-def test_the_german_address_and_the_glossary_reach_the_request(fake):
+def test_the_german_address_and_the_glossary_reach_the_request(ctx, fake):
     env = fake.env
-    translation_style.set_de_address("du")
+    translation_style.set_de_address(ctx, "du")
     (env.root / ".slidemage" / "glossary.md").write_text("slide = Folie\n", encoding="utf-8")
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
@@ -306,13 +310,13 @@ def test_the_german_address_and_the_glossary_reach_the_request(fake):
     assert json.loads((env.root / ".slidemage" / "project.json").read_text())["de_address"] == "du"
 
 
-def test_settings_set_the_german_address(fake):
+def test_settings_set_the_german_address(ctx, fake):
     from slidemage.ui.dialogs.settings import ModelsTab
 
-    tab = ModelsTab(transitional_context())
+    tab = ModelsTab(ctx)
     assert tab.address.current() == "Sie"
     tab.address.changed.emit("du")
-    assert translation_style.de_address() == "du"
+    assert translation_style.de_address(ctx) == "du"
 
 
 # -- the picker -----------------------------------------------------------------------------------------------
@@ -366,13 +370,13 @@ def test_the_text_bubbles_need_running_text_a_title_and_no_note_yet(fake):
     wait_until(lambda: buttons(env) == ["Translate to German", "Better title"])
 
 
-def test_a_slide_without_a_language_is_not_proofread(fake):
+def test_a_slide_without_a_language_is_not_proofread(ctx, fake):
     env = fake.env
     show_text(env, PROSE)
     wait_until(lambda: "Proofread" in buttons(env))
-    assert tasks_module._offers(tasks_module._focus(env.window), None)[1].label == "Proofread"
+    assert tasks_module._offers(ctx, tasks_module._focus(env.window), None)[1].label == "Proofread"
     legacy = tasks_module._Focus(env.root / "slides" / "xyz-legacy-current.tex", "xyz-legacy", PROSE)
-    assert "Proofread" not in [b.label for b in tasks_module._offers(legacy, None)]
+    assert "Proofread" not in [b.label for b in tasks_module._offers(ctx, legacy, None)]
 
 
 def test_proofreading_applies_its_edits_into_the_buffer(fake):
@@ -567,15 +571,15 @@ def with_pictures(fake, **entries):
     """Slide abc with these images (name -> fields of the store entry), in its file, the store and the buffer."""
     slide = add_pictures(fake.monkeypatch, fake.env.root, **entries)
     slide_file(fake.env).editor.replace_all_text(slide.read_bytes().decode().replace("\r\n", "\n"))
-    return alt_images.load_store
+    return lambda: alt_images.load_store(ProjectContext.at(fake.env.root))
 
 
-def test_the_image_bubbles_count_what_is_still_to_do(fake):
+def test_the_image_bubbles_count_what_is_still_to_do(ctx, fake):
     env = fake.env
     store = with_pictures(fake, a={}, b={}, c=dict(role=alt_images.ROLE_DECORATIVE), d=dict(short="s", long="l"))
     wait_until(lambda: "Describe images (2)" in buttons(env))
     assert "Translate image descriptions (1)" in buttons(env)
-    alt_images.update_store(lambda e: setattr(e["media/a.png"], "long", "now described") or True)
+    alt_images.update_store(ctx, lambda e: setattr(e["media/a.png"], "long", "now described") or True)
     env.view._refresh_bubbles()
     assert "Describe images (1)" in buttons(env) and "Translate image descriptions (2)" in buttons(env)
     slide_file(env).editor.replace_all_text(LF)
@@ -583,7 +587,7 @@ def test_the_image_bubbles_count_what_is_still_to_do(fake):
     assert len(store()) == 4
 
 
-def test_describing_images_stores_drafts_and_shows_them_in_the_panel(fake):
+def test_describing_images_stores_drafts_and_shows_them_in_the_panel(ctx, fake):
     env = fake.env
     with_pictures(fake, a={}, b={})
     env.window.side_panels.set_panel("images")
@@ -592,7 +596,7 @@ def test_describing_images_stores_drafts_and_shows_them_in_the_panel(fake):
     click(env, "Describe images (2)")
     wait_until(lambda: "Describing images of abc … 1/2" in env.view.task_status.text())
     assert settled(env).startswith("Done in ") and settled(env).endswith(": 2 described")
-    store = alt_images.load_store()
+    store = alt_images.load_store(ctx)
     assert [(e.short, e.drafted_by) for e in store.values()] == [(IMAGE_ANSWER["short"], "Claude sonnet")] * 2
     assert all(e.status != alt_images.STATUS_REVIEWED for e in store.values())
     forms = env.window.side_panels.panels["images"]._forms
@@ -601,7 +605,7 @@ def test_describing_images_stores_drafts_and_shows_them_in_the_panel(fake):
     assert buttons(env)[-1] == "Translate image descriptions (2)"
 
 
-def test_stop_ends_the_running_image_process_and_the_rest(fake, tmp_path):
+def test_stop_ends_the_running_image_process_and_the_rest(ctx, fake, tmp_path):
     env = fake.env
     with_pictures(fake, a={}, b={})
     wait_until(lambda: "Describe images (2)" in buttons(env))
@@ -611,20 +615,20 @@ def test_stop_ends_the_running_image_process_and_the_rest(fake, tmp_path):
     env.view.stop_button.click()
     assert settled(env).startswith("Stopped after ") and settled(env).endswith(": 0 described")
     assert len(fake.calls()) == 1 and not (tmp_path / "late").exists()
-    assert not any(e.short for e in alt_images.load_store().values())
+    assert not any(e.short for e in alt_images.load_store(ctx).values())
 
 
-def test_a_failed_image_is_counted_and_the_others_are_kept(fake):
+def test_a_failed_image_is_counted_and_the_others_are_kept(ctx, fake):
     env = fake.env
     with_pictures(fake, a={}, b={})
     wait_until(lambda: "Describe images (2)" in buttons(env))
     fake.reply({"answer": IMAGE_ANSWER}, {"error": "overloaded"})
     click(env, "Describe images (2)")
     assert settled(env).endswith(": 1 described, 1 failed (media/b.png: overloaded)")
-    assert [e.short for e in alt_images.load_store().values()] == [IMAGE_ANSWER["short"], ""]
+    assert [e.short for e in alt_images.load_store(ctx).values()] == [IMAGE_ANSWER["short"], ""]
 
 
-def test_translating_the_descriptions_stores_unreviewed_german_text(fake):
+def test_translating_the_descriptions_stores_unreviewed_german_text(ctx, fake):
     env = fake.env
     with_pictures(fake, a=dict(short="A bar chart.", long="Two bars."))
     wait_until(lambda: "Translate image descriptions (1)" in buttons(env))
@@ -632,7 +636,7 @@ def test_translating_the_descriptions_stores_unreviewed_german_text(fake):
     fake.reply({"answer": GERMAN_IMAGE})
     click(env, "Translate image descriptions (1)")
     assert settled(env).endswith(": 1 translated")
-    entry = alt_images.load_store()["media/a.png"]
+    entry = alt_images.load_store(ctx)["media/a.png"]
     assert (entry.short_de, entry.long_de) == (GERMAN_IMAGE["short_de"], GERMAN_IMAGE["long_de"])
     assert not any(label.startswith("Translate image") for label in buttons(env))
 
@@ -832,7 +836,7 @@ def test_the_summary_is_shown_in_a_sheet_and_nothing_is_written(fake, monkeypatc
     assert before == {path: path.read_bytes() for path in before} and slide_file(env).editor.text() == LF
 
 
-def test_describing_the_decks_images_runs_over_every_image_once(fake):
+def test_describing_the_decks_images_runs_over_every_image_once(ctx, fake):
     env = fake.env
     with_pictures(fake, a={}, b={})
     abd = env.root / "slides" / "abd-EN-Second-current.tex"
@@ -842,4 +846,4 @@ def test_describing_the_decks_images_runs_over_every_image_once(fake):
     click(env, "Describe images (2)")
     wait_until(lambda: "Describing images of the deck" in env.view.task_status.text())
     assert settled(env).endswith(": 2 described") and len(fake.calls()) == 2
-    assert all(e.short == IMAGE_ANSWER["short"] for e in alt_images.load_store().values())
+    assert all(e.short == IMAGE_ANSWER["short"] for e in alt_images.load_store(ctx).values())

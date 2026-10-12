@@ -39,7 +39,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
 
-from .. import app_settings, project
+from .. import app_settings
+from ..project import ProjectContext
 from . import credentials
 from .agent_types import AgentMessage, AssistantMessage, ToolCall, ToolResultsMessage, ToolSpec
 
@@ -242,13 +243,16 @@ class OllamaProvider(_HttpProvider):
     service = "Ollama"
     is_local = True
 
-    def __init__(self, model: str = "", host: str | None = None) -> None:
+    def __init__(self, model: str = "", host: str = app_settings.DEFAULT_OLLAMA_HOST) -> None:
         super().__init__()
         self.model = model
-        # Resolved now rather than at import: a host saved later in Settings
-        # must apply without a restart.
-        self.host = host or app_settings.get_ollama_host(project.transitional_context())
+        self.host = host
         self._capabilities: dict[str, tuple[str, ...]] = {}     # what /api/show said, by model
+
+    @classmethod
+    def for_project(cls, ctx: ProjectContext, model: str = "") -> "OllamaProvider":
+        """On the project's Ollama host, read now: a host saved later in Settings applies to the next provider."""
+        return cls(model, app_settings.get_ollama_host(ctx))
 
     @property
     def label(self) -> str:
@@ -476,26 +480,28 @@ class AnthropicProvider:
     base_url = "https://api.anthropic.com"
     max_retries = 2     # the SDK's own backoff for 429 / 5xx / dropped connections
 
-    def __init__(self, model: str = DEFAULT_ANTHROPIC_MODEL, api_key: str | None = None) -> None:
+    def __init__(self, model: str = DEFAULT_ANTHROPIC_MODEL, api_key: str = "") -> None:
         self.model = model or DEFAULT_ANTHROPIC_MODEL
         self._api_key = api_key
         self._cancelled = False
         self._stream = None     # the running request, for abort()
         self._client = None     # its SDK client, for abort() while the request is still being made (or retried)
 
+    @classmethod
+    def for_project(cls, ctx: ProjectContext, model: str = "") -> "AnthropicProvider":
+        """With the key the environment, the keychain or the project's settings holds now."""
+        stored = credentials.get_api_key(ctx)
+        return cls(model or DEFAULT_ANTHROPIC_MODEL, stored.value if stored else "")
+
     @property
     def label(self) -> str:
         return f"{self.model} · cloud"
 
     def _key(self) -> str:
-        key = self._api_key
-        if key is None:
-            stored = credentials.get_api_key()
-            key = stored.value if stored else ""
-        if not key:
+        if not self._api_key:
             raise ProviderError(
                 "No Anthropic API key set. Add one in Settings, or set ANTHROPIC_API_KEY.")
-        return key
+        return self._api_key
 
     def _translate(self, exc: Exception) -> ProviderError:
         """The ProviderError (with a message for the user) an SDK failure stands for."""

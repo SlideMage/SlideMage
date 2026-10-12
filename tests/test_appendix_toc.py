@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from slidemage.project import transitional_context
 from slidemage import appendix_toc, compiler, deck_editor
 from slidemage.compiler import CompileJob
 from slidemage.deck_scan import Deck, parse_chapters
+from conftest import EXAMPLE_PROJECT
 
 DECK = (
     "\\documentclass{beamer}\n\\begin{document}\n"
@@ -38,12 +38,12 @@ def listed_ids(tex: str) -> list[str]:
 
 def test_the_appendix_lists_the_slides_of_its_own_version():
     deck = make_deck()
-    assert listed_ids(appendix_toc.generate_appendix_tex(transitional_context(), deck, "t", "instructor")) == [
+    assert listed_ids(appendix_toc.generate_appendix_tex(EXAMPLE_PROJECT, deck, "t", "instructor")) == [
         "aaa", "bbb", "ccc", "eee"]
-    assert "\\hyperlink{fff}" in appendix_toc.generate_appendix_tex(transitional_context(), deck, "t", "instructor")
+    assert "\\hyperlink{fff}" in appendix_toc.generate_appendix_tex(EXAMPLE_PROJECT, deck, "t", "instructor")
     for version in ("during-course", "after-course"):
-        assert "\\hyperlink{fff}" not in appendix_toc.generate_appendix_tex(transitional_context(), deck, "t", version)
-        assert listed_ids(appendix_toc.generate_appendix_tex(transitional_context(), deck, "t", version)) == [
+        assert "\\hyperlink{fff}" not in appendix_toc.generate_appendix_tex(EXAMPLE_PROJECT, deck, "t", version)
+        assert listed_ids(appendix_toc.generate_appendix_tex(EXAMPLE_PROJECT, deck, "t", version)) == [
             "aaa", "bbb", "ddd", "eee"], version
 
     text = (
@@ -54,8 +54,8 @@ def test_the_appendix_lists_the_slides_of_its_own_version():
     calls = deck_editor.parse_slide_calls(deck)
     commented = {c.id_slug: deck_editor.is_commented_out(deck.text, c) for c in calls}
     assert commented == {"abc-EN-Old": False, "xyz-EN-Old": True}
-    assert "\\hyperlink{abc}" in appendix_toc.generate_appendix_tex(transitional_context(), deck, "t", "instructor")
-    assert "\\hyperlink{xyz}" not in appendix_toc.generate_appendix_tex(transitional_context(), deck, "t", "instructor")
+    assert "\\hyperlink{abc}" in appendix_toc.generate_appendix_tex(EXAMPLE_PROJECT, deck, "t", "instructor")
+    assert "\\hyperlink{xyz}" not in appendix_toc.generate_appendix_tex(EXAMPLE_PROJECT, deck, "t", "instructor")
 
 
 @pytest.mark.parametrize("version, presenter, chapter, enabled, applies", [
@@ -74,7 +74,7 @@ def test_wrapper_carries_appendix_after_body_for_whole_deck(version, presenter, 
     # Regression: every whole-deck version gets the appendix and keeps its PDF name.
     assert "appendix" not in job.jobname
     assert job.jobname == CompileJob(deck, version, job.chapter, presenter=presenter).jobname
-    text = compiler.wrapper_text(transitional_context(), job)
+    text = compiler.wrapper_text(EXAMPLE_PROJECT, job)
     assert ("\\appendix" in text) == applies
     assert ("\\def\\SMAppendixTocOverride{1}" in text) == applies
     if applies:

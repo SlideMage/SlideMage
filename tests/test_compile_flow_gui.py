@@ -47,7 +47,7 @@ def failing(job):
 
 
 @pytest.fixture
-def env(window, monkeypatch):  # noqa: F811
+def env(ctx, window, monkeypatch):  # noqa: F811
     """A window whose compiles run `env.script(job)` instead of latexmk; it records what it ran."""
     class Env:
         pass
@@ -70,7 +70,7 @@ def env(window, monkeypatch):  # noqa: F811
     monkeypatch.setattr(compile_progress, "count_job_slides", lambda *a: 1)
     monkeypatch.setattr(compile_progress, "spec_for_job", lambda ctx, job: compile_progress.JobSpec(3, 1))
     monkeypatch.setattr(compiler, "unchanged_jobs", lambda ctx, jobs, outputs: [])
-    monkeypatch.setattr(latex_lint, "check_jobs", lambda jobs: latex_lint.CheckResult())
+    monkeypatch.setattr(latex_lint, "check_jobs", lambda _ctx, jobs: latex_lint.CheckResult())
     monkeypatch.setattr(window, "open_slide_editor", lambda path, on_saved=None, line=None: e.opened.append((path, line)))
     monkeypatch.setattr(window.compile_display, "open_pdf", lambda path: e.opened_pdfs.append(path.name))
     window.state.set_deck(COURSE)
@@ -157,7 +157,7 @@ def test_retry_failed_runs_only_the_failed_jobs_again(env):
     assert not env.window.compile_display.toast.isHidden()
 
 
-def test_stopping_a_job_skips_a_queued_one_and_kills_the_running_one(env, monkeypatch):
+def test_stopping_a_job_skips_a_queued_one_and_kills_the_running_one(ctx, env, monkeypatch):
     window = env.window
     release = threading.Event()
 
@@ -186,7 +186,7 @@ def test_stopping_a_job_skips_a_queued_one_and_kills_the_running_one(env, monkey
     assert [row.state for row in window.compile.run.rows.values()] == [STOPPED, STOPPED, STOPPED]
 
 
-def test_stop_all_asks_and_stops_the_whole_run(env, monkeypatch):
+def test_stop_all_asks_and_stops_the_whole_run(ctx, env, monkeypatch):
     window = env.window
     release = threading.Event()
 
@@ -211,7 +211,7 @@ def test_stop_all_asks_and_stops_the_whole_run(env, monkeypatch):
     assert "Done: 0 passed, 3 stopped" in window.compile_display.panel._title.text()
 
 
-def test_closing_the_window_mid_compile_stops_the_run_and_its_thread(env, monkeypatch):
+def test_closing_the_window_mid_compile_stops_the_run_and_its_thread(ctx, env, monkeypatch):
     window = env.window
     started = threading.Event()
 
@@ -240,7 +240,7 @@ def broken():
 
 
 def test_a_build_with_errors_waits_for_build_anyway(env, monkeypatch):
-    monkeypatch.setattr(latex_lint, "check_jobs", lambda jobs: broken())
+    monkeypatch.setattr(latex_lint, "check_jobs", lambda _ctx, jobs: broken())
     answers = iter(["cancel", "anyway", "show"])
 
     def exec_(sheet):
@@ -284,7 +284,7 @@ def test_the_caret_compiles_the_selected_slides_and_every_active_deck(env, monke
     assert len(jobs) == 1 + 3 + 3
 
 
-def test_current_deck_compile_and_selected_pages_take_the_workspace_language(env, monkeypatch):
+def test_current_deck_compile_and_selected_pages_take_the_workspace_language(ctx, env, monkeypatch):
     window = env.window
     window.state.set_language("DE")
     captured = []

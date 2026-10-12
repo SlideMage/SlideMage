@@ -342,7 +342,7 @@ class PreviewPane(Surface):
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
         clear_layout(self._chips)
         if target is not None:
-            link = translation_link(row.call.id_slug) if row is not None else None
+            link = translation_link(self.app.project, row.call.id_slug) if row is not None else None
             for icon, text, tone, tooltip in chips_for(target, row, view, language, link):
                 chip = Chip(text, tone, icon)
                 chip.setToolTip(tooltip)
@@ -590,7 +590,7 @@ class PreviewPane(Surface):
             return
         path = target.source_path
         if precheck and not render_check.confirm_render(
-                self, self.app, latex_lint.check_slide_files([path]), f"{path.name} (saved file)",
+                self, self.app, latex_lint.check_slide_files(self.app.project, [path]), f"{path.name} (saved file)",
                 show_in_editor=lambda issue: render_check.open_issue_in_editor(self.app, issue)):
             return
         view, language = self.state.view, self.state.language
@@ -604,7 +604,7 @@ class PreviewPane(Surface):
         """The slide was saved: render it again, unless its source has errors (then
         the page just stays older than the source, and Render asks)."""
         target = self._target
-        if target is not None and not latex_lint.check_slide_files([target.source_path]).errors:
+        if target is not None and not latex_lint.check_slide_files(self.app.project, [target.source_path]).errors:
             self._render_saved(precheck=False, debounce=True)
         elif target is not None:
             self._invalidate()
@@ -623,7 +623,7 @@ class PreviewPane(Surface):
             return
         path = target.source_path
         if not render_check.confirm_render(
-                self, self.app, latex_lint.check_buffer(body, path.name, path), f"{path.name} (editor buffer)",
+                self, self.app, latex_lint.check_buffer(self.app.project, body, path.name, path), f"{path.name} (editor buffer)",
                 show_in_editor=lambda issue: self.app.open_slide_editor(path, line=issue.line)):
             return
         view, language = self.state.view, self.state.language

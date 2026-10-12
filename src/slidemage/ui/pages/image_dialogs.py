@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLine
 
 from ... import alt_draft, image_review
 from ...ai.providers import ChatProvider
+from ...project import ProjectContext
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Field, ModalSheet, Page, caption
@@ -24,8 +25,9 @@ class ReplaceImageSheet(ModalSheet):
     """Pick another file for an image: its copy in media/ gets a name of its own, and the slides using
     the old image can be pointed at it too. The old file is never touched."""
 
-    def __init__(self, parent: QWidget, reference: str, others: list[str]) -> None:
+    def __init__(self, parent: QWidget, project: ProjectContext, reference: str, others: list[str]) -> None:
         super().__init__("Replace image", parent, width=560)
+        self.project = project
         self.source: Optional[Path] = None
         self._auto_name = ""     # the name suggested last: replaced when another file is chosen, a typed one is not
         old_name = reference.rsplit("/", 1)[-1]
@@ -76,7 +78,7 @@ class ReplaceImageSheet(ModalSheet):
         self.chosen.setText(self.source.name)
         self.extension.setText(self.source.suffix.lower() or ".png")
         if self.name_edit.text() in ("", self._auto_name):
-            self._auto_name = image_review.free_media_stem(self._suggested, self.extension.text())
+            self._auto_name = image_review.free_media_stem(self.project, self._suggested, self.extension.text())
             self.name_edit.setText(self._auto_name)
         self._validate()
 
@@ -84,7 +86,7 @@ class ReplaceImageSheet(ModalSheet):
         problem = ""
         if self.source is not None:
             problem = image_review.media_name_problem(self.name_edit.text().strip())
-            if not problem and image_review.media_destination(self.new_name).exists():
+            if not problem and image_review.media_destination(self.project, self.new_name).exists():
                 problem = f"media/{self.new_name} already exists: pick another name (an image is never overwritten)."
         self.problem.setText(problem)
         self.problem.setProperty("tone", "error")
@@ -106,13 +108,14 @@ class PromptTuningSheet(ModalSheet):
         super().__init__(f"Tune the prompt: {reference}", app, width=1100)
         self.setMinimumHeight(700)
         self._image_path, self._context, self._provider, self._on_over = image_path, context, provider, on_over
+        self._project = app.project
         self._job: Optional[Job] = None
         self.result_draft: Optional[alt_draft.DraftResult] = None
         page = Page()
         columns = QHBoxLayout()
         columns.setSpacing(18)
         left = QVBoxLayout()
-        left.addWidget(ImagePreview(reference, app.log, max_size=(520, 640)))
+        left.addWidget(ImagePreview(app.project, reference, app.log, max_size=(520, 640)))
         left.addStretch(1)
         columns.addLayout(left, 1)
         right = QVBoxLayout()
@@ -123,7 +126,7 @@ class PromptTuningSheet(ModalSheet):
         right.addWidget(Field("Hint for this image", self.hint_edit))
         right.addWidget(caption("A short correction, stored with the image and reused by later redrafts. This is the "
                                 "lever that works: it reaches the model without disturbing the output format."))
-        self.prompt_edit = QPlainTextEdit(alt_draft.effective_system_prompt())
+        self.prompt_edit = QPlainTextEdit(alt_draft.effective_system_prompt(app.project))
         self.prompt_edit.setFixedHeight(200)
         right.addWidget(Field("System prompt (this run only)", self.prompt_edit))
         right.addWidget(caption("Editing it often makes the model abandon the required output format and answer in "
@@ -132,7 +135,7 @@ class PromptTuningSheet(ModalSheet):
         self.draft_button = Button("Draft", "primary", compact=True)
         self.draft_button.clicked.connect(self._draft)
         reset = Button("Reset prompt", "secondary", compact=True)
-        reset.clicked.connect(lambda: self.prompt_edit.setPlainText(alt_draft.effective_system_prompt()))
+        reset.clicked.connect(lambda: self.prompt_edit.setPlainText(alt_draft.effective_system_prompt(app.project)))
         buttons.addWidget(self.draft_button)
         buttons.addWidget(reset)
         buttons.addStretch(1)
@@ -156,7 +159,7 @@ class PromptTuningSheet(ModalSheet):
         if self._job is not None:
             return
         context = replace(self._context, hint=self.hint)
-        backend = alt_draft.ModelBackend(self._provider, system_prompt=self.prompt_edit.toPlainText())
+        backend = alt_draft.ModelBackend(self._project, self._provider, system_prompt=self.prompt_edit.toPlainText())
         self._job = job = Job("Tuning", self._provider, lambda _job: backend.draft(self._image_path, context))
         job.result.connect(self._on_result)
         self.draft_button.setEnabled(False)

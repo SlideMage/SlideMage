@@ -9,7 +9,6 @@ import pytest
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage.project import transitional_context
 from slidemage import compiler, preview_target, slide_snapshot
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
@@ -21,8 +20,14 @@ from slidemage.ai.agent_types import (
 )
 from slidemage.ai.tools import build_toolbox, focus, undo_edit
 from slidemage.ai.tools import slidemage as slidemage_tools
+from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace, WorkspaceContext
 from slidemage.deck_scan import scan_decks
+
+
+@pytest.fixture
+def ctx(root):
+    return ProjectContext.at(root)
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
@@ -32,7 +37,7 @@ class Box:
     """A toolbox on the throwaway project with the events it emitted."""
 
     def __init__(self, root, mode=EDIT_ASK, approve=True, deck=True):
-        deck_ = next((d for d in scan_decks(transitional_context()) if d.name == "test"), None) if deck else None
+        deck_ = next((d for d in scan_decks(ProjectContext.at(root)) if d.name == "test"), None) if deck else None
         self.ws = FakeWorkspace(root, WorkspaceContext(deck=deck_, slide_id="abc", path=root / SLIDE), approve)
         self.events = []
         self.box = build_toolbox(self.ws, self.events.append, compiler.CancelToken(), mode)
@@ -455,7 +460,7 @@ def test_context_of_the_whole_deck_lists_the_outline_instead_of_the_text(root):
 
 
 def test_context_without_a_deck_or_slide(root):
-    text = agent_context.build_context(Workspace(root), agent_context.SCOPE_SLIDE)
+    text = agent_context.build_context(Workspace(ProjectContext.at(root)), agent_context.SCOPE_SLIDE)
     assert "Open deck: none" in text and "editor shows" not in text
 
 

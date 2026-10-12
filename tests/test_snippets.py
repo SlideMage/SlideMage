@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from slidemage import bibliography, latex_edit, snippets
-from conftest import use_project
+from slidemage.project import ProjectContext
 
 
 @pytest.fixture
@@ -15,37 +15,36 @@ def folder(tmp_path, monkeypatch):
     (root / "1ab-2.tex").write_text("x", encoding="utf-8")
     (root / "sub").mkdir()
     (root / "sub" / "demo.tex").write_text("x", encoding="utf-8")
-    use_project(monkeypatch, tmp_path)
     return root
 
 
-def test_snippets_are_listed_as_project_relative_paths(folder, tmp_path, monkeypatch):
-    assert snippets.list_snippets() == ["snippets/1ab-1.tex", "snippets/1ab-2.tex", "snippets/sub/demo.tex"]
-    use_project(monkeypatch, tmp_path / "none")
-    assert snippets.list_snippets() == []
+def test_snippets_are_listed_as_project_relative_paths(ctx, folder, tmp_path, monkeypatch):
+    assert snippets.list_snippets(ctx) == ["snippets/1ab-1.tex", "snippets/1ab-2.tex", "snippets/sub/demo.tex"]
+    ctx = ProjectContext.at(tmp_path / "none")
+    assert snippets.list_snippets(ctx) == []
 
 
-def test_the_next_snippet_of_a_slide_takes_the_lowest_free_number(folder):
-    assert snippets.next_snippet("1ab") == "snippets/1ab-3.tex"
+def test_the_next_snippet_of_a_slide_takes_the_lowest_free_number(ctx, folder):
+    assert snippets.next_snippet(ctx, "1ab") == "snippets/1ab-3.tex"
     (folder / "1ab-3.tex").write_text("", encoding="utf-8")
-    assert snippets.next_snippet("1ab") == "snippets/1ab-4.tex"
-    assert snippets.next_snippet("zzz") == "snippets/zzz-1.tex"
+    assert snippets.next_snippet(ctx, "1ab") == "snippets/1ab-4.tex"
+    assert snippets.next_snippet(ctx, "zzz") == "snippets/zzz-1.tex"
 
 
-def test_a_snippet_must_lie_inside_the_folder_and_is_created_once(folder):
+def test_a_snippet_must_lie_inside_the_folder_and_is_created_once(ctx, folder):
     with pytest.raises(ValueError):
-        snippets.resolve("snippets/../Slidemaster.bib")
+        snippets.resolve(ctx, "snippets/../Slidemaster.bib")
     with pytest.raises(ValueError):
-        snippets.resolve("slides/x.tex")
+        snippets.resolve(ctx, "slides/x.tex")
     for folder_itself in ("snippets", "snippets/", "snippets/."):
         with pytest.raises(ValueError):
-            snippets.resolve(folder_itself)
+            snippets.resolve(ctx, folder_itself)
     (folder / "sub").mkdir(exist_ok=True)
     with pytest.raises(ValueError):
-        snippets.resolve("snippets/sub")
-    assert snippets.create("snippets/new/a.tex") and (folder / "new" / "a.tex").is_file()
+        snippets.resolve(ctx, "snippets/sub")
+    assert snippets.create(ctx, "snippets/new/a.tex") and (folder / "new" / "a.tex").is_file()
     (folder / "new" / "a.tex").write_text("kept", encoding="utf-8")
-    assert not snippets.create("snippets/new/a.tex")
+    assert not snippets.create(ctx, "snippets/new/a.tex")
     assert (folder / "new" / "a.tex").read_text(encoding="utf-8") == "kept"
 
 

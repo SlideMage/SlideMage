@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import project, slide_language
+from .project import ProjectContext
 
 TEMPLATE_RELATIVE = Path(".scripts") / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
 
@@ -105,8 +106,7 @@ def reserved_id_reason(slide_id: str) -> Optional[str]:
 ID_FROM_FILENAME_RE = re.compile(r"^([^-]+)-.*\.tex$")
 
 
-def existing_ids_from_csv() -> set[str]:
-    ctx = project.transitional_context()
+def existing_ids_from_csv(ctx: ProjectContext) -> set[str]:
     if not ctx.slide_ids_csv.exists():
         return set()
     with open(ctx.slide_ids_csv, encoding="utf-8", newline="") as f:
@@ -116,8 +116,7 @@ def existing_ids_from_csv() -> set[str]:
     return ids
 
 
-def existing_ids_from_disk() -> set[str]:
-    ctx = project.transitional_context()
+def existing_ids_from_disk(ctx: ProjectContext) -> set[str]:
     if not ctx.slides_dir.is_dir():
         return set()
     ids = set()
@@ -128,10 +127,9 @@ def existing_ids_from_disk() -> set[str]:
     return ids
 
 
-def list_id_slugs() -> list[str]:
+def list_id_slugs(ctx: ProjectContext) -> list[str]:
     """Every id-slug with a slides/<id-slug>-current.tex file, sorted --
     the Add slide sheet's slide picker."""
-    ctx = project.transitional_context()
     if not ctx.slides_dir.is_dir():
         return []
     suffix = slide_language.CURRENT_SUFFIX
@@ -141,7 +139,7 @@ def list_id_slugs() -> list[str]:
     )
 
 
-def mint_slide_id(reserved: Optional[str] = None) -> str:
+def mint_slide_id(ctx: ProjectContext, reserved: Optional[str] = None) -> str:
     """Draw a random 3-char ID, avoiding collisions with both
     slide_ids.csv *and* every ID actually present under slides/ (a
     superset check -- this can only avoid more collisions than the R
@@ -156,7 +154,7 @@ def mint_slide_id(reserved: Optional[str] = None) -> str:
     demo slide id instead: that digit, a letter, then any character."""
     if reserved is not None and reserved not in RESERVED_FIRST_DIGITS:
         raise ValueError(f"reserved must be one of {RESERVED_FIRST_DIGITS!r}, got {reserved!r}")
-    existing = {i.lower() for i in existing_ids_from_csv() | existing_ids_from_disk()}
+    existing = {i.lower() for i in existing_ids_from_csv(ctx) | existing_ids_from_disk(ctx)}
     while True:
         if reserved is None:
             candidate = random.choice(ID_FIRST_ALPHABET) + "".join(
@@ -173,12 +171,11 @@ def mint_slide_id(reserved: Optional[str] = None) -> str:
         return candidate
 
 
-def append_slide_id(slide_id: str) -> None:
+def append_slide_id(ctx: ProjectContext, slide_id: str) -> None:
     """Append one CSV row for `slide_id`, byte-for-byte matching R's own
     write.csv(..., row.names=FALSE) format: quoted value, CRLF line
     ending. Creates the file (with just the "id" header) first if it
     doesn't exist yet."""
-    ctx = project.transitional_context()
     if not ctx.slide_ids_csv.exists():
         with open(ctx.slide_ids_csv, "w", encoding="utf-8", newline="") as f:
             f.write('"id"\r\n')
@@ -227,6 +224,7 @@ def body_of(body_text: str) -> str:
 
 
 def create_slide_file(
+    ctx: ProjectContext,
     slide_id: str,
     slug: str,
     language: str,
@@ -245,7 +243,6 @@ def create_slide_file(
     add_translation_backreference() on the *source* slide separately -- this
     function only ever touches the new file. Raises FileExistsError if the
     file is already there."""
-    ctx = project.transitional_context()
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
     dest = ctx.slides_dir / slide_language.current_name(f"{slide_id}-{language}-{slug}")
@@ -254,14 +251,13 @@ def create_slide_file(
     ctx.slides_dir.mkdir(parents=True, exist_ok=True)
 
     if body is None:
-        body = read_template()
+        body = read_template(ctx)
     dest.write_text(build_new_slide_header(cross_ref_id_slug) + body, encoding="utf-8", newline="")
     return dest
 
 
-def read_template() -> str:
+def read_template(ctx: ProjectContext) -> str:
     """The project's starter slide, or the bundled example's when absent."""
-    ctx = project.transitional_context()
     if ctx.slide_template_path.is_file():
         return ctx.slide_template_path.read_bytes().decode("utf-8")
     example = project.template_dir("example")

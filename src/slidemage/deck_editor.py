@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit
 
-from . import project
+from .project import ProjectContext
 from .archive import read, write
 from .deck_scan import COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
@@ -222,10 +222,9 @@ def is_commented_out(deck_text: str, call: SlideCall) -> bool:
     return is_commented(deck_text, call.call_start)
 
 
-def available_versions(id_slug: str) -> list[str]:
+def available_versions(ctx: ProjectContext, id_slug: str) -> list[str]:
     """Every already-frozen slides/<id_slug>-vX-Y-Z.tex version, sorted
     numerically (not lexically -- "1-9-0" must sort before "1-10-0")."""
-    ctx = project.transitional_context()
     if not ctx.slides_dir.is_dir():
         return []
     versions = []

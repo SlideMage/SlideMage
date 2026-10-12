@@ -14,8 +14,9 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    root = project.transitional_context().root
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
+    ctx = project.from_environment()
+    root = ctx.root
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == 'slidemage-manual')
     lists = (root/'snippets/1sv-1.tex').read_text()
     formula = re.search(r'\$[^$]+\$', lists)[0]
     figure = re.search(r'\\includegraphics\[[^\]]*\]\{[^}]*\}',
@@ -26,7 +27,7 @@ def main():
              ('list', '1sv-EN-Lists-and-Formulas', lists),
              ('figure', '1rb-EN-Figureframe', figure),
              ('table', '1wa-EN-Columns-and-Tables', table)]
-    original = project.transitional_context()
+    original = ctx
     build = original.build_dir
     with build_lock(args.output/'matrix.lock'):
         for cache in (False, True):
@@ -37,9 +38,9 @@ def main():
                 log = []
                 row = dict(stage=stage, selection=name, slide=slug)
                 if cache:
-                    project.use(project.ProjectContext(original.root, build/'benchmark-elements'/name))
+                    ctx = project.ProjectContext(original.root, build/'benchmark-elements'/name)
                 def render(revision):
-                    return slide_preview.render_slide_text_to_pdf(project.transitional_context(), 
+                    return slide_preview.render_slide_text_to_pdf(ctx,
                         slug, body + f'\n\\def\\SMPreviewBenchmarkRevision{{{revision}}}',
                         preamble_text=deck.preamble_text, footer_timestamp=False,
                         preview_mode='element', reuse_build=cache, log=log.append)

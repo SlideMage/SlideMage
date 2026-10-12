@@ -6,9 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from conftest import use_project
 from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
-from slidemage.project import ProjectContext, transitional_context
+from slidemage.project import ProjectContext
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 LATEX = Path(__file__).resolve().parents[1] / "latex"
@@ -87,7 +86,7 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
 
 
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
-    ctx = use_project(monkeypatch, tmp_path / "project")
+    ctx = ProjectContext.at(tmp_path / "project")
     # A project with only institution layers and no framework next to it: Graz.
     root = _project(tmp_path / "project", "uni-graz", "mci")
     assert slide_snapshot.render_template(ProjectContext.at(root)) == "uni-graz"
@@ -98,9 +97,9 @@ def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatc
     assert slide_snapshot.render_template(ProjectContext.at(only_mci)) == "mci"
 
 
-def test_default_preamble_uses_the_render_template(monkeypatch):
+def test_default_preamble_uses_the_render_template(ctx, monkeypatch):
     monkeypatch.setattr(slide_snapshot, "render_template", lambda ctx: "slidemage")
-    preamble = slide_preview.default_preamble(transitional_context())
+    preamble = slide_preview.default_preamble(ctx)
     assert "\\input{Slidemaster_preamble_slidemage}" in preamble
     assert "\\input{Slidemaster_preamble_uni-graz}" not in preamble
     assert slide_snapshot.detect_template(preamble) == "slidemage"
@@ -110,7 +109,7 @@ def test_default_preamble_uses_the_render_template(monkeypatch):
 def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, template):
     _framework(tmp_path / "latex", "slidemage")
     root = _project(tmp_path / "project", "uni-graz", "mci", "slidemage")
-    ctx = use_project(monkeypatch, root)
+    ctx = ProjectContext.at(root)
     assert slide_snapshot.available_templates(root) == ["uni-graz", "mci", "slidemage"]
     assert slide_snapshot.render_template(ProjectContext.at(root)) == "slidemage"
     slide_snapshot.set_render_template(ctx, template)

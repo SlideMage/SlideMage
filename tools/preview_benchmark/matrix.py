@@ -24,10 +24,11 @@ def signature(pdf):
 
 
 def run_matrix(args):
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
+    ctx = project.from_environment()
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == 'slidemage-manual')
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)][:args.limit]
-    original = project.transitional_context()
+    original = ctx
     original_build = original.build_dir
     original_compile = slide_preview.compile_and_extract
     revision = 0
@@ -56,7 +57,7 @@ def run_matrix(args):
         out = args.output / stage
         out.mkdir(parents=True, exist_ok=True)
         # Isolate all combinations so none benefits from a preceding stage.
-        project.use(project.ProjectContext(original.root, original_build / ('benchmark-' + stage) if cache else original_build))
+        ctx = project.ProjectContext(original.root, original_build / ('benchmark-' + stage) if cache else original_build)
         for i, call in enumerate(calls, 1):
             if (args.output / 'STOP').exists():
                 print('Stopped between previews; remove STOP to resume.', flush=True)
@@ -64,7 +65,7 @@ def run_matrix(args):
             if (out / f'{i:03}.json').exists():
                 continue
             if cache:
-                project.use(project.ProjectContext(original.root, original_build / ('benchmark-' + stage) / f'{i:03}'))
+                ctx = project.ProjectContext(original.root, original_build / ('benchmark-' + stage) / f'{i:03}')
             with pymupdf.open(args.output / 'baseline' / f'{i:03}.pdf') as ref:
                 date = ref.metadata['creationDate'][2:14]
                 reference_stamp = f'{date[:4]}-{date[4:6]}-{date[6:8]} {date[8:10]}:{date[10:12]}'
@@ -74,16 +75,16 @@ def run_matrix(args):
                           footer_timestamp=False, log=log.append,
                           reuse_build=cache, overlay=1 if overlay else None)
             if region:
-                source = (project.transitional_context().root / 'slides' / call.source_filename).read_text()
+                source = (ctx.root / 'slides' / call.source_filename).read_text()
                 # Match the selected call's reveal restriction when rendering a
                 # complete source region rather than invoking the saved-file macro.
                 if call.steps:
                     source = f'\\gdef\\SMSlideSteps{{{call.steps}}}\n' + source
                 def render():
-                    return slide_preview.render_slide_text_to_pdf(project.transitional_context(), call.id_slug, source, preview_mode='region', **common)
+                    return slide_preview.render_slide_text_to_pdf(ctx, call.id_slug, source, preview_mode='region', **common)
             else:
                 def render():
-                    return slide_preview.render_slide_to_pdf(project.transitional_context(), call.macro, call.id_slug, call.version, call.conditions,
+                    return slide_preview.render_slide_to_pdf(ctx, call.macro, call.id_slug, call.version, call.conditions,
                                                               steps=call.steps, **common)
             try:
                 revision = 0

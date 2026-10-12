@@ -583,7 +583,7 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
         lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
 
     language = deck_language.language_for_job(job)
-    resolved_deck, _dependencies = (deck_language.compile_deck(job.deck, language)
+    resolved_deck, _dependencies = (deck_language.compile_deck(ctx, job.deck, language)
                                    if job.resolve_translations else (job.deck, []))
     resolved = resolved_deck.text
     preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
@@ -764,7 +764,7 @@ def _relocate_pdf_and_finish(
     # read -- a refreshed thumbnail then (rightly) counts as a change.
     if record is not None and _is_latest_output_success(destination_key, generation):
         wrapper_path, wrapper_text, compile_started = record
-        compile_records.write_record(ctx.build_dir, jobname, build_dir, wrapper_path, wrapper_text,
+        compile_records.write_record(ctx, jobname, build_dir, wrapper_path, wrapper_text,
                                      dest_pdf, compile_started, log, deck_path=job.deck.path)
 
     # Refresh slide snapshots only from this invocation's immutable source,

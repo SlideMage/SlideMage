@@ -66,7 +66,7 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     """`call`, the `position`-th slide call of `deck`, as the deck typesets it."""
     if language is not None:
         from .deck_language import resolve_call
-        call = resolve_call(call, language)
+        call = resolve_call(call, language, slide_language.TranslationLinks(ctx.slides_dir))
     return PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions, call.steps,
                          position, deck.preamble_text)
 

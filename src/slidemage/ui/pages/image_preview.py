@@ -13,6 +13,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QVBoxLayout
 
 from ... import image_review, open_path
+from ...project import ProjectContext
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface, caption
 
@@ -20,12 +21,12 @@ MAX_WIDTH, MAX_HEIGHT = 760, 420
 
 
 class ImagePreview(Surface):
-    def __init__(self, reference: str, log: Callable[[str], None], *, max_size: tuple[int, int] = (MAX_WIDTH, MAX_HEIGHT)):
+    def __init__(self, project: ProjectContext, reference: str, log: Callable[[str], None], *, max_size: tuple[int, int] = (MAX_WIDTH, MAX_HEIGHT)):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        preview = image_review.preview_for(reference, log)
+        preview = image_review.preview_for(project, reference, log)
         pixmap = QPixmap(str(preview.image)) if preview.image is not None else QPixmap()
         if pixmap.isNull():
             problem = preview.problem or f"Could not load {preview.image.name if preview.image else reference}"

@@ -12,6 +12,7 @@ outline is (sections, slide ids and titles), and the slide's text is left to rea
 from __future__ import annotations
 
 from .. import deck_outline, latex_lint, slide_add
+from ..project import ProjectContext
 from .tools.base import ToolError
 from .tools.files import current_text, relative
 from .workspace import Workspace
@@ -73,8 +74,8 @@ Report what you could not check. compile_deck is slow: use it only when asked or
 a tour of the LaTeX."""
 
 
-def _lint_lines(text: str, name: str) -> list[str]:
-    issues = [i for i in latex_lint.lint_text(text, name) if i.severity == latex_lint.ERROR]
+def _lint_lines(ctx: ProjectContext, text: str, name: str) -> list[str]:
+    issues = [i for i in latex_lint.lint_text(ctx, text, name) if i.severity == latex_lint.ERROR]
     shown = [f"  line {i.line}: {i.message}" for i in issues[:LINT_LIMIT]]
     return shown + ([f"  ... {len(issues) - LINT_LIMIT} more"] if len(issues) > LINT_LIMIT else [])
 
@@ -101,24 +102,24 @@ def build_context(workspace: Workspace, scope: str = SCOPE_SLIDE) -> str:
         dirty = workspace.is_dirty(path)
         lines.append(f"The editor shows: {name}" + (" (unsaved edits)" if dirty else ""))
         if path.suffix == ".tex" and text:
-            errors = _lint_lines(text, path.name)
+            errors = _lint_lines(workspace.project, text, path.name)
             lines.append("Lint errors in it:" + ("\n" + "\n".join(errors) if errors else " none"))
     elif context.slide_id:
         lines.append(f"Focused slide: {context.slide_id}")
 
     if scope == SCOPE_DECK and context.deck is not None:
         lines.append("Deck outline (position. id | title):")
-        lines += _outline_lines(context)
+        lines += _outline_lines(workspace.project, context)
     elif text:
         shown = text.rstrip("\n") if len(text) <= SLIDE_TEXT_LIMIT else text[:SLIDE_TEXT_LIMIT] + "\n[cut; read_file for the rest]"
         lines.append(f"Current text of {path.name} (with unsaved edits):\n```\n{shown}\n```")
     return "\n".join(lines)
 
 
-def _outline_lines(context) -> list[str]:
+def _outline_lines(ctx: ProjectContext, context) -> list[str]:
     lines: list[str] = []
     count = 0
-    for section in deck_outline.build_outline(context.deck, context.view, context.language):
+    for section in deck_outline.build_outline(ctx, context.deck, context.view, context.language):
         lines.append(f"§ {section.title}")
         for row in section.rows:
             if count >= OUTLINE_LIMIT:

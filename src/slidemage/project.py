@@ -506,30 +506,10 @@ class ProjectContext:
         return self.decks_dir, self.archive_dir
 
 
-_transitional: ProjectContext | None = None
-
-
-def use(context: ProjectContext | None) -> None:
-    """Entry points call this once with the project they opened (None forgets it)."""
-    global _transitional
-    _transitional = context
-
-
 def from_environment() -> ProjectContext:
     """The project a command line works on: $SLIDEMASTER_PROJECT, else the one found
     upward from the working directory, else the last opened (else the working directory)."""
     return ProjectContext.at(discover() or Path.cwd())
-
-
-def transitional_context() -> ProjectContext:
-    """TRANSITIONAL: the project of this process, for the modules not yet given an
-    explicit ProjectContext. The context set by use(), else the one found from
-    $SLIDEMASTER_PROJECT / the working directory / the last project -- decided at
-    the first call, never at import. New code takes a ProjectContext argument."""
-    global _transitional
-    if _transitional is None:
-        _transitional = from_environment()
-    return _transitional
 
 
 def relaunch_with_project(root: Path) -> None:
@@ -539,8 +519,7 @@ def relaunch_with_project(root: Path) -> None:
     QApplication in its caller, after this returns).
 
     Switching projects restarts instead of changing the running process: windows,
-    caches and background jobs all hold the ProjectContext they were built with
-    (and the modules not yet migrated read transitional_context()). A new process
+    caches and background jobs all hold the ProjectContext they were built with. A new process
     starts exactly as if the user had launched SlideMage pointed at `root`.
 
     Frozen (PyInstaller): sys.executable *is* the SlideMage binary itself,

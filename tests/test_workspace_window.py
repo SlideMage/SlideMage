@@ -28,8 +28,8 @@ from slidemage.ui.workspace.menus import (
 )
 from slidemage.ui.workspace.palette import command_entries
 
-from conftest import EXAMPLE_PROJECT, build_window, command_context, qapp as qapp, use_project
-from slidemage.project import transitional_context
+from conftest import EXAMPLE_PROJECT, build_window, command_context, qapp as qapp
+from slidemage.project import ProjectContext
 
 
 def make_deck(name, tags=(), *, archived=False, versions=True, chapters=()):
@@ -96,7 +96,7 @@ def test_deck_switcher_groups_decks_and_lists_archived_ones_in_its_footer(qapp):
 def test_window_opens_the_first_active_deck_then_the_one_left_open(window, monkeypatch):
     assert window.state.deck is WORK                                # first active deck
     window.topbar._on_deck_picked(deck_key(MANUAL))
-    assert app_settings.get(transitional_context(), window_module.LAST_DECK_KEY) == "slidemage-manual"
+    assert app_settings.get(EXAMPLE_PROJECT, window_module.LAST_DECK_KEY) == "slidemage-manual"
     again = build_window(monkeypatch)
     assert again.state.deck.name == "slidemage-manual"
 
@@ -474,7 +474,7 @@ def test_an_edit_rescans_and_the_slide_list_keeps_what_it_takes_to_undo_it(windo
     assert window.slide_list._undo[WORK.path] == ["the text before"]
 
 
-def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(window, monkeypatch):
+def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(ctx, window, monkeypatch):
     seen, warned = [], []
     monkeypatch.setattr(compile_actions, "compile_current", lambda _window, kind, pages=None: seen.append((kind, pages)))
     monkeypatch.setattr(window_module.QMessageBox, "warning", lambda *a: warned.append(a[2]))
@@ -624,7 +624,7 @@ def test_a_saved_deck_source_goes_through_the_deck_edit_pipeline(window, tmp_pat
     deck.path = path
     edits = []
     monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
-    window.project = use_project(monkeypatch, tmp_path)
+    window.project = ProjectContext.at(tmp_path)
     window.open_deck_source_editor(deck)
     window.centre.source.current.editor.insertPlainText("% hand edit\n")
     assert window.centre.source.save()
@@ -637,9 +637,9 @@ def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_pat
 
     bib = tmp_path / "Slidemaster.bib"
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
-    window.project = use_project(monkeypatch, tmp_path)
+    window.project = ProjectContext.at(tmp_path)
     sorted_ = []
-    monkeypatch.setattr(bibliography, "sort_entries", lambda: sorted_.append(True))
+    monkeypatch.setattr(bibliography, "sort_entries", lambda path: sorted_.append(True))
     window._on_edit_bib()
     assert sorted_ == [True] and window.centre.source.current.path == bib
     window._on_edit_bib()                                   # already open: nothing to sort under it
@@ -706,7 +706,7 @@ def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, mo
     before = editor.tabStopDistance()
     window.set_tab_width_chars(4)
     assert editor.tabStopDistance() == pytest.approx(before * 2)
-    assert app_settings.get(transitional_context(), "tab_width_chars") == 4
+    assert app_settings.get(EXAMPLE_PROJECT, "tab_width_chars") == 4
 
 
 def test_the_build_options_footer_timestamp_is_the_states(window):
@@ -792,7 +792,7 @@ def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeyp
     first.set_column_widths(right=520)
     first.splitter.splitterMoved.emit(0, 2)                                 # what a drag of the handle sends
     assert first.side_panels.width() == 520 and layout_settings.get(side_panels.WIDTH_SETTING) == 520
-    assert app_settings.get(transitional_context(), side_panels.WIDTH_SETTING) is None
+    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) is None
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
@@ -823,7 +823,7 @@ def test_moving_either_handle_saves_both_column_widths_and_restores_them(window,
     assert (left, right) == ((440, 520) if handle == 1 else (400, 480))
     assert layout_settings.get(slide_list.WIDTH_SETTING) == left
     assert layout_settings.get(side_panels.WIDTH_SETTING) == right
-    assert app_settings.get(transitional_context(), slide_list.WIDTH_SETTING) is None
+    assert app_settings.get(EXAMPLE_PROJECT, slide_list.WIDTH_SETTING) is None
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
@@ -864,14 +864,14 @@ def test_hidden_columns_keep_their_remembered_widths(window):
 
 
 def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
-    app_settings.set(transitional_context(), side_panels.WIDTH_SETTING, 520)
+    app_settings.set(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING, 520)
     first = build_window(monkeypatch)
     first.resize(2400, 800)
     first.show()
     assert first.side_panels.width() == 520
     assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
-    assert app_settings.get(transitional_context(), side_panels.WIDTH_SETTING) == 520
-    app_settings.set(transitional_context(), side_panels.WIDTH_SETTING, 600)       # a different project's old preference
+    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 520
+    app_settings.set(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING, 600)       # a different project's old preference
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
@@ -879,7 +879,7 @@ def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch
     second.set_column_widths(right=580)
     second.splitter.splitterMoved.emit(0, 2)
     assert layout_settings.get(side_panels.WIDTH_SETTING) == 580
-    assert app_settings.get(transitional_context(), side_panels.WIDTH_SETTING) == 600
+    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 600
 
 
 @pytest.mark.parametrize("value, expected", [(None, 340), (200, 340), (1000, 900), ("wide", 340)])
@@ -936,7 +936,7 @@ def test_column_toggles_update_visibility_labels_and_buttons(window, qapp, tmp_p
         assert command.title(window) == title
         assert button.toolTip() == f"{title} ({shortcut})"
         assert layout_settings.get(f"{side}_column_hidden") == hidden
-        assert app_settings.get(transitional_context(), f"{side}_column_hidden") is None
+        assert app_settings.get(EXAMPLE_PROJECT, f"{side}_column_hidden") is None
 
 
 @pytest.mark.parametrize("left_hidden, right_hidden", [(True, False), (False, True), (True, True), (False, False)])
@@ -1121,7 +1121,7 @@ def test_window_geometry_saved_on_close_is_restored_before_show(window, qapp, mo
     saved = window.saveGeometry().toBase64().data().decode("ascii")
     assert window.close()
     assert layout_settings.get("window_geometry") == saved
-    assert app_settings.get(transitional_context(), "window_geometry") is None
+    assert app_settings.get(EXAMPLE_PROJECT, "window_geometry") is None
     second = build_window(monkeypatch)
     assert not second.isVisible()
     assert second.isMaximized() == maximized

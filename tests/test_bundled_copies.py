@@ -10,10 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from conftest import use_project, write_test_file as write
+from conftest import write_test_file as write
 
 from slidemage import alt_images, bundled_copies, project
 from slidemage.bundled_copies import FRAMEWORK, MANUAL
+from slidemage.project import ProjectContext
 
 NOW = datetime(2026, 10, 5, 12, 0, 0)
 write = partial(write, newline=None)
@@ -56,17 +57,6 @@ def plan(root, bundle):
         root, latex_source=latex, example_source=example)}
 
 
-def use_store(monkeypatch, root: Path) -> None:
-    """Point the image-description store -- the JSON and the compile-time CSV
-    it regenerates -- at `root`'s media folder, never the real project's."""
-    use_project(monkeypatch, root)
-
-
-@pytest.fixture(autouse=True)
-def isolated_alt_store(tmp_path, monkeypatch):
-    use_store(monkeypatch, tmp_path / "work" / "project")
-
-
 def test_update_add_remove_and_keep(tmp_path, bundle):
     latex, example = bundle
     root = make_project(tmp_path, bundle)
@@ -92,8 +82,8 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert manual.kept == ["snippets/1aa-1.tex"]
     assert framework.update == ["Slidemaster_preamble_base.tex"] and not framework.adopted
 
-    backup = bundled_copies.apply_update(root, manual, "v5.20.0", now=NOW)
-    bundled_copies.apply_update(root, framework, "v5.20.0", now=NOW)
+    backup = bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.20.0", now=NOW)
+    bundled_copies.apply_update(ProjectContext.at(root), framework, "v5.20.0", now=NOW)
     assert (root / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v2\n"
     assert (root / "slides" / "1cc-EN-Three-current.tex").is_file()
     assert not (root / "slides" / "1bb-EN-Two-current.tex").exists()
@@ -125,7 +115,7 @@ def test_header_changes_do_not_hide_user_edits(tmp_path, bundle, user_edit):
         assert manual.kept == [f"slides/{one}"] and manual.update == ["slides/1bb-EN-Two-current.tex"]
     else:
         assert manual.update == [f"slides/{one}"] and manual.kept == []
-        bundled_copies.apply_update(root, manual, "v5.26.1", now=NOW)
+        bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.26.1", now=NOW)
         text = (root / "slides" / one).read_text()
         assert "slide one v2" in text
         assert text.startswith("%% Included in decks: slidemage-manual, my-course-deck\n")
@@ -167,13 +157,12 @@ def test_framework_adoption_and_git_checkouts(tmp_path, bundle, monkeypatch):
 def test_manual_offered_to_a_project_without_it(tmp_path, bundle, monkeypatch):
     _, example = bundle
     root = tmp_path / "mine" / "project"
-    use_store(monkeypatch, root)
     write(root / "slide_ids.csv", '"id"\r\n"abc"\r\n')
     write(root / "media" / "shot.png", "my own png")            # same name, own content
     manual = plan(root, bundle)[MANUAL]
     assert manual.new_install and manual.adopted
     assert "media/shot.png" in manual.kept and "media/shot.png" not in manual.add
-    bundled_copies.apply_update(root, manual, "v5.19.0", now=NOW)
+    bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.19.0", now=NOW)
     assert (root / "decks" / "slidemage-manual.tex").is_file()
     assert (root / "media" / "shot.png").read_text() == "my own png"   # never overwritten
     ids = (root / "slide_ids.csv").read_text().split()
@@ -188,19 +177,19 @@ def test_image_descriptions_follow_unless_reviewed(tmp_path, bundle):
     write(example / "media" / "shot.png", "png v2")
     write(example / "media" / "alt-text.json", json.dumps({"version": 1, "images": {
         "media/shot.png": {"role": "informative", "status": "auto", "short": "shot v2"}}}))
-    bundled_copies.apply_update(root, plan(root, bundle)[MANUAL], "v5.20.0", now=NOW)
-    assert alt_images.load_store()["media/shot.png"].short == "shot v2"
+    bundled_copies.apply_update(ProjectContext.at(root), plan(root, bundle)[MANUAL], "v5.20.0", now=NOW)
+    assert alt_images.load_store(ProjectContext.at(root))["media/shot.png"].short == "shot v2"
     # a reviewed description is the user's: kept
     def review(entries):
         entries["media/shot.png"].status = alt_images.STATUS_REVIEWED
         entries["media/shot.png"].short = "mine"
         return True
-    alt_images.update_store(review)
+    alt_images.update_store(ProjectContext.at(root), review)
     write(example / "media" / "shot.png", "png v3")
     write(example / "media" / "alt-text.json", json.dumps({"version": 1, "images": {
         "media/shot.png": {"role": "informative", "status": "auto", "short": "shot v3"}}}))
-    bundled_copies.apply_update(root, plan(root, bundle)[MANUAL], "v5.21.0", now=NOW)
-    assert alt_images.load_store()["media/shot.png"].short == "mine"
+    bundled_copies.apply_update(ProjectContext.at(root), plan(root, bundle)[MANUAL], "v5.21.0", now=NOW)
+    assert alt_images.load_store(ProjectContext.at(root))["media/shot.png"].short == "mine"
 
 
 def test_never_plans_against_the_bundle_itself(tmp_path, bundle):
@@ -257,7 +246,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
     monkeypatch.setattr(QMessageBox, "clickedButton", lambda box: seen["chosen"])
 
     class Window(QWidget):
-        project = use_project(monkeypatch, root)
+        project = ProjectContext.at(root)
         logged: list = []
         reloaded = 0
 
@@ -275,7 +264,6 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
 def test_dialog_adds_the_manual(tmp_path, bundle, monkeypatch, qapp):
     root = tmp_path / "mine" / "project"
     write(root / "slide_ids.csv", '"id"\r\n')
-    use_store(monkeypatch, root)
     seen, window = _run_dialog(monkeypatch, root, bundle, "Add the manual")
     assert "Add it to this project?" in seen["text"]
     assert (root / "decks" / "slidemage-manual.tex").is_file()

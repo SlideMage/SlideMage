@@ -89,7 +89,7 @@ class _Bridge(QObject):
 class GuiWorkspace(Workspace):
     def __init__(self, window) -> None:
         """`window` is the main window: its state, centre column, slide list and compile flow."""
-        super().__init__(window.project.root)
+        super().__init__(window.project)
         self.window = window
         self._bridge = _Bridge()
         self.edit_asked = self._bridge.edit_asked
@@ -220,7 +220,7 @@ class GuiWorkspace(Workspace):
         return ask.approved
 
     def confirm_cloud(self, provider: ChatProvider) -> bool:
-        return self.on_gui(lambda: confirm_cloud_request(self.window, provider, CLOUD_SENDS), False)
+        return self.on_gui(lambda: confirm_cloud_request(self.window, self.project, provider, CLOUD_SENDS), False)
 
     def file_changed(self, path: Path, previous_text: str | None) -> None:
         self.on_gui(lambda: self._show_written(self._local(path)))

@@ -4,6 +4,7 @@ no lint error the captured text did not have."""
 from __future__ import annotations
 
 import pytest
+from slidemage.project import ProjectContext
 from conftest import SLIDE_TEXT
 
 from slidemage import latex_lint
@@ -27,6 +28,11 @@ def test_a_translation_into_german_says_how_to_address_the_audience(address, lin
     assert request.endswith("<slide>\nOpen the file.\n</slide>")
 
 
+@pytest.fixture
+def ctx(root):
+    return ProjectContext.at(root)
+
+
 def test_a_translation_into_english_has_no_form_of_address():
     request = claude_tasks.translate_request("Datei öffnen.", "DE", "EN", "Sie")
     assert "from German to English" in request and "Sie" not in request
@@ -39,9 +45,9 @@ def test_the_glossary_goes_into_the_request_as_it_is():
     assert "Glossary" not in claude_tasks.translate_request("A slide.", "EN", "DE")
 
 
-def test_a_fix_request_names_the_errors_and_not_the_warnings():
+def test_a_fix_request_names_the_errors_and_not_the_warnings(ctx):
     text = BROKEN.replace("First point", "a_b")                # an error and a warning (underscore)
-    request = claude_tasks.fix_request(text, latex_lint.lint_text(text))
+    request = claude_tasks.fix_request(text, latex_lint.lint_text(ctx, text))
     assert "(braces)" in request and "(underscore)" not in request and request.endswith(f"<slide>\n{text}\n</slide>")
 
 
@@ -53,20 +59,20 @@ def test_a_repair_request_shows_the_refused_answer_and_why():
 
 # -- answers that may be applied ---------------------------------------------------------------------
 
-def test_a_body_is_the_new_text():
-    assert check(TRANSLATE, LF, {"body": LF.replace("Hello", "Hallo")}) == (LF.replace("Hello", "Hallo"), [])
+def test_a_body_is_the_new_text(ctx):
+    assert check(ctx, TRANSLATE, LF, {"body": LF.replace("Hello", "Hallo")}) == (LF.replace("Hello", "Hallo"), [])
 
 
-def test_edits_are_applied_to_the_captured_text_together():
+def test_edits_are_applied_to_the_captured_text_together(ctx):
     answer = edits(("{Hello", "{Hello}"), ("First point", "1st point"), ("\\item Second point", "\\item 2nd"))
-    assert check(FIX_LATEX, BROKEN, answer) == (
+    assert check(ctx, FIX_LATEX, BROKEN, answer) == (
         LF.replace("First point", "1st point").replace("Second point", "2nd"), [])
 
 
-def test_no_edits_or_edits_that_change_nothing_leave_the_text_alone():
-    assert check(FIX_LATEX, LF, {"edits": []}) == (LF, [])
-    assert check(FIX_LATEX, LF, edits(("First", "First"))) == (LF, [])
-    assert check(TRANSLATE, LF, {"body": LF}) == (LF, [])
+def test_no_edits_or_edits_that_change_nothing_leave_the_text_alone(ctx):
+    assert check(ctx, FIX_LATEX, LF, {"edits": []}) == (LF, [])
+    assert check(ctx, FIX_LATEX, LF, edits(("First", "First"))) == (LF, [])
+    assert check(ctx, TRANSLATE, LF, {"body": LF}) == (LF, [])
 
 
 @pytest.mark.parametrize("answer, task", [
@@ -75,8 +81,8 @@ def test_no_edits_or_edits_that_change_nothing_leave_the_text_alone():
     ({"edits": [{"before": "First"}]}, FIX_LATEX), ({"edits": [{"before": 1, "after": "x"}]}, FIX_LATEX),
     ({"edits": ["x"]}, FIX_LATEX),
 ])
-def test_an_answer_of_the_wrong_shape_is_refused(answer, task):
-    text, problems = check(task, LF, answer)
+def test_an_answer_of_the_wrong_shape_is_refused(ctx, answer, task):
+    text, problems = check(ctx, task, LF, answer)
     assert text == LF and len(problems) == 1 and problems[0].startswith("the answer must be")
 
 
@@ -86,13 +92,13 @@ def test_an_answer_of_the_wrong_shape_is_refused(answer, task):
     (edits(("", "x")), "is empty"),
     (edits(("First point", "1st"), ("point\n\t\t\\item Second", "x")), "overlap"),
 ])
-def test_an_edit_whose_before_is_not_found_exactly_once_is_refused(answer, expected):
-    text, problems = check(FIX_LATEX, LF, answer)
+def test_an_edit_whose_before_is_not_found_exactly_once_is_refused(ctx, answer, expected):
+    text, problems = check(ctx, FIX_LATEX, LF, answer)
     assert text == LF and any(expected in problem for problem in problems)
 
 
-def test_every_bad_edit_is_reported():
-    _, problems = check(FIX_LATEX, LF, edits(("nowhere", "x"), ("point", "p")))
+def test_every_bad_edit_is_reported(ctx):
+    _, problems = check(ctx, FIX_LATEX, LF, edits(("nowhere", "x"), ("point", "p")))
     assert len(problems) == 2 and problems[0].startswith("edit 1") and problems[1].startswith("edit 2")
 
 
@@ -103,26 +109,26 @@ def test_every_bad_edit_is_reported():
     ("\t\\vbox to 0pt{\\vss\\hbox{overlay}}\n", ""),
     ("%% Included in decks: test\n%%\n", ""),
 ], ids=["version-line", "overlay-block", "deck-header"])
-def test_protected_parts_must_not_change(old, new):
+def test_protected_parts_must_not_change(ctx, old, new):
     for task, answer in ((FIX_LATEX, edits((old, new))), (TRANSLATE, {"body": LF.replace(old, new)})):
-        text, problems = check(task, LF, answer)
+        text, problems = check(ctx, task, LF, answer)
         assert text == LF and len(problems) == 1 and "protected part" in problems[0]
 
 
-def test_an_edit_may_not_add_a_lint_error():
-    text, problems = check(FIX_LATEX, LF, edits(("First point", "First {point")))
+def test_an_edit_may_not_add_a_lint_error(ctx):
+    text, problems = check(ctx, FIX_LATEX, LF, edits(("First point", "First {point")))
     assert text == LF and len(problems) == 1 and "(braces)" in problems[0]
 
 
-def test_a_fix_may_leave_the_old_errors_and_remove_them():
+def test_a_fix_may_leave_the_old_errors_and_remove_them(ctx):
     other = edits(("First point", "1st point"))
-    assert check(FIX_LATEX, BROKEN, other)[1] == []               # the old error stays: not a new one
-    assert check(FIX_LATEX, BROKEN, edits(("{Hello", "{Hello}")))[0] == LF
+    assert check(ctx, FIX_LATEX, BROKEN, other)[1] == []               # the old error stays: not a new one
+    assert check(ctx, FIX_LATEX, BROKEN, edits(("{Hello", "{Hello}")))[0] == LF
 
 
-def test_a_translation_may_not_cite_a_key_that_is_not_in_the_bibliography():
+def test_a_translation_may_not_cite_a_key_that_is_not_in_the_bibliography(ctx):
     cited = LF.replace("First point", "\\cite{old2000}")
-    assert check(TRANSLATE, cited, {"body": cited.replace("old2000", "older")})[1][0].startswith(
+    assert check(ctx, TRANSLATE, cited, {"body": cited.replace("old2000", "older")})[1][0].startswith(
         "the new text has a LaTeX error (citation)")
 
 
@@ -155,8 +161,8 @@ def test_title_and_note_requests_carry_the_slide_and_the_current_title():
 
 # -- the other tasks: answers --------------------------------------------------------------------------
 
-def test_a_title_replaces_the_frame_title_only():
-    new, problems = check(claude_tasks.TITLE, LF, {"title": " A better title "})
+def test_a_title_replaces_the_frame_title_only(ctx):
+    new, problems = check(ctx, claude_tasks.TITLE, LF, {"title": " A better title "})
     assert problems == [] and new == LF.replace("{Hello}", "{A better title}")
 
 
@@ -164,42 +170,42 @@ def test_a_title_replaces_the_frame_title_only():
     ({"title": "two\nlines"}, claude_tasks.TITLE, LF), ({"title": " "}, claude_tasks.TITLE, LF),
     ({"title": 3}, claude_tasks.TITLE, LF), ({"note": ""}, claude_tasks.NOTE, LF), ({"body": "x"}, claude_tasks.NOTE, LF),
     ({"title": "T"}, claude_tasks.TITLE, "no frame here\n")])
-def test_a_bad_title_or_note_is_refused(answer, task, text):
-    new, problems = check(task, text, answer)
+def test_a_bad_title_or_note_is_refused(ctx, answer, task, text):
+    new, problems = check(ctx, task, text, answer)
     assert new == text and len(problems) == 1
 
 
-def test_a_note_is_added_before_the_frames_end():
-    new, problems = check(claude_tasks.NOTE, LF, {"note": "Say hello."})
+def test_a_note_is_added_before_the_frames_end(ctx):
+    new, problems = check(ctx, claude_tasks.NOTE, LF, {"note": "Say hello."})
     assert problems == [] and new.endswith("\t\\note{Say hello.}\n\\end{standardframe}\n")
 
 
-def test_a_note_or_title_may_not_add_a_lint_error():
-    assert "(braces)" in check(claude_tasks.NOTE, LF, {"note": "a { b"})[1][0]
-    assert "(braces)" in check(claude_tasks.TITLE, LF, {"title": "a { b"})[1][0]
+def test_a_note_or_title_may_not_add_a_lint_error(ctx):
+    assert "(braces)" in check(ctx, claude_tasks.NOTE, LF, {"note": "a { b"})[1][0]
+    assert "(braces)" in check(ctx, claude_tasks.TITLE, LF, {"title": "a { b"})[1][0]
 
 
-def test_proofreading_answers_with_edits_and_an_empty_list_changes_nothing():
-    assert check(claude_tasks.PROOFREAD, LF, {"edits": []}) == (LF, [])
-    assert check(claude_tasks.PROOFREAD, LF, edits(("First point", "First points")))[0] == LF.replace("First point", "First points")
+def test_proofreading_answers_with_edits_and_an_empty_list_changes_nothing(ctx):
+    assert check(ctx, claude_tasks.PROOFREAD, LF, {"edits": []}) == (LF, [])
+    assert check(ctx, claude_tasks.PROOFREAD, LF, edits(("First point", "First points")))[0] == LF.replace("First point", "First points")
 
 
-def test_a_shortened_text_keeps_environments_overlays_and_citations():
+def test_a_shortened_text_keeps_environments_overlays_and_citations(ctx):
     text = LF.replace("First point", "\\only<2->{First point} \\fullcite{old2000}")
     shorter = text.replace("First point", "First")
-    assert check(claude_tasks.CONCISE, text, {"body": shorter}) == (shorter, [])
+    assert check(ctx, claude_tasks.CONCISE, text, {"body": shorter}) == (shorter, [])
     for lost in (text.replace("<2->", ""), text.replace(" \\fullcite{old2000}", ""),
                  text.replace("\t\\end{itemize}\n", "").replace("\t\\begin{itemize}\n", "")):
-        new, problems = check(claude_tasks.CONCISE, text, {"body": lost})
+        new, problems = check(ctx, claude_tasks.CONCISE, text, {"body": lost})
         assert new == text and len(problems) == 1 and "must keep every environment" in problems[0]
-    assert "<2->" in check(claude_tasks.CONCISE, text, {"body": text.replace("<2->", "")})[1][0]
+    assert "<2->" in check(ctx, claude_tasks.CONCISE, text, {"body": text.replace("<2->", "")})[1][0]
     # the other body task does not look at the structure
-    assert check(TRANSLATE, text, {"body": text.replace("<2->", "")})[0] != text
+    assert check(ctx, TRANSLATE, text, {"body": text.replace("<2->", "")})[0] != text
 
 
-def test_an_updated_translation_is_a_body_with_the_protected_parts_unchanged():
-    assert check(claude_tasks.UPDATE_TRANSLATION, LF, {"body": LF.replace("Hello", "Hallo")})[1] == []
-    assert "protected part" in check(claude_tasks.UPDATE_TRANSLATION, LF, {"body": LF.replace("1-0-0", "2-0-0")})[1][0]
+def test_an_updated_translation_is_a_body_with_the_protected_parts_unchanged(ctx):
+    assert check(ctx, claude_tasks.UPDATE_TRANSLATION, LF, {"body": LF.replace("Hello", "Hallo")})[1] == []
+    assert "protected part" in check(ctx, claude_tasks.UPDATE_TRANSLATION, LF, {"body": LF.replace("1-0-0", "2-0-0")})[1][0]
 
 
 def test_every_task_names_its_answer():
@@ -207,10 +213,10 @@ def test_every_task_names_its_answer():
                                claude_tasks.TITLE, claude_tasks.NOTE)] == ["body", "edits", "body", "title", "note"]
 
 
-def test_a_summary_is_read_not_checked_against_the_text_it_summarises():
+def test_a_summary_is_read_not_checked_against_the_text_it_summarises(ctx):
     sent = "<slide>\n% a comment\n\\setSlideVersion{1-0-0}\n</slide>"
-    assert check(claude_tasks.SUMMARISE, sent, {"summary": "A short deck."}) == ("A short deck.", [])
-    assert check(claude_tasks.SUMMARISE, sent, {"summary": " "})[1] and check(claude_tasks.SUMMARISE, sent, {})[1]
+    assert check(ctx, claude_tasks.SUMMARISE, sent, {"summary": "A short deck."}) == ("A short deck.", [])
+    assert check(ctx, claude_tasks.SUMMARISE, sent, {"summary": " "})[1] and check(ctx, claude_tasks.SUMMARISE, sent, {})[1]
 
 
 def test_the_summary_request_cuts_each_slide_and_the_whole():

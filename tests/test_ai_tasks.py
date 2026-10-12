@@ -86,11 +86,11 @@ def context():
     ((DESCRIPTION,), [2048]),
     ((ChatReply(text="", thinking="still reasoning", truncated=True), DESCRIPTION), [2048, alt_draft.MAX_TOKENS_RETRY]),
 ], ids=["description", "thinking-retry"])
-def test_image_description_sends_the_image_and_schema(tmp_path, context, replies, budgets):
+def test_image_description_sends_the_image_and_schema(ctx, tmp_path, context, replies, budgets):
     image = tmp_path / "x.png"
     image.write_bytes(PNG)
     provider = FakeProvider(*replies)
-    result = alt_draft.ModelBackend(provider).draft(image, context)
+    result = alt_draft.ModelBackend(ctx, provider).draft(image, context)
     call = provider.calls[0]
     assert call["images"] == [PNG]
     assert call["schema"] == alt_draft.RESPONSE_SCHEMA
@@ -100,10 +100,10 @@ def test_image_description_sends_the_image_and_schema(tmp_path, context, replies
 
 
 @pytest.mark.parametrize("reply, error", [(ProviderError("down"), "down"), ("prose", "non-JSON")])
-def test_image_description_errors_stay_errors(tmp_path, context, reply, error):
+def test_image_description_errors_stay_errors(ctx, tmp_path, context, reply, error):
     image = tmp_path / "x.png"
     image.write_bytes(PNG)
-    result = alt_draft.ModelBackend(FakeProvider(reply)).draft(image, context)
+    result = alt_draft.ModelBackend(ctx, FakeProvider(reply)).draft(image, context)
     if isinstance(reply, ProviderError):
         assert result.error == error
     else:
@@ -112,17 +112,17 @@ def test_image_description_errors_stay_errors(tmp_path, context, reply, error):
 
 # -- translation -------------------------------------------------------------
 
-def test_translation_translates_each_field_through_the_provider(tmp_path, monkeypatch):
+def test_translation_translates_each_field_through_the_provider(ctx, tmp_path, monkeypatch):
     provider = FakeProvider("kurz", "lang", "fazit")
     entry = alt_images.ImageEntry(
         image="media/x.png", short="short", long="long", takeaway_default="take")
-    result = alt_draft.ModelTranslationBackend(provider).translate(entry)
+    result = alt_draft.ModelTranslationBackend(ctx, provider).translate(entry)
     assert (result.short_de, result.long_de, result.takeaway_de) == ("kurz", "lang", "fazit")
     assert result.error is None and result.source_hash == alt_images.en_text_hash(entry)
     assert all(call["messages"][0]["role"] == "user" and "system" not in call
                for call in provider.calls)
 
 
-def test_translation_reports_provider_errors_per_field(tmp_path, monkeypatch):
-    backend = alt_draft.ModelTranslationBackend(FakeProvider(ProviderError("rate limited")))
+def test_translation_reports_provider_errors_per_field(ctx, tmp_path, monkeypatch):
+    backend = alt_draft.ModelTranslationBackend(ctx, FakeProvider(ProviderError("rate limited")))
     assert backend.translate_text("hello") == ("", "rate limited")

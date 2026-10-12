@@ -13,15 +13,14 @@ from slidemage.syntax_check import SyntaxCheckResult, SyntaxIssue
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import ai_fix
 from slidemage.ui.workspace.source_file import SourceFile
-from conftest import use_project
-from slidemage.project import transitional_context
+from conftest import EXAMPLE_PROJECT
 
 BROKEN = "\\begin{standardframe}{Demo}\nText {unclosed\n\\end{standardframe}\n"
 
 
 class FakeApp:
-    project = property(lambda self: transitional_context())
-    def __init__(self):
+    def __init__(self, project=EXAMPLE_PROJECT):
+        self.project = project
         self.theme = ThemeManager()
         self.busy = False
         self.started, self.ended = [], []
@@ -119,12 +118,11 @@ def test_the_buffer_is_checked_a_moment_after_the_last_keystroke(make_file):
     assert len(changes) == 1 and changes[0] >= 1 and file.lint_chip.property("tone") == "error"
 
 
-def test_a_bib_is_not_checked(make_file, tmp_path, monkeypatch):
+def test_a_bib_is_not_checked(make_file, tmp_path, monkeypatch, ctx):
 
     bib = tmp_path / "Slidemaster.bib"
     bib.write_text("@book{a, title={{A}}\n", encoding="utf-8")
-    use_project(monkeypatch, tmp_path)
-    file = SourceFile(FakeApp(), bib)
+    file = SourceFile(FakeApp(ctx), bib)
     assert file.lint is None and file.lint_chip.parent().isHidden()
 
 
@@ -136,7 +134,7 @@ def test_the_pane_and_the_top_bar_show_the_error_count(qapp, tmp_path):
 
     path = tmp_path / "abc-EN-Demo-current.tex"
     path.write_text(BROKEN, encoding="utf-8")
-    pane, state = SourcePane(FakeApp()), WorkspaceState(transitional_context())
+    pane, state = SourcePane(FakeApp()), WorkspaceState(EXAMPLE_PROJECT)
     context = command_context()
     context.state = state
     bar = TopBar(context)

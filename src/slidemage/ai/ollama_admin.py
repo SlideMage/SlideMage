@@ -12,9 +12,8 @@ import math
 import re
 import urllib.error
 import urllib.request
-from typing import Callable, Optional
+from typing import Callable
 
-from .. import app_settings, project
 
 # What a call to the server can raise besides a refusal: no connection, a timeout (OSError), a cut-off or
 # malformed reply (HTTPException), a reply that is not UTF-8 text or JSON (ValueError).
@@ -51,7 +50,7 @@ def _simple_call(host: str, path: str, payload: dict, timeout: float, method: st
         return False, _failure(exc)
 
 
-def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
+def delete_model(model: str, host: str) -> tuple[bool, str]:
     """Deletes `model` from the local Ollama server via its own
     DELETE /api/delete -- this removes the model's actual files from
     disk (Ollama's own model store, typically several GB each), not just
@@ -70,7 +69,7 @@ def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
     function to bypass that. The real, well-documented danger case is
     someone manually deleting files under Ollama's own blobs/ directory,
     which is not what this does."""
-    return _simple_call(host or app_settings.get_ollama_host(project.transitional_context()), "/api/delete", {"model": model}, 30, "DELETE")
+    return _simple_call(host, "/api/delete", {"model": model}, 30, "DELETE")
 
 
 # Custom models built with `ollama create <name> -f <modelfile>` -- FROM some
@@ -88,7 +87,7 @@ _NOT_IN_REGISTRY_RE = re.compile(r"does not exist|not found|manifest unknown", r
 _WEIGHTS_BLOB_RE = re.compile(r"^FROM\s+.*?(sha256[-:][0-9a-f]{64})", re.MULTILINE)
 
 
-def parent_model(model: str, host: Optional[str] = None) -> str | None:
+def parent_model(model: str, host: str) -> str | None:
     """The model `model` was built from (/api/show details.parent_model),
     or None if Ollama records none or can't be reached."""
     show = _get_model_show(model, host=host)
@@ -97,14 +96,14 @@ def parent_model(model: str, host: Optional[str] = None) -> str | None:
     return parent if isinstance(parent, str) and parent.strip() else None
 
 
-def _weights_blob(model: str, host: Optional[str] = None) -> str | None:
+def _weights_blob(model: str, host: str) -> str | None:
     """The digest of `model`'s weights -- the blob its Modelfile's first
     FROM line points to -- or None if unknown."""
     m = _WEIGHTS_BLOB_RE.search(get_modelfile(model, host=host) or "")
     return m.group(1).replace(":", "-") if m else None
 
 
-def pull_model(model: str, host: Optional[str] = None,
+def pull_model(model: str, host: str,
                 on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
     """Re-downloads `model` from the Ollama registry via POST /api/pull
     (stream=True) -- an already-up-to-date model just returns "success"
@@ -115,7 +114,7 @@ def pull_model(model: str, host: Optional[str] = None,
     many-minute download. Returns (True, "") on success, (False, error)
     otherwise -- never raises, same contract as delete_model() above."""
     try:
-        with _open(host or app_settings.get_ollama_host(project.transitional_context()), "/api/pull", {"model": model, "stream": True}, 1800) as response:
+        with _open(host, "/api/pull", {"model": model, "stream": True}, 1800) as response:
             for raw_line in response:
                 line = raw_line.decode("utf-8").strip()
                 if not line:
@@ -141,20 +140,20 @@ def pull_model(model: str, host: Optional[str] = None,
         return False, _failure(exc)
 
 
-def _get_model_show(model: str, host: Optional[str] = None) -> dict | None:
+def _get_model_show(model: str, host: str) -> dict | None:
     """Returns Ollama's structured `/api/show` response, or None if the
     model doesn't exist, the server isn't reachable, or it returns invalid
     JSON. Keeping this response lets callers preserve model configuration
     through APIs that no longer accept a Modelfile string."""
     try:
-        with _open(host or app_settings.get_ollama_host(project.transitional_context()), "/api/show", {"model": model}, 30) as response:
+        with _open(host, "/api/show", {"model": model}, 30) as response:
             data = json.loads(response.read().decode("utf-8"))
         return data if isinstance(data, dict) else None
     except _CALL_ERRORS:
         return None
 
 
-def get_modelfile(model: str, host: Optional[str] = None) -> str | None:
+def get_modelfile(model: str, host: str) -> str | None:
     """Returns `model`'s current Modelfile text via POST /api/show, or None
     if the model doesn't exist or the server isn't reachable. Kept for
     callers that still need the display/export form; model relinking uses
@@ -234,14 +233,13 @@ def _parse_show_parameters(parameters: object) -> dict[str, bool | int | float |
     return parsed
 
 
-def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> tuple[bool, str]:
+def relink_derived_model(model: str, base: str, host: str) -> tuple[bool, str]:
     """Re-creates custom `model` (built from `base`) against `base`'s
     current weights. Reads Ollama's structured `/api/show` response and
     sends the supported `/api/create` fields, replacing only `from` while
     preserving the model's template, prompts, license, parameters, and
     messages. Returns (True, "") on success, (False, error) otherwise,
     same contract as delete_model()."""
-    host = host or app_settings.get_ollama_host(project.transitional_context())
     show = _get_model_show(model, host=host)
     if show is None:
         return False, f"Could not read {model}'s current model configuration"
@@ -278,15 +276,14 @@ def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> t
     return _simple_call(host, "/api/create", payload, 120)
 
 
-def update_model(model: str, host: Optional[str] = None,
+def update_model(model: str, host: str,
                   on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
     """"Update" for the Settings dialog's "Update selected…" button: pulls
     `model` itself; if the registry has no such model, it is a custom model
     (see _NOT_IN_REGISTRY_RE above), so its base (parent_model()) is pulled
     instead and `model` relinked to those refreshed weights
     (relink_derived_model() above) -- unless it already uses them, which
-    needs no relink. `host=None` is passed straight through; each helper
-    resolves it itself."""
+    needs no relink."""
     ok, error = pull_model(model, host=host, on_progress=on_progress)
     if ok or not _NOT_IN_REGISTRY_RE.search(error):
         return ok, error

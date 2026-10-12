@@ -48,7 +48,7 @@ class TranscriptEntry(SidePanel):
         if view in transcript.STUDENT_VERSIONS:
             try:
                 entry = transcript.generate_single_slide(
-                    self.slide_text(), slide_id, view, self.state.language.lower()).slides[0]
+                    self.app.project, self.slide_text(), slide_id, view, self.state.language.lower()).slides[0]
             except RuntimeError as exc:
                 self.body.addWidget(text(str(exc), q.PANEL_MISSING))
         frame, layout = box()
@@ -73,9 +73,8 @@ class TranscriptEntry(SidePanel):
                    if entry is not None and entry.missing_description else "")
         self.set_dirty(False)
 
-    @staticmethod
-    def _stored_summary(slide_id: str) -> str:
-        return alt_images.load_slide_notes().get(slide_id, alt_images.SlideNotes()).summary
+    def _stored_summary(self, slide_id: str) -> str:
+        return alt_images.load_slide_notes(self.app.project).get(slide_id, alt_images.SlideNotes()).summary
 
     def _add_summary(self, layout, summary: str) -> None:
         row = Row(layout)
@@ -109,7 +108,7 @@ class TranscriptEntry(SidePanel):
             notes.setdefault(slide_id, alt_images.SlideNotes()).summary = summary
             return True
 
-        alt_images.update_slide_notes(mutate)
+        alt_images.update_slide_notes(self.app.project, mutate)
         self.set_dirty(False)
         self._save.setEnabled(False)
         self.app.log(f"Saved transcript summary for {slide_id}" if summary

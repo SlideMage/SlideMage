@@ -1185,7 +1185,7 @@ def create_snapshot(
         # 2. What to copy.
         from . import deck_language
         for job, output in zip(jobs, outputs):
-            _resolved, dependencies = deck_language.compile_deck(deck, deck_language.language_for_job(job))
+            _resolved, dependencies = deck_language.compile_deck(ctx, deck, deck_language.language_for_job(job))
             output.inputs = list(dict.fromkeys([*output.inputs, deck.path, *dependencies]))
         _check_cancel(cancel)
         progress("collecting files")
@@ -1396,7 +1396,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     verify.add_argument("path")
     sub.add_parser("list", help="list the project's snapshots")
     args = parser.parse_args(argv)
-    project.use(ctx := project.from_environment())
+    ctx = project.from_environment()
 
     def log(line: str) -> None:
         print(line, flush=True)

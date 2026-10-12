@@ -121,14 +121,14 @@ class ImageRunsMixin:
     def _draft_backend(self) -> Optional[alt_draft.ModelBackend]:
         """The backend for the picked model; None (the user is told) when there is none or a cloud request
         was declined. Asked on the GUI thread, before an Ollama slot is reserved."""
-        provider = provider_from_combo(self, self.draft_model, "the slide's text and the images to describe")
-        return None if provider is None else alt_draft.ModelBackend(provider)
+        provider = provider_from_combo(self, self.app.project, self.draft_model, "the slide's text and the images to describe")
+        return None if provider is None else alt_draft.ModelBackend(self.app.project, provider)
 
     def _draft_slide(self) -> None:
         view = self._current
         if view is None or self._job is not None:
             return
-        jobs = alt_draft.slide_jobs(view.row, self._entries)
+        jobs = alt_draft.slide_jobs(self.app.project, view.row, self._entries)
         if not jobs:
             QMessageBox.information(self, "Nothing to draft", "This slide's images are decorative, or are vector "
                                     "files the model cannot read.")
@@ -136,15 +136,15 @@ class ImageRunsMixin:
         backend = self._draft_backend()
         if backend is None or not self.app.try_start_ollama_task("drafting descriptions", backend.provider):
             return
-        job = Job("Drafting descriptions", backend.provider, draft_work(jobs, backend))
+        job = Job("Drafting descriptions", backend.provider, draft_work(self.app.project, jobs, backend))
         self._start(job, f"{view.row.path.name} via {backend.label}", len(jobs), self._drafted)
 
     def _draft_all(self) -> None:
         backend = self._draft_backend()
         if backend is None or not self.app.try_start_ollama_task("drafting descriptions", backend.provider):
             return
-        queue = alt_draft.images_needing_drafts()
-        redraftable = alt_draft.images_needing_drafts(redraft_unless_model=backend.label)
+        queue = alt_draft.images_needing_drafts(self.app.project)
+        redraftable = alt_draft.images_needing_drafts(self.app.project, redraft_unless_model=backend.label)
         other_model = max(len(redraftable) - len(queue), 0)
         if not queue and not other_model:
             QMessageBox.information(self, "Nothing to draft",
@@ -162,7 +162,7 @@ class ImageRunsMixin:
             return
         if again:
             queue = redraftable
-        job = Job("Drafting image descriptions", backend.provider, draft_work(queue, backend))
+        job = Job("Drafting image descriptions", backend.provider, draft_work(self.app.project, queue, backend))
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._drafted)
 
     def _drafted(self, outcome: object) -> None:
@@ -183,10 +183,10 @@ class ImageRunsMixin:
         view = self._current
         if view is None or self._job is not None:
             return
-        provider = provider_from_combo(self, self.draft_model, "the slide's text and the image to describe")
+        provider = provider_from_combo(self, self.app.project, self.draft_model, "the slide's text and the image to describe")
         if provider is None:
             return
-        found = alt_draft.draftable_images(replace(view.row, images=[form.reference]), self._entries)
+        found = alt_draft.draftable_images(self.app.project, replace(view.row, images=[form.reference]), self._entries)
         if not found:
             QMessageBox.information(self, "Nothing to draft", "The model cannot read this image: it is decorative, "
                                     "a vector file it cannot render, or the file is missing.")
@@ -194,14 +194,14 @@ class ImageRunsMixin:
         if not self.app.try_start_ollama_task("tuning a description prompt", provider):
             return
         reference, resolved = found[0]
-        sheet = PromptTuningSheet(self.app, reference, resolved, alt_draft.build_context(view.row.path, reference),
+        sheet = PromptTuningSheet(self.app, reference, resolved, alt_draft.build_context(self.app.project, view.row.path, reference),
                                   provider, form.entry.hint, lambda: self.app.end_ollama_task(provider))
         if not sheet.exec() or sheet.result_draft is None:
             return
         result = sheet.result_draft
         # Written like any draft, so that the review state, the drafted-by marker and the guarantee that
         # a reviewed description is never overwritten are the same; only the prompt differed.
-        if not alt_draft.apply_one_draft(reference, result, result.model, hint=sheet.hint):
+        if not alt_draft.apply_one_draft(self.app.project, reference, result, result.model, hint=sheet.hint):
             QMessageBox.warning(self, "Not written", "This image is reviewed (or was reviewed while the sheet was "
                                 "open), so the draft was not written over it. Clear the review first to replace it.")
             return
@@ -211,11 +211,11 @@ class ImageRunsMixin:
     # translating
 
     def _translate_all(self) -> None:
-        provider = provider_from_combo(self, self.translate_model, "the descriptions of all untranslated images")
+        provider = provider_from_combo(self, self.app.project, self.translate_model, "the descriptions of all untranslated images")
         if provider is None or not self.app.try_start_ollama_task("translating images", provider):
             return
-        backend = alt_draft.ModelTranslationBackend(provider)
-        queue = alt_draft.images_needing_translation()
+        backend = alt_draft.ModelTranslationBackend(self.app.project, provider)
+        queue = alt_draft.images_needing_translation(self.app.project)
         if not queue:
             QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
                                     "current (non-stale) German translation.")
@@ -229,7 +229,7 @@ class ImageRunsMixin:
         if not go:
             self.app.end_ollama_task(provider)
             return
-        job = Job("Translating descriptions to German", provider, translate_work(queue, backend))
+        job = Job("Translating descriptions to German", provider, translate_work(self.app.project, queue, backend))
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated)
 
     def _translated(self, outcome: object) -> None:
@@ -270,14 +270,14 @@ class ImageRunsMixin:
             if not self._save(reviewed=False):
                 return
             english = form.english()
-        provider = provider_from_combo(self, self.translate_model, "this image's description text")
+        provider = provider_from_combo(self, self.app.project, self.translate_model, "this image's description text")
         if provider is None or not self.app.try_start_ollama_task("translating this image", provider):
             return
         short, long, takeaway = english
         entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
         form.begin_translation(english)
         self._translating = form
-        backend = alt_draft.ModelTranslationBackend(provider)
+        backend = alt_draft.ModelTranslationBackend(self.app.project, provider)
         job = Job("Translating to German", provider, lambda _job: backend.translate(entry))
         self._start(job, f"{form.reference} via {provider.label}", 1, lambda outcome: self._translated_one(form, outcome))
 

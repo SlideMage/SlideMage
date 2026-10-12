@@ -10,7 +10,6 @@ import pytest
 
 from slidemage import alt_images, bibliography, slide_language, slide_source
 from slidemage import slide_source as ss
-from conftest import use_project
 
 FRAME = "\\begin{standardframe}{Demo}\n\tText\n\t\\note{First note}\n\\end{standardframe}\n"
 
@@ -52,7 +51,6 @@ def test_add_note_goes_before_the_frames_end_one_indent_deeper():
 def slides(tmp_path, monkeypatch):
     folder = tmp_path / "slides"
     folder.mkdir()
-    use_project(monkeypatch, tmp_path)
     return folder
 
 
@@ -62,23 +60,23 @@ def backup(slides, name, stamp):
     (directory / f"{stamp}.tex").write_text("old", encoding="utf-8")
 
 
-def test_last_saved_is_the_newest_backup_of_the_file(slides):
+def test_last_saved_is_the_newest_backup_of_the_file(ctx, slides):
     path = slides / "abc-EN-Demo-current.tex"
-    assert slide_source.last_saved(path) is None
+    assert slide_source.last_saved(ctx, path) is None
     backup(slides, path.name, "20260101-100000")
     backup(slides, path.name, "20260301-090000-2")
     (slides / ".backups" / path.name / "notes.tex").write_text("x", encoding="utf-8")
-    assert slide_source.last_saved(path) == datetime(2026, 3, 1, 9, 0, 0)
+    assert slide_source.last_saved(ctx, path) == datetime(2026, 3, 1, 9, 0, 0)
 
 
 @pytest.mark.parametrize("original,new_text", [("one\n", "two\n"), ("original\n", "new content\n")])
-def test_a_real_save_makes_a_backup_that_last_saved_finds(slides, original, new_text):
+def test_a_real_save_makes_a_backup_that_last_saved_finds(ctx, slides, original, new_text):
     path = slides / "abc-EN-Demo-current.tex"
     path.write_text(original, encoding="utf-8")
-    archived = slide_source.save_slide_source(path, new_text, "\n")
+    archived = slide_source.save_slide_source(ctx, path, new_text, "\n")
     assert path.read_text(encoding="utf-8") == new_text
     assert archived.read_text(encoding="utf-8") == original
-    assert abs((slide_source.last_saved(path) - datetime.now()).total_seconds()) < 5
+    assert abs((slide_source.last_saved(ctx, path) - datetime.now()).total_seconds()) < 5
 
 
 # -- translation partners --------------------------------------------------------------------------
@@ -93,49 +91,49 @@ def pair(slides):
     return en, de
 
 
-def test_translation_link_names_the_partner_from_either_side(slides):
+def test_translation_link_names_the_partner_from_either_side(ctx, slides):
     en, de = pair(slides)
-    link = slide_language.translation_link("abc-EN-Demo")
+    link = slide_language.translation_link(ctx, "abc-EN-Demo")
     assert (link.partner, link.language, link.path, link.is_translation, link.outdated) == (
         "abd-DE-Demo", "DE", de, False, False)
-    link = slide_language.translation_link("abd-DE-Demo")
+    link = slide_language.translation_link(ctx, "abd-DE-Demo")
     assert (link.partner, link.language, link.path, link.is_translation) == ("abc-EN-Demo", "EN", en, True)
     (slides / "xyz-EN-Alone-current.tex").write_text(FRAME, encoding="utf-8")
-    assert slide_language.translation_link("xyz-EN-Alone") is None
+    assert slide_language.translation_link(ctx, "xyz-EN-Alone") is None
     de.unlink()
-    assert slide_language.translation_link("abc-EN-Demo") is None      # the partner's file is gone
+    assert slide_language.translation_link(ctx, "abc-EN-Demo") is None      # the partner's file is gone
 
 
 @pytest.mark.parametrize("missing_header", ["abc-EN-Demo", "abd-DE-Demo"])
-def test_one_sided_links_keep_the_partner_role_and_saved_time_rule(slides, missing_header):
+def test_one_sided_links_keep_the_partner_role_and_saved_time_rule(ctx, slides, missing_header):
     en, de = pair(slides)
     path = slides / slide_language.current_name(missing_header)
     path.write_text(FRAME, encoding="utf-8")
     old = datetime(2026, 1, 1).timestamp()
     os.utime(path, (old, old))
     backup(slides, en.name, "20260301-090000")
-    links = slide_language.TranslationLinks()
+    links = slide_language.TranslationLinks(ctx.slides_dir)
     for slug, partner, language, is_translation in (
         ("abc-EN-Demo", "abd-DE-Demo", "DE", False),
         ("abd-DE-Demo", "abc-EN-Demo", "EN", True),
     ):
-        link = slide_language.translation_link(slug, links=links)
+        link = slide_language.translation_link(ctx, slug, links=links)
         assert (link.partner, link.language, link.is_translation, link.outdated) == (
             partner, language, is_translation, True)
-        assert slide_language.cross_referenced_language(slug, links=links) == language
-        assert slide_language.badge_for(slug, links=links).both
+        assert slide_language.cross_referenced_language(ctx, slug, links=links) == language
+        assert slide_language.badge_for(ctx, slug, links=links).both
 
 
-def test_a_translation_is_outdated_when_the_original_was_saved_after_it_was_written(slides):
+def test_a_translation_is_outdated_when_the_original_was_saved_after_it_was_written(ctx, slides):
     en, de = pair(slides)
     backup(slides, en.name, "20260301-090000")                          # the original was saved in March
-    assert slide_language.translation_link("abd-DE-Demo").outdated      # the translation's file dates from January
-    assert slide_language.translation_link("abc-EN-Demo").outdated      # seen from the original, too
+    assert slide_language.translation_link(ctx, "abd-DE-Demo").outdated      # the translation's file dates from January
+    assert slide_language.translation_link(ctx, "abc-EN-Demo").outdated      # seen from the original, too
     backup(slides, de.name, "20260401-090000")                          # the translation saved in April
-    assert not slide_language.translation_link("abd-DE-Demo").outdated
+    assert not slide_language.translation_link(ctx, "abd-DE-Demo").outdated
     later = datetime(2026, 5, 1).timestamp()
     os.utime(en, (later, later))                                        # a header sync touching the original's mtime
-    assert not slide_language.translation_link("abd-DE-Demo").outdated  # is not a save
+    assert not slide_language.translation_link(ctx, "abd-DE-Demo").outdated  # is not a save
 
 
 # -- Slidemaster.bib ---------------------------------------------------------------------------------
@@ -151,29 +149,28 @@ def test_entry_line_finds_the_entry_of_a_key(tmp_path):
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    use_project(monkeypatch, tmp_path)
     slide = tmp_path / "abc-EN-Demo-current.tex"
     slide.write_text(FRAME, encoding="utf-8")
     return slide
 
 
-def test_save_slide_image_stores_text_and_reviews_this_slides_use_only(store):
-    alt_images.save_slide_image("media/a.png", "abc", store, role="informative", short="S", long="L", reviewed=True)
-    entry = alt_images.load_store()["media/a.png"]
+def test_save_slide_image_stores_text_and_reviews_this_slides_use_only(ctx, store):
+    alt_images.save_slide_image(ctx, "media/a.png", "abc", store, role="informative", short="S", long="L", reviewed=True)
+    entry = alt_images.load_store(ctx)["media/a.png"]
     assert (entry.role, entry.short, entry.long, entry.status) == ("informative", "S", "L", "reviewed")
     use = entry.used_on["abc"]
     assert use.reviewed and use.stored_hash == alt_images.slide_context_hash(store)
     assert alt_images.slide_use_state(entry, "abc", alt_images.slide_context_hash(store)) == alt_images.STATE_REVIEWED
 
-    alt_images.save_slide_image("media/a.png", "xyz", store, role="informative", short="S", long="L", reviewed=False)
-    entry = alt_images.load_store()["media/a.png"]
+    alt_images.save_slide_image(ctx, "media/a.png", "xyz", store, role="informative", short="S", long="L", reviewed=False)
+    entry = alt_images.load_store(ctx)["media/a.png"]
     assert entry.used_on["xyz"].reviewed == "" and entry.used_on["abc"].reviewed       # the other slide stays reviewed
-    alt_images.save_slide_image("media/a.png", "abc", store, role="decorative", short="", long="", reviewed=False)
-    entry = alt_images.load_store()["media/a.png"]
+    alt_images.save_slide_image(ctx, "media/a.png", "abc", store, role="decorative", short="", long="", reviewed=False)
+    entry = alt_images.load_store(ctx)["media/a.png"]
     assert entry.is_decorative and entry.used_on["abc"].reviewed == "" and entry.status == "reviewed"
 
 
-def test_save_slide_source_detects_stale_disk_content(slides):
+def test_save_slide_source_detects_stale_disk_content(ctx, slides):
     from slidemage import slide_source
 
     slide_path = slides / "abc-EN-Test-current.tex"
@@ -185,7 +182,7 @@ def test_save_slide_source_detects_stale_disk_content(slides):
     slide_path.write_text("changed elsewhere\n", encoding="utf-8", newline="")
 
     with pytest.raises(slide_source.StaleFileError):
-        slide_source.save_slide_source(
+        slide_source.save_slide_source(ctx, 
             slide_path, "my edit\n", eol, expected_text=loaded_text
         )
     # Nothing was overwritten or backed up.

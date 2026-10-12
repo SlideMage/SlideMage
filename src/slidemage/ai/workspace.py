@@ -19,8 +19,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import compiler, project
+from .. import compiler
 from ..deck_scan import Deck
+from ..project import ProjectContext
 from .providers import ChatProvider
 
 
@@ -36,9 +37,13 @@ class WorkspaceContext:
 
 
 class Workspace:
-    def __init__(self, root: Path, context: WorkspaceContext | None = None) -> None:
-        self.root = root.resolve()
+    def __init__(self, project: ProjectContext, context: WorkspaceContext | None = None) -> None:
+        self.project = project
         self._context = context or WorkspaceContext()
+
+    @property
+    def root(self) -> Path:
+        return self.project.root.resolve()
 
     def context(self) -> WorkspaceContext:
         """A snapshot of the focus, taken when a request starts."""
@@ -102,4 +107,4 @@ class Workspace:
         """Compile `deck` as compiler.build_jobs(deck, kind) says; {jobname: success}. Blocks until
         done (the Stop of the chat ends it through `cancel`). The window overrides this to run
         the jobs through its job panel."""
-        return compiler.run_jobs(project.ProjectContext.at(self.root), compiler.build_jobs(deck, kind), log, cancel)
+        return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel)

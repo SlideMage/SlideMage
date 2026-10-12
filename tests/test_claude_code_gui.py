@@ -14,7 +14,7 @@ import time
 from functools import partial
 
 import pytest
-from conftest import SLIDE_TEXT, build_window, make_project, use_project, wait_until as _wait_until
+from conftest import SLIDE_TEXT, build_window, make_project, wait_until as _wait_until
 from fake_claude import make_fake_claude
 from mcp_client import Client
 from PySide6.QtCore import Qt
@@ -22,7 +22,6 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
-from slidemage.project import transitional_context
 from slidemage import app_settings
 from slidemage.ai import claude_launch
 from slidemage.deck_scan import scan_decks
@@ -32,6 +31,7 @@ from slidemage.ui.workspace.source_file import SAME
 from slidemage.ui.workspace.terminal import session as session_module
 from slidemage.ui.workspace.terminal import view as view_module
 from slidemage.ui.workspace.terminal.sync import DiskSync
+from slidemage.project import ProjectContext
 
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
@@ -67,7 +67,7 @@ class Env:
 @pytest.fixture
 def env(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
-    context = use_project(monkeypatch, root)
+    context = ProjectContext.at(root)
     app_settings.set(context, "assistant_view", CHAT)
     fake = make_fake_claude(tmp_path)
     e = Env()
@@ -77,7 +77,7 @@ def env(qapp, tmp_path, monkeypatch):
     e.window = build_window(monkeypatch, context)
     e.window.show()
     e.window.state.set_mode("source")           # no Preview render thread to outlive the test
-    e.window.state.set_deck(next(d for d in scan_decks(transitional_context()) if d.name == "test"))
+    e.window.state.set_deck(next(d for d in scan_decks(e.window.project) if d.name == "test"))
     e.window.state.set_focused_slide("abc")
     e.view = e.window.assistant.claude_code
     e.path = root / SLIDE
@@ -319,7 +319,6 @@ def test_a_clean_buffer_is_reloaded_and_our_own_save_is_not_a_change(watch, monk
     rewrite(watch.path, LF.replace("First point", "Claude's point"))
     watch.sync.poll()
     assert "Claude's point" in file.editor.text() and not file.dirty and not file.conflict_bar.isVisibleTo(file)
-    use_project(monkeypatch, watch.root)
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda *a: "overwrite")
     file.editor.replace_selection("% mine\n")
     assert file.save()
@@ -331,7 +330,6 @@ def test_a_clean_buffer_is_reloaded_and_our_own_save_is_not_a_change(watch, monk
 
 def test_ctrl_s_saves_the_open_file_from_the_window_whichever_view_has_the_focus(watch, monkeypatch):
     file = open_slide(watch)
-    use_project(monkeypatch, watch.root)
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda *a: "overwrite")
     file.editor.replace_selection("% saved from afar\n")
     assert file.dirty
@@ -358,7 +356,6 @@ def test_a_dirty_buffer_is_not_overwritten_and_reload_from_disk_takes_claudes_ve
 
 
 def test_keep_my_edits_lets_the_next_save_replace_the_file_on_disk(watch, monkeypatch):
-    use_project(monkeypatch, watch.root)
     bib = watch.root / "Slidemaster.bib"
     watch.window.open_slide_editor(bib)
     file = watch.window.centre.source.file_for(bib)

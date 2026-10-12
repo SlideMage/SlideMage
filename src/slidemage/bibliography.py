@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from . import project
 
 
 
@@ -27,16 +26,15 @@ from . import project
 # own entries are already one-per-paragraph, blank-line-separated, so this
 # is simpler and just as reliable as re-using load()'s own stricter parser,
 # which is built to tolerate malformed fields, not to round-trip formatting.
-def sort_entries(path: Path | None = None) -> bool:
-    """Rewrite `path` (default Slidemaster.bib) with its entries sorted
+def sort_entries(path: Path) -> bool:
+    """Rewrite the .bib at `path` with its entries sorted
     alphabetically by citation key, preserving the leading header comment
     block verbatim. Returns whether the file actually changed -- a no-op
     write (already sorted) is skipped so the file's mtime/git diff stays
     quiet on every open of an already-tidy file."""
-    target = path or project.transitional_context().bibliography_path
-    if not target.is_file():
+    if not path.is_file():
         return False
-    text = target.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
     first_entry = re.search(r"^@", text, re.MULTILINE)
     if first_entry is None:
         return False
@@ -53,7 +51,7 @@ def sort_entries(path: Path | None = None) -> bool:
     new_text = header.rstrip("\n") + "\n\n" + "\n\n".join(entries) + "\n"
     if new_text == text:
         return False
-    target.write_text(new_text, encoding="utf-8", newline="\n")
+    path.write_text(new_text, encoding="utf-8", newline="\n")
     return True
 
 
@@ -187,11 +185,10 @@ def _read_value(text: str, start: int) -> tuple[str, int]:
     return text[index:end], end
 
 
-def load(path: Path | None = None) -> dict[str, BibEntry]:
+def load(path: Path) -> dict[str, BibEntry]:
     """Parse a .bib file into {key: BibEntry}. Empty dict if unreadable."""
-    target = path or project.transitional_context().bibliography_path
     try:
-        text = target.read_text(encoding="utf-8", errors="ignore")
+        text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return {}
 
@@ -215,10 +212,10 @@ def load(path: Path | None = None) -> dict[str, BibEntry]:
     return entries
 
 
-def entry_line(key: str, path: Path | None = None) -> int | None:
+def entry_line(key: str, path: Path) -> int | None:
     """The 1-based line of `@type{key,` in the .bib, or None when the file has no such entry."""
     try:
-        text = (path or project.transitional_context().bibliography_path).read_text(encoding="utf-8", errors="ignore")
+        text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return None
     match = re.search(rf"^[ \t]*@\w+\s*\{{\s*{re.escape(key)}\s*,", text, re.MULTILINE)
@@ -243,7 +240,7 @@ def _first_surname(author_field: str) -> str:
     return re.sub(r"[^A-Za-z]", "", surname).lower()
 
 
-def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry] | None = None) -> str:
+def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry]) -> str:
     """<first author's surname><year>, lowercased, e.g. "Smith, John and
     Doe, Jane" + "2024" -> "smith2024" -- this file's own established key
     convention (see its own header comment). Appends "a", "b", "c", ... if
@@ -255,7 +252,7 @@ def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry] | No
     base = f"{surname}{year}" if surname and year else ""
     if not base:
         return ""
-    taken = {k.lower() for k in (existing if existing is not None else load())}
+    taken = {k.lower() for k in existing}
     if base.lower() not in taken:
         return base
     for letter in "abcdefghijklmnopqrstuvwxyz":
@@ -286,7 +283,7 @@ def format_entry(kind: str, key: str, fields: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = None) -> str:
+def add_entry(kind: str, key: str, fields: dict[str, str], path: Path) -> str:
     """Insert a new entry into `path` (default Slidemaster.bib) and leave
     the file alphabetically sorted by key afterward -- appends the new
     entry, then re-runs sort_entries() rather than computing its own
@@ -298,15 +295,14 @@ def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = N
     convention, so a same-key-different-case entry would be confusing
     dead weight rather than a legitimately distinct citation). Returns
     the newly written entry's own text."""
-    target = path or project.transitional_context().bibliography_path
-    existing = load(target)
+    existing = load(path)
     if key.lower() in {k.lower() for k in existing}:
-        raise ValueError(f"citation key {key!r} already exists in {target.name}")
+        raise ValueError(f"citation key {key!r} already exists in {path.name}")
     entry_text = format_entry(kind, key, fields)
-    text = target.read_text(encoding="utf-8") if target.is_file() else ""
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
     new_text = text.rstrip("\n") + "\n\n" + entry_text + "\n"
-    target.write_text(new_text, encoding="utf-8", newline="\n")
-    sort_entries(target)
+    path.write_text(new_text, encoding="utf-8", newline="\n")
+    sort_entries(path)
     return entry_text
 
 

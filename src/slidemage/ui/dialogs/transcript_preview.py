@@ -32,7 +32,7 @@ def show_transcript_preview(app, source_text: str, bare_id: str, id_slug: str, v
     render is regex-only and fast enough for a wait cursor."""
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
-        result = transcript.generate_single_slide(source_text, bare_id, version, language.lower())
+        result = transcript.generate_single_slide(app.project, source_text, bare_id, version, language.lower())
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QApplication.restoreOverrideCursor()
         QMessageBox.critical(app, "Transcript render failed", str(exc))

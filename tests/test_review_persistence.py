@@ -4,8 +4,7 @@ import json
 import threading
 
 import pytest
-from conftest import use_project
-from slidemage.project import transitional_context
+from slidemage.project import ProjectContext
 
 
 def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
@@ -31,9 +30,9 @@ def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
     unused = media_dir / "unused.bin"
     unused.write_bytes(b"unused")
 
-    use_project(monkeypatch, tmp_path)
+    ctx = ProjectContext.at(tmp_path)
 
-    assert unused_content.find_unused_media(transitional_context()) == [unused]
+    assert unused_content.find_unused_media(ctx) == [unused]
     assert authored.is_file()
     assert generated.is_file()
     assert atomic_write.is_file()
@@ -59,14 +58,14 @@ def test_archive_takes_the_images_of_archived_slides_in_one_run(tmp_path, monkey
     for name in ("kept.png", "gone.png", "old.png"):
         (media_dir / name).write_bytes(b"image")
 
-    use_project(monkeypatch, tmp_path)
+    ctx = ProjectContext.at(tmp_path)
 
-    assert [p.name for p in unused_content.find_unused_media(transitional_context())] == ["gone.png", "old.png"]
-    assert unused_content.archive_files(transitional_context(), 
-        unused_content.find_unused_media(transitional_context()), unused_content.find_unused_slides(transitional_context()), lambda _line: None) == (2, 2)
+    assert [p.name for p in unused_content.find_unused_media(ctx)] == ["gone.png", "old.png"]
+    assert unused_content.archive_files(ctx, 
+        unused_content.find_unused_media(ctx), unused_content.find_unused_slides(ctx), lambda _line: None) == (2, 2)
     # a second run has nothing left to do
-    assert unused_content.find_unused_media(transitional_context()) == []
-    assert unused_content.find_unused_slides(transitional_context()) == []
+    assert unused_content.find_unused_media(ctx) == []
+    assert unused_content.find_unused_slides(ctx) == []
     assert (media_dir / "kept.png").is_file()
 
 
@@ -118,15 +117,14 @@ def _temporary_store(monkeypatch, tmp_path):
     media_dir = tmp_path / "media"
     media_dir.mkdir()
     store_path = media_dir / "alt-text.json"
-    use_project(monkeypatch, tmp_path)
     return alt_images, store_path
 
 
-def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
+def test_sync_store_serializes_scan_with_background_save(ctx, tmp_path, monkeypatch):
     from slidemage.alt_images import ImageEntry
 
     alt_images, store_path = _temporary_store(monkeypatch, tmp_path)
-    alt_images.save_store({
+    alt_images.save_store(ctx, {
         "media/existing.png": ImageEntry(
             image="media/existing.png", long="before"
         ),
@@ -140,18 +138,18 @@ def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
     update_done = threading.Event()
     errors: list[BaseException] = []
 
-    def gated_scan():
+    def gated_scan(_ctx):
         scan_started.set()
         if not continue_scan.wait(5):
             raise AssertionError("test did not release the scan")
         return ["media/new.png"]
 
     monkeypatch.setattr(alt_images, "scan_images", gated_scan)
-    monkeypatch.setattr(alt_images.alt_blocks, "scan_slides_raw", lambda: [])
+    monkeypatch.setattr(alt_images.alt_blocks, "scan_slides_raw", lambda _ctx: [])
 
     def sync_worker():
         try:
-            alt_images.sync_store()
+            alt_images.sync_store(ctx)
         except BaseException as exc:  # propagate worker failures to the test
             errors.append(exc)
         finally:
@@ -166,7 +164,7 @@ def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
             return True
 
         try:
-            alt_images.update_store(mutate)
+            alt_images.update_store(ctx, mutate)
         except BaseException as exc:
             errors.append(exc)
         finally:
@@ -199,19 +197,19 @@ def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
     assert not sync_thread.is_alive()
     assert not update_thread.is_alive()
     assert not errors
-    entries = alt_images.load_store()
+    entries = alt_images.load_store(ctx)
     assert entries["media/existing.png"].long == "completed batch draft"
     assert "media/new.png" in entries
     assert json.loads(store_path.read_text(encoding="utf-8"))["images"]
 
 
-def test_store_json_is_replaced_atomically(tmp_path, monkeypatch):
+def test_store_json_is_replaced_atomically(ctx, tmp_path, monkeypatch):
     import os
 
     from slidemage.alt_images import ImageEntry
 
     alt_images, store_path = _temporary_store(monkeypatch, tmp_path)
-    alt_images.save_store({
+    alt_images.save_store(ctx, {
         "media/chart.png": ImageEntry(image="media/chart.png", long="before"),
     })
     old_bytes = store_path.read_bytes()
@@ -232,7 +230,7 @@ def test_store_json_is_replaced_atomically(tmp_path, monkeypatch):
 
     def update_worker():
         try:
-            alt_images.update_store(
+            alt_images.update_store(ctx, 
                 lambda entries: _change_description(entries, "completed batch draft")
             )
         except BaseException as exc:
@@ -255,7 +253,7 @@ def test_store_json_is_replaced_atomically(tmp_path, monkeypatch):
     assert update_done.is_set()
     assert not thread.is_alive()
     assert not errors
-    saved = alt_images.load_store()["media/chart.png"]
+    saved = alt_images.load_store(ctx)["media/chart.png"]
     assert saved.long == "completed batch draft"
 
 

@@ -193,7 +193,7 @@ class SourceFile(Surface):
         if self.is_bib:
             return
         self._lint_timer.stop()
-        self.lint = latex_lint.check_buffer(self.editor.text(), self.path.name, self.path)
+        self.lint = latex_lint.check_buffer(self.app.project, self.editor.text(), self.path.name, self.path)
         self._update_status()
         self.lint_changed.emit()
 
@@ -324,7 +324,7 @@ class SourceFile(Surface):
                 # A slide in several decks (or pinned, or translated) asks which
                 # version each deck uses from now on.
                 frozen_version = freeze_as
-                asked = ask_deck_versions(self.app, self.id_slug, self.text, final_version, freeze_as)
+                asked = ask_deck_versions(self.app, self.app.project, self.id_slug, self.text, final_version, freeze_as)
                 if asked is None:
                     return False
                 versions = asked
@@ -341,7 +341,7 @@ class SourceFile(Surface):
         try:
             # expected_text: without it a save would silently overwrite (backup
             # aside) whatever else in the app wrote this file since it was loaded.
-            backup_path = slide_source.save_slide_source(self.path, new_text, self.eol, expected_text=previous_text)
+            backup_path = slide_source.save_slide_source(self.app.project, self.path, new_text, self.eol, expected_text=previous_text)
         except slide_source.StaleFileError as exc:
             QMessageBox.critical(self.app, "Save failed", str(exc))
             self.disk_changed()

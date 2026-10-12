@@ -5,8 +5,9 @@ import time
 
 import pytest
 
-from slidemage.project import ProjectContext, transitional_context
+from slidemage.project import ProjectContext
 from slidemage import compiler, preview_build, preview_format, slide_preview
+from conftest import EXAMPLE_PROJECT
 
 
 @pytest.fixture(autouse=True)
@@ -92,9 +93,9 @@ def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
     monkeypatch.setattr(slide_preview, 'compile_and_extract',
                         lambda *args, **kwargs: calls.append((args, kwargs)))
     pre = r'\documentclass{beamer}\begin{document}'
-    slide_preview.render_slide_to_pdf(transitional_context(), 'slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
-    slide_preview.render_slide_text_to_pdf(transitional_context(), 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
-    slide_preview.render_slide_text_to_pdf(transitional_context(), 'abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
+    slide_preview.render_slide_to_pdf(EXAMPLE_PROJECT, 'slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
+    slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
+    slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
     assert all(kwargs['snapshot_template'] is None for _, kwargs in calls)
     assert r'\SMCompileTimestampValue' in calls[0][0][1]
     assert slide_preview._preview_timestamp_line(False) == ''
@@ -126,7 +127,7 @@ def test_element_rejects_frame_only_options():
     pre = r'\documentclass{beamer}\begin{document}'
     for options in ({'overlay': 1}, {'presenter': True}):
         with pytest.raises(ValueError):
-            slide_preview.render_slide_text_to_pdf(transitional_context(), 
+            slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 
                 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element', **options)
 
 

@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ... import project, slide_preview, slide_source
+from ... import slide_preview, slide_source
+from ...project import ProjectContext
 from ...protected_regions import mask_protected_regions
 from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
 from ..workspace import Workspace
@@ -34,9 +35,9 @@ PROTECTED_MESSAGE = (
     "them as they are and change only the rest of the slide.")
 
 
-def slide_kind(path: Path) -> str | None:
+def slide_kind(ctx: ProjectContext, path: Path) -> str | None:
     """"current" / "frozen" for a file in slides/ that is a slide's current or frozen version."""
-    if path.parent != project.transitional_context().slides_dir.resolve():
+    if path.parent != ctx.slides_dir.resolve():
         return None
     try:
         macro, _id_slug, _version = slide_preview.call_for_slide_path(path)
@@ -59,8 +60,8 @@ def protected_problem(before: str, after: str) -> str | None:
     return None if parts(before) == parts(after) else PROTECTED_MESSAGE
 
 
-def _not_frozen(path: Path) -> None:
-    if slide_kind(path) == "frozen":
+def _not_frozen(ctx: ProjectContext, path: Path) -> None:
+    if slide_kind(ctx, path) == "frozen":
         raise ToolError(f"{path.name} is a frozen version of a slide: a historical record, read-only. "
                         "Edit the slide's -current.tex file instead.")
 
@@ -69,7 +70,7 @@ def _editable(ctx: ToolContext, arg: str) -> Path:
     path = project_path(ctx.root, arg)
     if path.suffix.lower() not in EDITABLE_SUFFIXES:
         raise ToolError(f"{path.name}: only text files can be changed ({', '.join(EDITABLE_SUFFIXES)}).")
-    _not_frozen(path)
+    _not_frozen(ctx.project, path)
     return path
 
 
@@ -86,14 +87,14 @@ def write_text(workspace: Workspace, path: Path, before: str, after: str) -> boo
     """Put `after` in place of `before` in the buffer if `path` is open, else on disk. Returns
     whether it went into the buffer; ToolError when it could not be done (also for a frozen version, whichever
     caller asks: the headless tasks and undo reach this without `_editable`)."""
-    _not_frozen(path)
+    _not_frozen(workspace.project, path)
     if workspace.is_open(path):
         problem = workspace.apply_to_buffer(path, before, after)
         if problem:
             raise ToolError(f"{path.name} was not changed: {problem}")
         return True
     try:
-        slide_source.save_slide_source(path, after, slide_source.read_slide_source(path)[1], expected_text=before)
+        slide_source.save_slide_source(workspace.project, path, after, slide_source.read_slide_source(path)[1], expected_text=before)
     except slide_source.StaleFileError as exc:
         raise ToolError(f"{path.name} was not changed: {exc}") from None
     workspace.file_changed(path, before)
@@ -150,7 +151,7 @@ def edit_file(ctx: ToolContext, args: dict) -> str:
     after = text.replace(old, new, 1)
     if after == text:
         return "old_text and new_text are the same; nothing to change."
-    if slide_kind(path) == "current" and (problem := protected_problem(text, after)):
+    if slide_kind(ctx.project, path) == "current" and (problem := protected_problem(text, after)):
         raise ToolError(problem)
     if not propose(ctx, path, text, after):
         raise ToolError("The user rejected this edit. Do not repeat it; ask what they would prefer.")
@@ -173,7 +174,7 @@ def write_file(ctx: ToolContext, args: dict) -> str:
     content = args["content"].replace("\r\n", "\n")
     if path.exists():
         raise ToolError(f"{relative(ctx.root, path)} exists already. Change it with edit_file.")
-    if path.parent == project.transitional_context().slides_dir.resolve():
+    if path.parent == ctx.project.slides_dir.resolve():
         raise ToolError("New slides are created with add_slide (it mints the id and writes the header).")
     if len(content) > MAX_NEW_FILE_CHARS:
         raise ToolError("The file is too large for write_file.")

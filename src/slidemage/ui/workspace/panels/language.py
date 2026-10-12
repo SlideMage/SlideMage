@@ -31,7 +31,7 @@ class Language(SidePanel):
         own = slide_language.own_language(slide) if slide else None
         if own is None:
             return ""
-        link = slide_language.translation_link(slide)
+        link = slide_language.translation_link(self.app.project, slide)
         if link is None:
             return f"{own} only" if own in OTHER else own
         return f"{own} · {link.language or '?'}" + (" outdated" if link.outdated else "")
@@ -39,7 +39,7 @@ class Language(SidePanel):
     def build(self, id_slug: str) -> None:
         own = slide_language.own_language(id_slug)
         path = self.slide_path()
-        link = slide_language.translation_link(id_slug, path) if own in OTHER and path is not None else None
+        link = slide_language.translation_link(self.app.project, id_slug, path) if own in OTHER and path is not None else None
         frame, layout = box()
         self._add_language(layout, own or "?", id_slug, path, self._own_caption(own, link))
         if link is not None:
@@ -124,7 +124,7 @@ class Language(SidePanel):
     def _set_language(self, old: str, language: str) -> None:
         if slide_language.own_language(old) == language or not self._saved("Set language"):
             return
-        n_refs = slide_rename.count_references(old)
+        n_refs = slide_rename.count_references(self.app.project, old)
         confirm = QMessageBox.question(
             self, "Set language",
             f"This will rename {slide_language.current_name(old)} (and any frozen versions of it) to language "
@@ -132,7 +132,7 @@ class Language(SidePanel):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         try:
-            new = slide_rename.set_slide_language(old, language)
+            new = slide_rename.set_slide_language(self.app.project, old, language)
         except (FileNotFoundError, FileExistsError, ValueError) as exc:
             QMessageBox.critical(self, "Set language failed", str(exc))
             return

@@ -69,7 +69,7 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
     ("Cancel", []),
     (None, ["t-A-instructor"]),
 ])
-def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, button, expected):
+def test_unchanged_versions_are_compiled_only_after_asking(ctx, qapp, monkeypatch, button, expected):
     names = ["t-A-instructor", "t-A-during-course"] if button else ["t-A-instructor"]
     jobs = [SimpleNamespace(jobname=name) for name in names]
     monkeypatch.setattr(compile_actions.compiler, "unchanged_jobs",
@@ -161,11 +161,11 @@ def test_archive_with_or_without_a_snapshot(qapp, monkeypatch, settings, button,
 
 # ---------------------------------------------------------------- the run
 
-def run_window(monkeypatch, settings, running=False):
+def run_window(monkeypatch, settings, running=False, ctx=EXAMPLE_PROJECT):
     """A window whose compile controller only records the run it is asked to start."""
     started: list = []
     win = SimpleNamespace(
-        project=EXAMPLE_PROJECT,
+        project=ctx,
         build_options=SimpleNamespace(
             footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),

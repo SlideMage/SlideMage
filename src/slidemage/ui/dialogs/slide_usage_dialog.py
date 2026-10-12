@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import deck_editor, slide_usage, slide_versioning
+from ...project import ProjectContext
 
 CURRENT = "current"
 KEEP = "keep"
@@ -125,14 +126,14 @@ class DeckVersions:
 
 
 def ask_deck_versions(
-    parent: QWidget, id_slug: str, text: str,
+    parent: QWidget, project: ProjectContext, id_slug: str, text: str,
     new_version: slide_versioning.Version, old_version: slide_versioning.Version,
 ) -> Optional[DeckVersions]:
     """Before `id_slug` (whose current `text`) moves from `old_version` to `new_version`:
     ask what each deck does when the slide is used in several decks, pinned somewhere
     or translated. None if the user cancelled; nothing to ask gives an empty answer."""
-    usages = slide_usage.find_usage(id_slug)
-    translations = slide_usage.find_translations(id_slug, text)
+    usages = slide_usage.find_usage(project, id_slug)
+    translations = slide_usage.find_translations(project, id_slug, text)
     if not slide_usage.needs_dialog(usages, translations):
         return DeckVersions({}, None)
     dialog = SlideUsageDialog(
@@ -149,7 +150,7 @@ def apply_deck_versions(app, id_slug: str, choices: dict[str, str], frozen: slid
     if not choices:
         return
     try:
-        for line in slide_usage.apply_choices(id_slug, choices, slide_versioning.format_hyphen(frozen)):
+        for line in slide_usage.apply_choices(app.project, id_slug, choices, slide_versioning.format_hyphen(frozen)):
             app.log(line)
         app.refresh_open_deck_editors()
     except (deck_editor.StaleFileError, ValueError) as exc:

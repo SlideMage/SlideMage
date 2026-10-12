@@ -133,8 +133,7 @@ def main(argv: list[str] | None = None) -> None:
 
     from .ui.app import main as gui_main
 
-    project.use(context := project.ProjectContext.at(root))
-    gui_main(context)
+    gui_main(project.ProjectContext.at(root))
 
 
 if __name__ == "__main__":

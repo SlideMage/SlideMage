@@ -5,14 +5,12 @@ import pytest
 
 from slidemage import alt_blocks, alt_draft, alt_images, image_review
 from slidemage.image_review import FormEdit, SlideView
-from conftest import use_project
 
 IMG = "media/photo-a.png"
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -42,10 +40,10 @@ def test_slide_state_is_the_worst_of_its_images(store):
     assert image_review.slide_state(slide(store, "1a2b", images=(IMG,)), {IMG: done}, "other") == alt_images.STATE_STALE
 
 
-def test_scan_views_hash_and_state(store, monkeypatch):
+def test_scan_views_hash_and_state(ctx, store, monkeypatch):
     row = slide(store, "1a2b")
-    monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda: [row])
-    [only] = image_review.scan_views({})
+    monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda _ctx: [row])
+    [only] = image_review.scan_views(ctx, {})
     assert (only.row, only.state) == (row, alt_images.STATE_NONE)
     assert only.slide_hash == alt_images.slide_context_hash(row.path)
 
@@ -98,35 +96,35 @@ def test_find_slide_by_id_or_stem(store):
     assert image_review.find_slide(views, "zzzz") is None
 
 
-def test_stamp_review_and_save_slide_image_agree(store):
+def test_stamp_review_and_save_slide_image_agree(ctx, store):
     row = slide(store, "1aaa")
-    alt_images.save_slide_image(IMG, "1aaa", row.path, role="informative", short="s", long="l", reviewed=True)
-    entry = alt_images.load_store()[IMG]
+    alt_images.save_slide_image(ctx, IMG, "1aaa", row.path, role="informative", short="s", long="l", reviewed=True)
+    entry = alt_images.load_store(ctx)[IMG]
     assert alt_images.slide_use_state(entry, "1aaa", alt_images.slide_context_hash(row.path)) == alt_images.STATE_REVIEWED
-    alt_images.save_slide_image(IMG, "1aaa", row.path, role="informative", short="s", long="l", reviewed=False)
-    assert alt_images.slide_use_state(alt_images.load_store()[IMG], "1aaa", "h") == alt_images.STATE_DRAFT
+    alt_images.save_slide_image(ctx, IMG, "1aaa", row.path, role="informative", short="s", long="l", reviewed=False)
+    assert alt_images.slide_use_state(alt_images.load_store(ctx)[IMG], "1aaa", "h") == alt_images.STATE_DRAFT
 
 
-def test_save_slide_forms_writes_only_changed_fields_and_stamps(store):
+def test_save_slide_forms_writes_only_changed_fields_and_stamps(ctx, store):
     row = slide(store, "1aaa")
-    alt_images.update_store(lambda e: e.update({IMG: alt_images.ImageEntry(image=IMG, short="old", long="L")}) or True)
-    entry = alt_images.load_store()[IMG]
+    alt_images.update_store(ctx, lambda e: e.update({IMG: alt_images.ImageEntry(image=IMG, short="old", long="L")}) or True)
+    entry = alt_images.load_store(ctx)[IMG]
     edit = edit_of(entry, "1aaa", short="new")
     # a worker wrote the long text while the form was open: the untouched field keeps it
-    alt_images.update_store(lambda e: setattr(e[IMG], "long", "worker") or True)
-    image_review.save_slide_forms("1aaa", row.path, [edit], reviewed=True)
-    saved = alt_images.load_store()[IMG]
+    alt_images.update_store(ctx, lambda e: setattr(e[IMG], "long", "worker") or True)
+    image_review.save_slide_forms(ctx, "1aaa", row.path, [edit], reviewed=True)
+    saved = alt_images.load_store(ctx)[IMG]
     assert (saved.short, saved.long, saved.status) == ("new", "worker", alt_images.STATUS_REVIEWED)
     assert saved.used_on["1aaa"].stored_hash == alt_images.slide_context_hash(row.path)
-    image_review.save_slide_forms("1aaa", row.path, [edit_of(saved, "1aaa")], reviewed=False)
-    assert alt_images.load_store()[IMG].used_on["1aaa"].reviewed == ""
+    image_review.save_slide_forms(ctx, "1aaa", row.path, [edit_of(saved, "1aaa")], reviewed=False)
+    assert alt_images.load_store(ctx)[IMG].used_on["1aaa"].reviewed == ""
 
 
-def test_save_slide_forms_creates_a_missing_entry(store):
+def test_save_slide_forms_creates_a_missing_entry(ctx, store):
     row = slide(store, "1aaa")
     blank = alt_images.ImageEntry(image=IMG)
-    image_review.save_slide_forms("1aaa", row.path, [edit_of(blank, "1aaa", short="s")], reviewed=False)
-    assert alt_images.load_store()[IMG].short == "s"
+    image_review.save_slide_forms(ctx, "1aaa", row.path, [edit_of(blank, "1aaa", short="s")], reviewed=False)
+    assert alt_images.load_store(ctx)[IMG].short == "s"
 
 
 def test_takeaway_follows_default_becomes_default_or_overrides():
@@ -164,18 +162,18 @@ def test_translation_provenance_keeps_the_workers_source_hash():
     assert entry.translated_from_hash == source
 
 
-def test_set_takeaway_default_clears_this_slides_override(store):
+def test_set_takeaway_default_clears_this_slides_override(ctx, store):
     entry = alt_images.ImageEntry(image=IMG)
     entry.used_on["1aaa"] = alt_images.SlideUse(takeaway="mine")
-    alt_images.update_store(lambda e: e.update({IMG: entry}) or True)
-    updated = alt_images.set_takeaway_default(IMG, "1aaa", "shared")
+    alt_images.update_store(ctx, lambda e: e.update({IMG: entry}) or True)
+    updated = alt_images.set_takeaway_default(ctx, IMG, "1aaa", "shared")
     assert updated.takeaway_default == "shared"
-    stored = alt_images.load_store()[IMG]
+    stored = alt_images.load_store(ctx)[IMG]
     assert (stored.takeaway_default, stored.used_on["1aaa"].takeaway) == ("shared", "")
-    assert alt_images.set_takeaway_default("media/none.png", "1aaa", "x") is None
+    assert alt_images.set_takeaway_default(ctx, "media/none.png", "1aaa", "x") is None
 
 
-def test_replace_image_copies_and_repoints_slides(store):
+def test_replace_image_copies_and_repoints_slides(ctx, store):
     source = store / "picked.png"
     source.write_bytes(b"png")
     one = slide(store, "1aaa", text=f"\\includegraphics{{{IMG}}}")
@@ -185,9 +183,9 @@ def test_replace_image_copies_and_repoints_slides(store):
     entries = {IMG: entry}
     rows = {"1aaa": one, "2bbb": two}
 
-    assert image_review.copy_into_media(source, "photo-b.png") == store / "media" / "photo-b.png"
+    assert image_review.copy_into_media(ctx, source, "photo-b.png") == store / "media" / "photo-b.png"
     assert (store / "media" / "photo-b.png").read_bytes() == b"png"
-    changed, failures = image_review.repoint_slides(
+    changed, failures = image_review.repoint_slides(ctx, 
         entry, entries, {"1aaa": one.path, "2bbb": two.path}, rows, IMG, "media/photo-b.png")
     assert changed == ["1aaa"] and "2bbb: reference not found" in failures[0]
     assert "media/photo-b.png" in one.path.read_text(encoding="utf-8")
@@ -196,42 +194,42 @@ def test_replace_image_copies_and_repoints_slides(store):
     assert image_review.has_text(entry) and not image_review.has_text(alt_images.ImageEntry(image=IMG))
 
 
-def test_copy_into_media_never_overwrites_and_free_names_count_up(store):
+def test_copy_into_media_never_overwrites_and_free_names_count_up(ctx, store):
     source = store / "picked.png"
     source.write_bytes(b"new")
     (store / "media").mkdir(exist_ok=True)
     (store / "media" / "photo-a.png").write_bytes(b"old")
     with pytest.raises(FileExistsError):
-        image_review.copy_into_media(source, "photo-a.png")
+        image_review.copy_into_media(ctx, source, "photo-a.png")
     assert (store / "media" / "photo-a.png").read_bytes() == b"old"
-    assert image_review.free_media_stem("photo-a", ".png") == "photo-a-2"
-    assert image_review.free_media_stem("photo-a", ".jpg") == "photo-a"
+    assert image_review.free_media_stem(ctx, "photo-a", ".png") == "photo-a-2"
+    assert image_review.free_media_stem(ctx, "photo-a", ".jpg") == "photo-a"
 
 
-def test_repoint_keeps_the_line_ends_and_makes_a_backup(store):
+def test_repoint_keeps_the_line_ends_and_makes_a_backup(ctx, store):
     entry = alt_images.ImageEntry(image=IMG, short="s")
     row = slide(store, "1aaa", text="x")
     row.path.write_bytes(f"a\r\n\\includegraphics{{{IMG}}}\r\n".encode())
-    changed, failures = image_review.repoint_slides(entry, {IMG: entry}, {"1aaa": row.path}, {}, IMG, "media/n.png")
+    changed, failures = image_review.repoint_slides(ctx, entry, {IMG: entry}, {"1aaa": row.path}, {}, IMG, "media/n.png")
     assert (changed, failures) == (["1aaa"], [])
     assert row.path.read_bytes() == b"a\r\n\\includegraphics{media/n.png}\r\n"
     assert len(list((store / "slides" / ".backups" / row.path.name).glob("*.tex"))) == 1
 
 
-def test_repoint_reports_unreadable_slide(store):
+def test_repoint_reports_unreadable_slide(ctx, store):
     entry = alt_images.ImageEntry(image=IMG)
-    changed, failures = image_review.repoint_slides(entry, {}, {"1aaa": Path(store / "missing.tex")}, {}, IMG, "media/n.png")
+    changed, failures = image_review.repoint_slides(ctx, entry, {}, {"1aaa": Path(store / "missing.tex")}, {}, IMG, "media/n.png")
     assert changed == [] and failures[0].startswith("1aaa:")
 
 
-def test_repoint_leaves_a_slide_with_unsaved_source_edits_alone(store):
+def test_repoint_leaves_a_slide_with_unsaved_source_edits_alone(ctx, store):
     """The Source buffer's own save would fail as stale if the file changed under it, and writing into the
     buffer would leave the slide on disk pointing at the old image: such a slide is refused, the rest go on."""
     entry = alt_images.ImageEntry(image=IMG, short="s")
     open_slide = slide(store, "1aaa", text=f"\\includegraphics{{{IMG}}}")
     other = slide(store, "2bbb", text=f"\\includegraphics{{{IMG}}}")
     targets = {"1aaa": open_slide.path, "2bbb": other.path}
-    changed, failures = image_review.repoint_slides(
+    changed, failures = image_review.repoint_slides(ctx, 
         entry, {IMG: entry}, targets, {}, IMG, "media/n.png", unsaved=lambda path: path == open_slide.path)
     assert changed == ["2bbb"]
     assert len(failures) == 1 and failures[0].startswith("1aaa:") and "unsaved edits" in failures[0]
@@ -239,13 +237,13 @@ def test_repoint_leaves_a_slide_with_unsaved_source_edits_alone(store):
     assert "media/n.png" in other.path.read_text(encoding="utf-8")
 
 
-def test_a_tuned_draft_stores_the_hint_and_a_cleared_hint(store):
-    alt_images.update_store(lambda entries: bool(entries.update({IMG: alt_images.ImageEntry(image=IMG, hint="old")})) or True)
+def test_a_tuned_draft_stores_the_hint_and_a_cleared_hint(ctx, store):
+    alt_images.update_store(ctx, lambda entries: bool(entries.update({IMG: alt_images.ImageEntry(image=IMG, hint="old")})) or True)
     result = alt_draft.DraftResult(short="s", long="l", takeaway="t")
-    assert alt_draft.apply_one_draft(IMG, result, "m", hint="") and alt_images.load_store()[IMG].hint == ""
-    assert alt_draft.apply_one_draft(IMG, result, "m", hint="y axis max 6800")
-    assert alt_images.load_store()[IMG].hint == "y axis max 6800"
-    assert alt_draft.apply_one_draft(IMG, result, "m") and alt_images.load_store()[IMG].hint == "y axis max 6800"
+    assert alt_draft.apply_one_draft(ctx, IMG, result, "m", hint="") and alt_images.load_store(ctx)[IMG].hint == ""
+    assert alt_draft.apply_one_draft(ctx, IMG, result, "m", hint="y axis max 6800")
+    assert alt_images.load_store(ctx)[IMG].hint == "y axis max 6800"
+    assert alt_draft.apply_one_draft(ctx, IMG, result, "m") and alt_images.load_store(ctx)[IMG].hint == "y axis max 6800"
 
 
 def test_media_names():
@@ -273,7 +271,7 @@ def test_apply_translation_merges_only_untouched_fields_and_proves_provenance():
     assert image_review.apply_translation(wrong, asked, english, dict(asked), english).provenance is None
 
 
-def test_preview_for_names_the_file_a_page_or_the_reason(store, monkeypatch):
+def test_preview_for_names_the_file_a_page_or_the_reason(ctx, store, monkeypatch):
     png = store / "media" / "photo-a.png"
     png.parent.mkdir(parents=True)
     png.write_bytes(b"png")
@@ -281,22 +279,22 @@ def test_preview_for_names_the_file_a_page_or_the_reason(store, monkeypatch):
     eps.write_bytes(b"eps")
     pdf = store / "media" / "figure.pdf"
     pdf.write_bytes(b"pdf")
-    monkeypatch.setattr(alt_blocks, "resolve_image", lambda reference: store / reference)
-    assert image_review.preview_for(IMG) == image_review.Preview(png, png)
-    assert image_review.preview_for("media/figure.eps").image is None
-    assert image_review.preview_for("media/figure.eps").original == eps
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, reference: store / reference)
+    assert image_review.preview_for(ctx, IMG) == image_review.Preview(png, png)
+    assert image_review.preview_for(ctx, "media/figure.eps").image is None
+    assert image_review.preview_for(ctx, "media/figure.eps").original == eps
     rendered = store / "rendered.png"
     monkeypatch.setattr(image_review.media_render, "ensure_rendered", lambda ctx, path: rendered)
-    assert image_review.preview_for("media/figure.pdf") == image_review.Preview(rendered, pdf)
+    assert image_review.preview_for(ctx, "media/figure.pdf") == image_review.Preview(rendered, pdf)
 
     def broken(ctx, path):
         raise RuntimeError("cannot render")
 
     lines = []
     monkeypatch.setattr(image_review.media_render, "ensure_rendered", broken)
-    shown = image_review.preview_for("media/figure.pdf", lines.append)
+    shown = image_review.preview_for(ctx, "media/figure.pdf", lines.append)
     assert shown.image is None and shown.original == pdf and "cannot render" in lines[0]
-    monkeypatch.setattr(alt_blocks, "resolve_image", lambda reference: None)
-    assert "not found" in image_review.preview_for(IMG).problem
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, reference: None)
+    assert "not found" in image_review.preview_for(ctx, IMG).problem
     monkeypatch.setattr(image_review.tikz_render, "ensure_rendered", lambda ctx, reference, log=None: rendered)
-    assert image_review.preview_for("tikz:abc") == image_review.Preview(rendered)
+    assert image_review.preview_for(ctx, "tikz:abc") == image_review.Preview(rendered)

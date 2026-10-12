@@ -33,7 +33,7 @@ OLLAMA_HOST_SETTING_KEY = "ollama_host"
 # rather than imported from either -- this module sits below both of them
 # in the import graph (they import get_ollama_host() from here), so it
 # has no business depending back on either just for one shared constant.
-_FALLBACK_OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 
 def _store_path(ctx: ProjectContext) -> Path:
@@ -84,7 +84,7 @@ def get_ollama_host(ctx: ProjectContext) -> str:
     saved = get(ctx, OLLAMA_HOST_SETTING_KEY)
     if saved:
         return saved
-    return os.environ.get("OLLAMA_HOST") or _FALLBACK_OLLAMA_HOST
+    return os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_HOST
 
 
 def set_ollama_host(ctx: ProjectContext, host: str) -> None:

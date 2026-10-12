@@ -201,13 +201,13 @@ class ImagesPage(ImageRunsMixin, Surface):
     def reload(self, preserve: Optional[Path] = None) -> None:
         """Scan the slides again (pending edits are saved as a draft first)."""
         self.flush()
-        report = alt_images.sync_store()
+        report = alt_images.sync_store(self.app.project)
         if report.added:
             self.app.log(f"alt-text store: added {len(report.added)} new image row(s).")
         if report.new_uses:
             self.app.log(f"alt-text store: {len(report.new_uses)} new slide/image reference(s) found.")
-        self._entries = alt_images.load_store()
-        self._views = image_review.scan_views(self._entries)
+        self._entries = alt_images.load_store(self.app.project)
+        self._views = image_review.scan_views(self.app.project, self._entries)
         self._populate(preserve or self._current_path())
 
     def _current_path(self) -> Optional[Path]:
@@ -232,7 +232,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         Forms without edits show what is stored now; a form with edits keeps them, except those of the
         images in `discard`, whose edits are given up for what is stored (even while a translation is
         on its way: the result is merged into whatever the form holds when it arrives)."""
-        self._entries = alt_images.load_store()
+        self._entries = alt_images.load_store(self.app.project)
         for view in self._views:
             view.state = image_review.slide_state(view.row, self._entries, view.slide_hash)
         self.nav.refresh_items(self._views, self._entries)
@@ -361,7 +361,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                                               for form in self._forms]):
             return False
         row = view.row
-        image_review.save_slide_forms(row.slide_id, row.path, [form.form_edit() for form in self._forms],
+        image_review.save_slide_forms(self.app.project, row.slide_id, row.path, [form.form_edit() for form in self._forms],
                                       reviewed=reviewed)
         self.app.log(f"{'Reviewed' if reviewed else 'Saved draft for'} {row.path.name}")
         view.slide_hash = alt_images.slide_context_hash(row.path)   # the slide may have changed since the scan
@@ -389,7 +389,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         view = self._current
         if view is None:
             return
-        entries = alt_images.load_store()
+        entries = alt_images.load_store(self.app.project)
         clearable = [reference for reference in view.row.images
                      if (entry := alt_images.lookup(entries, reference)) is not None
                      and alt_images.image_state(entry) == alt_images.STATE_DRAFT]
@@ -416,7 +416,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                     changed = True
             return changed
 
-        alt_images.update_store(mutate)
+        alt_images.update_store(self.app.project, mutate)
         self.app.log(f"Cleared draft(s) on {view.row.path.name}: {', '.join(clearable)}")
         self._refresh_states(discard=clearable)     # typed text would be saved again as a draft otherwise
 
@@ -430,12 +430,12 @@ class ImagesPage(ImageRunsMixin, Surface):
         if view is None or view.row.slide_id != form.slide_id:
             return
         others = sorted(slide_id for slide_id in form.entry.used_on if slide_id != form.slide_id)
-        sheet = ReplaceImageSheet(self, form.reference, others)
+        sheet = ReplaceImageSheet(self, self.app.project, form.reference, others)
         if not sheet.exec() or sheet.source is None:
             return
         self.flush()    # the forms are shown again once the slides are re-read
         try:
-            image_review.copy_into_media(sheet.source, sheet.new_name)
+            image_review.copy_into_media(self.app.project, sheet.source, sheet.new_name)
         except OSError as exc:
             QMessageBox.critical(self, "Replace image", f"Could not copy the file: {exc}")
             return
@@ -445,7 +445,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         if sheet.on_others.isChecked():
             targets.update({slide_id: rows[slide_id].path for slide_id in others if slide_id in rows})
         changed, failures = image_review.repoint_slides(
-            form.entry, self._entries, targets, rows, form.reference, f"media/{sheet.new_name}",
+            self.app.project, form.entry, self._entries, targets, rows, form.reference, f"media/{sheet.new_name}",
             unsaved=self.app.centre.is_dirty)
         for slide_id in changed:
             self.app.centre.sync_source(targets[slide_id])   # a clean buffer of the slide shows the new reference
@@ -456,12 +456,12 @@ class ImagesPage(ImageRunsMixin, Surface):
         # Only if no slide shows the old image any more does its description describe nothing.
         if image_review.is_unused_after(form.entry, changed):
             if not image_review.has_text(form.entry):
-                alt_images.delete_entry(form.entry.image)
+                alt_images.delete_entry(self.app.project, form.entry.image)
             elif QMessageBox.question(
                     self, "Replace image",
                     f"\"{form.reference}\" is no longer used on any slide. Delete its now-unused description "
                     "(short, long, takeaway and source text)?") == QMessageBox.StandardButton.Yes:
-                alt_images.delete_entry(form.entry.image)
+                alt_images.delete_entry(self.app.project, form.entry.image)
                 self.app.log(f"Deleted now-unused description for {form.entry.image}")
         self.reload(view.row.path)
 

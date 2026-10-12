@@ -7,7 +7,8 @@ import pytest
 from slidemage import alt_blocks, deck_editor, project, slide_add, slide_ids, slide_import, slide_versioning
 from slidemage.ai.providers import ChatReply, ProviderError
 
-from conftest import TEMPLATE, use_new_slide_files, use_project
+from conftest import TEMPLATE, use_new_slide_files
+from slidemage.project import ProjectContext
 
 
 @pytest.fixture
@@ -44,22 +45,22 @@ class Translator:
 
 # -- frames --------------------------------------------------------------------------------
 
-def test_every_frame_has_a_thumbnail_and_a_body_with_the_title():
+def test_every_frame_has_a_thumbnail_and_a_body_with_the_title(ctx):
     assert slide_add.FRAMES[0] == slide_add.STANDARD_FRAME
     for frame in slide_add.FRAMES:
         assert slide_add.frame_thumbnail(frame).is_file(), frame
     for frame in slide_add.FRAMES[1:]:
-        body = slide_add.frame_body(frame, "Growth & R_D")
+        body = slide_add.frame_body(ctx, frame, "Growth & R_D")
         assert "{Growth \\& R\\_D}" in body or "Growth \\& R\\_D" in body, frame
         assert "\n" not in body.replace("\r\n", ""), frame
     for frame in ("standardframe", "figureframe", "sideimageframe", "highlightframe", "sectionframe",
                   "titleframe"):
-        assert alt_blocks.frame_type(slide_add.frame_body(frame, "Hello")) == frame
+        assert alt_blocks.frame_type(slide_add.frame_body(ctx, frame, "Hello")) == frame
 
 
-def test_the_standard_frame_is_the_projects_template(files):
-    assert slide_add.frame_body("standardframe", "") == TEMPLATE
-    assert slide_add.frame_body("standardframe", " My title ") == TEMPLATE.replace("{Title}", "{My title}")
+def test_the_standard_frame_is_the_projects_template(ctx, files):
+    assert slide_add.frame_body(ctx, "standardframe", "") == TEMPLATE
+    assert slide_add.frame_body(ctx, "standardframe", " My title ") == TEMPLATE.replace("{Title}", "{My title}")
 
 
 @pytest.mark.parametrize("custom_template", [None, TEMPLATE + "% Custom template\r\n"])
@@ -68,32 +69,32 @@ def test_empty_project_can_add_a_standard_slide(tmp_path, monkeypatch, custom_te
     project.init_project(target, copy_example=False)
     relative = ".scripts/R_Slidemaster/inst/templates/slide-template.tex"
     template = target / relative
-    use_project(monkeypatch, target)
+    ctx = ProjectContext.at(target)
     expected = (project.template_dir("example") / relative).read_bytes().decode("utf-8")
     if custom_template is not None:
         template.parent.mkdir(parents=True)
         template.write_bytes(custom_template.encode("utf-8"))
         expected = custom_template
 
-    assert slide_ids.read_template() == expected
-    created = slide_add.create_new("First", "EN")
+    assert slide_ids.read_template(ctx) == expected
+    created = slide_add.create_new(ctx, "First", "EN")
     assert created.path.read_bytes().decode("utf-8") == slide_ids.build_new_slide_header() + expected
     assert template.exists() == (custom_template is not None)
 
 
 @pytest.mark.parametrize("bundled_available", [False, True])
 def test_missing_project_and_bundled_templates_raise(tmp_path, monkeypatch, bundled_available):
-    use_project(monkeypatch, tmp_path)     # no template in it
+    ctx = ProjectContext.at(tmp_path)     # no template in it
     monkeypatch.setattr(project, "template_dir", lambda _name: tmp_path if bundled_available else None)
 
     with pytest.raises(FileNotFoundError, match="No slide template found"):
-        slide_ids.read_template()
+        slide_ids.read_template(ctx)
 
 
 # -- new files -------------------------------------------------------------------------------
 
-def test_a_new_slide_gets_a_fresh_id_a_header_and_the_frames_text(files):
-    created = slide_add.create_new("My-Slide", "DE", "quoteframe", "Hello")
+def test_a_new_slide_gets_a_fresh_id_a_header_and_the_frames_text(ctx, files):
+    created = slide_add.create_new(ctx, "My-Slide", "DE", "quoteframe", "Hello")
     bare, language, slug = created.id_slug.split("-", 2)
     assert (language, slug) == ("DE", "My-Slide") and created.path == files / f"{created.id_slug}-current.tex"
     text = created.path.read_bytes().decode("utf-8")
@@ -101,43 +102,43 @@ def test_a_new_slide_gets_a_fresh_id_a_header_and_the_frames_text(files):
     assert "\\quoteframe{" in text and "\\SMAgendaTitle{Hello}" in text
     assert f'"{bare}"' in (files.parent / "slide_ids.csv").read_text()
     with pytest.raises(ValueError):
-        slide_add.create_new("Bad", "FR")
+        slide_add.create_new(ctx, "Bad", "FR")
 
 
-def test_a_duplicate_keeps_the_language_and_does_not_link(files, relinked):
+def test_a_duplicate_keeps_the_language_and_does_not_link(ctx, files, relinked):
     (files / "abc-DE-Demo-current.tex").write_bytes(
         b"%% Included in decks: talk\r\n%%\r\n\r\n\\begin{standardframe}{Demo}\r\nText\r\n\\end{standardframe}\r\n")
-    created = slide_add.create_copy("abc-DE-Demo", "Demo-Copy")
+    created = slide_add.create_copy(ctx, "abc-DE-Demo", "Demo-Copy")
     assert created.id_slug.endswith("-DE-Demo-Copy")
     text = created.path.read_bytes().decode("utf-8")
     assert text == "%% Included in decks: (none)\r\n%%\r\n\r\n\\begin{standardframe}{Demo}\r\nText\r\n\\end{standardframe}\r\n"
     assert "translation" not in (files / "abc-DE-Demo-current.tex").read_text() and relinked == []
     legacy = files / "old-slide-current.tex"
     legacy.write_bytes(b"body")
-    assert slide_add.create_copy("old-slide", "Copy").id_slug.endswith("-EN-Copy")   # never left untagged
+    assert slide_add.create_copy(ctx, "old-slide", "Copy").id_slug.endswith("-EN-Copy")   # never left untagged
 
 
-def test_a_translation_is_linked_both_ways(files, relinked):
+def test_a_translation_is_linked_both_ways(ctx, files, relinked):
     source = files / "abc-EN-Demo-current.tex"
     source.write_bytes(b"%% Included in decks: talk\r\n%%\r\n\r\nText\r\n")
-    created = slide_add.create_copy("abc-EN-Demo", "Demo", "DE")
+    created = slide_add.create_copy(ctx, "abc-EN-Demo", "Demo", "DE")
     assert created.path.read_bytes().decode("utf-8").startswith(
         "%% Included in decks: (none)\r\n%%\r\n%% Translation of: abc-EN-Demo\r\n%%\r\n\r\nText")
     assert f"%% DE translation: {created.id_slug}" in source.read_text()
     assert relinked == [True]
-    translated = slide_add.create_copy("abc-EN-Demo", "Demo-2", "DE", body="Text auf Deutsch\r\n")
+    translated = slide_add.create_copy(ctx, "abc-EN-Demo", "Demo-2", "DE", body="Text auf Deutsch\r\n")
     assert translated.path.read_bytes().decode("utf-8").endswith("\r\n\r\nText auf Deutsch\r\n")
 
 
 @pytest.mark.parametrize("language", [None, "DE"])
 @pytest.mark.parametrize("supplied_body", [False, True])
-def test_copies_start_untracked_like_new_slides_without_changing_the_source_body(files, language, supplied_body):
+def test_copies_start_untracked_like_new_slides_without_changing_the_source_body(ctx, files, language, supplied_body):
     source = files / "abc-EN-Demo-current.tex"
     source_body = "\\setSlideVersion{1-1-0}\r\nText\r\n"
     source_bytes = (slide_ids.build_new_slide_header() + source_body).encode("utf-8")
     source.write_bytes(source_bytes)
-    new = slide_add.create_new("New", "EN")
-    copied = slide_add.create_copy("abc-EN-Demo", "Copy", language,
+    new = slide_add.create_new(ctx, "New", "EN")
+    copied = slide_add.create_copy(ctx, "abc-EN-Demo", "Copy", language,
                                    body=source_body if supplied_body else None)
 
     assert slide_versioning.parse_version(new.path.read_text()) is None
@@ -171,15 +172,15 @@ def test_slugs():
 
 # -- translating -----------------------------------------------------------------------------
 
-def test_the_body_is_translated_as_one_block_and_keeps_its_line_ends():
+def test_the_body_is_translated_as_one_block_and_keeps_its_line_ends(ctx):
     model = Translator("Hallo\nWelt")
-    text, error = slide_add.translate_body(model, "Hello\r\nWorld\r\n")
+    text, error = slide_add.translate_body(ctx, model, "Hello\r\nWorld\r\n")
     assert (text, error) == ("Hallo\r\nWelt", None) and len(model.asked) == 1 and "Hello\r\nWorld" in model.asked[0]
-    assert slide_add.translate_body(Translator("Hallo\r\nWelt"), "Hello\nWorld")[0] == "Hallo\nWelt"
+    assert slide_add.translate_body(ctx, Translator("Hallo\r\nWelt"), "Hello\nWorld")[0] == "Hallo\nWelt"
 
 
-def test_a_failed_translation_is_reported_not_raised():
-    text, error = slide_add.translate_body(Translator(ProviderError("rate limited")), "Hello")
+def test_a_failed_translation_is_reported_not_raised(ctx):
+    text, error = slide_add.translate_body(ctx, Translator(ProviderError("rate limited")), "Hello")
     assert (text, error) == ("", "rate limited")
 
 
@@ -205,11 +206,11 @@ def test_the_call_follows_the_load_and_the_views():
 
 # -- the slides to pick from -----------------------------------------------------------------------
 
-def test_the_project_slides_with_title_and_language(files):
+def test_the_project_slides_with_title_and_language(ctx, files):
     (files / "bbb-DE-Zwei-current.tex").write_text("\\begin{standardframe}{Zwei}\nx\n\\end{standardframe}\n")
     (files / "aaa-EN-One-current.tex").write_text("\\begin{standardframe}{One}\nx\n\\end{standardframe}\n")
     (files / "aaa-EN-One-v1-0-0.tex").write_text("frozen")
-    assert slide_add.project_slides() == [
+    assert slide_add.project_slides(ctx) == [
         slide_add.ProjectSlide("aaa-EN-One", "One", "[EN]"), slide_add.ProjectSlide("bbb-DE-Zwei", "Zwei", "[DE]")]
 
 
@@ -491,7 +492,7 @@ def test_import_presentation_writes_files_and_appends_deck_calls(sample_presenta
     project_root = tmp_path / "project"
     (project_root / "slides").mkdir(parents=True)
     (project_root / "decks").mkdir()
-    use_project(monkeypatch, project_root)
+    ctx = ProjectContext.at(project_root)
 
     deck_text = "\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n"
     deck_path = project_root / "decks" / "test.tex"
@@ -501,7 +502,7 @@ def test_import_presentation_writes_files_and_appends_deck_calls(sample_presenta
         uses_biblatex=False, preamble_end=None, chapters=[], output_folders={}, tags=[],
     )
 
-    summary = slide_import.import_presentation(path, deck, "EN")
+    summary = slide_import.import_presentation(ctx, path, deck, "EN")
 
     assert len(summary.imported) == 2
     assert summary.skipped_blank == 1

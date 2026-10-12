@@ -109,7 +109,7 @@ class DetailsPane(Surface):
         path = self.current_path
         text = slide_source.read_slide_source(path)[0] if path.is_file() else ""
         version = slide_versioning.parse_version(text)
-        badge = slide_language.badge_for(self._id_slug)
+        badge = slide_language.badge_for(self.app.project, self._id_slug)
         _language, _, slug = slide_rename.parse_id_slug(self._id_slug)
         panel, layout = self._panel("Slide")
         grid = QGridLayout()
@@ -171,7 +171,7 @@ class DetailsPane(Surface):
         except ValueError as exc:
             QMessageBox.critical(self, "Rename slide", str(exc))
             return
-        n_refs = slide_rename.count_references(old)
+        n_refs = slide_rename.count_references(self.app.project, old)
         confirm = QMessageBox.question(
             self, "Rename slide",
             f"This will rename {slide_language.current_name(old)} (and any frozen versions of it) to {slide_language.current_name(new)}, "
@@ -179,7 +179,7 @@ class DetailsPane(Surface):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         try:
-            new = slide_rename.rename_slide_slug(old, slug)
+            new = slide_rename.rename_slide_slug(self.app.project, old, slug)
         except (FileNotFoundError, FileExistsError, ValueError) as exc:
             QMessageBox.critical(self, "Rename slide failed", str(exc))
             return
@@ -193,8 +193,8 @@ class DetailsPane(Surface):
         id_slug = self._id_slug
         if not self._guard("Delete slide"):
             return
-        decks = slide_rename.deck_names_referencing(id_slug)
-        n_refs = slide_rename.count_references(id_slug)
+        decks = slide_rename.deck_names_referencing(self.app.project, id_slug)
+        n_refs = slide_rename.count_references(self.app.project, id_slug)
         usage = (f"This slide is referenced {n_refs} time(s) across {len(decks)} deck(s): {', '.join(decks)}. "
                  "Deleting it will also remove those references, so none of those decks is left "
                  "pointing at a file that no longer exists." if decks
@@ -207,7 +207,7 @@ class DetailsPane(Surface):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         try:
-            result = slide_rename.delete_slide_id(id_slug)
+            result = slide_rename.delete_slide_id(self.app.project, id_slug)
         except (FileNotFoundError, OSError) as exc:
             QMessageBox.critical(self, "Delete slide failed", str(exc))
             return

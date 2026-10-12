@@ -8,7 +8,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ... import project
 from ... import (
     bibliography,
     compile_status,
@@ -41,7 +40,7 @@ def slide_or_file(ctx: ToolContext, arg: str | None) -> Path:
     """The file `arg` names: a slide id ("1y8" -> its -current.tex) or a project path; the file
     the user is looking at when empty."""
     if arg and arg.strip():
-        found = slide_language.current_path_for_bare_id(arg.strip()) if _BARE_ID.match(arg.strip()) else None
+        found = slide_language.current_path_for_bare_id(ctx.project, arg.strip()) if _BARE_ID.match(arg.strip()) else None
         return found or project_path(ctx.root, arg)
     focus = ctx.workspace.context().path
     if focus is None:
@@ -53,7 +52,7 @@ def open_deck(ctx: ToolContext, name: str | None = None) -> Deck:
     """The deck called `name`, else the one that is open, freshly read from disk."""
     wanted = (name or "").strip().removesuffix(".tex") or (
         ctx.workspace.context().deck.name if ctx.workspace.context().deck else "")
-    decks = deck_scan.scan_decks(project.transitional_context())
+    decks = deck_scan.scan_decks(ctx.project)
     for deck in decks:
         if deck.name == wanted:
             return deck
@@ -70,7 +69,7 @@ def open_deck(ctx: ToolContext, name: str | None = None) -> Deck:
 def list_slides(ctx: ToolContext, args: dict) -> str:
     deck = open_deck(ctx, args.get("deck"))
     context = ctx.workspace.context()
-    outline = deck_outline.build_outline(deck, context.view, context.language)
+    outline = deck_outline.build_outline(ctx.project, deck, context.view, context.language)
     section, contains = args.get("section", "").lower(), args.get("contains", "").lower()
     lines, shown, total, cut = [], 0, 0, False
     for part in outline:
@@ -112,7 +111,7 @@ def lint(ctx: ToolContext, args: dict) -> str:
     path = slide_or_file(ctx, args.get("path"))
     if path.suffix.lower() != ".tex":
         raise ToolError("Only .tex files are checked.")
-    issues = latex_lint.lint_text(current_text(ctx.workspace, path), path.name, path)
+    issues = latex_lint.lint_text(ctx.project, current_text(ctx.workspace, path), path.name, path)
     name = relative(ctx.root, path)
     if not issues:
         return f"{name}: no problems found."
@@ -132,10 +131,10 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     target = None
     if context.deck is not None:
         deck = open_deck(ctx)
-        row = deck_outline.slide_row(deck, slide_language.bare_id(path.name), context.view, context.language)
+        row = deck_outline.slide_row(ctx.project, deck, slide_language.bare_id(path.name), context.view, context.language)
         if row is not None and row.call.source_filename == path.name:
-            target = preview_target.for_call(project.transitional_context(), deck, row.call, row.position)
-    target = target or preview_target.for_path(project.transitional_context(), path)
+            target = preview_target.for_call(ctx.project, deck, row.call, row.position)
+    target = target or preview_target.for_path(ctx.project, path)
     if target is None:
         raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
     try:
@@ -191,21 +190,21 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     if (args.get("translation_of") or "").strip():
         source = slide_or_file(ctx, args["translation_of"])
         source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
-        if not slide_add.slide_path(source_id_slug).exists():
+        if not slide_add.slide_path(ctx.project, source_id_slug).exists():
             raise ToolError(f"'{args['translation_of']}' is not a slide. list_slides shows the ids.")
         if slide_language.own_language(source_id_slug) == language:
             raise ToolError(f"{source_id_slug} is already {language}; pass the target language.")
         body = slide_ids.slide_body(source).replace("\r\n", "\n")
     else:
-        body = slide_add.frame_body(frame, title).replace("\r\n", "\n")
-    planned = slide_add.slide_path(f"(new id)-{language}-{slug}")
+        body = slide_add.frame_body(ctx.project, frame, title).replace("\r\n", "\n")
+    planned = slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
     if not propose(ctx, planned, "", body, f"New slide {where}"):
         raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
     try:
         if source_id_slug:
-            created = slide_add.create_copy(source_id_slug, slug, language)
+            created = slide_add.create_copy(ctx.project, source_id_slug, slug, language)
         else:
-            created = slide_add.create_new(slug, language, frame, title)
+            created = slide_add.create_new(ctx.project, slug, language, frame, title)
     except (OSError, ValueError) as exc:
         raise ToolError(f"The slide was not created: {exc}") from None
     note = ""
@@ -243,13 +242,14 @@ def add_bib_entry(ctx: ToolContext, args: dict) -> str:
     if missing:
         raise ToolError(f"A {kind} entry needs: {', '.join(missing)}.")
     fields = {name: str(given[name]) for name in allowed if str(given.get(name, "")).strip()}
-    key = (args.get("key") or bibliography.suggest_key(fields["author"], fields["year"])).strip()
+    bib = ctx.project.bibliography_path
+    existing = bibliography.load(bib)
+    key = (args.get("key") or bibliography.suggest_key(fields["author"], fields["year"], existing)).strip()
     if not bibliography.KEY_RE.match(key):
         raise ToolError(f"The key '{key}' should be a lowercase surname plus the year, like 'smith2024'.")
-    bib = project.transitional_context().bibliography_path
     if ctx.workspace.is_dirty(bib):
         raise ToolError(f"{bib.name} has unsaved edits in the editor, so an entry cannot be added. Ask the user to save it.")
-    if key.lower() in {k.lower() for k in bibliography.load(bib)}:
+    if key.lower() in {k.lower() for k in existing}:
         raise ToolError(f"The citation key '{key}' already exists in {bib.name}. Use it, or choose another key.")
     entry = bibliography.format_entry(kind, key, fields)
     if not propose(ctx, bib, "", entry, f"New entry in {bib.name}"):
@@ -293,4 +293,4 @@ def compile_deck(ctx: ToolContext, args: dict) -> str:
       f"Read a short guide on SlideMage's slide conventions. Topics: {guides.topic_overview()}.",
       {"topic": {"type": "string", "enum": list(guides.TOPICS)}}, ("topic",))
 def read_guide(ctx: ToolContext, args: dict) -> str:
-    return guides.guide(args["topic"])
+    return guides.guide(ctx.project, args["topic"])

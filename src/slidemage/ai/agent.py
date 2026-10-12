@@ -162,10 +162,10 @@ class Agent:
         consent apply as they do to every cloud task."""
         if self.provider.is_local:
             return
-        if resolver.local_only():
+        if resolver.local_only(self.workspace.project):
             raise resolver.LocalOnlyError(
                 "Local AI only is on, so cloud models are disabled (Settings -> AI models).")
-        if resolver.needs_cloud_consent(self.provider):
+        if resolver.needs_cloud_consent(self.workspace.project, self.provider):
             if not self.workspace.confirm_cloud(self.provider):
                 raise ProviderError("Nothing was sent: using a cloud model was not confirmed.")
-            resolver.record_cloud_consent()
+            resolver.record_cloud_consent(self.workspace.project)

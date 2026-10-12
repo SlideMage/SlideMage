@@ -116,7 +116,7 @@ def find_used_slide_filenames(ctx: ProjectContext) -> set[str]:
         # Keep explicit pins even when a translation call is folded into another slot.
         used.update(call.source_filename for call in calls)
         for language in TRANSLATION_LANGUAGES:
-            for slot in deck_language.slots(calls, language, slides_dir=ctx.slides_dir):
+            for slot in deck_language.slots(ctx, calls, language):
                 used.add(slot.call.source_filename)
                 if slot.related_ids:
                     # Current headers identify the partner even when the call pins a version.

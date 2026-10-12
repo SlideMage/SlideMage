@@ -9,11 +9,10 @@ from functools import partial
 
 import pytest
 from agent_fakes import ScriptedProvider, call, reply
-from conftest import build_window, make_project, use_project, wait_until as _wait_until
+from conftest import build_window, make_project, wait_until as _wait_until
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
-from slidemage.project import transitional_context
 from slidemage import app_settings, compiler
 from slidemage.ai import credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
@@ -29,6 +28,7 @@ from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, T
 from slidemage.ui.workspace.chat.format import diff_rows, summarize_call
 from slidemage.ui.workspace.chat.session import current_route
 from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT, SPLIT_SETTING
+from slidemage.project import ProjectContext
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 EDIT = dict(path=SLIDE, old_text="First point", new_text="1st point")
@@ -50,16 +50,16 @@ def env(qapp, tmp_path, monkeypatch):
     """The main window on a throwaway project, the chat set to a Claude model with a key, and every request
     answered by the provider the test scripts."""
     root = make_project(monkeypatch, tmp_path / "project")
-    context = use_project(monkeypatch, root)
+    context = ProjectContext.at(root)
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
     app_settings.set(context, "chat_model", "anthropic:claude-sonnet-5-5")
     window = build_window(monkeypatch, context)
     window.show()
     window.state.set_mode("source")     # no Preview render thread to outlive the test
-    window.state.set_deck(next(d for d in scan_decks(transitional_context()) if d.name == "test"))
+    window.state.set_deck(next(d for d in scan_decks(window.project) if d.name == "test"))
     window.state.set_focused_slide("abc")
     providers = []
-    monkeypatch.setattr(resolver, "provider_for", lambda spec: providers.pop(0))
+    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, spec: providers.pop(0))
 
     class Env:
         pass
@@ -120,7 +120,7 @@ def test_the_right_column_split_is_saved_on_drag_and_restored_by_a_new_window(en
     panel, assistant = panels.sizes()
     ratio = panel / (panel + assistant)
     assert layout_settings.get(SPLIT_SETTING) == ratio
-    assert app_settings.get(transitional_context(), SPLIT_SETTING) is None
+    assert app_settings.get(env.window.project, SPLIT_SETTING) is None
 
     again = build_window(monkeypatch)
     again.resize(1280, 800)
@@ -358,7 +358,7 @@ def test_the_permission_is_remembered(env):
 @pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
 def test_stop_ends_a_run_that_waits_for_the_model(env, monkeypatch, local):
     if not local:
-        monkeypatch.setattr(resolver, "cloud_consent_given", lambda: True)
+        monkeypatch.setattr(resolver, "cloud_consent_given", lambda _ctx: True)
     script(env, blocked()).is_local = local
     env.chat.send("go")
     assert slot(env) == ("answering in the chat" if local else None)
@@ -616,14 +616,14 @@ def test_a_deck_the_agent_changed_goes_through_the_headers_and_the_slide_list(en
     assert edits and edits[0][0] == deck
 
 
-def test_the_cloud_consent_is_the_windows_question(env, monkeypatch):
+def test_the_cloud_consent_is_the_windows_question(ctx, env, monkeypatch):
     asked = []
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
     from slidemage.ai.providers import AnthropicProvider
     ws = env.chat.workspace
     assert on_thread(lambda: ws.confirm_cloud(AnthropicProvider("claude-sonnet-5-5"))) is True
     assert "cloud model (claude-sonnet-5-5 · cloud)" in asked[0]
-    assert "rendered previews" in asked[0] and resolver.cloud_consent_given()
+    assert "rendered previews" in asked[0] and resolver.cloud_consent_given(env.window.project)
 
 
 def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monkeypatch):
@@ -639,7 +639,7 @@ def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monke
         return True
 
     monkeypatch.setattr(compile_actions, "compile_jobs", fake_compile)
-    deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
+    deck = next(d for d in scan_decks(env.window.project) if d.name == "test")
     log = []
     results = on_thread(lambda: env.chat.workspace.compile_deck(deck, "instructor", compiler.CancelToken(), log.append))
     assert results == {"test-instructor": True, "x": False} and started and log == ["==== compiling ===="]
@@ -649,7 +649,7 @@ def test_the_chats_stop_ends_a_compile_without_asking(env, monkeypatch):
     stopped = []
     monkeypatch.setattr(compile_actions, "compile_jobs", lambda _window, jobs: True)
     monkeypatch.setattr(compile_actions, "stop_now", lambda _window: stopped.append(True))
-    deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
+    deck = next(d for d in scan_decks(env.window.project) if d.name == "test")
     cancel = compiler.CancelToken()
     box = {}
     thread = threading.Thread(target=lambda: box.update(r=env.chat.workspace.compile_deck(deck, "instructor", cancel, print)),
@@ -668,7 +668,7 @@ def test_a_tool_call_is_summarised_in_a_few_words():
     assert summarize_call(ToolCall("1", "list_slides", {})) == ""
 
 
-def test_diff_rows_show_changes_with_two_lines_of_context_and_gaps():
+def test_diff_rows_show_changes_with_two_lines_of_context_and_gaps(ctx):
     before = "\n".join(f"line {i}" for i in range(12))
     after = before.replace("line 5", "LINE 5\nextra")
     rows = diff_rows(before, after)

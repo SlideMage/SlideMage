@@ -27,7 +27,8 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, project, slide_language
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from .project import ProjectContext
 from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
 from .deck_scan import Deck
 from .tex_source import COMMENT_RE
@@ -271,7 +272,7 @@ def _document_body(text: str) -> str:
     return text[document_start:document_end]
 
 
-def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
+def _resolve_literal_include(ctx: ProjectContext, token: str, deck_dir: Path) -> Path | None:
     """Find a literal TeX include from the compiler working directory, then project."""
     requested = Path(token)
     names = [requested]
@@ -281,7 +282,7 @@ def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
     if requested.is_absolute():
         bases = [Path()]
     else:
-        bases = [deck_dir, project.transitional_context().root]
+        bases = [deck_dir, ctx.root]
 
     seen: set[Path] = set()
     for base in bases:
@@ -296,6 +297,7 @@ def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
 
 
 def _expand_literal_includes(
+    ctx: ProjectContext,
     source: str,
     source_path: Path,
     deck_dir: Path,
@@ -324,7 +326,7 @@ def _expand_literal_includes(
         if not token or "\\" in token or "#" in token:
             continue
 
-        include_path = _resolve_literal_include(token, deck_dir)
+        include_path = _resolve_literal_include(ctx, token, deck_dir)
         if include_path is None:
             raise FileNotFoundError(
                 f"Literal deck include {token!r} from {source_path} was not found."
@@ -335,7 +337,7 @@ def _expand_literal_includes(
 
         included_text = include_path.read_text(encoding="utf-8")
         expanded = _expand_literal_includes(
-            included_text, include_path, deck_dir, (*active_paths, include_path)
+            ctx, included_text, include_path, deck_dir, (*active_paths, include_path)
         )
         parts.append(body[copied_through:start])
         parts.append(expanded)
@@ -345,7 +347,7 @@ def _expand_literal_includes(
     return "".join(parts)
 
 
-def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
+def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[DeckSlide]:
     """Every slide the deck contains, in order, flagged for this version.
 
     Excluded slides are kept in the list with `included=False` rather than
@@ -364,7 +366,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     # the LaTeX counter: \subsection{}s since the chapter's \section{}
     subsection_starts = [m.start() for m in _SUBSECTION_RE.finditer(deck_language.masked(deck.text))]
 
-    for slot in deck_language.deck_slots(deck, language):
+    for slot in deck_language.deck_slots(ctx, deck, language):
         call = slot.call
         included = call.included_in(version)
         if call.macro == "slidestep" and not included:
@@ -376,7 +378,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
         slides.append(DeckSlide(
             number=number,
             slide_id=call.id,
-            path=project.transitional_context().slides_dir / call.source_filename,
+            path=ctx.slides_dir / call.source_filename,
             included=included,
             chapter=call.chapter.order if call.chapter else 0,
             subsection=subsection,
@@ -614,7 +616,7 @@ def _transform_environments(text: str, name: str, handler) -> str:
 _ITEM_SPLIT_RE = re.compile(r"\\item\b\s*(?:<[^>]*>)?")
 
 
-def _render_list(body: str, marker: str, depth: int) -> str:
+def _render_list(body: str, marker: str, depth: int, bib: dict) -> str:
     # Convert nested list environments FIRST and park them in placeholders.
     # Splitting on \item otherwise tears a nested list apart -- its own \items
     # become items of the outer list and its \begin/\end survive as the stray
@@ -622,7 +624,7 @@ def _render_list(body: str, marker: str, depth: int) -> str:
     parked: list[str] = []
 
     def park(inner: str, m=marker) -> str:
-        parked.append("\n" + _render_list(inner, m, depth + 1) + "\n")
+        parked.append("\n" + _render_list(inner, m, depth + 1, bib) + "\n")
         return f"\x00{len(parked) - 1}\x00"
 
     for nested_name, nested_marker in _LIST_ENVIRONMENTS.items():
@@ -634,7 +636,7 @@ def _render_list(body: str, marker: str, depth: int) -> str:
     lead = items[0].strip()
     lines: list[str] = []
     if lead:                                # text before the first \item
-        rendered_lead = _inline_markdown(lead)
+        rendered_lead = _inline_markdown(lead, bib)
         for slot, text in enumerate(parked):
             rendered_lead = rendered_lead.replace(f"\x00{slot}\x00", text)
         lines.append(rendered_lead)
@@ -647,9 +649,9 @@ def _render_list(body: str, marker: str, depth: int) -> str:
         if stripped.startswith("["):
             close = stripped.find("]")
             if close != -1:
-                label = _inline_markdown(stripped[1:close]).strip()
+                label = _inline_markdown(stripped[1:close], bib).strip()
                 raw = stripped[close + 1:]
-        rendered = _convert_body(raw, depth + 1).strip()
+        rendered = _convert_body(raw, bib, depth + 1).strip()
         if label and rendered:
             rendered = f"{label} {rendered}"
         for slot, text in enumerate(parked):
@@ -675,7 +677,7 @@ def _skip_optional_argument(body: str) -> str:
     return body
 
 
-def _render_block(body: str, label: str) -> str:
+def _render_block(body: str, label: str, bib: dict) -> str:
     """A beamer block becomes a titled Markdown quote."""
     title = ""
     stripped = _skip_optional_argument(body).lstrip()
@@ -689,8 +691,8 @@ def _render_block(body: str, label: str) -> str:
         title, after = alt_blocks.braced_argument(stripped, 0)
         if after > 0:
             body = stripped[after:]
-    heading = _inline_markdown(title).strip() or label.replace("block", "").title()
-    inner = _convert_body(body, 0).strip()
+    heading = _inline_markdown(title, bib).strip() or label.replace("block", "").title()
+    inner = _convert_body(body, bib, 0).strip()
     quoted = "\n".join(f"> {line}" if line.strip() else ">"
                        for line in inner.splitlines())
     return f"\n> **{heading}**\n>\n{quoted}\n"
@@ -732,7 +734,7 @@ def _flatten_table(body: str, spec_args: int = 1) -> str:
                     _TABLE_CELL_END_RE.split(_TABLE_ROW_END_RE.sub(" ", body)))
 
 
-def _render_table(body: str, spec_args: int = 1) -> str:
+def _render_table(body: str, bib: dict, spec_args: int = 1) -> str:
     """Best-effort LaTeX table to Markdown table.
 
     Deliberately conservative: rows are split on `\\\\` and cells on `&`, and
@@ -746,7 +748,7 @@ def _render_table(body: str, spec_args: int = 1) -> str:
     body = re.sub(r"\\(?:hline|toprule|midrule|bottomrule|rowcolor\{[^}]*\})", "",
                   body)
     rows = [r.strip() for r in _TABLE_ROW_END_RE.split(body) if r.strip()]
-    cells = [[_inline_markdown(c).strip() for c in _TABLE_CELL_END_RE.split(row)]
+    cells = [[_inline_markdown(c, bib).strip() for c in _TABLE_CELL_END_RE.split(row)]
              for row in rows]
     cells = [row for row in cells if any(c for c in row)]
     if not cells:
@@ -926,27 +928,15 @@ _CITE_RE = re.compile(r"\\(fullcite|textcite|citep|citet|cite)\s*\{([^}]*)\}")
 _CITE_STYLES = {"fullcite": "full", "textcite": "text", "citet": "text",
                 "citep": "paren", "cite": "paren"}
 
-_BIB_CACHE: dict | None = None
-
-
-def _bib() -> dict:
-    """Slidemaster.bib, parsed once per process."""
-    global _BIB_CACHE
-    if _BIB_CACHE is None:
-        _BIB_CACHE = bibliography.load()
-    return _BIB_CACHE
-
-
-def _render_citation(match: re.Match) -> str:
+def _render_citation(match: re.Match, bib: dict) -> str:
     style = _CITE_STYLES.get(match.group(1), "full")
     keys = [k.strip() for k in match.group(2).split(",") if k.strip()]
-    entries = _bib()
-    return "; ".join(bibliography.format_citation(k, entries, style)
+    return "; ".join(bibliography.format_citation(k, bib, style)
                      for k in keys)
 _FOOTNOTE_RE = re.compile(r"\\footnote\s*(?:\[[^\]]*\])?\s*\{")
 
 
-def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> str:
+def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str, bib: dict) -> str:
     out: list[str] = []
     index = 0
     while True:
@@ -959,12 +949,12 @@ def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> 
         if after == match.end() - 1:
             out.append(text[match.start():])
             return "".join(out)
-        inner = _inline_markdown(content).strip()
+        inner = _inline_markdown(content, bib).strip()
         out.append(f"{prefix}{inner}{suffix}" if inner else "")
         index = after
 
 
-def _inline_markdown(text: str) -> str:
+def _inline_markdown(text: str, bib: dict) -> str:
     """Inline-level LaTeX to Markdown. Recursive: macros nest."""
     text = _park_code_spans(text)
     text = _COLOR_COMMAND_RE.sub("", text)
@@ -991,20 +981,20 @@ def _inline_markdown(text: str) -> str:
             text = text[:match.start()] + url + text[after:]
             continue
         text = (text[:match.start()]
-                + f"[{_inline_markdown(label).strip()}]({url.strip()})"
+                + f"[{_inline_markdown(label, bib).strip()}]({url.strip()})"
                 + text[after2:])
 
-    text = _apply_wrapped(text, _URL_RE, "<", ">")
+    text = _apply_wrapped(text, _URL_RE, "<", ">", bib)
     text = _ELLIPSIS_RE.sub("…", text)
     # Footnotes are inlined: a transcript reader has nothing to hover over.
-    text = _apply_wrapped(text, _FOOTNOTE_RE, " (", ")")
+    text = _apply_wrapped(text, _FOOTNOTE_RE, " (", ")", bib)
     # Citation keys are resolved against Slidemaster.bib, so a source line
     # reads "Loughran, Ritter & Rydqvist (1995), ..." rather than the bare
     # key. An unknown key renders as "[key]" rather than disappearing.
-    text = _CITE_RE.sub(_render_citation, text)
+    text = _CITE_RE.sub(lambda m: _render_citation(m, bib), text)
 
     for pattern, prefix, suffix in _INLINE_MACROS:
-        text = _apply_wrapped(text, pattern, prefix, suffix)
+        text = _apply_wrapped(text, pattern, prefix, suffix, bib)
 
     for escaped, plain in (("\\$", "$"), ("\\&", "&"), ("\\_", "_"),
                            ("\\#", "#"), ("\\%", "%"), ("\\,", " ")):
@@ -1022,7 +1012,7 @@ _TABLE_LINE_RE = re.compile(r"^\s*\|.*\|\s*$")
 _NODE_RE = re.compile(r"\\node\b")
 
 
-def _tikz_labels(body: str) -> str:
+def _tikz_labels(body: str, bib: dict) -> str:
     """The text of a tikzpicture's `\\node{...}` labels, drawing syntax dropped.
 
     A node is `\\node[opts] (name) at (coord) {LABEL};` -- the label is the last
@@ -1055,7 +1045,7 @@ def _tikz_labels(body: str) -> str:
         content, after = alt_blocks.braced_argument(span, last_open)
         if after == last_open or "includegraphics" in content:
             continue
-        rendered = _convert_body(content).strip()
+        rendered = _convert_body(content, bib).strip()
         # The same node is often re-emitted once per overlay step; the
         # transcript has no overlays, so consecutive repeats are noise.
         if rendered and (not labels or labels[-1] != rendered):
@@ -1154,7 +1144,7 @@ def _toc_slot(match: re.Match) -> str:
     return f"\n\x02SMTOC:{spec}\x02\n"
 
 
-def _convert_body(text: str, depth: int = 0) -> str:
+def _convert_body(text: str, bib: dict, depth: int = 0) -> str:
     text = _park_code_spans(text)
     text = _CONTROL_SPACE_RE.sub(r"\1 ", text)
     text = _SETBEAMER_RE.sub("", text)
@@ -1174,18 +1164,18 @@ def _convert_body(text: str, depth: int = 0) -> str:
     # A tikzillustration is described like an image, in its own section;
     # its node labels would only repeat that description.
     text = _transform_environments(text, "tikzillustration", lambda _body: "")
-    text = _transform_environments(text, "tikzpicture", _tikz_labels)
+    text = _transform_environments(text, "tikzpicture", lambda body: _tikz_labels(body, bib))
     for name in _UNWRAP_ENVIRONMENTS:
         text = _transform_environments(text, name, lambda body: "\n" + body + "\n")
     for name in _BLOCK_ENVIRONMENTS:
         text = _transform_environments(
-            text, name, lambda body, n=name: _render_block(body, n))
+            text, name, lambda body, n=name: _render_block(body, n, bib))
     for name, spec_args in _TABLE_SPEC_ARGS.items():
         text = _transform_environments(
-            text, name, lambda body, n=spec_args: _render_table(body, n))
+            text, name, lambda body, n=spec_args: _render_table(body, bib, n))
     for name, marker in _LIST_ENVIRONMENTS.items():
         text = _transform_environments(
-            text, name, lambda body, m=marker: "\n" + _render_list(body, m, depth) + "\n")
+            text, name, lambda body, m=marker: "\n" + _render_list(body, m, depth, bib) + "\n")
 
     # Table rows are skipped: their cells were already converted in
     # _render_table, and re-running inline conversion turns the separator
@@ -1193,7 +1183,7 @@ def _convert_body(text: str, depth: int = 0) -> str:
     # recognised as a table at all -- every cell then renders as a stray
     # paragraph beginning with a pipe.
     lines = [line.rstrip() if _TABLE_LINE_RE.match(line)
-             else _inline_markdown(line).rstrip()
+             else _inline_markdown(line, bib).rstrip()
              for line in text.splitlines()]
     out: list[str] = []
     for line in lines:
@@ -1220,13 +1210,13 @@ _CODE_LINE_KEY_RE = re.compile(r"\b(firstline|lastline)\s*=\s*(\d+)")
 _CODE_SLOT = "\x02SMCODE{}\x02"
 
 
-def _park_code_files(text: str) -> tuple[str, list[str]]:
+def _park_code_files(ctx: ProjectContext, text: str) -> tuple[str, list[str]]:
     blocks: list[str] = []
 
     def park(match: re.Match) -> str:
         ref = match.group(2).strip()
         try:
-            lines = (project.transitional_context().root / ref).read_text(encoding="utf-8").splitlines()
+            lines = (ctx.root / ref).read_text(encoding="utf-8").splitlines()
         except OSError:
             lines = [f"(code file {ref} not found)"]
         keys = dict(_CODE_LINE_KEY_RE.findall(match.group(1) or ""))
@@ -1356,12 +1346,15 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
         index = after_second
 
 
-def render_slide(deck_slide: DeckSlide, version: str,
+def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
                  entries: dict[str, "alt_images.ImageEntry"],
                  slide_notes: dict[str, "alt_images.SlideNotes"] | None = None,
-                 language: str = "en",
+                 language: str = "en", bib: dict | None = None,
                  ) -> TranscriptSlide | None:
-    """Turn one slide file into a transcript entry, or None if unreadable."""
+    """Turn one slide file into a transcript entry, or None if unreadable. `bib` is the project's
+    parsed .bib (read here when a caller rendering many slides does not hand it in)."""
+    if bib is None:
+        bib = bibliography.load(ctx.bibliography_path)
     try:
         source_text = deck_slide.path.read_text(encoding="utf-8")
     except OSError:
@@ -1386,7 +1379,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
     has_subsection_agenda = bool(_SUBSECTION_AGENDA_RE.search(body))
     body = _SUBSECTION_AGENDA_RE.sub("\n\n" + _SUBAGENDA_SLOT + "\n\n", body)
     body = _TOC_RE.sub(_toc_slot, body)
-    agenda_title = (_finish(_inline_markdown(agenda_titles[0]).strip())
+    agenda_title = (_finish(_inline_markdown(agenda_titles[0], bib).strip())
                     if agenda_titles else "")
 
     slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path)
@@ -1437,13 +1430,13 @@ def render_slide(deck_slide: DeckSlide, version: str,
             body = ""
 
     notes = (slide_notes or {}).get(slide_id)
-    body, code_blocks = _park_code_files(body)
+    body, code_blocks = _park_code_files(ctx, body)
     entry = TranscriptSlide(
         number=deck_slide.number,
         slide_id=slide_id,
         title=title,
-        body=_unpark_code_files(_finish(_convert_body(body).strip()), code_blocks),
-        source=_finish(" ".join(_inline_markdown(" ".join(sources)).split())),
+        body=_unpark_code_files(_finish(_convert_body(body, bib).strip()), code_blocks),
+        source=_finish(" ".join(_inline_markdown(" ".join(sources), bib).split())),
         summary=notes.summary if notes else "",
         agenda_title=agenda_title,
         chapter_agenda=has_chapter_agenda,
@@ -1554,26 +1547,26 @@ def _fill_chapter_agendas(entries: list[TranscriptSlide], chapters: list[int],
             entry.body = entry.body.replace(_SUBAGENDA_SLOT, block).strip()
 
 
-def _section_titles(deck_path: Path) -> list[str]:
+def _section_titles(ctx: ProjectContext, deck_path: Path, bib: dict) -> list[str]:
     """The deck's \\section titles, in order (literal includes expanded, as
     resolve_deck() counts them)."""
     source = deck_path.read_text(encoding="utf-8")
-    text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
+    text = _expand_literal_includes(ctx, source, deck_path, deck_path.parent.resolve(),
                                     (deck_path.resolve(),))
     text = COMMENT_RE.sub("", text)
     titles: list[str] = []
     for match in _SECTION_RE.finditer(text):
         title, _after = alt_blocks.braced_argument(text, match.end() - 1)
-        titles.append(_finish(_inline_markdown(title).strip()))
+        titles.append(_finish(_inline_markdown(title, bib).strip()))
     return titles
 
 
-def _subsection_titles(deck_path: Path) -> dict[int, list[str]]:
+def _subsection_titles(ctx: ProjectContext, deck_path: Path, bib: dict) -> dict[int, list[str]]:
     """The deck's \\subsection titles per chapter (1-based \\section number;
     0 = before the first), in order -- the same text and counting as
     resolve_deck()'s DeckSlide.subsection."""
     source = deck_path.read_text(encoding="utf-8")
-    text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
+    text = _expand_literal_includes(ctx, source, deck_path, deck_path.parent.resolve(),
                                     (deck_path.resolve(),))
     text = COMMENT_RE.sub("", text)
     section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
@@ -1581,7 +1574,7 @@ def _subsection_titles(deck_path: Path) -> dict[int, list[str]]:
     for match in _SUBSECTION_RE.finditer(text):
         title, _after = alt_blocks.braced_argument(text, match.end() - 1)
         chapter = bisect.bisect_left(section_starts, match.start())
-        titles.setdefault(chapter, []).append(_finish(_inline_markdown(title).strip()))
+        titles.setdefault(chapter, []).append(_finish(_inline_markdown(title, bib).strip()))
     return titles
 
 
@@ -1624,7 +1617,7 @@ def _fill_deck_tocs(entries: list[TranscriptSlide], chapters: list[int],
 
 
 def generate_single_slide(
-    source_text: str, bare_id: str, version: str, language: str
+    ctx: ProjectContext, source_text: str, bare_id: str, version: str, language: str
 ) -> TranscriptResult:
     """The Preview's own "Render transcript" menu entry (2026-08-25)
     -- one slide's transcript entry, independent of any real deck (no
@@ -1648,14 +1641,14 @@ def generate_single_slide(
     if version not in STUDENT_VERSIONS:
         version = VIEW_DURING
 
-    entries = alt_images.load_store()
-    slide_notes = alt_images.load_slide_notes()
+    entries = alt_images.load_store(ctx)
+    slide_notes = alt_images.load_slide_notes(ctx)
     tmp_dir = Path(tempfile.mkdtemp(prefix="slidemage-transcript-"))
     try:
         tmp_path = tmp_dir / slide_language.current_name(bare_id)
         tmp_path.write_text(source_text, encoding="utf-8", newline="")
         deck_slide = DeckSlide(number=1, slide_id=bare_id, path=tmp_path, included=True)
-        entry = render_slide(deck_slide, version, entries, slide_notes, language=language)
+        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1687,7 +1680,7 @@ class TranscriptResult:
     language: str = "en"
 
 
-def generate(deck_path: Path, version: str) -> TranscriptResult:
+def generate(ctx: ProjectContext, deck_path: Path, version: str) -> TranscriptResult:
     if version not in STUDENT_VERSIONS:
         raise ValueError(
             f"Transcripts are generated for {' and '.join(STUDENT_VERSIONS)} "
@@ -1698,9 +1691,10 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     strings = STRINGS[language]
     version_labels = _VERSION_LABELS_BY_LANGUAGE[language]
 
-    entries = alt_images.load_store()
-    slide_notes = alt_images.load_slide_notes()
-    deck_slides = resolve_deck(deck_path, version)
+    entries = alt_images.load_store(ctx)
+    slide_notes = alt_images.load_slide_notes(ctx)
+    bib = bibliography.load(ctx.bibliography_path)
+    deck_slides = resolve_deck(ctx, deck_path, version)
     rendered: list[TranscriptSlide] = []
     chapters: list[int] = []
     subsections: list[int] = []
@@ -1709,7 +1703,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     for deck_slide in deck_slides:
         if not deck_slide.included:
             continue
-        entry = render_slide(deck_slide, version, entries, slide_notes, language=language)
+        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language, bib=bib)
         if entry is None:
             missing_files.append(deck_slide.path.name)
             continue
@@ -1717,8 +1711,8 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
         chapters.append(deck_slide.chapter)
         subsections.append(deck_slide.subsection)
     _fill_chapter_agendas(rendered, chapters, language, subsections,
-                          _subsection_titles(deck_path))
-    _fill_deck_tocs(rendered, chapters, _section_titles(deck_path), language)
+                          _subsection_titles(ctx, deck_path, bib))
+    _fill_deck_tocs(rendered, chapters, _section_titles(ctx, deck_path, bib), language)
 
     undescribed = sum(1 for s in rendered if s.missing_description)
 
@@ -1949,7 +1943,7 @@ def to_html(result: TranscriptResult, title: str) -> str:
                               lang=result.language)
 
 
-def resolve_transcript_location(deck: Deck, deck_path: Path, version: str) -> tuple[Path, str]:
+def resolve_transcript_location(ctx: ProjectContext, deck: Deck, deck_path: Path, version: str) -> tuple[Path, str]:
     """Where this deck's transcript should land, and what its filename
     (without extension) should be: a deck-declared
     \\deckoutputfolder[transcript]{...} (deck_scan.py's OUTPUT_FOLDER_RE),
@@ -1975,7 +1969,6 @@ def resolve_transcript_location(deck: Deck, deck_path: Path, version: str) -> tu
     bare folder, its own stem names both the .md and .html output --
     same "full filename, not just a folder" rule as
     compiler.resolve_output_location()."""
-    ctx = project.transitional_context()
     default_stem = f"{deck_path.stem}-{version}-transcript"
     raw = deck.output_folders.get("transcript") or deck.output_folders.get(None)
     if raw is None:
@@ -1987,12 +1980,12 @@ def resolve_transcript_location(deck: Deck, deck_path: Path, version: str) -> tu
     return resolved, default_stem
 
 
-def write_transcript(deck_path: Path, version: str,
+def write_transcript(ctx: ProjectContext, deck_path: Path, version: str,
                      directory: Path | None = None,
                      filename_stem: str | None = None) -> tuple[Path, Path, TranscriptResult]:
     """Generate and write both formats. Returns (markdown path, html path, result)."""
-    result = generate(deck_path, version)
-    target_dir = directory or (project.transitional_context().root / "transcripts")
+    result = generate(ctx, deck_path, version)
+    target_dir = directory or (ctx.root / "transcripts")
     target_dir.mkdir(parents=True, exist_ok=True)
     stem = filename_stem or f"{deck_path.stem}-{version}-transcript"
 

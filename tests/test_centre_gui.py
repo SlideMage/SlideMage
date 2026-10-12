@@ -21,8 +21,6 @@ from slidemage.ui.workspace import preview_view, render_check
 from slidemage.ui.workspace.centre import CentreColumn
 from slidemage.ui.workspace.state import WorkspaceState
 
-from conftest import use_project
-from slidemage.project import transitional_context
 
 FRAME = "\\begin{standardframe}{%s}\nText\n\\end{standardframe}\n"
 DECK = (
@@ -32,10 +30,10 @@ DECK = (
 
 
 class FakeApp:
-    project = property(lambda self: transitional_context())
     """What the centre needs of the window."""
 
-    def __init__(self):
+    def __init__(self, project):
+        self.project = project
         self.theme = ThemeManager()
         self.logged = []
         self.added = []
@@ -59,9 +57,8 @@ def project(tmp_path, monkeypatch):
     (slides / "bbb-EN-Two-current.tex").write_text(FRAME % "Second now", encoding="utf-8")
     (slides / "bbb-EN-Two-v1-0-0.tex").write_text("\\setSlideVersion{1-0-0}\n" + FRAME % "Second then", encoding="utf-8")
     (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
-    use_project(monkeypatch, slides.parent)
     (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
-    monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
+    monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
     return slides
 
@@ -101,10 +98,10 @@ def renders(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def centre(qapp, project, deck, monkeypatch):
+def centre(qapp, project, deck, monkeypatch, ctx):
     monkeypatch.setattr(render_check, "confirm_render", lambda *a, **k: True)
-    app = FakeApp()
-    state = WorkspaceState(transitional_context())
+    app = FakeApp(ctx)
+    state = WorkspaceState(ctx)
     centre = CentreColumn(app, state)
     app.centre = centre
     state.set_deck(deck)
@@ -162,7 +159,6 @@ def test_saving_renders_only_the_active_language_when_the_page_is_visible(centre
     active, other = (english, german) if language == "EN" else (german, english)
     before = other.read_bytes()
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda *_args: "overwrite")
-    use_project(monkeypatch, project.parent)
     centre.state.set_focused_slide("aaa")
     centre.state.set_mode("split")
     centre.state.set_language(language)
@@ -193,10 +189,10 @@ def test_an_outdated_translation_shows_a_chip(centre, project, monkeypatch):
     state = centre.state
     state.set_focused_slide("bbb")
     link = slide_language.TranslationLink("bbb-DE-Zwei", "DE", project / "bbb-DE-Zwei-current.tex", False, True)
-    monkeypatch.setattr(preview_view, "translation_link", lambda id_slug: link)
+    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: link)
     centre.preview._refresh()
     assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN"]
-    monkeypatch.setattr(preview_view, "translation_link", lambda id_slug: None)
+    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: None)
     centre.preview._refresh()
     assert "Translation outdated" not in chip_texts(centre)
 
@@ -345,10 +341,10 @@ def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current
     assert not centre.preview._status_chip.isVisibleTo(centre) and len(renders) == 2
 
 
-def test_the_cached_snapshot_is_shown_for_the_instructor_view(centre, project, tmp_path):
+def test_the_cached_snapshot_is_shown_for_the_instructor_view(ctx, centre, project, tmp_path):
     centre.state.set_focused_slide("aaa")
     template = centre.preview._target.template
-    png = slide_snapshot.snapshot_path(transitional_context(), "aaa", template, slide_snapshot.FULL_SIZE)
+    png = slide_snapshot.snapshot_path(ctx, "aaa", template, slide_snapshot.FULL_SIZE)
     doc = pymupdf.open()
     page_ = doc.new_page(width=320, height=180)
     png.write_bytes(page_.get_pixmap().tobytes("png"))
@@ -473,7 +469,6 @@ def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monk
     from slidemage.ui.workspace import source_file
 
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
-    use_project(monkeypatch, project.parent)
     centre.state.set_mode("split")
     centre.state.set_focused_slide("aaa")
     centre.source.current.editor.insertPlainText("\\begin{standardframe}{x}{oops")
@@ -486,7 +481,7 @@ def test_the_transcript_of_the_buffer_opens_in_a_preview_sheet(centre, monkeypat
     centre.state.set_focused_slide("aaa")
     asked = []
 
-    def generate(text, bare, view, language):
+    def generate(ctx, text, bare, view, language):
         asked.append((bare, view, language))
         return SimpleNamespace(undescribed=True)
 
@@ -555,11 +550,11 @@ def test_rename_and_delete_go_through_slide_rename(centre, project, monkeypatch)
     from slidemage.ui.workspace import details_view
 
     calls = []
-    monkeypatch.setattr(slide_rename, "count_references", lambda id_slug: 2)
-    monkeypatch.setattr(slide_rename, "deck_names_referencing", lambda id_slug: ["course"])
-    monkeypatch.setattr(slide_rename, "rename_slide_slug", lambda old, slug: calls.append(("slug", old, slug)) or "ccc-DE-Drie")
+    monkeypatch.setattr(slide_rename, "count_references", lambda _ctx, id_slug: 2)
+    monkeypatch.setattr(slide_rename, "deck_names_referencing", lambda _ctx, id_slug: ["course"])
+    monkeypatch.setattr(slide_rename, "rename_slide_slug", lambda _ctx, old, slug: calls.append(("slug", old, slug)) or "ccc-DE-Drie")
     monkeypatch.setattr(slide_rename, "delete_slide_id",
-                        lambda id_slug: calls.append(("delete", id_slug)) or {"files_removed": 1, "deck_references_removed": 2})
+                        lambda _ctx, id_slug: calls.append(("delete", id_slug)) or {"files_removed": 1, "deck_references_removed": 2})
     monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
     monkeypatch.setattr(details_view.QInputDialog, "getText", lambda *a, **k: ("Drie", True))
     refreshed = []

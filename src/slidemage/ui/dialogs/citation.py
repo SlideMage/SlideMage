@@ -195,7 +195,7 @@ class CitationDialog(ModalSheet):
     def _update_suggested_key(self) -> None:
         if self._key_manually_edited:
             return
-        suggestion = bibliography.suggest_key(self.author_entry.text(), self.year_entry.text())
+        suggestion = bibliography.suggest_key(self.author_entry.text(), self.year_entry.text(), bibliography.load(self.app.project.bibliography_path))
         # setText (not textEdited-triggering user input) -- doesn't re-mark
         # _key_manually_edited, so this stays live as author/year change.
         self.key_entry.blockSignals(True)
@@ -215,7 +215,7 @@ class CitationDialog(ModalSheet):
                 "just unconventional."
             )
             return
-        existing = bibliography.load()
+        existing = bibliography.load(self.app.project.bibliography_path)
         if key.lower() in {k.lower() for k in existing}:
             self.key_status_label.setText(f"⚠ \"{key}\" already exists in Slidemaster.bib -- pick another.")
         else:
@@ -230,7 +230,7 @@ class CitationDialog(ModalSheet):
             QMessageBox.critical(self, "Add reference", "Enter a citation key.")
             return
 
-        existing = bibliography.load()
+        existing = bibliography.load(self.app.project.bibliography_path)
         if key.lower() in {k.lower() for k in existing}:
             QMessageBox.critical(
                 self, "Add reference",
@@ -262,7 +262,7 @@ class CitationDialog(ModalSheet):
             return
 
         try:
-            bibliography.add_entry(kind, key, fields)
+            bibliography.add_entry(kind, key, fields, self.app.project.bibliography_path)
         except (ValueError, OSError) as exc:
             QMessageBox.critical(self, "Add reference failed", str(exc))
             return

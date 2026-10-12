@@ -6,6 +6,7 @@ from agent_fakes import FakeWorkspace, ScriptedProvider, call, reply
 from conftest import SLIDE_TEXT, make_project
 
 from slidemage.ai import resolver
+from slidemage.project import ProjectContext
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import (
     EDIT_AUTO,
@@ -25,6 +26,11 @@ from slidemage.ai.tools import TOOLS, Tool
 from slidemage.ai.workspace import WorkspaceContext
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
+
+
+@pytest.fixture
+def ctx(tmp_path):
+    return ProjectContext.at(tmp_path / "project")
 
 
 @pytest.fixture
@@ -79,7 +85,7 @@ def test_tool_rounds_run_in_order_and_the_results_go_back(workspace):
     assert "1st point" in (workspace.root / SLIDE).read_text()
 
 
-def test_a_failing_tool_is_a_result_the_model_sees_not_a_crash(workspace):
+def test_a_failing_tool_is_a_result_the_model_sees_not_a_crash(ctx, workspace):
     bad = call("edit_file", path=SLIDE, old_text="no such text", new_text="x")
     unknown = call("teleport", where="moon")
     boom = Tool(ToolSpec("boom", "Always fails.", {"type": "object", "properties": {}, "required": []}),
@@ -144,7 +150,7 @@ def test_stop_in_the_middle_of_a_streamed_answer(workspace):
     assert history == []                             # no half answer, and the unanswered request is taken out again
 
 
-def test_stop_between_tool_calls_still_answers_every_call(workspace):
+def test_stop_between_tool_calls_still_answers_every_call(ctx, workspace):
     holder = {}
     first, second = call("press_stop"), call("press_stop")
     press_stop = Tool(ToolSpec("press_stop", "Stop.", {"type": "object", "properties": {}, "required": []}),
@@ -252,15 +258,15 @@ class CloudProvider(ScriptedProvider):
     label = "scripted · cloud"
 
 
-def test_local_only_stops_a_cloud_provider(workspace):
-    resolver.set_global_local_only(True)
+def test_local_only_stops_a_cloud_provider(ctx, workspace):
+    resolver.set_global_local_only(ctx, True)
     provider = CloudProvider(reply("never"))
     done, events, history = run(provider, workspace)
     assert done.reason == "error" and "Local AI only" in done.message
     assert not provider.sent and history == []
 
 
-def test_the_first_cloud_request_needs_consent_once(workspace):
+def test_the_first_cloud_request_needs_consent_once(ctx, workspace):
     provider = CloudProvider(reply("no"), reply("yes"), reply("again"))
     done, _events, history = run(provider, workspace)                  # the user declines
     assert done.reason == "error" and "not confirmed" in done.message and not provider.sent
@@ -268,9 +274,9 @@ def test_the_first_cloud_request_needs_consent_once(workspace):
     assert run(provider, workspace)[0].reason == "end_turn"            # agrees: remembered
     workspace.consent = False
     assert run(provider, workspace)[0].reason == "end_turn"            # not asked again
-    assert resolver.cloud_consent_given()
+    assert resolver.cloud_consent_given(ctx)
 
 
-def test_a_local_provider_never_asks(workspace):
-    resolver.set_global_local_only(True)
+def test_a_local_provider_never_asks(ctx, workspace):
+    resolver.set_global_local_only(ctx, True)
     assert run(ScriptedProvider(reply("fine")), workspace)[0].reason == "end_turn"

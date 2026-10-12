@@ -185,7 +185,7 @@ class SlideList(QWidget):
         if not same_deck:
             self.tree.collapsed.clear()
         self._deck_path = path
-        self._outline = (deck_outline.build_outline(deck, self.state.view, self.state.language)
+        self._outline = (deck_outline.build_outline(self.app.project, deck, self.state.view, self.state.language)
                          if deck else [])
         self.tree.blockSignals(True)
         self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
@@ -388,7 +388,7 @@ class SlideList(QWidget):
         for macro in BASE_MACROS:
             menu.add_item(f"variant:{macro}", VARIANT_TITLES[macro], meta=f"\\{macro}", enabled=editable,
                           icon="check" if call.macro == macro else "")
-        versions = deck_editor.available_versions(row.deck_call.id_slug)
+        versions = deck_editor.available_versions(self.app.project, row.deck_call.id_slug)
         if row.deck_call.macro in VERSIONED_MACROS and row.deck_call.version not in versions:
             versions.append(row.deck_call.version)
         for version in versions:

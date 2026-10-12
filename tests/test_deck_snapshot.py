@@ -18,10 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from conftest import use_project, write_test_file as write
+from conftest import write_test_file as write
 
 from slidemage import compiler, deck_scan, deck_snapshot, project, sm_rename
 from slidemage.deck_snapshot import SnapshotOptions
+from slidemage.project import ProjectContext
 
 WHEN = datetime(2026, 10, 7, 14, 12, 30)
 
@@ -64,7 +65,6 @@ def tree(tmp_path, monkeypatch):
     write(framework / "beamerthemegotham.sty", "gotham\n")
     write(texroot / "tex" / "latex" / "beamer" / "beamer.cls", "beamer\n")
 
-    use_project(monkeypatch, root)
     monkeypatch.setattr(deck_snapshot, "tex_roots", lambda: [texroot])
     monkeypatch.setattr(deck_snapshot, "_run_text", lambda cmd, cwd=None, any_exit_code=False: "")
     write(texroot / "fonts" / "opentype" / "public" / "fira" / "FiraSans-Light.otf", b"otf")
@@ -261,7 +261,7 @@ def test_root_of_prefers_the_deepest_root(tmp_path):
     assert deck_snapshot.root_of(tmp_path / "elsewhere", [outer, inner]) is None
 
 
-def record_compile(root: Path, texroot: Path, jobname: str, started: float) -> Path:
+def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float) -> Path:
     """What compiler.py records after compiling `jobname` of t-Deck: the same
     inputs the fake compile reads, the PDF published to pdf/."""
     from slidemage import compile_records
@@ -277,8 +277,8 @@ def record_compile(root: Path, texroot: Path, jobname: str, started: float) -> P
     write(inv / f"{jobname}.timestamp", "\\gdef\\SMCompileTimestampValue{2026-10-06 08:00}\n")
     write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'Slidemaster.bib'}'\n")
     pdf = write(root / "pdf" / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
-    assert compile_records.write_record(root / ".build", jobname, inv, root / "decks" / "_w.tex",
-                                        compiler.wrapper_text(project.transitional_context(), compiler.CompileJob(
+    assert compile_records.write_record(ctx, jobname, inv, root / "decks" / "_w.tex",
+                                        compiler.wrapper_text(ctx, compiler.CompileJob(
                                             next(d for d in deck_scan.scan_dir(root / "decks", False)
                                                  if d.name == "t-Deck"),
                                             None, None)), pdf, started)
@@ -292,7 +292,7 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
     monkeypatch.setattr(compile_records, "engine_version", lambda: "LuaHBTeX 1.22.0")
     texroot = deck_snapshot.tex_roots()[0]
     started = time.time() + 1
-    pdf = record_compile(root, texroot, "t-Deck", started)
+    pdf = record_compile(ProjectContext.at(root), root, texroot, "t-Deck", started)
     lines: list[str] = []
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(verify=True), lines.append,
                                            when=WHEN, ctx=project.ProjectContext.at(root))
@@ -315,7 +315,7 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
                                            when=WHEN, ctx=project.ProjectContext.at(root))
     assert result.ok and [c[0] for c in calls] == ["t-Deck", "t-Deck-presenter"]
     # and --recompile ignores the record
-    record_compile(root, texroot, "t-Deck", time.time() + 1)
+    record_compile(ProjectContext.at(root), root, texroot, "t-Deck", time.time() + 1)
     calls.clear()
     deck_snapshot.create_snapshot(decks["t-Deck"], options(reuse=False), print, when=WHEN,
                                   ctx=project.ProjectContext.at(root))
@@ -549,18 +549,18 @@ def test_snapshot_compiler_mode(opened_snapshot, monkeypatch, tmp_path):
     """Inside a snapshot: PDFs stay in the snapshot's pdf/ (its
     \\deckoutputfolder belongs to the original project), and a compile's
     build folder gets the seeded footer timestamp."""
-    use_project(monkeypatch, opened_snapshot)
+    ctx = ProjectContext.at(opened_snapshot)
     deck = deck_scan.scan_dir(opened_snapshot / "decks", False)[0]
     assert deck.output_folders  # D:/Teaching/Somewhere
     job = compiler.CompileJob(deck, None, None)
-    assert compiler.resolve_output_location(project.transitional_context(), job) == (opened_snapshot / "pdf", "t-Deck")
+    assert compiler.resolve_output_location(ctx, job) == (opened_snapshot / "pdf", "t-Deck")
     build = tmp_path / "b"
     build.mkdir()
-    compiler._seed_snapshot_timestamp(project.transitional_context(), "t-Deck", build)
+    compiler._seed_snapshot_timestamp(ctx, "t-Deck", build)
     assert "2026-10-07 14:12" in (build / "t-Deck.timestamp").read_text(encoding="utf-8")
     # "Remove temp files" leaves the seeds alone, other build output goes
     (opened_snapshot / ".build" / "t-Deck-abc123").mkdir()
-    removable = [p.name for p in compiler.removable_build_entries(project.transitional_context())]
+    removable = [p.name for p in compiler.removable_build_entries(ctx)]
     assert removable == ["t-Deck-abc123"]
 
 
@@ -606,7 +606,6 @@ def test_real_snapshot_of_manual(tmp_path, monkeypatch):
     shutil.copytree(repo / "example", tmp_path / "example",
                     ignore=shutil.ignore_patterns("pdf", ".build", ".previews", "snapshots"))
     root = tmp_path / "example"
-    use_project(monkeypatch, root)
     deck = next(d for d in deck_scan.scan_dir(root / "decks", False)
                 if d.name == "slidemage-manual")
     deck.supports_version = False
@@ -628,7 +627,7 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
     root = tmp_path / "example"
     monkeypatch.setenv("SLIDEMASTER_LATEX", str(tmp_path / "latex"))
     monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
-    use_project(monkeypatch, root)
+    ctx = ProjectContext.at(root)
     omit = (r"\omitslideversion{1an-EN-Slide-Versions}{1-0-0}" if pinned
             else r"\omitslide{1an-EN-Slide-Versions}")
     write(root / "decks" / "omit-test.tex", r"""\documentclass[aspectratio=169]{beamer}
@@ -656,7 +655,7 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
             outcome.append((ok, path))
             relocated.set()
 
-        assert compiler.run_job(job, lines.append, on_relocated=finished), "\n".join(lines)
+        assert compiler.run_job(ctx, job, lines.append, on_relocated=finished), "\n".join(lines)
         assert relocated.wait(30), "\n".join(lines)
         assert outcome[0][0], "\n".join(lines)
         assert f"SM TEST deck version: {job.version or 'instructor'}" in lines

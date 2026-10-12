@@ -6,6 +6,7 @@ from pathlib import Path
 
 from slidemage.ai.agent_types import AssistantMessage, ToolCall
 from slidemage.ai.providers import Cancelled, ProviderError
+from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace, WorkspaceContext
 
 _ids = itertools.count(1)
@@ -25,7 +26,7 @@ class FakeWorkspace(Workspace):
     """Editor buffers in a dict; answers `confirm_edit` as `approve` says; records what it was told."""
 
     def __init__(self, root: Path, context: WorkspaceContext | None = None, approve: bool = True) -> None:
-        super().__init__(root, context)
+        super().__init__(ProjectContext.at(root), context)
         self.buffers: dict[Path, str] = {}
         self.dirty: set[Path] = set()
         self.read_only: set[Path] = set()

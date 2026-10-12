@@ -385,7 +385,7 @@ class WorkspaceWindow(QMainWindow):
         any entry added or reordered during the session without a manual
         sort_bib.py run."""
         if path == self.project.bibliography_path:
-            bibliography.sort_entries()
+            bibliography.sort_entries(path)
 
     def _on_dirty_changed(self, dirty: bool) -> None:
         if not dirty:
@@ -540,7 +540,7 @@ class WorkspaceWindow(QMainWindow):
         (slide_rename.set_slide_language() rewrites every deck reference
         to a renamed slide, across however many decks reference it).
         Without this, the list kept showing a slide under its old id-slug
-        after a rename. Doesn't re-run deck_headers.regenerate_headers() itself
+        after a rename. Doesn't re-run deck_headers.regenerate_headers(self.project) itself
         -- a caller that needs that has already run it (set_slide_language()
         always does, as its own last step)."""
         self.reload_decks()
@@ -584,7 +584,7 @@ class WorkspaceWindow(QMainWindow):
             self._ollama_task_label = None
 
     def _regenerate_headers_bg(self) -> None:
-        changed, n_decks = deck_headers.regenerate_headers()
+        changed, n_decks = deck_headers.regenerate_headers(self.project)
         self.log(
             f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ===="
         )
@@ -617,7 +617,7 @@ class WorkspaceWindow(QMainWindow):
         the user. The matching close-side sort lives in
         _on_source_closed()."""
         if self.centre.source.file_for(self.project.bibliography_path) is None:
-            bibliography.sort_entries()
+            bibliography.sort_entries(self.project.bibliography_path)
         self.open_slide_editor(self.project.bibliography_path)
 
     def _on_edit_test_slides(self) -> None:

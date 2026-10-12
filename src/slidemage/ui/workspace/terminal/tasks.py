@@ -33,6 +33,7 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from .... import (alt_blocks, alt_draft, alt_images, deck_editor, deck_language, latex_lint, slide_add, slide_ids,
                   slide_language, slide_source, slide_versioning)
+from ....project import ProjectContext
 from ....tex_source import masked_same_length
 from ....ai import claude_images, claude_runner, claude_tasks, translation_style
 from ....ai.tools.base import ToolError
@@ -109,8 +110,8 @@ def _focus(window) -> _Focus | None:
     return _focus_at(window, path)
 
 
-def _errors(text: str) -> list[latex_lint.LintIssue]:
-    return [issue for issue in latex_lint.lint_text(text) if issue.severity == latex_lint.ERROR]
+def _errors(ctx: ProjectContext, text: str) -> list[latex_lint.LintIssue]:
+    return [issue for issue in latex_lint.lint_text(ctx, text) if issue.severity == latex_lint.ERROR]
 
 
 def _has_text(text: str) -> bool:
@@ -129,21 +130,21 @@ def _undescribed(found: dict[str, alt_images.ImageEntry]) -> list[str]:
     return [image for image, entry in found.items() if not (entry.short or entry.long or entry.is_decorative)]
 
 
-def _slide_images(text: str) -> tuple[list[str], list[str]]:
+def _slide_images(ctx: ProjectContext, text: str) -> tuple[list[str], list[str]]:
     """The slide's images (store keys) without a description, and those with an English text that has no
     current German one (alt_draft.images_needing_translation). Whether a model can read the image is only
     known at the run: a vector file or a missing one drops out there."""
-    found = _images_of(text, alt_images.load_store())
+    found = _images_of(text, alt_images.load_store(ctx))
     if not found:
         return [], []
-    translate = set(alt_draft.images_needing_translation())
+    translate = set(alt_draft.images_needing_translation(ctx))
     return _undescribed(found), [image for image in found if image in translate]
 
 
 def _describe_rows(window, paths) -> list[alt_blocks.SlideRow]:
     """For each of the slides `paths` that shows images without a description, a row of those images, an image
     shared by slides on the first of them only."""
-    entries, seen, rows = alt_images.load_store(), set(), []
+    entries, seen, rows = alt_images.load_store(window.project), set(), []
     for path in paths:
         images = [image for image in _undescribed(_images_of(window.centre.slide_text(path), entries))
                   if image not in seen]
@@ -153,7 +154,7 @@ def _describe_rows(window, paths) -> list[alt_blocks.SlideRow]:
     return rows
 
 
-def _text_offers(focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
+def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
     """The tasks on the text that fit the slide `focus` with its translation partner `link`."""
     own = slide_language.own_language(focus.id_slug)
     found = []
@@ -163,7 +164,7 @@ def _text_offers(focus: _Focus, link: slide_language.TranslationLink | None) -> 
     if link is not None and link.outdated:
         language = own if link.is_translation else link.language
         found.append(Bubble(claude_tasks.UPDATE_TRANSLATION, f"Update {claude_tasks.LANGUAGE_NAMES[language]} translation"))
-    if _errors(focus.text):
+    if _errors(ctx, focus.text):
         found.append(Bubble(claude_tasks.FIX_LATEX, "Fix LaTeX errors"))
     text = _has_text(focus.text)
     if text and own in claude_tasks.LANGUAGE_NAMES:
@@ -177,10 +178,10 @@ def _text_offers(focus: _Focus, link: slide_language.TranslationLink | None) -> 
     return found
 
 
-def _offers(focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
+def _offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
     """The tasks that fit the slide `focus` with its translation partner `link`."""
-    found = _text_offers(focus, link)
-    describe, translate = _slide_images(focus.text)
+    found = _text_offers(ctx, focus, link)
+    describe, translate = _slide_images(ctx, focus.text)
     if describe:
         found.append(Bubble(claude_images.DESCRIBE, f"Describe images ({len(describe)})"))
     if translate:
@@ -191,7 +192,7 @@ def _offers(focus: _Focus, link: slide_language.TranslationLink | None) -> list[
 def bubbles(window) -> list[Bubble]:
     """The tasks that fit the slide in the Source view right now."""
     focus = _focus(window)
-    return [] if focus is None else _offers(focus, slide_language.translation_link(focus.id_slug))
+    return [] if focus is None else _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug))
 
 
 def _deck_slides(window) -> list[Path]:
@@ -200,7 +201,7 @@ def _deck_slides(window) -> list[Path]:
     state = window.state
     if state.deck is None:
         return []
-    calls = [slot.call for slot in deck_language.deck_slots(state.deck, state.language)
+    calls = [slot.call for slot in deck_language.deck_slots(window.project, state.deck, state.language)
              if slot.call.included_in(state.view)]
     paths = dict.fromkeys(window.project.slides_dir / slide_language.current_name(call.id_slug) for call in calls)
     return [path for path in paths if path.is_file()]
@@ -216,7 +217,7 @@ def deck_bubbles(window) -> list[Bubble]:
     links = slide_language.TranslationLinks(window.project.slides_dir)
     for path in paths:
         focus = _focus_at(window, path)
-        for bubble in _text_offers(focus, slide_language.translation_link(focus.id_slug, links=links)):
+        for bubble in _text_offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug, links=links)):
             if bubble.task.name in fits:
                 fits[bubble.task.name].append(path)
     labels = ("Translate missing slides ({})", "Update outdated translations ({})", "Fix LaTeX errors ({} slides)")
@@ -233,12 +234,12 @@ def _capture(window, task: claude_tasks.Task, focus: _Focus | None) -> _Capture 
     """The task on the slide `focus`, or None when it no longer fits it."""
     if focus is None:
         return None
-    link = slide_language.translation_link(focus.id_slug)
-    if not any(bubble.task is task for bubble in _offers(focus, link)):
+    link = slide_language.translation_link(window.project, focus.id_slug)
+    if not any(bubble.task is task for bubble in _offers(window.project, focus, link)):
         return None
     path, id_slug, text, header, sent, language = focus.path, focus.id_slug, focus.text, "", focus.text, ""
     own = slide_language.own_language(id_slug)
-    style = (translation_style.de_address(), translation_style.glossary())
+    style = (translation_style.de_address(window.project), translation_style.glossary(window.project))
     if task is claude_tasks.TRANSLATE:
         language = next(code for code in slide_language.TRANSLATION_LANGUAGES if code != own)
         sent = slide_versioning.strip_marker(slide_ids.body_of(text))
@@ -253,7 +254,7 @@ def _capture(window, task: claude_tasks.Task, focus: _Focus | None) -> _Capture 
             slide_versioning.strip_marker(slide_ids.body_of(source)), sent,
             slide_language.own_language(_id_slug(source_path)), slide_language.own_language(id_slug), *style)
     elif task is claude_tasks.FIX_LATEX:
-        request = claude_tasks.fix_request(text, _errors(text))
+        request = claude_tasks.fix_request(text, _errors(window.project, text))
     elif task is claude_tasks.PROOFREAD:
         request = claude_tasks.proofread_request(text, own, style[0])
     elif task is claude_tasks.CONCISE:
@@ -286,21 +287,23 @@ def _capture_images(window, task: claude_tasks.Task, paths) -> _ImageCapture | N
         rows = _describe_rows(window, paths or [focus.path])
         images = [image for row in rows for image in row.images]
     else:
-        rows, images = [], _slide_images(focus.text)[1]
+        rows, images = [], _slide_images(window.project, focus.text)[1]
     return _ImageCapture(task, label, images, rows) if images else None
 
 
 class _Worker(QThread):
     done = Signal(object, object)      # this worker, the Outcome
 
-    def __init__(self, claude: Path, capture: _Capture, model: str, effort: str, cancel: threading.Event) -> None:
+    def __init__(self, ctx: ProjectContext, claude: Path, capture: _Capture, model: str, effort: str,
+                 cancel: threading.Event) -> None:
         super().__init__()
+        self.ctx = ctx
         self.claude, self.capture, self.model, self.effort, self.cancel = claude, capture, model, effort, cancel
 
     def run(self) -> None:
         capture = self.capture
         try:
-            outcome = claude_runner.run_task(self.claude, capture.task, capture.sent, capture.request,
+            outcome = claude_runner.run_task(self.ctx, self.claude, capture.task, capture.sent, capture.request,
                                              self.model, self.effort, cancel=self.cancel)
         except OSError as exc:         # `claude` could not be started
             outcome = Outcome(FAILED, message=str(exc))
@@ -310,11 +313,12 @@ class _Worker(QThread):
 class _ImageWorker(QThread):
     done = Signal(object, object)      # this worker, the summary of alt_draft's batch
 
-    def __init__(self, claude: Path, capture: _ImageCapture, model: str, effort: str, cancel: threading.Event) -> None:
+    def __init__(self, ctx: ProjectContext, claude: Path, capture: _ImageCapture, model: str, effort: str,
+                 cancel: threading.Event) -> None:
         super().__init__()
-        self.capture, self.cancel = capture, cancel
+        self.ctx, self.capture, self.cancel = ctx, capture, cancel
         self.backend = (claude_images.ClaudeDraftBackend if capture.task is claude_images.DESCRIBE
-                        else claude_images.ClaudeTranslationBackend)(claude, model, effort, cancel)
+                        else claude_images.ClaudeTranslationBackend)(ctx, claude, model, effort, cancel)
         self.position = (1, len(capture.images))       # the image at work and how many: the status line reads it
 
     def _progress(self, index: int, total: int, _item) -> None:
@@ -323,12 +327,12 @@ class _ImageWorker(QThread):
     def run(self) -> None:
         capture = self.capture
         if capture.task is claude_images.DESCRIBE:
-            entries = alt_images.load_store()
-            jobs = [job for row in capture.rows for job in alt_draft.slide_jobs(row, entries)]
-            summary = alt_draft.run_batch(jobs, self.backend, on_progress=self._progress,
+            entries = alt_images.load_store(self.ctx)
+            jobs = [job for row in capture.rows for job in alt_draft.slide_jobs(self.ctx, row, entries)]
+            summary = alt_draft.run_batch(self.ctx, jobs, self.backend, on_progress=self._progress,
                                           should_stop=self.cancel.is_set)
         else:
-            summary = alt_draft.run_translation_batch(capture.images, self.backend, on_progress=self._progress,
+            summary = alt_draft.run_translation_batch(self.ctx, capture.images, self.backend, on_progress=self._progress,
                                                       should_stop=self.cancel.is_set)
         self.done.emit(self, summary)
 
@@ -410,7 +414,7 @@ class TaskRunner(QObject):
 
     def _launch(self, capture: _Capture | _ImageCapture, item: _Item | None = None) -> None:
         worker = (_ImageWorker if isinstance(capture, _ImageCapture) else _Worker)(
-            self._claude, capture, self._model, self._effort, self._cancel)
+            self._window.project, self._claude, capture, self._model, self._effort, self._cancel)
         worker.done.connect(self._on_done)
         self._running[worker] = item
         background.start_detached(worker)
@@ -554,7 +558,7 @@ class TaskRunner(QObject):
         window = self._window
         centre = window.centre
         if (centre.path == capture.path and self._workspace.is_open(capture.path)
-                and window.state.mode in ("preview", "split") and not _errors(new)):
+                and window.state.mode in ("preview", "split") and not _errors(window.project, new)):
             centre.preview.render_buffer()             # no mode switch, no question; else the preview offers it
         # a file on disk is shown again by the refresh of its write
         return f": {capture.id_slug} updated" if capture.task is claude_tasks.UPDATE_TRANSLATION else ""
@@ -564,10 +568,10 @@ class TaskRunner(QObject):
         None, with nothing created, if the source has changed or has a partner by now (another slide of the batch or
         the user made one). What to append to the status line."""
         window = self._window
-        if window.centre.slide_text(capture.path) != capture.text or slide_language.translation_link(capture.id_slug):
+        if window.centre.slide_text(capture.path) != capture.text or slide_language.translation_link(window.project, capture.id_slug):
             return None
         created = slide_add.create_translation(
-            capture.id_slug, slide_add.slug_of(capture.id_slug), capture.language, translated.replace("\n", capture.eol))
+            window.project, capture.id_slug, slide_add.slug_of(capture.id_slug), capture.language, translated.replace("\n", capture.eol))
         linked = slide_ids.with_translation_backreference(capture.text, capture.language, created.id_slug)
         note = f": {created.id_slug} created"
         try:

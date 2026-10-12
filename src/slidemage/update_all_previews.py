@@ -88,7 +88,7 @@ def needed_slides_by_template(ctx: project.ProjectContext) -> dict[str, set[str]
         for call in deck_editor.parse_slide_calls(deck):
             bucket.add(call.id_slug)
         for language in slide_language.TRANSLATION_LANGUAGES:
-            bucket.update(slot.call.id_slug for slot in deck_language.deck_slots(deck, language))
+            bucket.update(slot.call.id_slug for slot in deck_language.deck_slots(ctx, deck, language))
     return needed
 
 

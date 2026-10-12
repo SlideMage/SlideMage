@@ -129,12 +129,13 @@ def main():
         parser.error("Positive edit count and time budget required")
     if not set(args.configs) <= {"saved", "buffer", "overlay", "buffer-overlay"}:
         parser.error("Unknown preview scope")
-    root = project.transitional_context().root
+    ctx = project.from_environment()
+    root = ctx.root
     assert root.is_relative_to(Path("/tmp")), (
         "Use a scratch project under /tmp; this benchmark makes temporary source edits"
     )
     args.output.mkdir(parents=True, exist_ok=True)
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == "slidemage-manual")
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "slidemage-manual")
     calls = [
         c
         for c in deck_editor.parse_slide_calls(deck)
@@ -147,8 +148,8 @@ def main():
     manifest = dict(
         schema=SCHEMA, selected_indices=selected, edit_version=EDIT_VERSION,
         project_inputs=tree_hashes(root),
-        framework_inputs=tree_hashes(Path(slide_preview.build_env(project.transitional_context())["SLIDEMASTER_LATEX"]))
-        if slide_preview.build_env(project.transitional_context()).get("SLIDEMASTER_LATEX") else {},
+        framework_inputs=tree_hashes(Path(slide_preview.build_env(ctx)["SLIDEMASTER_LATEX"]))
+        if slide_preview.build_env(ctx).get("SLIDEMASTER_LATEX") else {},
         preamble_hash=hashlib.sha256(deck.preamble_text.encode()).hexdigest(),
         calls=[
             dict(
@@ -166,7 +167,7 @@ def main():
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(configs=args.configs, repeats=args.repeats, no_cache=args.no_cache,
              no_images=args.no_images, defer_images=args.defer_images, order_seed=args.order_seed),
-        slide_preview.build_env(project.transitional_context()))
+        slide_preview.build_env(ctx))
     identity["pymupdf"] = pymupdf.VersionBind
     experiment_id = digest(dict(manifest=manifest, implementation=identity))
     deadline = time.monotonic() + args.time_budget
@@ -215,7 +216,7 @@ def main():
                     attempt = uuid.uuid4().hex
                     attempt_out = out / "attempts" / attempt
                     attempt_out.mkdir(parents=True)
-                    project.use(project.ProjectContext(root, root / ".build" / "benchmark-attempts" / attempt))
+                    ctx = project.ProjectContext(root, root / ".build" / "benchmark-attempts" / attempt)
                     rows = []
                     previous_signature = None
                     for phase, revision in (
@@ -257,7 +258,7 @@ def main():
                                         if call.steps
                                         else ""
                                     ) + body
-                                    pdf = slide_preview.render_slide_text_to_pdf(project.transitional_context(), 
+                                    pdf = slide_preview.render_slide_text_to_pdf(ctx,
                                         call.id_slug,
                                         text,
                                         preview_mode="region"
@@ -266,7 +267,7 @@ def main():
                                         **common,
                                     )
                                 else:
-                                    pdf = slide_preview.render_slide_to_pdf(project.transitional_context(), 
+                                    pdf = slide_preview.render_slide_to_pdf(ctx,
                                         call.macro,
                                         call.id_slug,
                                         call.version,
@@ -283,7 +284,7 @@ def main():
                                             pdf, canonical
                                         )
                                         if images:
-                                            slide_snapshot.publish_preview(project.transitional_context(), 
+                                            slide_snapshot.publish_preview(ctx,
                                                 images,
                                                 slide_language.bare_id(call.id_slug),
                                                 slide_snapshot.detect_template(

@@ -60,7 +60,7 @@ class PromptPage(Page):
         self.editor = _Editor(note, height=200)
         self.body.addWidget(self.editor)
         self.body.addStretch(1)
-        text = draft_prompts.get_custom_prompt(kind) or default
+        text = draft_prompts.get_custom_prompt(app.project, kind) or default
         self.editor.edit.setPlainText(text)
         self._saved = text.strip()
         self.editor.edit.textChanged.connect(lambda: self.editor.show_state(self.dirty()))
@@ -75,7 +75,7 @@ class PromptPage(Page):
         if not prompt:
             self.editor.show_state(True, "The prompt text is required.")
             return False
-        draft_prompts.set_custom_prompt(self.kind, prompt, self.default)
+        draft_prompts.set_custom_prompt(self.app.project, self.kind, prompt, self.default)
         self.app.log(f"Saved {self.what}")
         self._saved = prompt
         self.editor.show_state(False)
@@ -142,7 +142,7 @@ class TranslationPage(Page):
         self.chooser.clear()
         self._choices = [DEFAULT_CHOICE]
         self.chooser.addItem("Default (models with no override)")
-        for model, source, target, _config in tp.list_configs():
+        for model, source, target, _config in tp.list_configs(self.app.project):
             self.chooser.addItem(f"{model}: {source} → {target}")
             self._choices.append((model, source, target))
         self.chooser.addItem("New override…")
@@ -163,11 +163,11 @@ class TranslationPage(Page):
     def _on_choice(self, index: int) -> None:
         choice = self._choices[index]
         if choice == DEFAULT_CHOICE:
-            config, key = tp.effective_default_prompt(), ("", "en", "de")
+            config, key = tp.effective_default_prompt(self.app.project), ("", "en", "de")
         elif choice == NEW_CHOICE:
             config, key = tp.PromptConfig(prompt=""), ("", "en", "de")
         else:
-            config, key = tp.get_prompt(*choice) or tp.PromptConfig(prompt=""), choice
+            config, key = tp.get_prompt(self.app.project, *choice) or tp.PromptConfig(prompt=""), choice
         for edit, value in zip((self.model_combo, self.source_combo, self.target_combo), key):
             edit.blockSignals(True)
             edit.setCurrentText(value)
@@ -200,7 +200,7 @@ class TranslationPage(Page):
             if not prompt:
                 self.editor.show_state(True, "The prompt text is required.")
                 return False
-            tp.set_default_prompt(config)
+            tp.set_default_prompt(self.app.project, config)
             self.app.log("Saved default translation prompt")
             self._snapshot = self._values()
             self._refresh_state()
@@ -208,7 +208,7 @@ class TranslationPage(Page):
         if not (model and source and target and prompt):
             self.editor.show_state(True, "Model, From, To and the prompt text are all required.")
             return False
-        tp.set_prompt(model, source, target, config)
+        tp.set_prompt(self.app.project, model, source, target, config)
         self.app.log(f"Saved translation prompt for {model} ({source} → {target})")
         self.reload(select=(model, source, target))
         return True
@@ -224,7 +224,7 @@ class TranslationPage(Page):
             "default prompt for this model and pair afterward.")
         if confirm != QMessageBox.StandardButton.Yes:
             return
-        tp.delete_prompt(model, source, target)
+        tp.delete_prompt(self.app.project, model, source, target)
         self.app.log(f"Deleted translation prompt for {model} ({source} → {target})")
         self.reload()
 

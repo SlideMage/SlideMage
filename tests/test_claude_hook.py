@@ -15,6 +15,12 @@ from conftest import SLIDE_TEXT
 from slidemage.ai import claude_hook
 from slidemage.ai.tools.edits import PROTECTED_MESSAGE
 
+from slidemage.project import ProjectContext
+
+@pytest.fixture
+def ctx(root):
+    return ProjectContext.at(root)
+
 CURRENT = "abc-EN-Hello-current.tex"
 FROZEN = "abc-EN-Hello-v1-0-0.tex"
 
@@ -34,8 +40,8 @@ def edit(root, old, new, name=CURRENT, **more):
     ("\\item First point", "\\item First\n\t\t\\item inserted"),
     ("First point\r\n\t\t\\item Second point", "x"),
 ])
-def test_an_edit_of_the_body_is_allowed(root, old, new):
-    assert claude_hook.blocked_reason(edit(root, old, new)) is None
+def test_an_edit_of_the_body_is_allowed(ctx, root, old, new):
+    assert claude_hook.blocked_reason(ctx, edit(root, old, new)) is None
 
 
 @pytest.mark.parametrize("old, new", [
@@ -45,75 +51,77 @@ def test_an_edit_of_the_body_is_allowed(root, old, new):
     ("\\setSlideVersion{1-0-0}\r\n", ""),                                         # deleting a protected line
     ("\\setSlideVersion{1-0-0}\r\n\\begin", "\\begin"),
 ])
-def test_an_edit_of_a_protected_part_is_blocked(root, old, new):
-    assert claude_hook.blocked_reason(edit(root, old, new)) == PROTECTED_MESSAGE
+def test_an_edit_of_a_protected_part_is_blocked(ctx, root, old, new):
+    assert claude_hook.blocked_reason(ctx, edit(root, old, new)) == PROTECTED_MESSAGE
 
 
-def test_replace_all_counts_every_occurrence(root):
-    assert claude_hook.blocked_reason(edit(root, "point", "idea", replace_all=True)) is None
-    assert claude_hook.blocked_reason(edit(root, "1-0-0", "2-0-0", replace_all=True)) == PROTECTED_MESSAGE
+def test_replace_all_counts_every_occurrence(ctx, root):
+    assert claude_hook.blocked_reason(ctx, edit(root, "point", "idea", replace_all=True)) is None
+    assert claude_hook.blocked_reason(ctx, edit(root, "1-0-0", "2-0-0", replace_all=True)) == PROTECTED_MESSAGE
 
 
-def test_write_compares_the_whole_new_text(root):
+def test_write_compares_the_whole_new_text(ctx, root):
     keep = SLIDE_TEXT.replace("First point", "1st")
-    assert claude_hook.blocked_reason(event(root, "Write", content=keep)) is None
-    assert claude_hook.blocked_reason(event(root, "Write", content="\\begin{standardframe}{x}\\end{standardframe}")) \
+    assert claude_hook.blocked_reason(ctx, event(root, "Write", content=keep)) is None
+    assert claude_hook.blocked_reason(ctx, event(root, "Write", content="\\begin{standardframe}{x}\\end{standardframe}")) \
         == PROTECTED_MESSAGE
 
 
-def test_multiedit_applies_the_edits_in_order(root):
+def test_multiedit_applies_the_edits_in_order(ctx, root):
     fine = [{"old_string": "First", "new_string": "1st"}, {"old_string": "Second", "new_string": "2nd"}]
-    assert claude_hook.blocked_reason(event(root, "MultiEdit", edits=fine)) is None
+    assert claude_hook.blocked_reason(ctx, event(root, "MultiEdit", edits=fine)) is None
     bad = [*fine, {"old_string": "overlay", "new_string": "gone"}]
-    assert claude_hook.blocked_reason(event(root, "MultiEdit", edits=bad)) == PROTECTED_MESSAGE
+    assert claude_hook.blocked_reason(ctx, event(root, "MultiEdit", edits=bad)) == PROTECTED_MESSAGE
     # the second edit works on the result of the first
     chained = [{"old_string": "First", "new_string": "1st"},
                {"old_string": "1st point", "new_string": "\\vbox to 0pt{\\vss\\hbox{new}}"}]
-    assert claude_hook.blocked_reason(event(root, "MultiEdit", edits=chained)) == PROTECTED_MESSAGE
+    assert claude_hook.blocked_reason(ctx, event(root, "MultiEdit", edits=chained)) == PROTECTED_MESSAGE
 
 
 @pytest.mark.parametrize("tool", ["Edit", "Write"])
-def test_a_frozen_version_is_read_only(root, tool):
+def test_a_frozen_version_is_read_only(ctx, root, tool):
     event_ = edit(root, "First", "1st", FROZEN) if tool == "Edit" else event(root, "Write", FROZEN, content="x")
-    reason = claude_hook.blocked_reason(event_)
+    reason = claude_hook.blocked_reason(ctx, event_)
     assert reason and FROZEN in reason and "frozen version" in reason and "-current.tex" in reason
 
 
-def test_what_is_not_a_slide_or_cannot_be_judged_is_allowed(root):
+def test_what_is_not_a_slide_or_cannot_be_judged_is_allowed(ctx, root):
     deck = event(root, "Edit", old_string="\\section{Intro}", new_string="\\section{Start}")
     deck["tool_input"]["file_path"] = str(root / "decks" / "test.tex")
-    assert claude_hook.blocked_reason(deck) is None
+    assert claude_hook.blocked_reason(ctx, deck) is None
     bib = event(root, "Write", content="@book{x}")
     bib["tool_input"]["file_path"] = str(root / "Slidemaster.bib")
-    assert claude_hook.blocked_reason(bib) is None
-    assert claude_hook.blocked_reason(edit(root, "not in the file at all", "x")) is None      # Edit fails on its own
-    assert claude_hook.blocked_reason(edit(root, "", "x")) is None
-    assert claude_hook.blocked_reason(event(root, "Write", "zzz-EN-New-current.tex", content="x")) is None   # new file
-    assert claude_hook.blocked_reason(event(root, "Read")) is None
-    assert claude_hook.blocked_reason(event(root, "Bash")) is None
-    assert claude_hook.blocked_reason({"tool_name": "Edit", "tool_input": "garbage"}) is None
-    assert claude_hook.blocked_reason({}) is None
-    assert claude_hook.blocked_reason(edit(root, "point", "idea")) is None     # twice in the file, no replace_all
+    assert claude_hook.blocked_reason(ctx, bib) is None
+    assert claude_hook.blocked_reason(ctx, edit(root, "not in the file at all", "x")) is None      # Edit fails on its own
+    assert claude_hook.blocked_reason(ctx, edit(root, "", "x")) is None
+    assert claude_hook.blocked_reason(ctx, event(root, "Write", "zzz-EN-New-current.tex", content="x")) is None   # new file
+    assert claude_hook.blocked_reason(ctx, event(root, "Read")) is None
+    assert claude_hook.blocked_reason(ctx, event(root, "Bash")) is None
+    assert claude_hook.blocked_reason(ctx, {"tool_name": "Edit", "tool_input": "garbage"}) is None
+    assert claude_hook.blocked_reason(ctx, {}) is None
+    assert claude_hook.blocked_reason(ctx, edit(root, "point", "idea")) is None     # twice in the file, no replace_all
 
 
-def test_a_relative_path_is_taken_from_the_session_folder(root):
+def test_a_relative_path_is_taken_from_the_session_folder(ctx, root):
     relative = edit(root, "\\setSlideVersion{1-0-0}", "")
     relative["tool_input"]["file_path"] = f"slides/{CURRENT}"
-    assert claude_hook.blocked_reason(relative) == PROTECTED_MESSAGE
+    assert claude_hook.blocked_reason(ctx, relative) == PROTECTED_MESSAGE
 
 
 # -- the command ---------------------------------------------------------------------------------------------
 
-def run_main(monkeypatch, capsys, payload: str):
+def run_main(monkeypatch, capsys, payload: str, root=None):
+    if root is not None:
+        monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(payload.encode())))
     code = claude_hook.main()
     return code, capsys.readouterr().err
 
 
 def test_main_exits_2_with_the_reason_on_stderr_to_block(root, monkeypatch, capsys):
-    code, err = run_main(monkeypatch, capsys, json.dumps(edit(root, "\\setSlideVersion{1-0-0}", "")))
+    code, err = run_main(monkeypatch, capsys, json.dumps(edit(root, "\\setSlideVersion{1-0-0}", "")), root)
     assert code == 2 and err.strip() == PROTECTED_MESSAGE
-    code, err = run_main(monkeypatch, capsys, json.dumps(edit(root, "First point", "1st point")))
+    code, err = run_main(monkeypatch, capsys, json.dumps(edit(root, "First point", "1st point")), root)
     assert code == 0 and err == ""
 
 
@@ -150,8 +158,8 @@ def make_project_in(tmp_path):
     return root.resolve()
 
 
-def test_a_slide_that_cannot_be_read_is_refused_not_waved_through(root):
+def test_a_slide_that_cannot_be_read_is_refused_not_waved_through(ctx, root):
     (root / "slides" / CURRENT).write_bytes(b"\xff\xfe not utf-8 \x00")
     for call in (edit(root, "not utf-8", "x"), event(root, "Write", content="\\begin{x}")):
-        reason = claude_hook.blocked_reason(call)
+        reason = claude_hook.blocked_reason(ctx, call)
         assert reason and CURRENT in reason and "UTF-8" in reason

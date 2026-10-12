@@ -156,7 +156,7 @@ def test_a_slide_of_the_deck_is_found_by_id_or_title_and_focused(window):
 
 def test_a_slide_outside_the_deck_opens_in_the_source_view(window, monkeypatch):
     in_deck = {r.call.id_slug for r in window.slide_list.rows()}
-    outside = next(s for s in slide_ids.list_id_slugs() if s not in in_deck)
+    outside = next(s for s in slide_ids.list_id_slugs(window.project) if s not in in_deck)
     opened = []
     monkeypatch.setattr(window, "open_slide_editor", lambda path, **kwargs: opened.append(path))
     palette = window.palette

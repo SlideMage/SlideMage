@@ -15,16 +15,17 @@ import re
 from . import alt_blocks, deck_editor, slide_language
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
+from .project import ProjectContext
 from .tex_source import IFFALSE_RE, INPUT_RE, VERBATIM_ENV_RE, VERB_RE, masked_same_length
 
 
-def resolve_call(call: SlideCall, language: str, *, _links: slide_language.TranslationLinks | None = None) -> SlideCall:
+def resolve_call(call: SlideCall, language: str, links: slide_language.TranslationLinks) -> SlideCall:
     language = language.upper()
     if slide_language.own_language(call.id_slug) in (None, "mult", language):
         return call
     # Translation links belong to the slide, independently of a frozen
     # version's old header. Never transfer a version number between slides.
-    partner = (_links or slide_language.TranslationLinks()).find(call.id_slug, language)
+    partner = links.find(call.id_slug, language)
     if partner is None:
         return call
     slide_id, slug = partner.split("-", 1)
@@ -45,13 +46,13 @@ class SlideSlot:
         return slide_id in self.related_ids
 
 
-def slots(calls: list[SlideCall], language: str, *, slides_dir: Path | None = None) -> list[SlideSlot]:
+def slots(ctx: ProjectContext, calls: list[SlideCall], language: str) -> list[SlideSlot]:
     """Preserve all original occurrences; omit separately listed translations.
 
     A translation called on its own is a slot too. Repeated originals and
     different slidestep calls retain their order and their individual rules.
     """
-    return _slots(calls, language, slide_language.TranslationLinks(slides_dir))
+    return _slots(calls, language, slide_language.TranslationLinks(ctx.slides_dir))
 
 
 def _slots(calls: list[SlideCall], language: str, links: slide_language.TranslationLinks) -> list[SlideSlot]:
@@ -72,7 +73,7 @@ def _slots(calls: list[SlideCall], language: str, links: slide_language.Translat
                 owners.setdefault(slide_language.bare_id(partner), call.id)
     # Malformed reciprocal links must not remove both slides.
     owners = {child: owner for child, owner in owners.items() if owner not in owners}
-    return [SlideSlot(c, resolve_call(c, language, _links=links),
+    return [SlideSlot(c, resolve_call(c, language, links),
                      tuple(p for p in calls if owners.get(p.id) == c.id),
                      tuple(slide_language.bare_id(partner) for lang in slide_language.TRANSLATION_LANGUAGES
                            if (partner := links.find(c.id_slug, lang))))
@@ -97,9 +98,8 @@ def active_calls(deck: Deck) -> list[SlideCall]:
     return deck_editor.parse_slide_calls(replace(deck, text=masked(deck.text)))
 
 
-def deck_slots(deck: Deck, language: str) -> list[SlideSlot]:
-    calls = active_calls(deck)
-    return slots(calls, language)
+def deck_slots(ctx: ProjectContext, deck: Deck, language: str) -> list[SlideSlot]:
+    return slots(ctx, active_calls(deck), language)
 
 
 def call_text(call: SlideCall) -> str:
@@ -112,9 +112,9 @@ def call_text(call: SlideCall) -> str:
     return f"\\{call.macro}{{{call.id_slug}}}"
 
 
-def resolved_text(deck: Deck, language: str) -> str:
+def resolved_text(ctx: ProjectContext, deck: Deck, language: str) -> str:
     """A compile-only copy with resolved calls, retaining all surrounding TeX."""
-    active = deck_slots(deck, language)
+    active = deck_slots(ctx, deck, language)
     replacements = {s.original.call_start: (call_text(s.call) if s.call != s.original
                     else deck.text[s.original.call_start:s.original.call_end]) for s in active}
     text = deck.text
@@ -174,7 +174,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
     return replace(deck, text=expanded, chapters=parse_chapters(expanded)), sorted(set(dependencies))
 
 
-def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
+def compile_deck(ctx: ProjectContext, deck: Deck, language: str) -> tuple[Deck, list[Path]]:
     """Resolve calls, inlining fragments only when language resolution changes them."""
     from .deck_scan import parse_chapters
 
@@ -182,9 +182,9 @@ def compile_deck(deck: Deck, language: str) -> tuple[Deck, list[Path]]:
         return deck, []
     candidate, dependencies = expand_fragments(deck)
     expanded = candidate.text
-    resolved = resolved_text(candidate, language)
-    links = slide_language.TranslationLinks()
-    header_inputs = {links.paths[slide_id] for slot in deck_slots(candidate, language)
+    resolved = resolved_text(ctx, candidate, language)
+    links = slide_language.TranslationLinks(ctx.slides_dir)
+    header_inputs = {links.paths[slide_id] for slot in deck_slots(ctx, candidate, language)
                      if slot.related_ids for slide_id in (slot.original.id, *slot.related_ids)
                      if slide_id in links.paths}
     if resolved == expanded:

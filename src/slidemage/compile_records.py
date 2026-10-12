@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .processes import no_console_kwargs
+from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES
 
 RECORD_FORMAT = 1
@@ -235,7 +236,7 @@ def aux_dir(build_dir: Path, jobname: str) -> Path:
 
 
 def write_record(
-    build_dir: Path, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
+    ctx: ProjectContext, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
     pdf: Path, started: float, log: Optional[Callable[[str], None]] = None,
     deck_path: Optional[Path] = None,
 ) -> Optional[Path]:
@@ -244,7 +245,7 @@ def write_record(
     it isn't recorded (see the module docstring); an old record of the same
     job is removed then, so it can't vouch for a PDF it doesn't describe."""
     log = log or (lambda _line: None)
-    target = record_path(build_dir, jobname)
+    target = record_path(ctx.build_dir, jobname)
     try:
         fls = invocation_dir / f"{jobname}.fls"
         log_file = invocation_dir / f"{jobname}.log"
@@ -253,7 +254,7 @@ def write_record(
             target.unlink(missing_ok=True)
             return None
         bib_sources = parse_blg_sources(invocation_dir / f"{jobname}.blg")
-        aux = aux_dir(build_dir, jobname)
+        aux = aux_dir(ctx.build_dir, jobname)
         shutil.rmtree(aux, ignore_errors=True)
         aux.mkdir(parents=True)
         entries = []
@@ -266,7 +267,7 @@ def write_record(
                 # Include dependencies in either language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.
                 for language in TRANSLATION_LANGUAGES:
-                    _resolved, inputs = deck_language.compile_deck(deck, language)
+                    _resolved, inputs = deck_language.compile_deck(ctx, deck, language)
                     inline_inputs.extend(inputs)
         for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:
             key = norm(path)

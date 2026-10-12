@@ -29,7 +29,7 @@ def fill_model_combo(
     combo.clear()
     for model in local_models:
         combo.addItem(model, f"ollama:{model}")
-    for model in resolver.cloud_models():
+    for model in resolver.cloud_models(project):
         combo.addItem(f"{model} (cloud)", f"anthropic:{model}")
     usable = combo.count() > 0
     combo.setEnabled(usable)
@@ -44,11 +44,11 @@ def fill_model_combo(
     return True
 
 
-def confirm_cloud_request(parent: QWidget, provider: ChatProvider, what: str) -> bool:
+def confirm_cloud_request(parent: QWidget, project: ProjectContext, provider: ChatProvider, what: str) -> bool:
     """True when a request to `provider` may go ahead. A local provider
     always may; the first cloud request in a project asks once, naming
     `what` is sent, and remembers a yes (resolver.record_cloud_consent)."""
-    if not resolver.needs_cloud_consent(provider):
+    if not resolver.needs_cloud_consent(project, provider):
         return True
     answer = QMessageBox.question(
         parent, "Send to the cloud?",
@@ -59,32 +59,32 @@ def confirm_cloud_request(parent: QWidget, provider: ChatProvider, what: str) ->
     )
     if answer != QMessageBox.StandardButton.Yes:
         return False
-    resolver.record_cloud_consent()
+    resolver.record_cloud_consent(project)
     return True
 
 
-def provider_from_combo(parent: QWidget, combo: QComboBox, what: str) -> ChatProvider | None:
+def provider_from_combo(parent: QWidget, project: ProjectContext, combo: QComboBox, what: str) -> ChatProvider | None:
     """The provider for the picker's selection, or None after telling the user why not (no
     model, local-only, or consent declined)."""
-    return _confirmed_provider(parent, combo.currentData(), what, "No AI model is available. "
+    return _confirmed_provider(parent, project, combo.currentData(), what, "No AI model is available. "
                                "Install an Ollama model or add an API key in Settings.")
 
 
-def _confirmed_provider(parent: QWidget, spec: str, what: str, missing: str) -> ChatProvider | None:
+def _confirmed_provider(parent: QWidget, project: ProjectContext, spec: str, what: str, missing: str) -> ChatProvider | None:
     if not spec:
         QMessageBox.critical(parent, "AI model", missing)
         return None
     try:
-        provider = resolver.provider_for(spec)
+        provider = resolver.provider_for(project, spec)
     except ProviderError as exc:
         QMessageBox.critical(parent, "AI model", str(exc))
         return None
-    return provider if confirm_cloud_request(parent, provider, what) else None
+    return provider if confirm_cloud_request(parent, project, provider, what) else None
 
 
 def provider_for_task(parent: QWidget, project: ProjectContext, task: str, what: str) -> ChatProvider | None:
     """The provider Settings -> "AI models" names for `task` (a MODEL_SETTINGS key), for a place
     with no picker of its own; None after telling the user why not (no model chosen, local-only,
     or consent declined)."""
-    return _confirmed_provider(parent, app_settings.default_model(project, task), what,
+    return _confirmed_provider(parent, project, app_settings.default_model(project, task), what,
                                "No AI model is chosen for this task. Choose one under Settings -> AI models.")

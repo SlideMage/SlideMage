@@ -11,11 +11,10 @@ import pymupdf as fitz
 import pytest
 from PySide6.QtWidgets import QApplication, QInputDialog, QWidget
 
-from conftest import use_project
-from slidemage.project import transitional_context
 from slidemage import compile_records, compiler, deck_scan
 from slidemage.ui.workspace import deck_actions
 from slidemage.compiler import DeckPdf, pdf_to_open
+from conftest import EXAMPLE_PROJECT
 
 NOW = time.time()
 RUN = "2026-10-08T08:20:01"
@@ -66,13 +65,12 @@ def test_compile_job_stamps_its_run(tmp_path):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None, run_id=RUN)
-    assert compile_records.run_id_line(RUN) in compiler.wrapper_text(transitional_context(), job)
-    assert "SlideMageRun" not in compiler.wrapper_text(transitional_context(), compiler.CompileJob(deck, "instructor", None))
+    assert compile_records.run_id_line(RUN) in compiler.wrapper_text(EXAMPLE_PROJECT, job)
+    assert "SlideMageRun" not in compiler.wrapper_text(EXAMPLE_PROJECT, compiler.CompileJob(deck, "instructor", None))
 
 
 @pytest.fixture
 def deck_with_pdfs(tmp_path, monkeypatch):
-    use_project(monkeypatch, tmp_path)
     (tmp_path / "decks").mkdir()
     (tmp_path / "decks" / "t-A.tex").write_text(
         "\\documentclass{beamer}\n\\deckversionoverride\n\\begin{document}\n\\end{document}\n",
@@ -91,13 +89,13 @@ def deck_with_pdfs(tmp_path, monkeypatch):
     return deck
 
 
-def test_deck_pdfs_newest_first_with_labels_and_runs(deck_with_pdfs):
-    pdfs = compiler.deck_pdfs(transitional_context(), deck_with_pdfs)
+def test_deck_pdfs_newest_first_with_labels_and_runs(ctx, deck_with_pdfs):
+    pdfs = compiler.deck_pdfs(ctx, deck_with_pdfs)
     assert [(p.label, p.preferred, p.run_id) for p in pdfs] == [
         ("After-course", False, "2026-10-08T09:00:00"), ("Instructor", True, RUN)]
 
 
-def test_open_pdf_asks_and_opens_the_choice(deck_with_pdfs, monkeypatch):
+def test_open_pdf_asks_and_opens_the_choice(ctx, deck_with_pdfs, monkeypatch):
     QApplication.instance() or QApplication([])
     asked = {}
 
@@ -110,16 +108,16 @@ def test_open_pdf_asks_and_opens_the_choice(deck_with_pdfs, monkeypatch):
     monkeypatch.setattr(deck_actions.open_path, "open_in_default_app", opened.append)
     win = QWidget()
     win.log = lambda line: None
-    win.project = transitional_context()
+    win.project = ctx
     deck_actions.on_open_latest_pdf(win, deck_with_pdfs)
     assert asked["items"][0].startswith("After-course -- ")
     assert asked["current"] == 1                          # the instructor PDF preselected
-    assert opened == [transitional_context().pdf_dir / "t-A-instructor.pdf"]
+    assert opened == [ctx.pdf_dir / "t-A-instructor.pdf"]
 
 
-def test_deck_setting_chooses_the_preferred_pdf(deck_with_pdfs):
+def test_deck_setting_chooses_the_preferred_pdf(ctx, deck_with_pdfs):
     deck_with_pdfs.open_pdf = "after-course"
-    pdfs = compiler.deck_pdfs(transitional_context(), deck_with_pdfs)
+    pdfs = compiler.deck_pdfs(ctx, deck_with_pdfs)
     assert [(p.label, p.preferred) for p in pdfs] == [("After-course", True), ("Instructor", False)]
     # the after-course PDF is the newest: opened without asking
     assert pdf_to_open(pdfs).label == "After-course"

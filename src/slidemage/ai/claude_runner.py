@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..processes import no_console_kwargs
+from ..project import ProjectContext
 from . import claude_tasks
 from .claude_launch import clean_environment
 
@@ -175,7 +176,7 @@ def run_json(claude: Path, task: claude_tasks.Task, request: str, model: str, ef
                     clean_environment(claude), deadline, cancel)
 
 
-def run_task(claude: Path, task: claude_tasks.Task, captured: str, request: str, model: str = MODEL,
+def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, captured: str, request: str, model: str = MODEL,
              effort: str = EFFORT, deadline_s: float = TEXT_DEADLINE_S,
              cancel: threading.Event | None = None) -> Outcome:
     """Run `task` on the `captured` text with `request` (claude_tasks.translate_request / fix_request) and
@@ -198,7 +199,7 @@ def run_task(claude: Path, task: claude_tasks.Task, captured: str, request: str,
         if run.error:
             outcome.message = run.error
             break
-        text, problems = claude_tasks.check(task, captured, run.answer)
+        text, problems = claude_tasks.check(ctx, task, captured, run.answer)
         if not problems:
             outcome.status, outcome.text, outcome.message = (NOTHING, "", "") if text == captured else (DONE, text, "")
             break

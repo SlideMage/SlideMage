@@ -15,17 +15,16 @@ from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
 from slidemage.ui.workspace.insert_popovers import LinkPopover
 from slidemage.ui.workspace.source_view import SourcePane
-from conftest import use_project
-from slidemage.project import transitional_context
+from conftest import EXAMPLE_PROJECT
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
 
 
 class FakeApp:
-    project = property(lambda self: transitional_context())
     """What the Source view needs of the window."""
 
-    def __init__(self):
+    def __init__(self, project=EXAMPLE_PROJECT):
+        self.project = project
         self.theme = ThemeManager()
         self.logged = []
         self.opened = []
@@ -48,13 +47,12 @@ def slides(tmp_path, monkeypatch):
     (folder / "abc-EN-Demo-current.tex").write_text("\\setSlideVersion{1-1-0}\n" + BODY, encoding="utf-8")
     (folder / "abc-EN-Demo-v1-0-0.tex").write_text("\\setSlideVersion{1-0-0}\n" + BODY, encoding="utf-8")
     (folder / "def-EN-Other-current.tex").write_text(BODY, encoding="utf-8")
-    use_project(monkeypatch, tmp_path)
     return folder
 
 
 @pytest.fixture
-def pane(qapp):
-    app = FakeApp()
+def pane(ctx, qapp):
+    app = FakeApp(ctx)
     pane = SourcePane(app)
     pane.app_for_test = app
     return pane
@@ -243,7 +241,6 @@ def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pa
 def test_the_toolbar_follows_the_kind_of_file(pane, slides, tmp_path, monkeypatch):
     bib = tmp_path / "Slidemaster.bib"
     bib.write_text("@book{alpha, title={A}}\n\n@book{beta, title={B}}\n", encoding="utf-8")
-    use_project(monkeypatch, tmp_path)
     pane.show_path(None)
     assert not pane._save_button.isEnabled() and not pane._find_button.isEnabled()
     pane.show_path(bib)

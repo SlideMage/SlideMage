@@ -42,14 +42,14 @@ class Route:
 def current_route(project: ProjectContext) -> Route:
     """Settings → AI models → "Chat assistant"; Claude while nothing is chosen but an API key is set."""
     spec = app_settings.default_model(project, "chat")
-    if not spec and credentials.get_api_key() is not None and not resolver.local_only():
+    if not spec and credentials.get_api_key(project) is not None and not resolver.local_only(project):
         spec = f"{CLOUD}:{DEFAULT_ANTHROPIC_MODEL}"
     if not spec:
         return Route("", "no model chosen", NO_MODEL_HINT)
     name, model = app_settings.split_spec(spec)
     if name != CLOUD:
         return Route(spec, f"{model} · local")
-    problem = LOCAL_ONLY_HINT if resolver.local_only() else NO_KEY_HINT if credentials.get_api_key() is None else ""
+    problem = LOCAL_ONLY_HINT if resolver.local_only(project) else NO_KEY_HINT if credentials.get_api_key(project) is None else ""
     return Route(spec, f"{model} · cloud", problem)
 
 

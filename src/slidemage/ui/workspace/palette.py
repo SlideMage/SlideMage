@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import shiboken6
@@ -99,7 +100,7 @@ def slide_entries(window, words: list[str], project_slugs: list[str]) -> list[En
         in_deck.add(row.deck_call.id_slug)
         in_deck.update(c.id_slug for c in row.folded_calls)
         in_deck.update(slug for slide_id in row.related_ids
-                       if (slug := slide_language.current_id_slug_for_bare_id(slide_id)))
+                       if (slug := slide_language.current_id_slug_for_bare_id(window.project, slide_id)))
         if matches(words, call.id_slug, row.deck_call.id_slug, row.title):
             entries.append(Entry(GO_TO_SLIDE, f"{call.id} · {row.title}",
                                  lambda i=call.id: state.set_focused_slide(i), GROUP_ICONS[GO_TO_SLIDE], call.id_slug))
@@ -129,12 +130,13 @@ class _SearchWorker(QThread):
 
     found = Signal(str, list)
 
-    def __init__(self, query: str) -> None:
+    def __init__(self, root: Path, query: str) -> None:
         super().__init__()
+        self.root = root
         self.query = query
 
     def run(self) -> None:
-        hits = slide_search.search_project(self.query, cancelled=self.isInterruptionRequested)
+        hits = slide_search.search_project(self.query, self.root, cancelled=self.isInterruptionRequested)
         if not self.isInterruptionRequested():
             self.found.emit(self.query, hits)
 
@@ -215,7 +217,7 @@ class CommandPalette(QWidget):
 
     def open(self) -> None:
         self._previous_focus = QApplication.focusWidget()
-        self._project_slugs = slide_ids.list_id_slugs()
+        self._project_slugs = slide_ids.list_id_slugs(self._window.project)
         focused = self._window.state.focused_slide
         self._chip.setVisible(focused is not None)
         self._chip.set_text(focused or "")
@@ -364,7 +366,7 @@ class CommandPalette(QWidget):
         if len(query) < MIN_TEXT_QUERY:
             return
         self.stop_search()
-        self._worker = _SearchWorker(query)
+        self._worker = _SearchWorker(self._window.project.root, query)
         self._worker.found.connect(self._on_found)
         self._worker.start()
 

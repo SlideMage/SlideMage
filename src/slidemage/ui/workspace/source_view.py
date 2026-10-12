@@ -372,11 +372,11 @@ class SourcePane(Surface):
         elif insert.kind == "hyperlink":
             self._ask(LinkPopover(editor.selected_text()), self._insert_button)
         else:
-            self._ask(CodeFilePopover(self._current.bare_id), self._insert_button)
+            self._ask(CodeFilePopover(self.app.project, self._current.bare_id), self._insert_button)
 
     def _open_citation_popover(self) -> None:
         if self._current is not None and not self._current.editor.is_read_only():
-            popover = CitationPopover()
+            popover = CitationPopover(self.app.project)
             popover.add_reference_requested.connect(self.add_reference)
             self._ask(popover, self._cite_button)
 

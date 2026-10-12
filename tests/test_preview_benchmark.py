@@ -9,8 +9,6 @@ import tarfile
 from types import SimpleNamespace
 
 import pytest
-from conftest import use_project
-from slidemage.project import transitional_context
 
 
 @pytest.fixture
@@ -62,13 +60,14 @@ def test_interrupted_attempt_restarts_cold_and_restores_source(tmp_path, modules
     root, output = tmp_path / "project", tmp_path / "results"
     (root / "slides").mkdir(parents=True)
     (root / "decks").mkdir()
+    (root / "slide_ids.csv").write_text('"id"\n', encoding="utf-8")
+    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
     source = root / "slides" / "abc-EN-Test-current.tex"
     original = b"\\begin{standardframe}{Title}Body\\end{standardframe}"
     source.write_bytes(original)
     call = SimpleNamespace(id_slug="abc-EN-Test", macro="slide", version=None, steps=None,
                            conditions=None, source_filename=source.name)
     deck = SimpleNamespace(name="slidemage-manual", text="deck", preamble_text=r"\begin{document}")
-    use_project(monkeypatch, root)
     monkeypatch.setattr(compare.deck_scan, "scan_decks", lambda _ctx: [deck])
     monkeypatch.setattr(compare.deck_editor, "parse_slide_calls", lambda _: [call])
     monkeypatch.setattr(compare.deck_editor, "is_commented_out", lambda *a: False)
@@ -78,7 +77,7 @@ def test_interrupted_attempt_restarts_cold_and_restores_source(tmp_path, modules
     caches, stop_once = [], [True]
 
     def render(*args, **kwargs):
-        cache = transitional_context().build_dir
+        cache = args[0].build_dir
         if cache not in caches:
             assert not cache.exists(), "cold attempt reused prior state"
             caches.append(cache)

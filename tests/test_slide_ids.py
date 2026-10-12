@@ -1,6 +1,6 @@
 import pytest
+from conftest import EXAMPLE_PROJECT
 
-from conftest import use_project
 from slidemage import alt_images, deck_headers, slide_ids, slide_language, slide_rename
 
 
@@ -9,7 +9,6 @@ def project(tmp_path, monkeypatch):
     slides = tmp_path / "slides"
     slides.mkdir()
     (tmp_path / "slide_ids.csv").write_bytes(b'"id"\r\n')
-    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -29,27 +28,27 @@ def test_reserved_id_form():
     assert slide_ids.reserved_id_reason("1ex")  # never "e" second
 
 
-def test_minted_ids_start_with_a_letter(project):
+def test_minted_ids_start_with_a_letter(ctx, project):
     for _ in range(300):
-        new_id = slide_ids.mint_slide_id()
+        new_id = slide_ids.mint_slide_id(ctx)
         assert new_id[0] in slide_ids.ID_FIRST_ALPHABET
         assert slide_ids.regular_id_reason(new_id) is None
 
 
-def test_minted_reserved_ids(project):
+def test_minted_reserved_ids(ctx, project):
     for _ in range(100):
-        new_id = slide_ids.mint_slide_id(reserved="1")
+        new_id = slide_ids.mint_slide_id(ctx, reserved="1")
         assert new_id[0] == "1" and new_id[1].isalpha()
         assert slide_ids.reserved_id_reason(new_id) is None
     with pytest.raises(ValueError):
-        slide_ids.mint_slide_id(reserved="5")
+        slide_ids.mint_slide_id(ctx, reserved="5")
 
 
-def test_mint_collision_check_ignores_case(project, monkeypatch):
+def test_mint_collision_check_ignores_case(ctx, project, monkeypatch):
     (project / "slides" / "ZZH-EN-Demo-current.tex").write_text("x", encoding="utf-8")
     draws = iter(["z", "z", "h", "a", "b", "c"])
     monkeypatch.setattr(slide_ids.random, "choice", lambda _alphabet: next(draws))
-    assert slide_ids.mint_slide_id() == "abc"
+    assert slide_ids.mint_slide_id(ctx) == "abc"
 
 
 @pytest.fixture
@@ -62,15 +61,15 @@ def rename_project(project, monkeypatch):
     previews.mkdir(parents=True)
     (previews / "2du-EN-UniGraz-1920-1080.png").write_bytes(b"png")
     monkeypatch.setattr(slide_rename, "is_git_repo", lambda _root: False)
-    monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: None)
-    monkeypatch.setattr(deck_headers, "regenerate_headers", lambda: None)
-    monkeypatch.setattr(alt_images, "update_store", lambda fn: None)
-    monkeypatch.setattr(alt_images, "update_slide_notes", lambda fn: None)
+    monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda _ctx: None)
+    monkeypatch.setattr(deck_headers, "regenerate_headers", lambda _ctx: None)
+    monkeypatch.setattr(alt_images, "update_store", lambda _ctx, fn: None)
+    monkeypatch.setattr(alt_images, "update_slide_notes", lambda _ctx, fn: None)
     return project
 
 
-def test_rename_to_letter_first_id(rename_project):
-    mapping = slide_rename.rename_slide_id("2du", "k7m")
+def test_rename_to_letter_first_id(ctx, rename_project):
+    mapping = slide_rename.rename_slide_id(ctx, "2du", "k7m")
     assert mapping == {"2du-EN-Old": "k7m-EN-Old"}
     assert (rename_project / "slides" / "k7m-EN-Old-current.tex").is_file()
     assert (rename_project / "decks" / "d.tex").read_text(encoding="utf-8") == "\\slide{k7m-EN-Old}\n"
@@ -78,21 +77,21 @@ def test_rename_to_letter_first_id(rename_project):
     assert '"k7m"' in (rename_project / "slide_ids.csv").read_text(encoding="utf-8")
 
 
-def test_rename_refuses_digit_first_unless_reserved(rename_project):
+def test_rename_refuses_digit_first_unless_reserved(ctx, rename_project):
     with pytest.raises(ValueError, match="digit"):
-        slide_rename.rename_slide_id("2du", "3ab")
-    assert slide_rename.rename_slide_id("2du", "1ab", reserved=True) == {"2du-EN-Old": "1ab-EN-Old"}
+        slide_rename.rename_slide_id(ctx, "2du", "3ab")
+    assert slide_rename.rename_slide_id(ctx, "2du", "1ab", reserved=True) == {"2du-EN-Old": "1ab-EN-Old"}
 
 
-def test_rename_collision_check_ignores_case(rename_project):
+def test_rename_collision_check_ignores_case(ctx, rename_project):
     (rename_project / "slides" / "ZZH-EN-Demo-current.tex").write_text("x", encoding="utf-8")
     with pytest.raises(FileExistsError):
-        slide_rename.rename_slide_id("2du", "zzh")
+        slide_rename.rename_slide_id(ctx, "2du", "zzh")
 
 
 def test_raw_reads_work_below_python_313():
-    slide_language.cross_referenced_language("1vn-EN-Languages")
-    assert "slidemage-manual" in slide_rename.deck_names_referencing("1mu-EN-Slidestep-Demo")
+    slide_language.cross_referenced_language(EXAMPLE_PROJECT, "1vn-EN-Languages")
+    assert "slidemage-manual" in slide_rename.deck_names_referencing(EXAMPLE_PROJECT, "1mu-EN-Slidestep-Demo")
 
 
 def test_line_removal_takes_whole_calls_and_crlf():

@@ -31,7 +31,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import project, slide_source
+from . import slide_source
+from .project import ProjectContext
 
 
 # Keep in sync with Slidemaster_preamble_base.tex's own
@@ -78,25 +79,25 @@ def is_current_file(path: Path) -> bool:
     return path.name.endswith(CURRENT_SUFFIX)
 
 
-def current_path_for_bare_id(bare_id_: str) -> Optional[Path]:
+def current_path_for_bare_id(ctx: ProjectContext, bare_id_: str) -> Optional[Path]:
     """The slides/<bare_id_>-...-current.tex path on disk right now, or
     None if that ID has no current file any more (renamed again, or
     deleted) -- by this project's own convention there is at most one
     -current.tex per bare ID."""
-    matches = list(project.transitional_context().slides_dir.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
+    matches = list(ctx.slides_dir.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
     return matches[0] if matches else None
 
 
-def current_id_slug_for_bare_id(bare_id_: str) -> Optional[str]:
-    path = current_path_for_bare_id(bare_id_)
+def current_id_slug_for_bare_id(ctx: ProjectContext, bare_id_: str) -> Optional[str]:
+    path = current_path_for_bare_id(ctx, bare_id_)
     if path is None:
         return None
     return path.name[: -len(CURRENT_SUFFIX)]
 
 
-def _header(id_slug: str, path: Path | None = None) -> str:
+def _header(path: Path) -> str:
     try:
-        return (path or project.transitional_context().slides_dir / current_name(id_slug)).read_text(
+        return path.read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return ""
@@ -105,8 +106,8 @@ def _header(id_slug: str, path: Path | None = None) -> str:
 class TranslationLinks:
     """One scan per resolution, including links recorded on only one side."""
 
-    def __init__(self, slides_dir: Path | None = None) -> None:
-        self.slides_dir = slides_dir or project.transitional_context().slides_dir
+    def __init__(self, slides_dir: Path) -> None:
+        self.slides_dir = slides_dir
         self.paths = {bare_id(p.name): p
                       for p in self.slides_dir.glob("*-current.tex")}
         self.headers: dict[str, str] = {}
@@ -119,14 +120,14 @@ class TranslationLinks:
 
     def header(self, id_slug: str) -> str:
         if id_slug not in self.headers:
-            self.headers[id_slug] = _header(id_slug, self.slides_dir / current_name(id_slug))
+            self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
         return self.headers[id_slug]
 
     def find(self, id_slug: str, language: str, path: Path | None = None) -> str | None:
         language = language.upper()
         if own_language(id_slug) in (None, "mult", language):
             return None
-        text = _header(id_slug, path) if path else self.header(id_slug)
+        text = _header(path) if path else self.header(id_slug)
         refs = [m.group(1) for m in TRANSLATION_OF_RE.finditer(text)]
         refs += [m.group(2) for m in LANG_TRANSLATION_RE.finditer(text)
                  if m.group(1) == language]
@@ -153,12 +154,12 @@ class TranslationLinks:
         return next(iter(candidates)) if len(candidates) == 1 else None
 
 
-def cross_referenced_language(id_slug: str, *, links: Optional[TranslationLinks] = None) -> Optional[str]:
+def cross_referenced_language(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> Optional[str]:
     """The language of this slide's resolved translation partner, or None.
 
     Links belong to the current slide, also when a frozen version of it is shown.
     Pass a shared index when building badges for a whole list."""
-    links = links or TranslationLinks()
+    links = links or TranslationLinks(ctx.slides_dir)
     return next((language for language in TRANSLATION_LANGUAGES
                  if links.find(id_slug, language)), None)
 
@@ -174,7 +175,7 @@ class TranslationLink:
     outdated: bool              # the original was saved in SlideMage after the translation was last written
 
 
-def translation_link(id_slug: str, path: Optional[Path] = None, *,
+def translation_link(ctx: ProjectContext, id_slug: str, path: Optional[Path] = None, *,
                      links: Optional[TranslationLinks] = None) -> Optional[TranslationLink]:
     """The slide's resolved translation partner, including links recorded on only one side.
     Links belong to the current slide, even when `path` is a frozen version.
@@ -183,7 +184,7 @@ def translation_link(id_slug: str, path: Optional[Path] = None, *,
     (slide_source.last_saved(): its newest backup) later than the translation was last written
     (the later of its own newest backup and its file's mtime). It is not a comparison of
     content, and an edit made outside SlideMage is not noticed."""
-    links = links or TranslationLinks()
+    links = links or TranslationLinks(ctx.slides_dir)
     path = path or links.slides_dir / current_name(id_slug)
     partner = next((partner for language in TRANSLATION_LANGUAGES
                     if (partner := links.find(id_slug, language))), None)
@@ -200,8 +201,8 @@ def translation_link(id_slug: str, path: Optional[Path] = None, *,
         is_translation = not any(bare_id(m.group(1)) == bare_id(id_slug)
                                  for m in TRANSLATION_OF_RE.finditer(links.header(partner)))
     original, translation = (partner_path, path) if is_translation else (path, partner_path)
-    saved = slide_source.last_saved(original)
-    written = max(filter(None, (slide_source.last_saved(translation),
+    saved = slide_source.last_saved(ctx, original)
+    written = max(filter(None, (slide_source.last_saved(ctx, translation),
                                 datetime.fromtimestamp(translation.stat().st_mtime))))
     return TranslationLink(partner, own_language(partner), partner_path, is_translation,
                            saved is not None and saved > written)
@@ -240,7 +241,7 @@ class LanguageBadge:
         return f"[{self.own}]"
 
 
-def badge_for(id_slug: str, *, links: Optional[TranslationLinks] = None) -> LanguageBadge:
+def badge_for(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> LanguageBadge:
     own = own_language(id_slug)
-    cross = cross_referenced_language(id_slug, links=links) if own is not None else None
+    cross = cross_referenced_language(ctx, id_slug, links=links) if own is not None else None
     return LanguageBadge(own=own, cross_referenced=cross)

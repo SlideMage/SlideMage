@@ -11,7 +11,6 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
-from conftest import use_project
 from slidemage import alt_blocks, alt_draft, alt_images, image_review
 from slidemage.ai.providers import OllamaProvider
 from slidemage.alt_blocks import SlideRow
@@ -19,16 +18,16 @@ from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.pages import image_dialogs, image_runs, images
 from slidemage.ui.pages.image_jobs import Job
 from slidemage.ui.workspace.state import WorkspaceState
-from slidemage.project import transitional_context
+from slidemage.project import ProjectContext
 
 CHART = "media/chart.png"
 
 
 class FakeApp:
-    project = property(lambda self: transitional_context())
     """What the page asks of the window."""
 
-    def __init__(self) -> None:
+    def __init__(self, project) -> None:
+        self.project = project
         self.theme = ThemeManager()
         self.logged: list[str] = []
         self.slots: list[str] = []          # "took"/"gave" per Ollama slot call
@@ -53,7 +52,7 @@ class FakeApp:
 
 
 @pytest.fixture
-def make_page(monkeypatch, qapp, tmp_path):
+def make_page(monkeypatch, qapp, tmp_path, ctx):
     """The page over two slides ("one": all `image_refs`, "two": the first) and an in-memory store."""
 
     def make(image_refs=None):
@@ -64,15 +63,14 @@ def make_page(monkeypatch, qapp, tmp_path):
             row.path.write_text("slide text", encoding="utf-8")
         store = {reference: alt_images.ImageEntry(image=reference) for reference in image_refs}
         sync_calls = []
-        use_project(monkeypatch, tmp_path)     # repointing a slide makes a backup
-        monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda: [first, second])
-        monkeypatch.setattr(alt_blocks, "resolve_image", lambda _reference: None)
-        monkeypatch.setattr(alt_draft, "draftable_images", lambda *_args: [])
-        monkeypatch.setattr(alt_images, "sync_store", lambda: (sync_calls.append(True), alt_images.SyncReport())[1])
-        monkeypatch.setattr(alt_images, "load_store", lambda: deepcopy(store))
+        monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda _ctx: [first, second])
+        monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
+        monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, *_args: [])
+        monkeypatch.setattr(alt_images, "sync_store", lambda _ctx: (sync_calls.append(True), alt_images.SyncReport())[1])
+        monkeypatch.setattr(alt_images, "load_store", lambda _ctx: deepcopy(store))
         monkeypatch.setattr(alt_images, "slide_context_hash", lambda _path: "slide-hash")
 
-        def update_store(mutate):
+        def update_store(_ctx, mutate):
             latest = deepcopy(store)
             changed = mutate(latest)
             if changed:
@@ -82,8 +80,8 @@ def make_page(monkeypatch, qapp, tmp_path):
 
         monkeypatch.setattr(alt_images, "update_store", update_store)
         monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
-        app = FakeApp()
-        page = images.ImagesPage(app, WorkspaceState(transitional_context()))
+        app = FakeApp(ctx)
+        page = images.ImagesPage(app, WorkspaceState(ctx))
         page.reload()
         page.app, page.sync_calls, page.store, page.first, page.second = app, sync_calls, store, first, second
         return page
@@ -406,7 +404,7 @@ def test_open_in_source_and_transcript_preview_use_the_slide_on_show(make_page, 
 
 
 class FakeBackend:
-    def __init__(self, provider, **_kwargs):
+    def __init__(self, _ctx, provider, **_kwargs):
         self.provider, self.label = provider, "offline-test"
 
     def draft(self, _path, _context):
@@ -424,8 +422,8 @@ def test_draft_slide_runs_one_job_writes_the_draft_and_gives_the_slot_back(make_
     release = page.app.end_ollama_task
     page.app.end_ollama_task = lambda provider=None: (given.append(provider), release(provider))
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(alt_draft, "build_context", lambda *_args: None)
-    monkeypatch.setattr(alt_draft, "slide_jobs", lambda row, entries: [
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
+    monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
         alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
     page._draft_slide()
     assert page.app.slots == ["took", "gave"] and page._job is None and page.job_card.isHidden()
@@ -449,9 +447,9 @@ def test_draft_all_confirms_then_runs_the_queue_and_reports_errors(make_page, mo
     run_jobs_inline(monkeypatch)
     choose_provider(monkeypatch)
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(alt_draft, "build_context", lambda *_args: None)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
     queue = [alt_draft.ImageJob(CHART, Path("chart.png"), "one", page.first.path)]
-    monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda **_kwargs: queue)
+    monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda _ctx, **_kwargs: queue)
     monkeypatch.setattr(QMessageBox, "exec", lambda box: QMessageBox.StandardButton.Cancel)
     page._draft_all()
     assert page.app.slots == ["took", "gave"] and page.store[CHART].short == ""    # declined: slot given back
@@ -464,7 +462,7 @@ def test_draft_all_confirms_then_runs_the_queue_and_reports_errors(make_page, mo
 class SlowBackend:
     """Draft one image after another until told to stop, like a long batch."""
 
-    def __init__(self, provider, **_kwargs):
+    def __init__(self, _ctx, provider, **_kwargs):
         self.provider, self.label = provider, "offline-test"
         self.started = threading.Event()
 
@@ -474,8 +472,9 @@ class SlowBackend:
         return alt_draft.DraftResult(error="no answer")
 
 
-def window_stand_in() -> QWidget:
+def window_stand_in(project) -> QWidget:
     widget = QWidget()
+    widget.project = project
     widget.log = lambda line: None
     return widget
 
@@ -488,14 +487,14 @@ def wait_for(condition, seconds=5.0):
     return condition()
 
 
-def test_stop_ends_a_batch_after_the_current_image_and_takes_the_click_back(make_page, monkeypatch):
+def test_stop_ends_a_batch_after_the_current_image_and_takes_the_click_back(make_page, monkeypatch, ctx):
     page = make_page()
     choose_provider(monkeypatch)
-    backend = SlowBackend(OllamaProvider("offline-test"))
-    monkeypatch.setattr(alt_draft, "ModelBackend", lambda provider, **kw: backend)
-    monkeypatch.setattr(alt_draft, "build_context", lambda *_args: None)
+    backend = SlowBackend(ctx, OllamaProvider("offline-test"))
+    monkeypatch.setattr(alt_draft, "ModelBackend", lambda _ctx, provider, **kw: backend)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
     queue = [alt_draft.ImageJob(f"media/{i}.png", Path("x.png"), "one", page.first.path) for i in range(500)]
-    monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda **_kwargs: queue)
+    monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda _ctx, **_kwargs: queue)
     monkeypatch.setattr(QMessageBox, "exec", lambda box: QMessageBox.StandardButton.Ok)
     page._draft_all()
     job = page._job
@@ -723,7 +722,7 @@ def test_stop_on_a_single_translation_aborts_it_at_once(make_page, monkeypatch):
 class FakeReplaceSheet:
     others_checked = True
 
-    def __init__(self, parent, reference, others):
+    def __init__(self, parent, project, reference, others):
         self.source, self.new_name = Path("picked.png"), "chart-new.png"
         self.on_others = SimpleNamespace(isChecked=lambda: self.others_checked)
 
@@ -739,9 +738,8 @@ def test_replace_image_repoints_clean_slides_and_refuses_one_with_unsaved_edits(
     page.second.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
     page.app.unsaved = {page.second.path}
     page.reload()
-    use_project(monkeypatch, tmp_path)
     (tmp_path / "picked.png").write_bytes(b"png")
-    monkeypatch.setattr(FakeReplaceSheet, "__init__", lambda self, parent, reference, others: (
+    monkeypatch.setattr(FakeReplaceSheet, "__init__", lambda self, parent, project, reference, others: (
         setattr(self, "source", tmp_path / "picked.png"), setattr(self, "new_name", "chart-new.png"),
         setattr(self, "on_others", SimpleNamespace(isChecked=lambda: True)), setattr(self, "others", others)) and None)
     monkeypatch.setattr(images, "ReplaceImageSheet", FakeReplaceSheet)
@@ -763,27 +761,26 @@ def test_replace_image_offers_to_delete_the_orphaned_description(make_page, monk
     page.store[CHART].used_on = {"one": alt_images.SlideUse()}
     page.first.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
     page.reload()
-    use_project(monkeypatch, tmp_path)
     (tmp_path / "picked.png").write_bytes(b"png")
 
     class Sheet(FakeReplaceSheet):
-        def __init__(self, parent, reference, others):
+        def __init__(self, parent, project, reference, others):
             self.source, self.new_name = tmp_path / "picked.png", "chart-new.png"
             self.on_others = SimpleNamespace(isChecked=lambda: False)
 
     monkeypatch.setattr(images, "ReplaceImageSheet", Sheet)
     deleted = []
-    monkeypatch.setattr(alt_images, "delete_entry", lambda image: deleted.append(image))
+    monkeypatch.setattr(alt_images, "delete_entry", lambda _ctx, image: deleted.append(image))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     page._replace_image(page._forms[0])
     assert deleted == [CHART]
 
 
 def test_the_replace_sheet_validates_the_name_and_refuses_to_overwrite(qapp, monkeypatch, tmp_path):
-    use_project(monkeypatch, tmp_path)
+    ctx = ProjectContext.at(tmp_path)
     (tmp_path / "media").mkdir()
     (tmp_path / "media" / "taken.png").write_bytes(b"x")
-    sheet = image_dialogs.ReplaceImageSheet(None, "media/chart-old.png", ["2bb", "3cc"])
+    sheet = image_dialogs.ReplaceImageSheet(None, ctx, "media/chart-old.png", ["2bb", "3cc"])
     assert not sheet.replace_button.isEnabled() and not sheet.on_others.isHidden()
     monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *args: (str(tmp_path / "new.JPG"), ""))
     sheet._choose()
@@ -806,13 +803,13 @@ def test_the_replace_sheet_validates_the_name_and_refuses_to_overwrite(qapp, mon
 # -- tuning the prompt --------------------------------------------------------------------------------------
 
 
-def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(qapp, monkeypatch, tmp_path):
+def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(ctx, qapp, monkeypatch, tmp_path):
     release = threading.Event()
     provider = OllamaProvider("offline-test")
     provider.abort = release.set
 
     class Backend:
-        def __init__(self, provider, **_kwargs):
+        def __init__(self, _ctx, provider, **_kwargs):
             pass
 
         def draft(self, _path, _context):
@@ -820,9 +817,9 @@ def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(
             return alt_draft.DraftResult(error="aborted")
 
     monkeypatch.setattr(image_dialogs.alt_draft, "ModelBackend", Backend)
-    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _reference: None)
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
     over = []
-    app = window_stand_in()
+    app = window_stand_in(ctx)
     context = alt_draft.SlideContext(slide_id="one", title="T", body="", source="", image="chart.png")
     sheet = image_dialogs.PromptTuningSheet(app, CHART, tmp_path / "chart.png", context, provider, "", lambda: over.append(True))
     sheet._draft()
@@ -832,11 +829,11 @@ def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(
     assert wait_for(job.isFinished) and over == [True]
 
 
-def test_a_tuned_draft_can_be_accepted_with_its_hint(qapp, monkeypatch, tmp_path):
+def test_a_tuned_draft_can_be_accepted_with_its_hint(ctx, qapp, monkeypatch, tmp_path):
     provider = OllamaProvider("offline-test")
 
     class Backend:
-        def __init__(self, provider, **kwargs):
+        def __init__(self, _ctx, provider, **kwargs):
             self.system_prompt = kwargs["system_prompt"]
 
         def draft(self, _path, context):
@@ -845,10 +842,10 @@ def test_a_tuned_draft_can_be_accepted_with_its_hint(qapp, monkeypatch, tmp_path
 
     monkeypatch.setattr(image_dialogs.alt_draft, "ModelBackend", Backend)
     monkeypatch.setattr(Job, "start", Job.run)
-    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _reference: None)
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
     over = []
     context = alt_draft.SlideContext(slide_id="one", title="T", body="", source="", image="chart.png")
-    window = window_stand_in()
+    window = window_stand_in(ctx)
     sheet = image_dialogs.PromptTuningSheet(window, CHART, tmp_path / "chart.png",
                                             context, provider, "old hint", lambda: over.append(True))
     sheet.hint_edit.setPlainText("the y-axis maximum is 6800")

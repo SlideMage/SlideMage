@@ -18,8 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_outline, project, slide_ids, slide_language, slide_rename, slide_versioning
+from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename, slide_versioning
 from .ai.providers import ChatProvider
+from .project import ProjectContext
 from .slide_import import escape_latex
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$")
@@ -55,21 +56,21 @@ NEEDS_IMAGE = ("sideimageframe", "fullbleedframe")
 # A slide body of a few screens, translated as one block: leave room for the answer.
 TRANSLATION_MAX_TOKENS = 4096
 
-def slide_path(id_slug: str) -> Path:
+def slide_path(ctx: ProjectContext, id_slug: str) -> Path:
     """The live file of a slide."""
-    return project.transitional_context().slides_dir / slide_language.current_name(id_slug)
+    return ctx.slides_dir / slide_language.current_name(id_slug)
 
 
 def frame_thumbnail(frame: str) -> Path:
     return FRAMES_DIR / f"{frame}.png"
 
 
-def frame_body(frame: str, title: str) -> str:
+def frame_body(ctx: ProjectContext, frame: str, title: str) -> str:
     """The text of a new slide of `frame` called `title` (plain text; "Title" when empty)."""
     shown = escape_latex(title.strip()) or DEFAULT_TITLE
     skeleton = _SKELETONS[frame]
     if not skeleton:
-        return slide_ids.read_template().replace("{" + DEFAULT_TITLE + "}", "{" + shown + "}", 1)
+        return slide_ids.read_template(ctx).replace("{" + DEFAULT_TITLE + "}", "{" + shown + "}", 1)
     return skeleton.replace("@title@", shown).replace("\n", "\r\n")   # as the template and the header
 
 
@@ -81,47 +82,47 @@ class CreatedSlide:
     path: Path
 
 
-def create_new(slug: str, language: str, frame: str = STANDARD_FRAME, title: str = "") -> CreatedSlide:
+def create_new(ctx: ProjectContext, slug: str, language: str, frame: str = STANDARD_FRAME, title: str = "") -> CreatedSlide:
     """A new slide of `frame` in `language` (one of slide_language.LANGUAGES), with a fresh id."""
-    return _create(slug, language, frame_body(frame, title))
+    return _create(ctx, slug, language, frame_body(ctx, frame, title))
 
 
 def create_copy(
-    source_id_slug: str, slug: str, language: Optional[str] = None, body: Optional[str] = None,
+    ctx: ProjectContext, source_id_slug: str, slug: str, language: Optional[str] = None, body: Optional[str] = None,
 ) -> CreatedSlide:
     """A new slide seeded from `source_id_slug`'s saved content (or from `body`, e.g. its
     translation). Without `language` it is a duplicate in the source's language (EN when the source
     has none), independent of the source; with one, a translation into it, linked with the source."""
-    source = slide_path(source_id_slug)
+    source = slide_path(ctx, source_id_slug)
     if body is None:
         body = slide_ids.slide_body(source)
     # A fresh id starts its own version history, just like a template-seeded slide.
     body = slide_versioning.strip_marker(body)
     if language is None:
-        return _create(slug, slide_language.own_language(source_id_slug) or "EN", body)
-    created = create_translation(source_id_slug, slug, language, body)
+        return _create(ctx, slug, slide_language.own_language(source_id_slug) or "EN", body)
+    created = create_translation(ctx, source_id_slug, slug, language, body)
     slide_ids.add_translation_backreference(source, language, created.id_slug)
-    slide_rename.regenerate_translation_links()
+    slide_rename.regenerate_translation_links(ctx)
     return created
 
 
-def create_translation(source_id_slug: str, slug: str, language: str, body: str) -> CreatedSlide:
+def create_translation(ctx: ProjectContext, source_id_slug: str, slug: str, language: str, body: str) -> CreatedSlide:
     """A new slide in `language` holding `body`, its header saying it is a translation of
     `source_id_slug`. The source's own "<LANG> translation" line is the caller's to add
     (slide_ids.with_translation_backreference), e.g. into the source's open editor buffer."""
-    return _create(slug, language, body, translation_of=source_id_slug)
+    return _create(ctx, slug, language, body, translation_of=source_id_slug)
 
 
-def _create(slug: str, language: str, body: str, translation_of: Optional[str] = None) -> CreatedSlide:
-    new_id = slide_ids.mint_slide_id()
-    slide_ids.append_slide_id(new_id)
-    path = slide_ids.create_slide_file(new_id, slug, language, translation_of, body)
+def _create(ctx: ProjectContext, slug: str, language: str, body: str, translation_of: Optional[str] = None) -> CreatedSlide:
+    new_id = slide_ids.mint_slide_id(ctx)
+    slide_ids.append_slide_id(ctx, new_id)
+    path = slide_ids.create_slide_file(ctx, new_id, slug, language, translation_of, body)
     return CreatedSlide(f"{new_id}-{language}-{slug}", path)
 
 
-def source_body(id_slug: str) -> str:
+def source_body(ctx: ProjectContext, id_slug: str) -> str:
     """What a copy of `id_slug` starts from: the saved text of the slide without its header."""
-    return slide_ids.slide_body(slide_path(id_slug))
+    return slide_ids.slide_body(slide_path(ctx, id_slug))
 
 
 def slug_of(id_slug: str) -> str:
@@ -143,11 +144,11 @@ def can_machine_translate(id_slug: str, target: str) -> bool:
     return slide_language.own_language(id_slug) == "EN" and target == "DE"
 
 
-def translate_body(provider: ChatProvider, body: str) -> tuple[str, Optional[str]]:
+def translate_body(ctx: ProjectContext, provider: ChatProvider, body: str) -> tuple[str, Optional[str]]:
     """(translation, error) of a slide body, sent to the model as one block. Experimental: a
     translation model knows nothing about LaTeX, so a command's argument text can come back
     altered; reviewing the result is the user's job."""
-    backend = alt_draft.ModelTranslationBackend(provider, max_tokens=TRANSLATION_MAX_TOKENS)
+    backend = alt_draft.ModelTranslationBackend(ctx, provider, max_tokens=TRANSLATION_MAX_TOKENS)
     translated, error = backend.translate_text(body)
     eol = "\r\n" if "\r\n" in body else "\n"
     return re.sub(r"\r?\n", eol, translated), error
@@ -192,12 +193,12 @@ class ProjectSlide:
     badge: str      # "[EN]", "[EN + DE]" or ""
 
 
-def project_slides() -> list[ProjectSlide]:
+def project_slides(ctx: ProjectContext) -> list[ProjectSlide]:
     """Every slide of the project, sorted by id-slug."""
     slides = []
-    links = slide_language.TranslationLinks()
-    for id_slug in slide_ids.list_id_slugs():
-        path = slide_path(id_slug)
+    links = slide_language.TranslationLinks(ctx.slides_dir)
+    for id_slug in slide_ids.list_id_slugs(ctx):
+        path = slide_path(ctx, id_slug)
         slides.append(ProjectSlide(id_slug, deck_outline.slide_file_title(path, id_slug),
-                                   slide_language.badge_for(id_slug, links=links).text()))
+                                   slide_language.badge_for(ctx, id_slug, links=links).text()))
     return slides

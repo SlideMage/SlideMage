@@ -11,7 +11,6 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMessageBox, QWidget
 
-from slidemage.project import transitional_context
 from slidemage.project import ProjectContext
 from slidemage import deck_editor, deck_scan, slide_add
 from slidemage.ai.providers import Cancelled, ChatReply, OllamaProvider
@@ -95,7 +94,7 @@ def make(project, qapp):
 
     def make(**start):
         window = FakeWindow(ProjectContext.at(project.slides.parent))
-        deck = next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == "course")
+        deck = next(d for d in deck_scan.scan_decks(window.project) if d.name == "course")
         insert_at, indent = deck_editor.append_position(deck)
         sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", **start)
         keep.append((window, sheet))
@@ -122,7 +121,7 @@ def pick(sheet, id_slug):
 
 def use_provider(monkeypatch, provider):
     asked = []
-    monkeypatch.setattr(add_slide, "provider_from_combo", lambda parent, combo, what: asked.append(what) or provider)
+    monkeypatch.setattr(add_slide, "provider_from_combo", lambda parent, project, combo, what: asked.append(what) or provider)
     return asked
 
 

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit
 
 from .... import alt_blocks, alt_draft, alt_images, image_review
 from ...ai_models import provider_for_task
+from ....project import ProjectContext
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
@@ -34,13 +35,14 @@ PIXMAP_SUFFIXES = (".png", ".jpg", ".jpeg")
 class ImageForm(Row):
     """One image: what is typed is `role`, `short` and `long`; `baseline` is what the store had."""
 
-    def __init__(self, layout, reference: str, entry: Optional[alt_images.ImageEntry], state: str) -> None:
+    def __init__(self, layout, project: ProjectContext, reference: str, entry: Optional[alt_images.ImageEntry],
+                 state: str) -> None:
         super().__init__(layout)
         self.reference = reference
         self.baseline = (entry.role if entry else alt_images.ROLE_INFORMATIVE,
                          entry.short if entry else "", entry.long if entry else "")
         head = QHBoxLayout()
-        resolved = alt_blocks.resolve_image(reference)
+        resolved = alt_blocks.resolve_image(project, reference)
         picture = QLabel()
         picture.setFixedSize(THUMBNAIL, THUMBNAIL)
         pixmap = QPixmap(str(resolved)) if resolved is not None and resolved.suffix.lower() in PIXMAP_SUFFIXES else None
@@ -123,12 +125,12 @@ class ImageDescriptions(SidePanel):
         if not references:
             empty_row(layout, "No images on this slide.")
         else:
-            entries = alt_images.load_store()
+            entries = alt_images.load_store(self.app.project)
             slide_hash = alt_images.slide_context_hash(path)
             for reference in references:
                 entry = alt_images.lookup(entries, reference)
                 state = image_review.image_state(entries, reference, slide_id, slide_hash)
-                form = ImageForm(layout, reference, entry, state)
+                form = ImageForm(layout, self.app.project, reference, entry, state)
                 form.roles.changed.connect(lambda _role: self._edited())
                 form.short_edit.textChanged.connect(self._edited)
                 form.long_edit.textChanged.connect(self._edited)
@@ -154,7 +156,7 @@ class ImageDescriptions(SidePanel):
     def _store(self, reference: str, role: str, short: str, long: str, reviewed: bool,
                baseline: tuple[str, str, str]) -> None:
         slide_id, path = self._slide
-        alt_images.save_slide_image(reference, slide_id, path, role=role, short=short, long=long,
+        alt_images.save_slide_image(self.app.project, reference, slide_id, path, role=role, short=short, long=long,
                                     reviewed=reviewed, baseline=baseline)
         self.app.log(f"{'Reviewed' if reviewed else 'Saved draft of'} {reference} on {path.name}")
 
@@ -172,7 +174,7 @@ class ImageDescriptions(SidePanel):
     def _redraft(self, form: ImageForm) -> None:
         slide_id, path = self._slide
         row = alt_blocks.SlideRow(path=path, slide_id=slide_id, title="", images=[form.reference])
-        found = alt_draft.draftable_images(row, {})
+        found = alt_draft.draftable_images(self.app.project, row, {})
         if not found:
             QMessageBox.information(self, "Redraft", "The model cannot read this image: it is a vector file "
                                     "it cannot render, or the file is missing.")
@@ -183,8 +185,8 @@ class ImageDescriptions(SidePanel):
         form.redraft_button.setEnabled(False)
         form.note.setText(f"Drafting with {provider.label}…")
         form.note.show()
-        context = alt_draft.build_context(path, form.reference)
-        threading.Thread(target=self._draft_bg, args=(slide_id, form.reference, provider, alt_draft.ModelBackend(provider),
+        context = alt_draft.build_context(self.app.project, path, form.reference)
+        threading.Thread(target=self._draft_bg, args=(slide_id, form.reference, provider, alt_draft.ModelBackend(self.app.project, provider),
                                                       found[0][1], context), daemon=True).start()
 
     def _draft_bg(self, slide_id: str, reference: str, provider, backend, resolved: Path, context) -> None:

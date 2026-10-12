@@ -18,8 +18,9 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--limit', type=int)
     args = parser.parse_args()
+    ctx = project.from_environment()
     args.output.mkdir(parents=True, exist_ok=True)
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == 'slidemage-manual')
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)]
     for i, call in enumerate(calls[:args.limit], 1):
@@ -27,7 +28,7 @@ def main():
         row = dict(stage=args.stage, index=i, slide=call.id_slug, macro=call.macro, steps=call.steps)
         start = time.perf_counter()
         try:
-            pdf = slide_preview.render_slide_to_pdf(project.transitional_context(), 
+            pdf = slide_preview.render_slide_to_pdf(ctx,
                 call.macro, call.id_slug, call.version, call.conditions,
                 preamble_text=deck.preamble_text, frame_number=i,
                 footer_timestamp=False, steps=call.steps, log=log.append, reuse_build=False)

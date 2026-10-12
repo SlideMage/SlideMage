@@ -292,7 +292,7 @@ def shot_sheets(shooter: Shooter) -> None:
     shooter.sheet_shot("deck-group", sheet)
     sheet.close()
     path = Path(os.environ["SLIDEMASTER_PROJECT"]) / "slides" / TRANSCRIPT_FILE
-    entry = transcript.generate_single_slide(path.read_text(encoding="utf-8"), TRANSCRIPT_FILE[:3], "during-course", "en")
+    entry = transcript.generate_single_slide(window.project, path.read_text(encoding="utf-8"), TRANSCRIPT_FILE[:3], "during-course", "en")
     sheet = TranscriptPreviewSheet(window, f"Transcript: {TRANSCRIPT_FILE[:3]}", transcript.to_html(entry, "Transcript preview"))
     shooter.sheet_shot("transcript", sheet)
     sheet.close()

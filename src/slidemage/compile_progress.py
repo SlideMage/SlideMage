@@ -86,8 +86,8 @@ def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], 
     from . import deck_language
     from .deck_settings import read_settings
     language = (language or read_settings(text).language).upper()
-    resolved_deck, _inputs = deck_language.compile_deck(deck, language)
-    for slot in deck_language.deck_slots(resolved_deck, language):
+    resolved_deck, _inputs = deck_language.compile_deck(ctx, deck, language)
+    for slot in deck_language.deck_slots(ctx, resolved_deck, language):
         call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
@@ -100,7 +100,7 @@ def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], 
             frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
-                total += sum(1 for s in deck_language.slots(deck_language.calls_in(frag_text, []), language)
+                total += sum(1 for s in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language)
                              if s.call.included_in(version))
     return total
 

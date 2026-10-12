@@ -37,7 +37,7 @@ def main():
     parser.add_argument('--profile', action='store_true', help='Print timings and latexmk pass durations as JSON')
     args = parser.parse_args()
     from . import deck_scan, slide_preview
-    project.use(ctx := project.from_environment())
+    ctx = project.from_environment()
     source = args.source.resolve()
     _, slug, _ = slide_preview.call_for_slide_path(source)
     paths = {source, ctx.root / '.latexmkrc', ctx.root / 'decks/.latexmkrc'}

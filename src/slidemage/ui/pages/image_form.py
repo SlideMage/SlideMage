@@ -74,6 +74,7 @@ class ImageForm(Surface):
     def __init__(self, app, reference: str, entry: alt_images.ImageEntry, slide_id: str, slide_hash: str) -> None:
         super().__init__()
         self.setObjectName(q.PANEL_ROW)   # a hairline under the form
+        self.app = app
         self.reference, self.slide_id = reference, slide_id
         self.entry = entry
         # Values as the form was first shown. `entry` itself is refreshed by "Set as default", so it
@@ -117,7 +118,7 @@ class ImageForm(Surface):
             shared = caption(f"Also used on: {', '.join(others)}. Editing the description here changes it there too.",
                              "warning")
             layout.addWidget(shared)
-        layout.addWidget(ImagePreview(reference, app.log))
+        layout.addWidget(ImagePreview(app.project, reference, app.log))
 
         role_line = QHBoxLayout()
         self.roles = SegmentedControl(ROLES, current=entry.role)
@@ -291,7 +292,7 @@ class ImageForm(Surface):
         text = self.fields["takeaway"].toPlainText().strip()
         if not text:        # would clear the default of every slide that follows it
             return
-        entry = alt_images.set_takeaway_default(self.reference, self.slide_id, text)
+        entry = alt_images.set_takeaway_default(self.app.project, self.reference, self.slide_id, text)
         if entry is None:
             return
         self.entry = entry

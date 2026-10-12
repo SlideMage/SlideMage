@@ -7,29 +7,28 @@ from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 from slidemage import app_settings
 from slidemage.ui import ai_models
 from slidemage.ai import resolver
-from slidemage.project import transitional_context
 
 
-def test_picker_lists_cloud_models_only_with_a_key_and_preselects_the_default(
+def test_picker_lists_cloud_models_only_with_a_key_and_preselects_the_default(ctx, 
         qapp, monkeypatch):
     combo = QComboBox()
-    app_settings.set(transitional_context(), "translation_model", "qwen3")        # old bare name still preselects
-    assert ai_models.fill_model_combo(transitional_context(), combo, "translation", ["llama", "qwen3"], "(none)")
+    app_settings.set(ctx, "translation_model", "qwen3")        # old bare name still preselects
+    assert ai_models.fill_model_combo(ctx, combo, "translation", ["llama", "qwen3"], "(none)")
     assert [combo.itemData(i) for i in range(combo.count())] == ["ollama:llama", "ollama:qwen3"]
     assert combo.currentData() == "ollama:qwen3"
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    ai_models.fill_model_combo(transitional_context(), combo, "translation", ["llama"], "(none)")
+    ai_models.fill_model_combo(ctx, combo, "translation", ["llama"], "(none)")
     assert combo.itemText(1) == "claude-sonnet-5-5 (cloud)"
     assert combo.itemData(1) == "anthropic:claude-sonnet-5-5"
 
-    resolver.set_global_local_only(True)
-    ai_models.fill_model_combo(transitional_context(), combo, "translation", [], "(none)")
+    resolver.set_global_local_only(ctx, True)
+    ai_models.fill_model_combo(ctx, combo, "translation", [], "(none)")
     assert not combo.isEnabled() and combo.currentText() == "(none)"
     assert not combo.currentData()
 
 
-def test_first_cloud_request_asks_once_per_project(qapp, monkeypatch):
+def test_first_cloud_request_asks_once_per_project(ctx, qapp, monkeypatch):
     questions = []
     answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
 
@@ -43,28 +42,28 @@ def test_first_cloud_request_asks_once_per_project(qapp, monkeypatch):
     combo.addItem("claude-sonnet-5-5 (cloud)", "anthropic:claude-sonnet-5-5")
     parent = QWidget()
 
-    assert ai_models.provider_from_combo(parent, combo, "slide text") is None  # declined
-    assert not resolver.cloud_consent_given()
-    provider = ai_models.provider_from_combo(parent, combo, "slide text")
+    assert ai_models.provider_from_combo(parent, ctx, combo, "slide text") is None  # declined
+    assert not resolver.cloud_consent_given(ctx)
+    provider = ai_models.provider_from_combo(parent, ctx, combo, "slide text")
     assert provider is not None and "slide text" in questions[1]
-    assert resolver.cloud_consent_given()
-    assert ai_models.provider_from_combo(parent, combo, "slide text") is not None
+    assert resolver.cloud_consent_given(ctx)
+    assert ai_models.provider_from_combo(parent, ctx, combo, "slide text") is not None
     assert len(questions) == 2  # no third question
 
 
-def test_the_provider_of_a_task_without_a_picker_follows_the_settings(qapp, monkeypatch):
+def test_the_provider_of_a_task_without_a_picker_follows_the_settings(ctx, qapp, monkeypatch):
     errors = []
     monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: errors.append(text))
     parent = QWidget()
-    assert ai_models.provider_for_task(parent, transitional_context(), "translation", "the slide") is None
+    assert ai_models.provider_for_task(parent, ctx, "translation", "the slide") is None
     assert "No AI model is chosen" in errors[-1]
-    app_settings.set(transitional_context(), "translation_model", "qwen3")
-    provider = ai_models.provider_for_task(parent, transitional_context(), "translation", "the slide")
+    app_settings.set(ctx, "translation_model", "qwen3")
+    provider = ai_models.provider_for_task(parent, ctx, "translation", "the slide")
     assert provider.label.startswith("qwen3")
-    app_settings.set(transitional_context(), "translation_model", "anthropic:claude-sonnet-5-5")
+    app_settings.set(ctx, "translation_model", "anthropic:claude-sonnet-5-5")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.No)
-    assert ai_models.provider_for_task(parent, transitional_context(), "translation", "the slide") is None      # consent declined
-    resolver.set_global_local_only(True)
-    assert ai_models.provider_for_task(parent, transitional_context(), "translation", "the slide") is None
+    assert ai_models.provider_for_task(parent, ctx, "translation", "the slide") is None      # consent declined
+    resolver.set_global_local_only(ctx, True)
+    assert ai_models.provider_for_task(parent, ctx, "translation", "the slide") is None
     assert "Local AI only" in errors[-1]

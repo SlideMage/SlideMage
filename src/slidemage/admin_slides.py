@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import course_schedule, deck_editor, project, slide_ids, slide_language
+from . import course_schedule, deck_editor, slide_ids, slide_language
 from .deck_scan import Deck
+from .project import ProjectContext
 
 LANGUAGE_NAMES = {"de": "German", "en": "English"}
 TITLE_SLIDE, SESSIONS_SLIDE = "Title-Slide", "Course-Sessions"
@@ -80,7 +81,7 @@ def plan_slides(
 
 
 def insert_admin_slides(
-    deck: Deck, position: deck_editor.InsertPosition, slide_specs: list[tuple[str, str]],
+    ctx: ProjectContext, deck: Deck, position: deck_editor.InsertPosition, slide_specs: list[tuple[str, str]],
     language: str = "de",
 ) -> list[Path]:
     """Create one new slide per ``(id_suffix, slide_source)`` spec, then add
@@ -91,12 +92,12 @@ def insert_admin_slides(
     id_slugs: list[str] = []
     try:
         for id_suffix, source in slide_specs:
-            slide_id = slide_ids.mint_slide_id()
+            slide_id = slide_ids.mint_slide_id(ctx)
             id_slug = f"{slide_id}-{'EN' if language == 'en' else 'DE'}-{id_suffix}"
-            slide_path = project.transitional_context().slides_dir / slide_language.current_name(id_slug)
+            slide_path = ctx.slides_dir / slide_language.current_name(id_slug)
             slide_path.parent.mkdir(parents=True, exist_ok=True)
             # Reserve the ID before editing the deck, like the ordinary Add slide path.
-            slide_ids.append_slide_id(slide_id)
+            slide_ids.append_slide_id(ctx, slide_id)
             with slide_path.open("x", encoding="utf-8", newline="") as destination:
                 destination.write(source)
             slide_paths.append(slide_path)

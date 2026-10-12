@@ -12,6 +12,7 @@ from slidemage.ai import resolver
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import EDIT_AUTO, Done, EditApplied, TextDelta, ToolFinished
 from slidemage.ai.providers import AnthropicProvider, OllamaProvider
+from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace, WorkspaceContext
 
 # Read now: the autouse fixture in conftest.py removes the variable from the environment of every test.
@@ -38,7 +39,7 @@ def test_live_ollama_agent_reads_a_slide_with_its_tools(tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
     slide = root / "slides" / "abc-EN-Hello-current.tex"
     events = []
-    agent = Agent(OllamaProvider(models[0]), Workspace(root, WorkspaceContext(slide_id="abc", path=slide)),
+    agent = Agent(OllamaProvider(models[0]), Workspace(ProjectContext.at(root), WorkspaceContext(slide_id="abc", path=slide)),
                   on_event=events.append, max_turns=6)
     done = agent.run([], "Use the read_file tool on the slide in the editor, then tell me the text of its first "
                          "bullet point.")
@@ -55,16 +56,16 @@ def test_live_claude():
     assert "pong" in provider.chat(MESSAGES, max_tokens=16, timeout=60).text.lower()
 
 
-def test_live_claude_agent_changes_a_slide_with_its_tools(tmp_path, monkeypatch):
+def test_live_claude_agent_changes_a_slide_with_its_tools(ctx, tmp_path, monkeypatch):
     """The whole loop on the real API: the model reads the slide, edits it through edit_file
     (the protected lines stay), and says it is done."""
     if not LIVE_KEY:
         pytest.skip("ANTHROPIC_API_KEY not set")
     root = make_project(monkeypatch, tmp_path / "project")
     slide = root / "slides" / "abc-EN-Hello-current.tex"
-    resolver.record_cloud_consent()
+    resolver.record_cloud_consent(ctx)
     events = []
-    agent = Agent(AnthropicProvider(api_key=LIVE_KEY), Workspace(root, WorkspaceContext(slide_id="abc", path=slide)),
+    agent = Agent(AnthropicProvider(api_key=LIVE_KEY), Workspace(ProjectContext.at(root), WorkspaceContext(slide_id="abc", path=slide)),
                   on_event=events.append, mode=EDIT_AUTO, max_turns=8)
     done = agent.run([], "Change the frame title of this slide from 'Hello' to 'Hello, world', "
                          "then check it with lint. Do nothing else.")

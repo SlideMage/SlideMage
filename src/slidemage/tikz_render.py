@@ -215,7 +215,7 @@ def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[L
         raise RuntimeError(f"not a tikz reference: {reference}")
     illustration_id = reference[len(alt_blocks.TIKZ_PREFIX):]
 
-    found = alt_blocks.find_tikz_illustration(illustration_id)
+    found = alt_blocks.find_tikz_illustration(ctx, illustration_id)
     if found is None:
         raise RuntimeError(
             f"tikz illustration '{illustration_id}' not found in any slide "

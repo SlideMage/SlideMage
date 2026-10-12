@@ -48,7 +48,7 @@ from __future__ import annotations
 import re
 import threading
 
-from . import project
+from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES
 
 # regenerate_headers() does a read-modify-write over every slides/*-current
@@ -74,7 +74,7 @@ def _deck_display_name(path) -> str:
     return path.stem
 
 
-def regenerate_headers() -> tuple[int, int]:
+def regenerate_headers(ctx: ProjectContext) -> tuple[int, int]:
     """Rescan every decks/*.tex and decks/archive/*.tex file and rewrite
     each slides/*-current.tex file's own header block to match. Returns
     (slide files changed, deck files scanned).
@@ -82,11 +82,10 @@ def regenerate_headers() -> tuple[int, int]:
     Serialized via _LOCK -- see its own comment above; safe to call from
     multiple threads."""
     with _LOCK:
-        return _regenerate_headers_impl()
+        return _regenerate_headers_impl(ctx)
 
 
-def _regenerate_headers_impl() -> tuple[int, int]:
-    ctx = project.transitional_context()
+def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
     deck_paths = [
         p for directory in ctx.deck_folders if directory.is_dir()
         for p in directory.glob("*.tex")
@@ -105,7 +104,7 @@ def _regenerate_headers_impl() -> tuple[int, int]:
         for call in calls:
             id_to_decks.setdefault(call.id, set()).add(deck_name)
         for language in TRANSLATION_LANGUAGES:
-            for slot in deck_language.slots(calls, language, slides_dir=ctx.slides_dir):
+            for slot in deck_language.slots(ctx, calls, language):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
 
     changed = 0

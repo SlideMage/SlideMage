@@ -36,15 +36,15 @@ class SlideVersions(SidePanel):
 
     def meta(self) -> str:
         slide = self.id_slug()
-        count = len(deck_editor.available_versions(slide)) if slide else 0
+        count = len(deck_editor.available_versions(self.app.project, slide)) if slide else 0
         return f"{count} frozen" if count else "none frozen"
 
     def build(self, id_slug: str) -> None:
-        current = slide_language.current_path_for_bare_id(slide_language.bare_id(id_slug))
+        current = slide_language.current_path_for_bare_id(self.app.project, slide_language.bare_id(id_slug))
         if current is None:
             self.body.addWidget(text("The slide's current file was not found.", q.DETAILS_LABEL))
             return
-        frozen = list(reversed(deck_editor.available_versions(id_slug)))
+        frozen = list(reversed(deck_editor.available_versions(self.app.project, id_slug)))
         users = self._users(id_slug)
         source = slide_source.read_slide_source(current)[0]
         number = slide_versioning.parse_version(source)
@@ -65,11 +65,10 @@ class SlideVersions(SidePanel):
 
     # -- the version list --------------------------------------------------------------
 
-    @staticmethod
-    def _users(id_slug: str) -> dict[Optional[str], list[str]]:
+    def _users(self, id_slug: str) -> dict[Optional[str], list[str]]:
         """Version -> the decks that use it (None: the current version, which the decks that follow it use)."""
         users: dict[Optional[str], list[str]] = {}
-        for usage in slide_usage.find_usage(id_slug):
+        for usage in slide_usage.find_usage(self.app.project, id_slug):
             for version in {c.version if c.macro in slide_usage.PINNED else None for c in usage.calls}:
                 users.setdefault(version, []).append(usage.deck.name)
         return users

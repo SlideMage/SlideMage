@@ -179,7 +179,7 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
     # Pre-render syntax check (2026-09-26), scoped to exactly what these
     # jobs read: the deck files plus the slides their versions/chapters
     # actually include.
-    if not _confirm_build(window, latex_lint.check_jobs(jobs), ", ".join(sorted({job.deck.name for job in jobs}))):
+    if not _confirm_build(window, latex_lint.check_jobs(window.project, jobs), ", ".join(sorted({job.deck.name for job in jobs}))):
         return False
 
     def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
@@ -346,7 +346,7 @@ def export_pptx(window, deck: Deck) -> None:
         QMessageBox.critical(window, "Nothing to export", f"{deck.name} has no slides to typeset.")
         return
     job = CompileJob(deck, version="instructor", chapter=None)
-    if not _confirm_build(window, latex_lint.check_jobs([job]), deck.name):
+    if not _confirm_build(window, latex_lint.check_jobs(window.project, [job]), deck.name):
         return
     window.compile.start(
         {job.jobname: f"Export {deck.name} to PowerPoint"}, {job.jobname: compile_progress.spec_for_job(window.project, job)},
@@ -439,7 +439,8 @@ def update_previews(window) -> None:
     if not _confirm_build(
             window,
             latex_lint.check_slide_files(
-                window.project.slides_dir / slide_language.current_name(slug) for slug in all_slides),
+                window.project,
+                (window.project.slides_dir / slide_language.current_name(slug) for slug in all_slides)),
             f"{len(all_slides)} slides"):
         return
 

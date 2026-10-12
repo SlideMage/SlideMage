@@ -14,17 +14,18 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    root = project.transitional_context().root
+    ctx = project.from_environment()
+    root = ctx.root
     assert root.is_relative_to(Path("/tmp")), "Use a scratch project"
     args.output.mkdir(parents=True, exist_ok=True)
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == "slidemage-manual")
-    project.use(project.ProjectContext(root, root / ".build" / "validation"))
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "slidemage-manual")
+    ctx = project.ProjectContext(root, root / ".build" / "validation")
     results = []
 
     def render(name, body, preamble=None, **options):
         logs = []
         with PreviewMetrics() as trace:
-            pdf = slide_preview.render_slide_text_to_pdf(project.transitional_context(), 
+            pdf = slide_preview.render_slide_text_to_pdf(ctx,
                 "zz1-EN-PreviewValidation",
                 body,
                 preamble_text=preamble or deck.preamble_text,

@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .. import slide_add
+from ..project import ProjectContext
 
 _SLIDES = """\
 Slides, files and decks.
@@ -81,10 +82,10 @@ Layout helpers (prefer these to hand-measured shifts).
   the text or split the slide rather than shrinking below \\footnotesize."""
 
 
-def _frames() -> str:
+def _frames(ctx: ProjectContext) -> str:
     lines = ["Frame types (the first line of a new slide). Skeletons as add_slide writes them:"]
     for frame in slide_add.FRAMES:
-        body = slide_add.frame_body(frame, "Title").replace("\r\n", "\n").strip()
+        body = slide_add.frame_body(ctx, frame, "Title").replace("\r\n", "\n").strip()
         if frame == slide_add.STANDARD_FRAME:
             lines.append("standardframe: the default content slide, with a title and bullets (columns, tables, blocks inside).")
         lines.append(f"\n{frame}:\n{body}")
@@ -95,13 +96,13 @@ def _frames() -> str:
     return "\n".join(lines)
 
 
-GUIDES: dict[str, tuple[str, Callable[[], str]]] = {
-    "slides": ("file names, versions, protected parts, deck calls", lambda: _SLIDES),
+GUIDES: dict[str, tuple[str, str | Callable[[ProjectContext], str]]] = {
+    "slides": ("file names, versions, protected parts, deck calls", _SLIDES),
     "frames": ("the frame types and their LaTeX skeletons", _frames),     # built on demand
-    "layout": ("columns, tables, blocks, figures, spacing", lambda: _LAYOUT),
-    "reveals": ("\\pause, \\only, \\slidestep, deck versions", lambda: _REVEALS),
-    "citations": ("Slidemaster.bib, \\fullcite, \\textcite", lambda: _CITATIONS),
-    "images_and_text": ("images, notes, code and text helpers, escaping", lambda: _NOTES_IMAGES),
+    "layout": ("columns, tables, blocks, figures, spacing", _LAYOUT),
+    "reveals": ("\\pause, \\only, \\slidestep, deck versions", _REVEALS),
+    "citations": ("Slidemaster.bib, \\fullcite, \\textcite", _CITATIONS),
+    "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES),
 }
 TOPICS = tuple(GUIDES)
 
@@ -110,5 +111,6 @@ def topic_overview() -> str:
     return "; ".join(f"{topic} ({about})" for topic, (about, _text) in GUIDES.items())
 
 
-def guide(topic: str) -> str:
-    return GUIDES[topic][1]()
+def guide(ctx: ProjectContext, topic: str) -> str:
+    text = GUIDES[topic][1]
+    return text(ctx) if callable(text) else text

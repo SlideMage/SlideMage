@@ -22,7 +22,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from . import project
+
+from .project import ProjectContext
 
 
 
@@ -454,7 +455,7 @@ def media_filename(id_slug: str, index: int, ext: str) -> str:
     return f"imported-{id_slug}{suffix}{ext}"
 
 
-def import_presentation(source_path: Path, deck, language: str, log=None) -> ImportSummary:
+def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: str, log=None) -> ImportSummary:
     """Extracts every slide from `source_path` (.pptx or .odp) and appends
     one new Slidemaster slide per non-blank source slide to the end of
     `deck` -- new slide files under slides/, their images (if any) under
@@ -472,7 +473,6 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
     (python-pptx's own PackageNotFoundError, odfpy's) -- neither is
     caught here, so a caller can show the real underlying error rather
     than a generic "import failed"."""
-    ctx = project.transitional_context()
     from . import deck_editor, slide_ids, slide_language
 
     extractor = {".pptx": extract_pptx, ".odp": extract_odp}.get(source_path.suffix.lower())
@@ -485,14 +485,14 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
     summary = ImportSummary()
     expected_text = deck.text
     insert_at, indent = deck_editor.append_position(deck)
-    media_dir = ctx.root / "media"
+    media_dir = ctx.media_dir
 
     for content in contents:
         if content.is_blank:
             summary.skipped_blank += 1
             continue
 
-        slide_id = slide_ids.mint_slide_id()
+        slide_id = slide_ids.mint_slide_id(ctx)
         fallback_slug = f"Imported-Slide-{len(summary.imported) + summary.skipped_blank + 1}"
         slug = slug_from_title(content.title, fallback_slug)
         id_slug = f"{slide_id}-{language}-{slug}"
@@ -519,7 +519,7 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
         # mint_slide_id() checks slide_ids.csv fresh on every call, so the
         # *next* iteration's mint would otherwise be free to draw this
         # same id again before it's ever recorded anywhere.
-        slide_ids.append_slide_id(slide_id)
+        slide_ids.append_slide_id(ctx, slide_id)
 
         new_text = deck_editor.insert_slide_call(
             deck.path, expected_text, insert_at, indent, "slide", id_slug,

@@ -166,7 +166,7 @@ def test_importing_the_app_selects_no_project(tmp_path):
     code = ("import sys; import slidemage.cli, slidemage.compiler, slidemage.deck_scan, slidemage.app_settings, "
             "slidemage.ui.dialogs.open_project as o, slidemage.ui.workspace.window; "
             "from slidemage.ui.kit.theme import ThemeManager; ThemeManager(dark=True); "
-            "from slidemage import project; sys.exit(int(project._transitional is not None))")
+            "from slidemage import project; sys.exit(int(hasattr(project, 'transitional_context') or hasattr(project, 'use')))")
     assert subprocess.run([sys.executable, "-c", code], capture_output=True, cwd=tmp_path).returncode == 0
 
 

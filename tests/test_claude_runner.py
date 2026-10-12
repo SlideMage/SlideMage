@@ -18,6 +18,7 @@ from slidemage.ai import claude_runner, claude_tasks
 from slidemage.ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING
 from slidemage.ai.tools.base import ToolError
 from slidemage.ai.tools.edits import write_text
+from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
@@ -34,13 +35,13 @@ def claude(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-must-not-reach-claude")
     monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
     return SimpleNamespace(
-        path=make_fake_claude(tmp_path),
+        path=make_fake_claude(tmp_path), ctx=ProjectContext.at(tmp_path),
         script=lambda *replies: monkeypatch.setenv("FAKE_CLAUDE_REPLIES", json.dumps(replies)),
         calls=lambda: [json.loads(line) for line in log.read_text().splitlines()])
 
 
 def run(claude, task=claude_tasks.TRANSLATE, **options):
-    return claude_runner.run_task(claude.path, task, LF, "THE REQUEST", **options)
+    return claude_runner.run_task(claude.ctx, claude.path, task, LF, "THE REQUEST", **options)
 
 
 def test_a_task_runs_in_isolation_and_returns_the_new_text(claude):
@@ -129,7 +130,7 @@ def test_stop_cancels_and_a_late_result_is_dropped(claude, tmp_path):
 
 def test_a_result_is_applied_if_the_file_is_as_captured(root):
     path = root / SLIDE
-    write_text(Workspace(root), path, LF, GOOD["body"])
+    write_text(Workspace(ProjectContext.at(root)), path, LF, GOOD["body"])
     assert path.read_bytes().decode() == SLIDE_TEXT.replace("Hello", "Hallo")        # its CRLF kept
 
 
@@ -137,7 +138,7 @@ def test_a_result_is_refused_if_the_file_changed(root):
     path = root / SLIDE
     path.write_bytes((SLIDE_TEXT + "typed meanwhile\r\n").encode())
     with pytest.raises(ToolError, match="changed on disk"):
-        write_text(Workspace(root), path, LF, GOOD["body"])
+        write_text(Workspace(ProjectContext.at(root)), path, LF, GOOD["body"])
     assert path.read_bytes().decode().endswith("typed meanwhile\r\n") and "Hallo" not in path.read_text()
 
 
@@ -145,7 +146,7 @@ def test_a_frozen_version_is_never_written_by_a_task(root):
     frozen = root / "slides/abc-EN-Hello-v1-0-0.tex"
     frozen.write_bytes(SLIDE_TEXT.encode())
     with pytest.raises(ToolError, match="frozen version"):
-        write_text(Workspace(root), frozen, LF, GOOD["body"])
+        write_text(Workspace(ProjectContext.at(root)), frozen, LF, GOOD["body"])
     assert frozen.read_bytes().decode() == SLIDE_TEXT
 
 

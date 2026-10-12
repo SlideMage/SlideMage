@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLa
 
 from ... import alt_draft
 from ...ai.providers import ChatProvider
+from ...project import ProjectContext
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, caption
 
@@ -43,15 +44,15 @@ class Job(QThread):
         self.result.emit(self, outcome)
 
 
-def draft_work(queue: list[alt_draft.ImageJob], backend: alt_draft.ModelBackend) -> Callable[[Job], object]:
+def draft_work(ctx: ProjectContext, queue: list[alt_draft.ImageJob], backend: alt_draft.ModelBackend) -> Callable[[Job], object]:
     return lambda job: alt_draft.run_batch(
-        queue, backend, on_progress=lambda i, n, image_job: job.progress.emit(i, n, image_job.image),
+        ctx, queue, backend, on_progress=lambda i, n, image_job: job.progress.emit(i, n, image_job.image),
         on_slide_done=job.image_done.emit, should_stop=job.should_stop)
 
 
-def translate_work(queue: list[str], backend: alt_draft.ModelTranslationBackend) -> Callable[[Job], object]:
+def translate_work(ctx: ProjectContext, queue: list[str], backend: alt_draft.ModelTranslationBackend) -> Callable[[Job], object]:
     return lambda job: alt_draft.run_translation_batch(
-        queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image), should_stop=job.should_stop)
+        ctx, queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image), should_stop=job.should_stop)
 
 
 class JobCard(QFrame):

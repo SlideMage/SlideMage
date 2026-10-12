@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import project
+from .project import ProjectContext
 from .tex_source import COMMENT_RE
 
 INCLUDEGRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
@@ -412,17 +412,14 @@ def referenced_tikz_illustrations(source: str) -> list[tuple[str, str, str]]:
     return results
 
 
-def find_tikz_illustration(
-    illustration_id: str, slides_dir: Path | None = None,
-) -> tuple[Path, str, str] | None:
+def find_tikz_illustration(ctx: ProjectContext, illustration_id: str) -> tuple[Path, str, str] | None:
     """Which slide currently defines this tikz illustration, its own
     [options] (verbatim, or "" if none), and its own raw tikz body -- the
     source of truth tikz_render.py compiles from, since ImageEntry itself
     only ever stores a description, never the drawing. A plain linear scan
     across every slide, same cost class scan_slides_raw() already pays on
     every sync."""
-    directory = slides_dir or (project.transitional_context().root / "slides")
-    for path in sorted(directory.glob("*-current.tex")):
+    for path in sorted(ctx.slides_dir.glob("*-current.tex")):
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -589,8 +586,8 @@ def replace_image_reference(source: str, old_reference: str, new_reference: str)
     return result, len(spans)
 
 
-def resolve_image(reference: str) -> Path | None:
-    candidate = project.transitional_context().root / reference
+def resolve_image(ctx: ProjectContext, reference: str) -> Path | None:
+    candidate = ctx.root / reference
     if candidate.is_file():
         return candidate
     if not candidate.suffix:
@@ -620,17 +617,16 @@ class SlideRow:
     images: list[str] = field(default_factory=list)
 
 
-def scan_slides_raw(slides_dir: Path | None = None) -> list[SlideRow]:
+def scan_slides_raw(ctx: ProjectContext) -> list[SlideRow]:
     """Every slide that includes at least one image.
 
     Slides with no images are skipped entirely rather than listed as
     "nothing to describe" -- three quarters of slides/ has no image, and a
     review list padded with them is unusable.
     """
-    directory = slides_dir or (project.transitional_context().root / "slides")
     results: list[SlideRow] = []
 
-    for path in sorted(directory.glob("*-current.tex")):
+    for path in sorted(ctx.slides_dir.glob("*-current.tex")):
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):

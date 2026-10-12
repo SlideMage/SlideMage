@@ -5,11 +5,13 @@ from types import SimpleNamespace
 
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
+from conftest import EXAMPLE_PROJECT
 from slidemage.ui.dialogs import transcript_preview
 
 
 def window_stand_in():
     window = QWidget()
+    window.project = EXAMPLE_PROJECT
     window.logged = []
     window.log = window.logged.append
     return window

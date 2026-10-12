@@ -26,21 +26,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import project
+from .project import ProjectContext
 from .alt_images import atomic_write_text
 
 KIND_IMAGE_DRAFT = "image_draft"
 
 
-def _store_path() -> Path:
-    return project.transitional_context().settings_dir / "draft_prompts.json"
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.settings_dir / "draft_prompts.json"
 
 
-def _load_raw() -> dict[str, str]:
+def _load_raw(ctx: ProjectContext) -> dict[str, str]:
     """The stored prompts; a file that cannot be read or is not the documented shape counts as empty,
     and entries that are not text are dropped."""
     try:
-        data = json.loads(_store_path().read_text(encoding="utf-8"))
+        data = json.loads(_store_path(ctx).read_text(encoding="utf-8"))
     except (OSError, ValueError):    # a missing file, no permission, not UTF-8 (UnicodeDecodeError), bad JSON
         return {}
     if not isinstance(data, dict):
@@ -48,23 +48,23 @@ def _load_raw() -> dict[str, str]:
     return {kind: prompt for kind, prompt in data.items() if isinstance(prompt, str)}
 
 
-def get_custom_prompt(kind: str) -> str | None:
+def get_custom_prompt(ctx: ProjectContext, kind: str) -> str | None:
     """The user's own saved prompt for `kind`, or None if they've never
     edited it (or cleared it back to blank) -- callers fall back to their
     own hardcoded default in that case (alt_draft.SYSTEM_PROMPT)."""
-    return _load_raw().get(kind) or None
+    return _load_raw(ctx).get(kind) or None
 
 
-def set_custom_prompt(kind: str, prompt: str, default: str = "") -> None:
+def set_custom_prompt(ctx: ProjectContext, kind: str, prompt: str, default: str = "") -> None:
     """Empty/whitespace-only clears the override, reverting to the
     hardcoded default. So does a prompt equal to `default` (the caller's
     hardcoded one): saving the stock text verbatim is the same as never
     having customized it, and a stored copy would silently diverge once the
     default is revised in a code update."""
-    raw = _load_raw()
+    raw = _load_raw(ctx)
     prompt = prompt.strip()
     if prompt and prompt != default.strip():
         raw[kind] = prompt
     else:
         raw.pop(kind, None)
-    atomic_write_text(_store_path(), json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    atomic_write_text(_store_path(ctx), json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n")

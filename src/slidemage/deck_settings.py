@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import deck_editor, project
+from . import deck_editor
 from .alt_blocks import braced_argument
 from .deck_scan import (
     DOCUMENT_BEGIN_LINE_RE,
@@ -135,13 +135,12 @@ def from_form(
         output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf)
 
 
-def template_choices(root: Path | None = None) -> list[tuple[str, str]]:
+def template_choices(root: Path) -> list[tuple[str, str]]:
     """[(key, label)] of every template the project's decks can \\input: the
     known ones first, then any other Slidemaster_preamble_<name>.tex in the
     project folder or the framework."""
     from . import slide_snapshot
 
-    root = root or project.transitional_context().root
     keys = list(slide_snapshot.available_templates(root))
     prefix = "Slidemaster_preamble_"
     for folder in (root, *slide_snapshot.framework_dirs(root)):

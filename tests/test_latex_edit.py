@@ -39,11 +39,11 @@ def test_hyperlink_formatter_rejects_invalid_input(word, url):
         le.format_hyperlink(word, url)
 
 
-def test_hyperlink_url_survives_transcript_html():
+def test_hyperlink_url_survives_transcript_html(ctx):
     url = "https://example.org/a_b?x=1&y=2#part%20x"
     source = le.format_hyperlink(" R&D ", url)
     assert source == r"\href{https://example.org/a\_b?x=1\&y=2\#part\%20x}{R\&D}"
-    html = transcript._inline_html(transcript._inline_markdown(source))
+    html = transcript._inline_html(transcript._inline_markdown(source, {}))
 
     class Links(HTMLParser):
         def __init__(self):

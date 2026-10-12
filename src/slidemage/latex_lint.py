@@ -51,8 +51,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import bibliography, project
+from . import bibliography
 from .deck_scan import Chapter, Deck
+from .project import ProjectContext
 from .tex_source import IFFALSE_RE, INPUT_RE, VERB_RE, VERBATIM_ENV_RE, masked_same_length
 
 ERROR = "error"
@@ -463,19 +464,19 @@ _HEADING_TEXT_RE = re.compile(
     r"\s*(?P<head>\\textbf\{[^{}\n]*\})[ \t]*(?:\\\\|\\par)?[ \t]*\n"
     r"\s*\\begin\{(?:itemize|enumerate)\}")
 
-_bib_cache: tuple[tuple[float, int], frozenset[str]] | None = None
+_bib_cache: tuple[tuple[Path, float, int], frozenset[str]] | None = None
 
 
-def bib_keys() -> frozenset[str]:
+def bib_keys(ctx: ProjectContext) -> frozenset[str]:
     """Every citation key in Slidemaster.bib, cached until the file changes."""
     global _bib_cache
     try:
-        st = project.transitional_context().bibliography_path.stat()
-        stamp = (st.st_mtime, st.st_size)
+        st = ctx.bibliography_path.stat()
+        stamp = (ctx.root, st.st_mtime, st.st_size)
     except OSError:
         return frozenset()
     if _bib_cache is None or _bib_cache[0] != stamp:
-        _bib_cache = (stamp, frozenset(bibliography.load()))
+        _bib_cache = (stamp, frozenset(bibliography.load(ctx.bibliography_path)))
     return _bib_cache[1]
 
 
@@ -494,11 +495,10 @@ def cited_keys(text: str) -> list[str]:
     return list(dict.fromkeys(k for k, _ in _citations(masked) if "\\" not in k and "#" not in k))
 
 
-def _external(text: str) -> list[LintIssue]:
-    ctx = project.transitional_context()
+def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
     masked, _ = _mask_comments_and_verbatim(text)
     issues: list[LintIssue] = []
-    keys = bib_keys()
+    keys = bib_keys(ctx)
 
     def line_of(pos: int) -> int:
         return masked.count("\n", 0, pos) + 1
@@ -535,10 +535,10 @@ def _external(text: str) -> list[LintIssue]:
 # Public API
 # --------------------------------------------------------------------------
 
-def lint_text(text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
+def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
     """All issues in one piece of LaTeX source (the editor buffer, a file...)."""
     found = [i.with_source(source, path) for i in _lex(text)]
-    found += [i.with_source(source, path) for i in _external(text)]
+    found += [i.with_source(source, path) for i in _external(ctx, text)]
     found.sort(key=lambda x: (x.line, x.code))
     return found
 
@@ -550,15 +550,11 @@ def read_source(path: Path) -> Optional[str]:
         return None
 
 
-def lint_file(path: Path) -> list[LintIssue]:
+def lint_file(ctx: ProjectContext, path: Path) -> list[LintIssue]:
     text = read_source(path)
     if text is None:
         return [LintIssue("slide-file", f"file does not exist or cannot be read: {path.name}", 1, path.name, path)]
-    return lint_text(text, path.name, path)
-
-
-def _slide_path(call) -> Path:
-    return project.transitional_context().slides_dir / call.source_filename
+    return lint_text(ctx, text, path.name, path)
 
 
 @dataclass
@@ -580,14 +576,13 @@ class CheckResult:
                 f"{len(self.errors)} error(s), {len(self.warnings)} warning(s)")
 
 
-def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[Chapter] = None,
+def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = None, chapter: Optional[Chapter] = None,
                    result: Optional[CheckResult] = None, seen: Optional[set] = None,
                    language: Optional[str] = None) -> CheckResult:
     """Everything a compile of `deck` (in `version`, whole or one `chapter`)
     reads: the deck file itself (preamble, plus only the chosen chapter for a
     per-chapter job), every slide file its included calls load, and any
     `\\input{}`ed deck fragment (e.g. test-slides.tex) with its own slides."""
-    ctx = project.transitional_context()
     started = time.perf_counter()
     result = result if result is not None else CheckResult()
     seen = seen if seen is not None else set()
@@ -597,7 +592,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
             return
         seen.add(path)
         result.files_checked += 1
-        for issue in lint_file(path):
+        for issue in lint_file(ctx, path):
             if keep is None or keep(issue.line):
                 result.issues.append(issue)
 
@@ -610,15 +605,15 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
         keep = lambda ln: ln <= pre_lines or ch_first <= ln <= ch_last  # noqa: E731
     seen.add(deck.path)
     result.files_checked += 1
-    for issue in lint_text(text, deck.path.name, deck.path):
+    for issue in lint_text(ctx, text, deck.path.name, deck.path):
         if keep is None or keep(issue.line):
             result.issues.append(issue)
 
     from . import deck_language
     from .deck_settings import read_settings
     language = (language or read_settings(deck.text).language).upper()
-    resolved_deck, inline_inputs = deck_language.compile_deck(deck, language)
-    calls = [s.call for s in deck_language.deck_slots(resolved_deck, language)]
+    resolved_deck, inline_inputs = deck_language.compile_deck(ctx, deck, language)
+    calls = [s.call for s in deck_language.deck_slots(ctx, resolved_deck, language)]
     for path in inline_inputs:
         if path.parent != ctx.slides_dir:
             check_file(path)
@@ -627,7 +622,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
             continue
         if not call.included_in(version):
             continue
-        path = _slide_path(call)
+        path = ctx.slides_dir / call.source_filename
         if not path.is_file():
             line = text.count("\n", 0, call.call_start) + 1
             result.issues.append(LintIssue(
@@ -646,12 +641,12 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
                 frag_text = read_source(frag) or ""
                 seen.add(frag)
                 result.files_checked += 1
-                result.issues.extend(lint_text(frag_text, frag.name, frag))
-                for slot in deck_language.slots(deck_language.calls_in(frag_text, []), language):
+                result.issues.extend(lint_text(ctx, frag_text, frag.name, frag))
+                for slot in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language):
                     call = slot.call
                     if not call.included_in(version):
                         continue
-                    path = _slide_path(call)
+                    path = ctx.slides_dir / call.source_filename
                     if not path.is_file():
                         result.issues.append(LintIssue(
                             "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
@@ -662,31 +657,31 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
     return result
 
 
-def check_jobs(jobs: Iterable) -> CheckResult:
+def check_jobs(ctx: ProjectContext, jobs: Iterable) -> CheckResult:
     """Union over compile jobs (objects with .deck/.version/.chapter): each
     file is checked once, however many jobs read it."""
     result, seen = CheckResult(), set()
     started = time.perf_counter()
     for job in jobs:
-        check_deck_job(job.deck, job.version, job.chapter, result, seen, getattr(job, "language", None))
+        check_deck_job(ctx, job.deck, job.version, job.chapter, result, seen, getattr(job, "language", None))
     result.seconds = time.perf_counter() - started
     return _dedupe(result)
 
 
-def check_slide_files(paths: Iterable[Path]) -> CheckResult:
+def check_slide_files(ctx: ProjectContext, paths: Iterable[Path]) -> CheckResult:
     result = CheckResult()
     started = time.perf_counter()
     for path in dict.fromkeys(paths):
         result.files_checked += 1
-        result.issues.extend(lint_file(path))
+        result.issues.extend(lint_file(ctx, path))
     result.seconds = time.perf_counter() - started
     return _dedupe(result)
 
 
-def check_buffer(text: str, name: str, path: Optional[Path] = None) -> CheckResult:
+def check_buffer(ctx: ProjectContext, text: str, name: str, path: Optional[Path] = None) -> CheckResult:
     started = time.perf_counter()
     result = CheckResult(files_checked=1)
-    result.issues.extend(lint_text(text, name, path))
+    result.issues.extend(lint_text(ctx, text, name, path))
     result.seconds = time.perf_counter() - started
     return result
 

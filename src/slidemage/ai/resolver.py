@@ -24,6 +24,7 @@ folder, so it is per project; the prompt itself is the UI's job
 from __future__ import annotations
 
 from .. import app_settings, project
+from ..project import ProjectContext
 from . import credentials
 from .providers import (
     ANTHROPIC_FALLBACK_MODELS,
@@ -41,35 +42,34 @@ class LocalOnlyError(ProviderError):
     """A cloud model was requested while "Local AI only" is on."""
 
 
-def provider_for(spec: str) -> ChatProvider:
+def provider_for(ctx: ProjectContext, spec: str) -> ChatProvider:
     """The provider for a "<provider>:<model>" spec (a bare name is Ollama)."""
     name, model = app_settings.split_spec(spec)
     if name == "ollama":
-        return OllamaProvider(model)
-    if local_only():
+        return OllamaProvider.for_project(ctx, model)
+    if local_only(ctx):
         raise LocalOnlyError(
             "Local AI only is on, so cloud models are disabled "
             "(Settings -> AI models).")
-    return AnthropicProvider(model)
+    return AnthropicProvider.for_project(ctx, model)
 
 
-def provider_for_task(task: str) -> ChatProvider:
+def provider_for_task(ctx: ProjectContext, task: str) -> ChatProvider:
     """The provider configured for `task`; the Ollama default (no model
     chosen yet) when nothing is configured."""
-    return provider_for(app_settings.default_model(project.transitional_context(), task) or "ollama:")
+    return provider_for(ctx, app_settings.default_model(ctx, task) or "ollama:")
 
 
 # -- local only -----------------------------------------------------------
 
-def project_local_only() -> bool | None:
+def project_local_only(ctx: ProjectContext) -> bool | None:
     """This project's override of the global switch; None = follow it."""
-    ai = project.read_project_json(project.transitional_context().root).get("ai")
+    ai = project.read_project_json(ctx.root).get("ai")
     value = ai.get("local_only") if isinstance(ai, dict) else None
     return value if isinstance(value, bool) else None
 
 
-def set_project_local_only(value: bool | None) -> None:
-    ctx = project.transitional_context()
+def set_project_local_only(ctx: ProjectContext, value: bool | None) -> None:
     data = project.read_project_json(ctx.root)
     ai = data.get("ai") if isinstance(data.get("ai"), dict) else {}
     if value is None:
@@ -83,39 +83,39 @@ def set_project_local_only(value: bool | None) -> None:
     project.write_project_json(ctx.root, data)
 
 
-def global_local_only() -> bool:
-    return bool(app_settings.get(project.transitional_context(), LOCAL_ONLY_SETTING_KEY))
+def global_local_only(ctx: ProjectContext) -> bool:
+    return bool(app_settings.get(ctx, LOCAL_ONLY_SETTING_KEY))
 
 
-def set_global_local_only(value: bool) -> None:
-    app_settings.set(project.transitional_context(), LOCAL_ONLY_SETTING_KEY, value)
+def set_global_local_only(ctx: ProjectContext, value: bool) -> None:
+    app_settings.set(ctx, LOCAL_ONLY_SETTING_KEY, value)
 
 
-def local_only() -> bool:
-    override = project_local_only()
-    return global_local_only() if override is None else override
+def local_only(ctx: ProjectContext) -> bool:
+    override = project_local_only(ctx)
+    return global_local_only(ctx) if override is None else override
 
 
 # -- cloud models on offer --------------------------------------------------
 
-def cloud_models() -> list[str]:
+def cloud_models(ctx: ProjectContext) -> list[str]:
     """Cloud models to list in the task pickers: none in local-only mode or
     without a key. The static list, so opening a dialog never waits on the
     network; Settings shows the live list."""
-    if local_only() or credentials.get_api_key() is None:
+    if local_only(ctx) or credentials.get_api_key(ctx) is None:
         return []
     return list(ANTHROPIC_FALLBACK_MODELS)
 
 
 # -- consent ------------------------------------------------------------
 
-def cloud_consent_given() -> bool:
-    return bool(app_settings.get(project.transitional_context(), CLOUD_CONSENT_SETTING_KEY))
+def cloud_consent_given(ctx: ProjectContext) -> bool:
+    return bool(app_settings.get(ctx, CLOUD_CONSENT_SETTING_KEY))
 
 
-def record_cloud_consent() -> None:
-    app_settings.set(project.transitional_context(), CLOUD_CONSENT_SETTING_KEY, True)
+def record_cloud_consent(ctx: ProjectContext) -> None:
+    app_settings.set(ctx, CLOUD_CONSENT_SETTING_KEY, True)
 
 
-def needs_cloud_consent(provider: ChatProvider) -> bool:
-    return not provider.is_local and not cloud_consent_given()
+def needs_cloud_consent(ctx: ProjectContext, provider: ChatProvider) -> bool:
+    return not provider.is_local and not cloud_consent_given(ctx)

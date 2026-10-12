@@ -36,7 +36,7 @@ def get_focus(ctx: ToolContext, args: dict) -> str:
                                           "read_buffer shows them)" if dirty else ""))
     if path.suffix == ".tex":
         text = current_text(ctx.workspace, path)
-        errors = [i for i in latex_lint.lint_text(text, path.name, path) if i.severity == latex_lint.ERROR]
+        errors = [i for i in latex_lint.lint_text(ctx.project, text, path.name, path) if i.severity == latex_lint.ERROR]
         lines.append(f"Lint errors in {'the buffer' if is_open else 'the file'}: "
                      + ("none" if not errors else str(len(errors))))
         lines += [f"  line {i.line}: {i.message}" for i in errors[:LINT_SHOWN]]

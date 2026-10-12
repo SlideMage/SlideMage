@@ -72,7 +72,7 @@ class ImportPresentationSheet(ModalSheet):
         source = Path(self.file_edit.text())
         previous_text = deck.text
         try:
-            summary = slide_import.import_presentation(source, deck, self.language.current() or "EN", log=self.app.log)
+            summary = slide_import.import_presentation(self.app.project, source, deck, self.language.current() or "EN", log=self.app.log)
         except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
             QMessageBox.critical(self, "Import failed", f"Could not import {source.name}:\n\n{exc}")
             return

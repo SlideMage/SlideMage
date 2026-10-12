@@ -5,8 +5,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from conftest import use_project
-from slidemage.project import transitional_context
+from slidemage.project import ProjectContext
 
 
 def _configure_compiler(monkeypatch, tmp_path):
@@ -33,12 +32,11 @@ def _configure_compiler(monkeypatch, tmp_path):
         output_folders={},
         tags=[],
     )
-    use_project(monkeypatch, tmp_path / "project")
     monkeypatch.setattr(compiler, "build_env", lambda ctx: {})
     return compiler, deck, build_dir, pdf_dir, deck_path
 
 
-def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n", wrappers=None):
+def _fake_latexmk(monkeypatch, ctx, outputs, commands, log_text="No errors found.\n", wrappers=None):
     from slidemage import compiler
 
     class FakeProcess:
@@ -46,7 +44,7 @@ def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n",
             self.command = list(command)
             commands.append(self.command)
             if wrappers is not None:
-                wrappers.append((transitional_context().root / self.command[-1]).read_bytes())
+                wrappers.append((ctx.root / self.command[-1]).read_bytes())
             self.stdout = io.StringIO("")
             self.output = outputs.pop(0)
 
@@ -70,7 +68,7 @@ def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n",
 
 
 @pytest.mark.parametrize("biber_needed", [False, True], ids=["clean", "failed-bibliography"])
-def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber_needed):
+def test_run_job_uses_only_its_fresh_configured_pdf(ctx, tmp_path, monkeypatch, biber_needed):
     from slidemage.compiler import CompileJob
 
     compiler, deck, build_dir, pdf_dir, deck_path = _configure_compiler(
@@ -89,10 +87,10 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber
     # on Windows. Exercise run_job's own wrapper write, before it is removed.
     content = "line one\r\nline two\r\n"
     real_wrapper_text = compiler.wrapper_text
-    expected_wrapper = real_wrapper_text(transitional_context(), job) + content
+    expected_wrapper = real_wrapper_text(ctx, job) + content
     monkeypatch.setattr(compiler, "wrapper_text", lambda _ctx, _job: expected_wrapper)
     wrappers, lines = [], []
-    _fake_latexmk(monkeypatch, [b"NEW_PDF"], commands, log_text=log_text, wrappers=wrappers)
+    _fake_latexmk(monkeypatch, ctx, [b"NEW_PDF"], commands, log_text=log_text, wrappers=wrappers)
     relocated = threading.Event()
     outcome = {}
 
@@ -100,7 +98,7 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber
         outcome.update(ok=ok, path=path)
         relocated.set()
 
-    assert compiler.run_job(transitional_context(), job, lines.append, on_relocated=on_relocated)
+    assert compiler.run_job(ctx, job, lines.append, on_relocated=on_relocated)
     assert relocated.wait(5)
 
     expected_pdf = pdf_dir / f"{job.jobname}.pdf"
@@ -129,7 +127,12 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber
     assert any(line.startswith(f"==== PASS: {job.jobname}") for line in lines)
 
 
-def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypatch):
+@pytest.fixture
+def ctx(tmp_path):
+    return ProjectContext.at(tmp_path / "project")
+
+
+def test_delayed_old_relocation_cannot_replace_newer_compile(ctx, tmp_path, monkeypatch):
     from slidemage.compiler import CompileJob
 
     compiler, deck, build_dir, pdf_dir, deck_path = _configure_compiler(
@@ -137,7 +140,7 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
     )
     job = CompileJob(deck, "after-course", None)
     commands = []
-    _fake_latexmk(monkeypatch, [b"OLD_PDF", b"NEW_PDF"], commands)
+    _fake_latexmk(monkeypatch, ctx, [b"OLD_PDF", b"NEW_PDF"], commands)
 
     old_copy_started = threading.Event()
     release_old_copy = threading.Event()
@@ -166,7 +169,7 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
         new_outcome.update(ok=ok, path=path)
         new_callback_done.set()
 
-    assert compiler.run_job(transitional_context(), job, lambda _line: None, on_relocated=old_callback)
+    assert compiler.run_job(ctx, job, lambda _line: None, on_relocated=old_callback)
     assert old_copy_started.wait(5)
     old_out_dir = next(
         Path(item.split("=", 1)[1]) for item in commands[0]
@@ -174,9 +177,9 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
     )
     old_source = old_out_dir / f"{job.jobname}.pdf"
     assert old_source.read_bytes() == b"OLD_PDF"
-    assert old_out_dir not in compiler.removable_build_entries(transitional_context())
+    assert old_out_dir not in compiler.removable_build_entries(ctx)
 
-    assert compiler.run_job(transitional_context(), job, lambda _line: None, on_relocated=new_callback)
+    assert compiler.run_job(ctx, job, lambda _line: None, on_relocated=new_callback)
     assert new_callback_done.wait(5)
     new_out_dir = next(
         Path(item.split("=", 1)[1]) for item in commands[1]
@@ -200,7 +203,7 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
 @pytest.mark.parametrize("kind, version", [
     ("chapters", "after-course"), ("presenter", "instructor"), ("solo", None),
 ])
-def test_output_destinations_prevent_collisions_and_keep_literal_names(tmp_path, kind, version):
+def test_output_destinations_prevent_collisions_and_keep_literal_names(ctx, tmp_path, kind, version):
     from slidemage.compiler import CompileJob, _disambiguated_destinations
     from slidemage.deck_scan import Chapter, Deck
 
@@ -215,7 +218,7 @@ def test_output_destinations_prevent_collisions_and_keep_literal_names(tmp_path,
         if kind == "presenter":
             jobs.append(CompileJob(deck, version, None, presenter=True))
     logged = []
-    dests = _disambiguated_destinations(transitional_context(), jobs, logged.append)
+    dests = _disambiguated_destinations(ctx, jobs, logged.append)
     if kind == "solo":
         _, stem = dests[id(jobs[0])]
         assert stem == "Handout"

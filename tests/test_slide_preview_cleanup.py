@@ -13,9 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage.project import transitional_context
 from slidemage import compiler, slide_preview
-from conftest import use_project
 
 
 def _fake_run_streamed(build_dir: Path):
@@ -29,9 +27,9 @@ def _fake_run_streamed(build_dir: Path):
     return run
 
 
-def _render(lines):
+def _render(ctx, lines):
     # reuse_build=False is the fresh-job path with the .build/ cleanup
-    return slide_preview.compile_and_extract(transitional_context(), "x", "abc-EN-Test", lines.append, reuse_build=False)
+    return slide_preview.compile_and_extract(ctx, "x", "abc-EN-Test", lines.append, reuse_build=False)
 
 
 @pytest.fixture
@@ -39,7 +37,6 @@ def project(monkeypatch, tmp_path):
     build = tmp_path / ".build"
     build.mkdir()
     (tmp_path / "decks").mkdir()
-    use_project(monkeypatch, tmp_path)
     monkeypatch.setattr(slide_preview, "build_env", lambda ctx: {})
     monkeypatch.setattr(slide_preview, "_LOCK_RETRY_DELAY", 0)
     # renders must never touch the real temp directory
@@ -52,7 +49,7 @@ def project(monkeypatch, tmp_path):
     return build
 
 
-def test_locked_build_file_does_not_fail_a_finished_render(monkeypatch, project):
+def test_locked_build_file_does_not_fail_a_finished_render(ctx, monkeypatch, project):
     real_unlink = Path.unlink
 
     def locked_unlink(self, *args, **kwargs):
@@ -63,7 +60,7 @@ def test_locked_build_file_does_not_fail_a_finished_render(monkeypatch, project)
     monkeypatch.setattr(Path, "unlink", locked_unlink)
     lines: list[str] = []
 
-    pdf = _render(lines)
+    pdf = _render(ctx, lines)
 
     assert pdf.exists() and pdf.read_text(encoding="utf-8").startswith("%PDF")
     assert any(line.startswith("==== PASS: render of abc-EN-Test") for line in lines)
@@ -72,7 +69,7 @@ def test_locked_build_file_does_not_fail_a_finished_render(monkeypatch, project)
     assert {p.suffix for p in project.iterdir()} == {".fls"}
 
 
-def test_stale_preview_leftovers_are_swept_by_the_next_render(project):
+def test_stale_preview_leftovers_are_swept_by_the_next_render(ctx, project):
     old = project / "preview-old-deadbeef.fls"
     old.write_text("x", encoding="utf-8")
     long_ago = time.time() - 2 * slide_preview._STALE_PREVIEW_AGE
@@ -81,7 +78,7 @@ def test_stale_preview_leftovers_are_swept_by_the_next_render(project):
     young = project / "preview-young-cafebabe.fls"
     young.write_text("x", encoding="utf-8")
 
-    _render([])
+    _render(ctx, [])
 
     assert not old.exists()
     assert young.exists()

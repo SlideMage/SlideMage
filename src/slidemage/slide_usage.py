@@ -24,8 +24,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import deck_editor, project, slide_language, slide_versioning
+from . import deck_editor, slide_language, slide_versioning
 from .deck_scan import Deck, scan_decks
+from .project import ProjectContext
 
 PINNED = {"slideversion": "slide", "omitslideversion": "omitslide"}
 PINNABLE = {"slide": "slideversion", "omitslide": "omitslideversion"}
@@ -88,15 +89,15 @@ def _skipped(deck: Deck) -> bool:
     return deck.name.startswith(("#", "zzz_"))
 
 
-def find_usage(id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
+def find_usage(ctx: ProjectContext, id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
     """Every deck (archived ones too) that calls this slide, in scan order."""
     usages = []
-    for deck in decks if decks is not None else scan_decks(project.transitional_context()):
+    for deck in decks if decks is not None else scan_decks(ctx):
         if _skipped(deck):
             continue
         if language is not None:
             from . import deck_language
-            every = [slot.call for slot in deck_language.deck_slots(deck, language)]
+            every = [slot.call for slot in deck_language.deck_slots(ctx, deck, language)]
         else:
             every = deck_editor.parse_slide_calls(deck)
         places = [(c, i) for i, c in enumerate(every, start=1) if c.id_slug == id_slug]
@@ -105,7 +106,7 @@ def find_usage(id_slug: str, decks: Optional[list[Deck]] = None, *, language: Op
     return usages
 
 
-def find_translations(id_slug: str, text: str, decks: Optional[list[Deck]] = None) -> list[Translation]:
+def find_translations(ctx: ProjectContext, id_slug: str, text: str, decks: Optional[list[Deck]] = None) -> list[Translation]:
     """The slide's translation partners, named by its own header comment
     ("%% Translation of:" / "%% <LANG> translation:"), with the decks that use
     each. A partner whose file is gone is left out."""
@@ -117,11 +118,11 @@ def find_translations(id_slug: str, text: str, decks: Optional[list[Deck]] = Non
                  for x in slide_language.LANG_TRANSLATION_RE.finditer(text)]
     out = []
     for bare in dict.fromkeys(partners):
-        partner = slide_language.current_id_slug_for_bare_id(bare)
-        path = slide_language.current_path_for_bare_id(bare)
+        partner = slide_language.current_id_slug_for_bare_id(ctx, bare)
+        path = slide_language.current_path_for_bare_id(ctx, bare)
         if partner is None or path is None or partner == id_slug:
             continue
-        used = [u.deck.name for u in find_usage(partner, decks)]
+        used = [u.deck.name for u in find_usage(ctx, partner, decks)]
         out.append(Translation(partner, slide_language.own_language(partner), path, used))
     return out
 
@@ -149,14 +150,14 @@ def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCa
     return text
 
 
-def apply_choices(id_slug: str, choices: dict[str, str], frozen_version: Optional[str]) -> list[str]:
+def apply_choices(ctx: ProjectContext, id_slug: str, choices: dict[str, str], frozen_version: Optional[str]) -> list[str]:
     """Rewrite the decks' calls as chosen ({deck name: "current" | "keep"};
     frozen_version is the hyphenated version just frozen, "1-1-0" -- None if
     nothing was frozen, then "keep" can pin nothing). Re-reads every deck, so
     a deck edited since the dialog opened is handled on its current text.
     Returns one log line per deck that changed."""
     log = []
-    for usage in find_usage(id_slug):
+    for usage in find_usage(ctx, id_slug):
         choice = choices.get(usage.deck.name)
         if choice == "current":
             version, wanted = None, PINNED

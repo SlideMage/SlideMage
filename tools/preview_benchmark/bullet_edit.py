@@ -53,8 +53,9 @@ def child(base, label, deadline, case_name):
         from slidemage.preview_metrics import PreviewMetrics
     except ImportError:
         PreviewMetrics = None
-    root = project.transitional_context().root
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == "slidemage-manual")
+    ctx = project.from_environment()
+    root = ctx.root
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "slidemage-manual")
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)]
     case = CASES[case_name]
@@ -68,10 +69,10 @@ def child(base, label, deadline, case_name):
     cached = label == "optimized"
     # The original fresh renderer requires outdir to match the project's
     # fixed latexmk aux_dir; cached builds override both directories.
-    project.use(project.ProjectContext(root, root / ".build" / label if cached else root / ".build"))
+    ctx = project.ProjectContext(root, root / ".build" / label if cached else root / ".build")
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(reuse_build=cached, deferred_images=cached, case=case_name,
-             edit="typical-user-edit-v1", recipe=case), slide_preview.build_env(project.transitional_context()))
+             edit="typical-user-edit-v1", recipe=case), slide_preview.build_env(ctx))
     identity["pymupdf"] = pymupdf.VersionBind
     atomic_json(out / "identity.json", identity)
     compile_original = slide_preview.compile_and_extract
@@ -101,14 +102,14 @@ def child(base, label, deadline, case_name):
             start = time.perf_counter()
             try:
                 with trace:
-                    pdf = slide_preview.render_slide_to_pdf(project.transitional_context(), call.macro, call.id_slug,
+                    pdf = slide_preview.render_slide_to_pdf(ctx, call.macro, call.id_slug,
                         call.version, call.conditions, steps=call.steps,
                         preamble_text=deck.preamble_text, frame_number=case["index"],
                         footer_timestamp=False, reuse_build=cached,
                         capture_snapshot=not cached, log=log)
                     if cached:
                         _, images = slide_snapshot.prepare_preview(pdf, True)
-                        slide_snapshot.publish_preview(project.transitional_context(), images, slide_language.bare_id(case["slide"]),
+                        slide_snapshot.publish_preview(ctx, images, slide_language.bare_id(case["slide"]),
                             slide_snapshot.detect_template(deck.preamble_text))
                     else:
                         slide_snapshot.page_png(pdf)

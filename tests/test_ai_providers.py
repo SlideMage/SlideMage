@@ -9,7 +9,6 @@ import threading
 
 import pytest
 
-from conftest import use_project
 from slidemage import app_settings, project
 from slidemage.ai import credentials, resolver
 from slidemage.ai.providers import (
@@ -22,7 +21,7 @@ from slidemage.ai.providers import (
 )
 
 from fake_http import message_sse
-from slidemage.project import transitional_context
+from conftest import EXAMPLE_PROJECT
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 
@@ -31,7 +30,6 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 def settings(tmp_path, monkeypatch):
     """Isolated app_settings.json and project root (the tests run against
     the example project, whose files must stay untouched)."""
-    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -275,39 +273,39 @@ class FakeKeyring:
         self.store.pop((service, user), None)
 
 
-def test_api_key_source_precedence(settings, monkeypatch):
+def test_api_key_source_precedence(ctx, settings, monkeypatch):
     keyring = FakeKeyring()
     monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
-    assert credentials.get_api_key() is None
+    assert credentials.get_api_key(ctx) is None
 
-    app_settings.set(transitional_context(), credentials.FILE_SETTING_KEY, "file-key")
-    assert credentials.get_api_key() == credentials.ApiKey("file-key", "settings file")
+    app_settings.set(ctx, credentials.FILE_SETTING_KEY, "file-key")
+    assert credentials.get_api_key(ctx) == credentials.ApiKey("file-key", "settings file")
     keyring.set_password("SlideMage", "anthropic-api-key", "ring-key")
-    assert credentials.get_api_key() == credentials.ApiKey("ring-key", "keychain")
+    assert credentials.get_api_key(ctx) == credentials.ApiKey("ring-key", "keychain")
     monkeypatch.setenv("ANTHROPIC_API_KEY", " env-key ")
-    assert credentials.get_api_key() == credentials.ApiKey("env-key", "environment")
+    assert credentials.get_api_key(ctx) == credentials.ApiKey("env-key", "environment")
 
 
-def test_set_api_key_prefers_the_keychain_and_keeps_one_copy(settings, monkeypatch):
+def test_set_api_key_prefers_the_keychain_and_keeps_one_copy(ctx, settings, monkeypatch):
     keyring = FakeKeyring()
     monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
-    app_settings.set(transitional_context(), credentials.FILE_SETTING_KEY, "stale")
-    assert credentials.set_api_key("k1") == "keychain"
-    assert credentials.get_api_key() == credentials.ApiKey("k1", "keychain")
-    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) is None
-    assert credentials.set_api_key("") == ""
-    assert credentials.get_api_key() is None
+    app_settings.set(ctx, credentials.FILE_SETTING_KEY, "stale")
+    assert credentials.set_api_key(ctx, "k1") == "keychain"
+    assert credentials.get_api_key(ctx) == credentials.ApiKey("k1", "keychain")
+    assert app_settings.get(ctx, credentials.FILE_SETTING_KEY) is None
+    assert credentials.set_api_key(ctx, "") == ""
+    assert credentials.get_api_key(ctx) is None
 
 
-def test_set_api_key_falls_back_to_the_settings_file(settings, monkeypatch):
+def test_set_api_key_falls_back_to_the_settings_file(ctx, settings, monkeypatch):
     # No keyring installed...
-    assert credentials.set_api_key("k2") == "settings file"
-    assert credentials.get_api_key() == credentials.ApiKey("k2", "settings file")
-    credentials.set_api_key("")
-    assert credentials.get_api_key() is None
+    assert credentials.set_api_key(ctx, "k2") == "settings file"
+    assert credentials.get_api_key(ctx) == credentials.ApiKey("k2", "settings file")
+    credentials.set_api_key(ctx, "")
+    assert credentials.get_api_key(ctx) is None
     # ...or one with no usable backend.
     monkeypatch.setattr(credentials, "_keyring", lambda: FakeKeyring(fail=True))
-    assert credentials.set_api_key("k3") == "settings file"
+    assert credentials.set_api_key(ctx, "k3") == "settings file"
 
 
 def test_keychain_is_available_only_with_a_real_backend(monkeypatch):
@@ -333,58 +331,58 @@ def test_keychain_is_available_only_with_a_real_backend(monkeypatch):
 # -- resolver, migration, local-only, consent ----------------------------------
 
 def test_old_bare_model_names_read_as_ollama(settings):
-    app_settings.set(transitional_context(), "drafting_model", "qwen3:8b")           # pre-provider settings file
-    app_settings.set(transitional_context(), "translation_model", "sun_leaf/HY-MT:7b")
-    app_settings.set(transitional_context(), "syntax_check_model", "anthropic:claude-opus-5-5")
-    assert app_settings.default_model(transitional_context(), "image_description") == "ollama:qwen3:8b"
-    assert app_settings.default_model(transitional_context(), "translation") == "ollama:sun_leaf/HY-MT:7b"
-    assert app_settings.default_model(transitional_context(), "syntax_check") == "anthropic:claude-opus-5-5"
-    assert app_settings.default_model(transitional_context(), "chat") == ""
-    assert app_settings.get(transitional_context(), "drafting_model") == "qwen3:8b"  # file not rewritten
+    app_settings.set(EXAMPLE_PROJECT, "drafting_model", "qwen3:8b")           # pre-provider settings file
+    app_settings.set(EXAMPLE_PROJECT, "translation_model", "sun_leaf/HY-MT:7b")
+    app_settings.set(EXAMPLE_PROJECT, "syntax_check_model", "anthropic:claude-opus-5-5")
+    assert app_settings.default_model(EXAMPLE_PROJECT, "image_description") == "ollama:qwen3:8b"
+    assert app_settings.default_model(EXAMPLE_PROJECT, "translation") == "ollama:sun_leaf/HY-MT:7b"
+    assert app_settings.default_model(EXAMPLE_PROJECT, "syntax_check") == "anthropic:claude-opus-5-5"
+    assert app_settings.default_model(EXAMPLE_PROJECT, "chat") == ""
+    assert app_settings.get(EXAMPLE_PROJECT, "drafting_model") == "qwen3:8b"  # file not rewritten
 
 
-def test_provider_for_builds_the_right_provider(settings):
-    local = resolver.provider_for("ollama:qwen3:8b")
+def test_provider_for_builds_the_right_provider(ctx, settings):
+    local = resolver.provider_for(ctx, "ollama:qwen3:8b")
     assert isinstance(local, OllamaProvider) and local.model == "qwen3:8b"
-    assert resolver.provider_for("qwen3").model == "qwen3"   # bare name = Ollama
-    cloud = resolver.provider_for("anthropic:claude-opus-5-5")
+    assert resolver.provider_for(ctx, "qwen3").model == "qwen3"   # bare name = Ollama
+    cloud = resolver.provider_for(ctx, "anthropic:claude-opus-5-5")
     assert isinstance(cloud, AnthropicProvider) and cloud.model == "claude-opus-5-5"
 
-    app_settings.set(transitional_context(), "chat_model", "anthropic:claude-haiku-4-5-20251001")
-    assert resolver.provider_for_task("chat").model == "claude-haiku-4-5-20251001"
-    assert isinstance(resolver.provider_for_task("translation"), OllamaProvider)  # unset
+    app_settings.set(ctx, "chat_model", "anthropic:claude-haiku-4-5-20251001")
+    assert resolver.provider_for_task(ctx, "chat").model == "claude-haiku-4-5-20251001"
+    assert isinstance(resolver.provider_for_task(ctx, "translation"), OllamaProvider)  # unset
 
 
-def test_local_only_blocks_cloud_globally_and_per_project(settings):
-    assert not resolver.local_only() and resolver.project_local_only() is None
-    resolver.set_global_local_only(True)
-    assert resolver.local_only()
+def test_local_only_blocks_cloud_globally_and_per_project(ctx, settings):
+    assert not resolver.local_only(ctx) and resolver.project_local_only(ctx) is None
+    resolver.set_global_local_only(ctx, True)
+    assert resolver.local_only(ctx)
     with pytest.raises(resolver.LocalOnlyError, match="Local AI only"):
-        resolver.provider_for("anthropic:claude-sonnet-5-5")
-    assert resolver.provider_for("ollama:x").is_local  # local still works
+        resolver.provider_for(ctx, "anthropic:claude-sonnet-5-5")
+    assert resolver.provider_for(ctx, "ollama:x").is_local  # local still works
 
-    resolver.set_project_local_only(False)               # project overrides the global switch
-    assert not resolver.local_only()
-    assert not resolver.provider_for("anthropic:claude-sonnet-5-5").is_local
-    resolver.set_global_local_only(False)
-    resolver.set_project_local_only(True)
-    assert resolver.local_only()
-    resolver.set_project_local_only(None)
-    assert resolver.project_local_only() is None and not resolver.local_only()
+    resolver.set_project_local_only(ctx, False)               # project overrides the global switch
+    assert not resolver.local_only(ctx)
+    assert not resolver.provider_for(ctx, "anthropic:claude-sonnet-5-5").is_local
+    resolver.set_global_local_only(ctx, False)
+    resolver.set_project_local_only(ctx, True)
+    assert resolver.local_only(ctx)
+    resolver.set_project_local_only(ctx, None)
+    assert resolver.project_local_only(ctx) is None and not resolver.local_only(ctx)
 
 
-def test_project_override_lives_in_project_json_next_to_other_keys(settings):
+def test_project_override_lives_in_project_json_next_to_other_keys(ctx, settings):
     project.write_project_json(settings, {"format": 1, "compat": {"x": 1}})
-    resolver.set_project_local_only(True)
+    resolver.set_project_local_only(ctx, True)
     data = project.read_project_json(settings)
     assert data["ai"] == {"local_only": True} and data["compat"] == {"x": 1}
-    resolver.set_project_local_only(None)
+    resolver.set_project_local_only(ctx, None)
     assert "ai" not in project.read_project_json(settings)
 
 
-def test_cloud_models_on_offer_need_a_key_and_no_local_only(settings, monkeypatch):
-    assert resolver.cloud_models() == []                       # no key
+def test_cloud_models_on_offer_need_a_key_and_no_local_only(ctx, settings, monkeypatch):
+    assert resolver.cloud_models(ctx) == []                       # no key
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    assert resolver.cloud_models() == list(ANTHROPIC_FALLBACK_MODELS)
-    resolver.set_global_local_only(True)
-    assert resolver.cloud_models() == []
+    assert resolver.cloud_models(ctx) == list(ANTHROPIC_FALLBACK_MODELS)
+    resolver.set_global_local_only(ctx, True)
+    assert resolver.cloud_models(ctx) == []

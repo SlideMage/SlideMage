@@ -226,7 +226,7 @@ class AiFixPanel(Surface):
             return
         if not self._models_loaded:
             self.refresh_model_preference()
-        provider = provider_from_combo(self, self.model_combo, "this file's full LaTeX source")
+        provider = provider_from_combo(self, self.app.project, self.model_combo, "this file's full LaTeX source")
         if provider is None or not self.app.try_start_ollama_task("checking syntax", provider):
             self._show_state()
             return
