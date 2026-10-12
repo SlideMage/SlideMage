@@ -59,13 +59,17 @@ def protected_problem(before: str, after: str) -> str | None:
     return None if parts(before) == parts(after) else PROTECTED_MESSAGE
 
 
+def _not_frozen(path: Path) -> None:
+    if slide_kind(path) == "frozen":
+        raise ToolError(f"{path.name} is a frozen version of a slide: a historical record, read-only. "
+                        "Edit the slide's -current.tex file instead.")
+
+
 def _editable(ctx: ToolContext, arg: str) -> Path:
     path = project_path(ctx.root, arg)
     if path.suffix.lower() not in EDITABLE_SUFFIXES:
         raise ToolError(f"{path.name}: only text files can be changed ({', '.join(EDITABLE_SUFFIXES)}).")
-    if slide_kind(path) == "frozen":
-        raise ToolError(f"{path.name} is a frozen version of a slide: a historical record, read-only. "
-                        "Edit the slide's -current.tex file instead.")
+    _not_frozen(path)
     return path
 
 
@@ -80,7 +84,9 @@ def propose(ctx: ToolContext, path: Path, before: str, after: str, note: str = "
 
 def write_text(workspace: Workspace, path: Path, before: str, after: str) -> bool:
     """Put `after` in place of `before` in the buffer if `path` is open, else on disk. Returns
-    whether it went into the buffer; ToolError when it could not be done."""
+    whether it went into the buffer; ToolError when it could not be done (also for a frozen version, whichever
+    caller asks: the headless tasks and undo reach this without `_editable`)."""
+    _not_frozen(path)
     if workspace.is_open(path):
         problem = workspace.apply_to_buffer(path, before, after)
         if problem:

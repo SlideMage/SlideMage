@@ -2084,3 +2084,8 @@ v8.3.1 (2026-10-12, streamlining step 1): UI duplication consolidated; behavior 
 
 NEW: No visible changes; internal clean-up.
 - The warning when an image is marked reviewed without a long description now reads the same in the side panel as on the Images page.
+
+v8.3.2 (2026-10-12, streamlining step 2): edit application consolidated; behavior is unchanged except one safeguard. claude_runner.apply_result, a wrapper that only turned write_text's ToolError into a string, is gone: the headless tasks (write, translation link) call ai.tools.edits.write_text, the one place that applies a slide edit outside the open editor (expected-text check, backup, undo record), directly. write_text now also refuses a frozen slide version itself, so every caller (agent tools, headless tasks, undo) gets the rule that only edit_file and write_file applied before.
+
+NEW: No visible changes; internal clean-up.
+- A background task can no longer write into a frozen version of a slide.

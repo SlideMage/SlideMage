@@ -35,6 +35,8 @@ from .... import (alt_blocks, alt_draft, alt_images, deck_editor, deck_language,
                   slide_language, slide_source, slide_versioning)
 from ....tex_source import masked_same_length
 from ....ai import claude_images, claude_runner, claude_tasks, translation_style
+from ....ai.tools.base import ToolError
+from ....ai.tools.edits import write_text
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ... import background
 
@@ -545,7 +547,9 @@ class TaskRunner(QObject):
         """Put `result` in place of the captured text (after the part of it that was not sent) and show it;
         None if the file has changed. What to append to the status line."""
         new = capture.header + result
-        if claude_runner.apply_result(self._workspace, capture.path, capture.text, new) is not None:
+        try:
+            write_text(self._workspace, capture.path, capture.text, new)
+        except ToolError:
             return None
         window = self._window
         centre = window.centre
@@ -566,8 +570,10 @@ class TaskRunner(QObject):
             capture.id_slug, slide_add.slug_of(capture.id_slug), capture.language, translated.replace("\n", capture.eol))
         linked = slide_ids.with_translation_backreference(capture.text, capture.language, created.id_slug)
         note = f": {created.id_slug} created"
-        if (problem := claude_runner.apply_result(self._workspace, capture.path, capture.text, linked)) is not None:
-            note += f", not linked to {capture.id_slug} ({problem})"
+        try:
+            write_text(self._workspace, capture.path, capture.text, linked)
+        except ToolError as exc:
+            note += f", not linked to {capture.id_slug} ({exc})"
         if not self._add_to_deck(capture, created.id_slug):
             note += ", not added to the deck"
         if self._batch is None:

@@ -22,9 +22,6 @@ from pathlib import Path
 from ..processes import no_console_kwargs
 from . import claude_tasks
 from .claude_launch import clean_environment
-from .tools.base import ToolError
-from .tools.edits import write_text
-from .workspace import Workspace
 
 # Chosen by docs/CLAUDE_CODE_TASKS_BENCHMARK.md: the fastest and best setup measured. A text task takes
 # 2-10 s there (the slowest run 13 s), so 60 s is a deadline for a service that has gone wrong.
@@ -210,12 +207,3 @@ def run_task(claude: Path, task: claude_tasks.Task, captured: str, request: str,
     outcome.elapsed_s = time.monotonic() - started
     return outcome
 
-
-def apply_result(workspace: Workspace, path: Path, captured: str, text: str) -> str | None:
-    """Put `text` in place of `captured` in `path` unless the file has changed since `captured` was read.
-    None when done, else why not (nothing is written)."""
-    try:
-        write_text(workspace, path, captured, text)
-    except ToolError as exc:
-        return str(exc)
-    return None

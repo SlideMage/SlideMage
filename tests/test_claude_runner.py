@@ -16,6 +16,8 @@ from fake_claude import make_fake_claude
 
 from slidemage.ai import claude_runner, claude_tasks
 from slidemage.ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING
+from slidemage.ai.tools.base import ToolError
+from slidemage.ai.tools.edits import write_text
 from slidemage.ai.workspace import Workspace
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
@@ -127,16 +129,24 @@ def test_stop_cancels_and_a_late_result_is_dropped(claude, tmp_path):
 
 def test_a_result_is_applied_if_the_file_is_as_captured(root):
     path = root / SLIDE
-    assert claude_runner.apply_result(Workspace(root), path, LF, GOOD["body"]) is None
+    write_text(Workspace(root), path, LF, GOOD["body"])
     assert path.read_bytes().decode() == SLIDE_TEXT.replace("Hello", "Hallo")        # its CRLF kept
 
 
 def test_a_result_is_refused_if_the_file_changed(root):
     path = root / SLIDE
     path.write_bytes((SLIDE_TEXT + "typed meanwhile\r\n").encode())
-    problem = claude_runner.apply_result(Workspace(root), path, LF, GOOD["body"])
-    assert problem and "changed on disk" in problem
+    with pytest.raises(ToolError, match="changed on disk"):
+        write_text(Workspace(root), path, LF, GOOD["body"])
     assert path.read_bytes().decode().endswith("typed meanwhile\r\n") and "Hallo" not in path.read_text()
+
+
+def test_a_frozen_version_is_never_written_by_a_task(root):
+    frozen = root / "slides/abc-EN-Hello-v1-0-0.tex"
+    frozen.write_bytes(SLIDE_TEXT.encode())
+    with pytest.raises(ToolError, match="frozen version"):
+        write_text(Workspace(root), frozen, LF, GOOD["body"])
+    assert frozen.read_bytes().decode() == SLIDE_TEXT
 
 
 def test_images_go_inline_as_one_stream_json_message(claude, tmp_path):
