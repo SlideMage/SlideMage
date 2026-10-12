@@ -1,6 +1,6 @@
 # Claude Code does SlideMage's AI tasks, fast
 
-Status: plan, 2026-10-12, revised after review. Needs the user's go per step; pause after each committed
+Status: done, 2026-10-12: steps 0-6 committed; results in [CLAUDE_CODE_TASKS_BENCHMARK.md](CLAUDE_CODE_TASKS_BENCHMARK.md). Needs the user's go per step; pause after each committed
 step. Scope: SlideMage's **Claude Code tab**, using the user's installed `claude` and subscription.
 Selection rewriting, visual checks, deck reviews, structural edits and audience adaptation moved to
 [CLAUDE_CODE_REVIEWS_PLAN.md](CLAUDE_CODE_REVIEWS_PLAN.md), which starts after step 6 here.

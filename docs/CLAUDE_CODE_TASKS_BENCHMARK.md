@@ -18,7 +18,7 @@ task: the medians below are indicative, not statistics.
 | Isolation | **Keep it** (`ISOLATION`, `--system-prompt`, empty working folder) | A default `claude -p` (only `--tools ""`) sends about 55k input tokens against 2.3k, and is 1.4 s slower in the median (both tasks) and 4.7 s slower in the slowest translation (17.8 s against 13.1 s). Login, the structured result and the subscription all work with the isolation flags (`apiKeySource` is `none`, no API key involved). |
 | Output format of fixes | **Edit list** | Median 4.6 s against 8.0 s for the full body, 837 against 1854 output tokens; the edit list restored the original slide in 4 of 5 runs (the fifth removed the stray `&` instead of escaping it, which no tool can decide), the full body differed from it in 3 of 5. A full body also has to keep the protected parts; a first attempt even echoed the `<slide>` tags (rules now say not to). |
 | Process | **A fresh `claude -p` per task** | One long-running stream-json process saves about 3 s (translation 7.5 s against 10.3 s, fix 4.1 s against 4.6 s) by skipping start-up, but its context grows with every request (input tokens 3x), tasks are no longer independent, and Stop would have to restart it. With Sonnet a fresh process is already at 6.5 s. Revisit only if the start-up matters in the UI. |
-| Deadline | **60 s** for text tasks (`TEXT_DEADLINE_S`), covering the repair attempt too | The slowest run of any isolated setup was 13.1 s; a repair doubles a run. 60 s is for a service that has stalled, not for slow answers. Image descriptions (120 s) are not measured yet. |
+| Deadline | **60 s** for text tasks (`TEXT_DEADLINE_S`), covering the repair attempt too | The slowest run of any isolated setup was 13.1 s; a repair doubles a run. 60 s is for a service that has stalled, not for slow answers. Image descriptions (120 s): one image took 8.2 s in step 6. |
 | Inline images | **Yes**: an image content block in `--input-format stream-json` reaches the model | A 7.9 kB PNG of the demo project came back with its text quoted correctly (see the end of this file). No MCP read-image fallback needed. |
 
 ## What the flags did
@@ -135,6 +135,42 @@ Run on 2026-10-12 with Claude Code 2.1.296 (Claude Code), tools/claude_task_benc
 
 Claude's reply to the image block: 'This is a screenshot of a visibility settings panel, likely from a presentation or slide-sharing tool.\n\nReadable text, quoted:\n\n- "Visibility"\n- "Instructor highlighted"\n- "Instructor"\n- "During"\n- "After"\n- "Whole slide"\n- "\\slide · #44"\n\nThe grid shows "Whole slide" (\\slide · #44) with checked boxes under Instructor (blue), During (green), and After (orange).'
 
+## Step 6 result, 2026-10-12
+
+The same five slides through the real window (`tools/claude_task_benchmark.py --ui`, Split view, Sonnet medium, tables below). **The goal holds:** from the click to the changed buffer the median is 6.6 s for a translation (the partner created and linked), 2.5 s for a fix and 2.6 s for proofreading, the slowest 22.6 s, 4.5 s and 3.3 s; the window adds about 0.1 to 0.3 s to the step-1 runner times (6.5 s and 2.5 s). The one run over 15 s is the long 1nt translation (first answer after 5.4 s, done after 22.4 s, so a second attempt after a refused answer; this run did not record repairs, the tool now does), still far inside the 60 s deadline. **The preview is the slow part, and it is the compile, not Claude:** a finished render follows a fix after 11.8 s (median, slowest 17.8 s, the first render of the run) and a translation after 15.5 s (slowest 29.7 s), about 9 to 10 s after the change, the same for any edit. A newly created partner is not rendered by the app (a slide shown for the first time waits for Render), so the tool asks for the render when the translation is done. Image descriptions: one PNG took 8.2 s and the text is accurate and complete (the figure's values quoted, "as printed"). Deck batch of Fix LaTeX errors over the five slides: 6.5 s with two workers against 11.9 s for the five processes together (1.8 times faster), all five applied, four restored exactly, the fifth (1th, the stray `&`) without error but not identical, as in step 1; the 5.6 s "preview" of that row is the render of the slide that was open, no preview is promised for a batch. No run failed.
+
+Quality: all five translations use Sie (no du forms), keep every LaTeX command, citation, overlay and protected part (the first tool run flagged "-1 command" on every translation, which was the version marker `\setSlideVersion` that the request leaves out on purpose; the check now strips it, and the table below is recomputed from the saved translations), and have the glossary terms (Foliensatz, Folie); the "English words left" are the known false positives. Proofreading returned "Nothing to change" on all five (correct) slides, which is what it should do, but that also means this run showed no proofreading edit: whether its edits are sensible is untested here (the fake-`claude` tests cover the mechanics). **Defaults: no change.** Sonnet medium and the deadlines of 60 s (text) and 120 s (images, one image 8.2 s) stay; a faster model would not shorten the 10 s render that now dominates.
+
 ## Measurements
 
-Not run with the reduced tool yet; `tools/claude_task_benchmark.py` writes its tables here (step 6).
+Run on 2026-10-12 with Claude Code 2.1.296 (Claude Code), tools/claude_task_benchmark.py --ui: the bubbles of the Claude Code tab clicked offscreen on a disposable copy (Split view, default model and effort): three tasks over five slides, one image run, one deck batch of Fix LaTeX errors over the five slides. Times are seconds from the click: *first* the first answer event, *changed* the buffer changed (status "Done"; a batch: all slides done), *preview* the first finished render after the click (waited for only after a "Done" of a slide task). Medians.
+
+| Task | Runs | Done | Nothing | First (median) | Changed (median) | Changed (slowest) | Preview (median) | Preview (slowest) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| translate | 5 | 5 | 0 | 5.8 | 6.6 | 22.6 | 15.5 | 29.7 |
+| fix_latex | 5 | 5 | 0 | 2.4 | 2.5 | 4.5 | 11.8 | 17.8 |
+| proofread | 5 | 0 | 5 | 2.4 | 2.6 | 3.3 | - | - |
+| describe | 1 | 1 | 0 | - | 8.2 | 8.2 | - | - |
+| fix_batch | 1 | 1 | 0 | 2.0 | 6.5 | 6.5 | 5.6 | 5.6 |
+
+## Per run
+
+| Task | Slide | Status | First (s) | Changed (s) | Preview (s) | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| translate | 1bb | Done in 5.2 s: igs-DE-What-You-Need created | 5.1 | 5.4 | 20.7 | English words left: for x1 |
+| translate | 1nz | Done in 5.8 s: wym-DE-Footnotes-Sources-Citations created | 5.8 | 6.1 | 15.4 |  |
+| translate | 1t2 | Done in 6.4 s: wt5-DE-Reveals-That-Do-Not-Jump created | 6.4 | 6.6 | 14.1 |  |
+| translate | 1th | Done in 7.5 s: wa5-DE-Version-Dependent-Reveals created | 7.4 | 7.7 | 15.5 |  |
+| translate | 1nt | Done in 22.4 s: tky-DE-Inside-a-Slide-File created | 5.4 | 22.6 | 29.7 | English words left: the x1; repair attempt (first answer 5.4 s of 22.4 s; not recorded in this run) |
+| fix_latex | 1bb | Done in 2.1 s | 2.0 | 2.1 | 17.8 | exactly the original slide |
+| fix_latex | 1nz | Done in 2.2 s | 2.2 | 2.2 | 11.8 | exactly the original slide |
+| fix_latex | 1t2 | Done in 2.5 s | 2.5 | 2.5 | 10.0 | exactly the original slide |
+| fix_latex | 1th | Done in 2.5 s | 2.4 | 2.5 | 10.3 | no error left, differs from the original slide |
+| fix_latex | 1nt | Done in 4.5 s | 4.0 | 4.5 | 11.9 | exactly the original slide |
+| proofread | 1bb | Nothing to change | 1.8 | 1.9 | - | 0 changed line(s) |
+| proofread | 1nz | Nothing to change | 2.9 | 3.0 | - | 0 changed line(s) |
+| proofread | 1t2 | Nothing to change | 3.1 | 3.3 | - | 0 changed line(s) |
+| proofread | 1th | Nothing to change | 1.8 | 1.9 | - | 0 changed line(s) |
+| proofread | 1nt | Nothing to change | 2.4 | 2.6 | - | 0 changed line(s) |
+| describe | 1rb | Done in 8.1 s: 1 described | - | 8.2 | - | short: Lower-triangular correlation matrix heatmap of annual returns for about 29 large US stocks, with correlations printed in |
+| fix_batch | 5 slides | Done in 6 s: 5 applied | 2.0 | 6.5 | 5.6 | the slides' processes took 11.9 s together; 4 of 5 exactly the original |
