@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStackedWidget,
+    QStyle,
+    QStyleOptionButton,
     QTabBar,
     QToolButton,
     QVBoxLayout,
@@ -140,7 +142,15 @@ class DropdownButton(ClickFrame):
     def text(self) -> str:
         return self._label.text()
 
-    def set_text(self, text: str) -> None:
+    def set_text(self, text: str, *, max_width: int | None = None) -> None:
+        """Optionally elide the label to fit the whole button within `max_width`."""
+        if max_width is not None:
+            self._label.ensurePolished()
+            layout = self.layout()
+            margins = layout.contentsMargins()
+            overhead = margins.left() + margins.right() + layout.spacing() + layout.itemAt(1).sizeHint().width()
+            text = self._label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight,
+                                                       max(0, max_width - overhead))
         self._label.setText(text)
 
     def set_active(self, active: bool) -> None:
@@ -261,6 +271,7 @@ class SegmentedControl(QFrame):
         self._group.setExclusive(True)
         self._buttons: dict[str, QPushButton] = {}
         self._badges: dict[str, QLabel] = {}
+        self._compact = False
         for key, label in items:
             button = QPushButton(label)
             button.setCheckable(True)
@@ -291,12 +302,40 @@ class SegmentedControl(QFrame):
         if key in self._buttons:
             self._buttons[key].setChecked(True)
 
+    def set_labels(self, labels: Mapping[str, str], *, tooltips: Mapping[str, str] | None = None,
+                   compact: bool = False) -> None:
+        """Relabel existing segments, preserving selection, signals and badges.
+
+        `compact` also drops the native style's minimum text-button width.
+        """
+        self._compact = compact
+        for key, label in labels.items():
+            self._buttons[key].setText(label)
+            self._buttons[key].setToolTip(tooltips.get(key, "") if tooltips else "")
+            self._fit_button(key)
+
+    def _fit_button(self, key: str) -> None:
+        button = self._buttons[key]
+        width = 16777215   # Qt's default maximum widget width
+        if self._compact:
+            button.ensurePolished()
+            option = QStyleOptionButton()
+            button.initStyleOption(option)
+            option.text = ""   # keep the style's padding, without its minimum for text buttons
+            contents = button.fontMetrics().size(Qt.TextFlag.TextSingleLine, button.text())
+            if button.property("badge"):
+                contents.setWidth(contents.width() + self._badges[key].sizeHint().width() + 4)
+            width = button.style().sizeFromContents(QStyle.ContentsType.CT_PushButton,
+                                                   option, contents, button).width()
+        button.setMaximumWidth(width)
+
     def set_badge(self, key: str, count: int) -> None:
         """A small red count on a segment ("2" lint errors); 0 hides it."""
         badge, button = self._badges[key], self._buttons[key]
         badge.setText("99+" if count > 99 else str(count))
         button.setProperty("badge", count > 0)   # the segment makes room for it
         _repolish(button)
+        self._fit_button(key)
         badge.setVisible(count > 0)
         badge.adjustSize()
         self._place_badge(key)

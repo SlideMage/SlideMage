@@ -64,3 +64,4 @@ options), then L6-L7.
 | Step | Status |
 | --- | --- |
 | L1 Centre minimum | Done, v8.0.21: columns need 996 px instead of ~1,560. |
+| L2 Compact top bar | Done, v8.0.22: window minimum width 1,568 -> ~1,020 px. |

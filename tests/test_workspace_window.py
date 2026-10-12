@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QInputDialog, QMessageBox
 from slidemage import app_settings
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import Chapter, Deck
+from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import window as window_module
 from slidemage.ui.workspace.menus import (
@@ -43,6 +44,19 @@ def window(qapp, monkeypatch):
     """A window over a fixed set of decks, without building deck editors."""
     monkeypatch.setattr(window_module, "scan_decks", lambda: [WORK, COURSE, MANUAL, TEST, OLD])
     return build_window(monkeypatch)
+
+
+@pytest.fixture
+def topbar(window, qapp):
+    """Use the window's bar at exact widths, independent of the columns' minimums."""
+    assert load_fonts()
+    bar = window.topbar
+    bar.setParent(None)
+    bar.resize(1700, 63)
+    bar.show()
+    qapp.processEvents()
+    yield bar
+    bar.setParent(window.centralWidget())
 
 
 def entries(menu):
@@ -136,6 +150,134 @@ def test_a_project_without_decks_shows_a_placeholder_and_offers_the_manual_where
 
 
 # -- view, language, compile label ----------------------------------------------
+
+@pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
+def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window, qapp, theme):
+    bar = topbar
+    window.state.set_deck(MANUAL)
+    if theme is not None:
+        window.theme.dark = theme
+        bar.setStyleSheet(window.theme._build_qss())
+    for width, density in ((1700, "full"), (1400, "compact"), (1000, "narrow"), (1700, "full")):
+        bar.resize(width, bar.height())
+        qapp.processEvents()
+        assert bar.width() == width and bar._density == density
+        assert bar.minimumSizeHint().width() <= width
+        assert bar._view_as.isHidden() == (density != "full")
+        assert bar._images.isHidden() == (density == "narrow")
+        assert bar._save.text() == ("Saved" if density == "full" else "●")
+        assert bar._compile.text() == ("Compile PDF · Instructor" if density == "full" else "Compile")
+        assert bar._deck_button.text() == MANUAL.name
+        assert [button.text() for button in bar._views._buttons.values()] == (
+            ["Instr.", "During", "After"] if density == "narrow" else ["Instructor", "During course", "After course"])
+        assert [button.text() for button in bar._modes._buttons.values()] == (
+            ["Prev.", "Split", "Src.", "Info"] if density == "narrow" else ["Preview", "Split", "Source", "Details"])
+        for control in (bar._views, bar._languages, bar._modes, bar._compile):
+            assert control.width() >= control.minimumSizeHint().width()
+
+
+def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, qapp, monkeypatch):
+    bar = topbar
+    name = "An exceptionally long course deck name " * 10
+    window.state.set_deck(make_deck(name))
+    bar.resize(1000, bar.height())
+    window.state.set_dirty(True)
+    qapp.processEvents()
+    assert bar._density == "narrow" and bar.minimumSizeHint().width() <= 1000
+    assert bar._deck_button.width() <= 180 and bar._deck_button.text().endswith("…")
+    assert bar._deck_button.toolTip() == name
+    assert bar._views.toolTip() == "View as"
+    assert [button.toolTip() for button in bar._views._buttons.values()] == [
+        "Instructor", "During course", "After course"]
+    assert [button.toolTip() for button in bar._modes._buttons.values()] == ["Preview", "Split", "Source", "Details"]
+    assert bar._save.text() == "●" and bar._save.toolTip() == "Unsaved changes"
+    window.state.set_dirty(False)
+    assert bar._save.text() == "●" and bar._save.toolTip() == "Saved"
+    assert bar._compile.toolTip() == "Compile PDF · Instructor"
+    assert ("compile:instructor", "Compile PDF · Instructor", True) in entries(bar._compile_menu)
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    bar._more.click()
+    menu = bar.findChildren(PopoverMenu)[-1]
+    assert ("images", "Images", True) in entries(menu)
+    menu._on_activated("images")
+    assert window.stack.currentWidget() is window.images_page
+    bar._more.click()
+    menu = bar.findChildren(PopoverMenu)[-1]
+    assert ("images", "Close images", True) in entries(menu)
+    menu._on_activated("images")
+    assert window.stack.currentWidget() is window.centre
+    bar.resize(1700, bar.height())
+    qapp.processEvents()
+    assert bar._density == "compact"    # the full deck name still cannot fit
+    assert bar._deck_button.width() <= 180 and bar._deck_button.toolTip() == name
+    bar._more.click()
+    menu = bar.findChildren(PopoverMenu)[-1]
+    assert "images" not in items(menu)
+    menu.close()
+
+
+def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, window, qapp, monkeypatch):
+    bar = topbar
+    window.state.set_deck(COURSE)
+    buttons = {key: button for key, button in bar._modes._buttons.items()}
+    window.state.set_lint_errors(120)
+    bar.resize(1000, bar.height())
+    qapp.processEvents()
+    badge = bar._modes._badges["source"]
+    assert badge.isVisible() and badge.text() == "99+"
+    assert badge.geometry().right() < buttons["source"].width()
+    assert bar.minimumSizeHint().width() <= 1000
+    bar._views._buttons["during-course"].click()
+    bar._languages._buttons["DE"].click()
+    buttons["source"].click()
+    assert (window.state.view, window.state.language, window.state.mode) == ("during-course", "DE", "source")
+    assert bar._compile.toolTip() == "Compile PDF · During course"
+    jobs = compiled(window, monkeypatch)
+    bar._compile._main.click()
+    assert describe(jobs[0][0])[:2] == ("course", "during-course")
+    window.state.set_view("after-course")
+    window.state.set_language("EN")
+    window.state.set_mode("details")
+    assert (bar._views.current(), bar._languages.current(), bar._modes.current()) == ("after-course", "EN", "details")
+    bar.resize(1700, bar.height())
+    qapp.processEvents()
+    assert bar._density == "full" and bar._compile.text() == "Compile PDF · After"
+    assert bar._modes._buttons == buttons
+    assert badge.isVisible() and badge.geometry().right() < buttons["source"].width()
+    window.state.set_lint_errors(0)
+    assert badge.isHidden()
+
+
+def test_top_bar_rechecks_density_when_content_changes(topbar, window):
+    bar = topbar
+    window.state.set_deck(make_deck("W" * 24))
+    assert bar.width() == 1700 and bar._density == "full"
+    window.state.set_dirty(True)
+    assert bar._density == "compact" and bar.minimumSizeHint().width() <= bar.width()
+    window.state.set_dirty(False)
+    assert bar._density == "full"
+    window.state.set_deck(make_deck("W" * 100))
+    assert bar._density == "compact" and bar.minimumSizeHint().width() <= bar.width()
+    window.state.set_deck(COURSE)
+    assert bar._density == "full"
+
+
+def test_top_bar_allows_the_window_to_shrink_after_full_density(window, qapp):
+    assert load_fonts()
+    bar = window.topbar
+    window.resize(1700, 800)
+    window.show()
+    qapp.processEvents()
+    assert bar._density == "full"
+    window.resize(1100, 800)
+    qapp.processEvents()
+    # A full-density minimum must not stop the parent delivering the smaller width.
+    assert window.width() == 1100
+    assert bar.width() == 1100 and bar._density == "narrow"
+    window.resize(1700, 800)
+    qapp.processEvents()
+    assert bar.width() == 1700 and bar._density == "full"
+
 
 def test_view_and_language_controls_drive_the_state_and_follow_it(window):
     bar = window.topbar

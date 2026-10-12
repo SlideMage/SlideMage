@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .processes import no_console_kwargs
 
-VERSION_NUMBER = "v8.0.21"
+VERSION_NUMBER = "v8.0.22"
 
 # Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md,
 # skipping the introduction.
