@@ -1,6 +1,11 @@
 """A stand-in for the `claude` program, for the tests of the Claude Code view: a script that logs what it
 was started with (argv, cwd, selected environment) to $FAKE_CLAUDE_LOG, prints a banner, echoes what is typed
-(raw terminal) and ends at "/exit". It never talks to a model or the network."""
+(raw terminal) and ends at "/exit". With `-p` it is a one-shot task: it logs the call and the request it read
+from stdin (one JSON line per call), then answers with stream-json events as $FAKE_CLAUDE_REPLIES says, a JSON
+list with one entry per call (the last one repeats): {"answer": {...}} is the structured result, {"error":
+"text"} an error result, {"exit": code} no result at all; "delay" waits that many seconds before the result, and
+"marker" is a file touched after the delay (a process that was killed never gets there). It never talks to a
+model or the network."""
 from __future__ import annotations
 
 import stat
@@ -10,6 +15,28 @@ from pathlib import Path
 SCRIPT = '''#!{python}
 import json, os, sys, tty
 log = os.environ.get("FAKE_CLAUDE_LOG")
+if "-p" in sys.argv:
+    import time
+    request = sys.stdin.read()
+    calls = len(open(log).readlines()) if os.path.exists(log) else 0
+    with open(log, "a") as f:
+        f.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "request": request,
+                            "env": sorted(os.environ)}}) + "\\n")
+    replies = json.loads(os.environ["FAKE_CLAUDE_REPLIES"])
+    reply = replies[min(calls, len(replies) - 1)]
+    def emit(event):
+        sys.stdout.write(json.dumps(event) + "\\n"); sys.stdout.flush()
+    emit({{"type": "system", "subtype": "init"}})
+    if "exit" in reply:
+        print("boom", file=sys.stderr); sys.exit(reply["exit"])
+    emit({{"type": "assistant", "message": {{}}}})
+    time.sleep(reply.get("delay", 0))
+    if reply.get("marker"):
+        open(reply["marker"], "w").close()
+    usage = {{"input_tokens": 3, "cache_read_input_tokens": 100, "output_tokens": 7}}
+    emit({{"type": "result", "subtype": "success", "is_error": "error" in reply, "num_turns": 2, "usage": usage,
+          "result": reply.get("error", ""), "structured_output": reply.get("answer")}})
+    sys.exit(0)
 if log:
     with open(log, "w") as f:
         json.dump({{"argv": sys.argv[1:], "cwd": os.getcwd(), "token": os.environ.get("SLIDEMAGE_MCP_TOKEN"),

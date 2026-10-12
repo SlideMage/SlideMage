@@ -17,14 +17,14 @@ translations count as much as speed.
 
 | Decision | Value |
 | --- | --- |
-| Model | **Haiku, effort medium** by default (`--model haiku --effort medium`); a picker in the tab switches model and effort, remembered per user, applied to the next task. The step-1 benchmark confirms or replaces the default. |
+| Model | **Sonnet, effort medium** by default (`--model sonnet --effort medium`), chosen by the step-1 benchmark: fastest (translation median 6.5 s, fix 2.5 s) and at least as good as Haiku. A picker in the tab switches model and effort, remembered per user, applied to the next task. |
 | How a bubble runs | A separate **`claude -p` process per task**, not text typed into the terminal: the app knows when it is ready, done, failed or cancelled. Every task starts with a fresh context. |
-| Isolation | A task loads nothing it does not need: `--system-prompt` with the task's rules **replaces** Claude Code's default system prompt; `--setting-sources ""` skips the user's and project's settings, hooks and plugins; `--disable-slash-commands`; the process runs in a neutral working directory so no CLAUDE.md or memory is loaded. Step 1 measures this against a default `claude -p` and keeps it only if login and structured output still work. |
-| Result format | **Structured output** with `--json-schema`, no tools. Translations, shortening, titles and notes return the new body or part (`{"body": "..."}`). Proofreading and LaTeX fixes return an **edit list** (`{"edits": [{"before": "...", "after": "..."}]}`; empty means nothing to change), so a long slide is not echoed back for three small fixes. Each `before` must occur exactly once in the captured text, otherwise the result is invalid. Step 1 compares edit list and full body for speed and correctness. |
-| Images | Image descriptions also return structured output (`{"images": [{"path", "short", "long"}]}`); SlideMage saves them. The images go **inline as image blocks** through `--input-format stream-json` if step 1 confirms that `-p` accepts them; otherwise an MCP tool that reads one image, passed explicitly with `--mcp-config`. No tool writes descriptions. |
+| Isolation | A task loads nothing it does not need: `--system-prompt` with the task's rules **replaces** Claude Code's default system prompt; `--setting-sources ""` skips the user's and project's settings, hooks and plugins; `--disable-slash-commands`; the process runs in a neutral working directory so no CLAUDE.md or memory is loaded. Step 1 confirmed it: login and structured output work, about 24x fewer input tokens and faster than a default `claude -p`. |
+| Result format | **Structured output** with `--json-schema`, no tools. Translations, shortening, titles and notes return the new body or part (`{"body": "..."}`). Proofreading and LaTeX fixes return an **edit list** (`{"edits": [{"before": "...", "after": "..."}]}`; empty means nothing to change), so a long slide is not echoed back for three small fixes. Each `before` must occur exactly once in the captured text, otherwise the result is invalid. Step 1 confirmed the edit list: faster than a full body, which changed unrelated text in 3 of 5 slides. |
+| Images | Image descriptions also return structured output (`{"images": [{"path", "short", "long"}]}`); SlideMage saves them. The images go **inline as image blocks** through `--input-format stream-json` (step 1 confirmed the model receives them); no MCP tool reads or writes them. |
 | Terminal | Stays for free-form work and follow-ups with its own conversation. It does not see the bubbles' tasks. |
 | Progress | A status line in the tab while a task runs: "Translating 1f8 … 6 s", then "Done in 9.2 s" or the failure. Stop ends the task. |
-| Deadlines | Text tasks 60 s, image descriptions 120 s per slide; step 1 adjusts them from the measured slowest runs. |
+| Deadlines | Text tasks 60 s (step 1's slowest run: 13 s), image descriptions 120 s per slide until step 4 measures them. |
 | German address | **Sie**, project setting `de_address: "Sie" \| "du"` in `.slidemage/project.json` (the existing DE slides use Sie). Put into every translation request; never left to the model. |
 | Terminology | Optional `.slidemage/glossary.md` (`EN = DE` lines), put into translation requests as-is. |
 | Edits | SlideMage applies them with its existing code (`ai/tools/edits.py` `write_text`, `GuiWorkspace.apply_to_buffer`): open files change in the buffer (Ctrl+Z undoes), closed files are saved with a backup, protected parts (header, `\setSlideVersion`, overlay blocks) are checked. |
@@ -56,9 +56,9 @@ measured in step 1, not assumed.
    the buffer has it, model/effort, rules. Later focus changes do not change the task.
 2. **Run** `claude -p --model … --effort … --tools "" --strict-mcp-config --setting-sources ""
    --disable-slash-commands --system-prompt … --no-session-persistence --output-format stream-json
-   --verbose --json-schema …` in a neutral working directory, the request on stdin. Only an image task
-   that needs the MCP fallback adds `--mcp-config` with SlideMage's server and that one tool. (Exact
-   flags confirmed against the installed CLI in step 1.)
+   --verbose --json-schema …` in a neutral working directory, the request on stdin (an image task sends it
+   as stream-json with `--input-format stream-json`). The flags were confirmed against the installed CLI
+   in step 1.
 3. **Validate** the result: valid JSON, every edit's `before` found exactly once, protected parts
    unchanged, no new lint errors. One repair attempt at most, with the errors in the request.
 4. **Apply** only if the target still has the captured text. The whole target is compared, on purpose:
@@ -134,7 +134,7 @@ partner is linked.
 | 1 Prototype and measure | Task runner (`claude -p` with isolation, capture, validate, apply-if-unchanged, Stop, deadline), translation and lint fix as the first two tasks, run from a command-line tool on the disposable copy; the benchmark above; pick the defaults (model, effort, isolation, output format, deadlines, image input). | new `ai/claude_tasks.py` (pure: request text, schema, validation, edit lists), new `ai/claude_runner.py`, `tools/claude_task_benchmark.py`, report | ~80-120k, 4-6% |
 | 2 Bubbles in the tab | Bubble row, status line with Stop, model/effort picker, Sie and glossary settings, preview after apply; the two tasks from step 1, translation creating the partner only on success. | `terminal/view.py`, runner, `slide_add.py`, Settings -> AI models | ~60-90k, 3-5% |
 | 3 More slide tasks | Update translation, Translate to English, proofread, concise, title, speaker notes. | `ai/claude_tasks.py` | ~35-55k, 2-3% |
-| 4 Image descriptions | Describe and translate bubbles with inline images (or the MCP read-image fallback); SlideMage saves the descriptions; the Images panel refreshes. | `ai/claude_tasks.py`, runner, `alt_images.py`, `alt_draft.py`, Images panel | ~40-70k, 2-4% |
+| 4 Image descriptions | Describe and translate bubbles with inline images; SlideMage saves the descriptions; the Images panel refreshes. | `ai/claude_tasks.py`, runner, `alt_images.py`, `alt_draft.py`, Images panel | ~40-70k, 2-4% |
 | 5 Deck batches | Two workers on the same runner, writes one at a time per file and for shared data (ids, links, `alt-text.json`), progress and Stop in the job panel. Tests: two workers, user typing, duplicate partner prevented, the subscription's rate-limit and concurrency errors (back off to one worker, report it). | new scheduler, job panel | ~70-100k, 4-5% |
 | 6 Measure again | The step-1 benchmark through the real UI; update defaults and the report. | benchmark, report | ~20-30k, 1-2% |
 
