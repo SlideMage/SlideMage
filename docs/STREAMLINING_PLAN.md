@@ -166,15 +166,17 @@ Success: the same edit rules apply through all existing AI paths; specialized fe
 
 Each step should be a reviewable change that removes its superseded implementation in the same step. Avoid long-lived parallel architectures, blanket compatibility shims, and formatting-only churn. Refactoring ownership may initially add lines; report that honestly rather than treating moved files as a reduction.
 
-| Step | Work | Exit condition |
-| --- | --- | --- |
-| 0 | Freeze a revision, record the full feature inventory, tests, and representative build outputs on disposable projects. Preserve ongoing work; clarify stacked PR ancestry. | Reproducible source counts, output fixtures, and a feature-preservation checklist. |
-| 1 | Share image form/validation behavior and equivalent QSS/widget logic. Budget 350–900. | Both image-editing surfaces and all existing views still work; visual/interaction checks pass; measured net savings recorded. |
-| 2 | Consolidate editing validation/application across UI, agent, and headless tasks. Budget 200–600. | All AI interfaces remain; conflicts, approval/rejection, undo, protected regions, and translation-partner creation pass. Apply the stop rule: compare steps 1–2 with their 550–1,500 budget and re-estimate the remainder before step 4. |
-| 3 | Introduce explicit project context incrementally (settings, editing, then compilation paths); reduce window coupling outside compilation. Budget 0. | Clear ownership; two temporary projects work without scattered global patching. No savings are assumed from changing ownership; report any growth. |
-| 4 | Consolidate compile execution on top of the project context; replace `CompileJobsMixin` with a compile controller. Status events only if justified per section 3. Budget 300–800. | Full, chapter, preview, partial/patch, snapshot, and export paths retain their semantics; detailed progress remains; log-replay tests still pass or are replaced by equivalent event tests. |
-| 5 | Consolidate equivalent parsing/settings helpers and specialized workflow plumbing. Budget 550–1,600. | Existing project formats, imports/exports, snapshots, updates, model management, and course automation still work. |
-| 6 | Run integration checks. | Full retained-feature checks, supported-platform build results, final measured net reduction against the per-step budgets. |
+| Step | Work | Exit condition | Agent tokens | Agent minutes |
+| --- | --- | --- | ---: | ---: |
+| 0 | Freeze a revision, record the full feature inventory, tests, and representative build outputs on disposable projects. Preserve ongoing work; clarify stacked PR ancestry. | Reproducible source counts, output fixtures, and a feature-preservation checklist. | 150–250k | 25–40 |
+| 1 | Share image form/validation behavior and equivalent QSS/widget logic. Budget 350–900. | Both image-editing surfaces and all existing views still work; visual/interaction checks pass; measured net savings recorded. | 350–550k | 50–85 |
+| 2 | Consolidate editing validation/application across UI, agent, and headless tasks. Budget 200–600. | All AI interfaces remain; conflicts, approval/rejection, undo, protected regions, and translation-partner creation pass. Apply the stop rule: compare steps 1–2 with their 550–1,500 budget and re-estimate the remainder before step 4. | 400–600k | 60–90 |
+| 3 | Introduce explicit project context incrementally (settings, editing, then compilation paths); reduce window coupling outside compilation. Budget 0. | Clear ownership; two temporary projects work without scattered global patching. No savings are assumed from changing ownership; report any growth. | 500–800k | 75–120 |
+| 4 | Consolidate compile execution on top of the project context; replace `CompileJobsMixin` with a compile controller. Status events only if justified per section 3. Budget 300–800. | Full, chapter, preview, partial/patch, snapshot, and export paths retain their semantics; detailed progress remains; log-replay tests still pass or are replaced by equivalent event tests. | 600–900k | 90–135 |
+| 5 | Consolidate equivalent parsing/settings helpers and specialized workflow plumbing. Budget 550–1,600. | Existing project formats, imports/exports, snapshots, updates, model management, and course automation still work. | 500–800k | 75–120 |
+| 6 | Run integration checks. | Full retained-feature checks, supported-platform build results, final measured net reduction against the per-step budgets. | 200–300k | 30–45 |
+
+**Effort estimate.** Agent tokens and minutes are rough figures per step, excluding the user's review. They total about 2.7–4.2M tokens and 405–635 minutes (≈7–11 hours of agent time). At the usage calibration of ~5% of a 5-hour window per ~100k agent tokens this is ≈1.4–2.1 windows; agents have so far overshot estimates by about 1.5×, so plan for 3–5 windows and 10–16 hours unless each step gets a hard token cap. Steps 0–2 (≈1M tokens, 135–215 minutes) are enough to apply the stop rule. Merging `develop` before step 0 adds about 200–300k tokens (30–45 minutes).
 
 The framework, documentation, benchmark-storage, CI, and packaging work in section 7 runs as a separate track with its own exit conditions (current documentation, preserved benchmark evidence, one regeneration path) and is reported separately from the code reduction.
 
