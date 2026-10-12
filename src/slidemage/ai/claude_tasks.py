@@ -4,7 +4,7 @@ gets, the request text, the shape of the answer, and the check of an answer befo
 A task has no tools; the model answers with JSON that SlideMage validates and applies itself. Four answer
 shapes: a new text (`{"body": ...}`), an edit list (`{"edits": [{"before", "after"}]}`, each `before` a piece
 of the captured text that occurs exactly once), a new frame title (`{"title": ...}`) and a speaker note
-(`{"note": ...}`). check() turns the answer into the new text and accepts it only if it is well formed, the
+(`{"note": ...}`); the summary of a deck (`{"summary": ...}`) is read, never written. check() turns the answer into the new text and accepts it only if it is well formed, the
 protected parts of the slide are unchanged and the text has no lint error the captured text did not have.
 Pure: no Qt, no process (ai/claude_runner.py runs the task).
 """
@@ -19,6 +19,7 @@ from .. import latex_lint, slide_source
 from .tools.edits import protected_problem
 
 LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
+SLIDE_CHARS, DECK_CHARS = 1500, 60000      # what a summary request carries: per slide, and in all
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ def _schema(field: str, item: dict) -> dict:
 _BODY = _schema("body", {"type": "string"})
 _TITLE = _schema("title", {"type": "string"})
 _NOTE = _schema("note", {"type": "string"})
+_SUMMARY = _schema("summary", {"type": "string"})
 _EDITS = _schema("edits", {"type": "array", "items": {
     "type": "object", "properties": {"before": {"type": "string"}, "after": {"type": "string"}},
     "required": ["before", "after"], "additionalProperties": False}})
@@ -111,6 +113,12 @@ NOTE = Task("note", (
     "request has the slide's source between <slide> tags. Answer with the note text only, without the "
     "\\note command around it."), _NOTE)
 
+SUMMARISE = Task("summarise", (
+    "You summarise a deck of beamer slides of a university course for its instructor. The request has the "
+    "slides' LaTeX source, each between <slide> tags. Write a short summary in the language of the slides: "
+    "what the deck covers, in the order of the slides, in a few short paragraphs or bullet points, without "
+    "LaTeX. Answer with the summary text only."), _SUMMARY)
+
 
 def translate_request(text: str, source: str, target: str, address: str = "Sie", glossary: str = "") -> str:
     """Translate `text` from `source` to `target` (codes of LANGUAGE_NAMES). `address` ("Sie" or "du") is
@@ -158,6 +166,20 @@ def title_request(text: str) -> str:
 
 def note_request(text: str) -> str:
     return "\n".join(["Write the speaker note for this slide.", "<slide>", text, "</slide>"])
+
+
+def summarise_request(bodies: list[str]) -> str:
+    """Summarise the deck whose slides have the sources `bodies`: each is cut after SLIDE_CHARS characters, and
+    slides that would take the request past DECK_CHARS are left out (the request says how many)."""
+    parts, size = ["Summarise this deck."], 0
+    for number, body in enumerate(bodies):
+        slide = f"<slide>\n{body[:SLIDE_CHARS]}\n</slide>"
+        size += len(slide)
+        if size > DECK_CHARS:
+            parts.append(f"({len(bodies) - number} more slides are not shown.)")
+            break
+        parts.append(slide)
+    return "\n".join(parts)
 
 
 def fix_request(text: str, issues: list[latex_lint.LintIssue]) -> str:
@@ -245,8 +267,8 @@ def check(task: Task, captured: str, answer: dict | None) -> tuple[str, list[str
     new, problems = _new_text(task, captured, answer.get(task.answer) if isinstance(answer, dict) else None)
     if problems:
         return captured, problems
-    if new == captured:
-        return captured, []
+    if new == captured or task.answer == "summary":     # a summary is no edit of `captured`: nothing to protect
+        return new, []
     if problem := protected_problem(captured, new) or (task.keeps_structure and _structure_problem(captured, new)):
         return captured, [problem]
     added = _errors(new) - _errors(captured)

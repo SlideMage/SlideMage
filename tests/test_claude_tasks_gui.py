@@ -1,13 +1,17 @@
 """The bubbles of the Claude Code tab (ui/workspace/terminal/tasks.py and view.py), with the fake `claude -p` of
 tests/fake_claude.py: which bubbles the focus and the lint offer, a fix applied into the open buffer, a
 translation that creates the partner only on success, the conflicts (typing, a changed source), Stop, the
-picker and the project's German address, the image bubbles (describe, translate the descriptions). The project is a throwaway one, never example/."""
+picker and the project's German address, the image bubbles (describe, translate the descriptions), the deck bubbles
+(counts, two processes at a time, fresh captures, conflicts, duplicate partners, rate and usage limits, Stop, the
+summary). The project is a throwaway one, never example/."""
 from __future__ import annotations
 
 import json
 import sys
+import threading
 
 import pytest
+from PySide6.QtWidgets import QPlainTextEdit
 from conftest import SLIDE_TEXT
 from test_claude_code_gui import env as claude_env, pump, start_view, wait_until  # noqa: F401 -- a fixture
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, add_pictures
@@ -15,7 +19,7 @@ from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, a
 from slidemage import alt_images, slide_ids, slide_language, slide_versioning
 from slidemage.ai import claude_launch, claude_runner, translation_style
 from slidemage.ui import layout_settings
-from slidemage.ui.kit.widgets import PopoverMenu
+from slidemage.ui.kit.widgets import ModalSheet, PopoverMenu
 from slidemage.ui.workspace import render_check
 from slidemage.ui.workspace.terminal import tasks as tasks_module
 
@@ -41,7 +45,7 @@ class Fake:
         self.monkeypatch.setenv("FAKE_CLAUDE_REPLIES", json.dumps(replies))
 
     def calls(self):
-        return [json.loads(line) for line in self.log.read_text().splitlines()]
+        return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
 
 @pytest.fixture
@@ -615,3 +619,211 @@ def test_translating_the_descriptions_stores_unreviewed_german_text(fake):
     entry = alt_images.load_store()["media/a.png"]
     assert (entry.short_de, entry.long_de) == (GERMAN_IMAGE["short_de"], GERMAN_IMAGE["long_de"])
     assert not any(label.startswith("Translate image") for label in buttons(env))
+
+
+# -- deck batches -------------------------------------------------------------------------------------------
+
+def add_slide(env, word):
+    """A third slide, {word} as its frame title, called by the deck after the others."""
+    (env.root / "slides" / f"abe-EN-{word}-current.tex").write_bytes(SLIDE_TEXT.replace("Hello", word).encode())
+    deck = env.root / "decks" / "test.tex"
+    deck.write_bytes(deck.read_bytes().replace(b"\\end{document}", f"\\slide{{abe-EN-{word}}}\r\n\\end{{document}}".encode()))
+    env.window.reload_decks()
+
+
+def deck_scope(env, label="Summarise this deck"):
+    env.view.scope._buttons["deck"].click()
+    wait_until(lambda: label in buttons(env))
+
+
+def german(word):
+    """The answer of the fake for the slide whose frame title is `word`."""
+    return {"body": SENT.replace("Hello", word).replace("First point", f"Erster {word}")}
+
+
+def lines(env):
+    return env.view.tasks.report.splitlines()
+
+
+def test_the_deck_bubbles_follow_the_scope_and_count_each_slide_once(fake):
+    env = fake.env
+    assert buttons(env) == ["Translate to German", "Better title"]
+    deck_scope(env)
+    assert buttons(env) == ["Translate missing slides (2)", "Summarise this deck"]
+    deck = env.root / "decks" / "test.tex"
+    deck.write_bytes(deck.read_bytes().replace(b"\\end{document}", b"\\slide{abc-EN-Hello}\r\n\\end{document}"))
+    env.window.reload_decks()
+    slide_file(env).editor.replace_all_text(BROKEN)
+    wait_until(lambda: "Fix LaTeX errors (1 slides)" in buttons(env))
+    assert buttons(env) == ["Translate missing slides (2)", "Fix LaTeX errors (1 slides)", "Summarise this deck"]
+    env.view.scope._buttons["slide"].click()
+    wait_until(lambda: buttons(env) == ["Translate to German", "Fix LaTeX errors", "Better title"])
+
+
+def test_a_deck_without_work_offers_the_summary_and_a_shared_image_counts_once(fake):
+    env = fake.env
+    with_pictures(fake, a={}, b={})
+    abd = env.root / "slides" / "abd-EN-Second-current.tex"
+    abd.write_bytes((env.root / SLIDE).read_bytes().replace(b"Hello", b"Second"))    # the same two images
+    deck_scope(env, "Describe images (2)")
+    assert buttons(env)[-2:] == ["Describe images (2)", "Summarise this deck"]
+
+
+def test_two_processes_run_at_once_and_each_result_is_applied_on_the_gui_thread_in_turn(fake, monkeypatch):
+    env = fake.env
+    add_slide(env, "Third")
+    applied = []
+    real = tasks_module.TaskRunner._apply
+    monkeypatch.setattr(tasks_module.TaskRunner, "_apply", lambda self, capture, outcome: applied.append(
+        (capture.id_slug, threading.current_thread() is threading.main_thread())) or real(self, capture, outcome))
+    fake.reply(*({"when": "{" + word + "}", "answer": german(word), "delay": 1.0} for word in ("Hello", "Second", "Third")))
+    deck_scope(env)
+    click(env, "Translate missing slides (3)")
+    wait_until(lambda: "Translating the deck … " in env.view.task_status.text())
+    assert settled(env).startswith("Done in ") and "3 applied" in env.view.task_status.text()
+    first, second, third = sorted(call["time"] for call in fake.calls())
+    assert second - first < 0.8 and third - first >= 0.9                 # two together; the third waits for one
+    assert sorted(slug for slug, _ in applied) == ["abc-EN-Hello", "abd-EN-Second", "abe-EN-Third"]
+    assert all(on_gui for _, on_gui in applied)
+    created = german_files(env)
+    assert len(created) == 3 and len({path.name[:3] for path in created}) == 3          # three distinct ids
+    deck = (env.root / "decks" / "test.tex").read_text().replace("\r\n", "\n")
+    assert deck.count("\\slide{") == 6 and all(f"\\slide{{{id_slug}}}\n" in deck for id_slug in (
+        "abc-EN-Hello", "abd-EN-Second", "abe-EN-Third"))
+    assert len(lines(env)) == 3 and env.view.result_button.isVisibleTo(env.view)
+    assert env.window.centre.path == env.path                                # no partner was opened
+
+
+def test_a_slide_edited_before_its_turn_is_captured_as_it_is_then(fake):
+    env = fake.env
+    add_slide(env, "Third")
+    fake.reply(*({"when": "{" + word + "}", "answer": german(word), "delay": 0.8} for word in ("Hello", "Second", "Third")))
+    deck_scope(env)
+    click(env, "Translate missing slides (3)")
+    wait_until(lambda: len(fake.calls()) == 2)
+    third = env.root / "slides" / "abe-EN-Third-current.tex"
+    third.write_bytes(third.read_bytes().replace(b"First point", b"Freshly typed point"))
+    assert settled(env).startswith("Done in ")
+    request = next(call["request"] for call in fake.calls() if "{Third}" in call["request"])
+    assert "Freshly typed point" in request and len(german_files(env)) == 3
+
+
+def test_a_slide_edited_during_its_run_is_a_conflict_for_that_slide_only(fake):
+    env = fake.env
+    fake.reply(*({"when": "{" + word + "}", "answer": german(word), "delay": 0.8} for word in ("Hello", "Second")))
+    deck_scope(env)
+    click(env, "Translate missing slides (2)")
+    wait_until(lambda: len(fake.calls()) == 2)
+    slide_file(env).editor.replace_all_text(LF + "% typed meanwhile\n")
+    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.view.task_status.text()
+    (partner,) = german_files(env)
+    assert "-DE-Second-" in partner.name
+    assert any(line == f"abc-EN-Hello: {tasks_module.CONFLICT}" for line in lines(env))
+    assert (env.root / "decks" / "test.tex").read_text().count("\\slide{") == 3
+
+
+def test_a_partner_made_meanwhile_is_not_made_again(fake):
+    env = fake.env
+    fake.reply(*({"when": "{" + word + "}", "answer": german(word), "delay": 0.8} for word in ("Hello", "Second")))
+    deck_scope(env)
+    click(env, "Translate missing slides (2)")
+    wait_until(lambda: len(fake.calls()) == 2)
+    (env.root / "slides" / "abf-DE-Zweite-current.tex").write_bytes(
+        b"%% Translation of: abd-EN-Second\r\n%%\r\n\r\nHand made\r\n")                  # by the user
+    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.view.task_status.text()
+    names = [path.name for path in german_files(env)]
+    assert len(names) == 2 and "abf-DE-Zweite-current.tex" in names
+    assert not any("Zweite" in line or "Second" in line for line in lines(env) if "created" in line)
+
+
+def test_a_slide_that_got_its_partner_before_its_turn_is_skipped(fake):
+    env = fake.env
+    add_slide(env, "Third")
+    fake.reply(*({"when": "{" + word + "}", "answer": german(word), "delay": 0.6} for word in ("Hello", "Second", "Third")))
+    deck_scope(env)
+    click(env, "Translate missing slides (3)")
+    wait_until(lambda: len(fake.calls()) == 2)
+    (env.root / "slides" / "abf-DE-Dritte-current.tex").write_bytes(
+        b"%% Translation of: abe-EN-Third\r\n%%\r\n\r\nHand made\r\n")
+    assert settled(env).startswith("Done in ") and len(fake.calls()) == 2
+    assert "abe-EN-Third: no longer fits" in lines(env) and len(german_files(env)) == 3
+
+
+def test_a_rate_limit_drops_to_one_worker_and_gives_the_slide_a_second_try(fake):
+    env = fake.env
+    fake.reply({"when": "{Hello}", "error": "API Error: 429 rate limit exceeded"},
+               {"when": "{Second}", "answer": german("Second"), "delay": 1.5}, {"answer": german("Hello")})
+    deck_scope(env)
+    click(env, "Translate missing slides (2)")
+    wait_until(lambda: tasks_module.SLOWED in env.view.task_status.text())
+    assert settled(env).startswith("Done in ") and "2 applied" in env.view.task_status.text()
+    calls = fake.calls()
+    assert len(calls) == 3 and len(german_files(env)) == 2
+    assert calls[2]["time"] - calls[1]["time"] >= 1.4 and "{Hello}" in calls[2]["request"]    # alone, after the other
+
+
+def test_a_second_rate_limit_fails_that_slide_only(fake):
+    env = fake.env
+    fake.reply({"when": "{Second}", "answer": german("Second")}, {"when": "{Hello}", "error": "overloaded"},
+               {"error": "overloaded"})
+    deck_scope(env)
+    click(env, "Translate missing slides (2)")
+    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.view.task_status.text()
+    assert "abc-EN-Hello: overloaded" in lines(env) and len(fake.calls()) == 3
+
+
+def test_a_usage_limit_stops_the_batch(fake, tmp_path):
+    env = fake.env
+    add_slide(env, "Third")
+    fake.reply({"when": "{Hello}", "error": "Claude AI usage limit reached", "delay": 0.7},
+               {"when": "{Second}", "answer": german("Second"), "delay": 3, "marker": str(tmp_path / "late")})
+    deck_scope(env)
+    click(env, "Translate missing slides (3)")
+    assert settled(env).startswith("Stopped: Claude AI usage limit reached")
+    assert len(fake.calls()) == 2 and not (tmp_path / "late").exists() and german_files(env) == []
+
+
+def test_stop_ends_both_processes_and_the_queue_but_keeps_what_was_applied(fake, tmp_path):
+    env = fake.env
+    add_slide(env, "Third")
+    fake.reply({"when": "{Hello}", "answer": german("Hello")},
+               {"when": "{Second}", "answer": german("Second"), "delay": 5, "marker": str(tmp_path / "late")},
+               {"answer": german("Third"), "delay": 5})
+    deck_scope(env)
+    click(env, "Translate missing slides (3)")
+    wait_until(lambda: len(german_files(env)) == 1)                       # abc is done, abe has started
+    wait_until(lambda: len(fake.calls()) == 3)
+    env.view.stop_button.click()
+    assert settled(env).startswith("Stopped after ") and "1 applied" in env.view.task_status.text()
+    assert len(german_files(env)) == 1 and not (tmp_path / "late").exists() and len(fake.calls()) == 3
+
+
+def test_the_summary_is_shown_in_a_sheet_and_nothing_is_written(fake, monkeypatch):
+    env = fake.env
+    shown = []
+    monkeypatch.setattr(ModalSheet, "exec", lambda sheet: shown.append(
+        (sheet.findChild(QPlainTextEdit).toPlainText(), [b.text() for b in sheet.findChildren(type(env.view.stop_button))])))
+    before = {path: path.read_bytes() for path in (env.root / "slides").iterdir()} | {
+        env.root / "decks" / "test.tex": (env.root / "decks" / "test.tex").read_bytes()}
+    fake.reply({"answer": {"summary": "Two slides: Hello and Second."}})
+    deck_scope(env)
+    click(env, "Summarise this deck")
+    assert settled(env).startswith("Done in ")
+    assert shown[0][0] == "Two slides: Hello and Second." and "Copy" in shown[0][1]
+    request = fake.calls()[0]["request"]
+    assert request.startswith("Summarise this deck.\n<slide>\n") and request.count("<slide>") == 2
+    assert "Included in decks" not in request and "{Hello}" in request and "{Second}" in request
+    assert before == {path: path.read_bytes() for path in before} and slide_file(env).editor.text() == LF
+
+
+def test_describing_the_decks_images_runs_over_every_image_once(fake):
+    env = fake.env
+    with_pictures(fake, a={}, b={})
+    abd = env.root / "slides" / "abd-EN-Second-current.tex"
+    abd.write_bytes((env.root / SLIDE).read_bytes().replace(b"Hello", b"Second"))
+    deck_scope(env, "Describe images (2)")
+    fake.reply({"answer": IMAGE_ANSWER, "delay": 0.2})
+    click(env, "Describe images (2)")
+    wait_until(lambda: "Describing images of the deck" in env.view.task_status.text())
+    assert settled(env).endswith(": 2 described") and len(fake.calls()) == 2
+    assert all(e.short == IMAGE_ANSWER["short"] for e in alt_images.load_store().values())

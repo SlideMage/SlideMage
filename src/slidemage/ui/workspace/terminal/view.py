@@ -6,9 +6,9 @@ time the view is shown (not at launch, and the web view is not even created befo
 while the user looks at the chat. When it ends, the terminal keeps its text, the status chip says so and
 Restart starts a new one. Closing the window, switching project and `shutdown()` end the process.
 
-Under the status row: the suggestion bubbles for the slide in the Source view, the model and effort the next
-bubble task runs with (remembered per user), and the status line of the running or last task, with Stop
-(tasks.py does the work).
+Under the status row: the suggestion bubbles for the slide in the Source view (with the scope on Deck, for the
+open deck), the model and effort the next bubble task runs with (remembered per user), and the status line of
+the running or last task, with Stop (tasks.py does the work).
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from ...kit import kit_qss as q
 from ...kit.widgets import (
     Button, Chip, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
 from ..state import WorkspaceState
-from .tasks import Bubble, TaskRunner, bubbles
+from .tasks import Bubble, TaskRunner, bubbles, deck_bubbles
 
 HINT, TERMINAL = 0, 1
 BUBBLE_DELAY_MS = 500
@@ -184,7 +184,10 @@ class ClaudeCodeView(Surface):
         """Show the buttons for the tasks that fit the slide now (none while a task runs)."""
         if self.tasks is None:
             return
-        found = [] if self.tasks.busy else bubbles(self.app)
+        if self.tasks.busy:
+            found = []
+        else:
+            found = deck_bubbles(self.app) if self.scope.current() == DECK else bubbles(self.app)
         if found == self._bubbles:
             return
         for _ in self._bubbles:
@@ -227,12 +230,12 @@ class ClaudeCodeView(Surface):
         self._fit()
 
     def _run(self, bubble: Bubble) -> None:
-        self.tasks.start(bubble.task, self._model, self._effort)
+        self.tasks.start(bubble.task, self._model, self._effort, bubble.paths)
 
     def _on_task_status(self, text: str, tone: str) -> None:
         self.task_status.setText(text)
         set_property(self.task_status, "tone", tone)
-        self.result_button.setVisible(bool(self.tasks.unapplied))
+        self.result_button.setVisible(bool(self.tasks.unapplied or self.tasks.report))
 
     def _on_busy(self, busy: bool) -> None:
         self.stop_button.setVisible(busy)
@@ -240,10 +243,15 @@ class ClaudeCodeView(Surface):
         self._refresh_bubbles()
 
     def _show_result(self) -> None:
-        sheet = ModalSheet("Claude's result", self.app, width=640)
-        text = QPlainTextEdit(self.tasks.unapplied)
+        tasks = self.tasks
+        self._show_text(*(("Claude's result", tasks.unapplied) if tasks.unapplied
+                          else ("What became of each slide", tasks.report)))
+
+    def _show_text(self, title: str, content: str) -> None:
+        sheet = ModalSheet(title, self.app, width=640)
+        text = QPlainTextEdit(content)
         text.setReadOnly(True)
-        sheet.add_tab("Claude's result", text)
+        sheet.add_tab(title, text)
         sheet.add_button("Copy").clicked.connect(lambda: QGuiApplication.clipboard().setText(text.toPlainText()))
         sheet.add_button("Close", kind="primary", role="accept")
         sheet.exec()
@@ -283,6 +291,7 @@ class ClaudeCodeView(Surface):
         self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)
         self.tasks.status.connect(self._on_task_status)
         self.tasks.busy_changed.connect(self._on_busy)
+        self.tasks.summary.connect(lambda text: self._show_text("Summary of the deck", text))
         self.session.focus_changed.connect(self._refresh_bubbles)
         self.app.centre.source.buffer_changed.connect(lambda _path: self._typing.start())
         self._refresh_bubbles()

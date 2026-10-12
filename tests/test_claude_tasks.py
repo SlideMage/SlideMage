@@ -205,3 +205,17 @@ def test_an_updated_translation_is_a_body_with_the_protected_parts_unchanged():
 def test_every_task_names_its_answer():
     assert [t.answer for t in (claude_tasks.UPDATE_TRANSLATION, claude_tasks.PROOFREAD, claude_tasks.CONCISE,
                                claude_tasks.TITLE, claude_tasks.NOTE)] == ["body", "edits", "body", "title", "note"]
+
+
+def test_a_summary_is_read_not_checked_against_the_text_it_summarises():
+    sent = "<slide>\n% a comment\n\\setSlideVersion{1-0-0}\n</slide>"
+    assert check(claude_tasks.SUMMARISE, sent, {"summary": "A short deck."}) == ("A short deck.", [])
+    assert check(claude_tasks.SUMMARISE, sent, {"summary": " "})[1] and check(claude_tasks.SUMMARISE, sent, {})[1]
+
+
+def test_the_summary_request_cuts_each_slide_and_the_whole():
+    cut = claude_tasks.summarise_request(["x" * (claude_tasks.SLIDE_CHARS + 500)])
+    assert cut.count("x") == claude_tasks.SLIDE_CHARS
+    many = claude_tasks.summarise_request(["y" * claude_tasks.SLIDE_CHARS] * 50)
+    assert len(many) <= claude_tasks.DECK_CHARS + 100 and many.endswith("more slides are not shown.)")
+    assert many.count("<slide>") == claude_tasks.DECK_CHARS // (claude_tasks.SLIDE_CHARS + len("<slide>\n\n</slide>"))

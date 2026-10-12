@@ -5,8 +5,9 @@ from stdin (one JSON line per call; with `--input-format stream-json` the text o
 and its image blocks as "images", each the block's source), then answers with stream-json events as
 $FAKE_CLAUDE_REPLIES says, a JSON list with one entry per call (the last one repeats): {"answer": {...}} is the structured result, {"error":
 "text"} an error result, {"exit": code} no result at all; "delay" waits that many seconds before the result, and
-"marker" is a file touched after the delay (a process that was killed never gets there). It never talks to a
-model or the network."""
+"marker" is a file touched after the delay (a process that was killed never gets there); "when" makes it the
+reply to the first request that contains that text (processes started together cannot count their calls). Each
+call logs its start "time". It never talks to a model or the network."""
 from __future__ import annotations
 
 import stat
@@ -23,12 +24,14 @@ if "-p" in sys.argv:
         content = json.loads(request.splitlines()[0])["message"]["content"]
         images = [block["source"] for block in content if block["type"] == "image"]
         request = "".join(block["text"] for block in content if block["type"] == "text")
-    calls = len(open(log).readlines()) if os.path.exists(log) else 0
+    earlier = [json.loads(line).get("request", "") for line in open(log)] if os.path.exists(log) else []
+    calls = len(earlier)
     with open(log, "a") as f:
         f.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "request": request, "images": images,
-                            "env": sorted(os.environ)}}) + "\\n")
+                            "env": sorted(os.environ), "time": time.time()}}) + "\\n")
     replies = json.loads(os.environ["FAKE_CLAUDE_REPLIES"])
-    reply = replies[min(calls, len(replies) - 1)]
+    reply = next((r for r in replies if r.get("when") and r["when"] in request
+                  and not any(r["when"] in e for e in earlier)), None) or replies[min(calls, len(replies) - 1)]
     def emit(event):
         sys.stdout.write(json.dumps(event) + "\\n"); sys.stdout.flush()
     emit({{"type": "system", "subtype": "init"}})

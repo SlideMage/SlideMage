@@ -42,6 +42,17 @@ ISOLATION = ("--strict-mcp-config", "--setting-sources", "", "--disable-slash-co
 
 DONE, NOTHING, FAILED, CANCELLED = "done", "nothing to change", "failed", "cancelled"
 NOT_LOGGED_IN = "Claude Code is not logged in: run claude in a terminal and sign in with /login."
+RATE_LIMIT, USAGE_LIMIT = "rate limit", "usage limit"
+
+
+def limit_kind(message: str) -> str:
+    """RATE_LIMIT (try again with fewer processes at once), USAGE_LIMIT (the subscription's window is used up:
+    nothing more will run for now) or "" for the error text `message` of a failed task. Matched on the words
+    the service uses in its error result."""
+    text = message.lower()
+    if "usage limit" in text:
+        return USAGE_LIMIT
+    return RATE_LIMIT if any(word in text for word in ("rate limit", "429", "overloaded", "concurren")) else ""
 
 
 @dataclass

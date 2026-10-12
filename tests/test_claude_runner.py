@@ -162,3 +162,11 @@ def test_a_request_without_images_stays_plain_text(claude):
                            threading.Event())
     (call,) = claude.calls()
     assert "--input-format" not in call["argv"] and call["request"] == "THE REQUEST" and call["images"] == []
+
+
+@pytest.mark.parametrize("message, kind", [
+    ("API Error: 429 Too Many Requests", claude_runner.RATE_LIMIT), ("Overloaded", claude_runner.RATE_LIMIT),
+    ("Rate limit exceeded", claude_runner.RATE_LIMIT), ("Claude AI usage limit reached|1760000000", claude_runner.USAGE_LIMIT),
+    ("Not logged in", ""), ("", "")])
+def test_limit_kind_tells_rate_limits_from_the_exhausted_usage(message, kind):
+    assert claude_runner.limit_kind(message) == kind
