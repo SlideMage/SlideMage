@@ -534,6 +534,23 @@ def test_images_show_state_and_save_drafts_and_reviews_through_the_store(content
     assert alt_images.load_store()["media/pic.png"].status == "reviewed"
 
 
+def test_the_images_panel_refuses_review_without_a_long_description(content, monkeypatch):
+    from slidemage import alt_images
+
+    panels, _state, _window = content
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    form.short_edit.setPlainText("A chart")
+    form.review_button.click()
+    assert len(warned) == 1 and "media/pic.png" in warned[0] and "long description" in warned[0]
+    assert not alt_images.load_store() and panel.dirty and panel._forms[0] is form   # nothing stored, edit kept
+    form.roles.set_current(alt_images.ROLE_DECORATIVE)
+    form.review_button.click()
+    assert len(warned) == 1 and alt_images.load_store()["media/pic.png"].status == "reviewed"
+
+
 @pytest.mark.parametrize("save", ["draft", "review", "flush"])
 def test_image_save_preserves_a_field_updated_by_a_worker(content, paths, save):
     from slidemage import alt_images

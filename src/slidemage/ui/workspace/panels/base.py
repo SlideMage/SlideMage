@@ -26,7 +26,7 @@ from ....deck_editor import SLIDES_DIR, SlideCall
 from .... import deck_outline
 from ....slide_language import current_id_slug_for_bare_id, current_path_for_bare_id
 from ...kit import kit_qss as q
-from ...kit.widgets import ClickFrame, Surface
+from ...kit.widgets import ClickFrame, Surface, clear_layout
 from ..state import WorkspaceState
 
 
@@ -76,15 +76,6 @@ def empty_row(layout: QLayout, string: str) -> None:
     Row(layout).add_text(string, q.DETAILS_LABEL)
 
 
-def clear(layout: QLayout) -> None:
-    while (item := layout.takeAt(0)) is not None:
-        if (widget := item.widget()) is not None:
-            widget.setParent(None)
-            widget.deleteLater()
-        elif item.layout() is not None:
-            clear(item.layout())
-
-
 class SidePanel(Surface):
     key = ""      # what the host remembers and the picker's menu returns
     title = ""    # the picker's text
@@ -127,7 +118,7 @@ class SidePanel(Surface):
         self.body.addStretch(1)
 
     def refresh(self) -> None:
-        clear(self.body)
+        clear_layout(self.body)
         slide = self.id_slug()
         if slide:
             self.build(slide)

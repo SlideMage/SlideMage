@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePol
 
 from ....ai.agent_types import ToolCall, ToolResult
 from ...kit import kit_qss as q
-from ...kit.widgets import Button, IconLabel, Surface, caption, set_property
+from ...kit.widgets import Button, IconLabel, Surface, caption, clear_layout, set_property
 from .format import diff_rows, summarize_call
 
 BUBBLE_WIDTH = 270       # the user's bubble wraps here
@@ -230,10 +230,7 @@ class DiffCard(QFrame):
     # -- the diff ------------------------------------------------------------------------
 
     def _fill(self) -> None:
-        while (item := self._lines.takeAt(0)) is not None:
-            widget = item.widget()
-            widget.setParent(None)
-            widget.deleteLater()
+        clear_layout(self._lines)
         shown = self._rows if self._all_rows else self._rows[:DIFF_ROWS]
         for kind, line in shown:
             label = QLabel({"add": "+ ", "del": "− ", "ctx": "  ", "gap": "⋯"}[kind] + line)

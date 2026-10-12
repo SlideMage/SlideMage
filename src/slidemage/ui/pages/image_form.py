@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QVBoxLayout
 
 from ... import alt_images, image_review
 from ..kit import kit_qss as q
@@ -33,6 +33,20 @@ DECORATIVE_NOTE = ("Decorative: no description needed. It is marked as a PDF art
 SOURCE_HELP = ("Feeds the automatic \"Image source(s):\" footnote. For an AI-generated image write: AI-generated -- "
                "<engine> <version>, prompt: ``<prompt exactly as entered>''. Any other image just gets its "
                "ordinary credit (e.g. Own illustration.).")
+
+
+def review_refused(parent, images: list[tuple[str, str, str]]) -> bool:
+    """Warn and return True when an image of `images` ((reference, role, long description) as typed) is
+    informative without a long description: it cannot be marked reviewed. Shared by the Images page and
+    the inspector's panel."""
+    missing = [reference for reference, role, long in images if image_review.needs_long_description(role, long)]
+    if missing:
+        QMessageBox.warning(
+            parent, "Nothing to review yet",
+            "These images are marked informative but have no long description yet:\n\n" + "\n".join(missing)
+            + "\n\nEither write one, or set the role to decorative.")
+    return bool(missing)
+
 
 # (key, label, tooltip, height, placeholder) of the fields of each language, in the order they are shown.
 ENGLISH = (

@@ -34,7 +34,7 @@ from ....ai.agent_types import (
 from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderError
 from ... import background
 from ...kit import kit_qss as q
-from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption
+from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
 from ..state import WorkspaceState
 from .cards import AssistantText, DiffCard, Notice, Status, ToolCard, UserBubble, suggestion_button, text_label
 from .gui_workspace import EditAsk, GuiWorkspace
@@ -181,10 +181,7 @@ class ChatView(Surface):
 
     def _fill_empty(self) -> None:
         """The first screen: what to ask, as buttons. Gone once the conversation has started."""
-        while (item := self._ideas.takeAt(0)) is not None:
-            widget = item.widget()
-            widget.setParent(None)
-            widget.deleteLater()
+        clear_layout(self._ideas)
         box, scope = self._ideas, self.scope.current()
         self._suggestion_widgets = [caption("Describe a change to this slide, or try:" if scope == SCOPE_SLIDE
                                             else "Ask about the whole deck, or try:")]

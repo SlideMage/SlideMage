@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from ...deck_scan import PROJECT_ROOT
 from ..kit import kit_qss as q
-from ..kit.widgets import Card, RowButton
+from ..kit.widgets import Card, RowButton, caption
 
 
 class NoDecksPage(QWidget):
@@ -28,10 +28,8 @@ class NoDecksPage(QWidget):
         layout.setSpacing(14)
         title = QLabel("This project has no decks yet")
         title.setObjectName(q.SHEET_TITLE)
-        note = QLabel("A deck is the list of slides for one course or talk. Slides live once in "
-                      "slides/ and any deck can use them.")
-        note.setObjectName(q.PANEL_CAPTION)
-        note.setWordWrap(True)
+        note = caption("A deck is the list of slides for one course or talk. Slides live once in "
+                       "slides/ and any deck can use them.")
         layout.addWidget(title)
         layout.addWidget(note)
         self.manual = RowButton("menu_book", "Add the SlideMage manual",

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -55,6 +56,16 @@ def apply_shadow(widget: QWidget, name: str = "raised") -> None:
     effect.setOffset(0, shadow.dy)
     effect.setColor(QColor(0, 0, 0, shadow.alpha))
     widget.setGraphicsEffect(effect)
+
+
+def clear_layout(layout: QLayout) -> None:
+    """Remove everything from `layout` (nested layouts too); the widgets are gone now, not at the next event loop."""
+    while (item := layout.takeAt(0)) is not None:
+        if (widget := item.widget()) is not None:
+            widget.setParent(None)
+            widget.deleteLater()
+        elif item.layout() is not None:
+            clear_layout(item.layout())
 
 
 def _repolish(widget: QWidget) -> None:
@@ -163,7 +174,7 @@ class DropdownButton(ClickFrame):
         return super().event(event)
 
 
-def caption(text: str, tone: str = "") -> QLabel:
+def caption(text: str = "", tone: str = "") -> QLabel:
     """A wrapping line of small grey text under a control; tone "error" turns it red."""
     label = QLabel(text)
     label.setObjectName(q.PANEL_CAPTION)
@@ -615,9 +626,7 @@ class PopoverMenu(Popover):
         self._entries.append(("sep",))
 
     def _build(self) -> None:
-        while (item := self._layout.takeAt(0)) is not None:
-            if item.widget() is not None:
-                item.widget().setParent(None)  # gone now, not at the next event loop
+        clear_layout(self._layout)
         self._rows.clear()
         self._current = -1
         # An icon slot is reserved for every row once any row has an icon.
@@ -752,9 +761,7 @@ class Toast(QFrame):
     def show_message(self, text: str, actions: Sequence[tuple[str, str]] = (), *,
                      error: bool = False, timeout_ms: int | None = None) -> None:
         """actions: (key, label) pairs."""
-        while (item := self._layout.takeAt(0)) is not None:
-            if item.widget() is not None:
-                item.widget().setParent(None)
+        clear_layout(self._layout)
         self._layout.addWidget(QLabel(text))
         for key, label in actions:
             button = QPushButton(label)

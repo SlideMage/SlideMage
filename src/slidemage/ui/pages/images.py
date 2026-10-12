@@ -37,7 +37,7 @@ from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Card, Field, IconButton, SegmentedControl, Surface, caption
 from .image_dialogs import ReplaceImageSheet
-from .image_form import ImageForm
+from .image_form import ImageForm, review_refused
 from .image_jobs import Job, JobCard
 from .image_nav import SlideNav
 from .image_runs import ImageRunsMixin
@@ -357,15 +357,9 @@ class ImagesPage(ImageRunsMixin, Surface):
         view = self._current
         if view is None:
             return False
-        if reviewed:
-            missing = [form.reference for form in self._forms
-                       if image_review.needs_long_description(form.role, form.values()["long"])]
-            if missing:
-                QMessageBox.warning(
-                    self, "Nothing to review yet",
-                    "These images are marked informative but have no long description yet:\n\n" + "\n".join(missing)
-                    + "\n\nEither write one, or set the role to decorative.")
-                return False
+        if reviewed and review_refused(self, [(form.reference, form.role, form.values()["long"])
+                                              for form in self._forms]):
+            return False
         row = view.row
         image_review.save_slide_forms(row.slide_id, row.path, [form.form_edit() for form in self._forms],
                                       reviewed=reviewed)

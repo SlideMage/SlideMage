@@ -23,7 +23,7 @@ from ...ai_models import provider_for_task
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
-from ...pages.image_form import ROLES, STATE_TONES
+from ...pages.image_form import ROLES, STATE_TONES, review_refused
 from ...text import plural
 from .base import Row, SidePanel, box, empty_row, text
 
@@ -146,10 +146,7 @@ class ImageDescriptions(SidePanel):
 
     def _save(self, form: ImageForm, *, reviewed: bool) -> None:
         role, short, long = form.values()
-        if reviewed and image_review.needs_long_description(role, long):
-            QMessageBox.warning(self, "Nothing to review yet",
-                                "An informative image needs a long description before it can be reviewed. "
-                                "Write one, or set the role to decorative.")
+        if reviewed and review_refused(self, [(form.reference, role, long)]):
             return
         self._store(form.reference, role, short, long, reviewed, form.baseline)
         self.refresh()

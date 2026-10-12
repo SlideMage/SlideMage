@@ -40,7 +40,7 @@ from ...deck_scan import Deck
 from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
-from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, set_property
+from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
 from ..workspace.menus import VIEW_LABELS
 from ..workspace.topbar import VIEW_TONES
 
@@ -219,9 +219,7 @@ class AddSlideSheet(ModalSheet):
         machine = QVBoxLayout(self.machine_box)
         machine.setContentsMargins(0, 0, 0, 0)
         machine.setSpacing(8)
-        warning = QLabel(TRANSLATION_WARNING)
-        warning.setObjectName(q.PANEL_CAPTION)
-        warning.setWordWrap(True)
+        warning = caption(TRANSLATION_WARNING)
         self._reserve_lines(warning)
         machine.addWidget(warning)
         self.model = QComboBox()
@@ -253,9 +251,7 @@ class AddSlideSheet(ModalSheet):
         self.progress.setFixedHeight(3)
         self.progress.hide()
         self._add(self.progress)
-        self.status = QLabel()
-        self.status.setObjectName(q.PANEL_CAPTION)
-        self.status.setWordWrap(True)
+        self.status = caption()
         self._add(self.status)
 
     def _build_footer(self) -> None:

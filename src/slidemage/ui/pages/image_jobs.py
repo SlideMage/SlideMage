@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLa
 from ... import alt_draft
 from ...ai.providers import ChatProvider
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, IconLabel
+from ..kit.widgets import Button, IconLabel, caption
 
 
 class Job(QThread):
@@ -87,10 +87,8 @@ class JobCard(QFrame):
         self.bar.setObjectName(q.JOB_BAR)
         self.bar.setTextVisible(False)
         inner.addWidget(self.bar)
-        self.note = QLabel("Each image is saved as soon as it is done, so you can stop any time; "
-                           "what is left stays in the queue for next time.")
-        self.note.setObjectName(q.PANEL_CAPTION)
-        self.note.setWordWrap(True)
+        self.note = caption("Each image is saved as soon as it is done, so you can stop any time; "
+                            "what is left stays in the queue for next time.")
         inner.addWidget(self.note)
         self.hide()
 

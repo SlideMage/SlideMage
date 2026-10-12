@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from ... import deck_snapshot, housekeeping, unused_content
 from .. import background
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, ModalSheet, Surface
+from ..kit.widgets import Button, ModalSheet, Surface, caption
 from ..text import plural
 
 LIST_PAGE, ARCHIVE_PAGE = 0, 1
@@ -61,9 +61,7 @@ class _Row(QFrame):
         texts = QVBoxLayout()
         texts.setSpacing(1)
         self.title = QLabel(title)
-        self.sub = QLabel()
-        self.sub.setObjectName(q.PANEL_CAPTION)
-        self.sub.setWordWrap(True)
+        self.sub = caption()
         texts.addWidget(self.title)
         texts.addWidget(self.sub)
         layout.addLayout(texts, 1)
@@ -126,11 +124,9 @@ class HousekeepingSheet(ModalSheet):
         self.archive_intro = QLabel()
         self.archive_intro.setWordWrap(True)
         layout.addWidget(self.archive_intro)
-        note = QLabel("A file is listed because nothing \\includegraphics{}s it (media/), or no deck "
-                      "-- archived decks included -- uses it as a slide (slides/). Archived files can be "
-                      "moved back by hand.")
-        note.setObjectName(q.PANEL_CAPTION)
-        note.setWordWrap(True)
+        note = caption("A file is listed because nothing \\includegraphics{}s it (media/), or no deck "
+                       "-- archived decks included -- uses it as a slide (slides/). Archived files can be "
+                       "moved back by hand.")
         layout.addWidget(note)
         bulk = Surface()
         bulk_row = QHBoxLayout(bulk)

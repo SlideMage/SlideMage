@@ -28,7 +28,7 @@ from ... import slide_ids, slide_language, slide_search
 from ...deck_editor import SLIDES_DIR
 from .. import background
 from ..kit import kit_qss as q
-from ..kit.widgets import Chip, MenuRow, apply_shadow, set_property
+from ..kit.widgets import Chip, MenuRow, apply_shadow, clear_layout, set_property
 from .chat.session import current_route
 
 MIN_TEXT_QUERY = 3    # characters before the files are searched
@@ -308,10 +308,7 @@ class CommandPalette(QWidget):
 
     def _show_entries(self) -> None:
         layout = self._list_layout
-        while (item := layout.takeAt(0)) is not None:
-            if (widget := item.widget()) is not None:
-                widget.setParent(None)
-                widget.deleteLater()
+        clear_layout(layout)
         self._rows, self._current = [], -1
         group = None
         for index, entry in enumerate(self._entries):

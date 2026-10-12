@@ -5,12 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout
+from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
 from ... import slide_import
 from ...deck_scan import Deck, scan_decks
-from ..kit import kit_qss as q
-from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface
+from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption
 
 DESCRIPTION = (
     "Imports each slide of a PowerPoint (.pptx) or OpenDocument Presentation (.odp) file as a new "
@@ -29,9 +28,7 @@ class ImportPresentationSheet(ModalSheet):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
-        note = QLabel(DESCRIPTION)
-        note.setObjectName(q.PANEL_CAPTION)
-        note.setWordWrap(True)
+        note = caption(DESCRIPTION)
         layout.addWidget(note)
 
         file_row = Surface()

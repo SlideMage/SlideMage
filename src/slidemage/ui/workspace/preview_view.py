@@ -40,7 +40,7 @@ from ...slide_language import TranslationLink, translation_link
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
-from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface
+from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface, clear_layout
 from . import render_check
 from .menus import VIEW_LABELS
 from .state import WorkspaceState
@@ -340,9 +340,7 @@ class PreviewPane(Surface):
         job = self._pending[1] if self._pending else self._active
         busy_here = (target is not None and job is not None and job.generation == self._generation
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
-        while (item := self._chips.takeAt(0)) is not None:
-            if item.widget() is not None:
-                item.widget().setParent(None)
+        clear_layout(self._chips)
         if target is not None:
             link = translation_link(row.call.id_slug) if row is not None else None
             for icon, text, tone, tooltip in chips_for(target, row, view, language, link):

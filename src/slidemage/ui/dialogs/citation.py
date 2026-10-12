@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from ... import bibliography
 from ..kit import kit_qss as q
-from ..kit.widgets import ModalSheet, Surface
+from ..kit.widgets import ModalSheet, Surface, caption
 
 # label shown in the "Type:" combo -> bibliography.TYPE_FIELDS key
 _TYPE_LABELS: dict[str, str] = {
@@ -169,9 +169,7 @@ class CitationDialog(ModalSheet):
         key_form.addRow("Citation key:", self.key_entry)
         layout.addLayout(key_form)
 
-        self.key_status_label = QLabel("")
-        self.key_status_label.setObjectName(q.PANEL_CAPTION)
-        self.key_status_label.setWordWrap(True)
+        self.key_status_label = caption()
         layout.addWidget(self.key_status_label)
 
         self.add_tab("", body)

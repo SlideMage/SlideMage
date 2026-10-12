@@ -7,11 +7,10 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PySide6.QtWidgets import QButtonGroup, QLabel, QLineEdit, QRadioButton, QVBoxLayout
+from PySide6.QtWidgets import QButtonGroup, QLineEdit, QRadioButton, QVBoxLayout
 
 from ...deck_scan import SELECTABLE_GROUP_TAGS, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK
-from ..kit import kit_qss as q
-from ..kit.widgets import Field, ModalSheet, Surface, set_property
+from ..kit.widgets import Field, ModalSheet, Surface, caption, set_property
 
 GROUP_LABELS = {
     TAG_WORK: "Workdeck (pinned to the top of the deck switcher)",
@@ -58,13 +57,9 @@ class DeckGroupSheet(ModalSheet):
             group_layout.addWidget(radio)
         layout.addWidget(Field("Group (decides the section of the deck switcher)", group_box))
 
-        note = QLabel("Stored in the deck's own file as \\decktags{...}, so it stays with the deck.")
-        note.setObjectName(q.PANEL_CAPTION)
-        note.setWordWrap(True)
+        note = caption("Stored in the deck's own file as \\decktags{...}, so it stays with the deck.")
         layout.addWidget(note)
-        self.problem = QLabel()
-        self.problem.setObjectName(q.PANEL_CAPTION)
-        self.problem.setWordWrap(True)
+        self.problem = caption()
         self.problem.hide()
         layout.addWidget(self.problem)
 
