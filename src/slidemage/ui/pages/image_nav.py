@@ -58,7 +58,7 @@ class SlideNav(Card):
         self.filter_index = 0
         self.shown: list[image_review.SlideView] = []
         self._counts: list[int] = [0] * len(image_review.FILTERS)
-        self.setFixedWidth(380)
+        self.setFixedWidth(340)
         layout = self.layout()
         layout.setSpacing(10)
 

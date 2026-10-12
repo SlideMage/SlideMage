@@ -58,3 +58,9 @@ options), then L6-L7.
 - **Remembered per project or per user:** **per user and machine** (window geometry and column widths are
   about the screen, not the project), like the update settings. Today the right column's width is kept in
   the project's `.slidemage/app_settings.json`; it would move along with the new settings.
+
+## Progress
+
+| Step | Status |
+| --- | --- |
+| L1 Centre minimum | Done, v8.0.21: columns need 996 px instead of ~1,560. |

@@ -245,6 +245,21 @@ def test_log_lines_keep_working_after_the_decks_are_reloaded(window):
 
 # -- Images and the pages ----------------------------------------------------------
 
+def test_centre_stack_size_hints_follow_the_shown_page(window, monkeypatch, qapp):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.state.set_mode("preview")
+    window.show()
+    qapp.processEvents()
+    assert window.centre.minimumSizeHint().width() <= 400
+    assert window.images_page.minimumSizeHint().width() <= 700
+    assert window.images_page.minimumSizeHint().width() > window.centre.minimumSizeHint().width()
+    for page in (window.centre, window.images_page, window.centre):
+        window.stack.setCurrentWidget(page)
+        qapp.processEvents()
+        assert window.stack.minimumSizeHint() == page.minimumSizeHint()
+        assert window.stack.sizeHint() == page.sizeHint()
+
+
 def test_images_button_toggles_the_images_page(window, monkeypatch):
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     window.state.set_mode("source")

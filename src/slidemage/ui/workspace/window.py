@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -60,6 +60,22 @@ from .topbar import TopBar
 
 # Settings key of the deck that was open when the app was last closed.
 LAST_DECK_KEY = "last_deck"
+
+
+class _CurrentPageStack(QStackedWidget):
+    """Let the shown page, rather than the widest hidden page, size the centre."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.currentChanged.connect(self.updateGeometry)
+
+    def minimumSizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return page.minimumSizeHint() if page is not None else super().minimumSizeHint()
+
+    def sizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return page.sizeHint() if page is not None else super().sizeHint()
 
 
 class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMainWindow):
@@ -111,7 +127,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
         # deferred to the first time the page is shown (_on_page_changed) rather than paid on every
         # launch, and deliberately not a launch-time *write* to media/alt-text.json.
-        self.stack = QStackedWidget()
+        self.stack = _CurrentPageStack()
         self.centre = CentreColumn(self, self.state)
         self.stack.addWidget(self.centre)
         self.images_page = ImagesPage(self, self.state)
