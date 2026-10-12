@@ -128,4 +128,80 @@ def test_a_translation_may_not_cite_a_key_that_is_not_in_the_bibliography():
 
 def test_every_task_has_a_schema_that_names_its_answer():
     assert TRANSLATE.schema["required"] == ["body"]
-    assert FIX_LATEX.schema["required"] == ["edits"] and FIX_LATEX.edits and not TRANSLATE.edits
+    assert FIX_LATEX.schema["required"] == ["edits"] and FIX_LATEX.answer == "edits" and TRANSLATE.answer == "body"
+
+
+# -- the other tasks: requests ----------------------------------------------------------------------
+
+def test_an_update_request_has_the_source_the_translation_and_the_rules():
+    request = claude_tasks.update_request("New text.", "Alter Text.", "EN", "DE", "du", "slide = Folie")
+    assert request.startswith("Update this German translation to match the current English source.\n")
+    assert 'with "du" (informal)' in request and "slide = Folie\n<source>\nNew text.\n</source>" in request
+    assert request.endswith("<slide>\nAlter Text.\n</slide>")
+    assert "Address" not in claude_tasks.update_request("Neu.", "New.", "DE", "EN")
+
+
+def test_a_proofread_request_names_the_language_and_keeps_the_german_address():
+    german = claude_tasks.proofread_request("Text.", "DE", "du")
+    assert "German slide" in german and '"du"' in german and german.endswith("<slide>\nText.\n</slide>")
+    assert '"Sie"' not in claude_tasks.proofread_request("Text.", "EN") and "English slide" in claude_tasks.proofread_request("T", "EN")
+
+
+def test_title_and_note_requests_carry_the_slide_and_the_current_title():
+    assert claude_tasks.title_request(LF).splitlines()[:2] == ["Write a better title for this slide.", "Current title: Hello"]
+    assert claude_tasks.note_request(LF).endswith(f"<slide>\n{LF}\n</slide>")
+    assert claude_tasks.concise_request(LF).endswith(f"<slide>\n{LF}\n</slide>")
+
+
+# -- the other tasks: answers --------------------------------------------------------------------------
+
+def test_a_title_replaces_the_frame_title_only():
+    new, problems = check(claude_tasks.TITLE, LF, {"title": " A better title "})
+    assert problems == [] and new == LF.replace("{Hello}", "{A better title}")
+
+
+@pytest.mark.parametrize("answer, task, text", [
+    ({"title": "two\nlines"}, claude_tasks.TITLE, LF), ({"title": " "}, claude_tasks.TITLE, LF),
+    ({"title": 3}, claude_tasks.TITLE, LF), ({"note": ""}, claude_tasks.NOTE, LF), ({"body": "x"}, claude_tasks.NOTE, LF),
+    ({"title": "T"}, claude_tasks.TITLE, "no frame here\n")])
+def test_a_bad_title_or_note_is_refused(answer, task, text):
+    new, problems = check(task, text, answer)
+    assert new == text and len(problems) == 1
+
+
+def test_a_note_is_added_before_the_frames_end():
+    new, problems = check(claude_tasks.NOTE, LF, {"note": "Say hello."})
+    assert problems == [] and new.endswith("\t\\note{Say hello.}\n\\end{standardframe}\n")
+
+
+def test_a_note_or_title_may_not_add_a_lint_error():
+    assert "(braces)" in check(claude_tasks.NOTE, LF, {"note": "a { b"})[1][0]
+    assert "(braces)" in check(claude_tasks.TITLE, LF, {"title": "a { b"})[1][0]
+
+
+def test_proofreading_answers_with_edits_and_an_empty_list_changes_nothing():
+    assert check(claude_tasks.PROOFREAD, LF, {"edits": []}) == (LF, [])
+    assert check(claude_tasks.PROOFREAD, LF, edits(("First point", "First points")))[0] == LF.replace("First point", "First points")
+
+
+def test_a_shortened_text_keeps_environments_overlays_and_citations():
+    text = LF.replace("First point", "\\only<2->{First point} \\fullcite{old2000}")
+    shorter = text.replace("First point", "First")
+    assert check(claude_tasks.CONCISE, text, {"body": shorter}) == (shorter, [])
+    for lost in (text.replace("<2->", ""), text.replace(" \\fullcite{old2000}", ""),
+                 text.replace("\t\\end{itemize}\n", "").replace("\t\\begin{itemize}\n", "")):
+        new, problems = check(claude_tasks.CONCISE, text, {"body": lost})
+        assert new == text and len(problems) == 1 and "must keep every environment" in problems[0]
+    assert "<2->" in check(claude_tasks.CONCISE, text, {"body": text.replace("<2->", "")})[1][0]
+    # the other body task does not look at the structure
+    assert check(TRANSLATE, text, {"body": text.replace("<2->", "")})[0] != text
+
+
+def test_an_updated_translation_is_a_body_with_the_protected_parts_unchanged():
+    assert check(claude_tasks.UPDATE_TRANSLATION, LF, {"body": LF.replace("Hello", "Hallo")})[1] == []
+    assert "protected part" in check(claude_tasks.UPDATE_TRANSLATION, LF, {"body": LF.replace("1-0-0", "2-0-0")})[1][0]
+
+
+def test_every_task_names_its_answer():
+    assert [t.answer for t in (claude_tasks.UPDATE_TRANSLATION, claude_tasks.PROOFREAD, claude_tasks.CONCISE,
+                               claude_tasks.TITLE, claude_tasks.NOTE)] == ["body", "edits", "body", "title", "note"]

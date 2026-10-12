@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
 
@@ -29,6 +29,7 @@ from ..state import WorkspaceState
 from .tasks import Bubble, TaskRunner, bubbles
 
 HINT, TERMINAL = 0, 1
+BUBBLE_DELAY_MS = 500
 MODEL_SETTING, EFFORT_SETTING = "claude_task_model", "claude_task_effort"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
@@ -44,7 +45,12 @@ class ClaudeCodeView(Surface):
         self.session = None                       # created with the terminal
         self.tasks: TaskRunner | None = None
         self.terminal = None
-        self._bubbles: list[Bubble] = []          # the buttons shown
+        self._typing = QTimer(self)               # the bubbles follow the text a moment after the last keystroke
+        self._typing.setSingleShot(True)
+        self._typing.setInterval(BUBBLE_DELAY_MS)
+        self._typing.timeout.connect(self._refresh_bubbles)
+        self._shown = 0                           # of them, the buttons that fit
+        self._bubbles: list[Bubble] = []          # the tasks that fit the slide, as buttons or under "More"
         self._model = self._remembered(MODEL_SETTING, claude_runner.MODELS, claude_runner.MODEL)
         self._effort = self._remembered(EFFORT_SETTING, claude_runner.EFFORTS, claude_runner.EFFORT)
         self._started = False
@@ -109,6 +115,11 @@ class ClaudeCodeView(Surface):
     def _build_bubble_row(self) -> QHBoxLayout:
         self._bubble_row = QHBoxLayout()
         self._bubble_row.setContentsMargins(0, 0, 0, 0)
+        self.more = Button("More  ▾", "ghost", compact=True)
+        self.more.setToolTip("The other tasks that fit this slide.")
+        self.more.clicked.connect(self._open_more)
+        self.more.hide()
+        self._bubble_row.addWidget(self.more)
         self._bubble_row.addStretch(1)
         return self._bubble_row
 
@@ -185,6 +196,35 @@ class ClaudeCodeView(Surface):
             button.clicked.connect(partial(self._run, bubble))
             self._bubble_row.insertWidget(index, button)
         self._bubbles = found
+        self._fit()
+
+    def _fit(self) -> None:
+        """Show as many bubble buttons as fit the row, and the rest under "More"."""
+        buttons = [self._bubble_row.itemAt(i).widget() for i in range(len(self._bubbles))]
+        spacing, room = self._bubble_row.spacing(), self.width()
+        widths = [button.sizeHint().width() + spacing for button in buttons]
+        reserve = 0 if sum(widths) <= room else self.more.sizeHint().width() + spacing
+        shown, used = 0, reserve
+        for width in widths:
+            if used + width > room:
+                break
+            used, shown = used + width, shown + 1
+        for index, button in enumerate(buttons):
+            button.setVisible(index < shown)
+        self.more.setVisible(shown < len(buttons))
+        self._shown = shown
+
+    def _open_more(self) -> None:
+        menu = PopoverMenu(self, min_width=180)
+        for index in range(self._shown, len(self._bubbles)):
+            menu.add_item(str(index), self._bubbles[index].label)
+        menu.triggered.connect(lambda key: self._run(self._bubbles[int(key)]))
+        menu.closed.connect(menu.deleteLater)
+        menu.popup_below(self.more)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit()
 
     def _run(self, bubble: Bubble) -> None:
         self.tasks.start(bubble.task, self._model, self._effort)
@@ -244,7 +284,7 @@ class ClaudeCodeView(Surface):
         self.tasks.status.connect(self._on_task_status)
         self.tasks.busy_changed.connect(self._on_busy)
         self.session.focus_changed.connect(self._refresh_bubbles)
-        self.state.lint_errors_changed.connect(self._refresh_bubbles)
+        self.app.centre.source.buffer_changed.connect(lambda _path: self._typing.start())
         self._refresh_bubbles()
         self.terminal.ready.connect(self._on_ready)
         self.terminal.resized.connect(self._on_resized)

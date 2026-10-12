@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import alt_blocks
+from .tex_source import masked_same_length
 from .deck_scan import PROJECT_ROOT
 
 SLIDES_DIR = PROJECT_ROOT / "slides"
@@ -200,3 +201,25 @@ def add_note(text: str, content: str) -> str:
         return text.rstrip("\n") + f"\n\\note{{{content}}}\n"
     end = ends[-1]
     return text[:end.start()] + f"{end.group(1)}\t\\note{{{content}}}\n" + text[end.start():]
+
+
+# -- the frame title ---------------------------------------------------------------------------------
+
+def title_span(text: str) -> tuple[int, int] | None:
+    r"""Where the title text of a slide's frame stands in `text` (start, end): the first argument of
+    \begin{standardframe}[options]{Title} (and the other frame environments) or of
+    \titleframe{Title}{Subtitle}; None for a slide without either. Comments are skipped."""
+    masked = masked_same_length(text)
+    match = alt_blocks.FRAME_OPEN_RE.search(masked) or alt_blocks.TITLEFRAME_RE.search(masked)
+    if match is None:
+        return None
+    _, after = alt_blocks.braced_argument(masked, match.end() - 1)
+    return (match.end(), after - 1) if after > match.end() - 1 else None
+
+
+def set_title(text: str, title: str) -> str:
+    """`text` with the frame's title text replaced by `title`."""
+    span = title_span(text)
+    if span is None:
+        raise ValueError("the slide has no frame title")
+    return text[:span[0]] + title + text[span[1]:]

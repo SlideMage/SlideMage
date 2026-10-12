@@ -203,6 +203,16 @@ def slide_body(path: Path) -> str:
     return body_of(path.read_bytes().decode("utf-8"))
 
 
+_HEADER_RE = re.compile(r"\A(?:%%[^\r\n]*\r?\n)*(?:[ \t]*\r?\n)*")
+
+
+def split_header(text: str) -> tuple[str, str]:
+    """(header, rest) of a slide file's `text`: the leading "%%" comment lines of the blocks
+    build_new_slide_header writes, and the blank lines after them, and everything else."""
+    end = _HEADER_RE.match(text).end()
+    return text[:end], text[end:]
+
+
 def body_of(body_text: str) -> str:
     """The content of a slide file's `body_text` without its header comments -- its "Included in
     decks", "Translation of" and "<LANG> translation" blocks describe *that* file, not a copy
