@@ -89,7 +89,7 @@ def test_a_notification_gets_no_body_and_unknown_methods_an_error(mcp):
 def test_tools_list_names_the_claude_code_tools_with_their_schemas(mcp):
     tools = mcp.rpc("tools/list")["result"]["tools"]
     names = [t["name"] for t in tools]
-    assert names == ["get_focus", "read_buffer", "list_slides", "lint", "render_preview", "read_guide", "add_slide"]
+    assert names == ["get_focus", "show_slide", "read_buffer", "list_slides", "lint", "render_preview", "read_guide", "add_slide"]
     assert [t.spec.name for t in CLAUDE_CODE_READ_ONLY] == names[:-1]
     assert all(t["description"] and t["inputSchema"]["type"] == "object" for t in tools)
     # the chat's file tools are Claude Code's own, and the compile is not offered

@@ -238,6 +238,14 @@ def test_claude_code_reads_the_unsaved_buffer_and_the_focus_through_mcp(env):
     assert "Focused slide id: abd" in on_thread(lambda: client.text("get_focus"))
 
 
+def test_show_slide_brings_a_deck_slide_into_focus(env):
+    start_view(env)
+    client = Client(env.view.session._server)
+    assert "shows slides/abd-EN-Second-current.tex" in on_thread(
+        lambda: client.text("show_slide", path="slides/abd-EN-Second-current.tex"))
+    assert env.window.state.focused_slide == "abd"
+
+
 def test_the_scope_switch_and_the_focus_reach_the_hooks(env):
     from slidemage.ai import claude_scope
 

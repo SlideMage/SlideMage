@@ -1,5 +1,5 @@
-"""The two tools only the Claude Code connection has (UI redesign step 10c): what the user is looking at,
-and the editor buffer with its unsaved edits. Claude Code reads and edits files on disk with its own tools;
+"""The tools only the Claude Code connection has (UI redesign step 10c): what the user is looking at, bringing
+a slide into view, and the editor buffer with its unsaved edits. Claude Code reads and edits files on disk with its own tools;
 these show what SlideMage's window knows beyond the disk."""
 from __future__ import annotations
 
@@ -41,6 +41,19 @@ def get_focus(ctx: ToolContext, args: dict) -> str:
                      + ("none" if not errors else str(len(errors))))
         lines += [f"  line {i.line}: {i.message}" for i in errors[:LINT_SHOWN]]
     return "\n".join(lines)
+
+
+@tool("show_slide",
+      "Bring a slide into focus in SlideMage, so the user sees its preview and source. Call it after you "
+      "created a slide or changed one the user is not looking at.",
+      {"path": {"type": "string", "description": "Project-relative path, e.g. slides/1y8-EN-Title-current.tex"}},
+      ("path",))
+def show_slide(ctx: ToolContext, args: dict) -> str:
+    path = project_path(ctx.root, args["path"])
+    if path.parent.name != "slides" or path.suffix != ".tex" or not path.is_file():
+        raise ToolError(f"{args['path']} is no slide file: slides/<id>-<LANG>-<Slug>-current.tex.")
+    ctx.workspace.show_slide(path)
+    return f"SlideMage shows {relative(ctx.root, path)}."
 
 
 @tool("read_buffer",

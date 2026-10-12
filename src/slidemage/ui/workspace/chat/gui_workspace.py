@@ -18,13 +18,14 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
-from .... import compiler
+from .... import compiler, deck_editor
 from ....ai.agent_types import EditApplied
 from ....ai.providers import ChatProvider
 from ....ai.tools import undo_edit
 from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
 from ....deck_scan import PROJECT_ROOT, Deck
+from ....slide_language import bare_id
 from ...ai_models import confirm_cloud_request
 
 POLL_S = 0.05      # how often a waiting call looks whether the window has closed
@@ -220,6 +221,17 @@ class GuiWorkspace(Workspace):
 
     def file_changed(self, path: Path, previous_text: str | None) -> None:
         self.on_gui(lambda: self._show_written(self._local(path)))
+
+    def show_slide(self, path: Path) -> None:
+        def show() -> None:
+            window, slide_id = self.window, bare_id(path.name)
+            deck = window.state.deck
+            if deck is not None and any(call.id == slide_id for call in deck_editor.parse_slide_calls(deck)):
+                window.state.set_focused_slide(slide_id)     # as "Go to slide": the preview follows
+            else:
+                window.open_slide_editor(self._local(path))
+
+        self.on_gui(show)
 
     def _show_written(self, path: Path) -> None:
         """Bring the views up to date with a file the agent wrote on disk."""

@@ -67,7 +67,7 @@ def prompt_context(data: dict) -> str:
             "Use only this file: do not read, search or edit other slides, decks or folders, and do not explore "
             "the project (no Glob, Grep, ls, find or other shell exploration); the file's own text and read_guide "
             "are enough. Go straight to it: you need no get_focus. If the request needs something outside this "
-            "slide, say so and let the user switch the scope to Deck.")
+            "slide, say so in one sentence and let the user switch the scope to Deck.")
 
 
 def edit_problem(data: dict | None, root: Path, path: Path) -> str | None:
