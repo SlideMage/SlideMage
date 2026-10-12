@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QMouseEvent, QPixmap
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from ....ai.agent_types import ToolCall, ToolResult
 from ...kit import kit_qss as q
@@ -179,7 +179,7 @@ class DiffCard(QFrame):
     reject_clicked = Signal()
     undo_clicked = Signal()
 
-    def __init__(self, title: str, before: str, after: str, note: str = "") -> None:
+    def __init__(self, title: str, before: str, after: str, note: str = "", scroll_height: int = 0) -> None:
         super().__init__()
         self.setObjectName(q.CHAT_DIFF)
         self.state = "proposed"
@@ -205,7 +205,17 @@ class DiffCard(QFrame):
             layout.addWidget(note_label)
         self._lines = QVBoxLayout()
         self._lines.setSpacing(0)
-        layout.addLayout(self._lines)
+        if scroll_height:       # a narrow place: the diff scrolls, the title and the buttons stay
+            body = QWidget()
+            body.setLayout(self._lines)
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            area.setFrameShape(QFrame.Shape.NoFrame)
+            area.setMaximumHeight(scroll_height)
+            area.setWidget(body)
+            layout.addWidget(area)
+        else:
+            layout.addLayout(self._lines)
         self._more = Button("", "ghost", compact=True)
         self._more.clicked.connect(self._show_all)
         layout.addWidget(self._more, 0, Qt.AlignmentFlag.AlignLeft)
@@ -279,6 +289,10 @@ class DiffCard(QFrame):
     def rejected(self) -> None:
         self.state = "rejected"
         self._show_state("Not applied", False)
+
+    def failed(self, why: str) -> None:
+        self.state = "rejected"
+        self._show_state(why, True)
 
     def undone(self) -> None:
         self.state = "undone"

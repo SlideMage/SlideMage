@@ -79,6 +79,14 @@ def settled(env):
     return env.view.task_status.text()
 
 
+def apply(env):
+    """The task is done and its proposal waits; click Apply. The status line then."""
+    assert settled(env).startswith("Ready in ")
+    env.view._card.apply_button.click()
+    pump(0.05)
+    return env.view.task_status.text()
+
+
 def german_files(env):
     return sorted((env.root / "slides").glob(f"*{GERMAN_NAME}*-current.tex"))
 
@@ -134,16 +142,52 @@ def test_a_fix_goes_into_the_open_buffer_and_ctrl_z_takes_it_back(fake, monkeypa
     fake.reply({"answer": FIX})
     click(env, "Fix LaTeX errors")
     assert env.view.tasks.busy and env.view._bubbles == [] and env.view.stop_button.isVisibleTo(env.view)
-    assert settled(env).startswith("Done in ")
+    assert settled(env).endswith(" s — review the change")
     editor = slide_file(env).editor
+    card = env.view._card
+    assert card.state == "asking" and card.title == "Fix LaTeX errors: abc" and card.apply_button.isVisibleTo(env.view)
+    assert editor.text() == BROKEN                                   # nothing changes before Apply
+    assert not env.view.stop_button.isVisibleTo(env.view) and "Translate to German" in buttons(env)
+    assert apply(env).startswith("Done in ")
+    assert card.state == "applied" and card.undo_button.isVisibleTo(env.view)
     assert editor.text() == LF and rendered == []                    # Source mode: the mode stays, nothing renders
     assert env.window.state.mode == "source"
-    assert not env.view.stop_button.isVisibleTo(env.view) and buttons(env) == ["Translate to German", "Better title"]
+    wait_until(lambda: buttons(env) == ["Translate to German", "Better title"])
     editor.undo()
     assert editor.text() == BROKEN
     request = fake.calls()[0]["request"]
     assert "(environments)" in request and "<slide>" in request
     assert (env.root / SLIDE).read_bytes() == SLIDE_TEXT.encode()      # nothing was saved
+
+
+def test_the_card_undoes_a_fix_and_reject_writes_nothing(fake):
+    env = fake.env
+    break_slide(env)
+    fake.reply({"answer": FIX}, {"answer": FIX})
+    click(env, "Fix LaTeX errors")
+    apply(env)
+    card = env.view._card
+    card.undo_button.click()
+    assert slide_file(env).editor.text() == BROKEN and card.state == "undone"
+    wait_until(lambda: "Fix LaTeX errors" in buttons(env))
+    click(env, "Fix LaTeX errors")
+    assert settled(env).startswith("Ready in ")
+    assert env.view._card is not card
+    env.view._card.reject_button.click()
+    assert env.view._card.state == "rejected" and slide_file(env).editor.text() == BROKEN
+
+
+def test_a_rejected_translation_creates_nothing_and_a_new_task_replaces_the_card(fake):
+    env = fake.env
+    fake.reply({"answer": GERMAN}, {"answer": {"title": "T"}})
+    click(env, "Translate to German")
+    assert settled(env).startswith("Ready in ")
+    card = env.view._card
+    card.reject_button.click()
+    assert card.state == "rejected" and german_files(env) == [] and slide_file(env).editor.text() == LF
+    click(env, "Better title")
+    assert env.view._card is None                                      # the old card went with the new task
+    assert apply(env).startswith("Done in ") and env.view._card is not card
 
 
 def test_a_fix_renders_the_buffer_only_when_the_preview_is_showing(fake, monkeypatch):
@@ -156,7 +200,7 @@ def test_a_fix_renders_the_buffer_only_when_the_preview_is_showing(fake, monkeyp
     break_slide(env)
     fake.reply({"answer": FIX})
     click(env, "Fix LaTeX errors")
-    assert settled(env).startswith("Done in ") and rendered == [True] and env.window.state.mode == "split"
+    assert apply(env).startswith("Done in ") and rendered == [True] and env.window.state.mode == "split"
 
 
 def test_a_slide_that_needs_no_change_says_so(fake):
@@ -176,9 +220,10 @@ def test_typing_during_a_fix_is_a_conflict_and_nothing_is_overwritten(fake):
     editor = slide_file(env).editor
     typed = BROKEN + "% typed meanwhile\n"
     editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
+    assert apply(env) == tasks_module.CONFLICT
     assert editor.text() == typed
-    assert env.view.result_button.isVisibleTo(env.view) and "Second point" in env.view.tasks.unapplied
+    card = env.view._card
+    assert card.state == "rejected" and card._caption.text() == tasks_module.CONFLICT and not card.apply_button.isVisibleTo(env.view)
 
 
 def test_a_focus_change_during_a_task_does_not_change_its_target(fake):
@@ -188,7 +233,7 @@ def test_a_focus_change_during_a_task_does_not_change_its_target(fake):
     click(env, "Fix LaTeX errors")
     env.window.state.set_focused_slide("abd")
     wait_until(lambda: env.window.centre.path.name.startswith("abd"))
-    assert settled(env).startswith("Done in ")
+    assert apply(env).startswith("Done in ")
     assert slide_file(env).editor.text() == LF                       # abc, which was the target
     assert env.window.centre.source.file_for(env.window.centre.path).editor.text() == LF.replace("Hello", "Second")
 
@@ -219,7 +264,12 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(fake)
     env = fake.env
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
-    status = settled(env)
+    assert settled(env).startswith("Ready in ") and german_files(env) == []
+    card = env.view._card
+    assert card.title == "New German slide from abc" and card.state == "asking"
+    assert slide_file(env).editor.text() == LF and (env.root / "decks" / "test.tex").read_text().count("\\slide") == 2
+    status = apply(env)
+    assert card.state == "applied" and not card.undo_button.isVisibleTo(env.view) and card._caption.text() == "Created"
     (partner,) = german_files(env)
     new_id_slug = partner.name.removesuffix("-current.tex")
     assert status == f"Done in {status.split()[2]} s: {new_id_slug} created"
@@ -259,9 +309,8 @@ def test_a_source_that_changed_meanwhile_gets_no_partner(fake):
     click(env, "Translate to German")
     typed = LF + "% typed meanwhile\n"
     slide_file(env).editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
+    assert apply(env) == tasks_module.CONFLICT
     assert german_files(env) == [] and slide_file(env).editor.text() == typed
-    assert "Hallo" in env.view.tasks.unapplied and env.view.result_button.isVisibleTo(env.view)
     assert (env.root / "decks" / "test.tex").read_text().count("\\slide") == 2
 
 
@@ -274,7 +323,7 @@ def test_a_slide_that_is_not_in_the_deck_still_gets_its_translation(fake):
     wait_until(lambda: env.window.centre.path.name.startswith("abd") and "Translate to German" in buttons(env))
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
-    assert settled(env).endswith("created, not added to the deck")
+    assert apply(env).endswith("created, not added to the deck")
     assert len(german_files(env)) == 1 and deck.read_text().count("\\slide") == 1
 
 
@@ -365,7 +414,7 @@ def test_proofreading_applies_its_edits_into_the_buffer(fake):
     wait_until(lambda: "Proofread" in buttons(env))
     fake.reply({"answer": {"edits": [{"before": "enough ordinary words", "after": "enough ordinary words,"}]}})
     click(env, "Proofread")
-    assert settled(env).startswith("Done in ")
+    assert apply(env).startswith("Done in ")
     editor = slide_file(env).editor
     assert "ordinary words," in editor.text()
     editor.undo()
@@ -394,14 +443,14 @@ def test_a_shortened_slide_is_applied_and_one_that_loses_structure_is_refused(fa
     shorter = PROSE.replace(" with enough ordinary words", "")
     fake.reply({"answer": {"body": shorter}})
     click(env, "Make more concise")
-    assert settled(env).startswith("Done in ") and slide_file(env).editor.text() == shorter
+    assert apply(env).startswith("Done in ") and slide_file(env).editor.text() == shorter
 
 
 def test_a_better_title_replaces_only_the_frame_title(fake):
     env = fake.env
     fake.reply({"answer": {"title": "A better title"}})
     click(env, "Better title")
-    assert settled(env).startswith("Done in ")
+    assert apply(env).startswith("Done in ")
     assert slide_file(env).editor.text() == LF.replace("{Hello}", "{A better title}")
     assert "Current title: Hello" in fake.calls()[0]["request"]
 
@@ -412,9 +461,9 @@ def test_a_speaker_note_goes_before_the_frames_end_and_its_bubble_goes(fake):
     wait_until(lambda: "Add speaker notes" in buttons(env))
     fake.reply({"answer": {"note": "Open with the main idea."}})
     click(env, "Add speaker notes")
-    assert settled(env).startswith("Done in ")
+    assert apply(env).startswith("Done in ")
     assert slide_file(env).editor.text().endswith("\t\\note{Open with the main idea.}\n\\end{standardframe}\n")
-    assert "Add speaker notes" not in buttons(env)
+    wait_until(lambda: "Add speaker notes" not in buttons(env))
 
 
 def test_typing_during_a_title_task_is_a_conflict(fake):
@@ -423,8 +472,8 @@ def test_typing_during_a_title_task_is_a_conflict(fake):
     click(env, "Better title")
     typed = LF + "% typed\n"
     slide_file(env).editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
-    assert slide_file(env).editor.text() == typed and env.view.tasks.unapplied.startswith("A better title") is False
+    assert apply(env) == tasks_module.CONFLICT
+    assert slide_file(env).editor.text() == typed
 
 
 def test_the_status_names_what_is_done(fake, tmp_path):
@@ -474,7 +523,7 @@ def test_an_update_goes_into_the_open_translation_and_keeps_its_header(outdated)
     open_partner(env, outdated.partner)
     outdated.reply({"answer": UPDATE_ANSWER})
     click(env, "Update German translation")
-    assert settled(env).endswith(f": {GERMAN_ID} updated")
+    assert apply(env).endswith(f": {GERMAN_ID} updated")
     editor = env.window.centre.source.file_for(outdated.partner).editor
     assert editor.text().startswith(GERMAN_HEADER.replace("\r\n", "\n")) and "Erster Punkt!" in editor.text()
     assert "\\setSlideVersion{1-0-0}" in editor.text()
@@ -493,7 +542,7 @@ def test_an_update_of_a_closed_translation_is_saved_to_its_file(outdated):
     wait_until(lambda: "Update German translation" in buttons(env))
     outdated.reply({"answer": UPDATE_ANSWER})
     click(env, "Update German translation")
-    assert settled(env).endswith(f": {GERMAN_ID} updated")
+    assert apply(env).endswith(f": {GERMAN_ID} updated")
     text = outdated.partner.read_bytes().decode()                       # its CRLF line ends are kept
     assert text.startswith(GERMAN_HEADER) and "Erster Punkt!" in text and "\\setSlideVersion{1-0-0}" in text
     assert env.window.centre.path == env.path
@@ -507,8 +556,8 @@ def test_a_translation_that_changed_meanwhile_is_not_overwritten(outdated):
     editor = env.window.centre.source.file_for(outdated.partner).editor
     typed = editor.text() + "% getippt\n"
     editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
-    assert editor.text() == typed and "Erster Punkt!" in env.view.tasks.unapplied
+    assert apply(env) == tasks_module.CONFLICT
+    assert editor.text() == typed
 
 
 def test_a_translation_that_changed_on_disk_meanwhile_is_not_overwritten(outdated):
@@ -518,7 +567,7 @@ def test_a_translation_that_changed_on_disk_meanwhile_is_not_overwritten(outdate
     click(env, "Update German translation")
     changed = outdated.partner.read_bytes() + b"% getippt\r\n"
     outdated.partner.write_bytes(changed)
-    assert settled(env) == tasks_module.CONFLICT and outdated.partner.read_bytes() == changed
+    assert apply(env) == tasks_module.CONFLICT and outdated.partner.read_bytes() == changed
 
 
 # -- more than fits ---------------------------------------------------------------------------------------
