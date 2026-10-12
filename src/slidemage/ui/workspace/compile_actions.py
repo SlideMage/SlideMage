@@ -21,6 +21,7 @@ from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
 from ...deck_scan import Deck
 from ...partial_compile import PartialError, parse_page_spec
+from ...project import ProjectContext
 from ..dialogs import snapshot as snapshot_sheets
 from . import deck_actions, render_check
 from .multi_compile import MultiCompileSheet
@@ -239,7 +240,7 @@ def _confirm_unchanged_jobs(window, jobs: list[CompileJob], outputs: dict[str, P
     return remaining
 
 
-def _drop_empty_jobs(ctx, jobs: list[CompileJob]) -> tuple[list[CompileJob], list[str]]:
+def _drop_empty_jobs(ctx: ProjectContext, jobs: list[CompileJob]) -> tuple[list[CompileJob], list[str]]:
     """Filters out any job that would typeset zero slides (2026-09-28,
     direct instruction: "SlideMage should give an error message instead
     of trying to compile it" for an empty deck) -- clicking "Create
@@ -353,7 +354,7 @@ def export_pptx(window, deck: Deck) -> None:
         lambda log, cancel: _export_pptx(window.project, job, log, cancel), failure="PowerPoint export")
 
 
-def _export_pptx(context, job: CompileJob, log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
+def _export_pptx(context: ProjectContext, job: CompileJob, log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
     deck = job.deck
     log(f"==== Exporting {deck.name} to PowerPoint (instructor version) ====")
     # run_job() itself already logs its own "==== PASS/FAIL: ... ====" lines (picked up by the same

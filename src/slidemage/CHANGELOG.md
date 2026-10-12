@@ -2114,3 +2114,8 @@ v8.3.7 (2026-10-13, streamlining step 5): one atomic writer, one place for the l
 
 NEW: No visible changes; internal clean-up.
 - Your settings, prompts and project files can no longer be left half-written by a crash or a full disk.
+
+v8.3.8 (2026-10-13, streamlining step 6): integration check of the project-context migration. Every function that takes a ProjectContext or a project root is now annotated so a static type check catches a Path passed for a context (or the reverse), the one failure that would pass silently because Path('/x').root is '/'; a run of the whole test suite with a call-time check of every such parameter found no wrong call. The preview build (preview_build, preview_format) and the compile actions gained those annotations; a test covers atomic_write on a locked file (retried, then written; a permanent lock leaves the old text and no temporary file). Behavior is unchanged.
+
+NEW: No visible changes; internal clean-up.
+- Nothing for you to do; this release only double-checks the earlier clean-up.

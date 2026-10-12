@@ -1,4 +1,5 @@
 """fileio.py: complete-or-nothing writes and tolerant JSON reads."""
+import os
 import pytest
 
 from slidemage.fileio import atomic_write, read_json, read_text_exact, write_json, write_text_exact
@@ -44,3 +45,24 @@ def test_exact_text_keeps_crlf(tmp_path):
     path = tmp_path / "t.tex"
     write_text_exact(path, "a\r\nb\n")
     assert path.read_bytes() == b"a\r\nb\n" and read_text_exact(path) == "a\r\nb\n"
+
+
+def test_a_locked_file_is_retried_then_written_and_a_permanent_lock_leaves_the_old_text(tmp_path, monkeypatch):
+    target = tmp_path / "file.txt"
+    atomic_write(target, "old")
+    real_replace, calls = os.replace, []
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    def locked_twice(source, destination):
+        calls.append(source)
+        if len(calls) <= 2:
+            raise PermissionError("held by a scanner")
+        real_replace(source, destination)
+
+    monkeypatch.setattr("os.replace", locked_twice)
+    atomic_write(target, "new")
+    assert target.read_text() == "new" and len(calls) == 3
+    monkeypatch.setattr("os.replace", lambda *_args: (_ for _ in ()).throw(PermissionError("still held")))
+    with pytest.raises(PermissionError):
+        atomic_write(target, "newer")
+    assert target.read_text() == "new" and [p.name for p in tmp_path.iterdir()] == ["file.txt"]

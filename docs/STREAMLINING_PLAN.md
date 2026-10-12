@@ -1,5 +1,7 @@
 # SlideMage streamlining plan
 
+**Status (13 October 2026): the streamlining run is complete (steps M-6, v8.3.8); see the Final report in `docs/STREAMLINING_RUN.md`.**
+
 Revised 12 October 2026: preserve every existing feature; savings re-estimated bottom-up per step. This replaces the earlier feature-cut proposal. Scope is a plan revision; no application rewrite has been performed.
 
 ## Recommendation and expected savings

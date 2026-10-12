@@ -20,6 +20,7 @@ import threading
 import errno
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
+from .project import ProjectContext
 
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
@@ -151,7 +152,7 @@ def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, ca
 
 
 @measure('prune')
-def prune_unused(project_root, build_dir):
+def prune_unused(project_root: Path, build_dir: Path):
     """Delete the wrappers in decks/ (and build caches) of previews not rendered for UNUSED_DAYS,
     and wrappers whose cache is gone. A cached job leaves its wrapper in decks/ so latexmk's
     dependency check keeps working, one per slide and preamble, so without this they pile up."""
@@ -177,7 +178,7 @@ def prune_unused(project_root, build_dir):
 
 
 @measure('cache_configuration')
-def configuration_key(wrapper_text, id_slug, project_root, env):
+def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     preamble = wrapper_text.partition(r'\begin{document}')[0]
     rc_paths = [project_root / name for name in ('.latexmkrc', 'decks/.latexmkrc')]
     # latexmk also reads user/system rc files. Changes must not reuse old state.
@@ -206,7 +207,7 @@ def configuration_key(wrapper_text, id_slug, project_root, env):
     return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()[:24]
 
 
-def compile_cached(wrapper_text, id_slug, log, *, ctx, env):
+def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env):
     """Build with the preamble precompiled when that works, else the ordinary way.
 
     A run that fails only with the format is repeated without it, so a preamble
@@ -231,7 +232,7 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx, env):
     return pdf
 
 
-def _compile_cached(wrapper_text, id_slug, log, *, ctx, env, key_text, format_dir):
+def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir):
     key = configuration_key(key_text, id_slug, ctx.root, env)
     if format_dir is not None:
         # A rebuilt format means changed preamble inputs, which latexmk's own
@@ -252,7 +253,7 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx, env, key_text, format_di
                                      format_dir=format_dir)
 
 
-def _compile_reserved(wrapper_text, id_slug, log, *, ctx, env, cache, wrapper, jobname, format_dir=None):
+def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None):
     unstable = cache / 'rerun-limit'
     if unstable.exists():
         # Retaining oscillating layout state changes the next preview.
@@ -285,7 +286,7 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx, env, cache, wrapper, j
                            extra=preview_format.inputs(format_dir) if format_dir is not None else ())
 
 
-def run_preview(ctx, wrapper: Path, jobname: str, id_slug: str, outdir: Path, log, *, env, reusable: bool,
+def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, outdir: Path, log, *, env, reusable: bool,
                 options=()) -> tuple[Path, bool]:
     """latexmk on a preview wrapper into `outdir`: the one execution of a fresh build (a folder of its
     own, .build/) and a reusable one (its cache folder, keeping latexmk's state between edits).
@@ -321,7 +322,7 @@ def run_preview(ctx, wrapper: Path, jobname: str, id_slug: str, outdir: Path, lo
     return pdf, rerun_limit
 
 
-def publish_preview(ctx, pdf: Path, id_slug: str, outdir: Path, jobname: str, *, extra=(), copy=shutil.copy2) -> Path:
+def publish_preview(ctx: ProjectContext, pdf: Path, id_slug: str, outdir: Path, jobname: str, *, extra=(), copy=shutil.copy2) -> Path:
     """Copy a built preview PDF to a folder of its own in the temp directory (named after the slide
     for a sane viewer title) and write its recorded inputs beside it."""
     dest = Path(tempfile.mkdtemp(prefix=RENDER_FOLDER_PREFIX)) / (id_slug + '.pdf')
