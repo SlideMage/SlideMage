@@ -71,6 +71,11 @@ class TopBar(QWidget):
             # centred in the bar, not stretched to its full height
             layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
+        self._left_column = IconButton("first_page")
+        self._left_column.setCheckable(True)
+        self._left_column.clicked.connect(lambda: self.command.emit("column:left"))
+        add(self._left_column)
+
         logo = QLabel()
         logo.setPixmap(QIcon(str(LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
         add(logo)
@@ -110,6 +115,11 @@ class TopBar(QWidget):
         self._more = IconButton("more_vert", "More")
         self._more.clicked.connect(self._open_more_menu)
         add(self._more)
+        self._right_column = IconButton("last_page")
+        self._right_column.setCheckable(True)
+        self._right_column.clicked.connect(lambda: self.command.emit("column:right"))
+        add(self._right_column)
+        self.refresh_column_toggles()
 
         state.deck_changed.connect(self._on_deck_changed)
         state.view_changed.connect(self._on_view_changed)
@@ -145,6 +155,9 @@ class TopBar(QWidget):
     def _apply_density(self, density: str) -> None:
         self._density = density
         full, narrow = density == "full", density == "narrow"
+        margin = 12 if narrow else 24
+        self._row_layout.setContentsMargins(margin, 0, margin, 0)
+        self._row_layout.setSpacing(8 if narrow else 14)
         self._view_as.setVisible(full)
         self._views.setToolTip("View as")
         self._views.set_labels(SHORT_VIEWS if narrow else VIEW_LABELS, tooltips=VIEW_LABELS, compact=narrow)
@@ -163,6 +176,17 @@ class TopBar(QWidget):
         self.layout().invalidate()
 
     # -- what the window tells the bar -------------------------------------
+
+    def refresh_column_toggles(self) -> None:
+        for side, button, hide_icon, show_icon in (
+                ("left", self._left_column, "first_page", "last_page"),
+                ("right", self._right_column, "last_page", "first_page")):
+            hidden = getattr(self._window, side + "_column_hidden")
+            command = self._window.commands[f"column:{side}"]
+            button.setChecked(not hidden)
+            button.set_active(not hidden)
+            button.set_icon(show_icon if hidden else hide_icon)
+            button.setToolTip(f"{command.title(self._window)} ({command.info(self._window)})")
 
     def set_decks(self, decks: list[Deck]) -> None:
         self._decks = decks

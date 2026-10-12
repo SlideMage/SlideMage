@@ -7,7 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtGui import QKeySequence, QShortcut, QTextLayout
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
@@ -18,12 +19,14 @@ from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import side_panels, slide_list, window as window_module
+from slidemage.ui.workspace.actions import VIEW_AND_BUILD
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
     build_deck_menu,
     build_more_menu,
     deck_key,
 )
+from slidemage.ui.workspace.palette import command_entries
 
 from conftest import build_window, command_context, qapp as qapp
 
@@ -162,7 +165,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
     if theme is not None:
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
-    for width, density in ((1700, "full"), (1400, "compact"), (1000, "narrow"), (1700, "full")):
+    for width, density in ((1800, "full"), (1500, "compact"), (1000, "narrow"), (1800, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
         assert bar.width() == width and bar._density == density
@@ -178,6 +181,9 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
             ["Prev.", "Split", "Src.", "Info"] if density == "narrow" else ["Preview", "Split", "Source", "Details"])
         for control in (bar._views, bar._languages, bar._modes, bar._compile):
             assert control.width() >= control.minimumSizeHint().width()
+        for control in (bar._left_column, bar._views, bar._languages, bar._modes, bar._compile, bar._right_column):
+            assert bar.rect().contains(control.geometry())
+        assert bar._left_column.width() == bar._right_column.width() == 30
 
 
 def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, qapp, monkeypatch):
@@ -254,8 +260,9 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
 
 def test_top_bar_rechecks_density_when_content_changes(topbar, window):
     bar = topbar
+    bar.resize(1800, bar.height())
     window.state.set_deck(make_deck("W" * 24))
-    assert bar.width() == 1700 and bar._density == "full"
+    assert bar.width() == 1800 and bar._density == "full"
     window.state.set_dirty(True)
     assert bar._density == "compact" and bar.minimumSizeHint().width() <= bar.width()
     window.state.set_dirty(False)
@@ -796,7 +803,7 @@ def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeyp
     assert second.side_panels.width() == 520
 
 
-@pytest.mark.parametrize("width, expected", [(0, 220), (220, 220), (360, 360), (520, 520), (1000, 520)])
+@pytest.mark.parametrize("width, expected", [(220, 220), (360, 360), (520, 520), (1000, 520)])
 def test_the_left_splitter_handle_resizes_within_limits_at_the_centres_expense(window, width, expected):
     window.resize(2400, 800)
     window.show()
@@ -883,6 +890,192 @@ def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch
 def test_the_right_column_keeps_its_width_limits(value, expected):
     layout_settings.set(side_panels.WIDTH_SETTING, value)
     assert side_panels.remembered_width() == expected
+
+
+# -- hiding and showing columns ------------------------------------------------
+
+@pytest.mark.parametrize("side, label, shortcut", [
+    ("left", "slide list", "Ctrl+Alt+["), ("right", "side panel", "Ctrl+Alt+]"),
+])
+@pytest.mark.parametrize("trigger", ["command", "shortcut", "button", "menu", "palette"])
+def test_column_toggles_update_visibility_labels_and_buttons(window, qapp, tmp_path, side, label, shortcut, trigger):
+    window.resize(2400, 800)
+    window.show()
+    if trigger == "shortcut":
+        path = tmp_path / "source.tex"
+        path.write_text("Some source\n")
+        window.open_slide_editor(path)
+    qapp.processEvents()
+    window.activateWindow()
+    if trigger == "shortcut":
+        window.centre.source.current.editor.setFocus()
+    qapp.processEvents()
+    column = window.slide_list if side == "left" else window.side_panels
+    button = getattr(window.topbar, f"_{side}_column")
+    command = window.commands[f"column:{side}"]
+    assert command.group == VIEW_AND_BUILD and command.shortcut == shortcut
+    assert button.isChecked() and button.property("active")
+    for hidden in (True, False):
+        if trigger == "command":
+            assert window.commands.run(command.id, window)
+        elif trigger == "shortcut":
+            QTest.keySequence(window.centre.source.current.editor, QKeySequence(shortcut))
+        elif trigger == "button":
+            button.click()
+        elif trigger == "menu":
+            window.topbar._more.click()
+            menu = window.topbar.findChildren(PopoverMenu)[-1]
+            assert ("", "View", True) in entries(menu)
+            assert (command.id, command.title(window), True) in entries(menu)
+            menu._on_activated(command.id)
+        else:
+            entry = next(e for e in command_entries(window, [label]) if e.label == command.title(window))
+            entry.run()
+        qapp.processEvents()
+        assert column.isHidden() == hidden
+        assert getattr(window, f"{side}_column_hidden") == hidden
+        assert button.isChecked() == (not hidden)
+        assert button.property("active") == (not hidden)
+        title = f"{'Show' if hidden else 'Hide'} {label}"
+        assert command.title(window) == title
+        assert button.toolTip() == f"{title} ({shortcut})"
+        assert layout_settings.get(f"{side}_column_hidden") == hidden
+        assert app_settings.get(f"{side}_column_hidden") is None
+
+
+@pytest.mark.parametrize("left_hidden, right_hidden", [(True, False), (False, True), (True, True), (False, False)])
+def test_column_choices_survive_a_new_window_with_their_widths(window, qapp, monkeypatch, left_hidden, right_hidden):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, 1)
+    for side, hidden in (("left", left_hidden), ("right", right_hidden)):
+        if hidden:
+            window.commands.run(f"column:{side}", window)
+    assert window.close()
+    second = build_window(monkeypatch)
+    assert second.slide_list.isHidden() == left_hidden
+    assert second.side_panels.isHidden() == right_hidden
+    second.resize(2400, 800)
+    second.show()
+    qapp.processEvents()
+    for side, column, width, hidden in (("left", second.slide_list, 400, left_hidden),
+                                        ("right", second.side_panels, 520, right_hidden)):
+        button = getattr(second.topbar, f"_{side}_column")
+        assert column.isHidden() == hidden and button.isChecked() == (not hidden)
+        if hidden:
+            button.click()
+        assert column.isVisible() and column.width() == width
+
+
+@pytest.mark.parametrize("side, handle, width", [("left", 1, 400), ("right", 2, 520)])
+def test_dragging_a_column_closed_remembers_hidden_state_and_restores_its_width(window, qapp, side, handle, width):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, handle)
+    qapp.processEvents()
+    assert window.splitter.isCollapsible(0) and window.splitter.isCollapsible(2)
+    assert not window.splitter.isCollapsible(1)
+    grip = window.splitter.handle(handle)
+    start = grip.rect().center()
+    end = QPoint(-grip.x(), start.y()) if side == "left" else QPoint(window.splitter.width() - grip.x(), start.y())
+    QTest.mousePress(grip, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(grip, end)
+    QTest.mouseRelease(grip, Qt.MouseButton.LeftButton, pos=end)
+    qapp.processEvents()
+    column = window.slide_list if side == "left" else window.side_panels
+    button = getattr(window.topbar, f"_{side}_column")
+    assert column.isHidden() and not button.isChecked()
+    assert window.splitter.sizes()[0 if side == "left" else 2] == 0
+    assert window.splitter.sizes()[1] > 0 and window.stack.isVisible()
+    assert layout_settings.get(f"{side}_column_hidden") is True
+    assert layout_settings.get(f"{side}_column_width") == width
+    button.click()
+    qapp.processEvents()
+    assert column.isVisible() and column.width() == width and button.isChecked()
+
+
+@pytest.mark.parametrize("left_hidden, right_hidden", [(True, False), (False, True), (True, True), (False, False)])
+def test_images_temporarily_hides_columns_and_restores_the_users_choices(window, qapp, monkeypatch, left_hidden, right_hidden):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, 1)
+    for side, hidden in (("left", left_hidden), ("right", right_hidden)):
+        if hidden:
+            window.commands.run(f"column:{side}", window)
+    before = layout_settings.STORE_PATH.read_text()
+    window._toggle_images()
+    qapp.processEvents()
+    assert window.slide_list.isHidden() and window.side_panels.isHidden()
+    window.splitter.splitterMoved.emit(0, 1)
+    assert layout_settings.STORE_PATH.read_text() == before
+    window._toggle_images()
+    qapp.processEvents()
+    assert layout_settings.STORE_PATH.read_text() == before
+    for side, column, width, hidden in (("left", window.slide_list, 400, left_hidden),
+                                        ("right", window.side_panels, 520, right_hidden)):
+        assert column.isHidden() == hidden
+        assert getattr(window.topbar, f"_{side}_column").isChecked() == (not hidden)
+        if not hidden:
+            assert column.width() == width
+
+
+def test_column_choices_can_change_while_images_is_open(window, qapp, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.show()
+    window.commands.run("column:left", window)
+    window._toggle_images()
+    window.commands.run("column:left", window)
+    window.commands.run("column:right", window)
+    assert window.slide_list.isHidden() and window.side_panels.isHidden()
+    window._toggle_images()
+    qapp.processEvents()
+    assert window.slide_list.isVisible() and window.side_panels.isHidden()
+    assert layout_settings.get("left_column_hidden") is False
+    assert layout_settings.get("right_column_hidden") is True
+
+
+def test_column_toggle_icons_render_as_single_bundled_font_glyphs(window):
+    assert load_fonts()
+    for button in (window.topbar._left_column, window.topbar._right_column):
+        for name in ("first_page", "last_page"):
+            text = QTextLayout(name, button.font())
+            text.beginLayout()
+            line = text.createLine()
+            text.endLayout()
+            assert line.naturalTextWidth() == pytest.approx(18)
+            runs = text.glyphRuns()
+            assert sum(len(run.glyphIndexes()) for run in runs) == 1
+            assert all(index != 0 for run in runs for index in run.glyphIndexes())
+        assert not button.grab().isNull()
+    layout = window.topbar._row_layout
+    assert layout.itemAt(0).widget() is window.topbar._left_column
+    assert layout.itemAt(layout.count() - 1).widget() is window.topbar._right_column
+
+
+def test_registered_shortcuts_are_unique_and_column_shortcuts_do_not_conflict_with_editor_keys(window, tmp_path):
+    path = tmp_path / "source.tex"
+    path.write_text("Some source\n")
+    window.open_slide_editor(path)
+    shortcuts = window.findChildren(QShortcut)
+    # Esc closes several separate text fields; their WidgetShortcut scopes never overlap.
+    escape = [s for s in shortcuts if s.key() == QKeySequence("Esc")]
+    assert all(s.context() == Qt.ShortcutContext.WidgetShortcut for s in escape)
+    assert len({s.parent() for s in escape}) == len(escape)
+    keys = [key.toString() for s in shortcuts if s not in escape for key in s.keys()]
+    assert len(keys) == len(set(keys)), keys
+    assert {QKeySequence(c.shortcut).toString() for c in window.commands if c.shortcut} <= set(keys)
+    assert {"Ctrl+S", "Ctrl+Return", "Ctrl+Enter", "Ctrl+Shift+F", "Ctrl+/", "Ctrl+I", "Ctrl+B",
+            "Ctrl+U", "Ctrl+R", "Ctrl+F", "Ctrl+H", "Ctrl+Z", "Ctrl+Alt+[", "Ctrl+Alt+]"} <= set(keys)
+    # QPlainTextEdit handles the standard edit/navigation keys without QShortcut objects.
+    editor_keys = {key.toString() for standard in QKeySequence.StandardKey
+                   if standard.name.startswith(("MoveTo", "Select", "Delete"))
+                   or standard.name in ("Undo", "Redo", "Cut", "Copy", "Paste", "Backspace", "InsertParagraphSeparator")
+                   for key in QKeySequence.keyBindings(standard)}
+    assert {"Ctrl+Alt+[", "Ctrl+Alt+]"}.isdisjoint(editor_keys)
 
 
 # -- per-machine layout and window geometry ------------------------------------

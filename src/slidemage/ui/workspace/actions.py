@@ -114,6 +114,10 @@ def build_registry() -> CommandRegistry:
         registry.add(Command(*args, **kwargs))
 
     # View & build -----------------------------------------------------------------
+    for side, label, shortcut in (("left", "slide list", "Ctrl+Alt+["), ("right", "side panel", "Ctrl+Alt+]")):
+        add(f"column:{side}",
+            lambda w, s=side, text=label: f"{'Show' if getattr(w, s + '_column_hidden') else 'Hide'} {text}",
+            VIEW_AND_BUILD, lambda w, s=side: w._toggle_column(s), icon="view_sidebar", shortcut=shortcut)
     for view in VIEWS:
         add(f"view:{view}", f"View as {VIEW_LABELS[view]}", VIEW_AND_BUILD,
             lambda w, v=view: w.state.set_view(v), icon="visibility", meta=lambda w, v=view: _current(w.state.view == v))
