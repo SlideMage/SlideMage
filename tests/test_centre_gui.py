@@ -40,7 +40,6 @@ class FakeApp:
         self.logged = []
         self.added = []
         self.slide_list = SimpleNamespace(add_slide=lambda *start: self.added.append(start))
-        self.signals = SimpleNamespace(log=SimpleNamespace(emit=lambda line: None))
 
     def log(self, line):
         self.logged.append(line)
@@ -349,7 +348,7 @@ def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current
 def test_the_cached_snapshot_is_shown_for_the_instructor_view(centre, project, tmp_path):
     centre.state.set_focused_slide("aaa")
     template = centre.preview._target.template
-    png = slide_snapshot.snapshot_path("aaa", template, slide_snapshot.FULL_SIZE)
+    png = slide_snapshot.snapshot_path(transitional_context(), "aaa", template, slide_snapshot.FULL_SIZE)
     doc = pymupdf.open()
     page_ = doc.new_page(width=320, height=180)
     png.write_bytes(page_.get_pixmap().tobytes("png"))

@@ -286,10 +286,10 @@ def test_preview_for_names_the_file_a_page_or_the_reason(store, monkeypatch):
     assert image_review.preview_for("media/figure.eps").image is None
     assert image_review.preview_for("media/figure.eps").original == eps
     rendered = store / "rendered.png"
-    monkeypatch.setattr(image_review.media_render, "ensure_rendered", lambda path: rendered)
+    monkeypatch.setattr(image_review.media_render, "ensure_rendered", lambda ctx, path: rendered)
     assert image_review.preview_for("media/figure.pdf") == image_review.Preview(rendered, pdf)
 
-    def broken(path):
+    def broken(ctx, path):
         raise RuntimeError("cannot render")
 
     lines = []
@@ -298,5 +298,5 @@ def test_preview_for_names_the_file_a_page_or_the_reason(store, monkeypatch):
     assert shown.image is None and shown.original == pdf and "cannot render" in lines[0]
     monkeypatch.setattr(alt_blocks, "resolve_image", lambda reference: None)
     assert "not found" in image_review.preview_for(IMG).problem
-    monkeypatch.setattr(image_review.tikz_render, "ensure_rendered", lambda reference, log=None: rendered)
+    monkeypatch.setattr(image_review.tikz_render, "ensure_rendered", lambda ctx, reference, log=None: rendered)
     assert image_review.preview_for("tikz:abc") == image_review.Preview(rendered)

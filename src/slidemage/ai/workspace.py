@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import compiler
+from .. import compiler, project
 from ..deck_scan import Deck
 from .providers import ChatProvider
 
@@ -102,4 +102,4 @@ class Workspace:
         """Compile `deck` as compiler.build_jobs(deck, kind) says; {jobname: success}. Blocks until
         done (the Stop of the chat ends it through `cancel`). The window overrides this to run
         the jobs through its job panel."""
-        return compiler.run_jobs(compiler.build_jobs(deck, kind), log, cancel)
+        return compiler.run_jobs(project.ProjectContext.at(self.root), compiler.build_jobs(deck, kind), log, cancel)

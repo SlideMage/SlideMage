@@ -97,7 +97,7 @@ def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str
          links: slide_language.TranslationLinks) -> SlideRow:
     call = slot.call
     path = project.transitional_context().slides_dir / call.source_filename
-    png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
+    png = slide_snapshot.snapshot_path(project.transitional_context(), call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
     badge = slide_language.badge_for(call.id_slug, links=links)
     lint_error, title = _source_facts(call)
     return SlideRow(

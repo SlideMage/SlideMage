@@ -71,7 +71,7 @@ def child(base, label, deadline, case_name):
     project.use(project.ProjectContext(root, root / ".build" / label if cached else root / ".build"))
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(reuse_build=cached, deferred_images=cached, case=case_name,
-             edit="typical-user-edit-v1", recipe=case), slide_preview.build_env())
+             edit="typical-user-edit-v1", recipe=case), slide_preview.build_env(project.transitional_context()))
     identity["pymupdf"] = pymupdf.VersionBind
     atomic_json(out / "identity.json", identity)
     compile_original = slide_preview.compile_and_extract
@@ -101,14 +101,14 @@ def child(base, label, deadline, case_name):
             start = time.perf_counter()
             try:
                 with trace:
-                    pdf = slide_preview.render_slide_to_pdf(call.macro, call.id_slug,
+                    pdf = slide_preview.render_slide_to_pdf(project.transitional_context(), call.macro, call.id_slug,
                         call.version, call.conditions, steps=call.steps,
                         preamble_text=deck.preamble_text, frame_number=case["index"],
                         footer_timestamp=False, reuse_build=cached,
                         capture_snapshot=not cached, log=log)
                     if cached:
                         _, images = slide_snapshot.prepare_preview(pdf, True)
-                        slide_snapshot.publish_preview(images, slide_language.bare_id(case["slide"]),
+                        slide_snapshot.publish_preview(project.transitional_context(), images, slide_language.bare_id(case["slide"]),
                             slide_snapshot.detect_template(deck.preamble_text))
                     else:
                         slide_snapshot.page_png(pdf)

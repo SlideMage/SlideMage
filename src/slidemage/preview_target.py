@@ -23,6 +23,7 @@ from .deck_scan import Deck
 
 @dataclass(frozen=True)
 class PreviewTarget:
+    context: project.ProjectContext
     macro: str
     id_slug: str
     version: Optional[str]
@@ -39,12 +40,12 @@ class PreviewTarget:
     def source_path(self) -> Path:
         """The slide file this call loads."""
         name = slide_language.frozen_name(self.id_slug, self.version) if self.version else slide_language.current_name(self.id_slug)
-        return project.transitional_context().slides_dir / name
+        return self.context.slides_dir / name
 
     @property
     def template(self) -> str:
         if self.preamble_text is None:
-            return slide_snapshot.render_template()
+            return slide_snapshot.render_template(self.context)
         return slide_snapshot.detect_template(self.preamble_text)
 
     @property
@@ -61,23 +62,23 @@ class PreviewTarget:
                 hashlib.sha256((self.preamble_text or '').encode()).hexdigest())
 
 
-def for_call(deck: Deck, call: SlideCall, position: int, language: Optional[str] = None) -> PreviewTarget:
+def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position: int, language: Optional[str] = None) -> PreviewTarget:
     """`call`, the `position`-th slide call of `deck`, as the deck typesets it."""
     if language is not None:
         from .deck_language import resolve_call
         call = resolve_call(call, language)
-    return PreviewTarget(call.macro, call.id_slug, call.version, call.conditions, call.steps,
+    return PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions, call.steps,
                          position, deck.preamble_text)
 
 
-def for_path(path: Path) -> Optional[PreviewTarget]:
+def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]:
     """The slide file `path` rendered alone; None if it is not a slides/ current
     or version file."""
     try:
         macro, id_slug, version = slide_preview.call_for_slide_path(path)
     except ValueError:
         return None
-    return PreviewTarget(macro, id_slug, version, None, None, None, None)
+    return PreviewTarget(ctx, macro, id_slug, version, None, None, None, None)
 
 
 def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
@@ -87,10 +88,10 @@ def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
     shown on its own."""
     if target.is_frozen_alone:
         return None
-    png = slide_snapshot.snapshot_path(target.bare_id, target.template, slide_snapshot.FULL_SIZE)
+    png = slide_snapshot.snapshot_path(target.context, target.bare_id, target.template, slide_snapshot.FULL_SIZE)
     if not png.is_file():
         return None
-    return png, slide_snapshot.is_fresh(target.bare_id, target.source_path, target.template)
+    return png, slide_snapshot.is_fresh(target.context, target.bare_id, target.source_path, target.template)
 
 
 def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log,
@@ -98,7 +99,7 @@ def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     Raises RuntimeError with the compile log's tail on failure."""
     return slide_preview.render_slide_to_pdf(
-        target.macro, target.id_slug, target.version, target.conditions,
+        target.context, target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(), footer_timestamp=footer_timestamp,
         preamble_text=target.preamble_text, frame_number=target.frame_number,
         log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone)
@@ -114,7 +115,7 @@ def render_text(
     text cropped); `overlay` shows only that reveal step of each frame.
     A presenter render is the instructor version with beamer's second screen."""
     return slide_preview.render_slide_text_to_pdf(
-        target.id_slug, text,
+        target.context, target.id_slug, text,
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
         frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,

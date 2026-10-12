@@ -26,6 +26,7 @@ from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
 from ....deck_scan import Deck
 from ....slide_language import bare_id
+from .. import compile_actions
 from ...ai_models import confirm_cloud_request
 
 POLL_S = 0.05      # how often a waiting call looks whether the window has closed
@@ -272,13 +273,13 @@ class GuiWorkspace(Workspace):
             log(line)
 
         def start() -> bool:
-            window.signals.run_settled.connect(on_settled)
-            window.signals.log.connect(forward)
-            return window._compile_jobs(compiler.build_jobs(deck, kind))
+            window.compile.settled.connect(on_settled)
+            window.compile.log.connect(forward)
+            return compile_actions.compile_jobs(window, compiler.build_jobs(deck, kind))
 
         def detach() -> None:
-            window.signals.run_settled.disconnect(on_settled)
-            window.signals.log.disconnect(forward)
+            window.compile.settled.disconnect(on_settled)
+            window.compile.log.disconnect(forward)
 
         started = False
         try:
@@ -289,7 +290,7 @@ class GuiWorkspace(Workspace):
                     return {}
                 if cancel.is_set() and not stopping:
                     stopping = True
-                    self.on_gui(window.stop_compilation_now)
+                    self.on_gui(lambda: compile_actions.stop_now(window))
         finally:
             if not self._closed:
                 self.on_gui(detach)

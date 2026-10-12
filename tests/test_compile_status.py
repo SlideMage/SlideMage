@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from slidemage.project import transitional_context
 from slidemage import compile_progress, compile_status, compiler
 from slidemage.compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, STOPPED, RunStatus, parse_error
 from slidemage.deck_scan import Chapter, Deck
@@ -143,15 +144,15 @@ def test_run_jobs_leaves_out_the_jobs_taken_out_of_the_queue(monkeypatch):
                 uses_biblatex=False, preamble_end=0, chapters=[], output_folders={})
     jobs = [compiler.CompileJob(deck, v, None) for v in ("instructor", "during-course", "after-course")]
     ran: list[str] = []
-    monkeypatch.setattr(compiler, "run_job", lambda job, log, cancel=None, dest_override=None: ran.append(job.jobname) or True)
+    monkeypatch.setattr(compiler, "run_job", lambda ctx, job, log, cancel=None, dest_override=None: ran.append(job.jobname) or True)
     token, log = compiler.CancelToken(), []
     token.skip("d-during-course")
-    results = compiler.run_jobs(jobs, log.append, cancel=token)
+    results = compiler.run_jobs(transitional_context(), jobs, log.append, cancel=token)
     assert ran == ["d-instructor", "d-after-course"] and results == {"d-instructor": True, "d-after-course": True}
     assert "==== Skipped: d-during-course ====" in log
     token.request_stop()
     log.clear()
-    compiler.run_jobs(jobs, log.append, cancel=token)
+    compiler.run_jobs(transitional_context(), jobs, log.append, cancel=token)
     assert log == ["==== Stopped: 3 job(s) skipped ===="]
 
 

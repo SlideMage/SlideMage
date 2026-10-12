@@ -34,7 +34,7 @@ def _configure_compiler(monkeypatch, tmp_path):
         tags=[],
     )
     use_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(compiler, "build_env", lambda: {})
+    monkeypatch.setattr(compiler, "build_env", lambda ctx: {})
     return compiler, deck, build_dir, pdf_dir, deck_path
 
 
@@ -89,8 +89,8 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber
     # on Windows. Exercise run_job's own wrapper write, before it is removed.
     content = "line one\r\nline two\r\n"
     real_wrapper_text = compiler.wrapper_text
-    expected_wrapper = real_wrapper_text(job) + content
-    monkeypatch.setattr(compiler, "wrapper_text", lambda _job: expected_wrapper)
+    expected_wrapper = real_wrapper_text(transitional_context(), job) + content
+    monkeypatch.setattr(compiler, "wrapper_text", lambda _ctx, _job: expected_wrapper)
     wrappers, lines = [], []
     _fake_latexmk(monkeypatch, [b"NEW_PDF"], commands, log_text=log_text, wrappers=wrappers)
     relocated = threading.Event()
@@ -100,7 +100,7 @@ def test_run_job_uses_only_its_fresh_configured_pdf(tmp_path, monkeypatch, biber
         outcome.update(ok=ok, path=path)
         relocated.set()
 
-    assert compiler.run_job(job, lines.append, on_relocated=on_relocated)
+    assert compiler.run_job(transitional_context(), job, lines.append, on_relocated=on_relocated)
     assert relocated.wait(5)
 
     expected_pdf = pdf_dir / f"{job.jobname}.pdf"
@@ -166,7 +166,7 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
         new_outcome.update(ok=ok, path=path)
         new_callback_done.set()
 
-    assert compiler.run_job(job, lambda _line: None, on_relocated=old_callback)
+    assert compiler.run_job(transitional_context(), job, lambda _line: None, on_relocated=old_callback)
     assert old_copy_started.wait(5)
     old_out_dir = next(
         Path(item.split("=", 1)[1]) for item in commands[0]
@@ -174,9 +174,9 @@ def test_delayed_old_relocation_cannot_replace_newer_compile(tmp_path, monkeypat
     )
     old_source = old_out_dir / f"{job.jobname}.pdf"
     assert old_source.read_bytes() == b"OLD_PDF"
-    assert old_out_dir not in compiler.removable_build_entries()
+    assert old_out_dir not in compiler.removable_build_entries(transitional_context())
 
-    assert compiler.run_job(job, lambda _line: None, on_relocated=new_callback)
+    assert compiler.run_job(transitional_context(), job, lambda _line: None, on_relocated=new_callback)
     assert new_callback_done.wait(5)
     new_out_dir = next(
         Path(item.split("=", 1)[1]) for item in commands[1]
@@ -215,7 +215,7 @@ def test_output_destinations_prevent_collisions_and_keep_literal_names(tmp_path,
         if kind == "presenter":
             jobs.append(CompileJob(deck, version, None, presenter=True))
     logged = []
-    dests = _disambiguated_destinations(jobs, logged.append)
+    dests = _disambiguated_destinations(transitional_context(), jobs, logged.append)
     if kind == "solo":
         _, stem = dests[id(jobs[0])]
         assert stem == "Handout"

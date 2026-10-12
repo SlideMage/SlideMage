@@ -364,7 +364,7 @@ def preview_for(reference: str, log: Callable[[str], None] | None = None) -> Pre
     tikz illustration. `log` receives the reason a render failed."""
     if reference.startswith(alt_blocks.TIKZ_PREFIX):
         try:
-            return Preview(tikz_render.ensure_rendered(reference, log=log))
+            return Preview(tikz_render.ensure_rendered(project.transitional_context(), reference, log=log))
         except RuntimeError as exc:
             if log is not None:
                 log(f"*** {exc} ***")
@@ -375,7 +375,7 @@ def preview_for(reference: str, log: Callable[[str], None] | None = None) -> Pre
     suffix = resolved.suffix.lower()
     if suffix == ".pdf":
         try:
-            return Preview(media_render.ensure_rendered(resolved), resolved)
+            return Preview(media_render.ensure_rendered(project.transitional_context(), resolved), resolved)
         except RuntimeError as exc:
             if log is not None:
                 log(f"*** {exc} ***")

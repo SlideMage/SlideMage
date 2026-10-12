@@ -347,7 +347,7 @@ class AddSlideSheet(ModalSheet):
             item = QListWidgetItem(f"{slide_language.bare_id(slide.id_slug)}   {slide.title}   {slide.badge}".rstrip())
             item.setData(Qt.ItemDataRole.UserRole, slide.id_slug)
             item.setToolTip(slide.id_slug)
-            png = slide_snapshot.snapshot_path(slide_language.bare_id(slide.id_slug), self._template,
+            png = slide_snapshot.snapshot_path(self.app.project, slide_language.bare_id(slide.id_slug), self._template,
                                                slide_snapshot.THUMB_SIZE, slide.id_slug)
             if png.is_file():   # the cached preview, loaded by the icon when the row is painted
                 item.setIcon(QIcon(str(png)))

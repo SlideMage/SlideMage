@@ -48,17 +48,18 @@ def produce(copy: Path) -> dict:
     from slidemage import compiler, deck_scan, project, slide_preview
 
     out: dict[str, dict] = {}
-    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == DECK)
+    ctx = project.ProjectContext.at(copy)
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == DECK)
     jobs = compiler.build_jobs(deck, "instructor")
     for job in jobs:
         job.footer_timestamp = False
     log: list[str] = []
-    results = compiler.run_jobs(jobs, log.append)
+    results = compiler.run_jobs(ctx, jobs, log.append)
     if not all(results.values()):
         raise SystemExit("deck compile failed:\n" + "\n".join(log[-40:]))
     # run_job publishes the PDF in the background; wait for it to appear
     for job in jobs:
-        dest = Path(*compiler.resolve_output_location(job)).with_suffix(".pdf")
+        dest = Path(*compiler.resolve_output_location(ctx, job)).with_suffix(".pdf")
         for _ in range(120):
             if dest.exists():
                 break
@@ -71,7 +72,7 @@ def produce(copy: Path) -> dict:
     for slug in SLIDES:
         for reuse in (True, False):
             pdf = slide_preview.render_slide_to_pdf(
-                "slide", slug, footer_timestamp=False, reuse_build=reuse, capture_snapshot=False)
+                ctx, "slide", slug, footer_timestamp=False, reuse_build=reuse, capture_snapshot=False)
             out[f"preview:{slug}:{'cached' if reuse else 'fresh'}"] = page_hashes(pdf)
     return out
 

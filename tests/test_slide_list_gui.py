@@ -16,6 +16,7 @@ from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Toast
+from slidemage.ui.workspace import compile_actions
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.slide_list import ABOVE_ITEM, BELOW_ITEM, ON_ITEM, SlideList
@@ -64,9 +65,6 @@ class FakeWindow:
     @property
     def slide_list(self):
         return self.list
-
-    def _compile_slides(self, slide_ids):
-        self.compiled.append(slide_ids)
 
 
 @pytest.fixture
@@ -485,10 +483,11 @@ def test_the_bulk_bar_hides_and_shows_the_slides_in_the_current_view(make_list):
     assert slide_list.bulk_visibility_button.text() == "Hide in After course"
 
 
-def test_the_bulk_bar_removes_in_one_edit_and_hands_over_the_slide_ids_to_compile(make_list):
+def test_the_bulk_bar_removes_in_one_edit_and_hands_over_the_slide_ids_to_compile(make_list, monkeypatch):
     slide_list, window, path = make_list(
         "\\slide{aaa-A}\n\\slide{bbb-B}\n\\slide{ccc-C}\n\\slide{ddd-D}\n")
     select(slide_list, "ddd", "aaa")
+    monkeypatch.setattr(compile_actions, "compile_slides", lambda _window, ids: window.compiled.append(ids))
     window.commands.run("compile:slides", window)
     assert [sorted(ids) for ids in window.compiled] == [["aaa", "ddd"]]
     select(slide_list, "aaa", "ccc")

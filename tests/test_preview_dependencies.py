@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-import re
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +7,7 @@ import pytest
 from slidemage import compiler, preview_build, preview_cli
 from slidemage.preview_metrics import PreviewMetrics, record_line, stage
 from conftest import use_project
-from slidemage.project import transitional_context
+from slidemage.project import ProjectContext, transitional_context
 
 
 @pytest.fixture(autouse=True)
@@ -157,7 +156,7 @@ def test_housekeeping_rechecks_jobs_that_started_after_counting(tmp_path, monkey
     monkeypatch.setattr(compiler.project, "is_snapshot", lambda root: False)
     found = housekeeping.TempFiles([build / "preview-cache"], [wrapper], [])
     with preview_build.active_build(cache, wrapper):
-        assert compiler.removable_build_entries() == []
+        assert compiler.removable_build_entries(transitional_context()) == []
         housekeeping.remove_temp_files(transitional_context(), found)
         assert artifact.exists() and wrapper.exists()
     housekeeping.remove_temp_files(transitional_context(), found)
@@ -280,7 +279,7 @@ def test_cache_reserved_before_first_directory_mutation(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "mkdir", mkdir)
     monkeypatch.setattr(compiler.subprocess, "Popen", popen)
     output = preview_build.compile_cached(r'\begin{document}Text', 'abc', lambda _: None,
-        project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
+        ctx=ProjectContext.at(tmp_path), env={})
     assert observed and all(observed)
     import shutil
     shutil.rmtree(output.parent)

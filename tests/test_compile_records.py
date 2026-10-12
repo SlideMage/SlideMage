@@ -11,6 +11,7 @@ import pytest
 
 from conftest import use_project, write_test_file as write
 
+from slidemage.project import transitional_context
 from slidemage import compile_records, compiler, deck_scan
 from slidemage.compile_records import fresh_output, write_record
 
@@ -139,23 +140,23 @@ def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None)
-    wrapper_text = compiler.wrapper_text(job)
+    wrapper_text = compiler.wrapper_text(transitional_context(), job)
     write_record(c["build"], "t-Deck-instructor", c["inv"], c["wrapper"], wrapper_text,
                  c["pdf"], c["started"])
-    assert [j.jobname for j, _ in compiler.unchanged_jobs([job], {"t-Deck-instructor": c["pdf"]})] \
+    assert [j.jobname for j, _ in compiler.unchanged_jobs(transitional_context(), [job], {"t-Deck-instructor": c["pdf"]})] \
         == ["t-Deck-instructor"]
     # published elsewhere now (a new \deckoutputfolder): not "unchanged"
     elsewhere = c["root"] / "out" / "t-Deck-instructor.pdf"
-    assert compiler.unchanged_jobs([job], {"t-Deck-instructor": elsewhere}) == []
+    assert compiler.unchanged_jobs(transitional_context(), [job], {"t-Deck-instructor": elsewhere}) == []
     write(c["slide"], "edited\n")
-    assert compiler.unchanged_jobs([job], {"t-Deck-instructor": c["pdf"]}) == []
+    assert compiler.unchanged_jobs(transitional_context(), [job], {"t-Deck-instructor": c["pdf"]}) == []
 
 
 def test_remove_temp_files_keeps_the_records(compiled, monkeypatch):
     c = compiled
     record(c)
     use_project(monkeypatch, c["build"].parent)
-    removable = {p.name for p in compiler.removable_build_entries()}
+    removable = {p.name for p in compiler.removable_build_entries(transitional_context())}
     assert "t-Deck-instructor-abc" in removable
     assert compile_records.RECORDS_DIRNAME not in removable
 
@@ -184,7 +185,7 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
     assert compiler._mark_output_success(key, generation)
     compiler.set_build_dir_active(c["inv"], True)
     compiler._relocate_pdf_and_finish(
-        c["inv"] / "t-Deck-during-course.pdf", dest, "t-Deck-during-course", job, print,
+        transitional_context(), c["inv"] / "t-Deck-during-course.pdf", dest, "t-Deck-during-course", job, print,
         build_dir=c["inv"], destination_key=key, generation=generation,
         record=(c["wrapper"], WRAPPER, c["started"]))
     fresh, why = fresh_output(c["build"], "t-Deck-during-course", WRAPPER)

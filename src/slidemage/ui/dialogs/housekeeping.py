@@ -251,7 +251,7 @@ class HousekeepingSheet(ModalSheet):
             return
         self._worker = _ArchiveWorker(self.app.project, [p for kind, p in chosen if kind == "media"],
                                       [p for kind, p in chosen if kind == "slide"])
-        self._worker.logged.connect(self.app._log)
+        self._worker.logged.connect(self.app.log)
         self._worker.finished_with.connect(self._on_archived)
         self.archive_button.setEnabled(False)
         self.back_button.setEnabled(False)

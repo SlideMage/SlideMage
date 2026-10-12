@@ -39,7 +39,7 @@ def main():
                 if cache:
                     project.use(project.ProjectContext(original.root, build/'benchmark-elements'/name))
                 def render(revision):
-                    return slide_preview.render_slide_text_to_pdf(
+                    return slide_preview.render_slide_text_to_pdf(project.transitional_context(), 
                         slug, body + f'\n\\def\\SMPreviewBenchmarkRevision{{{revision}}}',
                         preamble_text=deck.preamble_text, footer_timestamp=False,
                         preview_mode='element', reuse_build=cache, log=log.append)

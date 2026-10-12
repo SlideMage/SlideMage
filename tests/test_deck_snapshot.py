@@ -162,7 +162,7 @@ def test_framework_relpath(tmp_path):
 def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
     root, framework, decks, calls, _ = tree
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     assert result.ok, result.error
     snap = result.path
     assert snap == root / "snapshots" / "t-Deck_2026-10-07_14-12"
@@ -210,14 +210,14 @@ def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
 def test_latex_package_files_are_copied_on_request(tree):
     root, _, decks, _, _ = tree
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     assert not (result.path / "texmf").exists()
     manifest = deck_snapshot.read_manifest(result.path)
     # recorded either way: the fonts the PDFs embed, with their files
     assert [f["name"] for f in manifest["tex"]["fonts"]] == ["FiraSans-Light"]
     assert manifest["tex"]["fonts"][0]["path"] == "fonts/opentype/public/fira/FiraSans-Light.otf"
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(texmf=True), print,
-                                           when=WHEN, project_root=root)
+                                           when=WHEN, ctx=project.ProjectContext.at(root))
     texmf = result.path / "texmf"
     assert (texmf / "tex" / "latex" / "beamer" / "beamer.cls").is_file()
     assert (texmf / "fonts" / "opentype" / "public" / "fira" / "FiraSans-Light.otf").is_file()
@@ -278,7 +278,7 @@ def record_compile(root: Path, texroot: Path, jobname: str, started: float) -> P
     write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'Slidemaster.bib'}'\n")
     pdf = write(root / "pdf" / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
     assert compile_records.write_record(root / ".build", jobname, inv, root / "decks" / "_w.tex",
-                                        compiler.wrapper_text(compiler.CompileJob(
+                                        compiler.wrapper_text(project.transitional_context(), compiler.CompileJob(
                                             next(d for d in deck_scan.scan_dir(root / "decks", False)
                                                  if d.name == "t-Deck"),
                                             None, None)), pdf, started)
@@ -295,7 +295,7 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
     pdf = record_compile(root, texroot, "t-Deck", started)
     lines: list[str] = []
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(verify=True), lines.append,
-                                           when=WHEN, project_root=root)
+                                           when=WHEN, ctx=project.ProjectContext.at(root))
     assert result.ok, result.error
     # t-Deck reused (only its verification render), the presenter compiled
     assert [c[0] for c in calls] == ["t-Deck-presenter", "t-Deck", "t-Deck-presenter"], [
@@ -312,13 +312,13 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
     calls.clear()
     write(root / "slides" / "1aa-EN-One-current.tex", "slide one, edited\n")
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), lines.append,
-                                           when=WHEN, project_root=root)
+                                           when=WHEN, ctx=project.ProjectContext.at(root))
     assert result.ok and [c[0] for c in calls] == ["t-Deck", "t-Deck-presenter"]
     # and --recompile ignores the record
     record_compile(root, texroot, "t-Deck", time.time() + 1)
     calls.clear()
     deck_snapshot.create_snapshot(decks["t-Deck"], options(reuse=False), print, when=WHEN,
-                                  project_root=root)
+                                  ctx=project.ProjectContext.at(root))
     assert [c[0] for c in calls] == ["t-Deck", "t-Deck-presenter"]
 
 
@@ -326,7 +326,7 @@ def test_snapshot_of_versioned_deck_compiles_every_version(tree):
     root, _, decks, calls, _ = tree
     deck = decks["t-Deck"]
     deck.supports_version = True
-    result = deck_snapshot.create_snapshot(deck, options(), print, when=WHEN, project_root=root)
+    result = deck_snapshot.create_snapshot(deck, options(), print, when=WHEN, ctx=project.ProjectContext.at(root))
     assert result.ok, result.error
     assert [c[0] for c in calls] == ["t-Deck-instructor", "t-Deck-during-course",
                                      "t-Deck-after-course", "t-Deck-instructor-presenter"]
@@ -335,7 +335,7 @@ def test_snapshot_of_versioned_deck_compiles_every_version(tree):
 def test_zip_snapshot_has_the_folder_tree_and_is_deterministic(tree, tmp_path):
     root, _, decks, _, _ = tree
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(zip=True), print,
-                                           when=WHEN, project_root=root)
+                                           when=WHEN, ctx=project.ProjectContext.at(root))
     assert result.ok, result.error
     assert result.path == root / "snapshots" / "t-Deck_2026-10-07_14-12.zip"
     with zipfile.ZipFile(result.path) as zf:
@@ -357,7 +357,7 @@ def test_failed_compile_leaves_nothing_behind(tree):
     root, _, decks, _, state = tree
     state["fail"].add("t-Deck-presenter")
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     assert not result.ok and "did not compile" in result.error
     assert not [p for p in (root / "snapshots").iterdir()]
     assert not list((root / "decks").glob("_snapshot_*"))
@@ -368,7 +368,7 @@ def test_file_outside_project_is_a_warning(tree, tmp_path):
     root, _, decks, _, state = tree
     state["leak"] = write(tmp_path / "elsewhere" / "logo.pdf", b"x")
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     assert result.ok
     assert any("outside the project" in w for w in result.warnings)
 
@@ -378,7 +378,7 @@ def test_file_outside_project_is_a_warning(tree, tmp_path):
 def test_verify_renders_from_the_snapshot_and_passes(tree):
     root, _, decks, calls, _ = tree
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(verify=True), print,
-                                           when=WHEN, project_root=root)
+                                           when=WHEN, ctx=project.ProjectContext.at(root))
     assert result.ok, result.error
     snap_project = result.path / "Proj"
     # two reference compiles in the project, two renders from the snapshot
@@ -400,7 +400,7 @@ def test_verify_fails_when_the_snapshot_reads_the_project(tree):
     deck_snapshot.run_recorded_compile = leaky
     try:
         result = deck_snapshot.create_snapshot(decks["t-Deck"], options(verify=True), print,
-                                               when=WHEN, project_root=root)
+                                               when=WHEN, ctx=project.ProjectContext.at(root))
     finally:
         deck_snapshot.run_recorded_compile = original
     assert not result.ok and "outside the snapshot" in result.error
@@ -410,10 +410,10 @@ def test_verify_fails_when_the_snapshot_reads_the_project(tree):
 def test_verify_detects_changed_files(tree):
     root, _, decks, _, _ = tree
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     write(result.path / "Proj" / "slides" / "1aa-EN-One-current.tex", "edited\n")
     (result.path / "Proj" / "media" / "used.png").unlink()
-    report = deck_snapshot.verify_snapshot(result.path, print)
+    report = deck_snapshot.verify_snapshot(project.ProjectContext.at(root), result.path, print)
     assert not report.ok
     assert set(report.problems) == {"changed: Proj/slides/1aa-EN-One-current.tex",
                                     "missing: Proj/media/used.png"}
@@ -426,7 +426,7 @@ def test_decks_one_by_one_a_failure_does_not_stop_the_rest(tree):
     state["fail"].add("t-Deck-extra")
     results = deck_snapshot.snapshot_decks(
         [decks["t-Deck"], decks["t-Deck-extra"], decks["t-Other"]], options(), print,
-        project_root=root)
+        ctx=project.ProjectContext.at(root))
     assert [r.ok for r in results] == [True, False, True]
     assert {p.name.rsplit("_", 2)[0] for p in (root / "snapshots").iterdir()
             if not p.name.startswith(".")} == {"t-Deck", "t-Other"}
@@ -443,7 +443,7 @@ def test_cancel_skips_the_remaining_decks(tree):
 
     results = deck_snapshot.snapshot_decks(
         [decks["t-Deck"], decks["t-Deck-extra"], decks["t-Other"]], options(), print,
-        cancel=cancel, progress=progress, project_root=root)
+        cancel=cancel, progress=progress, ctx=project.ProjectContext.at(root))
     assert results[0].ok
     assert not results[1].ok
     assert results[2].skipped
@@ -455,7 +455,7 @@ def test_old_snapshots_found_by_manifest_and_deleted_only_after_success(tree, mo
     earlier = datetime(2026, 9, 30, 10, 5)
     for name, form in (("t-Deck", False), ("t-Deck", True), ("t-Deck-extra", False)):
         deck_snapshot.create_snapshot(decks[name], options(zip=form), print, when=earlier,
-                                      project_root=root)
+                                      ctx=project.ProjectContext.at(root))
     old = deck_snapshot.find_snapshots(["t-Deck"], root=root)
     # t-Deck-extra's snapshot starts with "t-Deck_"? no -- and it is never t-Deck's
     assert [(s.deck_name, s.is_zip) for s in old] in (
@@ -471,12 +471,12 @@ def test_old_snapshots_found_by_manifest_and_deleted_only_after_success(tree, mo
     # a failed new snapshot deletes nothing
     state["fail"].add("t-Deck-presenter")
     results = deck_snapshot.snapshot_decks([decks["t-Deck"]], options(), print,
-                                           delete_old=old, project_root=root)
+                                           delete_old=old, ctx=project.ProjectContext.at(root))
     assert not results[0].ok and trashed == []
     # a successful one deletes exactly the listed old ones
     state["fail"].clear()
     results = deck_snapshot.snapshot_decks([decks["t-Deck"]], options(), print,
-                                           delete_old=old, project_root=root)
+                                           delete_old=old, ctx=project.ProjectContext.at(root))
     assert results[0].ok
     assert sorted(trashed) == sorted(s.path for s in old)
     remaining = deck_snapshot.find_snapshots(root=root)
@@ -487,7 +487,7 @@ def test_several_snapshots_and_forms_coexist(tree):
     root, _, decks, _, _ = tree
     for form in (False, True, False, True):
         assert deck_snapshot.create_snapshot(decks["t-Deck"], options(zip=form), print,
-                                             when=WHEN, project_root=root).ok
+                                             when=WHEN, ctx=project.ProjectContext.at(root)).ok
     names = sorted(p.name for p in (root / "snapshots").iterdir())
     assert names == ["t-Deck_2026-10-07_14-12", "t-Deck_2026-10-07_14-12.zip",
                      "t-Deck_2026-10-07_14-12_2", "t-Deck_2026-10-07_14-12_2.zip"]
@@ -523,7 +523,7 @@ def test_project_scans_never_look_inside_snapshots(tmp_path):
 def opened_snapshot(tree):
     root, _, decks, _, _ = tree
     result = deck_snapshot.create_snapshot(decks["t-Deck"], options(), print, when=WHEN,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     assert result.ok
     return result.path / "Proj"
 
@@ -553,14 +553,14 @@ def test_snapshot_compiler_mode(opened_snapshot, monkeypatch, tmp_path):
     deck = deck_scan.scan_dir(opened_snapshot / "decks", False)[0]
     assert deck.output_folders  # D:/Teaching/Somewhere
     job = compiler.CompileJob(deck, None, None)
-    assert compiler.resolve_output_location(job) == (opened_snapshot / "pdf", "t-Deck")
+    assert compiler.resolve_output_location(project.transitional_context(), job) == (opened_snapshot / "pdf", "t-Deck")
     build = tmp_path / "b"
     build.mkdir()
-    compiler._seed_snapshot_timestamp("t-Deck", build)
+    compiler._seed_snapshot_timestamp(project.transitional_context(), "t-Deck", build)
     assert "2026-10-07 14:12" in (build / "t-Deck.timestamp").read_text(encoding="utf-8")
     # "Remove temp files" leaves the seeds alone, other build output goes
     (opened_snapshot / ".build" / "t-Deck-abc123").mkdir()
-    removable = [p.name for p in compiler.removable_build_entries()]
+    removable = [p.name for p in compiler.removable_build_entries(project.transitional_context())]
     assert removable == ["t-Deck-abc123"]
 
 
@@ -611,7 +611,7 @@ def test_real_snapshot_of_manual(tmp_path, monkeypatch):
                 if d.name == "slidemage-manual")
     deck.supports_version = False
     result = deck_snapshot.create_snapshot(deck, SnapshotOptions(presenter=False), print,
-                                           project_root=root)
+                                           ctx=project.ProjectContext.at(root))
     assert result.ok, result.error
 
 

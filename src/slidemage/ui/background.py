@@ -49,8 +49,9 @@ def _keep(thread: QThread, on_done: Optional[Callable[[], None]] = None, delete:
     return watch
 
 
-def start_detached(thread: QThread) -> None:
-    _keep(thread)
+def start_detached(thread: QThread, on_done: Optional[Callable[[], None]] = None) -> None:
+    """Start `thread`; `on_done()` runs on the GUI thread once it has ended."""
+    _keep(thread, on_done)
     thread.start()
 
 

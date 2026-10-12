@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import slide_preview
+from slidemage.project import transitional_context
+from slidemage import compiler, slide_preview
 from conftest import use_project
 
 
@@ -30,7 +31,7 @@ def _fake_run_streamed(build_dir: Path):
 
 def _render(lines):
     # reuse_build=False is the fresh-job path with the .build/ cleanup
-    return slide_preview.compile_and_extract("x", "abc-EN-Test", lines.append, reuse_build=False)
+    return slide_preview.compile_and_extract(transitional_context(), "x", "abc-EN-Test", lines.append, reuse_build=False)
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def project(monkeypatch, tmp_path):
     build.mkdir()
     (tmp_path / "decks").mkdir()
     use_project(monkeypatch, tmp_path)
-    monkeypatch.setattr(slide_preview, "build_env", lambda: {})
+    monkeypatch.setattr(slide_preview, "build_env", lambda ctx: {})
     monkeypatch.setattr(slide_preview, "_LOCK_RETRY_DELAY", 0)
     # renders must never touch the real temp directory
     fake_temp = tmp_path / "temp"
@@ -47,7 +48,7 @@ def project(monkeypatch, tmp_path):
     monkeypatch.setattr(slide_preview.tempfile, "tempdir", str(fake_temp))
     monkeypatch.setattr(
         slide_preview.slide_snapshot, "capture_single_slide", lambda *a, **k: None)
-    monkeypatch.setattr(slide_preview, "run_streamed", _fake_run_streamed(build))
+    monkeypatch.setattr(compiler, "run_streamed", _fake_run_streamed(build))
     return build
 
 

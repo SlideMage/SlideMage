@@ -68,7 +68,7 @@ def test_translation_versions_are_independent_of_english_pins(project):
     assert [r.call.version for r in english] == ["1-0-0", "1-0-0"]
     assert [(r.call.macro, r.call.version) for r in german] == [("slide", None), ("omitslide", None)]
     assert all(r.call.source_filename == "ddd-DE-Eins-current.tex" for r in german)
-    target = preview_target.for_call(d, english[0].call, 1, "DE")
+    target = preview_target.for_call(transitional_context(), d, english[0].call, 1, "DE")
     assert target.source_path.name == "ddd-DE-Eins-current.tex" and target.version is None
 
 
@@ -88,7 +88,7 @@ def test_source_visibility_steps_and_repeated_occurrences_survive_resolution(pro
     assert [s.call.included_in("during-course") for s in slots] == [False, True, True]
     assert [r.hidden for section in deck_outline.build_outline(d, "during-course", "DE")
             for r in section.rows] == [True, False, False]
-    assert compile_progress.count_job_slides(d, "during-course", None, "DE") == 2
+    assert compile_progress.count_job_slides(transitional_context(), d, "during-course", None, "DE") == 2
 
 
 def test_deleted_partner_falls_back_and_renamed_partner_is_found_by_id(project):
@@ -172,20 +172,20 @@ def test_wrappers_resolve_full_chapter_and_appendix_without_writing_deck(project
                      "\\section{Last}\n\\slide{ddd-DE-Eins}\n\\slide{bbb-EN-Two}\n")
     before = d.path.read_bytes()
     job = compiler.CompileJob(d, "instructor", None, language="DE")
-    wrapper = compiler.wrapper_text(job)
+    wrapper = compiler.wrapper_text(transitional_context(), job)
     assert wrapper.count("\\slide{ddd-DE-Eins}") == 1 and "\\slide{aaa-EN-One}" not in wrapper
     assert "\\slide{bbb-EN-Two}" in wrapper and "\\decklanguage[de]" in wrapper
     assert job.jobname == "course-instructor-de"
-    chapter = compiler.wrapper_text(replace(job, chapter=d.chapters[0]))
+    chapter = compiler.wrapper_text(transitional_context(), replace(job, chapter=d.chapters[0]))
     assert "\\slide{ddd-DE-Eins}" in chapter and "\\slide{bbb-EN-Two}" not in chapter
-    appendix = compiler.wrapper_text(replace(job, appendix_toc=True))
+    appendix = compiler.wrapper_text(transitional_context(), replace(job, appendix_toc=True))
     assert "\\hyperlink{ddd}" in appendix and "\\hyperlink{aaa}" not in appendix
     assert d.path.read_bytes() == before
 
 
 def test_a_german_deck_resolves_partners_without_an_explicit_override(project):
     d = deck(project, "\\slide{aaa-EN-One}\n", "de")
-    wrapper = compiler.wrapper_text(compiler.CompileJob(d, None, None))
+    wrapper = compiler.wrapper_text(transitional_context(), compiler.CompileJob(d, None, None))
     assert "\\slide{ddd-DE-Eins}" in wrapper
 
 
@@ -212,8 +212,8 @@ def test_nested_body_fragments_are_resolved_and_kept_as_dependencies(project, co
     assert {fragment, nested, project / "slides/aaa-EN-One-current.tex",
             project / "slides/ddd-DE-Eins-current.tex"} == set(dependencies)
     assert fragment.read_text() == fragment_text
-    assert compile_progress.count_job_slides(d, "instructor", None, "EN") == 2
-    assert compile_progress.count_job_slides(d, "instructor", None, "DE") == 2
+    assert compile_progress.count_job_slides(transitional_context(), d, "instructor", None, "EN") == 2
+    assert compile_progress.count_job_slides(transitional_context(), d, "instructor", None, "DE") == 2
 
 
 @pytest.mark.parametrize("command", ["includegraphics", "includeonly", "includepdf", "inputencoding"])
@@ -222,7 +222,7 @@ def test_other_commands_are_not_body_fragments(project, command):
     d = deck(project, f"\\{command}{{x}}\n")
     resolved, dependencies = deck_language.compile_deck(d, "DE")
     assert resolved.text == d.text and dependencies == []
-    assert compile_progress.count_job_slides(d, "instructor", None, "DE") == 0
+    assert compile_progress.count_job_slides(transitional_context(), d, "instructor", None, "DE") == 0
     assert latex_lint.check_deck_job(d, language="DE").files_checked == 1
 
 
@@ -301,11 +301,11 @@ def test_preview_maintenance_renders_both_files_independently(project, monkeypat
 
     d = deck(project, "\\slide{aaa-EN-One}\n")
     monkeypatch.setattr(update_all_previews, "scan_decks", lambda _ctx: [d])
-    assert next(iter(update_all_previews.needed_slides_by_template().values())) == {
+    assert next(iter(update_all_previews.needed_slides_by_template(transitional_context()).values())) == {
         "aaa-EN-One", "ddd-DE-Eins"}
     d = deck(project, "\\slide{aaa-EN-One}\n\\slide{ddd-DE-Eins}\n")
     job = compiler.CompileJob(d, None, None, language="DE", resolve_translations=False)
-    wrapper = compiler.wrapper_text(job)
+    wrapper = compiler.wrapper_text(transitional_context(), job)
     assert "\\slide{aaa-EN-One}" in wrapper and "\\slide{ddd-DE-Eins}" in wrapper
 
 
@@ -352,7 +352,7 @@ def test_fragment_expansion_keeps_compiler_sources_and_tex_lookup_order(project,
     assert set(dependencies) == {fragment, candidates[locations.index(location)]}
     resolved, dependencies = deck_language.compile_deck(d, "EN")
     assert resolved is d and dependencies == []
-    wrapper = compiler.wrapper_text(compiler.CompileJob(d, "after-course", None))
+    wrapper = compiler.wrapper_text(transitional_context(), compiler.CompileJob(d, "after-course", None))
     assert r"\input{course.tex}" in wrapper and r"\slide{bbb-EN-Two}" not in wrapper
 
 

@@ -5,6 +5,7 @@ import os
 
 import pytest
 
+from slidemage.project import transitional_context
 from slidemage import deck_outline, slide_language, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from conftest import use_project
@@ -91,7 +92,7 @@ def test_a_preview_older_than_its_source_is_stale_and_none_is_just_missing(tmp_p
     deck = make_deck(tmp_path, "\\slide{aaa-EN-Fresh}\n\\slide{bbb-EN-Stale}\n\\slide{ccc-EN-NoPreview}\n")
     template = slide_snapshot.detect_template(deck.preamble_text)
     for slide_id, mtime in (("aaa", 4_000_000_000), ("bbb", 1)):
-        png = slide_snapshot.snapshot_path(slide_id, template, slide_snapshot.THUMB_SIZE, f"{slide_id}-EN-X")
+        png = slide_snapshot.snapshot_path(transitional_context(), slide_id, template, slide_snapshot.THUMB_SIZE, f"{slide_id}-EN-X")
         png.write_bytes(b"png")
         os.utime(png, (mtime, mtime))
     fresh, stale, none = rows_of(deck_outline.build_outline(deck, "instructor", "EN"))

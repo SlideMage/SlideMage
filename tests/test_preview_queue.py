@@ -22,7 +22,7 @@ def pane(qapp, tmp_path, monkeypatch):
     app = SimpleNamespace(
         theme=ThemeManager(),
         log=logged.append,
-        signals=SimpleNamespace(log=SimpleNamespace(emit=logged.append)),
+        project=transitional_context(),
     )
     use_project(monkeypatch, tmp_path)
     monkeypatch.setattr(preview_target, "cached_image", lambda target: None)
@@ -37,7 +37,7 @@ def pane(qapp, tmp_path, monkeypatch):
     path = tmp_path / "slides" / "abc-EN-One-current.tex"
     path.parent.mkdir()
     path.write_text("BODY")
-    target = preview_target.for_path(path)
+    target = preview_target.for_path(transitional_context(), path)
     view.show_slide(target, None, "One", "")
     view.launched, view.buffer, view.logged = launched, buffer, logged
     return view, target, path
@@ -96,7 +96,7 @@ def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
     view._start(lambda: pdf, job)
     if change == "slide":
         view.show_slide(
-            preview_target.for_path(tmp_path / "slides" / "bbb-EN-Two-current.tex"),
+            preview_target.for_path(transitional_context(), tmp_path / "slides" / "bbb-EN-Two-current.tex"),
             None,
             "Two",
             "",

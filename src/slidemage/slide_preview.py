@@ -21,11 +21,11 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_log, open_path, project
+from . import compile_log, compiler, open_path, preview_build, project
 from . import slide_language, slide_snapshot
-from .compiler import FATAL_ERROR_RE, build_env, run_streamed
+from .compiler import build_env
 from .deck_editor import format_call
-from .preview_metrics import measure, record_line, finish_rules
+from .preview_metrics import measure
 
 
 LogCallback = Callable[[str], None]
@@ -48,7 +48,7 @@ _STALE_PREVIEW_AGE = 3600
 # removed once they are at least this old (seconds) -- 24 hours, direct
 # instruction 2026-10-11 -- by sweep_old_renders(), which runs shortly after
 # the app starts and after every render, so "sometime after" 24 hours.
-RENDER_FOLDER_PREFIX = "slidemage_preview_"
+RENDER_FOLDER_PREFIX = preview_build.RENDER_FOLDER_PREFIX
 RENDER_MAX_AGE = 24 * 3600
 
 
@@ -100,23 +100,23 @@ def _retry_on_lock(action: Callable[[], None]) -> bool:
     return False
 
 
-def _remove_build_files(jobname: str) -> int:
+def _remove_build_files(ctx: project.ProjectContext, jobname: str) -> int:
     """Delete every .build/<jobname>.* file; returns how many stayed behind.
     Never raises: a build file that cannot be deleted right now is not a
     reason to fail a render that has already succeeded."""
     left = 0
-    for aux in project.transitional_context().build_dir.glob(f"{jobname}.*"):
+    for aux in ctx.build_dir.glob(f"{jobname}.*"):
         if not _retry_on_lock(lambda aux=aux: aux.unlink(missing_ok=True)):
             left += 1
     return left
 
 
-def _sweep_stale_previews() -> None:
+def _sweep_stale_previews(ctx: project.ProjectContext) -> None:
     """Best-effort removal of .build/preview-* files left behind by renders
     that were interrupted (or whose cleanup hit a locked file)."""
     cutoff = time.time() - _STALE_PREVIEW_AGE
     try:
-        for stale in project.transitional_context().build_dir.glob("preview-*.*"):
+        for stale in ctx.build_dir.glob("preview-*.*"):
             try:
                 if stale.stat().st_mtime < cutoff:
                     stale.unlink()
@@ -238,10 +238,10 @@ def template_preamble(template: str) -> str:
         _GRAZ_INPUT, f"\\input{{Slidemaster_preamble_{template}}}")
 
 
-def default_preamble() -> str:
+def default_preamble(ctx: project.ProjectContext) -> str:
     """The preamble for a render with no deck: the default render template
     chosen in Settings -> General (slide_snapshot.render_template())."""
-    return template_preamble(slide_snapshot.render_template())
+    return template_preamble(slide_snapshot.render_template(ctx))
 
 
 def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
@@ -335,13 +335,13 @@ def _presenter_mode_line(presenter: bool) -> str:
 
 
 @measure('build')
-def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
+def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
                          reuse_build: bool = True) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
-    render_slide_text_to_pdf(): write the wrapper, run latexmk, check the
-    log for a real fatal error, move the finished PDF to its own fresh
-    temp directory, and clean up every trace of the compile from both
+    render_slide_text_to_pdf(): build the wrapper (preview_build.run_preview),
+    check the log for a real fatal error, move the finished PDF to its own
+    fresh temp directory, and clean up every trace of the compile from both
     decks/ and .build/. Raises RuntimeError (with the log's own tail) on
     failure.
 
@@ -356,21 +356,36 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     image is a much smaller problem than losing a PDF the user actually
     asked to see.
     """
-    ctx = project.transitional_context()
-    if reuse_build:
-        from .preview_build import compile_cached
-        dest_pdf = compile_cached(
-            wrapper_text, id_slug, log, project_root=ctx.root,
-            build_dir=ctx.build_dir, env=build_env(), fatal_error_re=FATAL_ERROR_RE)
-        if snapshot_template is not None:
-            try:
-                slide_snapshot.capture_single_slide(
-                    dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
-            except Exception as exc:
-                log(f"    (preview snapshot not updated: {exc})")
-        log(compile_log.render_passed(id_slug, dest_pdf))
-        return dest_pdf
+    env = build_env(ctx)
+    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env) if reuse_build
+                else _compile_fresh(ctx, wrapper_text, id_slug, log, env))
+    if snapshot_template is not None:
+        # bare id, not the full id_slug -- capture_deck() (the "Update
+        # previews"/full-compile path) always keys a snapshot by the
+        # bare id it parses straight out of the compiled page's own
+        # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
+        # derives from everything before the *first* "-"). Passing the
+        # full id_slug here instead produced e.g.
+        # "kcc-Reasons-Repurchases-UniGraz-1920-1080.png" alongside the
+        # correct "kcc-UniGraz-1920-1080.png" a full compile would
+        # cache -- two different files for the same slide, one of them
+        # never found by any lookup (snapshot_path()/is_fresh() only
+        # ever look up the bare id) and therefore silently dead weight.
+        # Root-caused 2026-08-17 (direct instruction: "some slides have
+        # now turned up with full slugs instead of the typical
+        # nomenclature") from every "Preview -> Render now" render,
+        # not just this project's own recently-touched slides.
+        try:
+            slide_snapshot.capture_single_slide(
+                ctx, dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
+        except Exception as exc:
+            log(f"    (preview snapshot not updated: {exc})")
+    log(compile_log.render_passed(id_slug, dest_pdf))
+    return dest_pdf
 
+
+def _compile_fresh(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback, env: dict) -> Path:
+    """A build of its own: a unique jobname, latexmk's output in .build/, nothing kept afterwards."""
     ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     # "_slidemage_" prefix matches compiler.py's own wrapper naming, so
     # gui.py's existing "Remove temp files" sweep already covers a wrapper
@@ -384,132 +399,40 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     safe_id_slug = re.sub(r"[^A-Za-z0-9_-]", "_", id_slug)
     jobname = f"preview-{safe_id_slug}-{uuid.uuid4().hex[:8]}"
     wrapper_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
-    # newline="" -- NOT write_text's own default (None, which re-translates
-    # every "\n" to the OS line ending on write). wrapper_text is a mix of
-    # a real deck's own preamble_text (read by deck_scan.py with
-    # newline="", so it already carries the file's literal "\r\n") and
-    # freshly-generated fragments (_frame_number_line/_deck_version_line/
-    # format_call, plain "\n"). Writing that mix with the default newline
-    # handling doubles every already-"\r\n" into "\r\r\n" on Windows, since
-    # write_text() still appends its own "\r" in front of the "\n" that's
-    # already preceded by one. TeX treats each bare \r as its own
-    # end-of-line, so a doubled "\r\r\n" is an invisible extra blank line
-    # after every preamble line -- harmless almost everywhere (a stray
-    # blank line inside a frame body/itemize is a no-op), but it corrupts
-    # any *multi-line macro definition* captured from that preamble, most
-    # visibly a \DeclareBibliographyDriver{article}{...} spanning many
-    # lines: every field printed by \newcommand{\FooterText} shares that
-    # exact bug class, but only became visible via \fullcite's own
-    # multi-line driver, where the baked-in blank line after each field
-    # only ever shows up once the driver is expanded inline inside a
-    # \footnote{} -- exactly the "many surplus line breaks" root-caused
-    # 2026-08-17 on kcc-Reasons-Repurchases (direct instruction: "renders
-    # fine as part of #workdeck, but Preview -> Render now breaks the
-    # footnote"). GENERIC_PREAMBLE (the slide-source editor's own "Render
-    # to PDF") never hits this, since it's a plain Python string literal
-    # with bare "\n" to begin with -- only a *deck's own* preamble_text
-    # (every deck-editor-tab "Preview" -> "Render now") carries pre-existing
-    # "\r\n" for this to double.
-    from .preview_build import active_build
-    with active_build(ctx.build_dir, wrapper_path):
-        wrapper_path.write_text(wrapper_text, encoding="utf-8", newline="")
-
+    with preview_build.active_build(ctx.build_dir, wrapper_path):
         ctx.build_dir.mkdir(parents=True, exist_ok=True)
-        rel_wrapper = wrapper_path.relative_to(ctx.root)
-        # -outdir=.build/, same as compiler.py's own run_job -- this has to
-        # match .latexmkrc's own $aux_dir exactly (an *absolute* path to this
-        # same .build/, set unconditionally there), not some other temp
-        # location: $aux_dir governs where latexmk actually writes the .log
-        # regardless of what -outdir says, so a *different* -outdir here
-        # silently splits the two apart -- confirmed directly: the .log ended
-        # up in .build/ while a leftover 0-byte .pdf sat in the mismatched
-        # -outdir, and the fatal-error check below, looking for the log in the
-        # wrong place, missed it entirely and read the empty .pdf as a pass.
-        cmd = [
-            "latexmk", "-f", f"-jobname={jobname}", f"-outdir={ctx.build_dir.as_posix()}",
-            str(rel_wrapper),
-        ]
-        env = build_env()
-
         log(compile_log.rendering(id_slug, jobname))
         try:
-            run_streamed(cmd, cwd=ctx.root, env=env, log=log, on_line=record_line)
-            finish_rules()
-        except FileNotFoundError:
-            raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")
-        finally:
-            _retry_on_lock(lambda: wrapper_path.unlink(missing_ok=True))
-
-        log_path = ctx.build_dir / f"{jobname}.log"
-        build_pdf_path = ctx.build_dir / f"{jobname}.pdf"
-        ok = build_pdf_path.exists() and build_pdf_path.stat().st_size > 0
-        if ok and log_path.exists():
-            if FATAL_ERROR_RE.search(log_path.read_text(encoding="utf-8", errors="replace")):
-                ok = False
-        elif not log_path.exists():
-            ok = False
-
-        if not ok:
-            tail = ""
-            if log_path.exists():
-                lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-                tail = "\n".join(lines[-20:])
+            with compiler.wrapper_file(wrapper_path, wrapper_text, remove=lambda p: _retry_on_lock(lambda: p.unlink(missing_ok=True))):
+                pdf, _ = preview_build.run_preview(ctx, wrapper_path, jobname, id_slug, ctx.build_dir, log,
+                                                   env=env, reusable=False)
+        except RuntimeError:
             log(compile_log.render_failed(id_slug, "see log tail below"))
-            raise RuntimeError(f"Render failed for {id_slug}:\n{tail}")
+            raise
 
-        # Move the finished PDF out of .build/ into a fresh, genuinely
-        # temporary directory of its own (not pdf/ -- this is a scratch
-        # preview, not a build artifact), named after the slide itself rather
-        # than the jobname's own uuid suffix, for a sane PDF-viewer window
-        # title/taskbar entry.
-        out_dir = Path(tempfile.mkdtemp(prefix=RENDER_FOLDER_PREFIX))
-        dest_pdf = out_dir / f"{id_slug}.pdf"
-        try:
+        def copy_out(source: Path, dest: Path) -> None:
             # Not shutil.move(): a locked source makes its copy-then-delete
             # fallback fail after the copy, and the PDF is what matters here.
-            if not _retry_on_lock(lambda: shutil.copyfile(build_pdf_path, dest_pdf)):
-                raise OSError(f"could not read {build_pdf_path}")
+            if not _retry_on_lock(lambda: shutil.copyfile(source, dest)):
+                raise OSError(f"could not read {source}")
+
+        try:
+            dest_pdf = preview_build.publish_preview(ctx, pdf, id_slug, ctx.build_dir, jobname, copy=copy_out)
         except OSError as exc:
             log(compile_log.render_failed(
                 id_slug, f"the finished PDF could not be copied out of .build/ ({exc})"))
             raise RuntimeError(f"Render failed for {id_slug}: {exc}") from exc
-        from .preview_build import write_inputs
-        write_inputs(dest_pdf, ctx.build_dir / f'{jobname}.fls', ctx.build_dir / f'{jobname}.fdb_latexmk',
-                     project_root=ctx.root, cache=ctx.build_dir)
-        left = _remove_build_files(jobname)
+        left = _remove_build_files(ctx, jobname)
         if left:
             log(f"    ({left} build file(s) of this render could not be deleted yet "
                 f"-- they will be swept with a later render)")
-        _sweep_stale_previews()
-
-        if snapshot_template is not None:
-            try:
-                # bare id, not the full id_slug -- capture_deck() (the "Update
-                # previews"/full-compile path) always keys a snapshot by the
-                # bare id it parses straight out of the compiled page's own
-                # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
-                # derives from everything before the *first* "-"). Passing the
-                # full id_slug here instead produced e.g.
-                # "kcc-Reasons-Repurchases-UniGraz-1920-1080.png" alongside the
-                # correct "kcc-UniGraz-1920-1080.png" a full compile would
-                # cache -- two different files for the same slide, one of them
-                # never found by any lookup (snapshot_path()/is_fresh() only
-                # ever look up the bare id) and therefore silently dead weight.
-                # Root-caused 2026-08-17 (direct instruction: "some slides have
-                # now turned up with full slugs instead of the typical
-                # nomenclature") from every "Preview -> Render now" render,
-                # not just this project's own recently-touched slides.
-                slide_snapshot.capture_single_slide(
-                    dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
-            except Exception as exc:
-                log(f"    (preview snapshot not updated: {exc})")
-
-        log(compile_log.render_passed(id_slug, dest_pdf))
+        _sweep_stale_previews(ctx)
         return dest_pdf
 
 
 @measure('render')
 def render_slide_to_pdf(
+    ctx: project.ProjectContext,
     macro: str,
     id_slug: str,
     version: Optional[str] = None,
@@ -570,7 +493,7 @@ def render_slide_to_pdf(
     caching the *right* template's image, not always Graz.
     """
     log = log or (lambda line: None)
-    preamble = default_preamble() if preamble_text is None else preamble_text
+    preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     # \slidestep keeps its own reveal-step restriction, but is shown for every deck
     # version: a preview compiles as the instructor deck, which would otherwise
     # render nothing for a call listed only for the student versions.
@@ -587,13 +510,14 @@ def render_slide_to_pdf(
         if capture_snapshot and deck_version in (None, "instructor") and overlay is None else None
     )
     return compile_and_extract(
-        wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build,
     )
 
 
 @measure('render')
 def render_slide_text_to_pdf(
+    ctx: project.ProjectContext,
     id_slug: str,
     slide_body: str,
     deck_version: Optional[str] = None,
@@ -663,7 +587,7 @@ def render_slide_text_to_pdf(
     layout is nothing like a normal compile's, so reading it the normal
     way would corrupt the snapshot cache)."""
     log = log or (lambda line: None)
-    preamble = default_preamble() if preamble_text is None else preamble_text
+    preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     if overlay is not None and preview_mode == "element":
         raise ValueError("Element previews do not have frame overlays")
     if presenter and preview_mode == "element":
@@ -683,7 +607,7 @@ def render_slide_text_to_pdf(
         and preview_mode == "slide" and overlay is None else None
     )
     return compile_and_extract(
-        wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build,
     )
 

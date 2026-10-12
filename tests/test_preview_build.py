@@ -1,11 +1,11 @@
 from pathlib import Path
 from types import SimpleNamespace
 import os
-import re
 import time
 
 import pytest
 
+from slidemage.project import ProjectContext, transitional_context
 from slidemage import compiler, preview_build, preview_format, slide_preview
 
 
@@ -49,7 +49,7 @@ def test_cached_build_retains_aux_and_rejects_stale_pdf(tmp_path, monkeypatch):
 
     monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
     monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
-    kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
+    kwargs = dict(ctx=ProjectContext.at(tmp_path), env={})
     one = r'\documentclass{beamer}\begin{document}one\end{document}'
     two = one.replace('one', 'two')
     preview_build.compile_cached(one, 'abc', print, **kwargs)
@@ -92,11 +92,11 @@ def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
     monkeypatch.setattr(slide_preview, 'compile_and_extract',
                         lambda *args, **kwargs: calls.append((args, kwargs)))
     pre = r'\documentclass{beamer}\begin{document}'
-    slide_preview.render_slide_to_pdf('slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
-    slide_preview.render_slide_text_to_pdf('abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
-    slide_preview.render_slide_text_to_pdf('abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
+    slide_preview.render_slide_to_pdf(transitional_context(), 'slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
+    slide_preview.render_slide_text_to_pdf(transitional_context(), 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
+    slide_preview.render_slide_text_to_pdf(transitional_context(), 'abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
     assert all(kwargs['snapshot_template'] is None for _, kwargs in calls)
-    assert r'\SMCompileTimestampValue' in calls[0][0][0]
+    assert r'\SMCompileTimestampValue' in calls[0][0][1]
     assert slide_preview._preview_timestamp_line(False) == ''
 
 
@@ -115,7 +115,7 @@ def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):
 
     monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
     monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
-    kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={}, fatal_error_re=re.compile('^!'))
+    kwargs = dict(ctx=ProjectContext.at(tmp_path), env={})
     preview_build.compile_cached(r'\begin{document}Hi', 'abc', print, **kwargs)
     produce = False
     with pytest.raises(RuntimeError):
@@ -126,7 +126,7 @@ def test_element_rejects_frame_only_options():
     pre = r'\documentclass{beamer}\begin{document}'
     for options in ({'overlay': 1}, {'presenter': True}):
         with pytest.raises(ValueError):
-            slide_preview.render_slide_text_to_pdf(
+            slide_preview.render_slide_text_to_pdf(transitional_context(), 
                 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element', **options)
 
 
@@ -154,8 +154,7 @@ def _fake_engine(monkeypatch, log='Success\nBeginning to dump on file preamble.f
 def _ensure(tmp_path, preamble=r'\documentclass{beamer}'):
     return preview_format.ensure(
         preamble, 'key', project_root=tmp_path, build_dir=tmp_path / '.build', env={},
-        fatal_error_re=re.compile(r'^!|^\S.*:[0-9]+: ', re.M), log=lambda line: None,
-        lock=preview_build.build_lock)
+        log=lambda line: None, lock=preview_build.build_lock)
 
 
 def test_format_is_built_once_and_rebuilt_when_an_input_changes(tmp_path, monkeypatch):
@@ -200,8 +199,7 @@ def test_slide_failing_only_with_the_format_is_rebuilt_without_it_and_the_format
 
     monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
     monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
-    kwargs = dict(project_root=tmp_path, build_dir=tmp_path / '.build', env={},
-                  fatal_error_re=re.compile('^!'))
+    kwargs = dict(ctx=ProjectContext.at(tmp_path), env={})
     wrapper = r'\documentclass{beamer}\begin{document}one\end{document}'
     pdf = preview_build.compile_cached(wrapper, 'abc', print, **kwargs)
     assert pdf.is_file()

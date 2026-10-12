@@ -19,6 +19,7 @@ from ..dialogs.admin_slides import AdminSlidesTab
 from ..dialogs.deck_group import DeckGroupSheet
 from ..dialogs.deck_settings import ADMIN, GENERAL, INSERT, DeckSettingsSheet
 from ..dialogs.snapshot import SnapshotSheet
+from . import compile_actions
 
 
 def on_admin_slides(window, deck: Deck) -> None:
@@ -54,7 +55,7 @@ def archive_deck(window, deck: Deck) -> None:
     if clicked is archive_only_button:
         do_archive_deck(window, deck)
     elif clicked is snapshot_button:
-        window._start_snapshots(
+        compile_actions.start_snapshots(window, 
             [deck], options,
             after=lambda results: archive_after_snapshot(window, deck, results))
 
@@ -80,7 +81,7 @@ def do_archive_deck(window, deck: Deck) -> None:
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "Archive failed", str(exc))
         return
-    window._log(f"Archived {deck.name}.tex -> decks/archive/{deck.name}.tex")
+    window.log(f"Archived {deck.name}.tex -> decks/archive/{deck.name}.tex")
     window.reload_decks()
 
 
@@ -92,7 +93,7 @@ def on_create_deck_snapshot(window) -> None:
     sheet = SnapshotSheet(window, window.project, decks, preselected, busy=window.compiling)
     if sheet.exec() != QDialog.DialogCode.Accepted:
         return
-    window._start_snapshots(sheet.selected_decks(), sheet.options())
+    compile_actions.start_snapshots(window, sheet.selected_decks(), sheet.options())
 
 
 def tags_with_group(deck_tags: list[str], group: str) -> list[str]:
@@ -106,7 +107,7 @@ def on_open_latest_pdf(window, deck: Deck) -> None:
     instructor PDF), unless a newer PDF of the deck comes from another
     compile run -- then it asks which one, newest first (2026-10-08,
     direct instructions; compiler.pdf_to_open())."""
-    pdfs = deck_pdfs(deck)
+    pdfs = deck_pdfs(window.project, deck)
     if not pdfs:
         QMessageBox.information(
             window, "No PDF yet", f"No PDF has been created for {deck.name} yet.")
@@ -127,7 +128,7 @@ def on_open_latest_pdf(window, deck: Deck) -> None:
     try:
         open_path.open_in_default_app(pdf_path)
     except OSError as exc:
-        window._log(f"*** couldn't open {pdf_path.name}: {exc} ***")
+        window.log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
 
 def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
@@ -160,7 +161,7 @@ def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings)
     changed = [name for name in ("template", "language", "footer_text", "course_url",
                                  "output_folders", "appendix_toc", "open_pdf")
                if getattr(new, name) != getattr(old, name)]
-    window._log(f"Updated settings of {deck.name}: " + ", ".join(
+    window.log(f"Updated settings of {deck.name}: " + ", ".join(
         name.replace("_", " ") for name in changed))
     window.refresh_open_deck_editors()
     window.reload_decks()
@@ -203,7 +204,7 @@ def on_edit_deck_tags(window, deck: Deck) -> None:
     except (deck_editor.StaleFileError, ValueError, OSError) as exc:
         QMessageBox.critical(window, "Tags failed", str(exc))
         return
-    window._log(f"Tagged {deck.name} as {group}")
+    window.log(f"Tagged {deck.name} as {group}")
     window.refresh_open_deck_editors()
 
 
@@ -225,12 +226,12 @@ def on_duplicate_deck(window, deck: Deck) -> None:
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "Duplicate failed", str(exc))
         return
-    window._log(f"Duplicated {deck.name}.tex -> {dest.name}")
+    window.log(f"Duplicated {deck.name}.tex -> {dest.name}")
     if group != deck.group or group not in deck.tags:
         try:
             deck_editor.set_deck_tags(
                 dest, deck_editor.read(dest), tags_with_group(deck.tags, group))
-            window._log(f"Tagged {dest.stem} as {group}")
+            window.log(f"Tagged {dest.stem} as {group}")
         except (deck_editor.StaleFileError, ValueError, OSError) as exc:
             QMessageBox.warning(
                 window, "Tags",
@@ -256,18 +257,18 @@ def generate_deck_transcript(window, deck: Deck, version: str, *, quiet: bool = 
             deck.path, version, directory=target_dir, filename_stem=stem)
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "Transcript failed", f"{deck.name} ({version}):\n{exc}")
-        window._log(f"*** Transcript generation failed for {deck.path.stem} ({version}): {exc} ***")
+        window.log(f"*** Transcript generation failed for {deck.path.stem} ({version}): {exc} ***")
         return False
     finally:
         QApplication.restoreOverrideCursor()
 
-    window._log(
+    window.log(
         f"Transcript for {deck.path.stem} ({version}): "
         f"{len(result.slides)} of {result.total_in_deck} slides -> "
         f"{md_path.name}, {html_path.name}"
     )
     if result.undescribed:
-        window._log(
+        window.log(
             f"    {result.undescribed} slide(s) contain an image with no "
             f"description yet; those points are marked in the transcript."
         )

@@ -133,13 +133,12 @@ RENDER_TEMPLATE_SETTING_KEY = "default_template"
 OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
 
 
-def framework_dirs(root: Path | None = None) -> list[Path]:
+def framework_dirs(root: Path) -> list[Path]:
     """The LaTeX framework folders a project's decks search (its .latexmkrc
     puts one on TEXINPUTS): $SLIDEMASTER_LATEX, else ../latex (a project
     next to the framework, like example/) or ../SlideMage/latex (a project
     next to a SlideMage checkout). Only folders holding
     Slidemaster_preamble_base.tex count."""
-    root = root or project.transitional_context().root
     candidates = []
     if os.environ.get("SLIDEMASTER_LATEX"):
         candidates.append(Path(os.environ["SLIDEMASTER_LATEX"]))
@@ -147,12 +146,11 @@ def framework_dirs(root: Path | None = None) -> list[Path]:
     return [d for d in candidates if (d / "Slidemaster_preamble_base.tex").is_file()]
 
 
-def preamble_file(template: str, root: Path | None = None) -> Path:
+def preamble_file(template: str, root: Path) -> Path:
     """The template's preamble file, Slidemaster_preamble_<key>.tex: the
     project's own (institution layers live in the project root), else the
     framework's (the SlideMage template, since v5.9.0). The project-root path
     when neither exists."""
-    root = root or project.transitional_context().root
     name = f"Slidemaster_preamble_{template}.tex"
     for folder in (root, *framework_dirs(root)):
         if (folder / name).is_file():
@@ -160,31 +158,31 @@ def preamble_file(template: str, root: Path | None = None) -> Path:
     return root / name
 
 
-def available_templates(root: Path | None = None) -> list[str]:
+def available_templates(root: Path) -> list[str]:
     """The TEMPLATES keys whose preamble file a deck of the project can find
     (project root or framework), in TEMPLATES order."""
     return [key for key in TEMPLATES if preamble_file(key, root).is_file()]
 
 
-def render_template(root: Path | None = None) -> str:
+def render_template(ctx: project.ProjectContext) -> str:
     """The template single-slide renders use (see RENDER_TEMPLATE_SETTING_KEY)."""
     from . import app_settings  # app settings live in the project too
 
-    available = available_templates(root)
-    for key in (app_settings.get(project.transitional_context(), RENDER_TEMPLATE_SETTING_KEY),
+    available = available_templates(ctx.root)
+    for key in (app_settings.get(ctx, RENDER_TEMPLATE_SETTING_KEY),
                 OUT_OF_THE_BOX_RENDER_TEMPLATE, DEFAULT_TEMPLATE):
         if key in available:
             return key
     return available[0] if available else DEFAULT_TEMPLATE
 
 
-def set_render_template(key: str) -> None:
+def set_render_template(ctx: project.ProjectContext, key: str) -> None:
     """Choose the template single-slide renders use (a TEMPLATES key)."""
     from . import app_settings
 
     if key not in TEMPLATES:
         raise ValueError(f"'{key}' is not a template.")
-    app_settings.set(project.transitional_context(), RENDER_TEMPLATE_SETTING_KEY, key)
+    app_settings.set(ctx, RENDER_TEMPLATE_SETTING_KEY, key)
 
 
 # Full HD, requested directly rather than picked via a DPI value: this
@@ -220,14 +218,14 @@ def slide_id_of(page: "fitz.Page") -> str | None:
     return match.group(1) if match else None
 
 
-def _save_page(page: "fitz.Page", slide_id: str, template: str,
+def _save_page(ctx: project.ProjectContext, page: "fitz.Page", slide_id: str, template: str,
                sizes: tuple[tuple[int, int], ...]) -> None:
-    project.transitional_context().slide_previews_dir.mkdir(parents=True, exist_ok=True)
+    ctx.slide_previews_dir.mkdir(parents=True, exist_ok=True)
     for width, height in sizes:
         zoom_x = width / page.rect.width
         zoom_y = height / page.rect.height
         pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom_x, zoom_y))
-        pixmap.save(str(snapshot_path(slide_id, template, (width, height))))
+        pixmap.save(str(snapshot_path(ctx, slide_id, template, (width, height))))
 
 
 @measure('png')
@@ -268,11 +266,11 @@ def prepare_preview(pdf_path: Path, snapshots: bool = False):
 
 
 @measure('snapshot_write')
-def publish_preview(images, slide_id: str, template: str) -> None:
-    project.transitional_context().slide_previews_dir.mkdir(parents=True, exist_ok=True)
+def publish_preview(ctx: project.ProjectContext, images, slide_id: str, template: str) -> None:
+    ctx.slide_previews_dir.mkdir(parents=True, exist_ok=True)
     for size, data in images:
         # Refresh freshness even when a source edit leaves identical PDF pixels.
-        path = snapshot_path(slide_id, template, size)
+        path = snapshot_path(ctx, slide_id, template, size)
         if path.exists() and path.read_bytes() == data:
             path.touch()
         else:
@@ -290,7 +288,7 @@ def page_png(pdf_path: Path, width: int = FULL_SIZE[0]) -> bytes | None:
         return None
 
 
-def capture_single_slide(pdf_path: Path, slide_id: str, template: str,
+def capture_single_slide(ctx: project.ProjectContext, pdf_path: Path, slide_id: str, template: str,
                          sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                          ) -> bool:
     """A single-slide preview PDF (slide_preview.py) is already just that
@@ -302,11 +300,11 @@ def capture_single_slide(pdf_path: Path, slide_id: str, template: str,
         return False
     if not images:
         return False
-    publish_preview(tuple(zip(sizes, images)), slide_id, template)
+    publish_preview(ctx, tuple(zip(sizes, images)), slide_id, template)
     return True
 
 
-def capture_deck(pdf_path: Path, template: str,
+def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
                  sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                  ) -> int:
     """Scan a fully compiled deck PDF once; refresh every slide id it
@@ -329,13 +327,13 @@ def capture_deck(pdf_path: Path, template: str,
                 continue
             if slide_id != current_id:
                 if current_id is not None:
-                    _save_page(current_page, current_id, template, sizes)
+                    _save_page(ctx, current_page, current_id, template, sizes)
                     written += 1
                 current_id, current_page = slide_id, page
             else:
                 current_page = page
         if current_id is not None:
-            _save_page(current_page, current_id, template, sizes)
+            _save_page(ctx, current_page, current_id, template, sizes)
             written += 1
         return written
     finally:
@@ -358,7 +356,7 @@ def _own_language_for_bare_id(bare_id_: str) -> str | None:
     return slide_language.own_language(id_slug)
 
 
-def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
+def snapshot_path(ctx: project.ProjectContext, slide_id: str, template: str = DEFAULT_TEMPLATE,
                   size: tuple[int, int] = FULL_SIZE, id_slug: str | None = None) -> Path:
     """Filename gains a <Lang> segment (2026-08-24, right after the bare
     id, matching the id-slug's own segment order) when `slide_id` resolves
@@ -385,16 +383,16 @@ def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
     language = (slide_language.own_language(id_slug) if id_slug
                 else _own_language_for_bare_id(slide_id))
     lang_segment = f"-{language}" if language else ""
-    return project.transitional_context().slide_previews_dir / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
+    return ctx.slide_previews_dir / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
 
 
-def is_fresh(slide_id: str, slide_path: Path, template: str = DEFAULT_TEMPLATE,
+def is_fresh(ctx: project.ProjectContext, slide_id: str, slide_path: Path, template: str = DEFAULT_TEMPLATE,
             size: tuple[int, int] = FULL_SIZE) -> bool:
     """Whether the cached snapshot is at least as new as the slide's own
     source file -- an mtime comparison, not a content hash: this is a
     best-effort "click to refresh" signal for a future preview UI, not a
     correctness guarantee, so it doesn't need to be hash-exact."""
-    png = snapshot_path(slide_id, template, size)
+    png = snapshot_path(ctx, slide_id, template, size)
     if not png.is_file():
         return False
     try:

@@ -66,8 +66,8 @@ def test_compile_job_stamps_its_run(tmp_path):
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
     job = compiler.CompileJob(deck, "instructor", None, run_id=RUN)
-    assert compile_records.run_id_line(RUN) in compiler.wrapper_text(job)
-    assert "SlideMageRun" not in compiler.wrapper_text(compiler.CompileJob(deck, "instructor", None))
+    assert compile_records.run_id_line(RUN) in compiler.wrapper_text(transitional_context(), job)
+    assert "SlideMageRun" not in compiler.wrapper_text(transitional_context(), compiler.CompileJob(deck, "instructor", None))
 
 
 @pytest.fixture
@@ -92,7 +92,7 @@ def deck_with_pdfs(tmp_path, monkeypatch):
 
 
 def test_deck_pdfs_newest_first_with_labels_and_runs(deck_with_pdfs):
-    pdfs = compiler.deck_pdfs(deck_with_pdfs)
+    pdfs = compiler.deck_pdfs(transitional_context(), deck_with_pdfs)
     assert [(p.label, p.preferred, p.run_id) for p in pdfs] == [
         ("After-course", False, "2026-10-08T09:00:00"), ("Instructor", True, RUN)]
 
@@ -109,7 +109,7 @@ def test_open_pdf_asks_and_opens_the_choice(deck_with_pdfs, monkeypatch):
     opened: list[Path] = []
     monkeypatch.setattr(deck_actions.open_path, "open_in_default_app", opened.append)
     win = QWidget()
-    win._log = lambda line: None
+    win.log = lambda line: None
     win.project = transitional_context()
     deck_actions.on_open_latest_pdf(win, deck_with_pdfs)
     assert asked["items"][0].startswith("After-course -- ")
@@ -119,7 +119,7 @@ def test_open_pdf_asks_and_opens_the_choice(deck_with_pdfs, monkeypatch):
 
 def test_deck_setting_chooses_the_preferred_pdf(deck_with_pdfs):
     deck_with_pdfs.open_pdf = "after-course"
-    pdfs = compiler.deck_pdfs(deck_with_pdfs)
+    pdfs = compiler.deck_pdfs(transitional_context(), deck_with_pdfs)
     assert [(p.label, p.preferred) for p in pdfs] == [("After-course", True), ("Instructor", False)]
     # the after-course PDF is the newest: opened without asking
     assert pdf_to_open(pdfs).label == "After-course"

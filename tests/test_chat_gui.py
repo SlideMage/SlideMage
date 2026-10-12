@@ -21,6 +21,7 @@ from slidemage.ai.providers import Cancelled
 from slidemage.deck_scan import scan_decks
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.widgets import PopoverMenu
+from slidemage.ui.workspace import compile_actions
 from slidemage.ui.workspace.chat import assistant as assistant_module
 from slidemage.ui.workspace.chat import view as chat_view
 from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE, AssistantArea
@@ -630,14 +631,14 @@ def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monke
     from slidemage.compile_status import DONE, FAILED
     started = []
 
-    def fake_compile(jobs):
+    def fake_compile(_window, jobs):
         started.append([job.jobname for job in jobs])
-        env.window.signals.log.emit("==== compiling ====")
+        env.window.log("==== compiling ====")
         run = SimpleNamespace(rows={"test-instructor": SimpleNamespace(state=DONE), "x": SimpleNamespace(state=FAILED)})
-        env.window.signals.run_settled.emit(run)
+        env.window.compile.settled.emit(run)
         return True
 
-    monkeypatch.setattr(env.window, "_compile_jobs", fake_compile)
+    monkeypatch.setattr(compile_actions, "compile_jobs", fake_compile)
     deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
     log = []
     results = on_thread(lambda: env.chat.workspace.compile_deck(deck, "instructor", compiler.CancelToken(), log.append))
@@ -646,8 +647,8 @@ def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monke
 
 def test_the_chats_stop_ends_a_compile_without_asking(env, monkeypatch):
     stopped = []
-    monkeypatch.setattr(env.window, "_compile_jobs", lambda jobs: True)
-    monkeypatch.setattr(env.window, "stop_compilation_now", lambda: stopped.append(True))
+    monkeypatch.setattr(compile_actions, "compile_jobs", lambda _window, jobs: True)
+    monkeypatch.setattr(compile_actions, "stop_now", lambda _window: stopped.append(True))
     deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
     cancel = compiler.CancelToken()
     box = {}

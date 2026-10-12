@@ -38,20 +38,20 @@ def job_kind(job) -> str:
     return f"{kind}-chapter" if job.chapter is not None else kind
 
 
-def _store_path() -> Path:
-    return project.transitional_context().settings_dir / "compile_passes.json"
+def _store_path(ctx: project.ProjectContext) -> Path:
+    return ctx.settings_dir / "compile_passes.json"
 
 
-def _load() -> dict:
+def _load(ctx: project.ProjectContext) -> dict:
     try:
-        data = json.loads(_store_path().read_text(encoding="utf-8"))
+        data = json.loads(_store_path(ctx).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
 
 
-def _write(data: dict) -> None:
-    path = _store_path()
+def _write(ctx: project.ProjectContext, data: dict) -> None:
+    path = _store_path(ctx)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -75,7 +75,7 @@ _SIMILAR = {
 }
 
 
-def predict(job) -> tuple[Optional[int], bool]:
+def predict(ctx: project.ProjectContext, job) -> tuple[Optional[int], bool]:
     """(passes, known): the count this job's deck needed last time for the
     same kind of job -- or for a kind that needs the same passes (presenter /
     instructor) -- with known=True; else a related kind's count as an
@@ -83,7 +83,7 @@ def predict(job) -> tuple[Optional[int], bool]:
     known=False; else (None, False)."""
     kind = job_kind(job)
     with _lock:
-        counts = _load().get(job.deck.name, {})
+        counts = _load(ctx).get(job.deck.name, {})
     if not isinstance(counts, dict):
         return None, False
 
@@ -103,19 +103,19 @@ def predict(job) -> tuple[Optional[int], bool]:
     return None, False
 
 
-def expected(job) -> Optional[int]:
+def expected(ctx: project.ProjectContext, job) -> Optional[int]:
     """The passes this job's deck needed last time, or None if unknown."""
     with _lock:
-        value = _load().get(job.deck.name, {}).get(job_kind(job))
+        value = _load(ctx).get(job.deck.name, {}).get(job_kind(job))
     return value if isinstance(value, int) and value > 0 else None
 
 
-def remember(job, passes: int) -> None:
+def remember(ctx: project.ProjectContext, job, passes: int) -> None:
     """Record a finished job's pass count (written only when it changed)."""
     if passes <= 0:
         return
     with _lock:
-        data = _load()
+        data = _load(ctx)
         deck = data.setdefault(job.deck.name, {})
         if not isinstance(deck, dict):
             deck = data[job.deck.name] = {}
@@ -124,22 +124,22 @@ def remember(job, passes: int) -> None:
             return
         deck[kind] = passes
         try:
-            _write(data)
+            _write(ctx, data)
         except OSError:
             pass                    # a prediction only: never fail a compile over it
 
 
-def copy_counts(source_name: str, new_name: str) -> None:
+def copy_counts(ctx: project.ProjectContext, source_name: str, new_name: str) -> None:
     """A duplicated deck starts with the remembered counts of its original
     (v5.21.0, direct instruction): the copy has the same content, so it needs
     the same passes. Nothing happens if the original was never compiled."""
     with _lock:
-        data = _load()
+        data = _load(ctx)
         counts = data.get(source_name)
         if not isinstance(counts, dict) or not counts:
             return
         data[new_name] = dict(counts)
         try:
-            _write(data)
+            _write(ctx, data)
         except OSError:
             pass

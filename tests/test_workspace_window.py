@@ -18,7 +18,7 @@ from slidemage.deck_scan import Chapter, Deck
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
-from slidemage.ui.workspace import deck_actions, maintenance, side_panels, slide_list, window as window_module
+from slidemage.ui.workspace import compile_actions, deck_actions, maintenance, side_panels, slide_list, window as window_module
 from slidemage.ui.workspace.actions import VIEW_AND_BUILD
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
@@ -316,7 +316,7 @@ def test_the_view_comes_back_with_the_deck(window):
 
 def compiled(window, monkeypatch):
     jobs: list = []
-    monkeypatch.setattr(window, "_compile_jobs", lambda batch: jobs.append(batch))
+    monkeypatch.setattr(compile_actions, "compile_jobs", lambda _window, batch: jobs.append(batch))
     return jobs
 
 
@@ -393,8 +393,8 @@ def test_transcript_entries_write_the_current_decks_transcript(window, monkeypat
 def test_log_lines_keep_working_after_the_decks_are_reloaded(window):
     window.reload_decks()
     for line in ("==== Compiling a -> a ====", "==== PASS: a -> pdf ====", "==== Done: 1 passed ===="):
-        window._log(line)
-    assert window.log_drawer.text.toPlainText().splitlines()[-1] == "==== Done: 1 passed ===="
+        window.log(line)
+    assert window.compile_display.drawer.text.toPlainText().splitlines()[-1] == "==== Done: 1 passed ===="
 
 
 # -- Images and the pages ----------------------------------------------------------
@@ -476,23 +476,23 @@ def test_an_edit_rescans_and_the_slide_list_keeps_what_it_takes_to_undo_it(windo
 
 def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(window, monkeypatch):
     seen, warned = [], []
-    monkeypatch.setattr(window, "_compile_current", lambda kind, pages=None: seen.append((kind, pages)))
+    monkeypatch.setattr(compile_actions, "compile_current", lambda _window, kind, pages=None: seen.append((kind, pages)))
     monkeypatch.setattr(window_module.QMessageBox, "warning", lambda *a: warned.append(a[2]))
     monkeypatch.setattr(window_module.QMessageBox, "information", lambda *a: warned.append(a[2]))
     asked = []
     from slidemage import partial_compile
     monkeypatch.setattr(partial_compile, "frames_for_slides",
-                        lambda job, ids: asked.append(ids) or [4, 7])
+                        lambda ctx, job, ids: asked.append(ids) or [4, 7])
     window.state.set_view("during-course")
-    window._compile_slides(["1ab", "1cd"])
+    compile_actions.compile_slides(window, ["1ab", "1cd"])
     assert asked == [["1ab", "1cd"]] and seen == [("during-course", [4, 7])]
-    monkeypatch.setattr(partial_compile, "frames_for_slides", lambda job, ids: [])
-    window._compile_slides(["1ab"])
+    monkeypatch.setattr(partial_compile, "frames_for_slides", lambda ctx, job, ids: [])
+    compile_actions.compile_slides(window, ["1ab"])
     assert "None of these slides" in warned[-1] and len(seen) == 1
-    def refuse(job, ids):
+    def refuse(ctx, job, ids):
         raise partial_compile.PartialError("compile the whole deck once")
     monkeypatch.setattr(partial_compile, "frames_for_slides", refuse)
-    window._compile_slides(["1ab"])
+    compile_actions.compile_slides(window, ["1ab"])
     assert warned[-1] == "compile the whole deck once" and len(seen) == 1
 
 
@@ -544,8 +544,6 @@ def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):
 
 def open_several(window, monkeypatch, ticks=(), *, accept=True, select_all=False, clear=False):
     """Runs Compile -> Several decks… with `ticks` ((deck name, kind) pairs) ticked."""
-    from slidemage.ui.workspace import compile_jobs
-
     seen: dict = {}
 
     def fake_exec(sheet):
@@ -558,7 +556,7 @@ def open_several(window, monkeypatch, ticks=(), *, accept=True, select_all=False
             sheet.boxes[key].setChecked(True)
         return accept
 
-    monkeypatch.setattr(compile_jobs.MultiCompileSheet, "exec", fake_exec)
+    monkeypatch.setattr(compile_actions.MultiCompileSheet, "exec", fake_exec)
     window.topbar.command.emit("compile:several")
     return seen["sheet"]
 
@@ -569,7 +567,7 @@ def test_several_decks_queue_all_ticked_pdfs_in_the_usual_order(window, monkeypa
         ("slidemage-manual", "during-course"), ("course", "instructor"), ("#workdeck", "instructor"),
         ("course", "chapters"), ("course", "presenter")])
     assert len(jobs) == 1                      # one run for all decks
-    ordered = order_jobs(jobs[0])              # what _compile_jobs does: version by version
+    ordered = order_jobs(jobs[0])              # what compile_jobs does: version by version
     assert [(j.deck.name, j.version, j.presenter, j.chapter is not None) for j in ordered] == [
         ("course", "instructor", True, False), ("#workdeck", None, False, False),
         ("course", "instructor", False, False), ("slidemage-manual", "during-course", False, False),

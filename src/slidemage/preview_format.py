@@ -32,6 +32,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from .compiler import FATAL_ERROR_RE
 from .preview_metrics import stage
 from .processes import no_console_kwargs
 
@@ -151,7 +152,7 @@ def disable(directory: Path) -> None:
 
 
 def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env: dict,
-           fatal_error_re, log, lock) -> Path | None:
+           log, lock) -> Path | None:
     """Return the format's directory (its `preamble.fmt` is the format), or None.
 
     `lock` is preview_build.build_lock: formats are shared by every slide of a
@@ -169,12 +170,12 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
             if fmt.is_file() and _fresh(directory / 'format.json'):
                 return directory
             return _build(preamble, directory, project_root=project_root, env=env,
-                          fatal_error_re=fatal_error_re, log=log)
+                          log=log)
     except OSError:
         return None
 
 
-def _build(preamble, directory, *, project_root, env, fatal_error_re, log):
+def _build(preamble, directory, *, project_root, env, log):
     for old in directory.glob(NAME + '.*'):
         old.unlink(missing_ok=True)
     source = stem(directory).with_suffix('.tex')
@@ -204,7 +205,7 @@ def _build(preamble, directory, *, project_root, env, fatal_error_re, log):
     fls = stem(directory).with_suffix('.fls')
     # LaTeX's pre_dump hook prints a Lua error about lua-uni-algos' lazy tables
     # when the format is dumped; it does not affect the format, so it is not a failure.
-    errors = [m for m in fatal_error_re.finditer(contents)
+    errors = [m for m in FATAL_ERROR_RE.finditer(contents)
               if 'lua-uni-' not in contents[m.start():contents.find('\n', m.start())]]
     if (not fmt.is_file() or errors or '\n!' in contents
             or 'Beginning to dump on file' not in contents or not fls.is_file()):

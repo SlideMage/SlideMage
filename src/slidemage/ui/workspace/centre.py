@@ -356,10 +356,10 @@ class CentreColumn(QFrame):
         id_slug, version = self._file_slide()
         deck = self.state.deck
         if row is not None and (self._path is None or (id_slug == row.call.id_slug and version == row.call.version)):
-            return for_call(deck, row.call, row.position), row, row.title
+            return for_call(self.state.project, deck, row.call, row.position), row, row.title
         if self._path is None:
             return None, None, ""
-        target = for_path(self._path)
+        target = for_path(self.state.project, self._path)
         return target, None, deck_outline.slide_file_title(self._path, id_slug) if target else ""
 
     def _no_preview_message(self, fallback: str) -> str:

@@ -70,7 +70,7 @@ _SNAPSHOT_FILENAME_RE = re.compile(
 # pruning by (bare_id, language) pairs for.
 
 
-def needed_slides_by_template() -> dict[str, set[str]]:
+def needed_slides_by_template(ctx: project.ProjectContext) -> dict[str, set[str]]:
     """Every (template, full id_slug) combination actually in use across
     every deck this project knows about -- active *and* archived, since
     an archived deck's own editor tab still shows cached previews, so its
@@ -82,7 +82,7 @@ def needed_slides_by_template() -> dict[str, set[str]]:
     """
     needed: dict[str, set[str]] = {}
     from . import deck_language
-    for deck in scan_decks(project.transitional_context()):
+    for deck in scan_decks(ctx):
         template = slide_snapshot.detect_template(deck.preamble_text)
         bucket = needed.setdefault(template, set())
         for call in deck_editor.parse_slide_calls(deck):
@@ -92,7 +92,7 @@ def needed_slides_by_template() -> dict[str, set[str]]:
     return needed
 
 
-def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> None:
+def _prune_stale_snapshots(ctx: project.ProjectContext, needed: dict[str, set[str]], log: LogCallback) -> None:
     """Delete every cached preview file whose (template, bare id) isn't in
     `needed` any more -- a slide no deck references under that template
     (removed from every deck, or moved to a different institution) leaves
@@ -105,7 +105,7 @@ def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> Non
         for template, full_slugs in needed.items()
     }
     removed = 0
-    for path in project.transitional_context().slide_previews_dir.glob("*.png"):
+    for path in ctx.slide_previews_dir.glob("*.png"):
         match = _SNAPSHOT_FILENAME_RE.match(path.name)
         if match is None:
             continue  # not a recognized snapshot filename -- leave it alone
@@ -135,13 +135,12 @@ def _build_deck_text(template: str, slide_ids: list[str]) -> tuple[str, int]:
 
 
 def _run_one_template(
-    template: str, slide_ids: list[str], log: LogCallback,
+    ctx: project.ProjectContext, template: str, slide_ids: list[str], log: LogCallback,
     cancel: Optional[CancelToken], base_jobname: Optional[str],
 ) -> bool:
     """Compile one throwaway deck for exactly this template's own needed
     slides -- same mechanics run() always used, just scoped to a subset
     of the project's slides instead of every one of them."""
-    ctx = project.transitional_context()
     ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     jobname = base_jobname or f"{JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}"
     temp_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
@@ -161,7 +160,7 @@ def _run_one_template(
     )
     job = CompileJob(deck=deck, version="instructor", chapter=None, resolve_translations=False)
     try:
-        return run_job(job, log, cancel=cancel)
+        return run_job(ctx, job, log, cancel=cancel)
     finally:
         # Safe as soon as the compile itself is done: nothing downstream
         # (the PDF move, the snapshot capture -- both possibly still
@@ -170,7 +169,7 @@ def _run_one_template(
         temp_path.unlink(missing_ok=True)
 
 
-def run(log: LogCallback, cancel: Optional[CancelToken] = None,
+def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelToken] = None,
        base_jobnames: Optional[dict[str, str]] = None,
        needed: Optional[dict[str, set[str]]] = None) -> bool:
     """Scan every deck for which (template, slide) combinations it
@@ -191,7 +190,7 @@ def run(log: LogCallback, cancel: Optional[CancelToken] = None,
     call that separately first.
     """
     if needed is None:
-        needed = needed_slides_by_template()
+        needed = needed_slides_by_template(ctx)
     total_slides = sum(len(ids) for ids in needed.values())
     log(f"==== Update previews: {total_slides} slide-template combination(s) "
        f"across {len(needed)} template(s) ====")
@@ -213,11 +212,11 @@ def run(log: LogCallback, cancel: Optional[CancelToken] = None,
             continue
         log(f"---- {template_name}: {len(slide_ids)} slide(s) ----")
         base_jobname = (base_jobnames or {}).get(template)
-        ok = _run_one_template(template, slide_ids, log, cancel, base_jobname)
+        ok = _run_one_template(ctx, template, slide_ids, log, cancel, base_jobname)
         all_ok = ok and all_ok
         if cancel is not None and cancel.is_set():
             break
 
     if cancel is None or not cancel.is_set():
-        _prune_stale_snapshots(needed, log)
+        _prune_stale_snapshots(ctx, needed, log)
     return all_ok

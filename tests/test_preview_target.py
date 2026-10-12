@@ -4,6 +4,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
+from slidemage.project import transitional_context
 from slidemage import deck_editor, preview_target, slide_preview, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from conftest import use_project
@@ -32,7 +33,7 @@ def renders(monkeypatch):
 def target_of(body, index=0):
     deck = make_deck(body)
     calls = deck_editor.parse_slide_calls(deck)
-    return deck, preview_target.for_call(deck, calls[index], index + 1)
+    return deck, preview_target.for_call(transitional_context(), deck, calls[index], index + 1)
 
 
 def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(renders):
@@ -40,7 +41,7 @@ def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(r
     assert target.macro == "slidestep" and target.frame_number == 2 and target.template == "uni-ibk"
     assert preview_target.render(target, "during-course", "DE", footer_timestamp=True, log=print) == "a.pdf"
     kind, args, kwargs = renders[0]
-    assert args[:2] == ("slidestep", "bbb-EN-Two")
+    assert args[1:3] == ("slidestep", "bbb-EN-Two")
     assert kwargs["deck_version"] == "during-course" and kwargs["deck_language"] == "de"
     assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2" and kwargs["footer_timestamp"]
     assert kwargs["capture_snapshot"]
@@ -54,7 +55,7 @@ def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instruct
     preview_target.render_text(target, "BODY", "after-course", "EN", footer_timestamp=False, log=print,
                                presenter=True)
     (_, args, kwargs), (_, _, presenter) = renders
-    assert args == ("aaa-EN-One", "BODY")
+    assert args[1:] == ("aaa-EN-One", "BODY")
     assert (kwargs["deck_version"], kwargs["preview_mode"], kwargs["overlay"]) == ("after-course", "region", 2)
     assert kwargs["frame_number"] == 1 and kwargs["deck_language"] == "en"
     assert presenter["deck_version"] == "instructor" and presenter["presenter"]
@@ -67,15 +68,15 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     slides = tmp_path / "slides"
     slides.mkdir()
     (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
-    current = preview_target.for_path(slides / "abc-EN-Demo-current.tex")
-    frozen = preview_target.for_path(slides / "abc-EN-Demo-v1-0-0.tex")
+    current = preview_target.for_path(transitional_context(), slides / "abc-EN-Demo-current.tex")
+    frozen = preview_target.for_path(transitional_context(), slides / "abc-EN-Demo-v1-0-0.tex")
     assert (current.macro, current.version, current.preamble_text) == ("slide", None, None)
     assert (frozen.macro, frozen.version) == ("slideversion", "1-0-0")
     assert current.source_path == slides / "abc-EN-Demo-current.tex"
     assert frozen.source_path == slides / "abc-EN-Demo-v1-0-0.tex"
-    assert preview_target.for_path(slides / "deck.tex") is None
+    assert preview_target.for_path(transitional_context(), slides / "deck.tex") is None
     assert frozen.is_frozen_alone
-    slide_snapshot.snapshot_path("abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
+    slide_snapshot.snapshot_path(transitional_context(), "abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
     assert preview_target.cached_image(frozen) is None
     preview_target.render(frozen, "instructor", "EN", footer_timestamp=False, log=print)
     assert renders[0][2]["capture_snapshot"] is False
@@ -91,11 +92,11 @@ def test_the_cached_image_is_fresh_only_when_newer_than_the_source(tmp_path, mon
     slides = tmp_path / "slides"
     slides.mkdir()
     (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
-    target = preview_target.for_path(slides / "abc-EN-Demo-current.tex")
+    target = preview_target.for_path(transitional_context(), slides / "abc-EN-Demo-current.tex")
     assert preview_target.cached_image(target) is None
     source = slides / "abc-EN-Demo-current.tex"
     source.write_text("x", encoding="utf-8")
-    png = slide_snapshot.snapshot_path("abc", target.template, slide_snapshot.FULL_SIZE)
+    png = slide_snapshot.snapshot_path(transitional_context(), "abc", target.template, slide_snapshot.FULL_SIZE)
     png.write_bytes(b"png")
     os.utime(png, (1, source.stat().st_mtime + 10))
     assert preview_target.cached_image(target) == (png, True)

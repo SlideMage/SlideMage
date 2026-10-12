@@ -147,8 +147,8 @@ def main():
     manifest = dict(
         schema=SCHEMA, selected_indices=selected, edit_version=EDIT_VERSION,
         project_inputs=tree_hashes(root),
-        framework_inputs=tree_hashes(Path(slide_preview.build_env()["SLIDEMASTER_LATEX"]))
-        if slide_preview.build_env().get("SLIDEMASTER_LATEX") else {},
+        framework_inputs=tree_hashes(Path(slide_preview.build_env(project.transitional_context())["SLIDEMASTER_LATEX"]))
+        if slide_preview.build_env(project.transitional_context()).get("SLIDEMASTER_LATEX") else {},
         preamble_hash=hashlib.sha256(deck.preamble_text.encode()).hexdigest(),
         calls=[
             dict(
@@ -166,7 +166,7 @@ def main():
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(configs=args.configs, repeats=args.repeats, no_cache=args.no_cache,
              no_images=args.no_images, defer_images=args.defer_images, order_seed=args.order_seed),
-        slide_preview.build_env())
+        slide_preview.build_env(project.transitional_context()))
     identity["pymupdf"] = pymupdf.VersionBind
     experiment_id = digest(dict(manifest=manifest, implementation=identity))
     deadline = time.monotonic() + args.time_budget
@@ -176,7 +176,7 @@ def main():
                 or (args.deadline is not None and time.time() >= args.deadline))
     original_compile = slide_preview.compile_and_extract
 
-    def frozen_compile(wrapper, *a, **kw):
+    def frozen_compile(ctx, wrapper, *a, **kw):
         wrapper = wrapper.replace(
             r"\begin{document}",
             r"\begin{document}"
@@ -186,7 +186,7 @@ def main():
         )
         if args.no_images:
             kw["snapshot_template"] = None
-        return original_compile(wrapper, *a, **kw)
+        return original_compile(ctx, wrapper, *a, **kw)
 
     slide_preview.compile_and_extract = frozen_compile
     try:
@@ -257,7 +257,7 @@ def main():
                                         if call.steps
                                         else ""
                                     ) + body
-                                    pdf = slide_preview.render_slide_text_to_pdf(
+                                    pdf = slide_preview.render_slide_text_to_pdf(project.transitional_context(), 
                                         call.id_slug,
                                         text,
                                         preview_mode="region"
@@ -266,7 +266,7 @@ def main():
                                         **common,
                                     )
                                 else:
-                                    pdf = slide_preview.render_slide_to_pdf(
+                                    pdf = slide_preview.render_slide_to_pdf(project.transitional_context(), 
                                         call.macro,
                                         call.id_slug,
                                         call.version,
@@ -283,7 +283,7 @@ def main():
                                             pdf, canonical
                                         )
                                         if images:
-                                            slide_snapshot.publish_preview(
+                                            slide_snapshot.publish_preview(project.transitional_context(), 
                                                 images,
                                                 slide_language.bare_id(call.id_slug),
                                                 slide_snapshot.detect_template(

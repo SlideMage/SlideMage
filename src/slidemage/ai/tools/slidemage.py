@@ -134,8 +134,8 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
         deck = open_deck(ctx)
         row = deck_outline.slide_row(deck, slide_language.bare_id(path.name), context.view, context.language)
         if row is not None and row.call.source_filename == path.name:
-            target = preview_target.for_call(deck, row.call, row.position)
-    target = target or preview_target.for_path(path)
+            target = preview_target.for_call(project.transitional_context(), deck, row.call, row.position)
+    target = target or preview_target.for_path(project.transitional_context(), path)
     if target is None:
         raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
     try:

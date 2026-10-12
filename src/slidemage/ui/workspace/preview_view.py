@@ -531,7 +531,7 @@ class PreviewPane(Surface):
         else:
             if job.images and job.snapshot_template:
                 try:
-                    slide_snapshot.publish_preview(job.images, self._target.bare_id, job.snapshot_template)
+                    slide_snapshot.publish_preview(self.app.project, job.images, self._target.bare_id, job.snapshot_template)
                 except Exception as exc:
                     self.app.log(f"    (preview snapshot not updated: {exc})")
             self._last_pdf = job.pdf
@@ -596,7 +596,7 @@ class PreviewPane(Surface):
         view, language = self.state.view, self.state.language
         timestamp = self._footer_timestamp()
         self._start(lambda: preview_target.render(
-            target, view, language, footer_timestamp=timestamp, log=self.app.signals.log.emit, capture_snapshot=False),
+            target, view, language, footer_timestamp=timestamp, log=self.app.log, capture_snapshot=False),
             self._job(target, snapshot_template=target.template
                       if view == 'instructor' and not target.is_frozen_alone else None), debounce=debounce)
 
@@ -630,7 +630,7 @@ class PreviewPane(Surface):
         overlay = None if scope == "element" else (self._overlay or None)
         timestamp = self._footer_timestamp()
         self._start(lambda: preview_target.render_text(
-            target, body, view, language, footer_timestamp=timestamp, log=self.app.signals.log.emit,
+            target, body, view, language, footer_timestamp=timestamp, log=self.app.log,
             presenter=presenter, mode=scope, overlay=overlay, capture_snapshot=False),
             self._job(target, external=presenter, buffer_text=text,
                       snapshot_template=target.template if view == 'instructor' and not presenter

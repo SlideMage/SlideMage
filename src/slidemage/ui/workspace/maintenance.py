@@ -14,7 +14,7 @@ Don't ask again (per change). Appearance-only changes never pop up; they are
 listed under ⋮ → Project compatibility.
 
 Plain functions of the window: each takes the WorkspaceWindow (window.py) first, which
-provides `project`, `log`, `signals`, `compiling` and `_resolve_dirty_edits()`.
+provides `project`, `log`, `update_check_done`, `compiling` and `_resolve_dirty_edits()`.
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ from ..dialogs.about import AboutSheet
 from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, HousekeepingSheet
 from ..dialogs.open_project import NewerProjectSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet
+from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 # The framework/manual copy check (bundled_copies.py) runs once, shortly after
@@ -274,7 +275,7 @@ def startup_update_check(window) -> None:
                 updater.fetch_releases(), version_mod.VERSION_NUMBER)
         except updater.UpdateError as exc:
             result = exc
-        window.signals.update_check_done.emit(result)
+        window.update_check_done.emit(result)
 
     threading.Thread(target=work, daemon=True).start()
 
@@ -472,7 +473,7 @@ def on_housekeeping(window) -> None:
     sheet = housekeeping_sheet(window)
     sheet.exec()
     if sheet.update_previews:
-        window._on_update_previews()
+        compile_actions.update_previews(window)
 
 
 def empty_pdf_folder(window) -> None:
@@ -484,7 +485,7 @@ def empty_pdf_folder(window) -> None:
     if reply != QMessageBox.StandardButton.Yes:
         return
     housekeeping.delete_files(files)
-    window._log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
+    window.log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
 
 
 def remove_temp_files(window) -> None:
@@ -509,7 +510,7 @@ def remove_temp_files(window) -> None:
     if reply != QMessageBox.StandardButton.Yes:
         return
     housekeeping.remove_temp_files(window.project, found)
-    window._log(
+    window.log(
         f"Removed {found.count - len(found.scratch)} temp item(s) "
         f"({len(found.build)} build item(s) in .build/, "
         f"{len(found.wrappers)} wrapper file(s) in decks/) "
@@ -531,9 +532,9 @@ def on_sync_translation_links(window) -> int:
     involved, so (unlike Update previews) this runs synchronously rather
     than on a background thread. Returns the number of files updated."""
     changed, missing = slide_rename.regenerate_translation_links()
-    window._log(f"Sync translation links: {changed} file(s) updated")
+    window.log(f"Sync translation links: {changed} file(s) updated")
     for line in missing:
-        window._log(f"    (unresolved: {line})")
+        window.log(f"    (unresolved: {line})")
     if missing:
         QMessageBox.warning(
             window, "Sync translation links",

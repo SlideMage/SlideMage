@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
 from . import app_settings, compile_log, compile_records, compiler, project
-from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
+from .compiler import CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
     LOG_FILE_LINE_RE as _LOG_FILE_LINE_RE,
@@ -440,8 +440,8 @@ def tex_roots() -> list[Path]:
     return list(roots.values())
 
 
-def _isolated_env(epoch: int, framework_dir: Optional[Path] = None) -> dict:
-    env = compiler.build_env()
+def _isolated_env(ctx: project.ProjectContext, epoch: int, framework_dir: Optional[Path] = None) -> dict:
+    env = compiler.build_env(ctx)
     for name in ISOLATING_ENV_VARS:
         env.pop(name, None)
     if framework_dir is not None:
@@ -459,22 +459,17 @@ def run_recorded_compile(
     Raises SnapshotError on a failed compile (same pass/fail rule as
     compiler.run_job: a PDF and no LaTeX error in the log)."""
     build_dir.mkdir(parents=True, exist_ok=True)
-    out = build_dir.resolve().as_posix()
-    cmd = ["latexmk", "-f", "-recorder", f"-jobname={jobname}",
-           f"-auxdir={out}", f"-outdir={out}", _rel(wrapper, cwd)]
+    cmd = compiler.latexmk_command(wrapper, jobname, build_dir.resolve(), "-f", "-recorder", cwd=cwd)
     try:
-        compiler.run_streamed(cmd, cwd=cwd, env=env, log=log, cancel=cancel,
-                              errors="replace")
+        build = compiler.run_latexmk(cmd, jobname=jobname, outdir=build_dir, cwd=cwd, env=env, log=log,
+                                     cancel=cancel)
     except FileNotFoundError as exc:
         raise SnapshotError("latexmk not found on PATH -- is a TeX distribution installed?") from exc
-    if cancel is not None and cancel.is_set():
+    if build.stopped:
         raise SnapshotError("stopped by user")
-    pdf = build_dir / f"{jobname}.pdf"
-    log_path = build_dir / f"{jobname}.log"
+    pdf, log_path, log_text = build.pdf, build.log_path, build.log_text
     fls = build_dir / f"{jobname}.fls"
-    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
-    if not (pdf.is_file() and pdf.stat().st_size > 0) or not log_text \
-            or FATAL_ERROR_RE.search(log_text):
+    if not build.ok:
         raise SnapshotError(f"{jobname} did not compile -- see {log_path}")
     if not fls.is_file():
         raise SnapshotError(f"{jobname}: latexmk wrote no {fls.name} (-recorder)")
@@ -971,10 +966,10 @@ def write_zip(source: Path, target: Path, top: str, when: datetime) -> None:
 # Verification
 
 @contextmanager
-def _scratch_dir(kind: str) -> Iterator[Path]:
+def _scratch_dir(ctx: project.ProjectContext, kind: str) -> Iterator[Path]:
     """A temporary folder in the project's .build/ (see verify_folder for why
     not %TEMP%), protected from the GUI's temp-file cleanup while in use."""
-    path = project.transitional_context().build_dir / f"snapshot-{kind}-{uuid.uuid4().hex}"
+    path = ctx.build_dir / f"snapshot-{kind}-{uuid.uuid4().hex}"
     path.mkdir(parents=True)
     compiler.set_build_dir_active(path, True)
     try:
@@ -1018,7 +1013,7 @@ def compare_pdfs(reference: Path, rendered: Path) -> list[str]:
     return problems
 
 
-def verify_folder(snapshot_root: Path, log: LogCallback,
+def verify_folder(ctx: project.ProjectContext, snapshot_root: Path, log: LogCallback,
                   cancel: Optional[CancelToken] = None,
                   check_hashes: bool = True) -> VerifyReport:
     """Render a snapshot folder from itself and check that (1) every file the
@@ -1047,7 +1042,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
     # Build output in the project's .build/, not the system temp folder: Git
     # for Windows' perl (which runs latexmk) maps %TEMP% to /tmp, a path the
     # native TeX engine can't resolve.
-    with _scratch_dir("verify") as tmp:
+    with _scratch_dir(ctx, "verify") as tmp:
         for job in manifest["jobs"]:
             if cancel is not None and cancel.is_set():
                 report.ok = False
@@ -1062,7 +1057,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
             key = progress_key(jobname, verify=True)
             log(compile_log.compiling(manifest.get('deck_name', '?'), key))
             log("    (verifying: rendering from the snapshot itself)")
-            env = _isolated_env(int(job.get("source_date_epoch", default_epoch)), framework)
+            env = _isolated_env(ctx, int(job.get("source_date_epoch", default_epoch)), framework)
             try:
                 out = run_recorded_compile(project_dir, project_dir / job["wrapper"], jobname,
                                            build, env, log, cancel)
@@ -1099,21 +1094,21 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
     return report
 
 
-def verify_snapshot(path: Path, log: LogCallback,
+def verify_snapshot(ctx: project.ProjectContext, path: Path, log: LogCallback,
                     cancel: Optional[CancelToken] = None) -> VerifyReport:
     """verify_folder() for a snapshot folder or zip (extracted to a temporary
     folder first)."""
     if path.is_dir():
-        return verify_folder(path, log, cancel)
+        return verify_folder(ctx, path, log, cancel)
     if not (path.is_file() and path.suffix.lower() == ".zip"):
         return VerifyReport(False, [f"{path}: not a snapshot folder or zip"])
-    with _scratch_dir("extract") as tmp:
+    with _scratch_dir(ctx, "extract") as tmp:
         with zipfile.ZipFile(path) as zf:
             zf.extractall(tmp)
         tops = [p for p in Path(tmp).iterdir() if p.is_dir()]
         if len(tops) != 1:
             return VerifyReport(False, [f"{path.name}: expected one top-level folder"])
-        return verify_folder(tops[0], log, cancel)
+        return verify_folder(ctx, tops[0], log, cancel)
 
 
 # --------------------------------------------------------------------------
@@ -1127,12 +1122,12 @@ def _check_cancel(cancel: Optional[CancelToken]) -> None:
 def create_snapshot(
     deck: Deck, options: SnapshotOptions, log: LogCallback,
     cancel: Optional[CancelToken] = None, progress: Optional[ProgressCallback] = None,
-    *, project_root: Path, when: Optional[datetime] = None,
+    *, ctx: project.ProjectContext, when: Optional[datetime] = None,
 ) -> SnapshotResult:
     """Snapshot one deck into <project>/snapshots/. Never raises for an
     ordinary failure: the result says what went wrong, and nothing half-
     written is left behind."""
-    ctx = project.transitional_context()
+    project_root = ctx.root
     progress = progress or (lambda _text: None)
     when = (when or datetime.now()).replace(microsecond=0)
     epoch = int(when.timestamp())
@@ -1150,13 +1145,13 @@ def create_snapshot(
         # nothing it read has changed since (compile_records.py).
         outputs: list[_JobOutput] = []
         wrapper_texts: list[str] = []
-        env = _isolated_env(epoch)
+        env = _isolated_env(ctx, epoch)
         if os.environ.get("SLIDEMASTER_LATEX"):
             env["SLIDEMASTER_LATEX"] = os.environ["SLIDEMASTER_LATEX"]
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
             key = progress_key(job.jobname)
-            wrapper_text = compiler.wrapper_text(job)
+            wrapper_text = compiler.wrapper_text(ctx, job)
             wrapper_texts.append(wrapper_text)
             if options.reuse:
                 fresh, why = compile_records.fresh_output(ctx.build_dir, job.jobname,
@@ -1287,7 +1282,7 @@ def create_snapshot(
         _check_cancel(cancel)
         if options.verify:
             progress("verifying (rendering from the snapshot)")
-            report = verify_folder(partial, log, cancel, check_hashes=False)
+            report = verify_folder(ctx, partial, log, cancel, check_hashes=False)
             for note in report.notes:
                 log(f"    {note}")
             if not report.ok:
@@ -1333,7 +1328,7 @@ def snapshot_decks(
     cancel: Optional[CancelToken] = None,
     progress: Optional[Callable[[int, int, str, str], None]] = None,
     delete_old: Optional[list[ExistingSnapshot]] = None,
-    *, project_root: Path,
+    *, ctx: project.ProjectContext,
 ) -> list[SnapshotResult]:
     """Snapshot `decks` one after the other. One deck's failure doesn't stop
     the others; a cancel stops the current deck and skips the rest. Each of
@@ -1350,7 +1345,7 @@ def snapshot_decks(
             if progress is not None:
                 progress(i, len(decks), deck.name, text)
 
-        result = create_snapshot(deck, options, log, cancel, step, project_root=project_root)
+        result = create_snapshot(deck, options, log, cancel, step, ctx=ctx)
         if result.ok and delete_old:
             for old in delete_old:
                 if old.deck_name != deck.name or not old.path.exists():
@@ -1411,7 +1406,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"{snap.label}  {snap.path.name}")
         return 0
     if args.command == "verify":
-        report = verify_snapshot(Path(args.path), log)
+        report = verify_snapshot(ctx, Path(args.path), log)
         for note in report.notes:
             print(f"note: {note}")
         for problem in report.problems:
@@ -1425,7 +1420,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                               reuse=not args.recompile)
     old = find_snapshots([d.name for d in decks], root=ctx.root) if args.delete_old else []
     started = time.monotonic()
-    results = snapshot_decks(decks, options, log, delete_old=old, project_root=ctx.root)
+    results = snapshot_decks(decks, options, log, delete_old=old, ctx=ctx)
     print()
     for r in results:
         status = "OK  " if r.ok else "FAIL"

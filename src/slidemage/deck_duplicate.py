@@ -12,7 +12,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from . import compile_passes
+from . import compile_passes, project
 from .deck_scan import Deck
 
 # Characters Windows itself refuses in a filename -- a deck name here is
@@ -47,5 +47,5 @@ def duplicate_deck(deck: Deck, new_name: str) -> Path:
         raise ValueError(reason)
     dest = deck.path.parent / f"{new_name}.tex"
     shutil.copy2(str(deck.path), str(dest))
-    compile_passes.copy_counts(deck.name, new_name)   # same content, same passes
+    compile_passes.copy_counts(project.transitional_context(), deck.name, new_name)   # same content, same passes
     return dest

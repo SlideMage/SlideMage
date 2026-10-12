@@ -5,7 +5,7 @@ bibliography -- since v5.15.0 the number the deck needed last time, see
 compile_passes.py; progress *within* a pass from the slide currently being
 typeset; also for single-slide renders and Update previews).
 
-No Qt in here -- `BatchProgress.feed(line)` is called by the window's `_log()` (ui/workspace/compile_jobs.py)
+No Qt in here -- `BatchProgress.feed(line)` is called by the compile controller (ui/workspace/compile_controller.py)
 for every log line and returns the new (fraction, text) when something
 changed, so the whole thing can be tested by replaying a captured log.
 
@@ -72,7 +72,8 @@ def passes_for(uses_biblatex: bool) -> int:
     return PASSES_WITH_BIBLIOGRAPHY if uses_biblatex else PASSES_WITHOUT_BIBLIOGRAPHY
 
 
-def count_job_slides(deck, version: Optional[str], chapter, language: Optional[str] = None) -> int:
+def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], chapter,
+                    language: Optional[str] = None) -> int:
     """Slide calls a compile of `deck` (in `version`, whole or one chapter)
     typesets per pass -- the same scoping the pre-render syntax check uses:
     calls left out of the version by \\conditionalslide/\\slidestep are not
@@ -96,7 +97,7 @@ def count_job_slides(deck, version: Optional[str], chapter, language: Optional[s
         body = masked_same_length(text)[deck.preamble_end:]
         for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
-            frag = project.transitional_context().decks_dir / (name if name.endswith(".tex") else name + ".tex")
+            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
                 total += sum(1 for s in deck_language.slots(deck_language.calls_in(frag_text, []), language)
@@ -104,15 +105,15 @@ def count_job_slides(deck, version: Optional[str], chapter, language: Optional[s
     return total
 
 
-def spec_for_job(job) -> JobSpec:
+def spec_for_job(ctx: project.ProjectContext, job) -> JobSpec:
     """JobSpec of a compiler.CompileJob: the passes this deck needed last
     time (compile_passes), else the 4/3 guess."""
     if getattr(job, "pages", None):
         # a page compile: two short single-pass runs, size unknown (busy bar)
         return JobSpec(1, 0, estimated=True)
-    remembered, known = compile_passes.predict(job)
+    remembered, known = compile_passes.predict(ctx, job)
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
-                   count_job_slides(job.deck, job.version, job.chapter, getattr(job, "language", None)),
+                   count_job_slides(ctx, job.deck, job.version, job.chapter, getattr(job, "language", None)),
                    estimated=not known)
 
 

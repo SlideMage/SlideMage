@@ -64,7 +64,7 @@ def main():
                     preamble = deck.preamble_text
                 with PreviewMetrics() as metrics:
                     pdf = slide_preview.render_slide_text_to_pdf(
-                        slug, body, preamble_text=preamble, preview_mode=args.mode,
+                        ctx, slug, body, preamble_text=preamble, preview_mode=args.mode,
                         overlay=args.overlay, reuse_build=not args.no_cache, log=print)
                 if args.profile:
                     print(json.dumps(metrics.to_dict()), flush=True)

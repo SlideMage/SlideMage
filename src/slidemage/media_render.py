@@ -37,25 +37,25 @@ from . import project
 _ZOOM = 3.0
 
 
-def rendered_png_path(pdf_path: Path) -> Path:
-    return project.transitional_context().pdf_render_cache_dir / f"{pdf_path.stem}.png"
+def rendered_png_path(ctx: project.ProjectContext, pdf_path: Path) -> Path:
+    return ctx.pdf_render_cache_dir / f"{pdf_path.stem}.png"
 
 
-def is_fresh(pdf_path: Path) -> bool:
-    png = rendered_png_path(pdf_path)
+def is_fresh(ctx: project.ProjectContext, pdf_path: Path) -> bool:
+    png = rendered_png_path(ctx, pdf_path)
     return png.is_file() and png.stat().st_mtime >= pdf_path.stat().st_mtime
 
 
-def ensure_rendered(pdf_path: Path) -> Path:
+def ensure_rendered(ctx: project.ProjectContext, pdf_path: Path) -> Path:
     """The cached PNG of `pdf_path`'s first page, rendering it first if
     missing or stale. Raises RuntimeError (wrapping whatever PyMuPDF
     raised) on a genuinely broken/unreadable PDF -- callers decide
     per-context whether that means skipping the image or showing an
     error, so it isn't swallowed here."""
-    png = rendered_png_path(pdf_path)
-    if is_fresh(pdf_path):
+    png = rendered_png_path(ctx, pdf_path)
+    if is_fresh(ctx, pdf_path):
         return png
-    project.transitional_context().pdf_render_cache_dir.mkdir(parents=True, exist_ok=True)
+    ctx.pdf_render_cache_dir.mkdir(parents=True, exist_ok=True)
     try:
         doc = fitz.open(pdf_path)
         try:

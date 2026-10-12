@@ -24,7 +24,7 @@ def main():
     def render(name, body, preamble=None, **options):
         logs = []
         with PreviewMetrics() as trace:
-            pdf = slide_preview.render_slide_text_to_pdf(
+            pdf = slide_preview.render_slide_text_to_pdf(project.transitional_context(), 
                 "zz1-EN-PreviewValidation",
                 body,
                 preamble_text=preamble or deck.preamble_text,

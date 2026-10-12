@@ -48,7 +48,7 @@ def find_temp_files(ctx: ProjectContext) -> TempFiles:
         # left behind by an interrupted snapshot; in a snapshot they're its own
         wrappers += ctx.decks_dir.rglob(f"{deck_snapshot.WRAPPER_PREFIX}*.tex")
     scratch = list(ctx.temp_dir.iterdir()) if ctx.temp_dir.exists() else []
-    return TempFiles(compiler.removable_build_entries(), [p for p in wrappers if not preview_build.is_active(p)], scratch)
+    return TempFiles(compiler.removable_build_entries(ctx), [p for p in wrappers if not preview_build.is_active(p)], scratch)
 
 
 def remove_temp_files(ctx: ProjectContext, found: TempFiles) -> None:

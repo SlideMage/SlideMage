@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
-from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
+from . import alt_blocks, alt_images, draft_prompts, media_render, project, tikz_render, translation_prompts
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .tex_source import COMMENT_RE
 
@@ -49,7 +49,7 @@ def _resolve_describable(resolved: Path) -> Path | None:
         return resolved
     if suffix == ".pdf":
         try:
-            return media_render.ensure_rendered(resolved)
+            return media_render.ensure_rendered(project.transitional_context(), resolved)
         except RuntimeError:
             return None
     return None
@@ -70,7 +70,7 @@ def _resolve_for_drafting(reference: str) -> Path | None:
     """
     if reference.startswith(alt_blocks.TIKZ_PREFIX):
         try:
-            return tikz_render.ensure_rendered(reference)
+            return tikz_render.ensure_rendered(project.transitional_context(), reference)
         except RuntimeError:
             return None
     resolved = alt_blocks.resolve_image(reference)

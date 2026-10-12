@@ -20,7 +20,7 @@ from ...deck_scan import TAG_COURSE, TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
 from ..text import plural
-from . import deck_actions, maintenance
+from . import compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from .state import MODES, UI_LANGUAGES, VIEWS
@@ -131,32 +131,32 @@ def build_registry() -> CommandRegistry:
             lambda w, m=mode: w.state.set_mode(m), icon="tab", meta=lambda w, m=mode: _current(w.state.mode == m))
     for view in VIEWS:
         add(f"compile:{view}", f"Compile PDF · {VIEW_LABELS[view]}", VIEW_AND_BUILD,
-            lambda w, v=view: w._compile_current(v), icon="picture_as_pdf", enabled=_has_deck,
+            lambda w, v=view: compile_actions.compile_current(w, v), icon="picture_as_pdf", enabled=_has_deck,
             visible=lambda w, v=view: v == VIEWS[0] or _versioned(w))
-    add("compile:all", "All views of this deck", VIEW_AND_BUILD, lambda w: w._compile_current("all"),
+    add("compile:all", "All views of this deck", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "all"),
         enabled=_has_deck)
     add("compile:chapters", "After course, one PDF per chapter", VIEW_AND_BUILD,
-        lambda w: w._compile_current("chapters"),
+        lambda w: compile_actions.compile_current(w, "chapters"),
         enabled=lambda w: _has_deck(w) and w.state.deck.has_chapters)
-    add("compile:presenter", "Presenter", VIEW_AND_BUILD, lambda w: w._compile_current("presenter"),
+    add("compile:presenter", "Presenter", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "presenter"),
         meta="speaker notes", enabled=_has_deck)
     add("compile:slides", "Pages of the selected slides", VIEW_AND_BUILD,
-        lambda w: w._compile_slides(list(w.state.selected_or_focused())),
+        lambda w: compile_actions.compile_slides(w, list(w.state.selected_or_focused())),
         meta=lambda w: plural(len(w.state.selected_or_focused()), "slide"),
         enabled=lambda w: _has_deck(w) and bool(w.state.selected_or_focused()))
-    add("compile:pages", "Pages by number…", VIEW_AND_BUILD, _window("_compile_pages"),
+    add("compile:pages", "Pages by number…", VIEW_AND_BUILD, compile_actions.compile_pages,
         meta="e.g. 4, 7-10", enabled=_has_deck)
-    add("compile:several", "Several decks…", VIEW_AND_BUILD, _window("_compile_several"))
-    add("compile:everything", "All decks except archive", VIEW_AND_BUILD, _window("_compile_everything"),
+    add("compile:several", "Several decks…", VIEW_AND_BUILD, compile_actions.compile_several)
+    add("compile:everything", "All decks except archive", VIEW_AND_BUILD, compile_actions.compile_everything,
         meta="every view")
     for version in STUDENT_VERSIONS:
         add(f"transcript:{version}", f"Write transcript · {VIEW_LABELS[version]}", VIEW_AND_BUILD,
             lambda w, v=version: deck_actions.generate_deck_transcript(w, w.state.deck, v),
             icon="article", meta="Markdown + HTML", enabled=_has_deck, visible=_versioned)
-    add("stop", "Stop compilation", VIEW_AND_BUILD, _window("_stop_compilation"), tone="danger", icon="stop",
+    add("stop", "Stop compilation", VIEW_AND_BUILD, compile_actions.ask_to_stop, tone="danger", icon="stop",
         enabled=lambda w: w.compiling)
     add("build_options", "Build options…", VIEW_AND_BUILD, lambda w: w.build_options.exec())
-    add("log", "Log", VIEW_AND_BUILD, lambda w: w.log_drawer.toggle(), icon="terminal", shortcut="Ctrl+L")
+    add("log", "Log", VIEW_AND_BUILD, lambda w: w.compile_display.drawer.toggle(), icon="terminal", shortcut="Ctrl+L")
 
     # Slide: the focused slide, or the selected ones ---------------------------------------
     for name, label in (("open", "Open source"), ("preview", "Preview"), ("images", "Images")):
@@ -197,7 +197,7 @@ def build_registry() -> CommandRegistry:
     add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_edit_deck_tags(w, w.state.deck),
         enabled=lambda w: _active_deck(w) and not _keeps_group(w))
     add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)
-    add("export_pptx", "Export PPTX…", DECK, _deck("_on_export_pptx"), enabled=_active_deck)
+    add("export_pptx", "Export PPTX…", DECK, lambda w: compile_actions.export_pptx(w, w.state.deck), enabled=_active_deck)
     add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
@@ -218,7 +218,7 @@ def build_registry() -> CommandRegistry:
     add("empty_pdf", "Empty pdf folder", PROJECT, maintenance.empty_pdf_folder)
     add("remove_temp", "Remove temp files", PROJECT, maintenance.remove_temp_files)
     add("archive_unused", "Archive unused slides and media files", PROJECT, maintenance.on_archive_unused_content)
-    add("update_previews", "Update slide previews", PROJECT, _window("_on_update_previews"))
+    add("update_previews", "Update slide previews", PROJECT, compile_actions.update_previews)
     add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
     add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)

@@ -52,12 +52,12 @@ _CROP_PADDING = 24
 LogCallback = Callable[[str], None]
 
 
-def _cache_path(illustration_id: str, source_hash: str) -> Path:
+def _cache_path(ctx: project.ProjectContext, illustration_id: str, source_hash: str) -> Path:
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in illustration_id)
-    return project.transitional_context().tikz_previews_dir / f"{safe_id}-{source_hash}.png"
+    return ctx.tikz_previews_dir / f"{safe_id}-{source_hash}.png"
 
 
-def _render_and_crop(pdf_path: Path, png_path: Path) -> None:
+def _render_and_crop(ctx: project.ProjectContext, pdf_path: Path, png_path: Path) -> None:
     """Rasterize `pdf_path`'s one page and crop it to its own non-white
     content, saving the result to `png_path`.
 
@@ -95,7 +95,7 @@ def _render_and_crop(pdf_path: Path, png_path: Path) -> None:
     # illustration still produces *something* to look at instead of a
     # drafting failure with a confusing cause.
 
-    project.transitional_context().tikz_previews_dir.mkdir(parents=True, exist_ok=True)
+    ctx.tikz_previews_dir.mkdir(parents=True, exist_ok=True)
     image.save(png_path)
 
 
@@ -130,7 +130,7 @@ def _slide_preamble_text(slide_path: Path) -> str:
     return text if match is None else text[: match.start()]
 
 
-def _wrapper_text(illustration_id: str, options: str, body: str, slide_preamble: str) -> str:
+def _wrapper_text(ctx: project.ProjectContext, illustration_id: str, options: str, body: str, slide_preamble: str) -> str:
     # `options` (e.g. "[box/.style={...}]", or "" for none) must be
     # reproduced verbatim -- dropping it silently degrades a *built-in*
     # tikz hook set there (every node/.style={...} just renders with the
@@ -186,7 +186,7 @@ def _wrapper_text(illustration_id: str, options: str, body: str, slide_preamble:
     # for genuinely oversized native content (ys3's own \resizebox case)
     # that's larger than any reasonable fixed margin would absorb.
     return (
-        f"{default_preamble()}"
+        f"{default_preamble(ctx)}"
         f"\\pagewidth=60cm\n"
         f"\\pageheight=60cm\n"
         f"\\hoffset=20cm\n"
@@ -201,7 +201,7 @@ def _wrapper_text(illustration_id: str, options: str, body: str, slide_preamble:
     )
 
 
-def ensure_rendered(reference: str, log: Optional[LogCallback] = None) -> Path:
+def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[LogCallback] = None) -> Path:
     """The cached PNG of `reference`'s (a "tikz:ID" key, alt_blocks.TIKZ_PREFIX)
     current tikz body, rendering and cropping it fresh first if not already
     cached for its exact current source. Raises RuntimeError -- for the
@@ -233,15 +233,15 @@ def ensure_rendered(reference: str, log: Optional[LogCallback] = None) -> Path:
     # re-render, never a wrong cached result, so left as-is rather than
     # trying to hash only the "relevant" lines.
     source_hash = alt_images.tikz_source_hash(options + slide_preamble + body)
-    png_path = _cache_path(illustration_id, source_hash)
+    png_path = _cache_path(ctx, illustration_id, source_hash)
     if png_path.is_file():
         return png_path
 
     log(compile_log.tikz_rendering(illustration_id, slide_path.name))
-    wrapper_text = _wrapper_text(illustration_id, options, body, slide_preamble)
-    pdf_path = compile_and_extract(wrapper_text, f"tikz-{illustration_id}", log)
+    wrapper_text = _wrapper_text(ctx, illustration_id, options, body, slide_preamble)
+    pdf_path = compile_and_extract(ctx, wrapper_text, f"tikz-{illustration_id}", log)
     try:
-        _render_and_crop(pdf_path, png_path)
+        _render_and_crop(ctx, pdf_path, png_path)
     finally:
         # compile_and_extract() leaves the PDF in its own fresh temp
         # directory (slide_preview.py's convention, for a render meant to

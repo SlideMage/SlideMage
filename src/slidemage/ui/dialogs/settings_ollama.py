@@ -128,7 +128,7 @@ class OllamaTab(Page):
                 ok, error = ollama_admin.delete_model(model)
                 results.append((model, ok, error or "Unknown error"))
                 if ok:
-                    self.app.signals.log.emit(f"Deleted Ollama model {model}")
+                    self.app.log(f"Deleted Ollama model {model}")
         finally:
             self.app.end_ollama_task()      # freed here, so closing the sheet cannot keep the slot
         return results
@@ -155,10 +155,10 @@ class OllamaTab(Page):
         results: Results = []
         try:
             for model in models:
-                self.app.signals.log.emit(f"Updating Ollama model {model}…")
-                ok, error = ollama_admin.update_model(model, on_progress=self.app.signals.log.emit)
+                self.app.log(f"Updating Ollama model {model}…")
+                ok, error = ollama_admin.update_model(model, on_progress=self.app.log)
                 results.append((model, ok, error))
-                self.app.signals.log.emit(
+                self.app.log(
                     f"Updated Ollama model {model}" if ok else f"Failed to update {model}: {error}")
         finally:
             self.app.end_ollama_task()

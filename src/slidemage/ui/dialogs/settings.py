@@ -84,8 +84,8 @@ class GeneralTab(Page):
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
 
         self.template_combo = QComboBox()
-        current = slide_snapshot.render_template()
-        for key in slide_snapshot.available_templates():
+        current = slide_snapshot.render_template(self.app.project)
+        for key in slide_snapshot.available_templates(self.app.project.root):
             self.template_combo.addItem(slide_snapshot.TEMPLATES[key], key)
         self.template_combo.setCurrentIndex(max(self.template_combo.findData(current), 0))
         self.template_combo.currentIndexChanged.connect(self._on_template)
@@ -117,7 +117,7 @@ class GeneralTab(Page):
     def _on_template(self, index: int) -> None:
         key = self.template_combo.itemData(index)
         if key:
-            slide_snapshot.set_render_template(key)
+            slide_snapshot.set_render_template(self.app.project, key)
             self.app.log(f"Default render template set to {slide_snapshot.TEMPLATES[key]}")
 
     def _on_update_mode(self, mode: str) -> None:

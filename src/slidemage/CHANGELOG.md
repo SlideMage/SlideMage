@@ -2099,3 +2099,8 @@ v8.3.4 (2026-10-12, streamlining step 3): the project is now chosen once, by the
 
 NEW: No visible changes; internal clean-up.
 - Settings, housekeeping and deck snapshots always work on the project the window was opened on.
+
+v8.3.5 (2026-10-13, streamlining step 4): the compile slot is an object of its own and the compile layer takes the project explicitly; behavior is unchanged. ui/workspace/compile_controller.py (CompileController) owns a run: the cancel token, the worker thread (ui/background.py), the progress estimate, the job rows, the jobs behind them for retry, and reports through signals; compile_display.py shows it (job panel, Log drawer, toast), compile_actions.py holds the flows around it (Compile menu, pre-checks, snapshots, Export PPTX, Update previews) as plain functions, and CompileJobsMixin is gone from WorkspaceWindow. In the compile layer, compiler.latexmk_command() / run_latexmk() / Build / wrapper_file() are the one place latexmk is started, its output judged (PDF, TeX log, no fatal error) and a wrapper written and removed; compiler.run_job, partial_compile, deck_snapshot and both preview builds use them, and preview_build.run_preview() / publish_preview() execute a fresh and a cached preview build alike (the build folder is the difference). compiler, partial_compile, slide_preview, preview_build, slide_snapshot, tikz_render, media_render, update_all_previews, compile_passes, compile_progress and deck_snapshot take a ProjectContext instead of calling project.transitional_context().
+
+NEW: No visible changes; internal clean-up.
+- A fresh preview render now reads latexmk's output the way the cached one does.

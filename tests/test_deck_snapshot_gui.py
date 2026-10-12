@@ -14,9 +14,8 @@ from slidemage import app_settings, compile_progress, deck_snapshot
 from slidemage.project import ProjectContext
 from slidemage.deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
 from slidemage.ui.dialogs import snapshot as snapshot_sheets
-from slidemage.ui.workspace import compile_jobs, deck_actions
+from slidemage.ui.workspace import compile_actions, deck_actions
 from slidemage.ui.workspace import window as window_module
-from slidemage.ui.workspace.compile_jobs import CompileJobsMixin
 
 
 @pytest.fixture
@@ -73,16 +72,17 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
 def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, button, expected):
     names = ["t-A-instructor", "t-A-during-course"] if button else ["t-A-instructor"]
     jobs = [SimpleNamespace(jobname=name) for name in names]
-    monkeypatch.setattr(compile_jobs.compiler, "unchanged_jobs",
-                        lambda jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")] if button else [])
+    monkeypatch.setattr(compile_actions.compiler, "unchanged_jobs",
+                        lambda ctx, jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")] if button else [])
     seen: list = []
     if button:
         press_on_exec(monkeypatch, button, seen)
     else:
         monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked"))
     win = QWidget()
-    win._log = lambda line: None
-    result = CompileJobsMixin._confirm_unchanged_jobs(win, jobs, {})
+    win.log = lambda line: None
+    win.project = None
+    result = compile_actions._confirm_unchanged_jobs(win, jobs, {})
     assert [j.jobname for j in result] == expected
     if button:
         assert "t-A-instructor (compiled 2026-10-08 07:51)" in seen[0][0]
@@ -128,8 +128,8 @@ def archive_window(monkeypatch, settings):
     win = QWidget()   # a parent for the message boxes
     win.project = EXAMPLE_PROJECT
     monkeypatch.setattr(deck_actions, "do_archive_deck", lambda _window, d: calls.append(("archive", d.name)))
-    win._start_snapshots = lambda decks, options, after=None: calls.append(
-        ("snapshot", [d.name for d in decks], options, after)) or True
+    monkeypatch.setattr(compile_actions, "start_snapshots", lambda _window, decks, options, after=None: calls.append(
+        ("snapshot", [d.name for d in decks], options, after)) or True)
     return win, calls
 
 
@@ -161,79 +161,60 @@ def test_archive_with_or_without_a_snapshot(qapp, monkeypatch, settings, button,
 
 # ---------------------------------------------------------------- the run
 
-def run_window(monkeypatch, settings, compiling=False):
-    emitted: list = []
-    signal = lambda name: SimpleNamespace(emit=lambda *a: emitted.append((name, *a)))  # noqa: E731
-    topbar = SimpleNamespace(set_compiling=lambda on: emitted.append(("compiling", on)))
+def run_window(monkeypatch, settings, running=False):
+    """A window whose compile controller only records the run it is asked to start."""
+    started: list = []
     win = SimpleNamespace(
-        project=EXAMPLE_PROJECT, compiling=compiling, cancel_token=None, _after_snapshots=None, begun=None, _worker=None,
+        project=EXAMPLE_PROJECT,
         build_options=SimpleNamespace(
             footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
-        topbar=topbar,
-        signals=SimpleNamespace(log=signal("log"), batch_done=signal("batch_done"),
-                                snapshots_done=signal("snapshots_done")),
-    )
-
-    def begin_run(labels, specs, **kwargs):
-        win.begun = labels
-        win.compiling, win.cancel_token = True, object()
-
-    win._begin_run = begin_run
-    for name in ("_start_snapshots", "_run_snapshots_thread", "_start_worker"):
-        setattr(win, name, getattr(CompileJobsMixin, name).__get__(win))
-
-    class SyncThread:
-        def __init__(self, target, args=(), daemon=None):
-            self.target, self.args = target, args
-
-        def start(self):
-            self.target(*self.args)
-
-    monkeypatch.setattr(compile_jobs.threading, "Thread", SyncThread)
-    monkeypatch.setattr(compile_progress, "spec_for_job", lambda job: compile_progress.JobSpec(3, 1))
-    return win, emitted
+        compile=SimpleNamespace(running=running, start=lambda *args, **kwargs: started.append((args, kwargs))))
+    monkeypatch.setattr(compile_progress, "spec_for_job", lambda ctx, job: compile_progress.JobSpec(3, 1))
+    return win, started
 
 
 def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch, settings, tmp_path):
-    win, emitted = run_window(monkeypatch, settings)
+    win, started = run_window(monkeypatch, settings)
     old = [ExistingSnapshot(tmp_path / "t-A_2026-09-30_10-05", "t-A", "2026-09-30T10:05", False, 1)]
     monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names, root: old)
     monkeypatch.setattr(snapshot_sheets, "ask_about_old_snapshots",
                         lambda parent, existing: snapshot_sheets.DELETE_OLD)
     seen = {}
 
-    def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None, project_root=None):
+    def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None, ctx=None):
         seen.update(decks=[d.name for d in decks], options=options, delete_old=delete_old)
         return [SnapshotResult(d.name, ok=True, path=tmp_path / d.name) for d in decks]
 
     monkeypatch.setattr(deck_snapshot, "snapshot_decks", fake_snapshot_decks)
-    assert win._start_snapshots([deck("t-A"), deck("t-B")], SnapshotOptions())
+    assert compile_actions.start_snapshots(win, [deck("t-A"), deck("t-B")], SnapshotOptions())
+    (labels, _specs, work), _kwargs = started[0]
+    logged: list = []
+    results = work(logged.append, None)
     assert seen["decks"] == ["t-A", "t-B"] and seen["delete_old"] == old
     assert seen["options"].footer_timestamp is True and seen["options"].appendix_toc is None
+    assert logged == ["==== Done: 2 of 2 snapshot(s) created ===="] and [r.deck_name for r in results] == ["t-A", "t-B"]
     # progress knows every reference and verification compile up front
-    assert set(win.begun) == {
+    assert set(labels) == {
         "snapshot~t-A", "verify~t-A", "snapshot~t-A-presenter", "verify~t-A-presenter",
         "snapshot~t-B", "verify~t-B", "snapshot~t-B-presenter", "verify~t-B-presenter"}
-    assert ("batch_done",) in emitted               # the GUI thread frees the compile slot on this
-    assert emitted[-1][0] == "snapshots_done"
 
 
 def test_run_cancelled_at_the_old_snapshot_question(qapp, monkeypatch, settings, tmp_path):
-    win, emitted = run_window(monkeypatch, settings)
+    win, started = run_window(monkeypatch, settings)
     old = [ExistingSnapshot(tmp_path / "x", "t-A", "", True, 1)]
     monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names, root: old)
     monkeypatch.setattr(snapshot_sheets, "ask_about_old_snapshots",
                         lambda parent, existing: snapshot_sheets.CANCEL_RUN)
-    assert not win._start_snapshots([deck("t-A")], SnapshotOptions())
-    assert emitted == [] and win.compiling is False
+    assert not compile_actions.start_snapshots(win, [deck("t-A")], SnapshotOptions())
+    assert started == []
 
 
 def test_run_refused_while_compiling(qapp, monkeypatch, settings):
-    win, emitted = run_window(monkeypatch, settings, compiling=True)
+    win, started = run_window(monkeypatch, settings, running=True)
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
-    assert not win._start_snapshots([deck("t-A")], SnapshotOptions())
-    assert emitted == []
+    assert not compile_actions.start_snapshots(win, [deck("t-A")], SnapshotOptions())
+    assert started == []
 
 
 # ---------------------------------------------------------------- the questions around a run
@@ -267,19 +248,3 @@ def test_summary_sheet_counts_and_lists_the_results(qapp, monkeypatch, tmp_path)
     assert "✗  t-B: t-B did not compile" in text
     assert "–  t-C: skipped (stopped)" in text
     assert shown["buttons"] == ["Open folder", "Close"]
-
-
-def test_a_crashing_compile_run_still_ends_the_batch(qapp, monkeypatch):
-    emitted: list = []
-    signal = lambda name: SimpleNamespace(emit=lambda *a: emitted.append((name, *a)))  # noqa: E731
-    win = SimpleNamespace(cancel_token=None, signals=SimpleNamespace(log=signal("log"), batch_done=signal("batch_done")))
-    monkeypatch.setattr(compile_jobs, "run_jobs", lambda *a, **k: 1 / 0)
-    CompileJobsMixin._run_jobs_thread(win, [])
-    assert emitted[-1] == ("batch_done",) and emitted[0][0] == "log"
-
-
-def test_the_batch_end_frees_the_compile_slot_on_the_gui_thread(qapp):
-    win = SimpleNamespace(compiling=True, cancel_token=object(), _run=None,
-                          topbar=SimpleNamespace(refresh_compile_menu=lambda: None))
-    CompileJobsMixin._on_batch_done(win)
-    assert win.compiling is False and win.cancel_token is None

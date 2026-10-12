@@ -173,7 +173,7 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
     refreshed, reloaded, logged = [], [], []
     monkeypatch.setattr(deck_actions, "DeckSettingsSheet", AcceptedSheet)
     window = SimpleNamespace(
-        centre=SimpleNamespace(is_dirty=lambda _path: False), _log=logged.append,
+        centre=SimpleNamespace(is_dirty=lambda _path: False), log=logged.append,
         refresh_open_deck_editors=lambda: refreshed.append(True),
         reload_decks=lambda: reloaded.append(True),
     )
@@ -205,7 +205,7 @@ def test_unchanged_settings_write_nothing(tmp_path, monkeypatch, qapp):
 
     monkeypatch.setattr(deck_actions, "DeckSettingsSheet", SameSheet)
     logged = []
-    window = SimpleNamespace(centre=SimpleNamespace(is_dirty=lambda _path: False), _log=logged.append)
+    window = SimpleNamespace(centre=SimpleNamespace(is_dirty=lambda _path: False), log=logged.append)
     deck_actions.on_deck_settings(window, deck)
     assert logged == [] and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 

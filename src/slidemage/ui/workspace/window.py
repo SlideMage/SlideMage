@@ -9,8 +9,9 @@ The left column is the slide
 list (slide_list.py), the centre the Preview / Source / Split / Details views
 of the focused slide (centre.py), or the Images page (pages/images.py), which
 takes the width of all three columns while it is shown. The window's other
-duties live in mixins next to it: compile orchestration (compile_jobs.py),
-deck actions (deck_actions.py) and project maintenance (maintenance.py).
+duties are plain functions next to it: compile flows (compile_actions.py), deck
+actions (deck_actions.py) and project maintenance (maintenance.py). Builds belong to
+the compile controller (compile_controller.py); the window shows them (compile_display.py).
 """
 from __future__ import annotations
 
@@ -52,8 +53,10 @@ from ..text import plural
 from . import side_panels, slide_list
 from .actions import build_registry
 from .centre import CentreColumn
-from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
 from . import maintenance
+from .build_options import BuildOptionsDialog
+from .compile_controller import CompileController
+from .compile_display import CompileDisplay
 from .palette import CommandPalette
 from .panels.base import PanelActions
 from .side_panels import SidePanels
@@ -98,11 +101,14 @@ class _CurrentPageStack(QStackedWidget):
         return page.sizeHint() if page is not None else super().sizeHint()
 
 
-class WorkspaceWindow(CompileJobsMixin, QMainWindow):
+class WorkspaceWindow(QMainWindow):
+    update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
+
     def __init__(self, theme: ThemeManager, project_context: project.ProjectContext) -> None:
         super().__init__()
         self.theme = theme
         self.project = project_context
+        self.compile = CompileController(project_context, self)
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
         self.setMinimumSize(1024, 640)
         if updater.can_self_update():
@@ -182,8 +188,8 @@ class WorkspaceWindow(CompileJobsMixin, QMainWindow):
         self.body.addWidget(self.no_decks)
         outer.addWidget(self.body, 1)
         self.setCentralWidget(central)
-        self._init_compile(central)
-        self.signals.update_check_done.connect(
+        self.compile_display = CompileDisplay(self, central)
+        self.update_check_done.connect(
             lambda result: maintenance.on_startup_update_check_done(self, result))
 
         self.palette = CommandPalette(self)
@@ -395,6 +401,14 @@ class WorkspaceWindow(CompileJobsMixin, QMainWindow):
         self.reload_decks()
         return next((deck for deck in self.decks if deck.path == deck_path), None)
 
+    @property
+    def compiling(self) -> bool:
+        return self.compile.running
+
+    def log(self, line: str) -> None:
+        """Append to the Log drawer, from any thread."""
+        self.compile.log.emit(line)
+
     def closeEvent(self, event) -> None:
         """Resolve unsaved source and image edits before application exit; a compile run is stopped."""
         if self.compiling and QMessageBox.question(
@@ -409,7 +423,7 @@ class WorkspaceWindow(CompileJobsMixin, QMainWindow):
         self.assistant.shutdown()
         self.images_page.shutdown()
         self.palette.stop_search(5000)
-        self._stop_worker()
+        self.compile.shutdown()
         layout_settings.set("window_geometry", self.saveGeometry().toBase64().data().decode("ascii"))
         super().closeEvent(event)
 
@@ -517,7 +531,7 @@ class WorkspaceWindow(CompileJobsMixin, QMainWindow):
         threading.Thread(target=self._regenerate_headers_bg, daemon=True).start()
         self.resync_deck(deck_path)
         self.slide_list.deck_edited(deck_path, summary, previous_text)
-        self._log(summary)
+        self.log(summary)
 
     def refresh_open_deck_editors(self) -> None:
         """Re-scans the decks and redraws the slide list from current disk state
@@ -571,7 +585,7 @@ class WorkspaceWindow(CompileJobsMixin, QMainWindow):
 
     def _regenerate_headers_bg(self) -> None:
         changed, n_decks = deck_headers.regenerate_headers()
-        self.signals.log.emit(
+        self.log(
             f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ===="
         )
 

@@ -80,10 +80,10 @@ def run_matrix(args):
                 if call.steps:
                     source = f'\\gdef\\SMSlideSteps{{{call.steps}}}\n' + source
                 def render():
-                    return slide_preview.render_slide_text_to_pdf(call.id_slug, source, preview_mode='region', **common)
+                    return slide_preview.render_slide_text_to_pdf(project.transitional_context(), call.id_slug, source, preview_mode='region', **common)
             else:
                 def render():
-                    return slide_preview.render_slide_to_pdf(call.macro, call.id_slug, call.version, call.conditions,
+                    return slide_preview.render_slide_to_pdf(project.transitional_context(), call.macro, call.id_slug, call.version, call.conditions,
                                                               steps=call.steps, **common)
             try:
                 revision = 0

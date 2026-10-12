@@ -73,7 +73,7 @@ class Window(QWidget):
     compiling = False
     project = property(lambda self: transitional_context())
 
-    def _log(self, _line):
+    def log(self, _line):
         pass
 
 

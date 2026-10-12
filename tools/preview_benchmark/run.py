@@ -27,7 +27,7 @@ def main():
         row = dict(stage=args.stage, index=i, slide=call.id_slug, macro=call.macro, steps=call.steps)
         start = time.perf_counter()
         try:
-            pdf = slide_preview.render_slide_to_pdf(
+            pdf = slide_preview.render_slide_to_pdf(project.transitional_context(), 
                 call.macro, call.id_slug, call.version, call.conditions,
                 preamble_text=deck.preamble_text, frame_number=i,
                 footer_timestamp=False, steps=call.steps, log=log.append, reuse_build=False)

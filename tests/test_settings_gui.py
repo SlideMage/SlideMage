@@ -32,7 +32,6 @@ class FakeApp(QWidget):
         self.set_dark_mode = lambda value: self.calls.append(("dark", value))
         self.set_tab_width_chars = lambda value: self.calls.append(("tab width", value))
         self.log = self.logged.append
-        self.signals = SimpleNamespace(log=SimpleNamespace(emit=self.logged.append))
 
     def try_start_ollama_task(self, label, provider=None):
         if self.slot_free:
@@ -108,7 +107,7 @@ def test_the_render_template_offers_the_project_templates_and_saves_the_choice(t
     assert combo.currentData() == "slidemage"           # out of the box
     combo.setCurrentIndex(combo.findData("mci"))
     assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
-    assert slide_snapshot.render_template() == "mci"
+    assert slide_snapshot.render_template(context) == "mci"
 
 
 def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):

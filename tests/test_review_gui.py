@@ -97,7 +97,7 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     old_run = build_root / "old-run"
     old_run.mkdir()
     (old_run / "output.pdf").write_bytes(b"old")
-    monkeypatch.setattr(housekeeping.compiler, "removable_build_entries", lambda: [old_file, old_run])
+    monkeypatch.setattr(housekeeping.compiler, "removable_build_entries", lambda ctx: [old_file, old_run])
     use_project(monkeypatch, tmp_path)
     (tmp_path / "decks").mkdir()
     (tmp_path / ".temp").mkdir()
@@ -110,4 +110,4 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
 
     assert not old_file.exists()
     assert not old_run.exists()
-    assert "2 build item(s)" in window.log_drawer.text.toPlainText()
+    assert "2 build item(s)" in window.compile_display.drawer.text.toPlainText()
