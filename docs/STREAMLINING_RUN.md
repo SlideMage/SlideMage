@@ -53,3 +53,18 @@ Filled in by the orchestrator after each step.
 | 2 | (this commit) | v8.3.2 | 47,100 | 32,888 | 0 | 1,855 passed, 8 skipped | Edit paths already share write_text/save_slide_source; removed apply_result wrapper. Correctness fix: write_text now refuses frozen versions for every caller (headless tasks and undo bypassed the check). Fixtures --check OK. ~68k tokens, 7 min |
 
 **Stop rule triggered.** Steps 1+2 removed 158 net physical lines (threshold 550). The run stops here; steps 3–6 need a re-estimate and the user's decision.
+| fix | (this commit) | v8.3.3 | — | — | — | 1,856 passed, 8 skipped | Direct report: Claude Code picker now also sets the terminal's --model/--effort (Restart applies a change). |
+
+## Continuation (user's decision, 12 October evening)
+
+The user chose to continue through steps 3–6 despite the stop rule, with the goal **clean code and
+structure** rather than line count. Line counts are still recorded; a step may add lines when
+ownership becomes clearer. Steps run without pausing.
+
+| Step | Work | Hard token cap |
+| --- | --- | ---: |
+| 3 | Explicit project context; window coupling outside compilation | 800k |
+| 4 | Compile execution and controller (replace CompileJobsMixin) | 900k |
+| 5 | Parsing, settings helpers, specialised workflow plumbing | 800k |
+| 6 | Integration: full checks, fixtures, Linux build, final report | 300k |
+

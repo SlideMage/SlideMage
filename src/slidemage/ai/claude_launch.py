@@ -94,11 +94,15 @@ def settings(hook: str) -> dict:
         "permissions": {"allow": [f"mcp__{SERVER_NAME}__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]}}
 
 
-def build_command(claude: Path, url: str, hook: str | None = None) -> list[str]:
+def build_command(claude: Path, url: str, hook: str | None = None, *, model: str | None = None,
+                  effort: str | None = None) -> list[str]:
+    """The interactive session's command line; `model` and `effort` are the tab's picker (the user's Claude Code
+    default when None)."""
+    chosen = [*(["--model", model] if model else []), *(["--effort", effort] if effort else [])]
     return [str(claude),
             "--mcp-config", json.dumps(mcp_config(url)),
             "--settings", json.dumps(settings(hook or hook_command())),
-            "--append-system-prompt", ORIENTATION]
+            "--append-system-prompt", ORIENTATION, *chosen]
 
 
 # Claude Code settings of the user that survive the clean-up of `environment`: a subscription token from

@@ -39,6 +39,8 @@ class ClaudeCodeSession(QObject):
         self.claude = claude
         self._window = window
         self.scope = claude_scope.SLIDE             # how far a request may reach (the view's switch)
+        self.model: str | None = None               # the view's picker; read at each (re)start
+        self.effort: str | None = None
         self._focus_file: Path | None = None        # what the hooks read: the focus and the scope
         self._published: dict | None = None
         self._timer = QTimer(self)                  # the focus also moves without a signal (a file opened)
@@ -74,7 +76,7 @@ class ClaudeCodeSession(QObject):
             self._focus_file = Path(name)
         self.publish_focus(force=True)
         self._timer.start()
-        command = claude_launch.build_command(self.claude, self._server.url)
+        command = claude_launch.build_command(self.claude, self._server.url, model=self.model, effort=self.effort)
         env = claude_launch.environment(self._server.token, PROJECT_ROOT, self.claude, focus_file=self._focus_file)
         with self._lock:
             self._generation += 1

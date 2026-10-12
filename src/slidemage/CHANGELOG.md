@@ -2089,3 +2089,8 @@ v8.3.2 (2026-10-12, streamlining step 2): edit application consolidated; behavio
 
 NEW: No visible changes; internal clean-up.
 - A background task can no longer write into a frozen version of a slide.
+
+v8.3.3 (2026-10-12, direct report: the Claude Code tab's picker said Sonnet, the terminal ran Opus): the model and effort picker of the Claude Code tab now also sets the interactive terminal's model and effort (--model/--effort at each start), not only the suggestion tasks'. Changing it while Claude Code is running takes effect for tasks at once and for the terminal on Restart, which the status line says.
+
+NEW: The Claude Code tab's model choice applies to the terminal too.
+- The model and effort picked in the Claude Code tab now also start the terminal session; after changing them, Restart to switch the running session.

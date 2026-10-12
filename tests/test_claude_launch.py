@@ -46,6 +46,13 @@ def test_claude_discovery(tmp_path, monkeypatch, location):
         assert claude_launch.find_claude() == candidate
 
 
+def test_the_command_line_carries_the_pickers_model_and_effort(tmp_path):
+    # direct report 2026-10-12: the picker said Sonnet, the terminal ran the user's default (Opus)
+    command = claude_launch.build_command(tmp_path / "claude", URL, model="sonnet", effort="medium")
+    assert command[-4:] == ["--model", "sonnet", "--effort", "medium"]
+    assert "--model" not in claude_launch.build_command(tmp_path / "claude", URL)
+
+
 def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tmp_path):
     claude = tmp_path / "claude"
     command = claude_launch.build_command(claude, URL, hook="HOOK COMMAND")

@@ -139,7 +139,7 @@ class ClaudeCodeView(Surface):
         self.stop_button.hide()
         row.addWidget(self.stop_button)
         self.picker = Button("", "ghost", compact=True)
-        self.picker.setToolTip("The model and the effort the next task runs with.")
+        self.picker.setToolTip("The model and the effort of the tasks and of the terminal (from its next start).")
         self.picker.clicked.connect(self._open_picker)
         self._show_pick()
         row.addWidget(self.picker)
@@ -187,6 +187,11 @@ class ClaudeCodeView(Surface):
         else:
             self._effort = value
         self._show_pick()
+        if self.session is not None:
+            self.session.model, self.session.effort = self._model, self._effort
+            if self.session.running:     # switching would end the conversation: the user restarts when it suits
+                self._on_task_status(f"Tasks use {self._model.capitalize()} · {self._effort} now; "
+                                     "the terminal after Restart.", "muted")
 
     def _refresh_bubbles(self) -> None:
         """Show the buttons for the tasks that fit the slide now (none while a task runs)."""
@@ -305,6 +310,7 @@ class ClaudeCodeView(Surface):
 
         self.session = ClaudeCodeSession(self.app, claude, self)
         self.session.scope = self.scope.current()
+        self.session.model, self.session.effort = self._model, self._effort
         self.terminal = TerminalWidget(self.app.theme.tokens)
         self._terminal_layout.addWidget(self.terminal, 1)
         self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)

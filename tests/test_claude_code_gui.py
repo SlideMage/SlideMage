@@ -160,7 +160,8 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     assert env.view.status.text() == "Running"
     logged = json.loads(env.log.read_text())
     assert logged["cwd"] == str(env.root) and logged["project"] == str(env.root) and logged["term"] == "xterm-256color"
-    assert logged["argv"][0::2] == ["--mcp-config", "--settings", "--append-system-prompt"]
+    assert logged["argv"][0::2] == ["--mcp-config", "--settings", "--append-system-prompt", "--model", "--effort"]
+    assert logged["argv"][-4:] == ["--model", env.view._model, "--effort", env.view._effort]    # the tab's picker
     assert logged["token"] == env.view.session._server.token and logged["token"] not in json.dumps(logged["argv"])
     assert env.view.session.mcp_url in logged["argv"][1]
     assert not (env.root / ".claude").exists() and not (env.root / ".mcp.json").exists()
