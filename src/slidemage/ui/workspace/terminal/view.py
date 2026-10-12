@@ -149,6 +149,14 @@ class ClaudeCodeView(Surface):
         if self.session is not None:
             self.session.set_scope(scope)
 
+    def _switch_to_deck(self) -> str:
+        """The terminal's switch_to_deck_mode, which the user has allowed (GUI thread)."""
+        if self.state.deck is None:
+            return "No deck is open in SlideMage: ask the user to open one."
+        self.scope.set_current(DECK)
+        self._on_scope(DECK)                    # set_current is no click: tell the session (and the bubbles)
+        return "SlideMage is in Deck Mode now: go on with the request."
+
     # -- bubbles and tasks ------------------------------------------------------------------------
 
     @staticmethod
@@ -301,6 +309,7 @@ class ClaudeCodeView(Surface):
         self._terminal_layout.addWidget(self.terminal, 1)
         self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)
         self.session.workspace.translate = self._translate_slide
+        self.session.workspace.widen = self._switch_to_deck
         self.tasks.status.connect(self._on_task_status)
         self.tasks.busy_changed.connect(self._on_busy)
         self.tasks.summary.connect(lambda text: self._show_text("Summary of the deck", text))

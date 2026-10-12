@@ -60,14 +60,16 @@ def prompt_context(data: dict) -> str:
                 "list_slides gives the outline; open only the slides the request needs, do not scan the project.")
     if not slide:
         return ("[SlideMage scope: THIS SLIDE] No slide is in focus, so there is nothing to work on yet. "
-                "Ask the user to select a slide in SlideMage, or to switch the scope to Deck.")
+                "If the request needs no particular slide (adding a slide, say), call switch_to_deck_mode (the user is asked; on yes, go on with the request); otherwise ask the user to "
+                "select a slide in SlideMage.")
     unsaved = (" It has unsaved edits in the editor: read it with read_buffer, not Read." if data.get("dirty")
                else "")
     return (f"[SlideMage scope: THIS SLIDE] The request is about {slide} ({where}).{unsaved} "
             "Use only this file: do not read, search or edit other slides, decks or folders, and do not explore "
             "the project (no Glob, Grep, ls, find or other shell exploration); the file's own text and read_guide "
-            "are enough. Go straight to it: you need no get_focus. If the request needs something outside this "
-            "slide, say so in one sentence and let the user switch the scope to Deck.")
+            "are enough. Go straight to it: you need no get_focus. translate_slide and show_slide work through "
+            "SlideMage and are fine in this scope. If the request needs anything else outside this slide, "
+            "call switch_to_deck_mode (the user is asked; on yes, go on with the request); do not explain the scope.")
 
 
 def edit_problem(data: dict | None, root: Path, path: Path) -> str | None:
@@ -82,4 +84,4 @@ def edit_problem(data: dict | None, root: Path, path: Path) -> str | None:
         return None
     focused = data.get("slide")
     return (f"SlideMage scope is Slide ({focused or 'no slide in focus'}): {relative} is outside it. "
-            "Leave it alone, or ask the user to switch the scope to Deck.")
+            "Leave it alone, or call switch_to_deck_mode (the user is asked).")

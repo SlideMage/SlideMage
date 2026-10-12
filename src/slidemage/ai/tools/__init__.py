@@ -22,7 +22,8 @@ TOOLS = [files.read_file, files.find_files, files.search, edits.edit_file, edits
 # Reading and editing files is Claude Code's own.
 CLAUDE_CODE_READ_ONLY = [focus.get_focus, focus.show_slide, focus.read_buffer, slidemage.list_slides, slidemage.lint,
                          slidemage.render_preview, slidemage.read_guide]
-CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, focus.translate_slide]
+CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, focus.translate_slide,
+                     focus.switch_to_deck_mode]
 
 __all__ = ["CLAUDE_CODE_READ_ONLY", "CLAUDE_CODE_TOOLS", "TOOLS", "Tool", "ToolBox", "ToolContext", "ToolError", "build_toolbox", "undo_edit"]
 

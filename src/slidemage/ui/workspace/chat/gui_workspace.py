@@ -97,6 +97,7 @@ class GuiWorkspace(Workspace):
         self._stopping = False                 # Stop was pressed: no edit is asked about until the next request
         self._pending: EditAsk | None = None   # the tools run one after the other: at most one edit waits
         self.translate: Callable[[Path], str] | None = None    # the Claude Code tab's Translate bubble, if any
+        self.widen: Callable[[], str] | None = None            # its Slide / Deck switch, set to Deck
 
     # -- crossing threads ----------------------------------------------------------------
 
@@ -237,6 +238,9 @@ class GuiWorkspace(Workspace):
     def translate_slide(self, path: Path) -> str:
         return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else
                            "SlideMage cannot translate now: the Claude Code tab has no task runner.", "")
+
+    def switch_to_deck_mode(self) -> str:
+        return self.on_gui(lambda: self.widen() if self.widen else "There is no scope switch to set.", "")
 
     def _show_written(self, path: Path) -> None:
         """Bring the views up to date with a file the agent wrote on disk."""

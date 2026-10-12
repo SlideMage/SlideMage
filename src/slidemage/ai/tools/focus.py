@@ -69,6 +69,14 @@ def translate_slide(ctx: ToolContext, args: dict) -> str:
     return ctx.workspace.translate_slide(path)
 
 
+@tool("switch_to_deck_mode",
+      "Switch to Deck Mode: widen SlideMage's scope from the slide in focus to the whole deck, so you may "
+      "add slides and change other slides of the deck. The user is asked before it runs.",
+      {})
+def switch_to_deck_mode(ctx: ToolContext, args: dict) -> str:
+    return ctx.workspace.switch_to_deck_mode()
+
+
 @tool("read_buffer",
       "Read a file as the SlideMage editor has it, unsaved edits included (the numbered lines of "
       "read_file). Only for files open in the editor; use your own Read for the rest.",

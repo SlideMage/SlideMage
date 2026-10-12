@@ -90,6 +90,10 @@ class Workspace:
         model."""
         return "SlideMage cannot translate here: there is no window."
 
+    def switch_to_deck_mode(self) -> str:
+        """Widen the Claude Code scope from one slide to the deck; what to tell the model."""
+        return "There is no scope to widen here."
+
     # -- compiling -------------------------------------------------------------------------------
 
     def compile_deck(

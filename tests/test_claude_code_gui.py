@@ -238,6 +238,16 @@ def test_claude_code_reads_the_unsaved_buffer_and_the_focus_through_mcp(env):
     assert "Focused slide id: abd" in on_thread(lambda: client.text("get_focus"))
 
 
+def test_switch_to_deck_mode_sets_the_scope_switch(env):
+    from slidemage.ai import claude_scope
+
+    start_view(env)
+    client = Client(env.view.session._server)
+    assert on_thread(lambda: client.text("switch_to_deck_mode")) == "SlideMage is in Deck Mode now: go on with the request."
+    assert env.view.scope.current() == claude_scope.DECK
+    assert claude_scope.load(env.view.session._focus_file)["scope"] == claude_scope.DECK
+
+
 def test_show_slide_brings_a_deck_slide_into_focus(env):
     start_view(env)
     client = Client(env.view.session._server)
