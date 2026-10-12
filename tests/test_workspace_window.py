@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QKeySequence, QShortcut, QTextLayout
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QInputDialog, QMessageBox
+from PySide6.QtWidgets import QInputDialog, QMessageBox, QWidget
 
 from slidemage import app_settings
 from slidemage.compiler import CompileJob, order_jobs
@@ -1175,3 +1175,31 @@ def test_a_cancelled_close_keeps_the_saved_window_geometry(window, monkeypatch):
 
 def test_window_minimum_size_is_1024_by_640(window):
     assert window.minimumSize() == QSize(1024, 640)
+
+
+@pytest.mark.parametrize("width", [1024, 1280, 1600, 1920])
+@pytest.mark.parametrize("height", [640, 1000])
+def test_workspace_layout_fits_the_window(qapp, monkeypatch, width, height):
+    assert load_fonts()
+    window = build_window(monkeypatch)
+    window.theme.apply()
+    window.resize(width, height)
+    window.show()
+    qapp.processEvents()
+    assert window.size() == QSize(width, height)
+    hint = window.minimumSizeHint()
+    assert hint.width() <= 1024 and hint.height() <= 640
+    bar = window.topbar
+    for control in bar.findChildren(QWidget):
+        if control.isVisible():
+            assert bar.rect().contains(QRect(control.mapTo(bar, QPoint()), control.size()))
+    for column in (window.slide_list, window.stack, window.side_panels):
+        assert column.isVisible()
+        minimum = column.minimumSizeHint().expandedTo(column.minimumSize()).width()
+        assert minimum <= column.width() <= column.maximumWidth()
+    for side in ("left", "right"):
+        window.commands.run(f"column:{side}", window)
+    qapp.processEvents()
+    assert window.splitter.sizes() == [0, window.splitter.width(), 0]
+    assert window.stack.geometry() == window.splitter.rect()
+    assert window.centre.width() == window.splitter.width()

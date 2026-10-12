@@ -69,3 +69,4 @@ options), then L6-L7.
 | L4 Resizable slide list | Done, v8.1.0. |
 | L5 Hide and show sidebars | Done, v8.2.0: buttons, Ctrl+Alt+[ / ], palette, ⋮ -> View, drag to collapse; remembered. |
 | L6 Right column height | Done, v8.2.1: split remembered; assistant usable at 640 px (sent back once to drop extra resize hooks). |
+| L7 Layout tests and screenshots | Done (tests and tools/ui_screenshots.py, no version bump). Plan complete. |
