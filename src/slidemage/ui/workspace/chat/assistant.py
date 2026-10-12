@@ -19,11 +19,13 @@ from .view import ChatView
 SETTING = "assistant_view"
 CHAT, CLAUDE_CODE = "chat", "claude_code"
 VIEWS = ((CHAT, "Chat"), (CLAUDE_CODE, "Claude Code"))
+MIN_HEIGHT = 416   # mode/scope rows, suggestions menu, six-line input, send and model rows
 
 
 class AssistantArea(Card):
     def __init__(self, app, state: WorkspaceState) -> None:
         super().__init__()
+        self.setMinimumHeight(MIN_HEIGHT)
         remembered = app_settings.get(SETTING)
         self.switch = SegmentedControl(VIEWS, current=remembered if remembered in dict(VIEWS) else CHAT)
         self.switch.changed.connect(self.show_view)

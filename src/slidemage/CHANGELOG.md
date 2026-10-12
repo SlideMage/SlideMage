@@ -2017,3 +2017,5 @@ v8.0.23 (2026-10-12, responsive layout L3): The window opens where and as large 
 v8.1.0 (2026-10-12, responsive layout L4): The slide list can be dragged wider or narrower (220 to 520 px) like the side panel, and its width is remembered. Double-clicking the divider next to the slide list or the side panel puts that column back to its standard width.
 
 v8.2.0 (2026-10-12, responsive layout L5): The slide list and the side panel can be hidden and shown again: with the buttons at the left and right ends of the top bar, with Ctrl+Alt+[ and Ctrl+Alt+], from the command palette or ⋮ -> View, or by dragging a column's divider all the way to the edge. A shown column comes back at its last width, and the choice is remembered. The Images page still takes both columns' room while it is open, without changing that choice.
+
+v8.2.1 (2026-10-12, responsive layout L6): The split between the side panel and the assistant is remembered, and in a short window the side panel gives way first, so the assistant's suggestions, input and Send stay usable down to the smallest window (640 px). If the suggestions still do not fit, a "Suggestions" menu offers them.
