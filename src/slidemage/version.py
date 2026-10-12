@@ -1964,6 +1964,12 @@ v5.35.8 (2026-10-11, direct instruction: "Let SlideMage automatically delete ind
 
 NEW: Single-slide renders clean up after themselves.
 - The PDF of a single-slide render (the temporary files "Render to PDF" and "Render now" open) is deleted automatically once it is more than 24 hours old, at the next start of SlideMage or the next render.
+
+v5.36.0 (2026-10-12, direct instruction: "create or modify the frame type for the agenda slide to also allow using subsections instead of sections, so I can create an agenda slide that lists all the subsections in a chapter"): \\SMSubsectionAgenda[width] next to \\SMChapterAgenda. Framework: every slide's \\setSlideID also records, once per \\subsection, the id of the subsection's first slide and the subsection's title (\\subsecname) in the .aux (\\SMAgendaSubsection{section}{id}{title}); \\SMSubsectionAgenda lists the titles of the current \\section's subsections in the same two columns and \\normalsize/\\small/\\footnotesize steps, each a link to that first slide, and sets the same chapter target as \\SMChapterAgenda (the navigation bar's "Chapter contents"). The two commands share \\SM@ag@main. Slides before a chapter's first \\subsection are not listed; a subsection with no slide in the version is not either. Transcripts: DeckSlide.subsection, a "This chapter's sections:" / "Die Abschnitte dieses Kapitels:" list with the number of each subsection's first slide (transcript._subsection_titles()). Tests in tests/test_navigation.py. In the SlideMaster project, slide bij (the Masterdeck's "Trends in publishing" divider) uses it in place of its typed list of topics.
+
+NEW: A chapter divider can list the chapter's subsections.
+- **Subsection agenda.** \\SMSubsectionAgenda in a chapter's divider (sectionframe) lists the chapter's \\subsection titles in two columns, each a link to the subsection's first slide. \\SMChapterAgenda still lists the chapter's slides.
+- **In transcripts** the subsections appear as a list with the slide number each one starts at.
 """
 from __future__ import annotations
 
@@ -1973,7 +1979,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.35.8"
+VERSION_NUMBER = "v5.36.0"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the

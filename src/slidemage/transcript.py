@@ -77,6 +77,7 @@ _SLIDE_CALL_RE = re.compile(
 )
 
 _SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
+_SUBSECTION_RE = re.compile(r"\\subsection\*?\s*(?:\[[^\]]*\])?\s*\{")
 _DECK_VERSION_RE = re.compile(r"\\deckversion\s*\[([^\]]*)\]")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 
@@ -119,6 +120,7 @@ STRINGS = {
         "full_description_label": "**Full description.**",
         "takeaway_label": "**Takeaway.**",
         "chapter_agenda_label": "**This chapter's slides:**",
+        "subsection_agenda_label": "**This chapter's sections:**",
         "chapter_agenda_item": "{title} (slide {n})",
     },
     "de": {
@@ -150,6 +152,7 @@ STRINGS = {
         "full_description_label": "**Vollständige Beschreibung.**",
         "takeaway_label": "**Erkenntnis.**",
         "chapter_agenda_label": "**Die Folien dieses Kapitels:**",
+        "subsection_agenda_label": "**Die Abschnitte dieses Kapitels:**",
         "chapter_agenda_item": "{title} (Folie {n})",
     },
 }
@@ -181,6 +184,8 @@ class DeckSlide:
     path: Path
     included: bool       # False = counted for numbering but not in this version
     chapter: int = 0     # how many \section{}s come before it (0 = front matter)
+    subsection: int = 0  # how many \subsection{}s of its chapter come before it
+                         # (0 = before the chapter's first one)
 
 
 @dataclass
@@ -209,6 +214,8 @@ class TranscriptSlide:
     agenda_title: str = ""
     # the body holds \SMChapterAgenda's placeholder (generate() fills it in)
     chapter_agenda: bool = False
+    # ... or \SMSubsectionAgenda's
+    subsection_agenda: bool = False
 
 
 # --------------------------------------------------------------------------
@@ -386,9 +393,14 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     slides: list[DeckSlide] = []
     number = 0
     section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
+    subsection_starts = [m.start() for m in _SUBSECTION_RE.finditer(text)]
 
     for match in _SLIDE_CALL_RE.finditer(text):
         chapter = bisect.bisect_left(section_starts, match.start())
+        # the LaTeX counter: \subsection{}s since the chapter's \section{}
+        chapter_base = (bisect.bisect_left(subsection_starts, section_starts[chapter - 1])
+                        if chapter > 0 else 0)
+        subsection = bisect.bisect_left(subsection_starts, match.start()) - chapter_base
         if match.group("ss_id") is not None:
             step_id = match.group("ss_id").strip()
             if not step_id or version not in _versions_from(match.group("ss_versions"), _ALL_VERSIONS):
@@ -400,6 +412,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
                 path=SLIDES_DIR / f"{step_id}-current.tex",
                 included=True,
                 chapter=chapter,
+                subsection=subsection,
             ))
             continue
         command = match.group("cmd")
@@ -429,6 +442,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
             path=SLIDES_DIR / filename,
             included=included,
             chapter=chapter,
+            subsection=subsection,
         ))
     return slides
 
@@ -1293,6 +1307,10 @@ def _park_code_files(text: str) -> tuple[str, list[str]]:
 # generate(), which knows the deck); \SMDeckAgenda is a link target only;
 # \SMAgendaTitle{text} names the slide in agendas.
 _CHAPTER_AGENDA_RE = re.compile(r"\\SMChapterAgenda(?![a-zA-Z@])\s*(?:\[[^\]]*\])?")
+# \SMSubsectionAgenda (v5.36.0): the chapter's \subsection titles, each with
+# the number of its first slide in this version
+_SUBSECTION_AGENDA_RE = re.compile(r"\\SMSubsectionAgenda(?![a-zA-Z@])\s*(?:\[[^\]]*\])?")
+_SUBAGENDA_SLOT = "\x02SMSUBAGENDA\x02"
 _DECK_AGENDA_RE = re.compile(r"\\SMDeckAgenda(?![a-zA-Z@])")
 _AGENDA_TITLE_RE = re.compile(r"\\SMAgendaTitle\s*\{")
 _AGENDA_SLOT = "\x02SMAGENDA\x02"
@@ -1428,6 +1446,8 @@ def render_slide(deck_slide: DeckSlide, version: str,
     body = _DECK_AGENDA_RE.sub("", body)
     has_chapter_agenda = bool(_CHAPTER_AGENDA_RE.search(body))
     body = _CHAPTER_AGENDA_RE.sub("\n\n" + _AGENDA_SLOT + "\n\n", body)
+    has_subsection_agenda = bool(_SUBSECTION_AGENDA_RE.search(body))
+    body = _SUBSECTION_AGENDA_RE.sub("\n\n" + _SUBAGENDA_SLOT + "\n\n", body)
     body = _TOC_RE.sub(_toc_slot, body)
     agenda_title = (_finish(_inline_markdown(agenda_titles[0]).strip())
                     if agenda_titles else "")
@@ -1490,6 +1510,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
         summary=notes.summary if notes else "",
         agenda_title=agenda_title,
         chapter_agenda=has_chapter_agenda,
+        subsection_agenda=has_subsection_agenda,
     )
 
     for reference in alt_blocks.referenced_images(stripped):
@@ -1558,25 +1579,42 @@ def _entry_markdown_lines(entry: TranscriptSlide, language: str = "en") -> list[
 
 
 def _fill_chapter_agendas(entries: list[TranscriptSlide], chapters: list[int],
-                          language: str = "en") -> None:
+                          language: str = "en", subsections: list[int] | None = None,
+                          subsection_titles: dict[int, list[str]] | None = None) -> None:
     """Replace each \\SMChapterAgenda placeholder with the list of the other
     slides in the same chapter (by \\section), as the PDF's agenda shows them:
     each slide once (a \\slidestep slide at its first place), its
-    \\SMAgendaTitle or title, plus its slide number."""
+    \\SMAgendaTitle or title, plus its slide number. Each \\SMSubsectionAgenda
+    placeholder becomes the chapter's \\subsection titles instead, each with
+    the number of the first slide it has in this version (`subsections`: the
+    slides' subsection index within their chapter; `subsection_titles`: the
+    titles per chapter)."""
     strings = STRINGS[language]
     for index, entry in enumerate(entries):
-        if not entry.chapter_agenda:
-            continue
-        seen: set[str] = set()
-        items: list[str] = []
-        for other, chapter in zip(entries, chapters):
-            if other is entry or chapter != chapters[index] or other.slide_id in seen:
-                continue
-            seen.add(other.slide_id)
-            items.append("- " + strings["chapter_agenda_item"].format(
-                title=other.agenda_title or other.title, n=other.number))
-        block = "\n".join([strings["chapter_agenda_label"], ""] + items) if items else ""
-        entry.body = entry.body.replace(_AGENDA_SLOT, block).strip()
+        if entry.chapter_agenda:
+            seen: set[str] = set()
+            items: list[str] = []
+            for other, chapter in zip(entries, chapters):
+                if other is entry or chapter != chapters[index] or other.slide_id in seen:
+                    continue
+                seen.add(other.slide_id)
+                items.append("- " + strings["chapter_agenda_item"].format(
+                    title=other.agenda_title or other.title, n=other.number))
+            block = "\n".join([strings["chapter_agenda_label"], ""] + items) if items else ""
+            entry.body = entry.body.replace(_AGENDA_SLOT, block).strip()
+        if entry.subsection_agenda:
+            titles = (subsection_titles or {}).get(chapters[index], [])
+            first: dict[int, int] = {}
+            if subsections is not None:
+                for other, chapter, sub in zip(entries, chapters, subsections):
+                    if chapter == chapters[index] and sub > 0 and other is not entry:
+                        first.setdefault(sub, other.number)
+            items = [
+                "- " + strings["chapter_agenda_item"].format(title=titles[sub - 1], n=number)
+                for sub, number in sorted(first.items()) if sub <= len(titles)
+            ]
+            block = "\n".join([strings["subsection_agenda_label"], ""] + items) if items else ""
+            entry.body = entry.body.replace(_SUBAGENDA_SLOT, block).strip()
 
 
 def _section_titles(deck_path: Path) -> list[str]:
@@ -1590,6 +1628,23 @@ def _section_titles(deck_path: Path) -> list[str]:
     for match in _SECTION_RE.finditer(text):
         title, _after = alt_blocks.braced_argument(text, match.end() - 1)
         titles.append(_finish(_inline_markdown(title).strip()))
+    return titles
+
+
+def _subsection_titles(deck_path: Path) -> dict[int, list[str]]:
+    """The deck's \\subsection titles per chapter (1-based \\section number;
+    0 = before the first), in order -- the same text and counting as
+    resolve_deck()'s DeckSlide.subsection."""
+    source = deck_path.read_text(encoding="utf-8")
+    text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
+                                    (deck_path.resolve(),))
+    text = alt_blocks.COMMENT_RE.sub("", text)
+    section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
+    titles: dict[int, list[str]] = {}
+    for match in _SUBSECTION_RE.finditer(text):
+        title, _after = alt_blocks.braced_argument(text, match.end() - 1)
+        chapter = bisect.bisect_left(section_starts, match.start())
+        titles.setdefault(chapter, []).append(_finish(_inline_markdown(title).strip()))
     return titles
 
 
@@ -1711,6 +1766,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     deck_slides = resolve_deck(deck_path, version)
     rendered: list[TranscriptSlide] = []
     chapters: list[int] = []
+    subsections: list[int] = []
     missing_files: list[str] = []
 
     for deck_slide in deck_slides:
@@ -1722,7 +1778,9 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
             continue
         rendered.append(entry)
         chapters.append(deck_slide.chapter)
-    _fill_chapter_agendas(rendered, chapters, language)
+        subsections.append(deck_slide.subsection)
+    _fill_chapter_agendas(rendered, chapters, language, subsections,
+                          _subsection_titles(deck_path))
     _fill_deck_tocs(rendered, chapters, _section_titles(deck_path), language)
 
     undescribed = sum(1 for s in rendered if s.missing_description)

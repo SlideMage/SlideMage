@@ -6757,6 +6757,11 @@
 %   the previous pass recorded -- latexmk's rerun fills it in. A slide shown
 %   twice (\slidestep) is listed once, at its first place; the agenda's own
 %   slide is not listed.
+% \SMSubsectionAgenda[width] -- the same, but one entry per \subsection of
+%   the current \section (2026-10-12): the subsection's title, linked to its
+%   first slide in this version. For a chapter divider that introduces the
+%   subsections instead of listing every slide. Slides before the chapter's
+%   first \subsection are not listed; it fills in on the rerun.
 % \SMAgendaTitle{text} -- in a slide file, before the frame: the entry text
 %   for a slide whose frame has no title (\quoteframe, \fullbleedframe, ...)
 %   or should read differently in the agenda.
@@ -6802,6 +6807,15 @@
 			tex.sprint(-2, s)}}%
 		\immediate\write\@auxout{\string\SMAgendaSlide{\the\c@section}{#1}{\SM@ag@label}}%
 	\fi
+	% the first slide of each \subsection and the subsection's title, for
+	% \SMSubsectionAgenda (its own guard: a slide shown twice must not hide
+	% that it also opens a later subsection)
+	\ifnum\c@subsection>0
+		\ifcsname SM@ag@subwritten@\the\c@section.\the\c@subsection\endcsname\else
+			\expandafter\gdef\csname SM@ag@subwritten@\the\c@section.\the\c@subsection\endcsname{}%
+			\immediate\write\@auxout{\string\SMAgendaSubsection{\the\c@section}{#1}{\detokenize\expandafter{\subsecname}}}%
+		\fi
+	\fi
 }
 \newcommand{\SM@agenda@title}[1]{%
 	\ifcsname SM@ag@titled@\slideID\endcsname\else
@@ -6832,6 +6846,14 @@
 		\expandafter\gdef\csname SM@ag@title@#1\endcsname{#2}%
 	\fi
 }
+% {section}{id of the subsection's first slide}{subsection title}
+\newcommand{\SMAgendaSubsection}[3]{%
+	\ifcsname SM@ag@subseen@#2\endcsname\else
+		\expandafter\gdef\csname SM@ag@subseen@#2\endcsname{}%
+		\listcsgadd{SM@ag@sublist@#1}{#2}%
+		\expandafter\gdef\csname SM@ag@subtitle@#2\endcsname{#3}%
+	\fi
+}
 \newcommand{\SMAgendaDeckTarget}{\gdef\SM@ag@decktarget{}}
 \newcommand{\SMAgendaChapterTarget}[1]{\expandafter\gdef\csname SM@ag@chtarget@#1\endcsname{}}
 % -- the chapter agenda --
@@ -6842,6 +6864,10 @@
 	\item\hyperlink{#1}{\ifcsname SM@ag@title@#1\endcsname\csname SM@ag@title@#1\endcsname
 		\else\csname SM@ag@label@#1\endcsname\fi}%
 }
+% a subsection agenda's entry: #1 is the id of the subsection's first slide
+\newcommand{\SM@ag@subentry}[1]{%
+	\item\hyperlink{#1}{\csname SM@ag@subtitle@#1\endcsname}%
+}
 % (\def + \ifx, not \ifstrequal: that one would compare the *name* of
 % \SM@ag@self, see \decklanguage)
 \newcommand{\SM@ag@count}[1]{\def\SM@ag@this{#1}\ifx\SM@ag@this\SM@ag@self\else\advance\SM@ag@n by 1 \fi}
@@ -6850,9 +6876,9 @@
 	\ifx\SM@ag@this\SM@ag@self\else
 		\advance\SM@ag@i by 1
 		\ifnum\SM@ag@i>\SM@ag@half
-			\gappto\SM@ag@right{\SM@ag@entry{#1}}%
+			\gappto\SM@ag@right{\SM@ag@entrycmd{#1}}%
 		\else
-			\gappto\SM@ag@left{\SM@ag@entry{#1}}%
+			\gappto\SM@ag@left{\SM@ag@entrycmd{#1}}%
 		\fi
 	\fi
 }
@@ -6870,19 +6896,33 @@
 		\end{columns}%
 	\end{minipage}}%
 }
+% \SMChapterAgenda lists the chapter's slides, \SMSubsectionAgenda its
+% subsections (2026-10-12, direct instruction: "an agenda slide that lists
+% all the subsections in a chapter"; each entry links to the subsection's
+% first slide, titled as its \subsection{}). Same two columns, font steps and
+% chapter target ("Chapter contents" in the navigation bar).
 \newcommand{\SMChapterAgenda}[1][\linewidth]{%
+	\SM@ag@main{SM@ag@list@}{\SM@ag@entry}{#1}%
+}
+\newcommand{\SMSubsectionAgenda}[1][\linewidth]{%
+	\SM@ag@main{SM@ag@sublist@}{\SM@ag@subentry}{#1}%
+}
+% #1 the name prefix of the recorded list (+ section number), #2 the entry
+% macro, #3 the width
+\newcommand{\SM@ag@main}[3]{%
+	\let\SM@ag@entrycmd#2%
 	\edef\SM@ag@sec{\the\c@section}%
 	\edef\SM@ag@self{\slideID}%
 	\hypertarget{SMChapterAgenda\SM@ag@sec}{}%
 	\immediate\write\@auxout{\string\SMAgendaChapterTarget{\SM@ag@sec}}%
 	\SM@ag@n=0
-	\ifcsdef{SM@ag@list@\SM@ag@sec}{\forlistcsloop{\SM@ag@count}{SM@ag@list@\SM@ag@sec}}{}%
+	\ifcsdef{#1\SM@ag@sec}{\forlistcsloop{\SM@ag@count}{#1\SM@ag@sec}}{}%
 	\ifnum\SM@ag@n>0
 		\SM@ag@i=0
 		\edef\SM@ag@half{\the\numexpr(\SM@ag@n+1)/2\relax}% ceil(n/2); \numexpr rounds
 		\ifodd\SM@ag@n\else\edef\SM@ag@half{\the\numexpr\SM@ag@n/2\relax}\fi
 		\gdef\SM@ag@left{}\gdef\SM@ag@right{}%
-		\forlistcsloop{\SM@ag@split}{SM@ag@list@\SM@ag@sec}%
+		\forlistcsloop{\SM@ag@split}{#1\SM@ag@sec}%
 		\ifdim\SMChapterAgendaMaxHeight=0pt
 			% the room below a sectionframe's title bar, down to the Bottom Margin
 			\setlength{\SM@ag@maxh}{\dimexpr\paperheight-\SMSectionframeBarBottom
@@ -6890,11 +6930,11 @@
 		\else
 			\setlength{\SM@ag@maxh}{\SMChapterAgendaMaxHeight}%
 		\fi
-		\SM@ag@typeset{#1}{\normalsize}%
+		\SM@ag@typeset{#3}{\normalsize}%
 		\ifdim\dimexpr\ht\SM@ag@box+\dp\SM@ag@box\relax>\SM@ag@maxh
-			\SM@ag@typeset{#1}{\small}%
+			\SM@ag@typeset{#3}{\small}%
 			\ifdim\dimexpr\ht\SM@ag@box+\dp\SM@ag@box\relax>\SM@ag@maxh
-				\SM@ag@typeset{#1}{\footnotesize}%
+				\SM@ag@typeset{#3}{\footnotesize}%
 			\fi
 		\fi
 		\noindent\box\SM@ag@box\par

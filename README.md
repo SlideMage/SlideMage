@@ -2307,6 +2307,16 @@ link):
   is listed once; the agenda's own slide is not listed. `[width]` leaves
   room for a `\sectionfigure`. In the transcript it becomes the list of the
   chapter's slides with their numbers.
+- **`\SMSubsectionAgenda[width]`** (since v5.36.0) is the same for a chapter
+  that is divided into `\subsection`s: it lists their titles instead of every
+  slide, each entry a link to the first slide of its subsection (in this deck
+  version; a subsection with no slide there is left out, and so are slides
+  before the chapter's first `\subsection`). Same columns, font steps and
+  `[width]`, and the same "Chapter contents" target. Put it in the divider's
+  body, after `\sectionfigure`, and give it the room the figure leaves:
+  `\SMSubsectionAgenda[\dimexpr\linewidth-\SMSectionFigureWidth-12pt\relax]`.
+  In the transcript: "This chapter's sections:" with the number of each
+  subsection's first slide.
 - **`\deckappendixtoc`** (deck preamble, inert for LaTeX like `\decktags`)
   makes SlideMage generate the appendix for that deck on every whole-deck
   compile, whatever the toolbar checkbox says -- so the "Slide previews"
