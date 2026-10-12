@@ -1,4 +1,7 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+%% DE translation: qft-DE-SlideMage-Installieren
 %%
 
 % SlideMage manual, chapter "Installing SlideMage": the app itself, its first
@@ -6,27 +9,26 @@
 \setSlideVersion{1-0-0}
 \begin{standardframe}{Installing SlideMage}
 	\small
-	SlideMage comes as a single Windows program; it needs no Python. Its
-	repository on GitHub is private, so your GitHub account needs access to it,
-	both for the download and for automatic updates.
+	SlideMage is a single Windows program without Python. The GitHub
+	repository is private: your account needs access for download and updates.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.49\linewidth}
 			\shrinklists{1}
 			\textbf{Download and first start}
 			\begin{itemize}
-				\item \SMCode{SlideMage-windows.zip} from the newest release on the repository's \emph{Releases} page
-				\item Unzip \SMCode{SlideMage.exe} into a folder you keep and start it (if Windows warns: \emph{More info} $\rightarrow$ \emph{Run anyway})
-				\item Choose a project folder; an empty one becomes a new project, with this manual as its first deck
+				\item Get \SMCode{SlideMage-windows.zip} from the newest \emph{Release}
+				\item Unzip and start \SMCode{SlideMage.exe} (Windows warning: \emph{More info} $\rightarrow$ \emph{Run anyway})
+				\item Choose a project folder; an empty one becomes a new project
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.47\linewidth}
 			\shrinklists{1}
 			\textbf{Updates and more}
 			\begin{itemize}
-				\item three-dot menu $\rightarrow$ \emph{Settings} $\rightarrow$ General $\rightarrow$ \emph{Updates}: a GitHub token (read access) and whether to check, ask or install
-				\item The framework (\SMCode{latex}) and this manual are copies: a newer SlideMage offers to update them
-				\item From the source code: Python 3.11+, \SMCode{git clone}, \SMCode{pip install -e .}, \SMCode{slidemage --project <folder>}
+				\item \emph{Settings} $\rightarrow$ General $\rightarrow$ \emph{Updates}: GitHub token (read access), check/ask/install
+				\item Framework and manual are copies; a newer SlideMage offers to update them
+				\item From source: Python 3.11+, \SMCode{git clone}, \SMCode{pip install -e .}
 			\end{itemize}
 		\end{column}
 	\end{columns}

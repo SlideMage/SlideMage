@@ -1,0 +1,46 @@
+%% Included in decks: slidemage-manual-copy
+%%
+
+%% DE translation: des-DE-LaTeX-unter-Linux-installieren
+%%
+
+\begin{standardframe}{Installing LaTeX in Linux}
+	\small
+	\begin{columns}[c,onlytextwidth]
+		\begin{column}{0.86\linewidth}
+			SlideMage compiles every deck with LuaLaTeX through latexmk, so it needs a
+			TeX distribution. On Linux that is TeX Live, either from the distribution's
+			package manager or from the upstream installer.
+		\end{column}
+		\begin{column}{0.1\linewidth}
+			\raggedleft{\fontsize{34}{34}\selectfont\faLinux}
+		\end{column}
+	\end{columns}
+	\par\bigskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\shrinklists{1}
+			\textbf{Package manager} (simplest)
+			\begin{itemize}
+				\item Debian/Ubuntu: \SMCode{sudo apt install texlive-full latexmk}
+				\item Fedora: \SMCode{sudo dnf install texlive-scheme-full latexmk}
+				\item Arch: \SMCode{sudo pacman -S texlive texlive-lang}
+				\item Often a year or two behind the current TeX Live, which is fine for SlideMage
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\textbf{Upstream TeX Live} (\SMCode{tug.org/texlive})
+			\begin{itemize}
+				\item \SMCode{install-tl}, scheme \emph{full} (about 8\,GB), no root needed in your home folder
+				\item Add its \SMCode{bin} folder to \SMCode{PATH}
+				\item Step by step: \href{https://tug.org/texlive/quickinstall.html}{quick install guide}
+			\end{itemize}
+			\medskip
+			\textbf{Either way}
+			\begin{itemize}
+				\item Test in a terminal: \SMCode{lualatex --version}, \SMCode{latexmk -v}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

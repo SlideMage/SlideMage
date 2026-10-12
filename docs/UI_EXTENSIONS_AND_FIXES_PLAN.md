@@ -203,3 +203,67 @@ In this order:
   session and undid each other's links.
 - [ ] Decide whether `add_slide` with `translation_of` should also machine-translate the body with the
   configured model, as the Translate dialog does, instead of leaving a copy for Claude to translate.
+
+## 5. Version graph for a slide and its translations
+
+Status: idea, 2026-10-12. Needs the user's go; pause after each committed step.
+
+A graph like VS Code's git graph, per slide: the original's versions as a main line, each translation as a
+branch that starts at the version it was translated from, and where a translation fell behind.
+
+```
+ EN 1f8  Installing SlideMage                          used by
+ ●  current  v1.1.1   Oct 11 14:20                     manual (follows current)
+ │
+ ●  v1.1.0   Oct 11 13:10   ─────────┐
+ │                                    │  DE tks  Installation (Übersetzung)
+ │                                    ●  current  v1.0.0   Oct 11 13:40
+ │                                    ┊  ⚠ outdated since EN v1.1.1 (Oct 11 14:20)
+ ●  v1.0.0   Oct 2                                     course-2025 pins v1.0.0
+```
+
+- Main line: the original's frozen versions and its current one, with the time each was frozen.
+- Branch per translation, from the original's version it was made from, with its own versions.
+- Dashed while a translation is behind ("outdated since EN v…"), solid while in sync.
+- Labels on the right like git refs: which deck pins which version, which follows "current".
+- Click a node: open that version (frozen ones read-only); two selected nodes: show the diff, e.g. what
+  changed in EN since DE was translated.
+
+**What exists.** Versions and their order (frozen `-vX-Y-Z.tex` files, `\setSlideVersion`); when each
+change happened (`slides/.backups/`, one full copy per save, version line included, named by its time);
+which slide translates which (`%% Translation of:`, `slide_language.TranslationLinks`); "outdated"
+(`translation_link().outdated`); which deck pins or follows which version (`slide_usage`).
+
+**What is missing.**
+
+- The branch point: a translation records *which slide* it translates, not *which version*. Record it from
+  now on (`%% Translation of: <id-slug> v1.1.0`, written when the translation is made); older links fall
+  back to a guess from the backups' times, shown as approximate.
+- An explicit "Mark in sync with EN v…" action: today saving a translation (even a typo fix) clears
+  "outdated".
+- Edits made outside SlideMage leave no backup; in a project under git, `git log` of the slide file can
+  fill the gap (optional).
+
+| Step | What it does | Cost |
+| --- | --- | --- |
+| G1 History model | Per slide and its translations: version nodes with times, branch points, in-sync/outdated spans and deck labels, built from frozen files, backups and links. No UI; tested on the demo project. | ~40-60k, 2-3% |
+| G2 Record the source version | The translation header carries the original's version; written when translating; a "Mark in sync" command updates it and is what clears "outdated". Old headers keep working. | ~30-50k, 2-3% |
+| G3 Graph widget | A painted Qt view (like the slide list's delegate): lanes, nodes, dashed/solid lines, labels; light and dark. | ~60-90k, 3-5% |
+| G4 In the Versions panel | The graph above the panel's existing actions; click opens a version, two selected nodes open a diff. | ~40-60k, 2-3% |
+| G5 git history (optional) | In projects under git, saves made outside SlideMage appear as nodes from `git log`. | ~30-50k, 2-3% |
+
+**Decisions (recommendation first).**
+
+- Where it lives: **the Versions side panel** (compact) with an "Open large" view in the centre column;
+  or only a full-size view.
+- Old translations without a recorded source version: **show the guessed branch point, marked "approx."**;
+  or show them unbranched until marked in sync once.
+- Mockup first: a clickable HTML mockup of the graph before G3, to settle the look.
+
+## 6. Claude Code does SlideMage's AI tasks, fast
+
+Status: plan, 2026-10-12, revised after review. Suggestion bubbles in the Claude Code tab run each task as
+its own `claude -p` with structured output (Haiku, effort medium by default); SlideMage validates the
+result and applies it only if the slide is unchanged; a translation is created only after it succeeded.
+Prototype and benchmark first (step 1). Details: [Claude Code tasks plan](CLAUDE_CODE_TASKS_PLAN.md)
+(~315-465k tokens, 16-24% of a window, estimate). Pause after each committed step.
