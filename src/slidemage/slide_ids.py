@@ -13,12 +13,8 @@ from pathlib import Path
 from typing import Optional
 
 from . import project, slide_language
-from .deck_scan import PROJECT_ROOT
 
-SLIDE_IDS_CSV = PROJECT_ROOT / "slide_ids.csv"
-SLIDES_DIR = PROJECT_ROOT / "slides"
 TEMPLATE_RELATIVE = Path(".scripts") / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
-TEMPLATE_PATH = PROJECT_ROOT / TEMPLATE_RELATIVE
 
 # Matches the *unadorned* two-line "Included in decks" block only -- unlike
 # deck_headers.HEADER_RE, deliberately does NOT also consume a trailing
@@ -110,9 +106,10 @@ ID_FROM_FILENAME_RE = re.compile(r"^([^-]+)-.*\.tex$")
 
 
 def existing_ids_from_csv() -> set[str]:
-    if not SLIDE_IDS_CSV.exists():
+    ctx = project.transitional_context()
+    if not ctx.slide_ids_csv.exists():
         return set()
-    with open(SLIDE_IDS_CSV, encoding="utf-8", newline="") as f:
+    with open(ctx.slide_ids_csv, encoding="utf-8", newline="") as f:
         lines = f.read().splitlines()
     ids = {line.strip().strip('"') for line in lines[1:]}  # skip "id" header
     ids.discard("")
@@ -120,10 +117,11 @@ def existing_ids_from_csv() -> set[str]:
 
 
 def existing_ids_from_disk() -> set[str]:
-    if not SLIDES_DIR.is_dir():
+    ctx = project.transitional_context()
+    if not ctx.slides_dir.is_dir():
         return set()
     ids = set()
-    for path in SLIDES_DIR.glob("*.tex"):
+    for path in ctx.slides_dir.glob("*.tex"):
         m = ID_FROM_FILENAME_RE.match(path.name)
         if m:
             ids.add(m.group(1))
@@ -133,12 +131,13 @@ def existing_ids_from_disk() -> set[str]:
 def list_id_slugs() -> list[str]:
     """Every id-slug with a slides/<id-slug>-current.tex file, sorted --
     the Add slide sheet's slide picker."""
-    if not SLIDES_DIR.is_dir():
+    ctx = project.transitional_context()
+    if not ctx.slides_dir.is_dir():
         return []
     suffix = slide_language.CURRENT_SUFFIX
     return sorted(
         p.name[: -len(suffix)]
-        for p in SLIDES_DIR.glob(f"*{suffix}")
+        for p in ctx.slides_dir.glob(f"*{suffix}")
     )
 
 
@@ -179,10 +178,11 @@ def append_slide_id(slide_id: str) -> None:
     write.csv(..., row.names=FALSE) format: quoted value, CRLF line
     ending. Creates the file (with just the "id" header) first if it
     doesn't exist yet."""
-    if not SLIDE_IDS_CSV.exists():
-        with open(SLIDE_IDS_CSV, "w", encoding="utf-8", newline="") as f:
+    ctx = project.transitional_context()
+    if not ctx.slide_ids_csv.exists():
+        with open(ctx.slide_ids_csv, "w", encoding="utf-8", newline="") as f:
             f.write('"id"\r\n')
-    with open(SLIDE_IDS_CSV, "a", encoding="utf-8", newline="") as f:
+    with open(ctx.slide_ids_csv, "a", encoding="utf-8", newline="") as f:
         f.write(f'"{slide_id}"\r\n')
 
 
@@ -245,12 +245,13 @@ def create_slide_file(
     add_translation_backreference() on the *source* slide separately -- this
     function only ever touches the new file. Raises FileExistsError if the
     file is already there."""
+    ctx = project.transitional_context()
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
-    dest = SLIDES_DIR / slide_language.current_name(f"{slide_id}-{language}-{slug}")
+    dest = ctx.slides_dir / slide_language.current_name(f"{slide_id}-{language}-{slug}")
     if dest.exists():
         raise FileExistsError(f"{dest} already exists")
-    SLIDES_DIR.mkdir(parents=True, exist_ok=True)
+    ctx.slides_dir.mkdir(parents=True, exist_ok=True)
 
     if body is None:
         body = read_template()
@@ -260,15 +261,16 @@ def create_slide_file(
 
 def read_template() -> str:
     """The project's starter slide, or the bundled example's when absent."""
-    if TEMPLATE_PATH.is_file():
-        return TEMPLATE_PATH.read_bytes().decode("utf-8")
+    ctx = project.transitional_context()
+    if ctx.slide_template_path.is_file():
+        return ctx.slide_template_path.read_bytes().decode("utf-8")
     example = project.template_dir("example")
     if example is not None:
         template = example / TEMPLATE_RELATIVE
         if template.is_file():
             return template.read_bytes().decode("utf-8")
     raise FileNotFoundError(
-        f"No slide template found at {TEMPLATE_PATH} or in the bundled example project."
+        f"No slide template found at {ctx.slide_template_path} or in the bundled example project."
     )
 
 

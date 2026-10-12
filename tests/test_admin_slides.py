@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+from conftest import use_project
 from slidemage import admin_slides, course_schedule, deck_editor, slide_ids
 from slidemage.course_schedule import CourseDetail, CourseGroup, CourseSession, Lecturer
 from slidemage.deck_scan import Deck
@@ -39,8 +40,7 @@ def make_deck(tmp_path, language="de"):
 
 @pytest.fixture
 def new_slides(tmp_path, monkeypatch):
-    monkeypatch.setattr(slide_ids, "SLIDES_DIR", tmp_path / "slides")
-    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", tmp_path / "slide_ids.csv")
+    use_project(monkeypatch, tmp_path)
     ids = iter(["abc", "def"])
     monkeypatch.setattr(slide_ids, "mint_slide_id", lambda: next(ids))
 

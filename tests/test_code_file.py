@@ -1,11 +1,12 @@
 """\\SMCodeFile: pre-render check and transcript."""
 from pathlib import Path
 
+from conftest import use_project
 from slidemage import latex_lint, transcript
 
 
 def test_lint_reports_a_missing_code_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(latex_lint, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     (tmp_path / "snippets").mkdir()
     (tmp_path / "snippets" / "abc-1.tex").write_text("\\item x\n", encoding="utf-8")
     codes = [i.code for i in latex_lint.lint_text("\\SMCodeFile{snippets/abc-1.tex}\n")]
@@ -17,7 +18,7 @@ def test_lint_reports_a_missing_code_file(tmp_path, monkeypatch):
 
 
 def test_transcript_shows_the_code_file_as_a_code_block(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     (tmp_path / "snippets").mkdir()
     (tmp_path / "snippets" / "abc-1.tex").write_text(
         "% first\n\\begin{itemize}\n\t\\item A & B\n\\end{itemize}\n% last\n", encoding="utf-8")

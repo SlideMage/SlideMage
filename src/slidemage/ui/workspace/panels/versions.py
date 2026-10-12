@@ -30,8 +30,8 @@ class SlideVersions(SidePanel):
     key = "versions"
     title = "Slide versions"
 
-    def __init__(self, app, state) -> None:
-        super().__init__(app, state)
+    def __init__(self, app, state, actions) -> None:
+        super().__init__(app, state, actions)
         self._level = "minor"
 
     def meta(self) -> str:
@@ -92,7 +92,7 @@ class SlideVersions(SidePanel):
             make_current = Button("Make current", "secondary", compact=True)
             make_current.setToolTip("Make this the current version: what is current now is archived first, and "
                                     "the restored content gets a new, higher version number.")
-            make_current.clicked.connect(lambda: self.app.centre.restore_version(path))
+            make_current.clicked.connect(lambda: self.actions.restore_version(path))
             head.addWidget(make_current)
         row.body.addLayout(head)
         row.add_text(caption, q.PANEL_CAPTION)
@@ -140,7 +140,7 @@ class SlideVersions(SidePanel):
 
     def _set_pin(self, id_slug: str, version: Optional[str]) -> None:
         calls = self._pinnable()
-        self.app.slide_list.edit(
+        self.actions.edit_deck(
             "Change failed",
             f"{id_slug} in {self.state.deck.name} " + (f"now uses {slide_versioning.version_label(version)}" if version else "follows the current version"),
             lambda path, deck_text: slide_usage.set_pin(path, deck_text, calls, version))
@@ -155,7 +155,7 @@ class SlideVersions(SidePanel):
         line = QHBoxLayout()
         freeze = Button(f"Freeze as v{self._next(source, self._level)}", "primary", compact=True)
         freeze.setToolTip("Keep the current content as a frozen version and move the slide on to the next version.")
-        freeze.clicked.connect(lambda: self.app.centre.freeze_version(id_slug, self._level))
+        freeze.clicked.connect(lambda: self.actions.freeze_version(id_slug, self._level))
         levels = SegmentedControl(LEVELS, current=self._level)
         levels.changed.connect(lambda level: self._on_level(level, freeze, source))
         line.addWidget(freeze)

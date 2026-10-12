@@ -24,7 +24,7 @@ from ....ai.providers import ChatProvider
 from ....ai.tools import undo_edit
 from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
-from ....deck_scan import PROJECT_ROOT, Deck
+from ....deck_scan import Deck
 from ....slide_language import bare_id
 from ...ai_models import confirm_cloud_request
 
@@ -88,7 +88,7 @@ class _Bridge(QObject):
 class GuiWorkspace(Workspace):
     def __init__(self, window) -> None:
         """`window` is the main window: its state, centre column, slide list and compile flow."""
-        super().__init__(PROJECT_ROOT)
+        super().__init__(window.project.root)
         self.window = window
         self._bridge = _Bridge()
         self.edit_asked = self._bridge.edit_asked
@@ -148,7 +148,7 @@ class GuiWorkspace(Workspace):
     def _local(self, path: Path) -> Path:
         """`path` as the application spells it (the project folder is not always resolved)."""
         try:
-            return PROJECT_ROOT / path.relative_to(self.root)
+            return self.window.project.root / path.relative_to(self.root)
         except ValueError:
             return path
 

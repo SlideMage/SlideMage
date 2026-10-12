@@ -34,7 +34,6 @@ from ... import deck_editor, deck_outline
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
-from ...slide_ids import SLIDES_DIR
 from .. import layout_settings
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
@@ -313,7 +312,7 @@ class SlideList(QWidget):
             self.tree.toggle_section(item)
 
     def _open_source(self, row: SlideRow) -> None:
-        self.app.open_slide_editor(SLIDES_DIR / row.call.source_filename)
+        self.app.open_slide_editor(self.app.project.slides_dir / row.call.source_filename)
 
     def _step(self, delta: int) -> None:
         """Alt+Up/Down: the focused slide passes the item above or below it, a

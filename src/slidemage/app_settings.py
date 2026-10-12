@@ -16,18 +16,17 @@ controlling or diffing on every toggle, but it still needs to physically
 sit inside the synced folder tree for the cloud-sync client itself (not
 git) to carry it across machines.
 
-STORE_PATH is resolved from deck_scan.PROJECT_ROOT, i.e. it lives in the
-project's .slidemage/ folder, next to translation_prompts.json.
+The file is the project's .slidemage/app_settings.json (ProjectContext.settings_dir),
+next to translation_prompts.json; every function takes the ProjectContext it belongs to.
 """
 from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
-from .deck_scan import PROJECT_ROOT
-
-STORE_PATH = PROJECT_ROOT / ".slidemage" / "app_settings.json"
+from .project import ProjectContext
 
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
 # Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
@@ -37,34 +36,40 @@ OLLAMA_HOST_SETTING_KEY = "ollama_host"
 _FALLBACK_OLLAMA_HOST = "http://localhost:11434"
 
 
-def load() -> dict[str, Any]:
-    if not STORE_PATH.is_file():
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.settings_dir / "app_settings.json"
+
+
+def load(ctx: ProjectContext) -> dict[str, Any]:
+    path = _store_path(ctx)
+    if not path.is_file():
         return {}
     try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
 
 
-def save(settings: dict[str, Any]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STORE_PATH.write_text(
+def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
+    path = _store_path(ctx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(settings, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
 
-def get(key: str, default: Any = None) -> Any:
-    return load().get(key, default)
+def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:
+    return load(ctx).get(key, default)
 
 
-def set(key: str, value: Any) -> None:
-    settings = load()
+def set(ctx: ProjectContext, key: str, value: Any) -> None:
+    settings = load(ctx)
     settings[key] = value
-    save(settings)
+    save(ctx, settings)
 
 
-def get_ollama_host() -> str:
+def get_ollama_host(ctx: ProjectContext) -> str:
     """The Ollama server every drafting/translation/AI-rewrite call should
     use (2026-09-23, review finding: this used to be a hardcoded
     "http://localhost:11434" in two separate modules, with no way to
@@ -76,23 +81,23 @@ def get_ollama_host() -> str:
     environment variable, so a script/CI run can point this app at a
     different server without touching its settings file), else the plain
     localhost default."""
-    saved = get(OLLAMA_HOST_SETTING_KEY)
+    saved = get(ctx, OLLAMA_HOST_SETTING_KEY)
     if saved:
         return saved
     return os.environ.get("OLLAMA_HOST") or _FALLBACK_OLLAMA_HOST
 
 
-def set_ollama_host(host: str) -> None:
+def set_ollama_host(ctx: ProjectContext, host: str) -> None:
     """Empty/whitespace-only clears the saved override, falling back to
     $OLLAMA_HOST/the plain default again -- same "empty means unset"
     convention draft_prompts.set_custom_prompt() uses."""
-    settings = load()
+    settings = load(ctx)
     host = host.strip()
     if host:
         settings[OLLAMA_HOST_SETTING_KEY] = host
     else:
         settings.pop(OLLAMA_HOST_SETTING_KEY, None)
-    save(settings)
+    save(ctx, settings)
 
 
 # Default model per AI task (2026-09-26, direct instruction), set in
@@ -126,8 +131,8 @@ def split_spec(spec: str) -> tuple[str, str]:
     return "ollama", spec
 
 
-def default_model(task: str) -> str:
+def default_model(ctx: ProjectContext, task: str) -> str:
     """The configured default "<provider>:<model>" for `task` (a
     MODEL_SETTINGS key), or "" when none has been chosen yet."""
-    provider, model = split_spec(str(get(MODEL_SETTINGS[task]) or ""))
+    provider, model = split_spec(str(get(ctx, MODEL_SETTINGS[task]) or ""))
     return f"{provider}:{model}" if model else ""

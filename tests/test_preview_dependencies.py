@@ -7,6 +7,8 @@ import pytest
 
 from slidemage import compiler, preview_build, preview_cli
 from slidemage.preview_metrics import PreviewMetrics, record_line, stage
+from conftest import use_project
+from slidemage.project import transitional_context
 
 
 @pytest.fixture(autouse=True)
@@ -98,14 +100,13 @@ def test_generated_wrappers_never_enter_real_deck_headers(tmp_path, monkeypatch)
     (decks / "_snapshot_1.tex").write_text(r"\slide{abc-EN-Test}")
     slide = slides / "abc-EN-Test-current.tex"
     slide.write_text("%% Included in decks: _slidemage_preview-1\n%%\n\nBODY")
-    monkeypatch.setattr(deck_headers, "DECKS_GLOBS", [decks])
-    monkeypatch.setattr(deck_headers, "SLIDES_DIR", slides)
+    use_project(monkeypatch, tmp_path)
     assert deck_headers.regenerate_headers() == (1, 1)
     assert slide.read_text() == "%% Included in decks: course\n%%\n\nBODY"
 
 
 def test_watch_rebuilds_when_recorded_dependency_changes(tmp_path, monkeypatch):
-    from slidemage import deck_scan, slide_preview
+    from slidemage import slide_preview
 
     source = tmp_path / "abc-EN-Test-current.tex"
     source.write_text("source unchanged")
@@ -131,7 +132,7 @@ def test_watch_rebuilds_when_recorded_dependency_changes(tmp_path, monkeypatch):
 
     monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", render)
     monkeypatch.setattr(preview_cli.time, "sleep", sleep)
-    monkeypatch.setattr(deck_scan, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     monkeypatch.setattr("sys.argv", ["preview", str(source), "--watch"])
     import pytest
 
@@ -152,21 +153,21 @@ def test_housekeeping_rechecks_jobs_that_started_after_counting(tmp_path, monkey
     decks.mkdir()
     wrapper = decks / "_slidemage_preview-test.tex"
     wrapper.write_text("source")
-    monkeypatch.setattr(compiler, "BUILD_DIR", build)
+    use_project(monkeypatch, tmp_path)
     monkeypatch.setattr(compiler.project, "is_snapshot", lambda root: False)
     found = housekeeping.TempFiles([build / "preview-cache"], [wrapper], [])
     with preview_build.active_build(cache, wrapper):
         assert compiler.removable_build_entries() == []
-        housekeeping.remove_temp_files(found)
+        housekeeping.remove_temp_files(transitional_context(), found)
         assert artifact.exists() and wrapper.exists()
-    housekeeping.remove_temp_files(found)
+    housekeeping.remove_temp_files(transitional_context(), found)
     assert not artifact.exists() and not wrapper.exists()
 
 
 def test_cleanup_and_new_reservation_are_atomic_in_both_orders(tmp_path, monkeypatch):
     import threading
     from slidemage import housekeeping
-    monkeypatch.setattr(housekeeping, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     cache = tmp_path / ".build" / "preview-cache" / "race"
     wrapper = tmp_path / "decks" / "_slidemage_preview-race.tex"
     cache.mkdir(parents=True)
@@ -193,7 +194,7 @@ def test_cleanup_and_new_reservation_are_atomic_in_both_orders(tmp_path, monkeyp
             artifact.write_bytes(b"new")
 
     monkeypatch.setattr(housekeeping.shutil, "rmtree", remove)
-    cleaner = threading.Thread(target=housekeeping.remove_temp_files, args=(found,))
+    cleaner = threading.Thread(target=housekeeping.remove_temp_files, args=(transitional_context(), found))
     cleaner.start()
     assert deleting.wait(1)
     # While deletion owns the guard a reservation cannot enter its mutation phase.
@@ -208,7 +209,7 @@ def test_cleanup_and_new_reservation_are_atomic_in_both_orders(tmp_path, monkeyp
     assert artifact.read_bytes() == b"new"
     # Reverse ordering: an established reservation prevents removal altogether.
     with preview_build.active_build(cache, wrapper):
-        housekeeping.remove_temp_files(found)
+        housekeeping.remove_temp_files(transitional_context(), found)
         assert artifact.read_bytes() == b"new"
 
 
@@ -220,7 +221,7 @@ def test_housekeeping_and_pruning_skip_another_process_active_build(tmp_path, mo
     import queue
     import time
     from slidemage import housekeeping
-    monkeypatch.setattr(housekeeping, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     build = tmp_path / ".build"
     cache = build / "preview-cache" / "external"
     cache.mkdir(parents=True)
@@ -246,12 +247,12 @@ def test_housekeeping_and_pruning_skip_another_process_active_build(tmp_path, mo
     try:
         assert ready.get(timeout=5).strip() == "reserved"
         found = housekeeping.TempFiles([build / "preview-cache"], [wrapper], [])
-        housekeeping.remove_temp_files(found)
+        housekeeping.remove_temp_files(transitional_context(), found)
         preview_build.prune_unused(tmp_path, build)
         assert artifact.exists() and wrapper.exists()
         child.communicate("release\n", timeout=5)
         assert child.returncode == 0
-        housekeeping.remove_temp_files(found)
+        housekeeping.remove_temp_files(transitional_context(), found)
         assert not artifact.exists() and not wrapper.exists()
         assert preview_build.maintenance_lock(tmp_path).exists()
     finally:

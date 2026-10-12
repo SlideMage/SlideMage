@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
 
 from ... import deck_outline, slide_language, slide_preview, slide_source, slide_versioning
-from ...deck_editor import SLIDES_DIR
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import bare_id, current_path_for_bare_id
 from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
@@ -117,7 +116,7 @@ class CentreColumn(QFrame):
         `on_saved(previous_text)` runs after each save of it; `line` puts the cursor there."""
         self._opening = True
         try:
-            if path.parent == SLIDES_DIR:
+            if path.parent == self.state.project.slides_dir:
                 self.state.set_focused_slide(bare_id(path.name))
             self._path = path
             if self.state.mode not in ("source", "split"):
@@ -217,7 +216,7 @@ class CentreColumn(QFrame):
     def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
         """"Freeze as": the slide's current content becomes a frozen version and the slide moves on
         to the next one (slide_versioning.freeze_current()), after asking what each deck does."""
-        current = SLIDES_DIR / slide_language.current_name(id_slug)
+        current = self.state.project.slides_dir / slide_language.current_name(id_slug)
         if not current.is_file():
             QMessageBox.warning(self.app, "Cannot freeze", "The slide's current file was not found.")
             return
@@ -289,7 +288,7 @@ class CentreColumn(QFrame):
         slide's current file."""
         row = self._focused_row()
         slide_id = self.state.focused_slide
-        path = SLIDES_DIR / row.call.source_filename if row is not None \
+        path = self.state.project.slides_dir / row.call.source_filename if row is not None \
             else current_path_for_bare_id(slide_id) if slide_id else None
         return path if path is not None and path.is_file() else None
 

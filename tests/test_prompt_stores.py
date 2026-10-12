@@ -1,7 +1,7 @@
 """What the Prompts tab of Settings stores: the draft prompts and the translation prompts."""
 from __future__ import annotations
 
-from slidemage import draft_prompts
+from slidemage import draft_prompts, project
 from slidemage import translation_prompts as tp
 
 
@@ -29,7 +29,7 @@ def test_the_default_translation_prompt_falls_back_when_none_is_saved():
 
 def test_a_damaged_draft_prompt_file_counts_as_empty_and_is_replaced_whole(tmp_path):
     kind = draft_prompts.KIND_IMAGE_DRAFT
-    path = draft_prompts.STORE_PATH
+    path = project.transitional_context().settings_dir / "draft_prompts.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     for damaged in (b"\xff\xfe\x00 not utf-8", b"[1, 2]", b"not json", b'{"image_draft": 5, "other": "kept"}'):
         path.write_bytes(damaged)

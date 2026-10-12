@@ -9,10 +9,11 @@ from functools import partial
 
 import pytest
 from agent_fakes import ScriptedProvider, call, reply
-from conftest import build_window, make_project, wait_until as _wait_until
+from conftest import build_window, make_project, use_project, wait_until as _wait_until
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
+from slidemage.project import transitional_context
 from slidemage import app_settings, compiler
 from slidemage.ai import credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
@@ -21,7 +22,6 @@ from slidemage.deck_scan import scan_decks
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace.chat import assistant as assistant_module
-from slidemage.ui.workspace.chat import gui_workspace
 from slidemage.ui.workspace.chat import view as chat_view
 from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE, AssistantArea
 from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, ToolCard, UserBubble
@@ -49,13 +49,13 @@ def env(qapp, tmp_path, monkeypatch):
     """The main window on a throwaway project, the chat set to a Claude model with a key, and every request
     answered by the provider the test scripts."""
     root = make_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(gui_workspace, "PROJECT_ROOT", root)
+    context = use_project(monkeypatch, root)
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
-    app_settings.set("chat_model", "anthropic:claude-sonnet-5-5")
-    window = build_window(monkeypatch)
+    app_settings.set(context, "chat_model", "anthropic:claude-sonnet-5-5")
+    window = build_window(monkeypatch, context)
     window.show()
     window.state.set_mode("source")     # no Preview render thread to outlive the test
-    window.state.set_deck(next(d for d in scan_decks() if d.name == "test"))
+    window.state.set_deck(next(d for d in scan_decks(transitional_context()) if d.name == "test"))
     window.state.set_focused_slide("abc")
     providers = []
     monkeypatch.setattr(resolver, "provider_for", lambda spec: providers.pop(0))
@@ -119,7 +119,7 @@ def test_the_right_column_split_is_saved_on_drag_and_restored_by_a_new_window(en
     panel, assistant = panels.sizes()
     ratio = panel / (panel + assistant)
     assert layout_settings.get(SPLIT_SETTING) == ratio
-    assert app_settings.get(SPLIT_SETTING) is None
+    assert app_settings.get(transitional_context(), SPLIT_SETTING) is None
 
     again = build_window(monkeypatch)
     again.resize(1280, 800)
@@ -242,9 +242,9 @@ def test_a_local_model_answers_through_ollama_and_holds_the_slot(env):
     server.content_type = "application/x-ndjson"
     server.script = [ollama_ndjson(["Looking."], [("read_file", {"path": SLIDE})]), ollama_ndjson(["Fine as is."])]
     try:
-        app_settings.set("chat_model", "ollama:qwen3")
+        app_settings.set(env.window.project, "chat_model", "ollama:qwen3")
         env.providers.append(OllamaProvider("qwen3", host=server.url))
-        assert current_route().label == "qwen3 · local"
+        assert current_route(env.window.project).label == "qwen3 · local"
         ask(env)
         assert [type(w).__name__ for w in widgets(env, (AssistantText, ToolCard))] == [
             "AssistantText", "ToolCard", "AssistantText"]
@@ -346,7 +346,7 @@ def test_changing_the_permission_mid_run_reaches_the_agent(env):
 def test_the_permission_is_remembered(env):
     assert env.chat.session.mode == EDIT_ASK
     env.chat._set_mode(EDIT_AUTO)
-    assert app_settings.get("chat_edit_mode") == EDIT_AUTO
+    assert app_settings.get(env.window.project, "chat_edit_mode") == EDIT_AUTO
     area = AssistantArea(env.window, env.window.state)
     assert area.chat.session.mode == EDIT_AUTO and area.chat.mode_picker.text() == "Edit automatically"
     area.shutdown()
@@ -442,9 +442,9 @@ def test_new_chat_forgets_the_conversation(env):
 # -- the model and Local AI only -------------------------------------------------------------------------
 
 def test_local_ai_only_disables_the_cloud_model_with_a_hint(env):
-    app_settings.set("local_ai_only", True)
+    app_settings.set(env.window.project, "local_ai_only", True)
     env.chat.refresh_route()
-    route = current_route()
+    route = current_route(env.window.project)
     assert route.problem and "Local AI only" in env.chat.route_note.text() and not env.chat.route_note.isHidden()
     env.chat.send("go")
     assert not env.chat.session.running and not widgets(env, UserBubble)   # nothing was sent
@@ -456,7 +456,7 @@ def test_local_ai_only_disables_the_cloud_model_with_a_hint(env):
 
 def test_the_picker_lists_the_local_models_that_call_tools(env):
     env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
-    app_settings.set("chat_model", "ollama:old-model:7b")
+    app_settings.set(env.window.project, "chat_model", "ollama:old-model:7b")
     env.chat._open_route_menu()
     menu = next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
     keys = [entry[1] for entry in menu._entries if entry[0] == "item"]
@@ -465,9 +465,9 @@ def test_the_picker_lists_the_local_models_that_call_tools(env):
     assert "cannot call tools" in chosen[3] and chosen[4] == "check"
     menu.close()
     env.chat._set_route("ollama:qwen3:8b")
-    assert app_settings.default_model("chat") == "ollama:qwen3:8b" and env.chat.route_chip.text() == "qwen3:8b · local"
+    assert app_settings.default_model(env.window.project, "chat") == "ollama:qwen3:8b" and env.chat.route_chip.text() == "qwen3:8b · local"
     env.chat._set_route("anthropic:claude-opus-5-5")
-    assert app_settings.default_model("chat") == "anthropic:claude-opus-5-5"
+    assert app_settings.default_model(env.window.project, "chat") == "anthropic:claude-opus-5-5"
     assert env.chat.route_chip.text() == "claude-opus-5-5 · cloud"
 
 
@@ -497,7 +497,7 @@ def test_only_one_question_to_ollama_about_local_models_is_out_at_a_time(env, mo
 
 
 def test_without_a_chosen_model_or_key_the_chat_says_what_to_do(env, monkeypatch):
-    app_settings.set("chat_model", "")
+    app_settings.save(env.window.project, {})       # no model, and no key in the settings file either
     monkeypatch.delenv(credentials.ENV_VAR)
     env.chat.refresh_route()
     assert "Chat assistant" in env.chat.route_note.text()
@@ -568,7 +568,7 @@ def test_the_switch_is_remembered(env):
     area = env.window.assistant
     assert area.current == CHAT
     area.switch.changed.emit(CLAUDE_CODE)
-    assert area.current == CLAUDE_CODE and app_settings.get(assistant_module.SETTING) == CLAUDE_CODE
+    assert area.current == CLAUDE_CODE and app_settings.get(env.window.project, assistant_module.SETTING) == CLAUDE_CODE
     assert area._stack.currentWidget() is area._pages[CLAUDE_CODE] and not area.chat.isVisibleTo(area)
     again = AssistantArea(env.window, env.window.state)
     assert again.current == CLAUDE_CODE
@@ -638,7 +638,7 @@ def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monke
         return True
 
     monkeypatch.setattr(env.window, "_compile_jobs", fake_compile)
-    deck = next(d for d in scan_decks() if d.name == "test")
+    deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
     log = []
     results = on_thread(lambda: env.chat.workspace.compile_deck(deck, "instructor", compiler.CancelToken(), log.append))
     assert results == {"test-instructor": True, "x": False} and started and log == ["==== compiling ===="]
@@ -648,7 +648,7 @@ def test_the_chats_stop_ends_a_compile_without_asking(env, monkeypatch):
     stopped = []
     monkeypatch.setattr(env.window, "_compile_jobs", lambda jobs: True)
     monkeypatch.setattr(env.window, "stop_compilation_now", lambda: stopped.append(True))
-    deck = next(d for d in scan_decks() if d.name == "test")
+    deck = next(d for d in scan_decks(transitional_context()) if d.name == "test")
     cancel = compiler.CancelToken()
     box = {}
     thread = threading.Thread(target=lambda: box.update(r=env.chat.workspace.compile_deck(deck, "instructor", cancel, print)),

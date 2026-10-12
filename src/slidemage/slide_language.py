@@ -31,10 +31,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import slide_source
-from .deck_scan import PROJECT_ROOT
+from . import project, slide_source
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
 
 # Keep in sync with Slidemaster_preamble_base.tex's own
 # \setSlideLanguageFromSlug@aux fixed keyword set.
@@ -85,7 +83,7 @@ def current_path_for_bare_id(bare_id_: str) -> Optional[Path]:
     None if that ID has no current file any more (renamed again, or
     deleted) -- by this project's own convention there is at most one
     -current.tex per bare ID."""
-    matches = list(SLIDES_DIR.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
+    matches = list(project.transitional_context().slides_dir.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
     return matches[0] if matches else None
 
 
@@ -98,7 +96,7 @@ def current_id_slug_for_bare_id(bare_id_: str) -> Optional[str]:
 
 def _header(id_slug: str, path: Path | None = None) -> str:
     try:
-        return (path or SLIDES_DIR / current_name(id_slug)).read_text(
+        return (path or project.transitional_context().slides_dir / current_name(id_slug)).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return ""
@@ -108,7 +106,7 @@ class TranslationLinks:
     """One scan per resolution, including links recorded on only one side."""
 
     def __init__(self, slides_dir: Path | None = None) -> None:
-        self.slides_dir = slides_dir or SLIDES_DIR
+        self.slides_dir = slides_dir or project.transitional_context().slides_dir
         self.paths = {bare_id(p.name): p
                       for p in self.slides_dir.glob("*-current.tex")}
         self.headers: dict[str, str] = {}

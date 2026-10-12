@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import compiler
-from ..deck_scan import PROJECT_ROOT, Deck
+from ..deck_scan import Deck
 from .providers import ChatProvider
 
 
@@ -36,8 +36,8 @@ class WorkspaceContext:
 
 
 class Workspace:
-    def __init__(self, root: Path | None = None, context: WorkspaceContext | None = None) -> None:
-        self.root = (root or PROJECT_ROOT).resolve()
+    def __init__(self, root: Path, context: WorkspaceContext | None = None) -> None:
+        self.root = root.resolve()
         self._context = context or WorkspaceContext()
 
     def context(self) -> WorkspaceContext:

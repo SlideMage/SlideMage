@@ -48,13 +48,13 @@ def signature(path, width=None):
 
 
 def child(base, label, deadline, case_name):
-    from slidemage import deck_editor, deck_scan, slide_preview, slide_language, slide_snapshot
+    from slidemage import deck_editor, deck_scan, project, slide_preview, slide_language, slide_snapshot
     try:
         from slidemage.preview_metrics import PreviewMetrics
     except ImportError:
         PreviewMetrics = None
-    root = deck_scan.PROJECT_ROOT
-    deck = next(d for d in deck_scan.scan_decks() if d.name == "slidemage-manual")
+    root = project.transitional_context().root
+    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == "slidemage-manual")
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)]
     case = CASES[case_name]
@@ -68,7 +68,7 @@ def child(base, label, deadline, case_name):
     cached = label == "optimized"
     # The original fresh renderer requires outdir to match the project's
     # fixed latexmk aux_dir; cached builds override both directories.
-    slide_preview.BUILD_DIR = root / ".build" / label if cached else root / ".build"
+    project.use(project.ProjectContext(root, root / ".build" / label if cached else root / ".build"))
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(reuse_build=cached, deferred_images=cached, case=case_name,
              edit="typical-user-edit-v1", recipe=case), slide_preview.build_env())

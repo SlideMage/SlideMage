@@ -9,15 +9,13 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import compiler, deck_snapshot, project, preview_build
-from .compiler import PDF_DIR
-from .deck_scan import DECKS_DIR, PROJECT_ROOT
+from . import compiler, deck_snapshot, preview_build, project
+from .project import ProjectContext
 
 # The project root's own workflow scratch folder (CONVERSION_NOTES.md) -- where a PPTX
 # mid-conversion, a higher-resolution source image waiting to be cropped, or similar working
 # input gets placed by hand. Unlike .build/ and decks/_slidemage_*.tex, this isn't SlideMage's
 # own build output, but "Remove temp files" (2026-09-18, direct instruction) empties it too.
-TEMP_DIR = PROJECT_ROOT / ".temp"
 
 
 @dataclass
@@ -34,9 +32,9 @@ class TempFiles:
         return len(self.build) + len(self.wrappers) + len(self.scratch)
 
 
-def pdf_files() -> list[Path]:
+def pdf_files(ctx: ProjectContext) -> list[Path]:
     """The files directly in pdf/."""
-    return [p for p in PDF_DIR.iterdir() if p.is_file()] if PDF_DIR.is_dir() else []
+    return [p for p in ctx.pdf_dir.iterdir() if p.is_file()] if ctx.pdf_dir.is_dir() else []
 
 
 def delete_files(files: list[Path]) -> None:
@@ -44,20 +42,20 @@ def delete_files(files: list[Path]) -> None:
         path.unlink(missing_ok=True)
 
 
-def find_temp_files() -> TempFiles:
-    wrappers = list(DECKS_DIR.rglob("_slidemage_*.tex"))
-    if not project.is_snapshot(PROJECT_ROOT):
+def find_temp_files(ctx: ProjectContext) -> TempFiles:
+    wrappers = list(ctx.decks_dir.rglob("_slidemage_*.tex"))
+    if not project.is_snapshot(ctx.root):
         # left behind by an interrupted snapshot; in a snapshot they're its own
-        wrappers += DECKS_DIR.rglob(f"{deck_snapshot.WRAPPER_PREFIX}*.tex")
-    scratch = list(TEMP_DIR.iterdir()) if TEMP_DIR.exists() else []
+        wrappers += ctx.decks_dir.rglob(f"{deck_snapshot.WRAPPER_PREFIX}*.tex")
+    scratch = list(ctx.temp_dir.iterdir()) if ctx.temp_dir.exists() else []
     return TempFiles(compiler.removable_build_entries(), [p for p in wrappers if not preview_build.is_active(p)], scratch)
 
 
-def remove_temp_files(found: TempFiles) -> None:
+def remove_temp_files(ctx: ProjectContext, found: TempFiles) -> None:
     paths = found.build + found.scratch + found.wrappers
     # A preview can start after the sheet counts files. Both the reservation
     # check and deletion use the same guard, including a live CLI's OS lock.
-    with preview_build.cleanup_guard(paths, PROJECT_ROOT) as permitted:
+    with preview_build.cleanup_guard(paths, ctx.root) as permitted:
         if not permitted:
             return
         for path in found.build + found.scratch:

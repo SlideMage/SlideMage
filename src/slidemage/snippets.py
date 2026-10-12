@@ -7,16 +7,15 @@ folder, extension included (latex_lint's "code-file" check looks it up there).
 from __future__ import annotations
 
 from pathlib import Path
+from . import project
 
-from .deck_scan import PROJECT_ROOT
 
-SNIPPETS_DIR = PROJECT_ROOT / "snippets"
 
 
 def list_snippets() -> list[str]:
     """Every file in snippets/ (subfolders too), as the project-relative paths a
     \\SMCodeFile call takes, sorted."""
-    root = SNIPPETS_DIR
+    root = project.transitional_context().snippets_dir
     if not root.is_dir():
         return []
     return sorted(f"{root.name}/{p.relative_to(root).as_posix()}" for p in root.rglob("*") if p.is_file())
@@ -24,18 +23,20 @@ def list_snippets() -> list[str]:
 
 def next_snippet(slide_id: str) -> str:
     """`snippets/<slide id>-<n>.tex` with the lowest n that is not taken."""
+    ctx = project.transitional_context()
     existing = set(list_snippets())
     n = 1
-    while f"{SNIPPETS_DIR.name}/{slide_id}-{n}.tex" in existing:
+    while f"{ctx.snippets_dir.name}/{slide_id}-{n}.tex" in existing:
         n += 1
-    return f"{SNIPPETS_DIR.name}/{slide_id}-{n}.tex"
+    return f"{ctx.snippets_dir.name}/{slide_id}-{n}.tex"
 
 
 def resolve(path: str) -> Path:
     """The file a project-relative `path` names, which must lie inside snippets/ (not the folder itself)."""
-    target = (SNIPPETS_DIR.parent / path).resolve()
-    if target == SNIPPETS_DIR.resolve() or target.is_dir() or not target.is_relative_to(SNIPPETS_DIR.resolve()):
-        raise ValueError(f"{path} is not a file in the {SNIPPETS_DIR.name}/ folder.")
+    ctx = project.transitional_context()
+    target = (ctx.snippets_dir.parent / path).resolve()
+    if target == ctx.snippets_dir.resolve() or target.is_dir() or not target.is_relative_to(ctx.snippets_dir.resolve()):
+        raise ValueError(f"{path} is not a file in the {ctx.snippets_dir.name}/ folder.")
     return target
 
 

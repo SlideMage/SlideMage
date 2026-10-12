@@ -11,8 +11,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from ...deck_scan import PROJECT_ROOT
 from ..kit import kit_qss as q
+from ..workspace import maintenance
 from ..kit.widgets import Card, RowButton, caption
 
 
@@ -34,9 +34,9 @@ class NoDecksPage(QWidget):
         layout.addWidget(note)
         self.manual = RowButton("menu_book", "Add the SlideMage manual",
                                 "A finished deck to look at and copy slides from")
-        self.manual.clicked.connect(lambda: self.app._on_add_manual())
+        self.manual.clicked.connect(lambda: maintenance.on_add_manual(self.app))
         layout.addWidget(self.manual)
-        other = RowButton("folder_open", "Open another project…", f"Current: {PROJECT_ROOT}")
+        other = RowButton("folder_open", "Open another project…", f"Current: {self.app.project.root}")
         other.clicked.connect(lambda: self.app.commands.run("open_project", self.app))
         layout.addWidget(other)
 
@@ -45,7 +45,7 @@ class NoDecksPage(QWidget):
 
     def refresh(self) -> None:
         """Whether the manual can be added is looked up each time the page is shown: it compares files."""
-        can = self.app.can_add_manual()
+        can = maintenance.can_add_manual(self.app)
         self.manual.setEnabled(can)
         self.manual.sub.setText("A finished deck to look at and copy slides from" if can
                                 else "This copy of SlideMage has no manual to add, or the project has it already")

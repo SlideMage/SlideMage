@@ -5,6 +5,8 @@ import threading
 from pathlib import Path
 
 import pytest
+from conftest import use_project
+from slidemage.project import transitional_context
 
 
 def _configure_compiler(monkeypatch, tmp_path):
@@ -31,9 +33,7 @@ def _configure_compiler(monkeypatch, tmp_path):
         output_folders={},
         tags=[],
     )
-    monkeypatch.setattr(compiler, "PROJECT_ROOT", project_root)
-    monkeypatch.setattr(compiler, "BUILD_DIR", build_dir)
-    monkeypatch.setattr(compiler, "PDF_DIR", pdf_dir)
+    use_project(monkeypatch, tmp_path / "project")
     monkeypatch.setattr(compiler, "build_env", lambda: {})
     return compiler, deck, build_dir, pdf_dir, deck_path
 
@@ -46,7 +46,7 @@ def _fake_latexmk(monkeypatch, outputs, commands, log_text="No errors found.\n",
             self.command = list(command)
             commands.append(self.command)
             if wrappers is not None:
-                wrappers.append((compiler.PROJECT_ROOT / self.command[-1]).read_bytes())
+                wrappers.append((transitional_context().root / self.command[-1]).read_bytes())
             self.stdout = io.StringIO("")
             self.output = outputs.pop(0)
 

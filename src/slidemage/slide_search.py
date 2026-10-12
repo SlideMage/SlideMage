@@ -19,8 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import alt_blocks
-from .deck_scan import PROJECT_ROOT
+from . import alt_blocks, project
 from .slide_language import CURRENT_SUFFIX
 
 # Characters of context kept on each side of the match: a palette row shows one line.
@@ -57,7 +56,7 @@ def search_project(
     query = query.strip()
     if not query:
         return []
-    root = root or PROJECT_ROOT
+    root = root or project.transitional_context().root
     needle = query.lower()
     hits: list[SearchHit] = []
     for path in project_files(root):

@@ -7,12 +7,13 @@ import pytest
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QMessageBox
 
+from slidemage.ui.workspace import maintenance
 from slidemage import alt_images, housekeeping
 from slidemage.ui.workspace import window as window_module
 from slidemage.ai.providers import OllamaProvider
 from slidemage.ui.dialogs.open_project import OpenProjectSheet
 
-from conftest import build_window
+from conftest import build_window, use_project
 
 
 def _mock_ollama_lists(monkeypatch) -> None:
@@ -97,16 +98,15 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     old_run.mkdir()
     (old_run / "output.pdf").write_bytes(b"old")
     monkeypatch.setattr(housekeeping.compiler, "removable_build_entries", lambda: [old_file, old_run])
-    monkeypatch.setattr(housekeeping, "DECKS_DIR", tmp_path / "decks")
-    monkeypatch.setattr(housekeeping, "TEMP_DIR", tmp_path / ".temp")
-    housekeeping.DECKS_DIR.mkdir()
-    housekeeping.TEMP_DIR.mkdir()
+    use_project(monkeypatch, tmp_path)
+    (tmp_path / "decks").mkdir()
+    (tmp_path / ".temp").mkdir()
     monkeypatch.setattr(
         QMessageBox, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
 
-    window._remove_temp_files()
+    maintenance.remove_temp_files(window)
 
     assert not old_file.exists()
     assert not old_run.exists()

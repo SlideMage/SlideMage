@@ -11,6 +11,7 @@ import zlib
 
 from test_claude_runner import claude  # noqa: F401 -- a fixture
 
+from conftest import use_project
 from slidemage import alt_blocks, alt_draft, alt_images, translation_prompts
 from slidemage.ai import claude_images
 
@@ -31,9 +32,7 @@ GERMAN = {"short_de": "Ein Balkendiagramm.", "long_de": "Zwei Balken: A ist höh
 def add_pictures(monkeypatch, root, **entries):
     """Put the images `entries` (name -> fields of the store entry) into the throwaway project: the files in media/,
     the store and the text of slide abc. Returns the slide's file."""
-    monkeypatch.setattr(alt_images, "STORE_PATH", root / "media" / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", root / "media" / "alt-text.csv")
-    monkeypatch.setattr(alt_blocks, "PROJECT_ROOT", root)
+    use_project(monkeypatch, root)
     (root / "media").mkdir(exist_ok=True)
     slide = root / "slides" / "abc-EN-Hello-current.tex"
     text = slide.read_bytes().decode()

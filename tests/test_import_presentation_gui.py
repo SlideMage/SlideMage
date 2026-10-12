@@ -6,13 +6,15 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QMessageBox, QWidget
 
+from slidemage.project import ProjectContext
 from slidemage import deck_scan, slide_import
 from slidemage.ui.dialogs.import_presentation import ImportPresentationSheet
 
 
 class FakeWindow(QWidget):
-    def __init__(self):
+    def __init__(self, project):
         super().__init__()
+        self.project = project
         self.edits, self.logged = [], []
 
     def log(self, line):
@@ -24,15 +26,15 @@ class FakeWindow(QWidget):
 
 @pytest.fixture
 def sheet(tmp_path, monkeypatch, qapp):
+    context = ProjectContext.at(tmp_path)
+    context.decks_dir.mkdir()
     for name in ("alpha", "beta"):
-        (tmp_path / f"{name}.tex").write_text("\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n",
+        (context.decks_dir / f"{name}.tex").write_text("\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n",
                                               encoding="utf-8")
-    monkeypatch.setattr(deck_scan, "DECKS_DIR", tmp_path)
-    monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", tmp_path / "archive")
     errors = []
     monkeypatch.setattr(QMessageBox, "critical", lambda *args: errors.append(args[2]))
-    window = FakeWindow()
-    made = ImportPresentationSheet(window, next(d for d in deck_scan.scan_decks() if d.name == "beta"))
+    window = FakeWindow(context)
+    made = ImportPresentationSheet(window, next(d for d in deck_scan.scan_decks(context) if d.name == "beta"))
     made.errors, made.window, made.tmp = errors, window, tmp_path
     yield made
     made.deleteLater()

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import use_project
 from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
@@ -64,7 +65,6 @@ def _framework(folder, *templates):
 
 
 def test_every_project_next_to_the_framework_offers_the_slidemage_template(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     framework = _framework(tmp_path / "latex", "slidemage")
     project = _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci")
     assert slide_snapshot.framework_dirs(project) == [framework]
@@ -86,12 +86,12 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
 
 
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
+    ctx = use_project(monkeypatch, tmp_path / "project")
     # A project with only institution layers and no framework next to it: Graz.
     root = _project(tmp_path / "project", "uni-graz", "mci")
     assert slide_snapshot.render_template(root) == "uni-graz"
     # A saved choice whose file is gone falls back too.
-    app_settings.set(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-ibk")
+    app_settings.set(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-ibk")
     assert slide_snapshot.render_template(root) == "uni-graz"
     only_mci = _project(tmp_path / "other", "mci")
     assert slide_snapshot.render_template(only_mci) == "mci"
@@ -107,14 +107,13 @@ def test_default_preamble_uses_the_render_template(monkeypatch):
 
 @pytest.mark.parametrize("template", ["uni-graz", "mci"])
 def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, template):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     _framework(tmp_path / "latex", "slidemage")
     root = _project(tmp_path / "project", "uni-graz", "mci", "slidemage")
-    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", root)
+    ctx = use_project(monkeypatch, root)
     assert slide_snapshot.available_templates(root) == ["uni-graz", "mci", "slidemage"]
     assert slide_snapshot.render_template(root) == "slidemage"
     slide_snapshot.set_render_template(template)
-    assert app_settings.get(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == template
+    assert app_settings.get(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == template
     assert slide_snapshot.render_template() == template
     with pytest.raises(ValueError, match="not a template"):
         slide_snapshot.set_render_template("nope")

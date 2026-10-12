@@ -4,12 +4,9 @@ SlideMage" sheet.
 OpenProjectSheet lists the projects opened last (project.recent_projects()) with a chip each, lets
 the user open any folder, or create a new project (project.init_project). It is the first-run /
 start screen when no project can be found (cli.py), and ⋮ -> "Open project…" in the window. Either
-way it only *chooses* (`chosen`): the project is fixed for the life of a process, so the caller
-starts SlideMage again on it.
-
-This module must stay free of anything that imports deck_scan, which fixes the project folder at
-import time: the picker runs before there is one. That is why the chip "needs a check" (a
-pending change of compat.py) is the caller's to supply when it can.
+way it only *chooses* (`chosen`): a window keeps the project it was built with, so the caller
+starts SlideMage again on it. The picker runs before there is a project, which is why the chip
+"needs a check" (a pending change of compat.py) is the caller's to supply when it can.
 
 NewerProjectSheet asks what to do with a project that a newer SlideMage made.
 """

@@ -49,7 +49,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_log, compile_records, compiler, deck_scan
+from . import compile_log, compile_records, compiler, deck_scan, project
 from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
 from .deck_editor import SlideCall
 
@@ -258,7 +258,7 @@ def frames_for_slides(job: CompileJob, slide_ids: list[str], build_dir: Optional
     when there is no usable whole-deck compile to read them from. A slide that
     is not in that PDF (not typeset in the version) has no frames."""
     wanted = {i.lower() for i in slide_ids}
-    full = _full_compile(job, build_dir or compiler.BUILD_DIR)
+    full = _full_compile(job, build_dir or project.transitional_context().build_dir)
     from . import deck_language
     deck, _ = deck_language.expand_fragments(job.deck)
     for slot in deck_language.deck_slots(deck, deck_language.language_for_job(job)):
@@ -268,7 +268,7 @@ def frames_for_slides(job: CompileJob, slide_ids: list[str], build_dir: Optional
 
 
 def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = None) -> PartialPlan:
-    build_dir = build_dir or compiler.BUILD_DIR
+    build_dir = build_dir or project.transitional_context().build_dir
     requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
     full = _full_compile(job, build_dir)
     record, aux, full_pdf, deck_changed_at = full.record, full.aux, full.pdf, full.deck_changed_at
@@ -431,8 +431,9 @@ def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = Non
         build_root: Optional[Path] = None, project_root: Optional[Path] = None) -> PartialOutput:
     """Two passes over the page wrapper on top of the full compile's
     auxiliary files (see the module docstring). Raises PartialError."""
-    build_root = build_root or compiler.BUILD_DIR
-    project_root = project_root or compiler.PROJECT_ROOT
+    ctx = project.transitional_context()
+    build_root = build_root or ctx.build_dir
+    project_root = project_root or ctx.root
     job = plan.job
     jobname = job.jobname
     invocation = uuid.uuid4().hex
@@ -601,7 +602,7 @@ def _note_patch(plan: PartialPlan, result: PatchResult) -> None:
         path = Path(entry["path"])
         if path.name in swapped and path.is_file():
             patched_inputs[entry["path"]] = compile_records.sha256(path)
-    path = compile_records.record_path(compiler.BUILD_DIR, plan.job.jobname)
+    path = compile_records.record_path(project.transitional_context().build_dir, plan.job.jobname)
     path.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
 
 

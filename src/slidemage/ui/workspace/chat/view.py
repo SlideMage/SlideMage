@@ -91,7 +91,7 @@ class ChatView(Surface):
         self.state = state
         self.workspace = GuiWorkspace(app)
         self.session = ChatSession(self.workspace, app, self)
-        mode = app_settings.get(MODE_SETTING)
+        mode = app_settings.get(state.project, MODE_SETTING)
         self.session.set_mode(mode if mode in (EDIT_ASK, EDIT_AUTO) else EDIT_ASK)
         self._text: Optional[AssistantText] = None      # the answer being streamed
         self._tools: dict[str, ToolCard] = {}
@@ -287,7 +287,7 @@ class ChatView(Surface):
 
     def _provider_for_send(self) -> Optional[ChatProvider]:
         """The model that answers the next request; None (and the reason shown) when it cannot be used now."""
-        route = current_route()
+        route = current_route(self.state.project)
         if route.problem:       # the note under the message box says why
             return None
         try:
@@ -412,7 +412,7 @@ class ChatView(Surface):
 
     def refresh_route(self) -> None:
         """The model that answers, named under the message box (also after Settings changed it)."""
-        route = current_route()
+        route = current_route(self.state.project)
         self.route_chip.set_text(route.label)
         self.route_chip.set_tone("warning" if route.problem else "muted")
         self.route_chip.setToolTip("The model that answers. Click to choose another (Settings → AI models → Chat assistant).")
@@ -431,7 +431,7 @@ class ChatView(Surface):
 
     def _set_mode(self, mode: str) -> None:
         self.session.set_mode(mode)
-        app_settings.set(MODE_SETTING, mode)
+        app_settings.set(self.state.project, MODE_SETTING, mode)
         self._show_mode()
 
     def _show_mode(self) -> None:
@@ -452,7 +452,7 @@ class ChatView(Surface):
         """The cloud models on offer, greyed with the reason while "Local AI only" is on or no key is set,
         and the local models that can call tools (as of the last time Ollama was asked: when the menu
         opens, for the next time)."""
-        current = current_route().spec
+        current = current_route(self.state.project).spec
         self._load_local_models()
         local_only, has_key = resolver.local_only(), credentials.get_api_key() is not None
         menu = PopoverMenu(self, min_width=270)
@@ -482,6 +482,6 @@ class ChatView(Surface):
     def _set_route(self, key: str) -> None:
         if key == "settings":
             self.app.commands.run("settings", self.app)
-        elif key != current_route().spec:
-            app_settings.set(app_settings.MODEL_SETTINGS["chat"], key)
+        elif key != current_route(self.state.project).spec:
+            app_settings.set(self.state.project, app_settings.MODEL_SETTINGS["chat"], key)
         self.refresh_route()

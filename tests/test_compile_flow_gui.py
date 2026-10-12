@@ -11,14 +11,14 @@ from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
 
 from slidemage import compile_progress, compiler, deck_outline, latex_lint
 from slidemage.compile_status import DONE, FAILED, QUEUED, STOPPED
-from slidemage.deck_scan import PROJECT_ROOT
+from conftest import EXAMPLE_PROJECT
 from slidemage.ui.workspace import compile_jobs, render_check
 
 from test_workspace_window import COURSE, MANUAL, OLD, WORK, make_deck, qapp, window as window  # noqa: F401 -- fixtures
 
-SLIDE = sorted((PROJECT_ROOT / "slides").glob("*-current.tex"))[0]
+SLIDE = sorted((EXAMPLE_PROJECT.root / "slides").glob("*-current.tex"))[0]
 SLIDE_ID = SLIDE.name.split("-")[0]
-ERROR_LINE = f"{SLIDE.relative_to(PROJECT_ROOT).as_posix()}:47: Undefined control sequence."
+ERROR_LINE = f"{SLIDE.relative_to(EXAMPLE_PROJECT.root).as_posix()}:47: Undefined control sequence."
 
 
 def toast_texts(toast):

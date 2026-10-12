@@ -6,7 +6,7 @@ import re
 import shutil
 import time
 
-from slidemage import deck_scan, slide_preview
+from slidemage import deck_scan, project, slide_preview
 from slidemage.preview_build import build_lock
 
 
@@ -14,8 +14,8 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    root = deck_scan.PROJECT_ROOT
-    deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
+    root = project.transitional_context().root
+    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
     lists = (root/'snippets/1sv-1.tex').read_text()
     formula = re.search(r'\$[^$]+\$', lists)[0]
     figure = re.search(r'\\includegraphics\[[^\]]*\]\{[^}]*\}',
@@ -26,7 +26,8 @@ def main():
              ('list', '1sv-EN-Lists-and-Formulas', lists),
              ('figure', '1rb-EN-Figureframe', figure),
              ('table', '1wa-EN-Columns-and-Tables', table)]
-    build = slide_preview.BUILD_DIR
+    original = project.transitional_context()
+    build = original.build_dir
     with build_lock(args.output/'matrix.lock'):
         for cache in (False, True):
             stage = '1+2' if cache else '2'
@@ -36,7 +37,7 @@ def main():
                 log = []
                 row = dict(stage=stage, selection=name, slide=slug)
                 if cache:
-                    slide_preview.BUILD_DIR = build/'benchmark-elements'/name
+                    project.use(project.ProjectContext(original.root, build/'benchmark-elements'/name))
                 def render(revision):
                     return slide_preview.render_slide_text_to_pdf(
                         slug, body + f'\n\\def\\SMPreviewBenchmarkRevision{{{revision}}}',

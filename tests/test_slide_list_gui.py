@@ -21,12 +21,15 @@ from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.slide_list import ABOVE_ITEM, BELOW_ITEM, ON_ITEM, SlideList
 from slidemage.ui.workspace.slide_tree import DATA, THUMB_H, THUMB_W, meta_text, variant_label
 from slidemage.ui.workspace.state import WorkspaceState
+from conftest import use_project
+from slidemage.project import transitional_context
 
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
 TAIL = "\\end{document}\n"
 
 
 class FakeWindow:
+    project = property(lambda self: transitional_context())
     """What the list needs of the main window: the rescan after an edit, the dialogs, and
     the command registry its context menus show."""
 
@@ -80,7 +83,7 @@ def make_list(tmp_path, qapp, monkeypatch):
             name="course", path=path, archived=False, text=text, supports_version=True,
             uses_biblatex=False, preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
             chapters=parse_chapters(text), output_folders={}, tags=list(tags))
-        state = WorkspaceState()
+        state = WorkspaceState(transitional_context())
         window = FakeWindow(state)
         host = QWidget()
         window.list = SlideList(window, state, ThemeManager(), Toast(host))
@@ -190,12 +193,12 @@ def test_an_empty_deck_says_so_and_a_missing_deck_disables_adding(make_list):
 
 
 def test_de_rows_keep_focus_selection_and_edit_the_original_slot(make_list, tmp_path, monkeypatch):
-    from conftest import use_slides_folder
+    from conftest import use_project
 
     slides = tmp_path / "slides"
     slides.mkdir()
-    use_slides_folder(monkeypatch, slides)
-    monkeypatch.setattr(slide_list_module, "SLIDES_DIR", slides)
+    use_project(monkeypatch, slides.parent)
+    use_project(monkeypatch, tmp_path)
     for slug, header in (("aaa-EN-One", "%% DE translation: ddd-DE-Eins\n"),
                          ("ddd-DE-Eins", "%% Translation of: aaa-EN-One\n")):
         (slides / f"{slug}-current.tex").write_text(header + "\\begin{standardframe}{Title}Text\\end{standardframe}\n")
@@ -505,7 +508,7 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     slides = tmp_path / "slides"
     slides.mkdir()
     (slides / "aaa-First-v1-0-0.tex").write_text("x", encoding="utf-8")
-    monkeypatch.setattr(deck_editor, "SLIDES_DIR", slides)
+    use_project(monkeypatch, tmp_path)
     slide_list, _window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()

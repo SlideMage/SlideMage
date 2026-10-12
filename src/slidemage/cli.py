@@ -14,12 +14,12 @@ CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook in
 def _prepare_gui(project_root: Path | None) -> None:
     """The fonts and the kit stylesheet, for the sheets that run before the window (the project
     picker, the newer-project question). With a project, its settings decide light or dark; the
-    picker has none, and importing them would fix the project folder."""
+    picker has none."""
     from .ui.kit.fonts import load_fonts
     from .ui.kit.theme import ThemeManager
 
     load_fonts()
-    ThemeManager(dark=None if project_root is not None else True).apply()
+    ThemeManager(project=project.ProjectContext.at(project_root) if project_root is not None else None).apply()
 
 
 def _ask_for_project() -> Path | None:
@@ -133,7 +133,8 @@ def main(argv: list[str] | None = None) -> None:
 
     from .ui.app import main as gui_main
 
-    gui_main()
+    project.use(context := project.ProjectContext.at(root))
+    gui_main(context)
 
 
 if __name__ == "__main__":

@@ -6,14 +6,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from slidemage import bibliography, deck_editor, latex_edit, slide_source, snippets
+from slidemage import latex_edit
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.insert_popovers import CitationPopover, CodeFilePopover
 from slidemage.ui.workspace.source_view import SourcePane
+from conftest import use_project
+from slidemage.project import transitional_context
 
 
 class FakeApp:
+    project = property(lambda self: transitional_context())
     def __init__(self):
         self.theme = ThemeManager()
         self.logged = []
@@ -43,11 +45,7 @@ def project(tmp_path, monkeypatch):
         "  year = {1952},\n  journaltitle = {Journal of Finance}}\n\n"
         "@book{sharpe1964,\n  author = {Sharpe, W.},\n  title = {Capital Asset Prices},\n  year = {1964}}\n",
         encoding="utf-8")
-    monkeypatch.setattr(deck_editor, "SLIDES_DIR", slides)
-    monkeypatch.setattr(snippets, "SNIPPETS_DIR", tmp_path / "snippets")
-    monkeypatch.setattr(bibliography, "DEFAULT_BIB", bib)
-    monkeypatch.setattr(slide_source, "BACKUPS_DIR", slides / ".backups")
-    monkeypatch.setattr(source_file, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 

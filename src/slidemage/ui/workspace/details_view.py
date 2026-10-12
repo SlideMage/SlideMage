@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 )
 
 from ... import alt_blocks, slide_language, slide_rename, slide_source, slide_versioning
-from ...deck_editor import SLIDES_DIR
 from ...deck_outline import SlideRow
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
@@ -69,7 +68,7 @@ class DetailsPane(Surface):
 
     @property
     def current_path(self) -> Path:
-        return SLIDES_DIR / slide_language.current_name(self._id_slug)
+        return self.app.project.slides_dir / slide_language.current_name(self._id_slug)
 
     def show_slide(self, id_slug: str, row: Optional[SlideRow], message: str = "") -> None:
         """Show the slide `id_slug` ("" with a `message`: no slide), in the open deck as `row`."""

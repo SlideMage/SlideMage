@@ -26,22 +26,12 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit
 
+from . import project
 from .archive import read, write
-from .deck_scan import (
-    COURSE_URL_RE,
-    DOCUMENT_BEGIN_LINE_RE,
-    DOCUMENT_END_RE,
-    PROJECT_ROOT,
-    Chapter,
-    Deck,
-    parse_chapters,
-    SECTION_RE,
-    find_decktags,
-)
+from .deck_scan import COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, is_commented
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
 
 # Macros that take a pinned version as a second brace argument.
 VERSIONED_MACROS = {"slideversion", "omitslideversion"}
@@ -235,10 +225,11 @@ def is_commented_out(deck_text: str, call: SlideCall) -> bool:
 def available_versions(id_slug: str) -> list[str]:
     """Every already-frozen slides/<id_slug>-vX-Y-Z.tex version, sorted
     numerically (not lexically -- "1-9-0" must sort before "1-10-0")."""
-    if not SLIDES_DIR.is_dir():
+    ctx = project.transitional_context()
+    if not ctx.slides_dir.is_dir():
         return []
     versions = []
-    for path in SLIDES_DIR.glob(f"{id_slug}-v*.tex"):
+    for path in ctx.slides_dir.glob(f"{id_slug}-v*.tex"):
         m = FROZEN_RE.search(path.name)
         if m:
             versions.append(m.group(1))

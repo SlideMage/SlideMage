@@ -23,7 +23,7 @@ class ImportPresentationSheet(ModalSheet):
         """`app` is the window; the slides go to the end of a deck, `current` by default."""
         super().__init__("Import PPTX/ODP", app, width=560)
         self.app = app
-        self._decks = [deck for deck in scan_decks() if not deck.archived]
+        self._decks = [deck for deck in scan_decks(app.project) if not deck.archived]
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)

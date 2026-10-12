@@ -15,12 +15,6 @@ from . import project
 from .tex_source import is_commented
 
 
-# cli.py settles the project and exports it via $SLIDEMASTER_PROJECT before
-# this module is imported; the cwd fallback only covers direct imports.
-PROJECT_ROOT = project.discover() or Path.cwd()
-DECKS_DIR = PROJECT_ROOT / "decks"
-ARCHIVE_DIR = DECKS_DIR / "archive"
-
 SECTION_RE = re.compile(r"\\section\{([^}]*)\}")
 DOCUMENT_BEGIN_RE = re.compile(r"\\begin\{document\}")
 DOCUMENT_BEGIN_LINE_RE = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
@@ -98,7 +92,7 @@ class Deck:
     # \deckoutputfolder-declared output destinations: version name
     # ("instructor"/"during-course"/"after-course"), "presenter", None (the
     # bare, every-version fallback), or "transcript" -> raw path text as written
-    # in the deck (not yet resolved against PROJECT_ROOT, nor checked for
+    # in the deck (not yet resolved against the project folder, nor checked for
     # naming a full file rather than a folder -- compiler.resolve_output_location()
     # does that for compiled PDFs, transcript.resolve_transcript_location()
     # for transcripts). Empty dict for a deck with no \deckoutputfolder at all.
@@ -309,14 +303,14 @@ def scan_dir(directory: Path, archived: bool) -> list[Deck]:
     return decks
 
 
-def scan_decks() -> list[Deck]:
+def scan_decks(ctx: project.ProjectContext) -> list[Deck]:
     """Every discovered deck: active decks first, then archived ones, each
     group sorted by filename."""
-    return scan_dir(DECKS_DIR, archived=False) + scan_dir(ARCHIVE_DIR, archived=True)
+    return scan_dir(ctx.decks_dir, archived=False) + scan_dir(ctx.archive_dir, archived=True)
 
 
 if __name__ == "__main__":
-    for deck in scan_decks():
+    for deck in scan_decks(project.from_environment()):
         tag = "archived" if deck.archived else "active"
         ver = "yes" if deck.supports_version else "no"
         bib = "yes" if deck.uses_biblatex else "no"

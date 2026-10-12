@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import course_schedule, deck_editor, slide_ids, slide_language
+from . import course_schedule, deck_editor, project, slide_ids, slide_language
 from .deck_scan import Deck
 
 LANGUAGE_NAMES = {"de": "German", "en": "English"}
@@ -93,7 +93,7 @@ def insert_admin_slides(
         for id_suffix, source in slide_specs:
             slide_id = slide_ids.mint_slide_id()
             id_slug = f"{slide_id}-{'EN' if language == 'en' else 'DE'}-{id_suffix}"
-            slide_path = slide_ids.SLIDES_DIR / slide_language.current_name(id_slug)
+            slide_path = project.transitional_context().slides_dir / slide_language.current_name(id_slug)
             slide_path.parent.mkdir(parents=True, exist_ok=True)
             # Reserve the ID before editing the deck, like the ordinary Add slide path.
             slide_ids.append_slide_id(slide_id)

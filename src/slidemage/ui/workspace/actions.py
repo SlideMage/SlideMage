@@ -20,6 +20,7 @@ from ...deck_scan import TAG_COURSE, TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
 from ..text import plural
+from . import deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from .state import MODES, UI_LANGUAGES, VIEWS
@@ -150,7 +151,7 @@ def build_registry() -> CommandRegistry:
         meta="every view")
     for version in STUDENT_VERSIONS:
         add(f"transcript:{version}", f"Write transcript · {VIEW_LABELS[version]}", VIEW_AND_BUILD,
-            lambda w, v=version: w.generate_deck_transcript(w.state.deck, v),
+            lambda w, v=version: deck_actions.generate_deck_transcript(w, w.state.deck, v),
             icon="article", meta="Markdown + HTML", enabled=_has_deck, visible=_versioned)
     add("stop", "Stop compilation", VIEW_AND_BUILD, _window("_stop_compilation"), tone="danger", icon="stop",
         enabled=lambda w: w.compiling)
@@ -187,18 +188,18 @@ def build_registry() -> CommandRegistry:
             visible=section_chosen, enabled=_section_enabled(name))
 
     # Deck -----------------------------------------------------------------------------
-    add("open_pdf", "Open latest PDF", DECK, _deck("_on_open_latest_pdf"), enabled=_active_deck)
-    add("deck_settings", "Deck settings…", DECK, _deck("_on_deck_settings"),
+    add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
+    add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
         enabled=lambda w: _has_deck(w) and not _keeps_group(w))
-    add("admin_slides", "Admin slides…", DECK, _deck("_on_admin_slides"), meta="course page",
+    add("admin_slides", "Admin slides…", DECK, lambda w: deck_actions.on_admin_slides(w, w.state.deck), meta="course page",
         enabled=_admin_slides_possible)
     add("deck_source", "Edit deck source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
-    add("deck_tags", "Tags…", DECK, _deck("_on_edit_deck_tags"),
+    add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_edit_deck_tags(w, w.state.deck),
         enabled=lambda w: _active_deck(w) and not _keeps_group(w))
-    add("duplicate_deck", "Duplicate deck…", DECK, _deck("_on_duplicate_deck"), enabled=_active_deck)
+    add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)
     add("export_pptx", "Export PPTX…", DECK, _deck("_on_export_pptx"), enabled=_active_deck)
-    add("archive_deck", "Archive deck…", DECK, _deck("_archive_deck"), tone="danger", enabled=_active_deck)
-    add("create_snapshot", "Create deck snapshot…", DECK, _window("_on_create_deck_snapshot"))
+    add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
+    add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
     add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))
@@ -212,15 +213,15 @@ def build_registry() -> CommandRegistry:
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
     add("settings", "Settings…", PROJECT, _window("_on_open_settings"))
-    add("housekeeping", "Housekeeping…", PROJECT, _window("_on_housekeeping"), icon="build",
+    add("housekeeping", "Housekeeping…", PROJECT, maintenance.on_housekeeping, icon="build",
         meta="pdf, temp files, unused content, previews")
-    add("empty_pdf", "Empty pdf folder", PROJECT, _window("_empty_pdf_folder"))
-    add("remove_temp", "Remove temp files", PROJECT, _window("_remove_temp_files"))
-    add("archive_unused", "Archive unused slides and media files", PROJECT, _window("_on_archive_unused_content"))
+    add("empty_pdf", "Empty pdf folder", PROJECT, maintenance.empty_pdf_folder)
+    add("remove_temp", "Remove temp files", PROJECT, maintenance.remove_temp_files)
+    add("archive_unused", "Archive unused slides and media files", PROJECT, maintenance.on_archive_unused_content)
     add("update_previews", "Update slide previews", PROJECT, _window("_on_update_previews"))
-    add("sync_links", "Reestablish broken translation links", PROJECT, _window("_on_sync_translation_links"))
-    add("version_history", "Version history…", PROJECT, _window("_on_open_version_history"))
-    add("check_updates", "Check for updates…", PROJECT, _window("_on_check_for_updates"))
-    add("project_compat", "Project compatibility…", PROJECT, _window("_on_project_compat"))
+    add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
+    add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
+    add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
+    add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
     add("exit", "Exit SlideMage", PROJECT, lambda w: w.close())
     return registry

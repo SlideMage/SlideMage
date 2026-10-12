@@ -21,7 +21,6 @@ from ....ai import claude_launch, claude_scope
 from ....ai.agent_types import EDIT_AUTO
 from ....ai.mcp_server import McpServer
 from ....ai.tools import CLAUDE_CODE_TOOLS, ToolBox, build_toolbox
-from ....deck_scan import PROJECT_ROOT
 from ....pty_process import PtyProcess
 from ..chat.gui_workspace import GuiWorkspace
 from .sync import DiskSync
@@ -51,7 +50,7 @@ class ClaudeCodeSession(QObject):
         self._process: PtyProcess | None = None
         self._generation = 0                        # which process the callbacks belong to
         self._lock = threading.Lock()
-        self._sync = DiskSync(window, PROJECT_ROOT, self)
+        self._sync = DiskSync(window, window.project.root, self)
         self._chunk.connect(self._on_chunk)
         self._ended.connect(self._on_ended)
 
@@ -77,12 +76,12 @@ class ClaudeCodeSession(QObject):
         self.publish_focus(force=True)
         self._timer.start()
         command = claude_launch.build_command(self.claude, self._server.url, model=self.model, effort=self.effort)
-        env = claude_launch.environment(self._server.token, PROJECT_ROOT, self.claude, focus_file=self._focus_file)
+        env = claude_launch.environment(self._server.token, self._window.project.root, self.claude, focus_file=self._focus_file)
         with self._lock:
             self._generation += 1
             generation = self._generation
         self._process = PtyProcess(
-            command, PROJECT_ROOT, env, lambda data: self._on_output(generation, data),
+            command, self._window.project.root, env, lambda data: self._on_output(generation, data),
             lambda code: self._on_exit(generation, code), cols, rows)
         self._sync.start()
 
@@ -104,7 +103,7 @@ class ClaudeCodeSession(QObject):
         self._published = values
         self.focus_changed.emit()
         try:
-            claude_scope.publish(self._focus_file, values[0], PROJECT_ROOT, *values[1:])
+            claude_scope.publish(self._focus_file, values[0], window.project.root, *values[1:])
         except OSError:
             pass
 

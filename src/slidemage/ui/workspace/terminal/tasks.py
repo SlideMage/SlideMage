@@ -104,7 +104,7 @@ def _focus_at(window, path: Path) -> _Focus:
 def _focus(window) -> _Focus | None:
     """The slide the Source view shows, if it is a slide's current file."""
     path = window.centre.path
-    if path is None or path.parent != slide_source.SLIDES_DIR or not slide_language.is_current_file(path):
+    if path is None or path.parent != window.project.slides_dir or not slide_language.is_current_file(path):
         return None
     return _focus_at(window, path)
 
@@ -202,7 +202,7 @@ def _deck_slides(window) -> list[Path]:
         return []
     calls = [slot.call for slot in deck_language.deck_slots(state.deck, state.language)
              if slot.call.included_in(state.view)]
-    paths = dict.fromkeys(slide_source.SLIDES_DIR / slide_language.current_name(call.id_slug) for call in calls)
+    paths = dict.fromkeys(window.project.slides_dir / slide_language.current_name(call.id_slug) for call in calls)
     return [path for path in paths if path.is_file()]
 
 
@@ -213,7 +213,7 @@ def deck_bubbles(window) -> list[Bubble]:
     if not paths:
         return []
     fits: dict[str, list[Path]] = {task.name: [] for task in BATCH_TASKS}      # the slides each task fits
-    links = slide_language.TranslationLinks(slide_source.SLIDES_DIR)
+    links = slide_language.TranslationLinks(window.project.slides_dir)
     for path in paths:
         focus = _focus_at(window, path)
         for bubble in _text_offers(focus, slide_language.translation_link(focus.id_slug, links=links)):

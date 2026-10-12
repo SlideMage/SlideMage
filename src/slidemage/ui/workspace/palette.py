@@ -25,7 +25,6 @@ from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
 from ... import slide_ids, slide_language, slide_search
-from ...deck_editor import SLIDES_DIR
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Chip, MenuRow, apply_shadow, clear_layout, set_property
@@ -107,7 +106,7 @@ def slide_entries(window, words: list[str], project_slugs: list[str]) -> list[En
     for id_slug in project_slugs:
         if id_slug not in in_deck and matches(words, id_slug):
             entries.append(Entry(GO_TO_SLIDE, id_slug,
-                                 lambda s=id_slug: window.open_slide_editor(SLIDES_DIR / slide_language.current_name(s)),
+                                 lambda s=id_slug: window.open_slide_editor(window.project.slides_dir / slide_language.current_name(s)),
                                  GROUP_ICONS[GO_TO_SLIDE], "not in this deck"))
     return entries[:MAX_SLIDES]
 
@@ -299,7 +298,7 @@ class CommandPalette(QWidget):
             entries += hit_entries(self._window, self._hits)
         if len(query) >= MIN_TEXT_QUERY:
             entries.append(Entry(CHAT, f"Ask the chat: “{query}”", lambda: self._window.ask_chat(query),
-                                 GROUP_ICONS[CHAT], current_route().label))
+                                 GROUP_ICONS[CHAT], current_route(self._window.project).label))
         self._entries = entries
         self._show_entries()
         kept = next((i for i, e in enumerate(entries) if before and (e.group, e.label) == (before.group, before.label)),

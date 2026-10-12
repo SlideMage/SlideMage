@@ -214,7 +214,7 @@ class AiFixPanel(Surface):
             models = OllamaProvider().list_models()
         elif not self._models_loaded:
             return
-        fill_model_combo(self.model_combo, "syntax_check", models, "(no AI models available)")
+        fill_model_combo(self.app.project, self.model_combo, "syntax_check", models, "(no AI models available)")
         self._models_loaded = True
 
     # -- running -------------------------------------------------------------------

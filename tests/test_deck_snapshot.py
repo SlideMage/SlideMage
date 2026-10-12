@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import write_test_file as write
+from conftest import use_project, write_test_file as write
 
 from slidemage import compiler, deck_scan, deck_snapshot, project, sm_rename
 from slidemage.deck_snapshot import SnapshotOptions
@@ -64,7 +64,7 @@ def tree(tmp_path, monkeypatch):
     write(framework / "beamerthemegotham.sty", "gotham\n")
     write(texroot / "tex" / "latex" / "beamer" / "beamer.cls", "beamer\n")
 
-    monkeypatch.setattr(compiler, "BUILD_DIR", root / ".build")
+    use_project(monkeypatch, root)
     monkeypatch.setattr(deck_snapshot, "tex_roots", lambda: [texroot])
     monkeypatch.setattr(deck_snapshot, "_run_text", lambda cmd, cwd=None, any_exit_code=False: "")
     write(texroot / "fonts" / "opentype" / "public" / "fira" / "FiraSans-Light.otf", b"otf")
@@ -549,9 +549,7 @@ def test_snapshot_compiler_mode(opened_snapshot, monkeypatch, tmp_path):
     """Inside a snapshot: PDFs stay in the snapshot's pdf/ (its
     \\deckoutputfolder belongs to the original project), and a compile's
     build folder gets the seeded footer timestamp."""
-    monkeypatch.setattr(compiler, "PROJECT_ROOT", opened_snapshot)
-    monkeypatch.setattr(compiler, "PDF_DIR", opened_snapshot / "pdf")
-    monkeypatch.setattr(compiler, "BUILD_DIR", opened_snapshot / ".build")
+    use_project(monkeypatch, opened_snapshot)
     deck = deck_scan.scan_dir(opened_snapshot / "decks", False)[0]
     assert deck.output_folders  # D:/Teaching/Somewhere
     job = compiler.CompileJob(deck, None, None)
@@ -608,8 +606,7 @@ def test_real_snapshot_of_manual(tmp_path, monkeypatch):
     shutil.copytree(repo / "example", tmp_path / "example",
                     ignore=shutil.ignore_patterns("pdf", ".build", ".previews", "snapshots"))
     root = tmp_path / "example"
-    monkeypatch.setattr(compiler, "BUILD_DIR", root / ".build")
-    monkeypatch.setattr(compiler, "PROJECT_ROOT", root)
+    use_project(monkeypatch, root)
     deck = next(d for d in deck_scan.scan_dir(root / "decks", False)
                 if d.name == "slidemage-manual")
     deck.supports_version = False
@@ -623,7 +620,6 @@ def test_real_snapshot_of_manual(tmp_path, monkeypatch):
 @pytest.mark.parametrize("pinned", [False, True], ids=["current", "pinned"])
 def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
     import pymupdf
-    from slidemage import compile_passes, slide_language, slide_snapshot
 
     repo = Path(__file__).resolve().parents[1]
     shutil.copytree(repo / "latex", tmp_path / "latex")
@@ -632,13 +628,7 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
     root = tmp_path / "example"
     monkeypatch.setenv("SLIDEMASTER_LATEX", str(tmp_path / "latex"))
     monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
-    monkeypatch.setattr(compiler, "PROJECT_ROOT", root)
-    monkeypatch.setattr(compiler, "BUILD_DIR", root / ".build")
-    monkeypatch.setattr(compiler, "PDF_DIR", root / "pdf")
-    monkeypatch.setattr(compile_passes, "STORE_PATH", root / ".slidemage" / "compile_passes.json")
-    monkeypatch.setattr(slide_language, "SLIDES_DIR", root / "slides")
-    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", root)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", root / ".previews" / "slide_previews")
+    use_project(monkeypatch, root)
     omit = (r"\omitslideversion{1an-EN-Slide-Versions}{1-0-0}" if pinned
             else r"\omitslide{1an-EN-Slide-Versions}")
     write(root / "decks" / "omit-test.tex", r"""\documentclass[aspectratio=169]{beamer}

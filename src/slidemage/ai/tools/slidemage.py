@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ... import project
 from ... import (
     bibliography,
     compile_status,
@@ -52,7 +53,7 @@ def open_deck(ctx: ToolContext, name: str | None = None) -> Deck:
     """The deck called `name`, else the one that is open, freshly read from disk."""
     wanted = (name or "").strip().removesuffix(".tex") or (
         ctx.workspace.context().deck.name if ctx.workspace.context().deck else "")
-    decks = deck_scan.scan_decks()
+    decks = deck_scan.scan_decks(project.transitional_context())
     for deck in decks:
         if deck.name == wanted:
             return deck
@@ -245,7 +246,7 @@ def add_bib_entry(ctx: ToolContext, args: dict) -> str:
     key = (args.get("key") or bibliography.suggest_key(fields["author"], fields["year"])).strip()
     if not bibliography.KEY_RE.match(key):
         raise ToolError(f"The key '{key}' should be a lowercase surname plus the year, like 'smith2024'.")
-    bib = bibliography.DEFAULT_BIB
+    bib = project.transitional_context().bibliography_path
     if ctx.workspace.is_dirty(bib):
         raise ToolError(f"{bib.name} has unsaved edits in the editor, so an entry cannot be added. Ask the user to save it.")
     if key.lower() in {k.lower() for k in bibliography.load(bib)}:

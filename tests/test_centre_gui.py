@@ -21,7 +21,8 @@ from slidemage.ui.workspace import preview_view, render_check
 from slidemage.ui.workspace.centre import CentreColumn
 from slidemage.ui.workspace.state import WorkspaceState
 
-from conftest import use_slides_folder
+from conftest import use_project
+from slidemage.project import transitional_context
 
 FRAME = "\\begin{standardframe}{%s}\nText\n\\end{standardframe}\n"
 DECK = (
@@ -31,6 +32,7 @@ DECK = (
 
 
 class FakeApp:
+    project = property(lambda self: transitional_context())
     """What the centre needs of the window."""
 
     def __init__(self):
@@ -58,9 +60,8 @@ def project(tmp_path, monkeypatch):
     (slides / "bbb-EN-Two-current.tex").write_text(FRAME % "Second now", encoding="utf-8")
     (slides / "bbb-EN-Two-v1-0-0.tex").write_text("\\setSlideVersion{1-0-0}\n" + FRAME % "Second then", encoding="utf-8")
     (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
-    use_slides_folder(monkeypatch, slides)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path / "previews")
-    (tmp_path / "previews").mkdir()
+    use_project(monkeypatch, slides.parent)
+    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
     monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
     return slides
@@ -104,7 +105,7 @@ def renders(tmp_path, monkeypatch):
 def centre(qapp, project, deck, monkeypatch):
     monkeypatch.setattr(render_check, "confirm_render", lambda *a, **k: True)
     app = FakeApp()
-    state = WorkspaceState()
+    state = WorkspaceState(transitional_context())
     centre = CentreColumn(app, state)
     app.centre = centre
     state.set_deck(deck)
@@ -162,7 +163,7 @@ def test_saving_renders_only_the_active_language_when_the_page_is_visible(centre
     active, other = (english, german) if language == "EN" else (german, english)
     before = other.read_bytes()
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda *_args: "overwrite")
-    monkeypatch.setattr(source_file, "PROJECT_ROOT", project.parent)
+    use_project(monkeypatch, project.parent)
     centre.state.set_focused_slide("aaa")
     centre.state.set_mode("split")
     centre.state.set_language(language)
@@ -473,7 +474,7 @@ def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monk
     from slidemage.ui.workspace import source_file
 
     monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
-    monkeypatch.setattr(source_file, "PROJECT_ROOT", project.parent)
+    use_project(monkeypatch, project.parent)
     centre.state.set_mode("split")
     centre.state.set_focused_slide("aaa")
     centre.source.current.editor.insertPlainText("\\begin{standardframe}{x}{oops")

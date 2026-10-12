@@ -17,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-from ..deck_scan import PROJECT_ROOT
+from .. import project
 from . import claude_scope
 from .tools.edits import protected_problem, slide_kind
 
@@ -67,16 +67,17 @@ def _result(tool: str, args: dict, before: str) -> str | None:
 
 def blocked_reason(event: dict) -> str | None:
     """Why the hook call `event` (Claude Code's JSON) must be blocked, or None to let it go."""
+    ctx = project.transitional_context()
     tool, args = event.get("tool_name"), event.get("tool_input")
     raw = args.get("file_path") if isinstance(args, dict) else None
     if tool not in FILE_TOOLS or not isinstance(raw, str):
         return None
     try:
-        base = Path(event["cwd"]) if isinstance(event.get("cwd"), str) else PROJECT_ROOT
+        base = Path(event["cwd"]) if isinstance(event.get("cwd"), str) else ctx.root
         path = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
     except (OSError, RuntimeError):
         return None
-    outside = claude_scope.edit_problem(claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV)), PROJECT_ROOT, path)
+    outside = claude_scope.edit_problem(claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV)), ctx.root, path)
     if outside:
         return outside
     kind = slide_kind(path)

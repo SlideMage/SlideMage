@@ -16,8 +16,8 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 
-from . import slide_preview, slide_language, slide_snapshot
-from .deck_editor import SLIDES_DIR, VIEW_INSTRUCTOR, SlideCall
+from . import project, slide_language, slide_preview, slide_snapshot
+from .deck_editor import VIEW_INSTRUCTOR, SlideCall
 from .deck_scan import Deck
 
 
@@ -39,7 +39,7 @@ class PreviewTarget:
     def source_path(self) -> Path:
         """The slide file this call loads."""
         name = slide_language.frozen_name(self.id_slug, self.version) if self.version else slide_language.current_name(self.id_slug)
-        return SLIDES_DIR / name
+        return project.transitional_context().slides_dir / name
 
     @property
     def template(self) -> str:

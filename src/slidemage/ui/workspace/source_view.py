@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import bibliography, latex_edit
+from ... import latex_edit
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
 from ..dialogs.citation import CitationDialog
 from ..kit import kit_qss as q
@@ -413,7 +413,7 @@ class SourcePane(Surface):
         """Add an entry to Slidemaster.bib (with the citation key `key`, if one is missing).
         The dialog writes the file on disk, not a buffer: unsaved edits of the .bib are saved
         first, or the two would overwrite each other, and an open buffer is reloaded afterwards."""
-        bib = self._files.get(bibliography.DEFAULT_BIB)
+        bib = self._files.get(self.app.project.bibliography_path)
         if bib is not None and bib.dirty:
             reply = QMessageBox.question(
                 self, "Add reference",

@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from .. import app_settings
+from .. import app_settings, project
 
 ENV_VAR = "ANTHROPIC_API_KEY"
 KEYRING_SERVICE = "SlideMage"
@@ -78,7 +78,7 @@ def get_api_key() -> ApiKey | None:
     value = _keychain_get().strip()
     if value:
         return ApiKey(value, SOURCE_KEYCHAIN)
-    value = str(app_settings.get(FILE_SETTING_KEY) or "").strip()
+    value = str(app_settings.get(project.transitional_context(), FILE_SETTING_KEY) or "").strip()
     if value:
         return ApiKey(value, SOURCE_FILE)
     return None
@@ -92,6 +92,7 @@ def set_api_key(key: str) -> str:
     older keychain entry is removed when the new key goes to the file, and
     an OSError says so if the keychain refuses to let go of one (the file is
     updated regardless)."""
+    ctx = project.transitional_context()
     key = key.strip()
     module = _keyring()
     in_keychain = False
@@ -107,12 +108,12 @@ def set_api_key(key: str) -> str:
             module.delete_password(KEYRING_SERVICE, KEYRING_USER)
         except Exception as exc:  # noqa: BLE001 -- keyring backends raise assorted errors
             stuck = exc
-    settings = app_settings.load()
+    settings = app_settings.load(ctx)
     if key and not in_keychain:
         settings[FILE_SETTING_KEY] = key
     else:
         settings.pop(FILE_SETTING_KEY, None)
-    app_settings.save(settings)
+    app_settings.save(ctx, settings)
     if stuck is not None:
         raise OSError(f"the system keychain still holds an API key that could not be removed ({stuck}); "
                       "it takes precedence over the settings file")

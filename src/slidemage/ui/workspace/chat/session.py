@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, QThread, Signal
 
 from .... import app_settings
+from ....project import ProjectContext
 from ....ai import credentials, resolver
 from ....ai.agent import Agent
 from ....ai.agent_types import EDIT_ASK, AgentEvent, AgentMessage, Done
@@ -38,9 +39,9 @@ class Route:
     problem: str = ""
 
 
-def current_route() -> Route:
+def current_route(project: ProjectContext) -> Route:
     """Settings → AI models → "Chat assistant"; Claude while nothing is chosen but an API key is set."""
-    spec = app_settings.default_model("chat")
+    spec = app_settings.default_model(project, "chat")
     if not spec and credentials.get_api_key() is not None and not resolver.local_only():
         spec = f"{CLOUD}:{DEFAULT_ANTHROPIC_MODEL}"
     if not spec:

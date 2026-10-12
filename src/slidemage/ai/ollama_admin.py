@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
-from .. import app_settings
+from .. import app_settings, project
 
 # What a call to the server can raise besides a refusal: no connection, a timeout (OSError), a cut-off or
 # malformed reply (HTTPException), a reply that is not UTF-8 text or JSON (ValueError).
@@ -70,7 +70,7 @@ def delete_model(model: str, host: Optional[str] = None) -> tuple[bool, str]:
     function to bypass that. The real, well-documented danger case is
     someone manually deleting files under Ollama's own blobs/ directory,
     which is not what this does."""
-    return _simple_call(host or app_settings.get_ollama_host(), "/api/delete", {"model": model}, 30, "DELETE")
+    return _simple_call(host or app_settings.get_ollama_host(project.transitional_context()), "/api/delete", {"model": model}, 30, "DELETE")
 
 
 # Custom models built with `ollama create <name> -f <modelfile>` -- FROM some
@@ -115,7 +115,7 @@ def pull_model(model: str, host: Optional[str] = None,
     many-minute download. Returns (True, "") on success, (False, error)
     otherwise -- never raises, same contract as delete_model() above."""
     try:
-        with _open(host or app_settings.get_ollama_host(), "/api/pull", {"model": model, "stream": True}, 1800) as response:
+        with _open(host or app_settings.get_ollama_host(project.transitional_context()), "/api/pull", {"model": model, "stream": True}, 1800) as response:
             for raw_line in response:
                 line = raw_line.decode("utf-8").strip()
                 if not line:
@@ -147,7 +147,7 @@ def _get_model_show(model: str, host: Optional[str] = None) -> dict | None:
     JSON. Keeping this response lets callers preserve model configuration
     through APIs that no longer accept a Modelfile string."""
     try:
-        with _open(host or app_settings.get_ollama_host(), "/api/show", {"model": model}, 30) as response:
+        with _open(host or app_settings.get_ollama_host(project.transitional_context()), "/api/show", {"model": model}, 30) as response:
             data = json.loads(response.read().decode("utf-8"))
         return data if isinstance(data, dict) else None
     except _CALL_ERRORS:
@@ -241,7 +241,7 @@ def relink_derived_model(model: str, base: str, host: Optional[str] = None) -> t
     preserving the model's template, prompts, license, parameters, and
     messages. Returns (True, "") on success, (False, error) otherwise,
     same contract as delete_model()."""
-    host = host or app_settings.get_ollama_host()
+    host = host or app_settings.get_ollama_host(project.transitional_context())
     show = _get_model_show(model, host=host)
     if show is None:
         return False, f"Could not read {model}'s current model configuration"

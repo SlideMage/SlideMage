@@ -51,8 +51,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import bibliography, deck_editor
-from .deck_scan import DECKS_DIR, PROJECT_ROOT, Chapter, Deck
+from . import bibliography, project
+from .deck_scan import Chapter, Deck
 from .tex_source import IFFALSE_RE, INPUT_RE, VERB_RE, VERBATIM_ENV_RE, masked_same_length
 
 ERROR = "error"
@@ -470,7 +470,7 @@ def bib_keys() -> frozenset[str]:
     """Every citation key in Slidemaster.bib, cached until the file changes."""
     global _bib_cache
     try:
-        st = bibliography.DEFAULT_BIB.stat()
+        st = project.transitional_context().bibliography_path.stat()
         stamp = (st.st_mtime, st.st_size)
     except OSError:
         return frozenset()
@@ -495,6 +495,7 @@ def cited_keys(text: str) -> list[str]:
 
 
 def _external(text: str) -> list[LintIssue]:
+    ctx = project.transitional_context()
     masked, _ = _mask_comments_and_verbatim(text)
     issues: list[LintIssue] = []
     keys = bib_keys()
@@ -512,11 +513,11 @@ def _external(text: str) -> list[LintIssue]:
             for ref in (r.strip() for r in m.group(1).split(",")):
                 if not ref or "\\" in ref or "#" in ref or "{" in ref:
                     continue
-                if not any((PROJECT_ROOT / (ref + s)).is_file() for s in _IMAGE_SUFFIXES):
+                if not any((ctx.root / (ref + s)).is_file() for s in _IMAGE_SUFFIXES):
                     issues.append(LintIssue("image", f"image file '{ref}' does not exist", line_of(m.start(1))))
     for m in _CODE_FILE_RE.finditer(masked):
         ref = m.group(1).strip()
-        if ref and "\\" not in ref and "#" not in ref and not (PROJECT_ROOT / ref).is_file():
+        if ref and "\\" not in ref and "#" not in ref and not (ctx.root / ref).is_file():
             issues.append(LintIssue("code-file", f"code file '{ref}' does not exist", line_of(m.start(1))))
     for m in _GOTHAMTABLE_RE.finditer(masked):
         if not masked[m.end():].lstrip().startswith("@{}"):
@@ -557,7 +558,7 @@ def lint_file(path: Path) -> list[LintIssue]:
 
 
 def _slide_path(call) -> Path:
-    return deck_editor.SLIDES_DIR / call.source_filename
+    return project.transitional_context().slides_dir / call.source_filename
 
 
 @dataclass
@@ -586,6 +587,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
     reads: the deck file itself (preamble, plus only the chosen chapter for a
     per-chapter job), every slide file its included calls load, and any
     `\\input{}`ed deck fragment (e.g. test-slides.tex) with its own slides."""
+    ctx = project.transitional_context()
     started = time.perf_counter()
     result = result if result is not None else CheckResult()
     seen = seen if seen is not None else set()
@@ -618,7 +620,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
     resolved_deck, inline_inputs = deck_language.compile_deck(deck, language)
     calls = [s.call for s in deck_language.deck_slots(resolved_deck, language)]
     for path in inline_inputs:
-        if path.parent != deck_editor.SLIDES_DIR:
+        if path.parent != ctx.slides_dir:
             check_file(path)
     for call in calls:
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
@@ -639,7 +641,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
         body = masked_same_length(text)[deck.preamble_end:]
         for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
-            frag = DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
+            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file() and frag not in seen:
                 frag_text = read_source(frag) or ""
                 seen.add(frag)

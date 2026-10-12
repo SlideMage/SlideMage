@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import alt_blocks, deck_language, deck_scan, slide_language, transcript
+from conftest import use_project
+from slidemage.project import transitional_context
+from slidemage import alt_blocks, deck_language, deck_scan, transcript
 
 
 def test_note_parser_removes_complete_commands_without_matching_literals():
@@ -88,8 +90,7 @@ def test_resolve_deck_expands_relative_and_project_includes_in_order(
     (project / "shared-list.tex").write_text(
         r"\slide{ROOT-EN-Fifth}", encoding="utf-8"
     )
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", project)
-    monkeypatch.setattr(transcript, "SLIDES_DIR", project / "slides")
+    use_project(monkeypatch, project)
 
     slides = transcript.resolve_deck(decks / "deck.tex", "during-course")
 
@@ -113,8 +114,7 @@ def test_resolve_deck_supports_body_only_fragments(tmp_path: Path, monkeypatch):
     child = project / "child.tex"
     fragment.write_text(r"\slide{BODY-EN-One}\input{child}", encoding="utf-8")
     child.write_text(r"\slide{BODY-EN-Two}", encoding="utf-8")
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", project)
-    monkeypatch.setattr(transcript, "SLIDES_DIR", project / "slides")
+    use_project(monkeypatch, project)
 
     slides = transcript.resolve_deck(fragment, "during-course")
 
@@ -153,8 +153,7 @@ def test_resolve_deck_reports_missing_and_cyclic_includes(
     deck.write_text(deck_text, encoding="utf-8")
     (decks / "cycle-a.tex").write_text(r"\input{cycle-b}", encoding="utf-8")
     (decks / "cycle-b.tex").write_text(r"\input{cycle-a}", encoding="utf-8")
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", project)
-    monkeypatch.setattr(transcript, "SLIDES_DIR", project / "slides")
+    use_project(monkeypatch, project)
 
     scanned = deck_scan.read_deck(deck)
     # Compilation retains its existing permissive default.
@@ -171,10 +170,9 @@ def test_shipped_manual_resolves_every_slide_in_both_student_versions(monkeypatc
     # Explicit language partners count only in their original logical slot.
     repo_root = Path(__file__).resolve().parents[1]
     project_root = repo_root / "example"
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", project_root)
-    monkeypatch.setattr(transcript, "SLIDES_DIR", project_root / "slides")
+    use_project(monkeypatch, project_root)
 
-    deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
+    deck = next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == 'slidemage-manual')
     calls = [slot.call for slot in deck_language.deck_slots(
         deck, transcript.deck_language_of(deck.text).upper())]
 
@@ -197,8 +195,7 @@ def translated_project(tmp_path: Path, monkeypatch):
         "%% DE translation: ddd-DE-Eins\n", encoding="utf-8")
     (slides / "ddd-DE-Eins-current.tex").write_text(
         "%% Translation of: aaa-EN-One\n", encoding="utf-8")
-    monkeypatch.setattr(transcript, "SLIDES_DIR", slides)
-    monkeypatch.setattr(slide_language, "SLIDES_DIR", slides)
+    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 

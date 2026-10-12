@@ -17,6 +17,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
+from ... import app_settings
+from ...project import ProjectContext
 from .palette import PALETTES
 from .fonts import load_fonts
 from .kit_qss import KIT_ICONS, build_kit_qss
@@ -56,14 +58,13 @@ def _icon_files(t: Tokens) -> dict[str, str]:
 
 
 class ThemeManager:
-    def __init__(self, dark: bool | None = None) -> None:
-        """`dark` is for the project picker, which runs before there is a project: with it, the
-        project's settings are not read (app_settings fixes the project folder when imported)."""
-        # Persisted in app_settings.py (a JSON file inside the project folder, so the choice travels
-        # with it); dark the first time.
+    def __init__(self, dark: bool | None = None, project: ProjectContext | None = None) -> None:
+        """`dark` is for the project picker, which runs before there is a project. With a
+        `project` the choice is read from its settings (the JSON file inside the project folder, so
+        it travels with it; dark the first time) and written back by set_dark()."""
+        self.project = project
         if dark is None:
-            from ... import app_settings
-            dark = bool(app_settings.get("dark_mode", True))
+            dark = project is None or bool(app_settings.get(project, "dark_mode", True))
         self.dark = dark
 
     @property
@@ -93,9 +94,9 @@ class ThemeManager:
         self.set_dark(not self.dark)
 
     def set_dark(self, dark: bool) -> None:
-        from ... import app_settings
         self.dark = dark
-        app_settings.set("dark_mode", dark)
+        if self.project is not None:
+            app_settings.set(self.project, "dark_mode", dark)
         self.apply()
 
     def apply(self) -> None:

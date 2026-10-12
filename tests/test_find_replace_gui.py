@@ -7,6 +7,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton
 
+from slidemage.project import transitional_context
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace.source_editor import FindBar, LatexPlainTextEdit
 from slidemage.ui.workspace.source_file import SourceFile
@@ -77,7 +78,7 @@ def test_empty_and_absent_queries_leave_text_unchanged(qapp):
 def test_replace_controls_and_ctrl_h_are_available(tmp_path, qapp):
     path = tmp_path / "deck.tex"
     path.write_text("alpha", encoding="utf-8")
-    file = SourceFile(type("App", (), {"theme": ThemeManager()})(), path)
+    file = SourceFile(type("App", (), {"theme": ThemeManager(), "project": transitional_context()})(), path)
     labels = {button.text() for button in file.find_bar.findChildren(QPushButton)}
     assert {"Replace", "Replace All"} <= labels
     assert any(shortcut.key() == QKeySequence("Ctrl+H") for shortcut in file.findChildren(QShortcut))

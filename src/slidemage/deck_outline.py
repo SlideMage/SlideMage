@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_blocks, deck_editor, deck_language, latex_lint, slide_language, slide_snapshot
-from .deck_editor import SLIDES_DIR, SlideCall
+from . import alt_blocks, deck_editor, deck_language, latex_lint, project, slide_language, slide_snapshot
+from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
 
 # What the first section is called when slides come before the first \section.
@@ -68,7 +68,7 @@ def forget_lint() -> None:
 def _source_facts(call: SlideCall) -> tuple[bool, str]:
     """(the source has a lint error, the slide's title): the frame title, else
     the slug without its language segment ("EN-Quote-Demo" -> "Quote Demo")."""
-    path = SLIDES_DIR / call.source_filename
+    path = project.transitional_context().slides_dir / call.source_filename
     try:
         mtime = path.stat().st_mtime_ns
     except OSError:
@@ -96,7 +96,7 @@ def slide_file_title(path: Path, id_slug: str) -> str:
 def _row(slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
          links: slide_language.TranslationLinks) -> SlideRow:
     call = slot.call
-    path = SLIDES_DIR / call.source_filename
+    path = project.transitional_context().slides_dir / call.source_filename
     png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
     badge = slide_language.badge_for(call.id_slug, links=links)
     lint_error, title = _source_facts(call)
@@ -129,7 +129,7 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
     template = slide_snapshot.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     occurrences: dict[tuple, int] = {}
-    links = slide_language.TranslationLinks(SLIDES_DIR)
+    links = slide_language.TranslationLinks(project.transitional_context().slides_dir)
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     for position, slot in enumerate(slots, start=1):
         call = slot.original
@@ -149,7 +149,7 @@ def build_outline(deck: Deck, view: str, language: str) -> list[SectionRow]:
 def slide_row(deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
     """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
     template = slide_snapshot.detect_template(deck.preamble_text)
-    links = slide_language.TranslationLinks(SLIDES_DIR)
+    links = slide_language.TranslationLinks(project.transitional_context().slides_dir)
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     for position, slot in enumerate(slots, start=1):
         if slot.matches(slide_id):

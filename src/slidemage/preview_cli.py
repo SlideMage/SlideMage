@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 import time
 import json
+from . import project
 from .preview_metrics import PreviewMetrics
 
 
@@ -36,10 +37,11 @@ def main():
     parser.add_argument('--profile', action='store_true', help='Print timings and latexmk pass durations as JSON')
     args = parser.parse_args()
     from . import deck_scan, slide_preview
+    project.use(ctx := project.from_environment())
     source = args.source.resolve()
     _, slug, _ = slide_preview.call_for_slide_path(source)
-    paths = {source, deck_scan.PROJECT_ROOT / '.latexmkrc', deck_scan.PROJECT_ROOT / 'decks/.latexmkrc'}
-    deck = next((d for d in deck_scan.scan_decks() if d.name == args.deck), None) if args.deck else None
+    paths = {source, ctx.root / '.latexmkrc', ctx.root / 'decks/.latexmkrc'}
+    deck = next((d for d in deck_scan.scan_decks(ctx) if d.name == args.deck), None) if args.deck else None
     if args.deck and deck is None:
         parser.error(f'Deck not found: {args.deck}')
     if deck:
@@ -58,7 +60,7 @@ def main():
                     body = '\n'.join(body.splitlines()[first-1:last])
                 preamble = None
                 if args.deck:
-                    deck = next(d for d in deck_scan.scan_decks() if d.name == args.deck)
+                    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == args.deck)
                     preamble = deck.preamble_text
                 with PreviewMetrics() as metrics:
                     pdf = slide_preview.render_slide_text_to_pdf(

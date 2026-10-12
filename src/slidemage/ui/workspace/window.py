@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, updater
 from ... import version as version_mod
 from ...ai.providers import ChatProvider
-from ...deck_scan import DECKS_DIR, PROJECT_ROOT, Deck, scan_decks
+from ...deck_scan import Deck, scan_decks
 from .. import layout_settings
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
@@ -53,9 +53,9 @@ from . import side_panels, slide_list
 from .actions import build_registry
 from .centre import CentreColumn
 from .compile_jobs import BuildOptionsDialog, CompileJobsMixin
-from .deck_actions import DeckActionsMixin
-from .maintenance import MaintenanceMixin
+from . import maintenance
 from .palette import CommandPalette
+from .panels.base import PanelActions
 from .side_panels import SidePanels
 from .slide_list import SlideList
 from .state import WorkspaceState
@@ -98,10 +98,11 @@ class _CurrentPageStack(QStackedWidget):
         return page.sizeHint() if page is not None else super().sizeHint()
 
 
-class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMainWindow):
-    def __init__(self, theme: ThemeManager) -> None:
+class WorkspaceWindow(CompileJobsMixin, QMainWindow):
+    def __init__(self, theme: ThemeManager, project_context: project.ProjectContext) -> None:
         super().__init__()
         self.theme = theme
+        self.project = project_context
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
         self.setMinimumSize(1024, 640)
         if updater.can_self_update():
@@ -123,7 +124,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         # fix). See try_start_ollama_task()/end_ollama_task() below.
         self._ollama_task_label: Optional[str] = None
 
-        self.state = WorkspaceState(self)
+        self.state = WorkspaceState(self.project, self)
         self.commands = build_registry()
         self.left_column_hidden = layout_settings.get("left_column_hidden", False) is True
         self.right_column_hidden = layout_settings.get("right_column_hidden", False) is True
@@ -143,7 +144,14 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.slide_list = SlideList(self, self.state, theme, Toast(central))
-        self.side_panels = SidePanels(self, self.state)
+        self.side_panels = SidePanels(self, self.state, PanelActions(
+            slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.is_dirty(path),
+            edit_slide_text=lambda path, change: self.centre.edit_slide_text(path, change),
+            save_source=lambda: self.centre.source.save(),
+            restore_version=lambda path: self.centre.restore_version(path),
+            freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),
+            edit_deck=self.slide_list.edit, add_slide=self.slide_list.add_slide,
+            add_reference=lambda key: self.centre.source.add_reference(key)))
         self.assistant = self.side_panels.assistant
         # Centre: the views of the focused slide, or the Images page. Its first scan reads every
         # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
@@ -175,7 +183,8 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         outer.addWidget(self.body, 1)
         self.setCentralWidget(central)
         self._init_compile(central)
-        self.signals.update_check_done.connect(self._on_startup_update_check_done)
+        self.signals.update_check_done.connect(
+            lambda result: maintenance.on_startup_update_check_done(self, result))
 
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
@@ -216,7 +225,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         super().showEvent(event)
         if not self._columns_sized:
             self._columns_sized = True
-            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width())
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width(self.project))
 
     def set_column_widths(self, *, left: Optional[int] = None, right: Optional[int] = None) -> None:
         """Size either column within its limits, taking the difference from the centre."""
@@ -249,7 +258,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         self.slide_list.setVisible(not is_images and not self.left_column_hidden)
         self.side_panels.setVisible(not is_images and not self.right_column_hidden)
         if self._columns_sized:
-            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width())
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width(self.project))
         self.topbar.refresh_column_toggles()
 
     def _reset_column_width(self, index: int) -> None:
@@ -282,13 +291,13 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         """Rescans the decks. The current deck stays (a fresh object for the
         same file), follows its file when archived, or falls back to the one
         that was open last time, else the first active deck."""
-        self.decks = scan_decks()
+        self.decks = scan_decks(self.project)
         self.topbar.set_decks(self.decks)
         self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
         if not self.decks:
             self.no_decks.refresh()
         current = self.state.deck
-        remembered = app_settings.get(LAST_DECK_KEY)
+        remembered = app_settings.get(self.project, LAST_DECK_KEY)
         by_path = next((d for d in self.decks if current and d.path == current.path), None)
         by_name = next((d for d in self.decks if current and d.name == current.name), None)
         last = next((d for d in self.decks if d.name == remembered), None)
@@ -301,7 +310,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
 
     def _remember_deck(self, deck: Optional[Deck]) -> None:
         if deck is not None:
-            app_settings.set(LAST_DECK_KEY, deck.name)
+            app_settings.set(self.project, LAST_DECK_KEY, deck.name)
 
     def _on_refresh_decks_clicked(self) -> None:
         """⋮ -> "Refresh decks": a wait cursor for the duration of the rescan,
@@ -369,7 +378,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         already holds whatever the user meant to keep, so sorting it now catches
         any entry added or reordered during the session without a manual
         sort_bib.py run."""
-        if path == bibliography.DEFAULT_BIB:
+        if path == self.project.bibliography_path:
             bibliography.sort_entries()
 
     def _on_dirty_changed(self, dirty: bool) -> None:
@@ -448,11 +457,9 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
     def _on_open_project(self) -> None:
         """⋮ → "Open project…": the project picker (recent projects, any folder, a new project).
 
-        Restarts the whole application rather than switching in place:
-        PROJECT_ROOT and every directory constant derived from it at
-        import time across this package (see project.relaunch_with_project's
-        own docstring) are fixed for a process's entire lifetime -- there
-        is no single place left to mutate them all after the fact."""
+        Restarts the whole application rather than switching in place (see
+        project.relaunch_with_project): the window, its caches and its jobs
+        all hold the ProjectContext they were built with."""
         if self.compiling:
             QMessageBox.information(
                 self, "Busy",
@@ -460,10 +467,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
                 "wait for it to finish first.",
             )
             return
-        sheet = OpenProjectSheet(self, current=PROJECT_ROOT, needs_check=self._project_needs_check)
+        sheet = OpenProjectSheet(self, current=self.project.root, needs_check=maintenance.project_needs_check)
         sheet.exec()
         chosen_path = sheet.chosen
-        if chosen_path is None or chosen_path == PROJECT_ROOT:
+        if chosen_path is None or chosen_path == self.project.root:
             return  # cancelled, or already open -- nothing to restart for
         if not self._resolve_dirty_edits():
             return
@@ -497,7 +504,7 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         """Called from the Settings sheet's tab-width spinbox, like set_dark_mode() above: persist
         the choice (app_settings.py), then nudge every already-open slide/deck-source editor to pick
         it up immediately rather than only on next open."""
-        app_settings.set(latex_edit.TAB_WIDTH_SETTING_KEY, chars)
+        app_settings.set(self.project, latex_edit.TAB_WIDTH_SETTING_KEY, chars)
         self.centre.set_tab_width(chars)
 
     def after_deck_edit(
@@ -595,14 +602,14 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         one, so a mid-edit buffer is never silently reloaded out from under
         the user. The matching close-side sort lives in
         _on_source_closed()."""
-        if self.centre.source.file_for(bibliography.DEFAULT_BIB) is None:
+        if self.centre.source.file_for(self.project.bibliography_path) is None:
             bibliography.sort_entries()
-        self.open_slide_editor(bibliography.DEFAULT_BIB)
+        self.open_slide_editor(self.project.bibliography_path)
 
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
         source mode, like "Edit .bib" does for Slidemaster.bib."""
-        path = DECKS_DIR / "test-slides.tex"
+        path = self.project.decks_dir / "test-slides.tex"
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
             return
@@ -618,10 +625,10 @@ class WorkspaceWindow(MaintenanceMixin, DeckActionsMixin, CompileJobsMixin, QMai
         what it is, and that SlideMage leaves it as it was (no compatibility
         migrations, no framework updates; compiles use the snapshot's own
         framework, PDF dates and footer timestamps)."""
-        info = project.snapshot_info(PROJECT_ROOT)
+        info = project.snapshot_info(self.project.root)
         if info is None:
             return None
-        manifest = project.snapshot_manifest(PROJECT_ROOT)
+        manifest = project.snapshot_manifest(self.project.root)
         made_with = manifest.get("slidemage", {}).get("version", "?")
         when = str(info.get("created", ""))[:16].replace("T", " ")
         label = QLabel(

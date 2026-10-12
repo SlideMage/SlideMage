@@ -48,7 +48,7 @@ from __future__ import annotations
 import re
 import threading
 
-from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from . import project
 from .slide_language import TRANSLATION_LANGUAGES
 
 # regenerate_headers() does a read-modify-write over every slides/*-current
@@ -65,9 +65,6 @@ from .slide_language import TRANSLATION_LANGUAGES
 # so a second call simply waits for the first to finish rather than
 # racing it.
 _LOCK = threading.Lock()
-
-DECKS_GLOBS = [DECKS_DIR, ARCHIVE_DIR]
-SLIDES_DIR = PROJECT_ROOT / "slides"
 
 HEADER_RE = re.compile(
     r"%% Included in decks: [^\r\n]*\r?\n%%\r?\n(?:\r?\n)?")
@@ -89,8 +86,9 @@ def regenerate_headers() -> tuple[int, int]:
 
 
 def _regenerate_headers_impl() -> tuple[int, int]:
+    ctx = project.transitional_context()
     deck_paths = [
-        p for directory in DECKS_GLOBS if directory.is_dir()
+        p for directory in ctx.deck_folders if directory.is_dir()
         for p in directory.glob("*.tex")
         if p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))
     ]
@@ -107,12 +105,12 @@ def _regenerate_headers_impl() -> tuple[int, int]:
         for call in calls:
             id_to_decks.setdefault(call.id, set()).add(deck_name)
         for language in TRANSLATION_LANGUAGES:
-            for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
+            for slot in deck_language.slots(calls, language, slides_dir=ctx.slides_dir):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
 
     changed = 0
-    if SLIDES_DIR.is_dir():
-        for slide_path in SLIDES_DIR.glob("*-current.tex"):
+    if ctx.slides_dir.is_dir():
+        for slide_path in ctx.slides_dir.glob("*-current.tex"):
             slide_id = slide_path.name.split("-")[0]
             decks = sorted(id_to_decks.get(slide_id, []))
 

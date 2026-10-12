@@ -10,6 +10,7 @@ import pytest
 
 from slidemage import alt_images, bibliography, slide_language, slide_source
 from slidemage import slide_source as ss
+from conftest import use_project
 
 FRAME = "\\begin{standardframe}{Demo}\n\tText\n\t\\note{First note}\n\\end{standardframe}\n"
 
@@ -51,9 +52,7 @@ def test_add_note_goes_before_the_frames_end_one_indent_deeper():
 def slides(tmp_path, monkeypatch):
     folder = tmp_path / "slides"
     folder.mkdir()
-    for module in (ss, slide_language):
-        monkeypatch.setattr(module, "SLIDES_DIR", folder)
-    monkeypatch.setattr(ss, "BACKUPS_DIR", folder / ".backups")
+    use_project(monkeypatch, tmp_path)
     return folder
 
 
@@ -152,8 +151,7 @@ def test_entry_line_finds_the_entry_of_a_key(tmp_path):
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "alt-text.csv")
+    use_project(monkeypatch, tmp_path)
     slide = tmp_path / "abc-EN-Demo-current.tex"
     slide.write_text(FRAME, encoding="utf-8")
     return slide

@@ -13,14 +13,16 @@ from slidemage.ai import credentials, ollama_admin, resolver
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.dialogs.settings import CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
-from conftest import wait_until
+from conftest import use_project, wait_until
 from test_templates import _framework, _project
+from slidemage.project import transitional_context
 
 INSTALLED = [InstalledModel("general-text", 2_000_000_000, "", ("tools",)), InstalledModel("translator", 1_000_000, ""),
              InstalledModel("vision", 7_000_000_000, "", ("vision",)), InstalledModel("vision-2", 5_000_000, "", ("vision",))]
 
 
 class FakeApp(QWidget):
+    project = property(lambda self: transitional_context())
     """The window as far as Settings uses it."""
 
     def __init__(self):
@@ -98,14 +100,14 @@ def test_dark_mode_and_tab_width_reach_the_window_as_they_change(qapp):
 
 def test_the_render_template_offers_the_project_templates_and_saves_the_choice(tmp_path, monkeypatch, qapp):
     _framework(tmp_path / "latex", "slidemage")
-    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT", _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
+    context = use_project(monkeypatch, _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
     app = FakeApp()
     sheet = open_sheet(qapp, app)
     combo = sheet.general.template_combo
     assert [combo.itemData(i) for i in range(combo.count())] == ["uni-graz", "uni-ibk", "mci", "slidemage"]
     assert combo.currentData() == "slidemage"           # out of the box
     combo.setCurrentIndex(combo.findData("mci"))
-    assert app_settings.get(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
+    assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
     assert slide_snapshot.render_template() == "mci"
 
 
@@ -139,7 +141,7 @@ def choose(sheet, task, model):
 
 
 def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missing(qapp):
-    app_settings.set(app_settings.MODEL_SETTINGS["translation"], "ollama:gone")
+    app_settings.set(transitional_context(), app_settings.MODEL_SETTINGS["translation"], "ollama:gone")
     sheet = open_sheet(qapp)
     assert sheet.available_models == [m.name for m in INSTALLED]
     assert sheet.vision_models == ["vision", "vision-2"]
@@ -154,7 +156,7 @@ def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missin
         "", "ollama:general-text", *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
     translation = sheet.models.combos["translation"]
     assert translation.currentData() == "ollama:gone" and translation.currentText() == "gone (not available)"
-    assert app_settings.default_model("translation") == "ollama:gone"      # an unreachable model never rewrites it
+    assert app_settings.default_model(transitional_context(), "translation") == "ollama:gone"      # an unreachable model never rewrites it
 
 
 def test_an_unreachable_ollama_is_said_and_costs_no_setting(monkeypatch, qapp):
@@ -171,10 +173,10 @@ def test_choosing_a_default_saves_it_for_that_task_only(qapp):
     cloud = sheet.models.combos["translation"]
     cloud.setCurrentIndex(cloud.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"))
     cloud.activated.emit(cloud.currentIndex())
-    assert app_settings.default_model("syntax_check") == "ollama:general-text"
-    assert app_settings.default_model("image_description") == "ollama:vision-2"
-    assert app_settings.default_model("translation") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
-    assert app_settings.default_model("chat") == ""
+    assert app_settings.default_model(transitional_context(), "syntax_check") == "ollama:general-text"
+    assert app_settings.default_model(transitional_context(), "image_description") == "ollama:vision-2"
+    assert app_settings.default_model(transitional_context(), "translation") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
+    assert app_settings.default_model(transitional_context(), "chat") == ""
 
 
 def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
@@ -190,7 +192,7 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     choose(sheet, "syntax_check", "general-text")
     choose(sheet, "image_description", "vision-2")
     choose(sheet, "translation", "translator")
-    app_settings.set_ollama_host("http://ollama.example:11434")
+    app_settings.set_ollama_host(transitional_context(), "http://ollama.example:11434")
 
     (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
     file = SourceFile(app, tmp_path / "slide.tex")       # holds the open "Ask AI to fix" panel
@@ -212,7 +214,7 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     assert syntax.model_combo.currentText() == "general-text"
     assert requests == [("general-text", "http://ollama.example:11434")]
 
-    tab = SimpleNamespace(draft_model=QComboBox(), translate_model=QComboBox(), _update_buttons=lambda: None)
+    tab = SimpleNamespace(app=app, draft_model=QComboBox(), translate_model=QComboBox(), _update_buttons=lambda: None)
     ImagesPage.refresh_model_preferences(tab)
     assert tab.draft_model.currentText() == "vision-2" and tab.translate_model.currentText() == "translator"
 
@@ -227,6 +229,7 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
         refresh_model_preferences = ImagesPage.refresh_model_preferences
 
         def __init__(self):
+            self.app = app
             self.draft_model = QComboBox()
             self.translate_model = QComboBox()
             self._update_buttons = lambda: None
@@ -360,13 +363,13 @@ def test_the_key_message_says_where_a_key_will_live_without_a_keychain(qapp, mon
     sheet.cloud.key_edit.setText("sk-ant-fake-1")
     sheet.cloud._on_key_save()
     assert sheet.cloud.key_edit.text() == ""
-    assert app_settings.get(credentials.FILE_SETTING_KEY) == "sk-ant-fake-1"
+    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) == "sk-ant-fake-1"
     assert credentials.get_api_key().source == "settings file"
     assert "Key stored in the settings file" in status.text() and "keyring" in status.text()
     assert "sk-ant-fake-1" not in status.text()                    # the key itself is never shown
 
     sheet.cloud._on_key_remove()
-    assert app_settings.get(credentials.FILE_SETTING_KEY) is None and "No API key set" in status.text()
+    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) is None and "No API key set" in status.text()
 
 
 def test_the_key_message_with_a_keychain_and_with_the_environment_variable(monkeypatch, qapp):
@@ -379,7 +382,7 @@ def test_the_key_message_with_a_keychain_and_with_the_environment_variable(monke
     sheet.cloud.key_edit.setText("sk-ant-fake-2")
     sheet.cloud._on_key_save()
     assert status.text() == "Key stored in the system keychain."
-    assert app_settings.get(credentials.FILE_SETTING_KEY) is None and credentials.get_api_key().source == "keychain"
+    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) is None and credentials.get_api_key().source == "keychain"
 
     monkeypatch.setenv(credentials.ENV_VAR, "sk-ant-fake-env")
     sheet.cloud._on_key_remove()                  # refreshes: the variable is still there and wins
@@ -404,7 +407,7 @@ def test_a_keychain_entry_that_cannot_be_removed_is_reported_not_swallowed(monke
     keyring.priority = 0                                              # the save fails; the old entry still shadows
     with pytest.raises(OSError):
         credentials.set_api_key("sk-ant-new")
-    assert app_settings.get(credentials.FILE_SETTING_KEY) == "sk-ant-new"
+    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) == "sk-ant-new"
     del keyring.delete_password                                       # a keychain that lets go: nothing shadows the file
     assert credentials.set_api_key("sk-ant-newer") == credentials.SOURCE_FILE
     assert credentials.get_api_key().value == "sk-ant-newer" and not keyring.store
@@ -429,11 +432,11 @@ def test_a_changed_host_is_saved_and_the_models_are_asked_for_again(qapp):
     sheet.ollama.changed.connect(lambda: asked.append(1))
     sheet.ollama.host_edit.setText("http://ollama.example:11434")
     sheet.ollama.host_edit.editingFinished.emit()
-    assert app_settings.get_ollama_host() == "http://ollama.example:11434" and asked == [1]
+    assert app_settings.get_ollama_host(transitional_context()) == "http://ollama.example:11434" and asked == [1]
     sheet.ollama.host_edit.setText("")             # empty clears the override
     sheet.ollama.host_edit.editingFinished.emit()
-    assert app_settings.get(app_settings.OLLAMA_HOST_SETTING_KEY) is None
-    assert sheet.ollama.host_edit.text() == app_settings.get_ollama_host()
+    assert app_settings.get(transitional_context(), app_settings.OLLAMA_HOST_SETTING_KEY) is None
+    assert sheet.ollama.host_edit.text() == app_settings.get_ollama_host(transitional_context())
 
 
 @pytest.mark.parametrize("operation, message", [("delete", "in use"), ("update", "no space")])

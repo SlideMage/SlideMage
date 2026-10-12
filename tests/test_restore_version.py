@@ -1,6 +1,7 @@
 """Making a frozen version the current one again (slide_versioning.restore_version)."""
 import pytest
 
+from conftest import use_project
 from slidemage import slide_versioning as sv
 from slidemage.slide_source import read_slide_source
 
@@ -18,8 +19,7 @@ def _slide(tmp_path, current, frozen):
 
 @pytest.fixture(autouse=True)
 def _backup_root(tmp_path, monkeypatch):
-    from slidemage import slide_source
-    monkeypatch.setattr(slide_source, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
 
 
 @pytest.mark.parametrize("text, expected", [

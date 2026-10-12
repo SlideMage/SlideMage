@@ -4,6 +4,8 @@ import json
 import threading
 
 import pytest
+from conftest import use_project
+from slidemage.project import transitional_context
 
 
 def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
@@ -29,12 +31,9 @@ def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
     unused = media_dir / "unused.bin"
     unused.write_bytes(b"unused")
 
-    monkeypatch.setattr(unused_content, "MEDIA_DIR", media_dir)
-    monkeypatch.setattr(unused_content, "SLIDES_DIR", slides_dir)
-    monkeypatch.setattr(unused_content, "DECKS_DIR", decks_dir)
-    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
+    use_project(monkeypatch, tmp_path)
 
-    assert unused_content.find_unused_media() == [unused]
+    assert unused_content.find_unused_media(transitional_context()) == [unused]
     assert authored.is_file()
     assert generated.is_file()
     assert atomic_write.is_file()
@@ -60,19 +59,14 @@ def test_archive_takes_the_images_of_archived_slides_in_one_run(tmp_path, monkey
     for name in ("kept.png", "gone.png", "old.png"):
         (media_dir / name).write_bytes(b"image")
 
-    monkeypatch.setattr(unused_content, "MEDIA_DIR", media_dir)
-    monkeypatch.setattr(unused_content, "MEDIA_ARCHIVE_DIR", media_dir / "archive")
-    monkeypatch.setattr(unused_content, "SLIDES_DIR", slides_dir)
-    monkeypatch.setattr(unused_content, "SLIDES_ARCHIVE_DIR", slides_dir / "archive")
-    monkeypatch.setattr(unused_content, "DECKS_DIR", decks_dir)
-    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
+    use_project(monkeypatch, tmp_path)
 
-    assert [p.name for p in unused_content.find_unused_media()] == ["gone.png", "old.png"]
-    assert unused_content.archive_files(
-        unused_content.find_unused_media(), unused_content.find_unused_slides(), lambda _line: None) == (2, 2)
+    assert [p.name for p in unused_content.find_unused_media(transitional_context())] == ["gone.png", "old.png"]
+    assert unused_content.archive_files(transitional_context(), 
+        unused_content.find_unused_media(transitional_context()), unused_content.find_unused_slides(transitional_context()), lambda _line: None) == (2, 2)
     # a second run has nothing left to do
-    assert unused_content.find_unused_media() == []
-    assert unused_content.find_unused_slides() == []
+    assert unused_content.find_unused_media(transitional_context()) == []
+    assert unused_content.find_unused_slides(transitional_context()) == []
     assert (media_dir / "kept.png").is_file()
 
 
@@ -124,9 +118,7 @@ def _temporary_store(monkeypatch, tmp_path):
     media_dir = tmp_path / "media"
     media_dir.mkdir()
     store_path = media_dir / "alt-text.json"
-    csv_path = media_dir / "alt-text.csv"
-    monkeypatch.setattr(alt_images, "STORE_PATH", store_path)
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", csv_path)
+    use_project(monkeypatch, tmp_path)
     return alt_images, store_path
 
 

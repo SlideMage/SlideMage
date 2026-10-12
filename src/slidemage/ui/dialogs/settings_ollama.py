@@ -46,7 +46,7 @@ class OllamaTab(Page):
     def __init__(self, app) -> None:
         super().__init__()
         self.app = app
-        self.host_edit = QLineEdit(app_settings.get_ollama_host())
+        self.host_edit = QLineEdit(app_settings.get_ollama_host(self.app.project))
         self.host_edit.setPlaceholderText("http://localhost:11434")
         self.host_edit.editingFinished.connect(self._on_host)
         refresh = Button("Refresh", compact=True)
@@ -76,7 +76,7 @@ class OllamaTab(Page):
         self.models_list.setEnabled(bool(installed))
         self.status.setText(
             f"{len(installed)} model(s) installed." if installed else
-            f"Ollama is not reachable at {app_settings.get_ollama_host()}, or has no models installed.")
+            f"Ollama is not reachable at {app_settings.get_ollama_host(self.app.project)}, or has no models installed.")
         for model in installed:
             item = QListWidgetItem(f"{model.name}   —   {deck_snapshot.format_size(model.size_bytes)}"
                                    + ("   (vision)" if "vision" in model.capabilities else ""))
@@ -93,11 +93,11 @@ class OllamaTab(Page):
         self.delete_button.setEnabled(has)
 
     def _on_host(self) -> None:
-        app_settings.set_ollama_host(self.host_edit.text())
+        app_settings.set_ollama_host(self.app.project, self.host_edit.text())
         # Re-read rather than trust the raw field: an empty entry clears the override, so this shows
         # the effective host ($OLLAMA_HOST or the plain default).
-        self.host_edit.setText(app_settings.get_ollama_host())
-        self.app.log(f"Ollama host set to {app_settings.get_ollama_host()}")
+        self.host_edit.setText(app_settings.get_ollama_host(self.app.project))
+        self.app.log(f"Ollama host set to {app_settings.get_ollama_host(self.app.project)}")
         self.changed.emit()
 
     def _on_delete(self) -> None:

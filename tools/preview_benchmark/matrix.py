@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 import pymupdf
-from slidemage import deck_scan, deck_editor, slide_preview
+from slidemage import deck_scan, project, deck_editor, slide_preview
 from slidemage.preview_build import build_lock
 
 
@@ -24,10 +24,11 @@ def signature(pdf):
 
 
 def run_matrix(args):
-    deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
+    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)][:args.limit]
-    original_build = slide_preview.BUILD_DIR
+    original = project.transitional_context()
+    original_build = original.build_dir
     original_compile = slide_preview.compile_and_extract
     revision = 0
     reference_stamp = ""
@@ -55,7 +56,7 @@ def run_matrix(args):
         out = args.output / stage
         out.mkdir(parents=True, exist_ok=True)
         # Isolate all combinations so none benefits from a preceding stage.
-        slide_preview.BUILD_DIR = original_build / ('benchmark-' + stage) if cache else original_build
+        project.use(project.ProjectContext(original.root, original_build / ('benchmark-' + stage) if cache else original_build))
         for i, call in enumerate(calls, 1):
             if (args.output / 'STOP').exists():
                 print('Stopped between previews; remove STOP to resume.', flush=True)
@@ -63,7 +64,7 @@ def run_matrix(args):
             if (out / f'{i:03}.json').exists():
                 continue
             if cache:
-                slide_preview.BUILD_DIR = original_build / ('benchmark-' + stage) / f'{i:03}'
+                project.use(project.ProjectContext(original.root, original_build / ('benchmark-' + stage) / f'{i:03}'))
             with pymupdf.open(args.output / 'baseline' / f'{i:03}.pdf') as ref:
                 date = ref.metadata['creationDate'][2:14]
                 reference_stamp = f'{date[:4]}-{date[4:6]}-{date[6:8]} {date[8:10]}:{date[10:12]}'
@@ -73,7 +74,7 @@ def run_matrix(args):
                           footer_timestamp=False, log=log.append,
                           reuse_build=cache, overlay=1 if overlay else None)
             if region:
-                source = (deck_scan.PROJECT_ROOT / 'slides' / call.source_filename).read_text()
+                source = (project.transitional_context().root / 'slides' / call.source_filename).read_text()
                 # Match the selected call's reveal restriction when rendering a
                 # complete source region rather than invoking the saved-file macro.
                 if call.steps:

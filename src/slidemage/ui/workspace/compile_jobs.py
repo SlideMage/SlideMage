@@ -30,23 +30,14 @@ from PySide6.QtWidgets import (
 
 from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
 from ... import pptx_export
-from ... import slide_ids, slide_language, slide_snapshot, update_all_previews
+from ... import slide_language, slide_snapshot, update_all_previews
 from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, JobRow, RunStatus, job_title
-from ...compiler import (
-    PDF_DIR,
-    PDF_MOVE_RETRY_TOTAL_SECONDS,
-    CancelToken,
-    CompileJob,
-    order_jobs,
-    resolve_output_location,
-    run_job,
-    run_jobs,
-)
-from ...deck_scan import PROJECT_ROOT, Deck
+from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CancelToken, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
+from ...deck_scan import Deck
 from ...partial_compile import PartialError, parse_page_spec
 from ..dialogs import snapshot as snapshot_sheets
 from ..kit.widgets import Toast
-from . import render_check
+from . import deck_actions, render_check
 from .job_panel import JobPanel
 from .log_drawer import LogDrawer
 from .multi_compile import MultiCompileSheet
@@ -102,9 +93,9 @@ class BuildOptionsDialog(QDialog):
         # mode/tab-width/model-picker settings already use) -- unlike
         # footer_timestamp/auto_open just below, which stay hardcoded
         # per-launch defaults; direct instruction, 2026-09-16.
-        self.appendix_toc_checkbox.setChecked(bool(app_settings.get("appendix_toc", False)))
+        self.appendix_toc_checkbox.setChecked(bool(app_settings.get(state.project, "appendix_toc", False)))
         self.appendix_toc_checkbox.toggled.connect(
-            lambda checked: app_settings.set("appendix_toc", checked))
+            lambda checked: app_settings.set(state.project, "appendix_toc", checked))
         layout.addWidget(self.appendix_toc_checkbox)
 
         # Page compiles (Compile -> Selected pages…, partial_compile.py,
@@ -115,9 +106,9 @@ class BuildOptionsDialog(QDialog):
             "With selected pages: put the newly compiled pages into that "
             "version's whole-deck PDF in place of the old ones. Off: write them to a "
             "separate PDF next to it.")
-        self.replace_pages_checkbox.setChecked(bool(app_settings.get("replace_pages", True)))
+        self.replace_pages_checkbox.setChecked(bool(app_settings.get(state.project, "replace_pages", True)))
         self.replace_pages_checkbox.toggled.connect(
-            lambda checked: app_settings.set("replace_pages", checked))
+            lambda checked: app_settings.set(state.project, "replace_pages", checked))
         layout.addWidget(self.replace_pages_checkbox)
 
         self.auto_open_checkbox = QCheckBox("Auto-open generated PDFs")
@@ -176,7 +167,7 @@ class CompileJobsMixin:
         retried; `pdfs`: where each job's PDF will be."""
         self._progress.reset(specs)
         decks = {job.jobname: job.deck.path for job in jobs or []}
-        self._run = RunStatus(labels, root=PROJECT_ROOT, verb=verb, pdfs=pdfs, decks=decks)
+        self._run = RunStatus(labels, root=self.project.root, verb=verb, pdfs=pdfs, decks=decks)
         self._run_jobs = {job.jobname: job for job in jobs or []}
         self._run_opens_pdfs = opens_pdfs
         self._run_over = self._run_settled = self._stop_requested = False
@@ -297,7 +288,7 @@ class CompileJobsMixin:
         if self.compiling:
             QMessageBox.information(self, "Busy", "A compile run is already in progress.")
             return False
-        existing = deck_snapshot.find_snapshots([d.name for d in decks])
+        existing = deck_snapshot.find_snapshots([d.name for d in decks], root=self.project.root)
         delete_old: list = []
         if existing:
             answer = snapshot_sheets.ask_about_old_snapshots(self, existing)
@@ -330,7 +321,8 @@ class CompileJobsMixin:
         cancel = self.cancel_token
         try:
             results = deck_snapshot.snapshot_decks(
-                decks, options, self.signals.log.emit, cancel=cancel, delete_old=delete_old)
+                decks, options, self.signals.log.emit, cancel=cancel, delete_old=delete_old,
+                project_root=self.project.root)
         except Exception as exc:  # noqa: BLE001 -- reported, the slot must still be freed
             self.signals.log.emit(f"*** Deck snapshots failed: {exc} ***")
             results = [deck_snapshot.SnapshotResult(d.name, ok=False, error=str(exc))
@@ -345,7 +337,7 @@ class CompileJobsMixin:
         if after is not None:
             after(results)
         else:
-            snapshot_sheets.show_summary(self, results)
+            snapshot_sheets.show_summary(self, self.project, results)
 
     def _compile_current(self, kind: str, pages: Optional[list[int]] = None) -> None:
         """A Compile menu entry for the current deck: `kind` is a view,
@@ -371,7 +363,7 @@ class CompileJobsMixin:
         if jobs:
             self._compile_jobs(jobs)
         if transcripts:
-            failures = sum(not self.generate_deck_transcript(deck, version, quiet=True)
+            failures = sum(not deck_actions.generate_deck_transcript(self, deck, version, quiet=True)
                            for deck, version in transcripts)
             self._log(f"==== Create Transcript: {len(transcripts) - failures} of "
                       f"{len(transcripts)} transcript(s) generated ====")
@@ -629,13 +621,13 @@ class CompileJobsMixin:
                    f"couldn't move the compiled PDF into place, see above ***")
                 return
             pdf_path = outcome["dest_pdf"]
-            out_path = PDF_DIR / f"{job.jobname}.pptx"
+            out_path = self.project.pdf_dir / f"{job.jobname}.pptx"
             try:
                 pptx_export.export_deck_to_pptx(pdf_path, out_path, log=log)
             except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
                 log(f"*** FAIL: PowerPoint export of {deck.name} -- {exc!r} ***")
                 return
-            log(f"==== PASS: {out_path.relative_to(PROJECT_ROOT)} ====")
+            log(f"==== PASS: {out_path.relative_to(self.project.root)} ====")
             # Always opened, unlike the auto-open-PDF checkbox above --
             # this is a single, deliberate export the user just asked
             # for, not a batch that could pop open many windows
@@ -727,7 +719,7 @@ class CompileJobsMixin:
         all_slides = sorted({slug for slugs in needed.values() for slug in slugs})
         if not self._confirm_build(
                 latex_lint.check_slide_files(
-                    slide_ids.SLIDES_DIR / slide_language.current_name(slug) for slug in all_slides),
+                    self.project.slides_dir / slide_language.current_name(slug) for slug in all_slides),
                 f"{len(all_slides)} slides"):
             return
 

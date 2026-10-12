@@ -1,15 +1,14 @@
 """Navigation for readers: \\SMChapterAgenda in transcripts, \\deckappendixtoc."""
 from pathlib import Path
 
-from conftest import write_test_file as _write
+from conftest import use_project, write_test_file as _write
 from slidemage import alt_images, deck_scan, transcript
 
 
 def test_transcript_lists_the_chapter_slides_on_the_agenda(tmp_path: Path, monkeypatch):
     project = tmp_path / "project"
     slides = project / "slides"
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", project)
-    monkeypatch.setattr(transcript, "SLIDES_DIR", slides)
+    use_project(monkeypatch, tmp_path / "project")
     monkeypatch.setattr(alt_images, "load_store", lambda: {})
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
     _write(slides / "1aa-EN-Contents-current.tex",
@@ -58,8 +57,7 @@ def test_single_slide_transcript_drops_the_agenda_placeholder(monkeypatch):
 def test_transcript_lists_the_subsections_on_a_subsection_agenda(tmp_path: Path, monkeypatch):
     project = tmp_path / "project"
     slides = project / "slides"
-    monkeypatch.setattr(transcript, "PROJECT_ROOT", project)
-    monkeypatch.setattr(transcript, "SLIDES_DIR", slides)
+    use_project(monkeypatch, tmp_path / "project")
     monkeypatch.setattr(alt_images, "load_store", lambda: {})
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
     _write(slides / "1ab-EN-Chapter-One-current.tex",

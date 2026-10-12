@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ... import slide_preview, slide_source
+from ... import project, slide_preview, slide_source
 from ...protected_regions import mask_protected_regions
 from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
 from ..workspace import Workspace
@@ -36,7 +36,7 @@ PROTECTED_MESSAGE = (
 
 def slide_kind(path: Path) -> str | None:
     """"current" / "frozen" for a file in slides/ that is a slide's current or frozen version."""
-    if path.parent != slide_source.SLIDES_DIR.resolve():
+    if path.parent != project.transitional_context().slides_dir.resolve():
         return None
     try:
         macro, _id_slug, _version = slide_preview.call_for_slide_path(path)
@@ -173,7 +173,7 @@ def write_file(ctx: ToolContext, args: dict) -> str:
     content = args["content"].replace("\r\n", "\n")
     if path.exists():
         raise ToolError(f"{relative(ctx.root, path)} exists already. Change it with edit_file.")
-    if path.parent == slide_source.SLIDES_DIR.resolve():
+    if path.parent == project.transitional_context().slides_dir.resolve():
         raise ToolError("New slides are created with add_slide (it mints the id and writes the header).")
     if len(content) > MAX_NEW_FILE_CHARS:
         raise ToolError("The file is too large for write_file.")

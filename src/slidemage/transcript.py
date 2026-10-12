@@ -27,12 +27,11 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, project, slide_language
 from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
-from .deck_scan import PROJECT_ROOT, Deck
+from .deck_scan import Deck
 from .tex_source import COMMENT_RE
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
 
 # Only the student versions are generated. See the module docstring.
 STUDENT_VERSIONS = (VIEW_DURING, VIEW_AFTER)
@@ -282,7 +281,7 @@ def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
     if requested.is_absolute():
         bases = [Path()]
     else:
-        bases = [deck_dir, PROJECT_ROOT]
+        bases = [deck_dir, project.transitional_context().root]
 
     seen: set[Path] = set()
     for base in bases:
@@ -377,7 +376,7 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
         slides.append(DeckSlide(
             number=number,
             slide_id=call.id,
-            path=SLIDES_DIR / call.source_filename,
+            path=project.transitional_context().slides_dir / call.source_filename,
             included=included,
             chapter=call.chapter.order if call.chapter else 0,
             subsection=subsection,
@@ -1227,7 +1226,7 @@ def _park_code_files(text: str) -> tuple[str, list[str]]:
     def park(match: re.Match) -> str:
         ref = match.group(2).strip()
         try:
-            lines = (PROJECT_ROOT / ref).read_text(encoding="utf-8").splitlines()
+            lines = (project.transitional_context().root / ref).read_text(encoding="utf-8").splitlines()
         except OSError:
             lines = [f"(code file {ref} not found)"]
         keys = dict(_CODE_LINE_KEY_RE.findall(match.group(1) or ""))
@@ -1976,12 +1975,13 @@ def resolve_transcript_location(deck: Deck, deck_path: Path, version: str) -> tu
     bare folder, its own stem names both the .md and .html output --
     same "full filename, not just a folder" rule as
     compiler.resolve_output_location()."""
+    ctx = project.transitional_context()
     default_stem = f"{deck_path.stem}-{version}-transcript"
     raw = deck.output_folders.get("transcript") or deck.output_folders.get(None)
     if raw is None:
-        return PROJECT_ROOT / "transcripts", default_stem
+        return ctx.root / "transcripts", default_stem
     path = Path(raw)
-    resolved = path if path.is_absolute() else PROJECT_ROOT / path
+    resolved = path if path.is_absolute() else ctx.root / path
     if resolved.suffix:
         return resolved.parent, resolved.stem
     return resolved, default_stem
@@ -1992,7 +1992,7 @@ def write_transcript(deck_path: Path, version: str,
                      filename_stem: str | None = None) -> tuple[Path, Path, TranscriptResult]:
     """Generate and write both formats. Returns (markdown path, html path, result)."""
     result = generate(deck_path, version)
-    target_dir = directory or (PROJECT_ROOT / "transcripts")
+    target_dir = directory or (project.transitional_context().root / "transcripts")
     target_dir.mkdir(parents=True, exist_ok=True)
     stem = filename_stem or f"{deck_path.stem}-{version}-transcript"
 

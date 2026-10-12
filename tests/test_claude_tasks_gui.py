@@ -12,7 +12,8 @@ import threading
 
 import pytest
 from PySide6.QtWidgets import QPlainTextEdit
-from conftest import SLIDE_TEXT
+from conftest import SLIDE_TEXT, use_project
+from slidemage.project import transitional_context
 from test_claude_code_gui import env as claude_env, pump, start_view, wait_until  # noqa: F401 -- a fixture
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, add_pictures
 
@@ -50,7 +51,7 @@ class Fake:
 
 @pytest.fixture
 def fake(claude_env, tmp_path, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(translation_style, "PROJECT_ROOT", claude_env.root)
+    use_project(monkeypatch, claude_env.root)
     start_view(claude_env)
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(tmp_path / "tasks.jsonl"))   # not the terminal's log
     return Fake(claude_env, tmp_path, monkeypatch)
@@ -224,7 +225,7 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(fake)
     new_id_slug = partner.name.removesuffix("-current.tex")
     assert status == f"Done in {status.split()[2]} s: {new_id_slug} created"
     text = partner.read_bytes().decode()
-    assert text.startswith(f"%% Included in decks: (none)\r\n%%\r\n%% Translation of: abc-EN-Hello\r\n%%\r\n\r\n")
+    assert text.startswith(f"%% Included in decks: test\r\n%%\r\n\r\n%% Translation of: abc-EN-Hello\r\n%%\r\n\r\n")
     assert "Hallo" in text and "Erster Punkt" in text and "\\setSlideVersion" not in text and "\r\n" in text
     deck = (env.root / "decks" / "test.tex").read_text()
     assert f"\\slide{{abc-EN-Hello}}\n\\slide{{{new_id_slug}}}\n\\section{{Main}}" in deck.replace("\r\n", "\n")
@@ -308,7 +309,7 @@ def test_the_german_address_and_the_glossary_reach_the_request(fake):
 def test_settings_set_the_german_address(fake):
     from slidemage.ui.dialogs.settings import ModelsTab
 
-    tab = ModelsTab()
+    tab = ModelsTab(transitional_context())
     assert tab.address.current() == "Sie"
     tab.address.changed.emit("du")
     assert translation_style.de_address() == "du"

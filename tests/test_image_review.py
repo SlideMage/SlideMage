@@ -3,18 +3,16 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import alt_blocks, alt_draft, alt_images, image_review, slide_source
+from slidemage import alt_blocks, alt_draft, alt_images, image_review
 from slidemage.image_review import FormEdit, SlideView
+from conftest import use_project
 
 IMG = "media/photo-a.png"
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "media" / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "media" / "alt-text.csv")
-    monkeypatch.setattr(image_review, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(slide_source, "BACKUPS_DIR", tmp_path / ".backups")
+    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -217,7 +215,7 @@ def test_repoint_keeps_the_line_ends_and_makes_a_backup(store):
     changed, failures = image_review.repoint_slides(entry, {IMG: entry}, {"1aaa": row.path}, {}, IMG, "media/n.png")
     assert (changed, failures) == (["1aaa"], [])
     assert row.path.read_bytes() == b"a\r\n\\includegraphics{media/n.png}\r\n"
-    assert len(list((store / ".backups" / row.path.name).glob("*.tex"))) == 1
+    assert len(list((store / "slides" / ".backups" / row.path.name).glob("*.tex"))) == 1
 
 
 def test_repoint_reports_unreadable_slide(store):

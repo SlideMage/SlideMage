@@ -9,15 +9,15 @@ import os
 from pathlib import Path
 import subprocess
 import time
-from slidemage import deck_scan
+from slidemage import deck_scan, project
 
 parser = argparse.ArgumentParser(__doc__)
 parser.add_argument("--scope", choices=("full", "class"), default="full")
 args = parser.parse_args()
-root = deck_scan.PROJECT_ROOT
+root = project.transitional_context().root
 out = root / '.build' / ('format-probe-' + args.scope)
 out.mkdir(parents=True, exist_ok=True)
-deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
+deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
 source = root / 'decks' / '_slidemage_format_probe.tex'
 preamble = deck.preamble_text
 if args.scope == 'class':

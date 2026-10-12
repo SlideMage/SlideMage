@@ -21,6 +21,7 @@ from PySide6.QtCore import QObject, Signal
 from ... import app_settings, deck_settings
 from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
 from ...deck_scan import Deck
+from ...project import ProjectContext
 from ...slide_language import TRANSLATION_LANGUAGES
 
 MODES = ("preview", "split", "source", "details")
@@ -42,8 +43,9 @@ class WorkspaceState(QObject):
     dirty_changed = Signal(bool)
     lint_errors_changed = Signal(int)
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, project: ProjectContext, parent: QObject | None = None) -> None:
         super().__init__(parent)
+        self.project = project
         self.deck: Optional[Deck] = None
         self.focused_slide: Optional[str] = None
         self.view = VIEW_INSTRUCTOR
@@ -141,11 +143,10 @@ class WorkspaceState(QObject):
 
     # -- per-deck memory -------------------------------------------------
 
-    @staticmethod
-    def _remembered(deck: Optional[Deck]) -> dict:
+    def _remembered(self, deck: Optional[Deck]) -> dict:
         if deck is None:
             return {}
-        return app_settings.get(SETTINGS_KEY, {}).get(str(deck.path), {})
+        return app_settings.get(self.project, SETTINGS_KEY, {}).get(str(deck.path), {})
 
     @staticmethod
     def _deck_language(deck: Optional[Deck]) -> str:
@@ -156,6 +157,6 @@ class WorkspaceState(QObject):
     def _remember(self, field: str, value: str) -> None:
         if self.deck is None:
             return
-        saved = app_settings.get(SETTINGS_KEY, {})
+        saved = app_settings.get(self.project, SETTINGS_KEY, {})
         saved.setdefault(str(self.deck.path), {})[field] = value
-        app_settings.set(SETTINGS_KEY, saved)
+        app_settings.set(self.project, SETTINGS_KEY, saved)

@@ -11,12 +11,14 @@ from slidemage.ui.workspace.centre import CentreColumn
 from slidemage.ui.workspace.details_view import DetailsPane
 from slidemage.ui.workspace.state import WorkspaceState
 
-from conftest import use_slides_folder
+from conftest import use_project
+from slidemage.project import transitional_context
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
 
 
 class FakeApp:
+    project = property(lambda self: transitional_context())
     def __init__(self):
         self.theme = ThemeManager()
         self.logged = []
@@ -38,14 +40,14 @@ def versioned_slide(tmp_path, monkeypatch):
     for version in ("1-0-0", "1-1-0"):
         (slides / f"abc-EN-Demo-v{version}.tex").write_text(
             f"\\setSlideVersion{{{version}}}\n" + BODY.replace("Text", f"Text of {version}"), encoding="utf-8")
-    use_slides_folder(monkeypatch, slides)
+    use_project(monkeypatch, slides.parent)
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda: {})
     return slides
 
 
 def test_making_a_version_current_archives_the_current_one_and_reopens_it(qapp, versioned_slide, monkeypatch):
     app = FakeApp()
-    centre = CentreColumn(app, WorkspaceState())
+    centre = CentreColumn(app, WorkspaceState(transitional_context()))
     answers = iter([QMessageBox.StandardButton.Yes])
     monkeypatch.setattr(QMessageBox, "question", lambda *a: next(answers))
     centre.restore_version(versioned_slide / "abc-EN-Demo-v1-0-0.tex")
@@ -58,7 +60,7 @@ def test_making_a_version_current_archives_the_current_one_and_reopens_it(qapp, 
 
 def test_making_a_version_current_is_refused_while_the_current_slide_has_unsaved_edits(
         qapp, versioned_slide, monkeypatch):
-    centre = CentreColumn(FakeApp(), WorkspaceState())
+    centre = CentreColumn(FakeApp(), WorkspaceState(transitional_context()))
     current = versioned_slide / "abc-EN-Demo-current.tex"
     centre.open_file(current)
     centre.source.current.editor.insertPlainText("x")
@@ -72,7 +74,7 @@ def test_making_a_version_current_is_refused_while_the_current_slide_has_unsaved
 
 def test_freezing_keeps_the_current_content_as_a_version_and_moves_the_slide_on(qapp, versioned_slide, monkeypatch):
     app = FakeApp()
-    centre = CentreColumn(app, WorkspaceState())
+    centre = CentreColumn(app, WorkspaceState(transitional_context()))
     changed = []
     centre.versions_changed.connect(lambda: changed.append(True))
     centre.freeze_version("abc-EN-Demo", "minor")
@@ -87,7 +89,7 @@ def test_freezing_asks_what_the_decks_do_and_cancelling_changes_nothing(qapp, ve
     from slidemage.ui.workspace import centre as centre_module
 
     app = FakeApp()
-    centre = CentreColumn(app, WorkspaceState())
+    centre = CentreColumn(app, WorkspaceState(transitional_context()))
     before = (versioned_slide / "abc-EN-Demo-current.tex").read_bytes()
     monkeypatch.setattr(centre_module, "ask_deck_versions", lambda *args: None)
     centre.freeze_version("abc-EN-Demo", "patch")
@@ -101,7 +103,7 @@ def test_freezing_asks_what_the_decks_do_and_cancelling_changes_nothing(qapp, ve
 
 
 def test_freezing_is_refused_while_the_slide_has_unsaved_edits_or_the_version_exists(qapp, versioned_slide, monkeypatch):
-    centre = CentreColumn(FakeApp(), WorkspaceState())
+    centre = CentreColumn(FakeApp(), WorkspaceState(transitional_context()))
     told = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))
     current = versioned_slide / "abc-EN-Demo-current.tex"
@@ -117,7 +119,7 @@ def test_freezing_is_refused_while_the_slide_has_unsaved_edits_or_the_version_ex
 
 
 def test_details_survive_a_slide_without_a_file_and_show_a_message_without_a_slide(qapp, versioned_slide):
-    details = DetailsPane(FakeApp(), WorkspaceState(), lambda path: False)
+    details = DetailsPane(FakeApp(), WorkspaceState(transitional_context()), lambda path: False)
     details.show_slide("zzz-EN-Gone", None)            # no file: the facts are empty, nothing raises
     details.show_slide("", None, "Select a slide")
     assert [label.text() for label in details.findChildren(QLabel)] == ["Select a slide"]

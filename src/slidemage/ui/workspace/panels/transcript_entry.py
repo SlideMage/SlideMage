@@ -25,8 +25,8 @@ class TranscriptEntry(SidePanel):
     key = "transcript"
     title = "Transcript entry"
 
-    def __init__(self, app, state) -> None:
-        super().__init__(app, state)
+    def __init__(self, app, state, actions) -> None:
+        super().__init__(app, state, actions)
         self._summary: Optional[QPlainTextEdit] = None
         self._save: Optional[Button] = None
         self._slide = ""   # the bare id the summary editor belongs to

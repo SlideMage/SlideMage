@@ -190,10 +190,10 @@ class ImagesPage(ImageRunsMixin, Surface):
         show, and after the Settings sheet closed, so that a changed default reaches the open page."""
         self._models_loaded = True
         provider = OllamaProvider()
-        fill_model_combo(self.draft_model, "image_description",
+        fill_model_combo(self.app.project, self.draft_model, "image_description",
                          provider.list_models(vision_only=True) if vision_models is None else vision_models,
                          "(no vision models available)")
-        fill_model_combo(self.translate_model, "translation",
+        fill_model_combo(self.app.project, self.translate_model, "translation",
                          provider.list_models() if models is None else models, "(no AI models available)",
                          fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
         self._update_buttons()

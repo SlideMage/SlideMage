@@ -8,6 +8,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
+from slidemage.project import transitional_context
 from slidemage import app_settings, deck_scan
 from slidemage.archive import read
 from slidemage.slide_source import read_slide_source
@@ -18,10 +19,11 @@ from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.panels import PANELS
 from slidemage.ui.workspace.panels.base import Row
 from slidemage.ui.workspace.side_panels import ASSISTANT_SPLIT, PANEL_MIN_HEIGHT, SETTING, SPLIT_SETTING, SidePanels
+from slidemage.ui.workspace.panels.base import PanelActions
 from slidemage.ui.workspace.slide_list import SlideList
 from slidemage.ui.workspace.state import WorkspaceState
 
-from conftest import use_slides_folder
+from conftest import use_project
 
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
 FRAME = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
@@ -54,6 +56,7 @@ class FakeCentre:
 
 
 class FakeWindow:
+    project = property(lambda self: transitional_context())
     """What the panels need of the window: the slide list's edits, the rescan after one, the editor."""
 
     def __init__(self, state):
@@ -64,6 +67,13 @@ class FakeWindow:
         self.opened = []
         self.logged = []
         self.busy = None
+        self.actions = PanelActions(
+            slide_text=self.centre.slide_text, is_dirty=self.centre.is_dirty,
+            edit_slide_text=self.centre.edit_slide_text, save_source=self.centre.source.save,
+            restore_version=self.centre.restore_version, freeze_version=self.centre.freeze_version,
+            edit_deck=lambda *a, **k: self.slide_list.edit(*a, **k),
+            add_slide=lambda *a, **k: self.slide_list.add_slide(*a, **k),
+            add_reference=self.centre.source.add_reference)
 
     def try_start_ollama_task(self, label, provider=None):
         self.busy = label
@@ -76,7 +86,7 @@ class FakeWindow:
         self.refreshed = getattr(self, "refreshed", 0) + 1
 
     def after_deck_edit(self, path, summary, previous_text=None):
-        self.state.set_deck(next(d for d in deck_scan.scan_decks() if d.path == path))
+        self.state.set_deck(next(d for d in deck_scan.scan_decks(transitional_context()) if d.path == path))
         self.slide_list.rebuild()
         self.slide_list.deck_edited(path, summary, previous_text)
         self.panels.refresh()
@@ -97,9 +107,7 @@ def project(tmp_path, monkeypatch):
     decks, slides = tmp_path / "decks", tmp_path / "slides"
     (decks / "archive").mkdir(parents=True)
     slides.mkdir()
-    monkeypatch.setattr(deck_scan, "DECKS_DIR", decks)
-    monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", decks / "archive")
-    use_slides_folder(monkeypatch, slides)
+    use_project(monkeypatch, slides.parent)
     for name in ("abc-EN-Demo", "xyz-EN-Other"):
         (slides / f"{name}-current.tex").write_text(FRAME, encoding="utf-8")
     for deck, body in {
@@ -117,12 +125,12 @@ def project(tmp_path, monkeypatch):
 @pytest.fixture
 def column(project, qapp):
     """The right column over the "course" deck, with the slide list that applies its edits."""
-    state = WorkspaceState()
+    state = WorkspaceState(transitional_context())
     window = FakeWindow(state)
     holder = QWidget()
     window.slide_list = SlideList(window, state, ThemeManager(), Toast(holder))
-    window.panels = SidePanels(window, state)
-    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "course"))
+    window.panels = SidePanels(window, state, window.actions)
+    state.set_deck(next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == "course"))
     yield window.panels, state, window
     holder.deleteLater()
     window.slide_list.deleteLater()
@@ -172,7 +180,7 @@ def rows(panel):
 def test_an_invalid_or_missing_split_uses_the_original_proportions(column, qapp, ratio):
     panels, state, window = column
     layout_settings.set(SPLIT_SETTING, ratio)
-    again = SidePanels(window, state)
+    again = SidePanels(window, state, window.actions)
     again.resize(340, 1000)
     again.show()
     qapp.processEvents()
@@ -191,7 +199,7 @@ def test_a_short_column_protects_the_controls_and_grows_back_to_the_users_split(
     panels.moveSplitter(round(sum(panels.sizes()) * ratio), 1)
     saved = layout_settings.get(SPLIT_SETTING)
     assert saved == panels.sizes()[0] / sum(panels.sizes())
-    assert app_settings.get(SPLIT_SETTING) is None
+    assert app_settings.get(transitional_context(), SPLIT_SETTING) is None
 
     panels.resize(340, 560)
     qapp.processEvents()
@@ -226,17 +234,17 @@ def test_the_picker_names_the_panel_and_lists_all_of_them(column):
         "Citations", "Language", "Image descriptions", "Transcript entry", "Speaker notes"]
     menu.triggered.emit("visibility")
     menu.close()
-    assert panels.picker.text() == "Visibility" and app_settings.get(SETTING) == "visibility"
+    assert panels.picker.text() == "Visibility" and app_settings.get(transitional_context(), SETTING) == "visibility"
 
 
 def test_the_chosen_panel_is_remembered_and_only_it_is_shown(column, project):
     panels, state, window = column
     panels.set_panel("versions")
-    again = SidePanels(window, state)
+    again = SidePanels(window, state, window.actions)
     assert again.current == "versions"
     assert [key for key, p in again.panels.items() if not p.isHidden()] == ["versions"]
-    app_settings.set(SETTING, "gone")
-    assert SidePanels(window, state).current == "used"        # an unknown value falls back to the first
+    app_settings.set(transitional_context(), SETTING, "gone")
+    assert SidePanels(window, state, window.actions).current == "used"        # an unknown value falls back to the first
     again.deleteLater()
 
 
@@ -327,7 +335,7 @@ def test_a_slide_cannot_be_hidden_from_every_view_and_the_cell_snaps_back(column
 
 def test_a_pinned_call_shows_its_state_but_cannot_be_changed(column, project):
     panels, state, _window = column
-    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "talk"))
+    state.set_deck(next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == "talk"))
     panels.set_panel("visibility")
     state.set_focused_slide("abc")
     panel = panels.panels["visibility"]
@@ -340,7 +348,7 @@ def test_the_panel_says_when_the_open_deck_does_not_use_the_slide(column, projec
     panels, state, _window = column
     panels.set_panel(key)
     state.set_focused_slide("xyz")
-    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "talk"))
+    state.set_deck(next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == "talk"))
     state.set_focused_slide("xyz")
     assert "talk does not call this slide." in texts(panels.panels[key])
 
@@ -423,16 +431,12 @@ def paths(tmp_path):
 @pytest.fixture
 def content(project, column, paths, tmp_path, monkeypatch):
     """The slide `cit` (citations, an image, two notes), a Slidemaster.bib and an alt-text store of its own."""
-    from slidemage import alt_images, bibliography
 
     panels, state, window = column
     paths.path.write_text(CITED, encoding="utf-8")
     bib = paths.bib
     bib.write_text("@article{smith2020,\n\tauthor = {Smith, Jane},\n\ttitle = {Findings},\n\tyear = {2020},\n"
                    "\tjournaltitle = {Journal},\n}\n", encoding="utf-8")
-    monkeypatch.setattr(bibliography, "DEFAULT_BIB", bib)
-    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "alt-text.csv")
     state.set_focused_slide("cit")
     return panels, state, window
 
@@ -594,7 +598,7 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(content, mon
     panel = shown(panels, "images")
     drafted = []
     provider = SimpleNamespace(label="qwen3 · local")
-    monkeypatch.setattr(images, "provider_for_task", lambda parent, task, what: drafted.append((task, what)) or provider)
+    monkeypatch.setattr(images, "provider_for_task", lambda parent, project, task, what: drafted.append((task, what)) or provider)
     monkeypatch.setattr(alt_draft, "draftable_images", lambda row, entries: [(row.images[0], paths.path)])
 
     class FakeBackend:
@@ -795,7 +799,7 @@ def test_a_frozen_versions_notes_are_read_only(content, project, paths):
     frozen.write_text(CITED, encoding="utf-8")
     (project.decks / "course.tex").write_text(
         HEAD + "\\slideversion{cit-EN-Cited}{1-0-0}\n\\end{document}\n", encoding="utf-8")
-    state.set_deck(next(d for d in deck_scan.scan_decks() if d.name == "course"))
+    state.set_deck(next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == "course"))
     state.set_focused_slide("cit")
     panel = shown(panels, "notes")
     assert all(e.isReadOnly() for e in panel._edits) and not buttons(panel, "Save notes")

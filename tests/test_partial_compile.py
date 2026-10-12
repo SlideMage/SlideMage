@@ -8,6 +8,7 @@ from pathlib import Path
 import pymupdf as fitz
 import pytest
 
+from conftest import use_project
 from slidemage import compile_records, compiler, deck_scan, partial_compile
 from slidemage.partial_compile import PartialError, format_page_spec, parse_page_spec
 
@@ -44,8 +45,7 @@ def full_pages():
 def deck_on_record(tmp_path, monkeypatch, request):
     root = tmp_path / "Proj"
     build = root / ".build"
-    monkeypatch.setattr(compiler, "BUILD_DIR", build)
-    monkeypatch.setattr(compiler, "PROJECT_ROOT", root)
+    use_project(monkeypatch, root)
     monkeypatch.setattr(compile_records, "engine_version", lambda: "E")
     deck_file = root / "decks" / "t-D.tex"
     deck_file.parent.mkdir(parents=True)
@@ -132,10 +132,8 @@ def test_deck_changes_after_the_asked_for_slides_are_fine(deck_on_record):
 
 @pytest.mark.parametrize("deck_on_record", ["input", "include"], indirect=True)
 def test_frames_for_slides_finds_a_fragment_translation(deck_on_record, monkeypatch):
-    from slidemage import slide_language
 
     root, job, _pdf = deck_on_record
-    monkeypatch.setattr(slide_language, "SLIDES_DIR", root / "slides")
     (root / "slides" / "1dd-DE-B-current.tex").write_text(
         "%% Translation of: 1bb-EN-B\nText\n", encoding="utf-8")
     assert partial_compile.frames_for_slides(job, ["1dd"]) == [2]

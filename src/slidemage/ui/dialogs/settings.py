@@ -27,6 +27,7 @@ from ... import app_settings, slide_snapshot, updater
 from ...ai import credentials, resolver, translation_style
 from ...ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
+from ...project import ProjectContext
 from .. import background
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, caption, columns, row
 from .settings_ollama import OllamaTab
@@ -78,7 +79,7 @@ class GeneralTab(Page):
         self.dark_check.toggled.connect(app.set_dark_mode)
         self.tab_width_spin = QSpinBox()
         self.tab_width_spin.setRange(1, 16)
-        self.tab_width_spin.setValue(app_settings.get(TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
+        self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
         self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
 
@@ -141,8 +142,9 @@ class GeneralTab(Page):
 
 
 class ModelsTab(Page):
-    def __init__(self) -> None:
+    def __init__(self, project: ProjectContext) -> None:
         super().__init__()
+        self.project = project
         self.combos: dict[str, QComboBox] = {}
         layout = self.body
         layout.addWidget(caption(
@@ -159,7 +161,7 @@ class ModelsTab(Page):
                 if task in TASK_NOTES:
                     combo.setToolTip(TASK_NOTES[task])
                 combo.activated.connect(lambda i, t=task, c=combo: app_settings.set(
-                    app_settings.MODEL_SETTINGS[t], c.itemData(i) or ""))       # "<provider>:<model>"
+                    self.project, app_settings.MODEL_SETTINGS[t], c.itemData(i) or ""))       # "<provider>:<model>"
                 self.combos[task] = combo
                 fields.append(Field(label, combo))
             layout.addWidget(columns(*fields))
@@ -185,12 +187,12 @@ class ModelsTab(Page):
                 combo.addItem(model, f"ollama:{model}")
             for model in cloud:
                 combo.addItem(f"{model} (cloud)", f"anthropic:{model}")
-            saved = app_settings.default_model(task)
+            saved = app_settings.default_model(self.project, task)
             if saved and combo.findData(saved) == -1:
                 combo.addItem(f"{app_settings.split_spec(saved)[1]} (not available)", saved)
             combo.setCurrentIndex(max(0, combo.findData(saved)))
         self.unreachable.setText(
-            "" if local else f"Ollama is not reachable at {app_settings.get_ollama_host()}, or has no models installed.")
+            "" if local else f"Ollama is not reachable at {app_settings.get_ollama_host(self.project)}, or has no models installed.")
         self.unreachable.setVisible(not local)
 
 
@@ -301,7 +303,7 @@ class SettingsSheet(ModalSheet):
         self._loader: QThread | None = None
         self._reload_pending = False
         self.general = GeneralTab(app)
-        self.models = ModelsTab()
+        self.models = ModelsTab(app.project)
         self.cloud = CloudTab()
         self.ollama = OllamaTab(app)
         self.prompts = PromptsTab(app)

@@ -9,6 +9,7 @@ import threading
 
 import pytest
 
+from conftest import use_project
 from slidemage import app_settings, project
 from slidemage.ai import credentials, resolver
 from slidemage.ai.providers import (
@@ -21,6 +22,7 @@ from slidemage.ai.providers import (
 )
 
 from fake_http import message_sse
+from slidemage.project import transitional_context
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 
@@ -29,8 +31,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 def settings(tmp_path, monkeypatch):
     """Isolated app_settings.json and project root (the tests run against
     the example project, whose files must stay untouched)."""
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    monkeypatch.setattr(resolver, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -279,7 +280,7 @@ def test_api_key_source_precedence(settings, monkeypatch):
     monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
     assert credentials.get_api_key() is None
 
-    app_settings.set(credentials.FILE_SETTING_KEY, "file-key")
+    app_settings.set(transitional_context(), credentials.FILE_SETTING_KEY, "file-key")
     assert credentials.get_api_key() == credentials.ApiKey("file-key", "settings file")
     keyring.set_password("SlideMage", "anthropic-api-key", "ring-key")
     assert credentials.get_api_key() == credentials.ApiKey("ring-key", "keychain")
@@ -290,10 +291,10 @@ def test_api_key_source_precedence(settings, monkeypatch):
 def test_set_api_key_prefers_the_keychain_and_keeps_one_copy(settings, monkeypatch):
     keyring = FakeKeyring()
     monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
-    app_settings.set(credentials.FILE_SETTING_KEY, "stale")
+    app_settings.set(transitional_context(), credentials.FILE_SETTING_KEY, "stale")
     assert credentials.set_api_key("k1") == "keychain"
     assert credentials.get_api_key() == credentials.ApiKey("k1", "keychain")
-    assert app_settings.get(credentials.FILE_SETTING_KEY) is None
+    assert app_settings.get(transitional_context(), credentials.FILE_SETTING_KEY) is None
     assert credentials.set_api_key("") == ""
     assert credentials.get_api_key() is None
 
@@ -332,14 +333,14 @@ def test_keychain_is_available_only_with_a_real_backend(monkeypatch):
 # -- resolver, migration, local-only, consent ----------------------------------
 
 def test_old_bare_model_names_read_as_ollama(settings):
-    app_settings.set("drafting_model", "qwen3:8b")           # pre-provider settings file
-    app_settings.set("translation_model", "sun_leaf/HY-MT:7b")
-    app_settings.set("syntax_check_model", "anthropic:claude-opus-5-5")
-    assert app_settings.default_model("image_description") == "ollama:qwen3:8b"
-    assert app_settings.default_model("translation") == "ollama:sun_leaf/HY-MT:7b"
-    assert app_settings.default_model("syntax_check") == "anthropic:claude-opus-5-5"
-    assert app_settings.default_model("chat") == ""
-    assert app_settings.get("drafting_model") == "qwen3:8b"  # file not rewritten
+    app_settings.set(transitional_context(), "drafting_model", "qwen3:8b")           # pre-provider settings file
+    app_settings.set(transitional_context(), "translation_model", "sun_leaf/HY-MT:7b")
+    app_settings.set(transitional_context(), "syntax_check_model", "anthropic:claude-opus-5-5")
+    assert app_settings.default_model(transitional_context(), "image_description") == "ollama:qwen3:8b"
+    assert app_settings.default_model(transitional_context(), "translation") == "ollama:sun_leaf/HY-MT:7b"
+    assert app_settings.default_model(transitional_context(), "syntax_check") == "anthropic:claude-opus-5-5"
+    assert app_settings.default_model(transitional_context(), "chat") == ""
+    assert app_settings.get(transitional_context(), "drafting_model") == "qwen3:8b"  # file not rewritten
 
 
 def test_provider_for_builds_the_right_provider(settings):
@@ -349,7 +350,7 @@ def test_provider_for_builds_the_right_provider(settings):
     cloud = resolver.provider_for("anthropic:claude-opus-5-5")
     assert isinstance(cloud, AnthropicProvider) and cloud.model == "claude-opus-5-5"
 
-    app_settings.set("chat_model", "anthropic:claude-haiku-4-5-20251001")
+    app_settings.set(transitional_context(), "chat_model", "anthropic:claude-haiku-4-5-20251001")
     assert resolver.provider_for_task("chat").model == "claude-haiku-4-5-20251001"
     assert isinstance(resolver.provider_for_task("translation"), OllamaProvider)  # unset
 

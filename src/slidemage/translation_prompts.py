@@ -37,13 +37,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
-from .deck_scan import PROJECT_ROOT
+from . import project
+
 
 # Lives in the project's .slidemage/ folder, so shared prompts travel with
 # the project (this file is meant to be committed).
-STORE_PATH = PROJECT_ROOT / ".slidemage" / "translation_prompts.json"
 
 # Nested-dict shape for the "models" section: {model: {source_lang:
 # {target_lang: PromptConfig}}}.
@@ -88,11 +89,15 @@ _FALLBACK_DEFAULT = PromptConfig(
 )
 
 
+def _store_path() -> Path:
+    return project.transitional_context().settings_dir / "translation_prompts.json"
+
+
 def _load_raw() -> dict:
-    if not STORE_PATH.is_file():
+    if not _store_path().is_file():
         return {}
     try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
+        return json.loads(_store_path().read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
 
@@ -129,8 +134,9 @@ def _save(default: Optional[PromptConfig], prompts: ModelPromptStore) -> None:
         for model, by_source in prompts.items()
         if by_source
     }
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STORE_PATH.write_text(
+    path = _store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
     )

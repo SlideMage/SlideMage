@@ -66,11 +66,9 @@ from pathlib import Path
 # reads the same either way.
 import pymupdf as fitz
 
-from . import slide_language
-from .deck_scan import PROJECT_ROOT
+from . import project, slide_language
 from .preview_metrics import measure
 
-SNAPSHOT_DIR = PROJECT_ROOT / ".previews" / "slide_previews"
 
 # PDF content, dimensions -> PNG. Paths alone are unsafe when a job is rebuilt.
 # Bounded by bytes as well as entries; no permanent extra artifacts on disk.
@@ -141,7 +139,7 @@ def framework_dirs(root: Path | None = None) -> list[Path]:
     next to the framework, like example/) or ../SlideMage/latex (a project
     next to a SlideMage checkout). Only folders holding
     Slidemaster_preamble_base.tex count."""
-    root = root or PROJECT_ROOT
+    root = root or project.transitional_context().root
     candidates = []
     if os.environ.get("SLIDEMASTER_LATEX"):
         candidates.append(Path(os.environ["SLIDEMASTER_LATEX"]))
@@ -154,7 +152,7 @@ def preamble_file(template: str, root: Path | None = None) -> Path:
     project's own (institution layers live in the project root), else the
     framework's (the SlideMage template, since v5.9.0). The project-root path
     when neither exists."""
-    root = root or PROJECT_ROOT
+    root = root or project.transitional_context().root
     name = f"Slidemaster_preamble_{template}.tex"
     for folder in (root, *framework_dirs(root)):
         if (folder / name).is_file():
@@ -173,7 +171,7 @@ def render_template(root: Path | None = None) -> str:
     from . import app_settings  # app settings live in the project too
 
     available = available_templates(root)
-    for key in (app_settings.get(RENDER_TEMPLATE_SETTING_KEY),
+    for key in (app_settings.get(project.transitional_context(), RENDER_TEMPLATE_SETTING_KEY),
                 OUT_OF_THE_BOX_RENDER_TEMPLATE, DEFAULT_TEMPLATE):
         if key in available:
             return key
@@ -186,7 +184,7 @@ def set_render_template(key: str) -> None:
 
     if key not in TEMPLATES:
         raise ValueError(f"'{key}' is not a template.")
-    app_settings.set(RENDER_TEMPLATE_SETTING_KEY, key)
+    app_settings.set(project.transitional_context(), RENDER_TEMPLATE_SETTING_KEY, key)
 
 
 # Full HD, requested directly rather than picked via a DPI value: this
@@ -224,7 +222,7 @@ def slide_id_of(page: "fitz.Page") -> str | None:
 
 def _save_page(page: "fitz.Page", slide_id: str, template: str,
                sizes: tuple[tuple[int, int], ...]) -> None:
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    project.transitional_context().slide_previews_dir.mkdir(parents=True, exist_ok=True)
     for width, height in sizes:
         zoom_x = width / page.rect.width
         zoom_y = height / page.rect.height
@@ -271,7 +269,7 @@ def prepare_preview(pdf_path: Path, snapshots: bool = False):
 
 @measure('snapshot_write')
 def publish_preview(images, slide_id: str, template: str) -> None:
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    project.transitional_context().slide_previews_dir.mkdir(parents=True, exist_ok=True)
     for size, data in images:
         # Refresh freshness even when a source edit leaves identical PDF pixels.
         path = snapshot_path(slide_id, template, size)
@@ -387,7 +385,7 @@ def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
     language = (slide_language.own_language(id_slug) if id_slug
                 else _own_language_for_bare_id(slide_id))
     lang_segment = f"-{language}" if language else ""
-    return SNAPSHOT_DIR / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
+    return project.transitional_context().slide_previews_dir / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
 
 
 def is_fresh(slide_id: str, slide_path: Path, template: str = DEFAULT_TEMPLATE,

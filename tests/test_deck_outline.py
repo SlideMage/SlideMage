@@ -5,8 +5,9 @@ import os
 
 import pytest
 
-from slidemage import deck_editor, deck_outline, slide_language, slide_snapshot
+from slidemage import deck_outline, slide_language, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
+from conftest import use_project
 
 GOOD = "\\begin{standardframe}{Title}Text\\end{standardframe}\n"
 BROKEN = "\\begin{standardframe}{Title}{Text\\end{standardframe}\n"   # an unclosed brace
@@ -17,10 +18,8 @@ def project(tmp_path, monkeypatch):
     """An empty slides/ folder and preview cache the outline looks at."""
     slides = tmp_path / "slides"
     slides.mkdir()
-    for module in (deck_outline, deck_editor, slide_language):
-        monkeypatch.setattr(module, "SLIDES_DIR", slides)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path / "previews")
-    (tmp_path / "previews").mkdir()
+    use_project(monkeypatch, tmp_path)
+    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     deck_outline.forget_lint()
     return slides
 

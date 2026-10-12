@@ -39,7 +39,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
 
-from .. import app_settings
+from .. import app_settings, project
 from . import credentials
 from .agent_types import AgentMessage, AssistantMessage, ToolCall, ToolResultsMessage, ToolSpec
 
@@ -247,7 +247,7 @@ class OllamaProvider(_HttpProvider):
         self.model = model
         # Resolved now rather than at import: a host saved later in Settings
         # must apply without a restart.
-        self.host = host or app_settings.get_ollama_host()
+        self.host = host or app_settings.get_ollama_host(project.transitional_context())
         self._capabilities: dict[str, tuple[str, ...]] = {}     # what /api/show said, by model
 
     @property

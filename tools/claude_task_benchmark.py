@@ -101,7 +101,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Work folder: {work}", flush=True)
 
     sys.path.insert(0, str(REPO / "src"))
-    # project imports nothing that fixes PROJECT_ROOT at import time
     from slidemage.project import _ignore_template_build_output
 
     shutil.copytree(REPO / "example", project, ignore=_ignore_template_build_output)
@@ -191,24 +190,25 @@ def run_ui(claude, work: Path, paths: dict[str, Path], clean: dict[str, str], br
     from PySide6.QtCore import QCoreApplication, Qt
     from PySide6.QtWidgets import QApplication
 
-    from slidemage import alt_images, app_settings, slide_ids, slide_source, slide_versioning
+    from slidemage import alt_images, slide_ids, slide_source, slide_versioning
     from slidemage.ai import claude_runner, claude_tasks
     from slidemage.ai.claude_images import DESCRIBE
     from slidemage.ui import layout_settings
     from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
     from slidemage.ui.workspace.terminal.tasks import TaskRunner, bubbles, deck_bubbles
 
-    app_settings.STORE_PATH, layout_settings.STORE_PATH = work / "app_settings.json", work / "layout.json"
+    layout_settings.STORE_PATH = work / "layout.json"
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication([])
     from slidemage.ui.kit.fonts import load_fonts
+    from slidemage.project import from_environment
     from slidemage.ui.kit.theme import ThemeManager
     from slidemage.ui.workspace.window import WorkspaceWindow
 
     load_fonts()
     theme = ThemeManager(dark=False)
     theme.apply()
-    window = WorkspaceWindow(theme)
+    window = WorkspaceWindow(theme, from_environment())
     window.resize(1600, 900)
     window.show()
     window.state.set_deck(next(d for d in window.decks if d.name == "slidemage-manual"))

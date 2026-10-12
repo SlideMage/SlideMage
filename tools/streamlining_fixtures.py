@@ -45,10 +45,10 @@ def produce(copy: Path) -> dict:
     os.environ["SLIDEMASTER_PROJECT"] = str(copy)
     os.chdir(copy)
     sys.path.insert(0, str(REPO / "src"))
-    from slidemage import compiler, deck_scan, slide_preview
+    from slidemage import compiler, deck_scan, project, slide_preview
 
     out: dict[str, dict] = {}
-    deck = next(d for d in deck_scan.scan_decks() if d.name == DECK)
+    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == DECK)
     jobs = compiler.build_jobs(deck, "instructor")
     for job in jobs:
         job.footer_timestamp = False

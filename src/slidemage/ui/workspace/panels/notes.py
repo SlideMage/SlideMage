@@ -24,8 +24,8 @@ class SpeakerNotes(SidePanel):
     key = "notes"
     title = "Speaker notes"
 
-    def __init__(self, app, state) -> None:
-        super().__init__(app, state)
+    def __init__(self, app, state, actions) -> None:
+        super().__init__(app, state, actions)
         self._path: Optional[Path] = None
         self._shown: list[str] = []                 # the notes' contents as they were shown
         self._edits: list[QPlainTextEdit] = []      # one per shown note
@@ -103,7 +103,7 @@ class SpeakerNotes(SidePanel):
             applied.append(True)
             return source
 
-        done = self.app.centre.edit_slide_text(self._path, change)
+        done = self.actions.edit_slide_text(self._path, change)
         if done and not applied:
             self.app.log(f"The notes of {self._path.name} changed in the Source view; the panel shows them again.")
         return done and bool(applied)
@@ -117,6 +117,6 @@ class SpeakerNotes(SidePanel):
 
     def _save_notes(self) -> None:
         if self._apply():
-            self.app.centre.source.save()
+            self.actions.save_source()
         self.set_dirty(False)
         self.refresh()

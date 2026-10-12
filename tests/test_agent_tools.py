@@ -9,6 +9,7 @@ import pytest
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
+from slidemage.project import transitional_context
 from slidemage import compiler, preview_target, slide_snapshot
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
@@ -31,7 +32,7 @@ class Box:
     """A toolbox on the throwaway project with the events it emitted."""
 
     def __init__(self, root, mode=EDIT_ASK, approve=True, deck=True):
-        deck_ = next((d for d in scan_decks() if d.name == "test"), None) if deck else None
+        deck_ = next((d for d in scan_decks(transitional_context()) if d.name == "test"), None) if deck else None
         self.ws = FakeWorkspace(root, WorkspaceContext(deck=deck_, slide_id="abc", path=root / SLIDE), approve)
         self.events = []
         self.box = build_toolbox(self.ws, self.events.append, compiler.CancelToken(), mode)

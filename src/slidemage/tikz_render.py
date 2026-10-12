@@ -28,8 +28,7 @@ from typing import Callable, Optional
 import pymupdf as fitz
 from PIL import Image, ImageChops
 
-from . import alt_blocks, alt_images, compile_log
-from .deck_scan import PROJECT_ROOT
+from . import alt_blocks, alt_images, compile_log, project
 from .slide_preview import compile_and_extract, default_preamble
 
 # Gitignored, same regeneratable-cache reasoning as slide_previews/ and
@@ -38,7 +37,6 @@ from .slide_preview import compile_and_extract, default_preamble
 # previews/ 2026-09-18, then .previews/ the same day (was a project-root
 # folder before that; dot-prefixed since nothing here is ever something
 # the user needs to interact with).
-RENDER_DIR = PROJECT_ROOT / ".previews" / "tikz_illustration_previews"
 
 # Same reasoning as media_render.py's own _ZOOM: enough detail for a vision
 # model to read fine text/labels inside the diagram, without an oversized
@@ -56,7 +54,7 @@ LogCallback = Callable[[str], None]
 
 def _cache_path(illustration_id: str, source_hash: str) -> Path:
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in illustration_id)
-    return RENDER_DIR / f"{safe_id}-{source_hash}.png"
+    return project.transitional_context().tikz_previews_dir / f"{safe_id}-{source_hash}.png"
 
 
 def _render_and_crop(pdf_path: Path, png_path: Path) -> None:
@@ -97,7 +95,7 @@ def _render_and_crop(pdf_path: Path, png_path: Path) -> None:
     # illustration still produces *something* to look at instead of a
     # drafting failure with a confusing cause.
 
-    RENDER_DIR.mkdir(parents=True, exist_ok=True)
+    project.transitional_context().tikz_previews_dir.mkdir(parents=True, exist_ok=True)
     image.save(png_path)
 
 

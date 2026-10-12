@@ -1,7 +1,7 @@
 import pytest
 
-from slidemage import deck_editor, deck_scan, latex_lint
-from conftest import make_project
+from slidemage import deck_scan, latex_lint
+from conftest import make_project, use_project
 
 
 def test_student_lint_skips_omitslide(tmp_path, monkeypatch):
@@ -9,7 +9,7 @@ def test_student_lint_skips_omitslide(tmp_path, monkeypatch):
         "\\documentclass{beamer}\n\\begin{document}\n"
         "\\omitslide{abc-EN-Missing}\n\\end{document}\n", encoding="utf-8")
     deck, = deck_scan.scan_dir(tmp_path, False)
-    monkeypatch.setattr(deck_editor, "SLIDES_DIR", tmp_path / "slides")
+    use_project(monkeypatch, tmp_path)
     for version in ("during-course", "after-course"):
         assert not latex_lint.check_deck_job(deck, version).errors
     assert [i.code for i in latex_lint.check_deck_job(deck, "instructor").errors] == ["slide-file"]
@@ -51,7 +51,7 @@ def test_cited_keys_are_listed_once_in_order_without_comments_or_macro_keys():
 @pytest.mark.parametrize("name", ["fragment", "fragment.tex"])
 def test_lint_checks_included_fragment_slides(tmp_path, monkeypatch, name):
     root = make_project(monkeypatch, tmp_path)
-    monkeypatch.setattr(latex_lint, "DECKS_DIR", root / "decks")
+    use_project(monkeypatch, root)
     (root / "decks/fragment.tex").write_text("\\slide{abc-EN-Hello}\n")
     (root / "decks/test.tex").write_text(
         "\\documentclass{beamer}\n\\begin{document}\n"

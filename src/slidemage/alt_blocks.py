@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .deck_scan import PROJECT_ROOT
+from . import project
 from .tex_source import COMMENT_RE
 
 INCLUDEGRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
@@ -421,7 +421,7 @@ def find_tikz_illustration(
     only ever stores a description, never the drawing. A plain linear scan
     across every slide, same cost class scan_slides_raw() already pays on
     every sync."""
-    directory = slides_dir or (PROJECT_ROOT / "slides")
+    directory = slides_dir or (project.transitional_context().root / "slides")
     for path in sorted(directory.glob("*-current.tex")):
         try:
             text = path.read_text(encoding="utf-8")
@@ -590,7 +590,7 @@ def replace_image_reference(source: str, old_reference: str, new_reference: str)
 
 
 def resolve_image(reference: str) -> Path | None:
-    candidate = PROJECT_ROOT / reference
+    candidate = project.transitional_context().root / reference
     if candidate.is_file():
         return candidate
     if not candidate.suffix:
@@ -627,7 +627,7 @@ def scan_slides_raw(slides_dir: Path | None = None) -> list[SlideRow]:
     "nothing to describe" -- three quarters of slides/ has no image, and a
     review list padded with them is unusable.
     """
-    directory = slides_dir or (PROJECT_ROOT / "slides")
+    directory = slides_dir or (project.transitional_context().root / "slides")
     results: list[SlideRow] = []
 
     for path in sorted(directory.glob("*-current.tex")):

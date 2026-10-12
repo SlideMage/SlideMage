@@ -94,13 +94,13 @@ class Language(SidePanel):
         """Whether the slide's file may be moved: not while the Source view holds
         unsaved edits of it."""
         path = self.slide_path()
-        if path is not None and self.app.centre.is_dirty(path):
+        if path is not None and self.actions.is_dirty(path):
             QMessageBox.warning(self, title, SAVE_FIRST)
             return False
         return True
 
     def _translate(self, id_slug: str, target: str) -> None:
-        self.app.slide_list.add_slide("translate", id_slug, target)
+        self.actions.add_slide("translate", id_slug, target)
 
     # -- Set language ----------------------------------------------------------------------
 

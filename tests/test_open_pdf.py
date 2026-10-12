@@ -11,6 +11,8 @@ import pymupdf as fitz
 import pytest
 from PySide6.QtWidgets import QApplication, QInputDialog, QWidget
 
+from conftest import use_project
+from slidemage.project import transitional_context
 from slidemage import compile_records, compiler, deck_scan
 from slidemage.ui.workspace import deck_actions
 from slidemage.compiler import DeckPdf, pdf_to_open
@@ -70,8 +72,7 @@ def test_compile_job_stamps_its_run(tmp_path):
 
 @pytest.fixture
 def deck_with_pdfs(tmp_path, monkeypatch):
-    monkeypatch.setattr(compiler, "PDF_DIR", tmp_path / "pdf")
-    monkeypatch.setattr(compiler, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     (tmp_path / "decks").mkdir()
     (tmp_path / "decks" / "t-A.tex").write_text(
         "\\documentclass{beamer}\n\\deckversionoverride\n\\begin{document}\n\\end{document}\n",
@@ -109,10 +110,11 @@ def test_open_pdf_asks_and_opens_the_choice(deck_with_pdfs, monkeypatch):
     monkeypatch.setattr(deck_actions.open_path, "open_in_default_app", opened.append)
     win = QWidget()
     win._log = lambda line: None
-    deck_actions.DeckActionsMixin._on_open_latest_pdf(win, deck_with_pdfs)
+    win.project = transitional_context()
+    deck_actions.on_open_latest_pdf(win, deck_with_pdfs)
     assert asked["items"][0].startswith("After-course -- ")
     assert asked["current"] == 1                          # the instructor PDF preselected
-    assert opened == [compiler.PDF_DIR / "t-A-instructor.pdf"]
+    assert opened == [transitional_context().pdf_dir / "t-A-instructor.pdf"]
 
 
 def test_deck_setting_chooses_the_preferred_pdf(deck_with_pdfs):

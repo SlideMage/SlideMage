@@ -42,11 +42,9 @@ PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
 from .deck_editor import VIEWS
-from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, PROJECT_ROOT, Chapter, Deck
+from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, Chapter, Deck
 from .processes import no_console_kwargs
 
-BUILD_DIR = PROJECT_ROOT / ".build"
-PDF_DIR = PROJECT_ROOT / "pdf"
 
 _BUILD_STATE_LOCK = threading.Lock()
 _ACTIVE_BUILD_DIRS: set[Path] = set()
@@ -108,13 +106,14 @@ def removable_build_entries() -> list[Path]:
     (2026-10-08, direct instruction: "They are small and would be good to
     keep even if the user generally wants to clean up").
     """
+    ctx = project.transitional_context()
     from .preview_build import is_active
-    snapshot = project.is_snapshot(PROJECT_ROOT)
+    snapshot = project.is_snapshot(ctx.root)
     with _BUILD_STATE_LOCK:
-        if not BUILD_DIR.is_dir():
+        if not ctx.build_dir.is_dir():
             return []
         return sorted(
-            (entry for entry in BUILD_DIR.iterdir()
+            (entry for entry in ctx.build_dir.iterdir()
              if entry not in _ACTIVE_BUILD_DIRS and not is_active(entry)
              and entry.name != compile_records.RECORDS_DIRNAME
              and not (snapshot and (entry / f"{entry.name}.timestamp").is_file())),
@@ -126,17 +125,17 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     """Where this job's compiled PDF should actually land, and what its
     filename (without ".pdf") should be: a deck-declared \\deckoutputfolder
     (deck_scan.py's OUTPUT_FOLDER_RE) directory plus job.jobname by
-    default, or PDF_DIR plus job.jobname if the deck has none. A
+    default, or ctx.pdf_dir plus job.jobname if the deck has none. A
     version-less deck (job.version is None) is treated as "instructor" for
     lookup purposes, so a bare `\\deckoutputfolder[instructor]{...}` line
     works the same whether or not the deck formally supports the
     During-course/After-course version system -- same normalization
     per-chapter jobs already get for free, since their own .version is
     already "instructor"/"after-course". A relative path resolves against
-    PROJECT_ROOT, the same base every relative \\includegraphics path in
+    ctx.root, the same base every relative \\includegraphics path in
     this project already resolves against (confirmed: real slides
     reference e.g. "media/icon-x.png" and compile correctly with latexmk
-    invoked from PROJECT_ROOT).
+    invoked from ctx.root).
 
     A presenter job (job.presenter) checks `\\deckoutputfolder[presenter]{...}`
     first, before falling back to the same instructor/bare lookup any other
@@ -158,10 +157,11 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     sharing one bare, unqualified \\deckoutputfolder{...}) -- see
     run_jobs()'s own collision check for what happens then; this function
     always returns the literal name as declared, uninvolved in that."""
-    if project.is_snapshot(PROJECT_ROOT):
+    ctx = project.transitional_context()
+    if project.is_snapshot(ctx.root):
         # A deck snapshot's \deckoutputfolder paths belong to the project it
         # was taken from; its PDFs stay inside the snapshot.
-        return PDF_DIR, job.jobname
+        return ctx.pdf_dir, job.jobname
     version_key = job.version or "instructor"
     if job.presenter:
         raw = (job.deck.output_folders.get("presenter")
@@ -170,9 +170,9 @@ def resolve_output_location(job: "CompileJob") -> tuple[Path, str]:
     else:
         raw = job.deck.output_folders.get(version_key) or job.deck.output_folders.get(None)
     if raw is None:
-        return PDF_DIR, job.jobname
+        return ctx.pdf_dir, job.jobname
     path = Path(raw)
-    resolved = path if path.is_absolute() else PROJECT_ROOT / path
+    resolved = path if path.is_absolute() else ctx.root / path
     if resolved.suffix:
         return resolved.parent, resolved.stem
     return resolved, job.jobname
@@ -240,7 +240,7 @@ def deck_pdfs(deck: Deck) -> list[DeckPdf]:
     found: dict[str, DeckPdf] = {}
     for job in jobs:
         output_dir, output_stem = resolve_output_location(job)
-        for candidate in (output_dir / f"{output_stem}.pdf", PDF_DIR / f"{job.jobname}.pdf"):
+        for candidate in (output_dir / f"{output_stem}.pdf", project.transitional_context().pdf_dir / f"{job.jobname}.pdf"):
             key = _destination_key(candidate)
             if key in found or not candidate.is_file():
                 continue
@@ -270,12 +270,12 @@ def pdf_to_open(pdfs: list[DeckPdf]) -> Optional[DeckPdf]:
 
 
 def display_path(path: Path) -> str:
-    """A PDF's destination for the compile log -- relative to PROJECT_ROOT
+    """A PDF's destination for the compile log -- relative to the project folder
     (e.g. "pdf/foo.pdf") when it's under there, same as the old hardcoded
     "pdf/{jobname}.pdf" text always showed; the full absolute path for a
     \\deckoutputfolder pointing outside the project tree entirely."""
     try:
-        return path.relative_to(PROJECT_ROOT).as_posix()
+        return path.relative_to(project.transitional_context().root).as_posix()
     except ValueError:
         return str(path)
 
@@ -499,7 +499,7 @@ def build_env() -> dict:
     if perl_bin is not None:
         env["PATH"] = str(perl_bin) + os.pathsep + env.get("PATH", "")
     # Inside a deck snapshot: its own framework copy and fixed PDF dates.
-    return project.snapshot_compile_env(PROJECT_ROOT, env)
+    return project.snapshot_compile_env(project.transitional_context().root, env)
 
 
 def _seed_snapshot_timestamp(jobname: str, build_dir: Path) -> None:
@@ -507,9 +507,10 @@ def _seed_snapshot_timestamp(jobname: str, build_dir: Path) -> None:
     reference compile ran: its <jobname>.timestamp (deck_snapshot.py keeps it
     in .build/<jobname>/) goes into this invocation's build folder, where the
     preamble's \\SMCompileTimestamp reads it instead of the clock."""
-    if not project.is_snapshot(PROJECT_ROOT):
+    ctx = project.transitional_context()
+    if not project.is_snapshot(ctx.root):
         return
-    seed = BUILD_DIR / jobname / f"{jobname}.timestamp"
+    seed = ctx.build_dir / jobname / f"{jobname}.timestamp"
     if seed.is_file():
         shutil.copy2(seed, build_dir / seed.name)
 
@@ -712,7 +713,7 @@ def _relocate_pdf_and_finish(
     # read -- a refreshed thumbnail then (rightly) counts as a change.
     if record is not None and _is_latest_output_success(destination_key, generation):
         wrapper_path, wrapper_text, compile_started = record
-        compile_records.write_record(BUILD_DIR, jobname, build_dir, wrapper_path, wrapper_text,
+        compile_records.write_record(project.transitional_context().build_dir, jobname, build_dir, wrapper_path, wrapper_text,
                                      dest_pdf, compile_started, log, deck_path=job.deck.path)
 
     # Refresh slide snapshots only from this invocation's immutable source,
@@ -748,6 +749,7 @@ def run_job(
     older run can never read or clean files created by a newer one.
     A page compile (job.pages) goes to partial_compile.run_page_job().
     """
+    ctx = project.transitional_context()
     if job.pages and job.chapter is None:
         from . import partial_compile   # imports this module
         return partial_compile.run_page_job(job, log, cancel)
@@ -755,7 +757,7 @@ def run_job(
     jobname = job.jobname
     invocation_id = uuid.uuid4().hex
     wrapper_path = deck_dir / f"_slidemage_{jobname}_{invocation_id}.tex"
-    build_dir = BUILD_DIR / f"{jobname}-{invocation_id}"
+    build_dir = ctx.build_dir / f"{jobname}-{invocation_id}"
     output_dir, output_stem = (
         dest_override if dest_override is not None else resolve_output_location(job)
     )
@@ -770,11 +772,11 @@ def run_job(
         # is spliced into a chapter/appendix wrapper.
         wrapper = wrapper_text(job)
         wrapper_path.write_text(wrapper, encoding="utf-8", newline="")
-        BUILD_DIR.mkdir(parents=True, exist_ok=True)
+        ctx.build_dir.mkdir(parents=True, exist_ok=True)
         build_dir.mkdir(parents=True, exist_ok=False)
         _seed_snapshot_timestamp(jobname, build_dir)
 
-        rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
+        rel_wrapper = wrapper_path.relative_to(ctx.root)
         isolated_output = build_dir.resolve().as_posix()
         # -recorder (latexmk's default, made explicit): the .fls list of every
         # file read, which compile_records keeps for deck snapshots.
@@ -794,7 +796,7 @@ def run_job(
                 passes = max(passes, int(run.group(1)))
 
         try:
-            run_streamed(cmd, cwd=PROJECT_ROOT, env=env, log=log, cancel=cancel,
+            run_streamed(cmd, cwd=ctx.root, env=env, log=log, cancel=cancel,
                          on_line=count_passes)
         except FileNotFoundError:
             log("*** latexmk not found on PATH -- is a TeX distribution installed? ***")
@@ -870,7 +872,7 @@ def _disambiguated_destinations(
     per-chapter compile, by a presenter job with no [presenter]-specific
     line of its own, or by every version sharing one bare, unqualified
     \\deckoutputfolder{...}), each of those jobs falls back to its own
-    default PDF_DIR-style job.jobname stem instead -- silently overwriting
+    default project.transitional_context().pdf_dir-style job.jobname stem instead -- silently overwriting
     one job's PDF with another's is worse than not honoring the declared
     literal filename for jobs that turn out not to be unique. Keyed by
     id(job): CompileJob has no __eq__/__hash__ of its own, and two
@@ -908,7 +910,7 @@ def unchanged_jobs(
     for job in jobs:
         if job.chapter is not None or job.pages or job.jobname not in destinations:
             continue
-        fresh, _why = compile_records.fresh_output(BUILD_DIR, job.jobname, wrapper_text(job))
+        fresh, _why = compile_records.fresh_output(project.transitional_context().build_dir, job.jobname, wrapper_text(job))
         if fresh is not None and (compile_records.norm(fresh.pdf)
                                   == compile_records.norm(destinations[job.jobname])):
             unchanged.append((job, fresh.created))

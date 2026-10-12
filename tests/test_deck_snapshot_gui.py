@@ -9,20 +9,21 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 
+from conftest import EXAMPLE_PROJECT
 from slidemage import app_settings, compile_progress, deck_snapshot
+from slidemage.project import ProjectContext
 from slidemage.deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
 from slidemage.ui.dialogs import snapshot as snapshot_sheets
-from slidemage.ui.workspace import compile_jobs
+from slidemage.ui.workspace import compile_jobs, deck_actions
 from slidemage.ui.workspace import window as window_module
 from slidemage.ui.workspace.compile_jobs import CompileJobsMixin
-from slidemage.ui.workspace.deck_actions import DeckActionsMixin
 
 
 @pytest.fixture
 def settings(monkeypatch):
     store: dict = {}
-    monkeypatch.setattr(app_settings, "get", lambda key, default=None: store.get(key, default))
-    monkeypatch.setattr(app_settings, "set", lambda key, value: store.__setitem__(key, value))
+    monkeypatch.setattr(app_settings, "get", lambda _ctx, key, default=None: store.get(key, default))
+    monkeypatch.setattr(app_settings, "set", lambda _ctx, key, value: store.__setitem__(key, value))
     return store
 
 
@@ -57,12 +58,10 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
     (tmp_path / "snapshot.json").write_text(json.dumps({"slidemage": {"version": "v5.33.0"}}),
                                             encoding="utf-8")
     banner = window_module.WorkspaceWindow._build_snapshot_banner
-    monkeypatch.setattr(window_module, "PROJECT_ROOT", proj)
-    label = banner(None)
+    label = banner(SimpleNamespace(project=ProjectContext.at(proj)))
     assert label.text().startswith(
         "Deck snapshot of t-A, taken 2026-10-07 14:12 with SlideMage v5.33.0.")
-    monkeypatch.setattr(window_module, "PROJECT_ROOT", tmp_path)   # an ordinary folder
-    assert banner(None) is None
+    assert banner(SimpleNamespace(project=ProjectContext.at(tmp_path))) is None     # an ordinary folder
 
 
 @pytest.mark.parametrize("button, expected", [
@@ -95,7 +94,7 @@ def test_unchanged_versions_are_compiled_only_after_asking(qapp, monkeypatch, bu
 
 def test_sheet_lists_decks_preselects_and_remembers_settings(qapp, settings):
     decks = [deck("t-A"), deck("t-B"), deck("t-Old", archived=True)]
-    dialog = snapshot_sheets.SnapshotSheet(None, decks, preselected={"t-B"})
+    dialog = snapshot_sheets.SnapshotSheet(None, EXAMPLE_PROJECT, decks, preselected={"t-B"})
     items = [dialog.deck_list.item(i) for i in range(dialog.deck_list.count())]
     assert [i.isHidden() for i in items] == [False, False, True]      # archived hidden
     assert [d.name for d in dialog.selected_decks()] == ["t-B"]
@@ -108,14 +107,14 @@ def test_sheet_lists_decks_preselects_and_remembers_settings(qapp, settings):
     dialog.create_button.click()
     assert dialog.result() == 1
     assert settings == {"snapshot_output": "zip", "snapshot_texmf": True, "snapshot_app": False}
-    again = snapshot_sheets.SnapshotSheet(None, decks, preselected=set())
+    again = snapshot_sheets.SnapshotSheet(None, EXAMPLE_PROJECT, decks, preselected=set())
     assert again.output.current() == "zip" and again.texmf_checkbox.isChecked()
     assert not again.create_button.isEnabled()                         # nothing checked
 
 
 def test_sheet_select_all_and_busy(qapp, settings):
     decks = [deck("t-A"), deck("t-B")]
-    dialog = snapshot_sheets.SnapshotSheet(None, decks, preselected=set(), busy=True)
+    dialog = snapshot_sheets.SnapshotSheet(None, EXAMPLE_PROJECT, decks, preselected=set(), busy=True)
     next(b for b in dialog.findChildren(QPushButton) if b.text() == "Select all").click()
     assert len(dialog.selected_decks()) == 2
     assert not dialog.create_button.isEnabled()                        # a compile is running
@@ -126,12 +125,11 @@ def test_sheet_select_all_and_busy(qapp, settings):
 
 def archive_window(monkeypatch, settings):
     calls: list = []
-    win = QWidget()   # a parent for the message boxes, carrying the real handlers
-    win._do_archive_deck = lambda d: calls.append(("archive", d.name))
+    win = QWidget()   # a parent for the message boxes
+    win.project = EXAMPLE_PROJECT
+    monkeypatch.setattr(deck_actions, "do_archive_deck", lambda _window, d: calls.append(("archive", d.name)))
     win._start_snapshots = lambda decks, options, after=None: calls.append(
         ("snapshot", [d.name for d in decks], options, after)) or True
-    for name in ("_archive_deck", "_archive_after_snapshot"):
-        setattr(win, name, getattr(DeckActionsMixin, name).__get__(win))
     return win, calls
 
 
@@ -141,7 +139,7 @@ def archive_window(monkeypatch, settings):
 def test_archive_with_or_without_a_snapshot(qapp, monkeypatch, settings, button, snapshot_ok):
     win, calls = archive_window(monkeypatch, settings)
     press_on_exec(monkeypatch, button)
-    win._archive_deck(deck("t-A"))
+    deck_actions.archive_deck(win, deck("t-A"))
     if snapshot_ok is None:
         assert calls == [("archive", "t-A")]
         return
@@ -168,7 +166,7 @@ def run_window(monkeypatch, settings, compiling=False):
     signal = lambda name: SimpleNamespace(emit=lambda *a: emitted.append((name, *a)))  # noqa: E731
     topbar = SimpleNamespace(set_compiling=lambda on: emitted.append(("compiling", on)))
     win = SimpleNamespace(
-        compiling=compiling, cancel_token=None, _after_snapshots=None, begun=None, _worker=None,
+        project=EXAMPLE_PROJECT, compiling=compiling, cancel_token=None, _after_snapshots=None, begun=None, _worker=None,
         build_options=SimpleNamespace(
             footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
@@ -200,12 +198,12 @@ def run_window(monkeypatch, settings, compiling=False):
 def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch, settings, tmp_path):
     win, emitted = run_window(monkeypatch, settings)
     old = [ExistingSnapshot(tmp_path / "t-A_2026-09-30_10-05", "t-A", "2026-09-30T10:05", False, 1)]
-    monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names: old)
+    monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names, root: old)
     monkeypatch.setattr(snapshot_sheets, "ask_about_old_snapshots",
                         lambda parent, existing: snapshot_sheets.DELETE_OLD)
     seen = {}
 
-    def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None):
+    def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None, project_root=None):
         seen.update(decks=[d.name for d in decks], options=options, delete_old=delete_old)
         return [SnapshotResult(d.name, ok=True, path=tmp_path / d.name) for d in decks]
 
@@ -224,7 +222,7 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
 def test_run_cancelled_at_the_old_snapshot_question(qapp, monkeypatch, settings, tmp_path):
     win, emitted = run_window(monkeypatch, settings)
     old = [ExistingSnapshot(tmp_path / "x", "t-A", "", True, 1)]
-    monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names: old)
+    monkeypatch.setattr(deck_snapshot, "find_snapshots", lambda names, root: old)
     monkeypatch.setattr(snapshot_sheets, "ask_about_old_snapshots",
                         lambda parent, existing: snapshot_sheets.CANCEL_RUN)
     assert not win._start_snapshots([deck("t-A")], SnapshotOptions())
@@ -257,7 +255,7 @@ def test_summary_sheet_counts_and_lists_the_results(qapp, monkeypatch, tmp_path)
     shown = {}
     monkeypatch.setattr(snapshot_sheets.ModalSheet, "exec", lambda sheet: shown.update(
         texts=[w.text() for w in sheet.findChildren(QLabel)], buttons=[b.text() for b in sheet.findChildren(QPushButton)]))
-    snapshot_sheets.show_summary(None, [
+    snapshot_sheets.show_summary(None, EXAMPLE_PROJECT, [
         SnapshotResult("t-A", ok=True, path=tmp_path / "t-A_2026-10-07_14-12", size=2048,
                        deleted=[tmp_path / "old"]),
         SnapshotResult("t-B", ok=False, error="t-B did not compile"),

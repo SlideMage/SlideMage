@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from slidemage import bibliography, latex_edit, snippets
+from conftest import use_project
 
 
 @pytest.fixture
@@ -14,13 +15,13 @@ def folder(tmp_path, monkeypatch):
     (root / "1ab-2.tex").write_text("x", encoding="utf-8")
     (root / "sub").mkdir()
     (root / "sub" / "demo.tex").write_text("x", encoding="utf-8")
-    monkeypatch.setattr(snippets, "SNIPPETS_DIR", root)
+    use_project(monkeypatch, tmp_path)
     return root
 
 
 def test_snippets_are_listed_as_project_relative_paths(folder, tmp_path, monkeypatch):
     assert snippets.list_snippets() == ["snippets/1ab-1.tex", "snippets/1ab-2.tex", "snippets/sub/demo.tex"]
-    monkeypatch.setattr(snippets, "SNIPPETS_DIR", tmp_path / "none")
+    use_project(monkeypatch, tmp_path / "none")
     assert snippets.list_snippets() == []
 
 

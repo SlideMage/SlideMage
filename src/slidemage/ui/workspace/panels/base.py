@@ -17,17 +17,31 @@ panels/__init__.py. The content goes into grey boxes (`box()`) whose rows
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, NamedTuple, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout
 
-from ....deck_editor import SLIDES_DIR, SlideCall
+from ....deck_editor import SlideCall
 from .... import deck_outline
 from ....slide_language import current_id_slug_for_bare_id, current_path_for_bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import ClickFrame, Surface, clear_layout
 from ..state import WorkspaceState
+
+
+class PanelActions(NamedTuple):
+    """What the side panels ask of the rest of the window: the Source view's buffers and the deck
+    edits of the slide list. Passed in, so that no panel reaches through the window to its siblings."""
+    slide_text: Callable[[Path], str]                     # the text of a slide file, unsaved edits included
+    is_dirty: Callable[[Path], bool]                      # the Source view holds unsaved edits of this file
+    edit_slide_text: Callable[..., bool]                  # change a slide's text through the Source view
+    save_source: Callable[[], object]
+    restore_version: Callable[[Path], object]
+    freeze_version: Callable[[str, str], object]
+    edit_deck: Callable[..., bool]                        # an edit of the open deck (SlideList.edit)
+    add_slide: Callable[..., object]                      # SlideList.add_slide
+    add_reference: Callable[[str], object]
 
 
 def text(string: str, name: str = q.DETAILS_VALUE) -> QLabel:
@@ -82,12 +96,13 @@ class SidePanel(Surface):
 
     dirty_changed = Signal(bool)   # the panel has (no) pending edits
 
-    def __init__(self, app, state: WorkspaceState) -> None:
-        """`app` is the window: it logs, opens files in the Source view and edits the deck
-        through the slide list; `state` says which slide, view and language."""
+    def __init__(self, app, state: WorkspaceState, actions: PanelActions) -> None:
+        """`app` is the window: it logs and opens files in the Source view; `actions` are the
+        edits the panel asks for; `state` says which slide, view and language."""
         super().__init__()
         self.app = app
         self.state = state
+        self.actions = actions
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(10)
@@ -161,10 +176,10 @@ class SidePanel(Surface):
         file), else the slide's current file."""
         row = self._focused_row()
         slide = self.state.focused_slide
-        path = SLIDES_DIR / row.call.source_filename if row else (current_path_for_bare_id(slide) if slide else None)
+        path = self.app.project.slides_dir / row.call.source_filename if row else (current_path_for_bare_id(slide) if slide else None)
         return path if path is not None and path.is_file() else None
 
     def slide_text(self) -> str:
         """The text of that file, with unsaved edits of the Source view (`CentreColumn.slide_text`)."""
         path = self.slide_path()
-        return self.app.centre.slide_text(path) if path is not None else ""
+        return self.actions.slide_text(path) if path is not None else ""

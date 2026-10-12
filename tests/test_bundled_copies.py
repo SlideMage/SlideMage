@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import write_test_file as write
+from conftest import use_project, write_test_file as write
 
 from slidemage import alt_images, bundled_copies, project
 from slidemage.bundled_copies import FRAMEWORK, MANUAL
@@ -59,8 +59,7 @@ def plan(root, bundle):
 def use_store(monkeypatch, root: Path) -> None:
     """Point the image-description store -- the JSON and the compile-time CSV
     it regenerates -- at `root`'s media folder, never the real project's."""
-    monkeypatch.setattr(alt_images, "STORE_PATH", root / "media" / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", root / "media" / "alt-text.csv")
+    use_project(monkeypatch, root)
 
 
 @pytest.fixture(autouse=True)
@@ -238,7 +237,7 @@ def test_init_project_seeds_example_and_records_baseline(tmp_path, existing_late
         example_source=project.template_dir("example")) == []
 
 
-# -- the dialog (MaintenanceMixin.check_bundled_copies) ----------------
+# -- the dialog (maintenance.check_bundled_copies) ----------------
 
 def _run_dialog(monkeypatch, root, bundle, choose: str):
     from PySide6.QtWidgets import QMessageBox, QWidget
@@ -246,7 +245,6 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
     from slidemage.ui.workspace import maintenance
 
     latex, example = bundle
-    monkeypatch.setattr(maintenance, "PROJECT_ROOT", root)
     monkeypatch.setattr(project, "template_dir", lambda name: {"latex": latex, "example": example}[name])
     seen = {}
 
@@ -258,7 +256,8 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
     monkeypatch.setattr(QMessageBox, "exec", fake_exec)
     monkeypatch.setattr(QMessageBox, "clickedButton", lambda box: seen["chosen"])
 
-    class Window(maintenance.MaintenanceMixin, QWidget):
+    class Window(QWidget):
+        project = use_project(monkeypatch, root)
         logged: list = []
         reloaded = 0
 
@@ -269,7 +268,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
             Window.reloaded += 1
 
     window = Window()
-    window.check_bundled_copies()
+    maintenance.check_bundled_copies(window)
     return seen, window
 
 

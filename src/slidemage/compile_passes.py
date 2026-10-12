@@ -18,11 +18,11 @@ from __future__ import annotations
 import json
 import re
 import threading
+from pathlib import Path
 from typing import Optional
 
-from .deck_scan import PROJECT_ROOT
+from . import project
 
-STORE_PATH = PROJECT_ROOT / ".slidemage" / "compile_passes.json"
 
 # latexmk's own line at the start of every pass
 RUN_RE = re.compile(r"^Run number (\d+) of rule 'lualatex")
@@ -38,12 +38,22 @@ def job_kind(job) -> str:
     return f"{kind}-chapter" if job.chapter is not None else kind
 
 
+def _store_path() -> Path:
+    return project.transitional_context().settings_dir / "compile_passes.json"
+
+
 def _load() -> dict:
     try:
-        data = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_store_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _write(data: dict) -> None:
+    path = _store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 # Job kinds that need the same passes (v5.20.0, direct instruction: "when a
@@ -114,9 +124,7 @@ def remember(job, passes: int) -> None:
             return
         deck[kind] = passes
         try:
-            STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            STORE_PATH.write_text(
-                json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            _write(data)
         except OSError:
             pass                    # a prediction only: never fail a compile over it
 
@@ -132,8 +140,6 @@ def copy_counts(source_name: str, new_name: str) -> None:
             return
         data[new_name] = dict(counts)
         try:
-            STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            STORE_PATH.write_text(
-                json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            _write(data)
         except OSError:
             pass

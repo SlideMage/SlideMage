@@ -5,6 +5,8 @@ import json
 import urllib.error
 
 import pytest
+from conftest import use_project
+from slidemage.project import transitional_context
 
 
 def _install_ollama(monkeypatch, show_body, *, create_error=None):
@@ -61,8 +63,7 @@ def test_applying_translation_checks_source_hash_and_updates_german(
     """A Translate all snapshot must not overwrite German after the English changes."""
     from slidemage import alt_draft, alt_images
 
-    monkeypatch.setattr(alt_images, "STORE_PATH", tmp_path / "alt-text.json")
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", tmp_path / "alt-text.csv")
+    use_project(monkeypatch, tmp_path)
     entry = alt_images.ImageEntry(
         image="media/chart.png", short="English short", long="Original English",
         takeaway_default=takeaway, long_de=german_long, takeaway_default_de=german_takeaway,
@@ -339,29 +340,28 @@ def test_the_admin_calls_never_raise_whatever_the_server_does(monkeypatch):
 def test_ollama_host_setting_overrides_default(monkeypatch, tmp_path):
     """2026-09-23 review finding: the Ollama host was a hardcoded constant
     duplicated in alt_draft.py and ai_draft.py, with no way to point this
-    app at a non-default Ollama server. app_settings.get_ollama_host()
+    app at a non-default Ollama server. app_settings.get_ollama_host(transitional_context())
     resolves it; OllamaProvider reads it when constructed instead of
     freezing a constant at class-definition time."""
     from slidemage import app_settings
     from slidemage.ai.providers import OllamaProvider
 
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-    assert app_settings.get_ollama_host() == "http://localhost:11434"
+    assert app_settings.get_ollama_host(transitional_context()) == "http://localhost:11434"
 
-    app_settings.set_ollama_host("http://gpu-box:9999")
-    assert app_settings.get_ollama_host() == "http://gpu-box:9999"
+    app_settings.set_ollama_host(transitional_context(), "http://gpu-box:9999")
+    assert app_settings.get_ollama_host(transitional_context()) == "http://gpu-box:9999"
     assert OllamaProvider("m").host == "http://gpu-box:9999"
 
     # An explicit host= still wins over the saved setting.
     assert OllamaProvider("m", host="http://explicit").host == "http://explicit"
 
     # Clearing it falls back through $OLLAMA_HOST, then the plain default.
-    app_settings.set_ollama_host("")
-    assert app_settings.get_ollama_host() == "http://localhost:11434"
+    app_settings.set_ollama_host(transitional_context(), "")
+    assert app_settings.get_ollama_host(transitional_context()) == "http://localhost:11434"
     monkeypatch.setenv("OLLAMA_HOST", "http://from-env:8000")
-    assert app_settings.get_ollama_host() == "http://from-env:8000"
+    assert app_settings.get_ollama_host(transitional_context()) == "http://from-env:8000"
 
 
 def test_draft_prompt_is_customizable_and_persists(monkeypatch, tmp_path):
@@ -372,7 +372,6 @@ def test_draft_prompt_is_customizable_and_persists(monkeypatch, tmp_path):
     from slidemage import alt_draft, draft_prompts
     from slidemage.ai.providers import OllamaProvider
 
-    monkeypatch.setattr(draft_prompts, "STORE_PATH", tmp_path / "draft_prompts.json")
 
     assert alt_draft.effective_system_prompt() == alt_draft.SYSTEM_PROMPT
 

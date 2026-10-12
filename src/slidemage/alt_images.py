@@ -61,12 +61,15 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from . import alt_blocks
-from .deck_scan import PROJECT_ROOT
+from . import alt_blocks, project
 from .tex_source import COMMENT_RE
 
-STORE_PATH = PROJECT_ROOT / "media" / "alt-text.json"
 FORMAT_VERSION = 2
+
+
+def _store_path() -> Path:
+    return project.transitional_context().media_dir / "alt-text.json"
+
 
 ROLE_DECORATIVE = "decorative"
 ROLE_INFORMATIVE = "informative"
@@ -300,9 +303,9 @@ def entry_from_dict(image: str, d: dict) -> ImageEntry:
 
 def load_store() -> dict[str, ImageEntry]:
     """Read the store, keyed by root-relative image path. {} if absent."""
-    if not STORE_PATH.is_file():
+    if not _store_path().is_file():
         return {}
-    raw = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+    raw = json.loads(_store_path().read_text(encoding="utf-8"))
     images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
     return {image: entry_from_dict(image, d) for image, d in images.items()}
 
@@ -323,10 +326,10 @@ class SlideNotes:
 
 
 def _read_raw() -> dict:
-    if not STORE_PATH.is_file():
+    if not _store_path().is_file():
         return {}
     try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
+        return json.loads(_store_path().read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
 
@@ -409,7 +412,7 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _store_path().parent.mkdir(parents=True, exist_ok=True)
     raw = _read_raw()
     raw["version"] = FORMAT_VERSION
     # Empty summaries aren't worth a row -- keeps the file from
@@ -424,13 +427,13 @@ def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
     # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
     atomic_write_text(
-        STORE_PATH,
+        _store_path(),
         json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
     )
 
 
 def save_store(entries: dict[str, ImageEntry]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _store_path().parent.mkdir(parents=True, exist_ok=True)
     # save_store() only ever receives the "images" half (that's the shape
     # every existing caller works with) -- reading the file's current
     # "slides" section first and carrying it forward unchanged is what
@@ -445,7 +448,7 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
         "slides": existing_slides,
     }
     atomic_write_text(
-        STORE_PATH,
+        _store_path(),
         json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
     )
     _write_compile_csv(entries)
@@ -459,7 +462,6 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
 # the compile-time side was a much larger change than just keeping the one
 # file format it already reads working. Same header/column shape the old
 # store wrote, so nothing on the Lua side needed to change at all.
-_COMPILE_CSV_PATH = PROJECT_ROOT / "media" / "alt-text.csv"
 
 
 def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
@@ -475,7 +477,7 @@ def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
         # a pasted newline, so they get the same guard.
         return text.replace("\n", " ").replace("\r", " ")
 
-    with _COMPILE_CSV_PATH.open("w", newline="", encoding="utf-8") as handle:
+    with (project.transitional_context().media_dir / "alt-text.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = _csv.writer(handle)
         # Widened 2026-08-24 (was image,role,status,short_alt,source) to
         # carry both languages in one file rather than a second CSV/second
@@ -514,14 +516,15 @@ def _guess_role(image: str) -> str:
 
 def scan_images() -> list[str]:
     """Every includable image in the project, as root-relative posix paths."""
+    ctx = project.transitional_context()
     found: list[str] = []
     for dirname in IMAGE_DIRS:
-        directory = PROJECT_ROOT / dirname
+        directory = ctx.root / dirname
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):
             if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES:
-                found.append(path.relative_to(PROJECT_ROOT).as_posix())
+                found.append(path.relative_to(ctx.root).as_posix())
     return found
 
 

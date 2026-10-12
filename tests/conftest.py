@@ -5,8 +5,8 @@ import tempfile
 import time
 from pathlib import Path
 
-# project.py imports nothing else from the package, so this is safe before the variable below is set.
-from slidemage.project import _ignore_template_build_output
+from slidemage import project
+from slidemage.project import ProjectContext, _ignore_template_build_output
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -14,9 +14,8 @@ _SESSION_DIR = Path(tempfile.mkdtemp(prefix="slidemage-tests-"))
 atexit.register(shutil.rmtree, _SESSION_DIR, ignore_errors=True)
 EXAMPLE = _SESSION_DIR / "example"
 shutil.copytree(_REPO_ROOT / "example", EXAMPLE, ignore=_ignore_template_build_output)
-
-# Must be set before any slidemage module computes PROJECT_ROOT at import.
-os.environ["SLIDEMASTER_PROJECT"] = str(EXAMPLE)
+EXAMPLE_PROJECT = ProjectContext.at(EXAMPLE)
+project.use(EXAMPLE_PROJECT)    # for the modules that still read project.transitional_context()
 # Both .latexmkrc files and preview discovery honor this; no framework copy or
 # symlink is needed, including on Windows where symlinks may need privileges.
 os.environ["SLIDEMASTER_LATEX"] = str(_REPO_ROOT / "latex")
@@ -58,14 +57,12 @@ def _isolated_temp_dir(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
-def _isolated_app_settings(monkeypatch, tmp_path_factory):
-    """UI preferences (dark mode, the open deck, views ...) go to a throwaway
-    file, so a test neither changes the example project's own settings nor
-    depends on them."""
-    from slidemage import app_settings
-
-    store = tmp_path_factory.mktemp("settings") / "app_settings.json"
-    monkeypatch.setattr(app_settings, "STORE_PATH", store)
+def _fresh_example_state():
+    """Every test starts on the example project with what the app keeps inside a project
+    (settings, prompts, project.json) empty, so a test neither changes the example's own state nor
+    depends on it. (The command lines in preview_cli and deck_snapshot choose a project, too.)"""
+    project.use(EXAMPLE_PROJECT)
+    shutil.rmtree(EXAMPLE_PROJECT.settings_dir, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
@@ -75,20 +72,6 @@ def _isolated_layout_settings(monkeypatch, tmp_path_factory):
 
     store = tmp_path_factory.mktemp("layout") / "layout.json"
     monkeypatch.setattr(layout_settings, "STORE_PATH", store)
-
-
-@pytest.fixture(autouse=True)
-def _isolated_project_stores(monkeypatch, tmp_path_factory):
-    """What Settings writes besides app_settings.json -- the prompts and the project's own
-    project.json (its "Local AI only" override) -- goes to a throwaway folder too, never into the
-    example project."""
-    from slidemage import draft_prompts, translation_prompts
-    from slidemage.ai import resolver
-
-    root = tmp_path_factory.mktemp("project")
-    monkeypatch.setattr(draft_prompts, "STORE_PATH", root / "draft_prompts.json")
-    monkeypatch.setattr(translation_prompts, "STORE_PATH", root / "translation_prompts.json")
-    monkeypatch.setattr(resolver, "PROJECT_ROOT", root)
 
 
 def command_context(deck=None, *, compiling=False, selected=(), decks=()):
@@ -120,8 +103,8 @@ def _restore_app_stylesheet():
 _windows = []
 
 
-def build_window(monkeypatch):
-    """The main window on the example project. Every window built is freed
+def build_window(monkeypatch, context=EXAMPLE_PROJECT):
+    """The main window on the example project (or on `context`). Every window built is freed
     after its test (_free_windows), not whenever the garbage collector gets to
     it: a late teardown of its widget tree crashed the interpreter at exit."""
     from PySide6.QtWidgets import QApplication
@@ -130,7 +113,7 @@ def build_window(monkeypatch):
     from slidemage.ui.workspace.window import WorkspaceWindow
 
     QApplication.instance() or QApplication([])
-    window = WorkspaceWindow(ThemeManager())
+    window = WorkspaceWindow(ThemeManager(project=context), context)
     _windows.append(window)
     return window
 
@@ -164,15 +147,12 @@ def pytest_sessionfinish(session):
     app.processEvents()
 
 
-def use_slides_folder(monkeypatch, folder):
-    """Point every module that looks a slide up at `folder` (and keep the backups of saves in it)."""
-    from slidemage import deck_editor, deck_outline, preview_target, slide_language, slide_source
-    from slidemage.ui.workspace import centre, details_view
-    from slidemage.ui.workspace.panels import base
-
-    for module in (deck_editor, deck_outline, preview_target, slide_language, slide_source, centre, details_view, base):
-        monkeypatch.setattr(module, "SLIDES_DIR", folder)
-    monkeypatch.setattr(slide_source, "BACKUPS_DIR", folder / ".backups")
+def use_project(monkeypatch, root):
+    """Make `root` the project of the modules that still read project.transitional_context();
+    returns its ProjectContext. The migrated modules take the context as an argument instead."""
+    context = ProjectContext.at(root)
+    monkeypatch.setattr(project, "_transitional", context)
+    return context
 
 
 TEMPLATE = "\\begin{standardframe}{Title}\r\n\t\\begin{itemize}\r\n\t\t\\item\r\n\t\\end{itemize}\r\n\\end{standardframe}\r\n"
@@ -182,17 +162,14 @@ def use_new_slide_files(monkeypatch, root):
     """Make `root` the project that new slides (slide_add) are written to: its slides/ folder, a
     slide_ids.csv, and a starter slide. Translation links are not regenerated; the ids of the
     calls are in the returned list."""
-    from slidemage import slide_ids, slide_rename
+    from slidemage import slide_rename
 
-    slides = root / "slides"
-    slides.mkdir(exist_ok=True)
-    (root / "slide_ids.csv").write_bytes(b'"id"\r\n')
-    template = root / "slide-template.tex"
+    context = use_project(monkeypatch, root)
+    context.slides_dir.mkdir(exist_ok=True)
+    context.slide_ids_csv.write_bytes(b'"id"\r\n')
+    template = context.slide_template_path
+    template.parent.mkdir(parents=True, exist_ok=True)
     template.write_bytes(TEMPLATE.encode("utf-8"))
-    monkeypatch.setattr(slide_ids, "SLIDES_DIR", slides)
-    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", root / "slide_ids.csv")
-    monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", template)
-    use_slides_folder(monkeypatch, slides)
     relinked = []
     monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: relinked.append(True))
     return relinked
@@ -214,8 +191,6 @@ def make_project(monkeypatch, root):
     .bib) that every module looks up its files in, for tests that change files (the real
     example/ must never be written). The text of the slides is SLIDE_TEXT (CRLF, as in real
     projects); returns `root` resolved."""
-    from slidemage import bibliography, deck_scan
-
     root.mkdir(parents=True, exist_ok=True)
     relinked = use_new_slide_files(monkeypatch, root)    # slides/, slide_ids.csv, slide-template.tex
     assert relinked == []
@@ -228,9 +203,6 @@ def make_project(monkeypatch, root):
     (root / "Slidemaster.bib").write_text(BIB_TEXT, encoding="utf-8", newline="\n")
     (root / ".slidemage").mkdir()
     (root / ".slidemage" / "app_settings.json").write_text('{"anthropic_api_key": "sk-secret"}')
-    monkeypatch.setattr(deck_scan, "DECKS_DIR", root / "decks")
-    monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", root / "decks" / "archive")
-    monkeypatch.setattr(bibliography, "DEFAULT_BIB", root / "Slidemaster.bib")
     return root.resolve()
 
 

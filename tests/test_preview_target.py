@@ -6,6 +6,7 @@ import pytest
 
 from slidemage import deck_editor, preview_target, slide_preview, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
+from conftest import use_project
 
 PREAMBLE = "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}"
 
@@ -62,15 +63,17 @@ def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instruct
 def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_snapshots(
     tmp_path, monkeypatch, renders,
 ):
-    monkeypatch.setattr(preview_target, "SLIDES_DIR", tmp_path)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path)
-    current = preview_target.for_path(tmp_path / "abc-EN-Demo-current.tex")
-    frozen = preview_target.for_path(tmp_path / "abc-EN-Demo-v1-0-0.tex")
+    use_project(monkeypatch, tmp_path)
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
+    current = preview_target.for_path(slides / "abc-EN-Demo-current.tex")
+    frozen = preview_target.for_path(slides / "abc-EN-Demo-v1-0-0.tex")
     assert (current.macro, current.version, current.preamble_text) == ("slide", None, None)
     assert (frozen.macro, frozen.version) == ("slideversion", "1-0-0")
-    assert current.source_path == tmp_path / "abc-EN-Demo-current.tex"
-    assert frozen.source_path == tmp_path / "abc-EN-Demo-v1-0-0.tex"
-    assert preview_target.for_path(tmp_path / "deck.tex") is None
+    assert current.source_path == slides / "abc-EN-Demo-current.tex"
+    assert frozen.source_path == slides / "abc-EN-Demo-v1-0-0.tex"
+    assert preview_target.for_path(slides / "deck.tex") is None
     assert frozen.is_frozen_alone
     slide_snapshot.snapshot_path("abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
     assert preview_target.cached_image(frozen) is None
@@ -84,12 +87,13 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
 def test_the_cached_image_is_fresh_only_when_newer_than_the_source(tmp_path, monkeypatch):
     import os
 
-    monkeypatch.setattr(preview_target, "SLIDES_DIR", tmp_path)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path / "previews")
-    (tmp_path / "previews").mkdir()
-    target = preview_target.for_path(tmp_path / "abc-EN-Demo-current.tex")
+    use_project(monkeypatch, tmp_path)
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
+    target = preview_target.for_path(slides / "abc-EN-Demo-current.tex")
     assert preview_target.cached_image(target) is None
-    source = tmp_path / "abc-EN-Demo-current.tex"
+    source = slides / "abc-EN-Demo-current.tex"
     source.write_text("x", encoding="utf-8")
     png = slide_snapshot.snapshot_path("abc", target.template, slide_snapshot.FULL_SIZE)
     png.write_bytes(b"png")

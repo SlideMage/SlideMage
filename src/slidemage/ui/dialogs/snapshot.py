@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
 from ... import deck_snapshot, open_path
+from ...project import ProjectContext
 from ...deck_scan import Deck
 from ...deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
 from ..kit import kit_qss as q
@@ -34,12 +35,13 @@ DELETE_OLD, KEEP_OLD, CANCEL_RUN = "delete", "keep", "cancel"
 
 
 class SnapshotSheet(ModalSheet):
-    def __init__(self, parent: Optional[QWidget], decks: list[Deck], preselected: set[str],
-                 busy: bool = False) -> None:
+    def __init__(self, parent: Optional[QWidget], project: ProjectContext, decks: list[Deck],
+                 preselected: set[str], busy: bool = False) -> None:
         super().__init__("Create deck snapshot", parent, width=600)
         self._decks = decks
         self._busy = busy
-        options = deck_snapshot.saved_options()
+        self._project = project
+        options = deck_snapshot.saved_options(project)
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -95,7 +97,7 @@ class SnapshotSheet(ModalSheet):
             "to check that it is complete -- this takes a while for a large deck and occupies the "
             "compile slot."))
 
-        folder = deck_snapshot.snapshots_dir()
+        folder = deck_snapshot.snapshots_dir(project.root)
         where = Surface()
         where_row = QHBoxLayout(where)
         where_row.setContentsMargins(0, 0, 0, 0)
@@ -154,7 +156,7 @@ class SnapshotSheet(ModalSheet):
 
     def _accept(self) -> None:
         if self.selected_decks():
-            deck_snapshot.save_options(self.options())
+            deck_snapshot.save_options(self._project, self.options())
             self.accept()
 
 
@@ -197,7 +199,7 @@ def ask_about_old_snapshots(parent: Optional[QWidget], existing: list[ExistingSn
     return sheet.choice
 
 
-def show_summary(parent: Optional[QWidget], results: list[SnapshotResult]) -> None:
+def show_summary(parent: Optional[QWidget], project: ProjectContext, results: list[SnapshotResult]) -> None:
     ok = sum(1 for r in results if r.ok)
     sheet = ModalSheet("Deck snapshots", parent, width=560)
     body = Surface()
@@ -211,7 +213,7 @@ def show_summary(parent: Optional[QWidget], results: list[SnapshotResult]) -> No
     details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     layout.addWidget(details)
     sheet.add_tab("", body)
-    folder = deck_snapshot.snapshots_dir()
+    folder = deck_snapshot.snapshots_dir(project.root)
     open_folder = sheet.add_button("Open folder")
     open_folder.setEnabled(folder.is_dir())
     open_folder.clicked.connect(lambda: open_path.open_in_default_app(folder))

@@ -18,7 +18,7 @@ from slidemage.deck_scan import Chapter, Deck
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
-from slidemage.ui.workspace import side_panels, slide_list, window as window_module
+from slidemage.ui.workspace import deck_actions, maintenance, side_panels, slide_list, window as window_module
 from slidemage.ui.workspace.actions import VIEW_AND_BUILD
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
@@ -28,7 +28,8 @@ from slidemage.ui.workspace.menus import (
 )
 from slidemage.ui.workspace.palette import command_entries
 
-from conftest import build_window, command_context, qapp as qapp
+from conftest import EXAMPLE_PROJECT, build_window, command_context, qapp as qapp, use_project
+from slidemage.project import transitional_context
 
 
 def make_deck(name, tags=(), *, archived=False, versions=True, chapters=()):
@@ -49,7 +50,7 @@ OLD = make_deck("old-course", ["course"], archived=True)
 @pytest.fixture
 def window(qapp, monkeypatch):
     """A window over a fixed set of decks, without building deck editors."""
-    monkeypatch.setattr(window_module, "scan_decks", lambda: [WORK, COURSE, MANUAL, TEST, OLD])
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK, COURSE, MANUAL, TEST, OLD])
     return build_window(monkeypatch)
 
 
@@ -95,7 +96,7 @@ def test_deck_switcher_groups_decks_and_lists_archived_ones_in_its_footer(qapp):
 def test_window_opens_the_first_active_deck_then_the_one_left_open(window, monkeypatch):
     assert window.state.deck is WORK                                # first active deck
     window.topbar._on_deck_picked(deck_key(MANUAL))
-    assert app_settings.get(window_module.LAST_DECK_KEY) == "slidemage-manual"
+    assert app_settings.get(transitional_context(), window_module.LAST_DECK_KEY) == "slidemage-manual"
     again = build_window(monkeypatch)
     assert again.state.deck.name == "slidemage-manual"
 
@@ -110,7 +111,7 @@ def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
 
 def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, monkeypatch):
     decks = [WORK, COURSE]
-    monkeypatch.setattr(window_module, "scan_decks", lambda: decks)
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: decks)
     window = build_window(monkeypatch)
     assert window.slide_list.deck is WORK
     assert window.stack.currentWidget() is window.centre
@@ -125,16 +126,16 @@ def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, 
 def test_reload_follows_an_archived_deck_and_falls_back_when_it_is_gone(window, monkeypatch):
     window.state.set_deck(COURSE)
     archived = make_deck("course", ["course"], archived=True)
-    monkeypatch.setattr(window_module, "scan_decks", lambda: [WORK, archived])
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK, archived])
     window.reload_decks()
     assert window.state.deck is archived
-    monkeypatch.setattr(window_module, "scan_decks", lambda: [WORK])
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK])
     window.reload_decks()
     assert window.state.deck is WORK
 
 
 def test_a_project_without_decks_shows_a_placeholder_and_offers_the_manual_where_it_can_be_added(qapp, monkeypatch):
-    monkeypatch.setattr(window_module, "scan_decks", lambda: [])
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [])
     window = build_window(monkeypatch)
     assert window.state.deck is None
     assert "no decks" in window.centre.preview._page.message
@@ -142,16 +143,16 @@ def test_a_project_without_decks_shows_a_placeholder_and_offers_the_manual_where
     assert not window.topbar._compile.isEnabled()
     assert window.body.currentWidget() is window.no_decks
     added = []
-    monkeypatch.setattr(window, "can_add_manual", lambda: True)
-    monkeypatch.setattr(window, "_on_add_manual", lambda: added.append(1))
+    monkeypatch.setattr(maintenance, "can_add_manual", lambda _window: True)
+    monkeypatch.setattr(maintenance, "on_add_manual", lambda _window: added.append(1))
     window.no_decks.refresh()
     assert window.no_decks.manual.isEnabled()
     window.no_decks.manual.clicked.emit()
     assert added == [1]
-    monkeypatch.setattr(window, "can_add_manual", lambda: False)
+    monkeypatch.setattr(maintenance, "can_add_manual", lambda _window: False)
     window.no_decks.refresh()
     assert not window.no_decks.manual.isEnabled()
-    monkeypatch.setattr(window_module, "scan_decks", lambda: [WORK])
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK])
     window.reload_decks()
     assert window.body.currentWidget() is not window.no_decks    # decks again: the workspace is back
 
@@ -384,7 +385,7 @@ def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
 def test_transcript_entries_write_the_current_decks_transcript(window, monkeypatch):
     window.state.set_deck(COURSE)
     made: list = []
-    monkeypatch.setattr(window, "generate_deck_transcript", lambda deck, version: made.append((deck, version)))
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript", lambda _window, deck, version: made.append((deck, version)))
     window.topbar.command.emit("transcript:after-course")
     assert made == [(COURSE, "after-course")]
 
@@ -453,9 +454,8 @@ def test_a_slide_editor_opens_in_the_centre_and_unsaved_edits_show_in_the_top_ba
 
 
 def test_opening_a_slide_focuses_it(window):
-    from slidemage import slide_ids
 
-    slide = next(iter(slide_ids.SLIDES_DIR.glob("*-current.tex")))
+    slide = next(iter(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex")))
     window.open_slide_editor(slide)
     assert window.state.focused_slide == slide.name.split("-", 1)[0]
 
@@ -501,7 +501,7 @@ def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last
 def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
     window.state.set_deck(COURSE)
     seen: list = []
-    monkeypatch.setattr(window, "_on_duplicate_deck", seen.append)
+    monkeypatch.setattr(deck_actions, "on_duplicate_deck", lambda _window, deck: seen.append(deck))
     window.topbar.command.emit("duplicate_deck")
     assert seen == [COURSE]
 
@@ -587,7 +587,7 @@ def test_the_sheet_offers_what_the_old_table_did(window, monkeypatch):
 
 def test_select_all_and_clear_and_cancel(window, monkeypatch):
     jobs = compiled(window, monkeypatch)
-    monkeypatch.setattr(window, "generate_deck_transcript", lambda *a, **k: True)
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript", lambda *a, **k: True)
     sheet = open_several(window, monkeypatch, select_all=True, clear=True)
     assert not any(box.isChecked() for box in sheet.boxes.values()) and jobs == []
     open_several(window, monkeypatch, [("course", "instructor")], accept=False)
@@ -599,8 +599,8 @@ def test_select_all_and_clear_and_cancel(window, monkeypatch):
 def test_several_decks_write_the_ticked_transcripts_quietly(window, monkeypatch):
     jobs = compiled(window, monkeypatch)
     made: list = []
-    monkeypatch.setattr(window, "generate_deck_transcript",
-                        lambda deck, version, quiet=False: made.append((deck.name, version, quiet)) or True)
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript",
+                        lambda _window, deck, version, quiet=False: made.append((deck.name, version, quiet)) or True)
     open_several(window, monkeypatch, [("course", "transcript:after-course"),
                                        ("slidemage-manual", "transcript:during-course")])
     assert jobs == []
@@ -619,7 +619,6 @@ def test_the_mode_switch_of_the_top_bar_drives_the_state_and_follows_it(window):
 
 
 def test_a_saved_deck_source_goes_through_the_deck_edit_pipeline(window, tmp_path, monkeypatch):
-    from slidemage.ui.workspace import source_file
 
     path = tmp_path / "course.tex"
     path.write_text("\\begin{document}\n\\end{document}\n", encoding="utf-8")
@@ -627,8 +626,7 @@ def test_a_saved_deck_source_goes_through_the_deck_edit_pipeline(window, tmp_pat
     deck.path = path
     edits = []
     monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
-    monkeypatch.setattr(source_file, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(source_file.slide_source, "BACKUPS_DIR", tmp_path / ".backups")
+    window.project = use_project(monkeypatch, tmp_path)
     window.open_deck_source_editor(deck)
     window.centre.source.current.editor.insertPlainText("% hand edit\n")
     assert window.centre.source.save()
@@ -641,7 +639,7 @@ def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_pat
 
     bib = tmp_path / "Slidemaster.bib"
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
-    monkeypatch.setattr(bibliography, "DEFAULT_BIB", bib)
+    window.project = use_project(monkeypatch, tmp_path)
     sorted_ = []
     monkeypatch.setattr(bibliography, "sort_entries", lambda: sorted_.append(True))
     window._on_edit_bib()
@@ -710,7 +708,7 @@ def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, mo
     before = editor.tabStopDistance()
     window.set_tab_width_chars(4)
     assert editor.tabStopDistance() == pytest.approx(before * 2)
-    assert app_settings.get("tab_width_chars") == 4
+    assert app_settings.get(transitional_context(), "tab_width_chars") == 4
 
 
 def test_the_build_options_footer_timestamp_is_the_states(window):
@@ -796,7 +794,7 @@ def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeyp
     first.set_column_widths(right=520)
     first.splitter.splitterMoved.emit(0, 2)                                 # what a drag of the handle sends
     assert first.side_panels.width() == 520 and layout_settings.get(side_panels.WIDTH_SETTING) == 520
-    assert app_settings.get(side_panels.WIDTH_SETTING) is None
+    assert app_settings.get(transitional_context(), side_panels.WIDTH_SETTING) is None
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
@@ -827,7 +825,7 @@ def test_moving_either_handle_saves_both_column_widths_and_restores_them(window,
     assert (left, right) == ((440, 520) if handle == 1 else (400, 480))
     assert layout_settings.get(slide_list.WIDTH_SETTING) == left
     assert layout_settings.get(side_panels.WIDTH_SETTING) == right
-    assert app_settings.get(slide_list.WIDTH_SETTING) is None
+    assert app_settings.get(transitional_context(), slide_list.WIDTH_SETTING) is None
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
@@ -868,14 +866,14 @@ def test_hidden_columns_keep_their_remembered_widths(window):
 
 
 def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
-    app_settings.set(side_panels.WIDTH_SETTING, 520)
+    app_settings.set(transitional_context(), side_panels.WIDTH_SETTING, 520)
     first = build_window(monkeypatch)
     first.resize(2400, 800)
     first.show()
     assert first.side_panels.width() == 520
     assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
-    assert app_settings.get(side_panels.WIDTH_SETTING) == 520
-    app_settings.set(side_panels.WIDTH_SETTING, 600)       # a different project's old preference
+    assert app_settings.get(transitional_context(), side_panels.WIDTH_SETTING) == 520
+    app_settings.set(transitional_context(), side_panels.WIDTH_SETTING, 600)       # a different project's old preference
     second = build_window(monkeypatch)
     second.resize(2400, 800)
     second.show()
@@ -883,13 +881,13 @@ def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch
     second.set_column_widths(right=580)
     second.splitter.splitterMoved.emit(0, 2)
     assert layout_settings.get(side_panels.WIDTH_SETTING) == 580
-    assert app_settings.get(side_panels.WIDTH_SETTING) == 600
+    assert app_settings.get(transitional_context(), side_panels.WIDTH_SETTING) == 600
 
 
 @pytest.mark.parametrize("value, expected", [(None, 340), (200, 340), (1000, 900), ("wide", 340)])
 def test_the_right_column_keeps_its_width_limits(value, expected):
     layout_settings.set(side_panels.WIDTH_SETTING, value)
-    assert side_panels.remembered_width() == expected
+    assert side_panels.remembered_width(EXAMPLE_PROJECT) == expected
 
 
 # -- hiding and showing columns ------------------------------------------------
@@ -940,7 +938,7 @@ def test_column_toggles_update_visibility_labels_and_buttons(window, qapp, tmp_p
         assert command.title(window) == title
         assert button.toolTip() == f"{title} ({shortcut})"
         assert layout_settings.get(f"{side}_column_hidden") == hidden
-        assert app_settings.get(f"{side}_column_hidden") is None
+        assert app_settings.get(transitional_context(), f"{side}_column_hidden") is None
 
 
 @pytest.mark.parametrize("left_hidden, right_hidden", [(True, False), (False, True), (True, True), (False, False)])
@@ -1125,7 +1123,7 @@ def test_window_geometry_saved_on_close_is_restored_before_show(window, qapp, mo
     saved = window.saveGeometry().toBase64().data().decode("ascii")
     assert window.close()
     assert layout_settings.get("window_geometry") == saved
-    assert app_settings.get("window_geometry") is None
+    assert app_settings.get(transitional_context(), "window_geometry") is None
     second = build_window(monkeypatch)
     assert not second.isVisible()
     assert second.isMaximized() == maximized

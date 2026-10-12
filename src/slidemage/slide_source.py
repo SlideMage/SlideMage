@@ -10,12 +10,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import alt_blocks
+from . import alt_blocks, project
 from .tex_source import masked_same_length
-from .deck_scan import PROJECT_ROOT
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
-BACKUPS_DIR = SLIDES_DIR / ".backups"
 
 
 class StaleFileError(RuntimeError):
@@ -105,7 +102,7 @@ def save_slide_source(
         check_fresh(path, expected_text)
     backup_path = None
     if path.exists():
-        backup_dir = BACKUPS_DIR / path.name
+        backup_dir = project.transitional_context().slide_backups_dir / path.name
         backup_dir.mkdir(parents=True, exist_ok=True)
         backup_path = _unique_backup_path(backup_dir)
         shutil.copy2(path, backup_path)
@@ -122,7 +119,7 @@ def last_saved(path: Path) -> datetime | None:
     slides/.backups/<filename>/, whose name is the time of the save. None for a file never saved
     that way. (A file's mtime would also move when the header sync or a rename rewrites it.)"""
     stamps = []
-    for backup in (BACKUPS_DIR / path.name).glob("*.tex"):
+    for backup in (project.transitional_context().slide_backups_dir / path.name).glob("*.tex"):
         try:
             stamps.append(datetime.strptime(backup.stem[:15], "%Y%m%d-%H%M%S"))
         except ValueError:

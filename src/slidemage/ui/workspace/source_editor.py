@@ -30,8 +30,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QTextEdit, QVBoxLayout, QWidget
 
-from ... import app_settings, latex_edit
-from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY, Edit, Insert, utf16_len, utf16_units
+from ... import latex_edit
+from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, Edit, Insert, utf16_len, utf16_units
 from ...tex_source import COMMENT_RE
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
@@ -194,14 +194,14 @@ class LatexPlainTextEdit(QPlainTextEdit):
     text_changed = Signal()
     escape_pressed = Signal()
 
-    def __init__(self, theme: ThemeManager) -> None:
+    def __init__(self, theme: ThemeManager, tab_width: int = DEFAULT_TAB_WIDTH_CHARS) -> None:
         super().__init__()
         self.setObjectName(q.SOURCE)
         self._theme = theme
         self._header_lines = 0
         self._header_folded = True
         self.setFont(source_font())
-        self.set_tab_width(app_settings.get(TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
+        self.set_tab_width(tab_width)
         self.highlighter = LatexSyntaxHighlighter(self.document(), theme)
         self._line_area = _LineNumberArea(self)
         self.blockCountChanged.connect(self._update_line_area_width)

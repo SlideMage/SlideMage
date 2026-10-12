@@ -1,6 +1,7 @@
 import pytest
 
-from slidemage import alt_images, deck_headers, slide_ids, slide_language, slide_rename, slide_snapshot
+from conftest import use_project
+from slidemage import alt_images, deck_headers, slide_ids, slide_language, slide_rename
 
 
 @pytest.fixture
@@ -8,8 +9,7 @@ def project(tmp_path, monkeypatch):
     slides = tmp_path / "slides"
     slides.mkdir()
     (tmp_path / "slide_ids.csv").write_bytes(b'"id"\r\n')
-    monkeypatch.setattr(slide_ids, "SLIDES_DIR", slides)
-    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", tmp_path / "slide_ids.csv")
+    use_project(monkeypatch, tmp_path)
     return tmp_path
 
 
@@ -61,16 +61,11 @@ def rename_project(project, monkeypatch):
     previews = project / ".previews" / "slide_previews"
     previews.mkdir(parents=True)
     (previews / "2du-EN-UniGraz-1920-1080.png").write_bytes(b"png")
-    monkeypatch.setattr(slide_rename, "SLIDES_DIR", project / "slides")
-    monkeypatch.setattr(slide_rename, "PROJECT_ROOT", project)
-    monkeypatch.setattr(slide_rename, "_REFERENCE_DIRS", (decks,))
-    monkeypatch.setattr(slide_rename, "WORKDECK_PATH", decks / "#workdeck.tex")
     monkeypatch.setattr(slide_rename, "is_git_repo", lambda _root: False)
     monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda: None)
     monkeypatch.setattr(deck_headers, "regenerate_headers", lambda: None)
     monkeypatch.setattr(alt_images, "update_store", lambda fn: None)
     monkeypatch.setattr(alt_images, "update_slide_notes", lambda fn: None)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", previews)
     return project
 
 

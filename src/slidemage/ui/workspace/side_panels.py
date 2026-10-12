@@ -13,12 +13,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QSplitter, QVBoxLayout
 
 from ... import app_settings
+from ...project import ProjectContext
 from .. import layout_settings
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
 from .chat.assistant import AssistantArea
 from .panels import PANELS
-from .panels.base import SidePanel
+from .panels.base import PanelActions, SidePanel
 from .state import WorkspaceState
 
 WIDTH = 340   # the prototype's width of the column; the least it may be dragged to, and the default
@@ -30,27 +31,28 @@ SPLIT_SETTING = "right_column_split"
 PANEL_MIN_HEIGHT = 128   # 24 px padding, 32 px picker, 8 px gap and a 64 px content row
 
 
-def remembered_width() -> int:
+def remembered_width(project: ProjectContext) -> int:
     """The width the user dragged the column to, within its limits (WIDTH if never)."""
     value = layout_settings.get(WIDTH_SETTING)
     if value is None:   # once: this project's old width becomes the user's
-        value = app_settings.get(WIDTH_SETTING)
+        value = app_settings.get(project, WIDTH_SETTING)
         layout_settings.set(WIDTH_SETTING, value if isinstance(value, int) else WIDTH)
     return min(max(value, WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 
 class SidePanels(QSplitter):
-    def __init__(self, app, state: WorkspaceState) -> None:
+    def __init__(self, app, state: WorkspaceState, actions: PanelActions) -> None:
         super().__init__(Qt.Orientation.Vertical)
         self.setMinimumWidth(WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
         self.setChildrenCollapsible(False)
+        self.project = state.project
         ratio = layout_settings.get(SPLIT_SETTING)
         self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
                              and 0 < ratio < 1 else ASSISTANT_SPLIT[0] / sum(ASSISTANT_SPLIT))
         self._split_restored = False
-        self.panels: dict[str, SidePanel] = {cls.key: cls(app, state) for cls in PANELS}
-        remembered = app_settings.get(SETTING)
+        self.panels: dict[str, SidePanel] = {cls.key: cls(app, state, actions) for cls in PANELS}
+        remembered = app_settings.get(state.project, SETTING)
         self.current = remembered if remembered in self.panels else next(iter(self.panels))
 
         card = Card()
@@ -105,7 +107,7 @@ class SidePanels(QSplitter):
     def set_panel(self, key: str) -> None:
         if key in self.panels and key != self.current:
             self.current = key
-            app_settings.set(SETTING, key)
+            app_settings.set(self.project, SETTING, key)
             self.refresh()
 
     def dirty_panels(self) -> list[SidePanel]:

@@ -24,20 +24,23 @@ sharing/versioning, not one machine's own throwaway local state.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+from . import project
 from .alt_images import atomic_write_text
-from .deck_scan import PROJECT_ROOT
-
-STORE_PATH = PROJECT_ROOT / ".slidemage" / "draft_prompts.json"
 
 KIND_IMAGE_DRAFT = "image_draft"
+
+
+def _store_path() -> Path:
+    return project.transitional_context().settings_dir / "draft_prompts.json"
 
 
 def _load_raw() -> dict[str, str]:
     """The stored prompts; a file that cannot be read or is not the documented shape counts as empty,
     and entries that are not text are dropped."""
     try:
-        data = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_store_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):    # a missing file, no permission, not UTF-8 (UnicodeDecodeError), bad JSON
         return {}
     if not isinstance(data, dict):
@@ -64,4 +67,4 @@ def set_custom_prompt(kind: str, prompt: str, default: str = "") -> None:
         raw[kind] = prompt
     else:
         raw.pop(kind, None)
-    atomic_write_text(STORE_PATH, json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    atomic_write_text(_store_path(), json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n")

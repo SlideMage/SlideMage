@@ -11,18 +11,21 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
-from slidemage import alt_blocks, alt_draft, alt_images, image_review, slide_source
+from conftest import use_project
+from slidemage import alt_blocks, alt_draft, alt_images, image_review
 from slidemage.ai.providers import OllamaProvider
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.pages import image_dialogs, image_runs, images
 from slidemage.ui.pages.image_jobs import Job
 from slidemage.ui.workspace.state import WorkspaceState
+from slidemage.project import transitional_context
 
 CHART = "media/chart.png"
 
 
 class FakeApp:
+    project = property(lambda self: transitional_context())
     """What the page asks of the window."""
 
     def __init__(self) -> None:
@@ -61,7 +64,7 @@ def make_page(monkeypatch, qapp, tmp_path):
             row.path.write_text("slide text", encoding="utf-8")
         store = {reference: alt_images.ImageEntry(image=reference) for reference in image_refs}
         sync_calls = []
-        monkeypatch.setattr(slide_source, "BACKUPS_DIR", tmp_path / ".backups")     # repointing a slide makes a backup
+        use_project(monkeypatch, tmp_path)     # repointing a slide makes a backup
         monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda: [first, second])
         monkeypatch.setattr(alt_blocks, "resolve_image", lambda _reference: None)
         monkeypatch.setattr(alt_draft, "draftable_images", lambda *_args: [])
@@ -80,7 +83,7 @@ def make_page(monkeypatch, qapp, tmp_path):
         monkeypatch.setattr(alt_images, "update_store", update_store)
         monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
         app = FakeApp()
-        page = images.ImagesPage(app, WorkspaceState())
+        page = images.ImagesPage(app, WorkspaceState(transitional_context()))
         page.reload()
         page.app, page.sync_calls, page.store, page.first, page.second = app, sync_calls, store, first, second
         return page
@@ -736,7 +739,7 @@ def test_replace_image_repoints_clean_slides_and_refuses_one_with_unsaved_edits(
     page.second.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
     page.app.unsaved = {page.second.path}
     page.reload()
-    monkeypatch.setattr(image_review, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     (tmp_path / "picked.png").write_bytes(b"png")
     monkeypatch.setattr(FakeReplaceSheet, "__init__", lambda self, parent, reference, others: (
         setattr(self, "source", tmp_path / "picked.png"), setattr(self, "new_name", "chart-new.png"),
@@ -760,7 +763,7 @@ def test_replace_image_offers_to_delete_the_orphaned_description(make_page, monk
     page.store[CHART].used_on = {"one": alt_images.SlideUse()}
     page.first.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
     page.reload()
-    monkeypatch.setattr(image_review, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     (tmp_path / "picked.png").write_bytes(b"png")
 
     class Sheet(FakeReplaceSheet):
@@ -777,7 +780,7 @@ def test_replace_image_offers_to_delete_the_orphaned_description(make_page, monk
 
 
 def test_the_replace_sheet_validates_the_name_and_refuses_to_overwrite(qapp, monkeypatch, tmp_path):
-    monkeypatch.setattr(image_review, "PROJECT_ROOT", tmp_path)
+    use_project(monkeypatch, tmp_path)
     (tmp_path / "media").mkdir()
     (tmp_path / "media" / "taken.png").write_bytes(b"x")
     sheet = image_dialogs.ReplaceImageSheet(None, "media/chart-old.png", ["2bb", "3cc"])

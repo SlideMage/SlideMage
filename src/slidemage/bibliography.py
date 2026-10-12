@@ -15,10 +15,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from . import project
 
-from .deck_scan import PROJECT_ROOT
 
-DEFAULT_BIB = PROJECT_ROOT / "Slidemaster.bib"
 
 # Same logic as the former one-off sort_bib.py (project root, deleted once
 # folded in here) -- SlideMage now runs this itself, on open and close of
@@ -34,7 +33,7 @@ def sort_entries(path: Path | None = None) -> bool:
     block verbatim. Returns whether the file actually changed -- a no-op
     write (already sorted) is skipped so the file's mtime/git diff stays
     quiet on every open of an already-tidy file."""
-    target = path or DEFAULT_BIB
+    target = path or project.transitional_context().bibliography_path
     if not target.is_file():
         return False
     text = target.read_text(encoding="utf-8")
@@ -190,7 +189,7 @@ def _read_value(text: str, start: int) -> tuple[str, int]:
 
 def load(path: Path | None = None) -> dict[str, BibEntry]:
     """Parse a .bib file into {key: BibEntry}. Empty dict if unreadable."""
-    target = path or DEFAULT_BIB
+    target = path or project.transitional_context().bibliography_path
     try:
         text = target.read_text(encoding="utf-8", errors="ignore")
     except OSError:
@@ -219,7 +218,7 @@ def load(path: Path | None = None) -> dict[str, BibEntry]:
 def entry_line(key: str, path: Path | None = None) -> int | None:
     """The 1-based line of `@type{key,` in the .bib, or None when the file has no such entry."""
     try:
-        text = (path or DEFAULT_BIB).read_text(encoding="utf-8", errors="ignore")
+        text = (path or project.transitional_context().bibliography_path).read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return None
     match = re.search(rf"^[ \t]*@\w+\s*\{{\s*{re.escape(key)}\s*,", text, re.MULTILINE)
@@ -299,7 +298,7 @@ def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = N
     convention, so a same-key-different-case entry would be confusing
     dead weight rather than a legitimately distinct citation). Returns
     the newly written entry's own text."""
-    target = path or DEFAULT_BIB
+    target = path or project.transitional_context().bibliography_path
     existing = load(target)
     if key.lower() in {k.lower() for k in existing}:
         raise ValueError(f"citation key {key!r} already exists in {target.name}")

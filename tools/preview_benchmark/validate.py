@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 
 import pymupdf
-from slidemage import deck_scan, slide_preview
+from slidemage import deck_scan, project, slide_preview
 from slidemage.preview_metrics import PreviewMetrics
 
 
@@ -14,11 +14,11 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    root = deck_scan.PROJECT_ROOT
+    root = project.transitional_context().root
     assert root.is_relative_to(Path("/tmp")), "Use a scratch project"
     args.output.mkdir(parents=True, exist_ok=True)
-    deck = next(d for d in deck_scan.scan_decks() if d.name == "slidemage-manual")
-    slide_preview.BUILD_DIR = root / ".build" / "validation"
+    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == "slidemage-manual")
+    project.use(project.ProjectContext(root, root / ".build" / "validation"))
     results = []
 
     def render(name, body, preamble=None, **options):

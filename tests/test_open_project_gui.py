@@ -158,15 +158,16 @@ def test_the_start_up_guard_for_a_newer_format_follows_the_sheet(tmp_path, monke
     assert cli._confirm_newer_project(tmp_path / "econ", {"last_app_version": "v6.0.2"}) is expected
 
 
-def test_the_picker_before_a_project_exists_does_not_import_the_project_folder(tmp_path):
-    """deck_scan fixes the project folder when it is first imported: the picker must not cause that."""
+def test_importing_the_app_selects_no_project(tmp_path):
+    """Modules read no project when they are imported: the entry point chooses it, once."""
     import subprocess
     import sys
 
-    code = ("import sys; import slidemage.cli, slidemage.ui.dialogs.open_project as o; "
+    code = ("import sys; import slidemage.cli, slidemage.compiler, slidemage.deck_scan, slidemage.app_settings, "
+            "slidemage.ui.dialogs.open_project as o, slidemage.ui.workspace.window; "
             "from slidemage.ui.kit.theme import ThemeManager; ThemeManager(dark=True); "
-            "sys.exit(int('slidemage.deck_scan' in sys.modules or 'slidemage.app_settings' in sys.modules))")
-    assert subprocess.run([sys.executable, "-c", code], capture_output=True).returncode == 0
+            "from slidemage import project; sys.exit(int(project._transitional is not None))")
+    assert subprocess.run([sys.executable, "-c", code], capture_output=True, cwd=tmp_path).returncode == 0
 
 
 # -- the start screen ------------------------------------------------------------------------
@@ -180,7 +181,7 @@ def start(monkeypatch, tmp_path, choose):
     monkeypatch.setattr(project, "discover", lambda: None)
     monkeypatch.setattr(cli, "_prepare_gui", lambda root: None)
     monkeypatch.setattr(OpenProjectSheet, "exec", choose)
-    monkeypatch.setattr("slidemage.ui.app.main", lambda: started.append(os.environ[project.ENV_VAR]))
+    monkeypatch.setattr("slidemage.ui.app.main", lambda _context: started.append(os.environ[project.ENV_VAR]))
     return started
 
 

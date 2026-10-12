@@ -100,8 +100,8 @@ class ImageDescriptions(SidePanel):
 
     drafted = Signal(str, str, object, object)   # slide id, reference, whose Ollama slot to give back, alt_draft.DraftResult
 
-    def __init__(self, app, state) -> None:
-        super().__init__(app, state)
+    def __init__(self, app, state, actions) -> None:
+        super().__init__(app, state, actions)
         self._forms: list[ImageForm] = []
         self._slide: Optional[tuple[str, Path]] = None   # (bare id, file) the forms belong to
         self.drafted.connect(self._on_drafted)
@@ -177,7 +177,7 @@ class ImageDescriptions(SidePanel):
             QMessageBox.information(self, "Redraft", "The model cannot read this image: it is a vector file "
                                     "it cannot render, or the file is missing.")
             return
-        provider = provider_for_task(self, "image_description", "the slide's text and this image")
+        provider = provider_for_task(self, self.app.project, "image_description", "the slide's text and this image")
         if provider is None or not self.app.try_start_ollama_task("drafting a description", provider):
             return
         form.redraft_button.setEnabled(False)

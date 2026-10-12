@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import deck_scan, slide_usage
+from conftest import use_project
+from slidemage.project import transitional_context
+from slidemage import slide_usage
 
 
 DECK = (
@@ -19,9 +21,7 @@ def project(tmp_path, monkeypatch):
     (decks / "archive").mkdir(parents=True)
     slides = tmp_path / "slides"
     slides.mkdir()
-    for module in (deck_scan,):
-        monkeypatch.setattr(module, "DECKS_DIR", decks)
-        monkeypatch.setattr(module, "ARCHIVE_DIR", decks / "archive")
+    use_project(monkeypatch, tmp_path)
     (decks / "follows.tex").write_text(DECK, encoding="utf-8", newline="")
     (decks / "pinned.tex").write_text(
         "\\documentclass{beamer}\n\\begin{document}\n\\slideversion{abc-EN-Demo}{1-0-0}\n\\omitslideversion{abc-EN-Demo}{1-0-0}\n"
@@ -110,6 +110,7 @@ def test_ask_and_apply_deck_versions_are_the_two_halves_of_the_save_time_questio
     assert dialogs.ask_deck_versions(None, "abc-EN-Demo", "text", (1, 1, 0), (1, 0, 0)) is None
 
     class App:
+        project = transitional_context()
         logged = []
         refreshed = 0
 

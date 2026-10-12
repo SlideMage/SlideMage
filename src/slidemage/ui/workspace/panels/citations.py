@@ -52,8 +52,8 @@ class Citations(SidePanel):
         self.place(frame)
 
     def _show(self, key: str) -> None:
-        self.app.open_slide_editor(bibliography.DEFAULT_BIB, line=bibliography.entry_line(key))
+        self.app.open_slide_editor(self.app.project.bibliography_path, line=bibliography.entry_line(key))
 
     def _add(self, key: str) -> None:
-        self.app.centre.source.add_reference(key)
+        self.actions.add_reference(key)
         self.refresh()

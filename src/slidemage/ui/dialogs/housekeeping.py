@@ -10,7 +10,7 @@ and the caller starts it (`update_previews`).
 """
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, NamedTuple
 
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import deck_snapshot, housekeeping, unused_content
+from ...project import ProjectContext
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, ModalSheet, Surface, caption
@@ -41,12 +42,12 @@ class _ArchiveWorker(QThread):
     logged = Signal(str)
     finished_with = Signal(int, int)       # media moved, slides moved
 
-    def __init__(self, media: list, slides: list) -> None:
+    def __init__(self, project: ProjectContext, media: list, slides: list) -> None:
         super().__init__()
-        self._media, self._slides = media, slides
+        self._project, self._media, self._slides = project, media, slides
 
     def run(self) -> None:
-        moved = unused_content.archive_files(self._media, self._slides, self.logged.emit)
+        moved = unused_content.archive_files(self._project, self._media, self._slides, self.logged.emit)
         self.finished_with.emit(*moved)
 
 
@@ -74,11 +75,20 @@ class _Row(QFrame):
         self.button.setEnabled(enabled)
 
 
+class HousekeepingJobs(NamedTuple):
+    """What the list page runs: the window's own housekeeping actions (workspace/maintenance.py)."""
+    empty_pdf: Callable[[], None]
+    remove_temp: Callable[[], None]
+    sync_links: Callable[[], int]
+
+
 class HousekeepingSheet(ModalSheet):
-    def __init__(self, app, page: int = LIST_PAGE) -> None:
-        """`app` is the window. `page` is the one to open on (ARCHIVE_PAGE for the archive review)."""
+    def __init__(self, app, jobs: HousekeepingJobs, page: int = LIST_PAGE) -> None:
+        """`app` is the window; `jobs` are the actions it runs for the list. `page` is the one to open on
+        (ARCHIVE_PAGE for the archive review)."""
         super().__init__("Housekeeping", app, width=640)
         self.app = app
+        self.jobs = jobs
         self.update_previews = False
         self._worker: _ArchiveWorker | None = None
         self._unused: tuple[list, list] = ([], [])
@@ -152,16 +162,16 @@ class HousekeepingSheet(ModalSheet):
 
     def refresh(self) -> None:
         compiling = self.app.compiling
-        pdfs = housekeeping.pdf_files()
+        pdfs = housekeeping.pdf_files(self.app.project)
         self.pdf.show_state(
             f"{plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(sum(p.stat().st_size for p in pdfs))}"
             " · they come back with the next build" if pdfs else "pdf/ is empty", enabled=bool(pdfs))
-        temp = housekeeping.find_temp_files()
+        temp = housekeeping.find_temp_files(self.app.project)
         self.temp.show_state(
             f"{plural(len(temp.build), 'item')} in .build/, {plural(len(temp.wrappers), 'leftover wrapper file')} "
             f"in decks/, {plural(len(temp.scratch), 'item')} in .temp/ (the workflow scratch folder)"
             if temp else "Nothing to remove", enabled=bool(temp) and not compiling)
-        self._unused = (unused_content.find_unused_media(), unused_content.find_unused_slides())
+        self._unused = (unused_content.find_unused_media(self.app.project), unused_content.find_unused_slides(self.app.project))
         media, slides = self._unused
         self.archive.show_state(
             f"{plural(len(slides), 'slide')} and {plural(len(media), 'media file')} nothing uses"
@@ -185,11 +195,11 @@ class HousekeepingSheet(ModalSheet):
     # -- the jobs --------------------------------------------------------------------------
 
     def _on_empty_pdf(self) -> None:
-        self.app._empty_pdf_folder()
+        self.jobs.empty_pdf()
         self.refresh()
 
     def _on_remove_temp(self) -> None:
-        self.app._remove_temp_files()
+        self.jobs.remove_temp()
         self.refresh()
 
     def _on_previews(self) -> None:
@@ -197,7 +207,7 @@ class HousekeepingSheet(ModalSheet):
         self.accept()
 
     def _on_links(self) -> None:
-        changed = self.app._on_sync_translation_links()
+        changed = self.jobs.sync_links()
         self.links.show_state(f"{plural(changed, 'file')} updated", enabled=True)
 
     # -- archive unused content --------------------------------------------------------------
@@ -239,7 +249,7 @@ class HousekeepingSheet(ModalSheet):
         chosen = self._checked()
         if not chosen or self._worker is not None:
             return
-        self._worker = _ArchiveWorker([p for kind, p in chosen if kind == "media"],
+        self._worker = _ArchiveWorker(self.app.project, [p for kind, p in chosen if kind == "media"],
                                       [p for kind, p in chosen if kind == "slide"])
         self._worker.logged.connect(self.app._log)
         self._worker.finished_with.connect(self._on_archived)

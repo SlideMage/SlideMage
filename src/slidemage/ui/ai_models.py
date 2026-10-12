@@ -12,12 +12,13 @@ from __future__ import annotations
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
 from .. import app_settings
+from ..project import ProjectContext
 from ..ai import resolver
 from ..ai.providers import ChatProvider, ProviderError
 
 
 def fill_model_combo(
-    combo: QComboBox, task: str, local_models: list[str], empty_text: str,
+    project: ProjectContext, combo: QComboBox, task: str, local_models: list[str], empty_text: str,
     fallback_local: str = "",
 ) -> bool:
     """(Re)fill `combo` with `local_models` plus the cloud models on offer
@@ -35,7 +36,7 @@ def fill_model_combo(
     if not usable:
         combo.addItem(empty_text, "")
         return False
-    index = combo.findData(app_settings.default_model(task))
+    index = combo.findData(app_settings.default_model(project, task))
     if index == -1 and fallback_local:
         index = combo.findData(f"ollama:{fallback_local}")
     if index != -1:
@@ -81,9 +82,9 @@ def _confirmed_provider(parent: QWidget, spec: str, what: str, missing: str) -> 
     return provider if confirm_cloud_request(parent, provider, what) else None
 
 
-def provider_for_task(parent: QWidget, task: str, what: str) -> ChatProvider | None:
+def provider_for_task(parent: QWidget, project: ProjectContext, task: str, what: str) -> ChatProvider | None:
     """The provider Settings -> "AI models" names for `task` (a MODEL_SETTINGS key), for a place
     with no picker of its own; None after telling the user why not (no model chosen, local-only,
     or consent declined)."""
-    return _confirmed_provider(parent, app_settings.default_model(task), what,
+    return _confirmed_provider(parent, app_settings.default_model(project, task), what,
                                "No AI model is chosen for this task. Choose one under Settings -> AI models.")

@@ -61,14 +61,10 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES, current_name
 from .tex_source import COMMENT_RE
 
-MEDIA_DIR = PROJECT_ROOT / "media"
-MEDIA_ARCHIVE_DIR = MEDIA_DIR / "archive"
-SLIDES_DIR = PROJECT_ROOT / "slides"
-SLIDES_ARCHIVE_DIR = SLIDES_DIR / "archive"
 
 # Never candidates for archiving, regardless of whether any slide's own
 # text mentions them by name -- see the module docstring's 2026-09-27 entry.
@@ -97,10 +93,10 @@ def _strip_comments(text: str) -> str:
 LogCallback = Callable[[str], None]
 
 
-def _deck_texts() -> list[str]:
+def _deck_texts(ctx: ProjectContext) -> list[str]:
     """Raw text of deck and archived-deck .tex files, excluding generated wrappers."""
     texts: list[str] = []
-    for directory in (DECKS_DIR, ARCHIVE_DIR):
+    for directory in (ctx.decks_dir, ctx.archive_dir):
         if not directory.is_dir():
             continue
         for path in directory.glob("*.tex"):
@@ -110,17 +106,17 @@ def _deck_texts() -> list[str]:
     return texts
 
 
-def find_used_slide_filenames() -> set[str]:
+def find_used_slide_filenames(ctx: ProjectContext) -> set[str]:
     """Every slides/*.tex filename actually referenced from any deck."""
     used: set[str] = set()
     from types import SimpleNamespace
     from . import deck_editor, deck_language
-    for text in _deck_texts():
+    for text in _deck_texts(ctx):
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
         # Keep explicit pins even when a translation call is folded into another slot.
         used.update(call.source_filename for call in calls)
         for language in TRANSLATION_LANGUAGES:
-            for slot in deck_language.slots(calls, language, slides_dir=SLIDES_DIR):
+            for slot in deck_language.slots(calls, language, slides_dir=ctx.slides_dir):
                 used.add(slot.call.source_filename)
                 if slot.related_ids:
                     # Current headers identify the partner even when the call pins a version.
@@ -128,15 +124,15 @@ def find_used_slide_filenames() -> set[str]:
     return used
 
 
-def find_unused_slides() -> list[Path]:
+def find_unused_slides(ctx: ProjectContext) -> list[Path]:
     """slides/*.tex files not referenced by any deck."""
-    if not SLIDES_DIR.is_dir():
+    if not ctx.slides_dir.is_dir():
         return []
-    used = find_used_slide_filenames()
-    return sorted(p for p in SLIDES_DIR.glob("*.tex") if p.name not in used)
+    used = find_used_slide_filenames(ctx)
+    return sorted(p for p in ctx.slides_dir.glob("*.tex") if p.name not in used)
 
 
-def find_used_media_filenames() -> set[str]:
+def find_used_media_filenames(ctx: ProjectContext) -> set[str]:
     """Every media/ filename actually referenced (directly, or via a bare
     stem, or by sharing a stem with a file that is -- see module
     docstring) by a slide that is itself in use. A slide that is about to
@@ -144,18 +140,18 @@ def find_used_media_filenames() -> set[str]:
     click archived the unused slides, and the next click found an image
     only one of those slides had used -- the media scan read every slide
     file, the ones being archived in the same run included)."""
-    if not MEDIA_DIR.is_dir() or not SLIDES_DIR.is_dir():
+    if not ctx.media_dir.is_dir() or not ctx.slides_dir.is_dir():
         return set()
 
-    media_files = [p for p in MEDIA_DIR.iterdir() if p.is_file()]
+    media_files = [p for p in ctx.media_dir.iterdir() if p.is_file()]
     by_name = {p.name: p for p in media_files}
     by_stem: dict[str, list[Path]] = {}
     for p in media_files:
         by_stem.setdefault(p.stem, []).append(p)
 
     directly_used: set[str] = set()
-    used_slides = find_used_slide_filenames()
-    for path in SLIDES_DIR.glob("*.tex"):
+    used_slides = find_used_slide_filenames(ctx)
+    for path in ctx.slides_dir.glob("*.tex"):
         if path.name not in used_slides:
             continue
         text = _strip_comments(path.read_text(encoding="utf-8", errors="replace"))
@@ -175,14 +171,14 @@ def find_used_media_filenames() -> set[str]:
     return used
 
 
-def find_unused_media() -> list[Path]:
+def find_unused_media(ctx: ProjectContext) -> list[Path]:
     """media/ files not referenced by any slide, directly or via a
     same-stem sibling that is."""
-    if not MEDIA_DIR.is_dir():
+    if not ctx.media_dir.is_dir():
         return []
-    used = find_used_media_filenames()
+    used = find_used_media_filenames(ctx)
     return sorted(
-        p for p in MEDIA_DIR.iterdir()
+        p for p in ctx.media_dir.iterdir()
         if p.is_file()
         and p.name not in used
         and p.name not in MEDIA_NEVER_UNUSED
@@ -210,11 +206,11 @@ def _archive_files(
     return moved
 
 
-def archive_files(media: list[Path], slides: list[Path], log: LogCallback) -> tuple[int, int]:
+def archive_files(ctx: ProjectContext, media: list[Path], slides: list[Path], log: LogCallback) -> tuple[int, int]:
     """Move these media/ files into media/archive/ and these slides/ files into slides/archive/.
     Returns (media moved, slides moved)."""
-    media_moved = _archive_files(media, MEDIA_ARCHIVE_DIR, "media file", log)
-    slides_moved = _archive_files(slides, SLIDES_ARCHIVE_DIR, "slide", log)
+    media_moved = _archive_files(media, ctx.media_dir / "archive", "media file", log)
+    slides_moved = _archive_files(slides, ctx.slides_dir / "archive", "slide", log)
     log(
         f"==== Archive unused content done: {media_moved} media file(s), "
         f"{slides_moved} slide(s) moved ===="

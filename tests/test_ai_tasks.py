@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import alt_draft, alt_images, syntax_check, translation_prompts
+from slidemage import alt_draft, alt_images, syntax_check
 from slidemage.ai.providers import Cancelled, ChatReply, ProviderError
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
@@ -113,7 +113,6 @@ def test_image_description_errors_stay_errors(tmp_path, context, reply, error):
 # -- translation -------------------------------------------------------------
 
 def test_translation_translates_each_field_through_the_provider(tmp_path, monkeypatch):
-    monkeypatch.setattr(translation_prompts, "STORE_PATH", tmp_path / "tp.json")
     provider = FakeProvider("kurz", "lang", "fazit")
     entry = alt_images.ImageEntry(
         image="media/x.png", short="short", long="long", takeaway_default="take")
@@ -125,6 +124,5 @@ def test_translation_translates_each_field_through_the_provider(tmp_path, monkey
 
 
 def test_translation_reports_provider_errors_per_field(tmp_path, monkeypatch):
-    monkeypatch.setattr(translation_prompts, "STORE_PATH", tmp_path / "tp.json")
     backend = alt_draft.ModelTranslationBackend(FakeProvider(ProviderError("rate limited")))
     assert backend.translate_text("hello") == ("", "rate limited")

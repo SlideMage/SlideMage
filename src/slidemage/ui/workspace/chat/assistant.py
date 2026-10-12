@@ -26,7 +26,8 @@ class AssistantArea(Card):
     def __init__(self, app, state: WorkspaceState) -> None:
         super().__init__()
         self.setMinimumHeight(MIN_HEIGHT)
-        remembered = app_settings.get(SETTING)
+        self.state = state
+        remembered = app_settings.get(state.project, SETTING)
         self.switch = SegmentedControl(VIEWS, current=remembered if remembered in dict(VIEWS) else CHAT)
         self.switch.changed.connect(self.show_view)
         self.layout().addWidget(self.switch, 0, Qt.AlignmentFlag.AlignLeft)
@@ -48,7 +49,7 @@ class AssistantArea(Card):
         if key in self._pages:
             self.switch.set_current(key)
             self._stack.setCurrentWidget(self._pages[key])
-            app_settings.set(SETTING, key)
+            app_settings.set(self.state.project, SETTING, key)
 
     def refresh_colors(self) -> None:
         self.claude_code.refresh_colors()

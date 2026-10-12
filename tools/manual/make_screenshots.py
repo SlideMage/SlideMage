@@ -347,6 +347,7 @@ def run(args: argparse.Namespace, work: Path) -> None:
     app = QApplication([sys.argv[0]])
 
     from slidemage import app_settings
+    from slidemage.project import ProjectContext
     from slidemage.ai import credentials
     from slidemage.ai.providers import AnthropicProvider, InstalledModel, OllamaProvider
     from slidemage.ui.kit.fonts import load_fonts
@@ -362,12 +363,12 @@ def run(args: argparse.Namespace, work: Path) -> None:
     AnthropicProvider.list_models = lambda self: []
     credentials._keyring = lambda: None
     os.environ.pop(credentials.ENV_VAR, None)
-    app_settings.set("chat_model", "ollama:qwen3:8b")
+    app_settings.set(ProjectContext.at(project), "chat_model", "ollama:qwen3:8b")
 
     load_fonts()
     theme = ThemeManager(dark=args.dark)
     theme.apply()
-    window = WorkspaceWindow(theme)
+    window = WorkspaceWindow(theme, ProjectContext.at(project))
     window.resize(*WINDOW)
     window.show()
     window.state.set_deck(next(deck for deck in window.decks if deck.name == MANUAL))

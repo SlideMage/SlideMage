@@ -67,7 +67,7 @@ from .compile_records import (
     sha256 as _sha256,
 )
 from .deck_editor import VIEWS
-from .deck_scan import PROJECT_ROOT, Deck
+from .deck_scan import Deck
 from .processes import no_console_kwargs
 
 SNAPSHOTS_DIRNAME = "snapshots"
@@ -196,19 +196,19 @@ TEXMF_SETTING_KEY = "snapshot_texmf"
 APP_SETTING_KEY = "snapshot_app"
 
 
-def saved_options() -> SnapshotOptions:
+def saved_options(ctx: project.ProjectContext) -> SnapshotOptions:
     """The settings last used in the Snapshots sheet."""
     return SnapshotOptions(
-        zip=app_settings.get(OUTPUT_SETTING_KEY, "folder") == "zip",
-        texmf=bool(app_settings.get(TEXMF_SETTING_KEY, False)),
-        include_app=bool(app_settings.get(APP_SETTING_KEY, False)),
+        zip=app_settings.get(ctx, OUTPUT_SETTING_KEY, "folder") == "zip",
+        texmf=bool(app_settings.get(ctx, TEXMF_SETTING_KEY, False)),
+        include_app=bool(app_settings.get(ctx, APP_SETTING_KEY, False)),
     )
 
 
-def save_options(options: SnapshotOptions) -> None:
-    app_settings.set(OUTPUT_SETTING_KEY, "zip" if options.zip else "folder")
-    app_settings.set(TEXMF_SETTING_KEY, options.texmf)
-    app_settings.set(APP_SETTING_KEY, options.include_app)
+def save_options(ctx: project.ProjectContext, options: SnapshotOptions) -> None:
+    app_settings.set(ctx, OUTPUT_SETTING_KEY, "zip" if options.zip else "folder")
+    app_settings.set(ctx, TEXMF_SETTING_KEY, options.texmf)
+    app_settings.set(ctx, APP_SETTING_KEY, options.include_app)
 
 
 def describe_options(options: SnapshotOptions) -> str:
@@ -273,7 +273,7 @@ def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: fl
             time.sleep(delay)
 
 
-def snapshots_dir(root: Path = PROJECT_ROOT) -> Path:
+def snapshots_dir(root: Path) -> Path:
     return root / SNAPSHOTS_DIRNAME
 
 
@@ -314,8 +314,7 @@ def read_manifest(path: Path) -> Optional[dict]:
     return data if isinstance(data, dict) else None
 
 
-def find_snapshots(deck_names: Optional[Iterable[str]] = None,
-                   root: Path = PROJECT_ROOT) -> list[ExistingSnapshot]:
+def find_snapshots(deck_names: Optional[Iterable[str]] = None, *, root: Path) -> list[ExistingSnapshot]:
     """Every finished snapshot in <project>/snapshots/ (folders and zips),
     optionally only those of `deck_names`. A snapshot belongs to the deck its
     snapshot.json names -- never decided by the name prefix, since one deck's
@@ -361,7 +360,7 @@ def move_to_trash(path: Path) -> bool:
     return bool(ok) and not path.exists()
 
 
-def ensure_gitignored(root: Path = PROJECT_ROOT) -> bool:
+def ensure_gitignored(root: Path) -> bool:
     """Add `snapshots/` to the project's .gitignore unless a line already
     covers it. True when the line was added."""
     gitignore = root / ".gitignore"
@@ -975,7 +974,7 @@ def write_zip(source: Path, target: Path, top: str, when: datetime) -> None:
 def _scratch_dir(kind: str) -> Iterator[Path]:
     """A temporary folder in the project's .build/ (see verify_folder for why
     not %TEMP%), protected from the GUI's temp-file cleanup while in use."""
-    path = compiler.BUILD_DIR / f"snapshot-{kind}-{uuid.uuid4().hex}"
+    path = project.transitional_context().build_dir / f"snapshot-{kind}-{uuid.uuid4().hex}"
     path.mkdir(parents=True)
     compiler.set_build_dir_active(path, True)
     try:
@@ -1128,11 +1127,12 @@ def _check_cancel(cancel: Optional[CancelToken]) -> None:
 def create_snapshot(
     deck: Deck, options: SnapshotOptions, log: LogCallback,
     cancel: Optional[CancelToken] = None, progress: Optional[ProgressCallback] = None,
-    when: Optional[datetime] = None, project_root: Path = PROJECT_ROOT,
+    *, project_root: Path, when: Optional[datetime] = None,
 ) -> SnapshotResult:
     """Snapshot one deck into <project>/snapshots/. Never raises for an
     ordinary failure: the result says what went wrong, and nothing half-
     written is left behind."""
+    ctx = project.transitional_context()
     progress = progress or (lambda _text: None)
     when = (when or datetime.now()).replace(microsecond=0)
     epoch = int(when.timestamp())
@@ -1141,7 +1141,7 @@ def create_snapshot(
     directory.mkdir(parents=True, exist_ok=True)
     name = snapshot_name(deck.name, when, directory, options.zip)
     partial = directory / f"{PARTIAL_PREFIX}{name}"
-    build_root = compiler.BUILD_DIR / f"snapshot-{uuid.uuid4().hex}"
+    build_root = ctx.build_dir / f"snapshot-{uuid.uuid4().hex}"
     compiler.set_build_dir_active(build_root, True)
     jobs = snapshot_jobs(deck, options)
     wrappers: list[Path] = []
@@ -1159,7 +1159,7 @@ def create_snapshot(
             wrapper_text = compiler.wrapper_text(job)
             wrapper_texts.append(wrapper_text)
             if options.reuse:
-                fresh, why = compile_records.fresh_output(compiler.BUILD_DIR, job.jobname,
+                fresh, why = compile_records.fresh_output(ctx.build_dir, job.jobname,
                                                           wrapper_text)
                 if fresh is not None:
                     progress(f"{job.jobname} unchanged ({i} of {len(jobs)})")
@@ -1333,7 +1333,7 @@ def snapshot_decks(
     cancel: Optional[CancelToken] = None,
     progress: Optional[Callable[[int, int, str, str], None]] = None,
     delete_old: Optional[list[ExistingSnapshot]] = None,
-    project_root: Path = PROJECT_ROOT,
+    *, project_root: Path,
 ) -> list[SnapshotResult]:
     """Snapshot `decks` one after the other. One deck's failure doesn't stop
     the others; a cancel stops the current deck and skips the rest. Each of
@@ -1368,9 +1368,9 @@ def snapshot_decks(
 # --------------------------------------------------------------------------
 # Command line
 
-def _find_decks(names: list[str]) -> list[Deck]:
+def _find_decks(ctx: project.ProjectContext, names: list[str]) -> list[Deck]:
     from .deck_scan import scan_decks
-    decks = scan_decks()
+    decks = scan_decks(ctx)
     chosen = []
     for name in names:
         stem = Path(name).stem if name.lower().endswith(".tex") else name
@@ -1401,12 +1401,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     verify.add_argument("path")
     sub.add_parser("list", help="list the project's snapshots")
     args = parser.parse_args(argv)
+    project.use(ctx := project.from_environment())
 
     def log(line: str) -> None:
         print(line, flush=True)
 
     if args.command == "list":
-        for snap in find_snapshots():
+        for snap in find_snapshots(root=ctx.root):
             print(f"{snap.label}  {snap.path.name}")
         return 0
     if args.command == "verify":
@@ -1417,14 +1418,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"PROBLEM: {problem}")
         print("OK" if report.ok else "FAILED")
         return 0 if report.ok else 1
-    decks = _find_decks(args.decks)
+    decks = _find_decks(ctx, args.decks)
     options = SnapshotOptions(zip=args.zip, texmf=args.texmf, include_app=args.with_app,
                               reference_pdfs=not args.no_reference_pdfs,
                               verify=not args.no_verify, presenter=not args.no_presenter,
                               reuse=not args.recompile)
-    old = find_snapshots([d.name for d in decks]) if args.delete_old else []
+    old = find_snapshots([d.name for d in decks], root=ctx.root) if args.delete_old else []
     started = time.monotonic()
-    results = snapshot_decks(decks, options, log, delete_old=old)
+    results = snapshot_decks(decks, options, log, delete_old=old, project_root=ctx.root)
     print()
     for r in results:
         status = "OK  " if r.ok else "FAIL"

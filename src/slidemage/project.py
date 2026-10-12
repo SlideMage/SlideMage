@@ -1,7 +1,9 @@
 """Locate the Slidemaster project (the folder holding slide_ids.csv) to operate on.
 
-Deliberately free of side effects and of imports from the rest of the package:
-cli.py must settle the project before deck_scan computes PROJECT_ROOT at import.
+Deliberately free of side effects and of imports from the rest of the package.
+Importing any SlideMage module selects no project: the entry points (cli.py,
+the deck_snapshot and preview command lines) create one ProjectContext and
+hand it on.
 """
 from __future__ import annotations
 
@@ -451,21 +453,95 @@ def discover() -> Path | None:
     return find_upward(Path.cwd()) or load_last_project()
 
 
+class _Under:
+    """A place inside the project folder, named once: `ctx.slides_dir` is `ctx.root / "slides"`."""
+
+    def __init__(self, *parts: str) -> None:
+        self.parts = parts
+
+    def __get__(self, context: "ProjectContext | None", owner: type | None = None):
+        return self if context is None else context.root.joinpath(*self.parts)
+
+
+@dataclass(frozen=True)
+class ProjectContext:
+    """One project folder and the places inside it. Immutable; created once at the entry point
+    (ProjectContext.at) and passed to whatever reads or writes project files. Pure text
+    operations take strings, not this."""
+    root: Path
+    build_dir: Path = None      # type: ignore[assignment]  # latexmk's folder; root/.build unless a benchmark isolates its builds
+
+    slides_dir = _Under("slides")
+    slide_backups_dir = _Under("slides", ".backups")
+    decks_dir = _Under("decks")
+    archive_dir = _Under("decks", "archive")
+    media_dir = _Under("media")
+    snippets_dir = _Under("snippets")
+    pdf_dir = _Under("pdf")
+    temp_dir = _Under(".temp")
+    previews_dir = _Under(".previews")
+    slide_previews_dir = _Under(".previews", "slide_previews")
+    tikz_previews_dir = _Under(".previews", "tikz_illustration_previews")
+    pdf_render_cache_dir = _Under(".previews", "pdf_render_cache")
+    settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json
+    slide_ids_csv = _Under(MARKER)
+    bibliography_path = _Under("Slidemaster.bib")
+    slide_template_path = _Under(".scripts", "R_Slidemaster", "inst", "templates", "slide-template.tex")
+
+    def __post_init__(self) -> None:
+        if self.build_dir is None:
+            object.__setattr__(self, "build_dir", self.root / ".build")
+
+    @classmethod
+    def at(cls, root: Path) -> "ProjectContext":
+        return cls(Path(root))
+
+    @property
+    def name(self) -> str:
+        return self.root.name
+
+    @property
+    def deck_folders(self) -> tuple[Path, Path]:
+        """Where decks live: the active ones, then the archived ones."""
+        return self.decks_dir, self.archive_dir
+
+
+_transitional: ProjectContext | None = None
+
+
+def use(context: ProjectContext | None) -> None:
+    """Entry points call this once with the project they opened (None forgets it)."""
+    global _transitional
+    _transitional = context
+
+
+def from_environment() -> ProjectContext:
+    """The project a command line works on: $SLIDEMASTER_PROJECT, else the one found
+    upward from the working directory, else the last opened (else the working directory)."""
+    return ProjectContext.at(discover() or Path.cwd())
+
+
+def transitional_context() -> ProjectContext:
+    """TRANSITIONAL: the project of this process, for the modules not yet given an
+    explicit ProjectContext. The context set by use(), else the one found from
+    $SLIDEMASTER_PROJECT / the working directory / the last project -- decided at
+    the first call, never at import. New code takes a ProjectContext argument."""
+    global _transitional
+    if _transitional is None:
+        _transitional = from_environment()
+    return _transitional
+
+
 def relaunch_with_project(root: Path) -> None:
     """Start a fresh SlideMage process pointed at `root` and return --
     never quits the current one itself, since a GUI action needs to
     finish its own event handling first (Qt closes windows/quits the
     QApplication in its caller, after this returns).
 
-    Switching projects can't just mutate the running process's own state:
-    deck_scan.PROJECT_ROOT and every directory constant derived from it at
-    import time across this whole package (compiler.BUILD_DIR/PDF_DIR,
-    slide_source.SLIDES_DIR, alt_images.STORE_PATH, app_settings.STORE_PATH,
-    ...) are fixed once, at the first `from . import deck_scan` anywhere
-    in the process -- there is no single place left to change them all
-    after the fact. A new process re-derives every one of them fresh from
-    this one new root, the same as if the user had launched SlideMage
-    pointed at `root` from the start.
+    Switching projects restarts instead of changing the running process: windows,
+    caches and background jobs all hold the ProjectContext they were built with
+    (and the modules not yet migrated read transitional_context()). A new process
+    starts exactly as if the user had launched SlideMage pointed at `root`.
 
     Frozen (PyInstaller): sys.executable *is* the SlideMage binary itself,
     so it's relaunched directly. Unfrozen: sys.executable is the Python

@@ -21,14 +21,12 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_log, open_path
+from . import compile_log, open_path, project
 from . import slide_language, slide_snapshot
-from .compiler import BUILD_DIR, FATAL_ERROR_RE, build_env, run_streamed
+from .compiler import FATAL_ERROR_RE, build_env, run_streamed
 from .deck_editor import format_call
-from .deck_scan import PROJECT_ROOT
 from .preview_metrics import measure, record_line, finish_rules
 
-DECKS_DIR = PROJECT_ROOT / "decks"
 
 LogCallback = Callable[[str], None]
 
@@ -107,7 +105,7 @@ def _remove_build_files(jobname: str) -> int:
     Never raises: a build file that cannot be deleted right now is not a
     reason to fail a render that has already succeeded."""
     left = 0
-    for aux in BUILD_DIR.glob(f"{jobname}.*"):
+    for aux in project.transitional_context().build_dir.glob(f"{jobname}.*"):
         if not _retry_on_lock(lambda aux=aux: aux.unlink(missing_ok=True)):
             left += 1
     return left
@@ -118,7 +116,7 @@ def _sweep_stale_previews() -> None:
     that were interrupted (or whose cleanup hit a locked file)."""
     cutoff = time.time() - _STALE_PREVIEW_AGE
     try:
-        for stale in BUILD_DIR.glob("preview-*.*"):
+        for stale in project.transitional_context().build_dir.glob("preview-*.*"):
             try:
                 if stale.stat().st_mtime < cutoff:
                     stale.unlink()
@@ -358,11 +356,12 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     image is a much smaller problem than losing a PDF the user actually
     asked to see.
     """
+    ctx = project.transitional_context()
     if reuse_build:
         from .preview_build import compile_cached
         dest_pdf = compile_cached(
-            wrapper_text, id_slug, log, project_root=PROJECT_ROOT,
-            build_dir=BUILD_DIR, env=build_env(), fatal_error_re=FATAL_ERROR_RE)
+            wrapper_text, id_slug, log, project_root=ctx.root,
+            build_dir=ctx.build_dir, env=build_env(), fatal_error_re=FATAL_ERROR_RE)
         if snapshot_template is not None:
             try:
                 slide_snapshot.capture_single_slide(
@@ -372,7 +371,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
         log(compile_log.render_passed(id_slug, dest_pdf))
         return dest_pdf
 
-    DECKS_DIR.mkdir(parents=True, exist_ok=True)
+    ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     # "_slidemage_" prefix matches compiler.py's own wrapper naming, so
     # gui.py's existing "Remove temp files" sweep already covers a wrapper
     # left behind by a crash here too. A uuid suffix (not just the
@@ -384,7 +383,7 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     # deck_headers.py's own _LOCK exists to prevent (see that module).
     safe_id_slug = re.sub(r"[^A-Za-z0-9_-]", "_", id_slug)
     jobname = f"preview-{safe_id_slug}-{uuid.uuid4().hex[:8]}"
-    wrapper_path = DECKS_DIR / f"_slidemage_{jobname}.tex"
+    wrapper_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
     # newline="" -- NOT write_text's own default (None, which re-translates
     # every "\n" to the OS line ending on write). wrapper_text is a mix of
     # a real deck's own preamble_text (read by deck_scan.py with
@@ -412,37 +411,37 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
     # (every deck-editor-tab "Preview" -> "Render now") carries pre-existing
     # "\r\n" for this to double.
     from .preview_build import active_build
-    with active_build(BUILD_DIR, wrapper_path):
+    with active_build(ctx.build_dir, wrapper_path):
         wrapper_path.write_text(wrapper_text, encoding="utf-8", newline="")
 
-        BUILD_DIR.mkdir(parents=True, exist_ok=True)
-        rel_wrapper = wrapper_path.relative_to(PROJECT_ROOT)
-        # -outdir=BUILD_DIR, same as compiler.py's own run_job -- this has to
+        ctx.build_dir.mkdir(parents=True, exist_ok=True)
+        rel_wrapper = wrapper_path.relative_to(ctx.root)
+        # -outdir=.build/, same as compiler.py's own run_job -- this has to
         # match .latexmkrc's own $aux_dir exactly (an *absolute* path to this
-        # same BUILD_DIR, set unconditionally there), not some other temp
+        # same .build/, set unconditionally there), not some other temp
         # location: $aux_dir governs where latexmk actually writes the .log
         # regardless of what -outdir says, so a *different* -outdir here
         # silently splits the two apart -- confirmed directly: the .log ended
-        # up in BUILD_DIR while a leftover 0-byte .pdf sat in the mismatched
+        # up in .build/ while a leftover 0-byte .pdf sat in the mismatched
         # -outdir, and the fatal-error check below, looking for the log in the
         # wrong place, missed it entirely and read the empty .pdf as a pass.
         cmd = [
-            "latexmk", "-f", f"-jobname={jobname}", f"-outdir={BUILD_DIR.as_posix()}",
+            "latexmk", "-f", f"-jobname={jobname}", f"-outdir={ctx.build_dir.as_posix()}",
             str(rel_wrapper),
         ]
         env = build_env()
 
         log(compile_log.rendering(id_slug, jobname))
         try:
-            run_streamed(cmd, cwd=PROJECT_ROOT, env=env, log=log, on_line=record_line)
+            run_streamed(cmd, cwd=ctx.root, env=env, log=log, on_line=record_line)
             finish_rules()
         except FileNotFoundError:
             raise RuntimeError("latexmk not found on PATH -- is a TeX distribution installed?")
         finally:
             _retry_on_lock(lambda: wrapper_path.unlink(missing_ok=True))
 
-        log_path = BUILD_DIR / f"{jobname}.log"
-        build_pdf_path = BUILD_DIR / f"{jobname}.pdf"
+        log_path = ctx.build_dir / f"{jobname}.log"
+        build_pdf_path = ctx.build_dir / f"{jobname}.pdf"
         ok = build_pdf_path.exists() and build_pdf_path.stat().st_size > 0
         if ok and log_path.exists():
             if FATAL_ERROR_RE.search(log_path.read_text(encoding="utf-8", errors="replace")):
@@ -475,8 +474,8 @@ def compile_and_extract(wrapper_text: str, id_slug: str, log: LogCallback,
                 id_slug, f"the finished PDF could not be copied out of .build/ ({exc})"))
             raise RuntimeError(f"Render failed for {id_slug}: {exc}") from exc
         from .preview_build import write_inputs
-        write_inputs(dest_pdf, BUILD_DIR / f'{jobname}.fls', BUILD_DIR / f'{jobname}.fdb_latexmk',
-                     project_root=PROJECT_ROOT, cache=BUILD_DIR)
+        write_inputs(dest_pdf, ctx.build_dir / f'{jobname}.fls', ctx.build_dir / f'{jobname}.fdb_latexmk',
+                     project_root=ctx.root, cache=ctx.build_dir)
         left = _remove_build_files(jobname)
         if left:
             log(f"    ({left} build file(s) of this render could not be deleted yet "

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import deck_editor, slide_language, slide_versioning
+from . import deck_editor, project, slide_language, slide_versioning
 from .deck_scan import Deck, scan_decks
 
 PINNED = {"slideversion": "slide", "omitslideversion": "omitslide"}
@@ -91,7 +91,7 @@ def _skipped(deck: Deck) -> bool:
 def find_usage(id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
     """Every deck (archived ones too) that calls this slide, in scan order."""
     usages = []
-    for deck in decks if decks is not None else scan_decks():
+    for deck in decks if decks is not None else scan_decks(project.transitional_context()):
         if _skipped(deck):
             continue
         if language is not None:

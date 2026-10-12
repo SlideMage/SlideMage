@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import alt_blocks, alt_draft, alt_images, media_render, slide_source, tikz_render
+from . import alt_blocks, alt_draft, alt_images, media_render, project, slide_source, tikz_render
 from .deck_editor import parse_slide_calls
-from .deck_scan import PROJECT_ROOT, Deck
+from .deck_scan import Deck
 
 FILTER_ALL = 1   # index of "All slides with images" in FILTERS
 
@@ -269,7 +269,7 @@ def media_name_problem(stem: str) -> str:
 
 
 def media_destination(name: str) -> Path:
-    return PROJECT_ROOT / "media" / name
+    return project.transitional_context().root / "media" / name
 
 
 def free_media_stem(stem: str, suffix: str) -> str:

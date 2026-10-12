@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename, slide_versioning
+from . import alt_draft, deck_editor, deck_outline, project, slide_ids, slide_language, slide_rename, slide_versioning
 from .ai.providers import ChatProvider
 from .slide_import import escape_latex
 
@@ -57,7 +57,7 @@ TRANSLATION_MAX_TOKENS = 4096
 
 def slide_path(id_slug: str) -> Path:
     """The live file of a slide."""
-    return slide_ids.SLIDES_DIR / slide_language.current_name(id_slug)
+    return project.transitional_context().slides_dir / slide_language.current_name(id_slug)
 
 
 def frame_thumbnail(frame: str) -> Path:

@@ -12,7 +12,6 @@ from slidemage.deck_settings import DeckSettings
 from slidemage.ui.dialogs import deck_settings as sheet_module
 from slidemage.ui.dialogs.deck_settings import ADMIN, GENERAL, INSERT, OUTPUT, SAVE, DeckSettingsSheet
 from slidemage.ui.workspace import deck_actions
-from slidemage.ui.workspace.deck_actions import DeckActionsMixin
 from conftest import command_context
 from slidemage.ui.workspace.menus import build_more_menu
 from test_admin_slides import DETAIL, GROUP
@@ -178,9 +177,8 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
         refresh_open_deck_editors=lambda: refreshed.append(True),
         reload_decks=lambda: reloaded.append(True),
     )
-    window._save_deck_settings = lambda *args: DeckActionsMixin._save_deck_settings(window, *args)
 
-    DeckActionsMixin._on_deck_settings(window, deck)
+    deck_actions.on_deck_settings(window, deck)
 
     written = deck.path.read_text(encoding="utf-8")
     assert "\\input{Slidemaster_preamble_slidemage}" in written
@@ -208,8 +206,7 @@ def test_unchanged_settings_write_nothing(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(deck_actions, "DeckSettingsSheet", SameSheet)
     logged = []
     window = SimpleNamespace(centre=SimpleNamespace(is_dirty=lambda _path: False), _log=logged.append)
-    window._save_deck_settings = lambda *args: DeckActionsMixin._save_deck_settings(window, *args)
-    DeckActionsMixin._on_deck_settings(window, deck)
+    deck_actions.on_deck_settings(window, deck)
     assert logged == [] and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 
 
@@ -236,10 +233,8 @@ def test_insert_action_creates_the_slides_and_opens_the_first(tmp_path, monkeypa
     window = SimpleNamespace(
         centre=SimpleNamespace(is_dirty=lambda _path: False),
         after_deck_edit=lambda *args, **kwargs: edits.append((args, kwargs)), open_slide_editor=opened.append)
-    window._insert_admin_slides = lambda *args: DeckActionsMixin._insert_admin_slides(window, *args)
-    window._on_deck_settings = lambda *args, **kwargs: DeckActionsMixin._on_deck_settings(window, *args, **kwargs)
 
-    DeckActionsMixin._on_admin_slides(window, deck)
+    deck_actions.on_admin_slides(window, deck)
 
     assert tabs == [ADMIN]                                      # the Admin slides entry opens that tab
     assert inserted == [(deck, "position", admin.slide_specs, "de")]
@@ -252,7 +247,7 @@ def test_settings_action_refuses_while_the_deck_source_has_unsaved_edits(tmp_pat
     told = []
     monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
     window = SimpleNamespace(centre=SimpleNamespace(is_dirty=lambda path: path == deck.path))
-    DeckActionsMixin._on_deck_settings(window, deck)
+    deck_actions.on_deck_settings(window, deck)
     assert told and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 
 

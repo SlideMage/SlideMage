@@ -26,10 +26,10 @@ import re
 import uuid
 from typing import Optional
 
-from . import deck_editor, slide_language, slide_snapshot
+from . import deck_editor, project, slide_language, slide_snapshot
 from .compiler import CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
-from .slide_preview import DECKS_DIR, template_preamble
+from .slide_preview import template_preamble
 
 # The window's own log parser (ui/workspace/compile_jobs.py) watches every "==== PASS: <jobname> ->" line
 # globally (it's the only channel this background compile has back to the
@@ -82,7 +82,7 @@ def needed_slides_by_template() -> dict[str, set[str]]:
     """
     needed: dict[str, set[str]] = {}
     from . import deck_language
-    for deck in scan_decks():
+    for deck in scan_decks(project.transitional_context()):
         template = slide_snapshot.detect_template(deck.preamble_text)
         bucket = needed.setdefault(template, set())
         for call in deck_editor.parse_slide_calls(deck):
@@ -105,7 +105,7 @@ def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> Non
         for template, full_slugs in needed.items()
     }
     removed = 0
-    for path in slide_snapshot.SNAPSHOT_DIR.glob("*.png"):
+    for path in project.transitional_context().slide_previews_dir.glob("*.png"):
         match = _SNAPSHOT_FILENAME_RE.match(path.name)
         if match is None:
             continue  # not a recognized snapshot filename -- leave it alone
@@ -141,9 +141,10 @@ def _run_one_template(
     """Compile one throwaway deck for exactly this template's own needed
     slides -- same mechanics run() always used, just scoped to a subset
     of the project's slides instead of every one of them."""
-    DECKS_DIR.mkdir(parents=True, exist_ok=True)
+    ctx = project.transitional_context()
+    ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     jobname = base_jobname or f"{JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}"
-    temp_path = DECKS_DIR / f"_slidemage_{jobname}.tex"
+    temp_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
     text, preamble_end = _build_deck_text(template, slide_ids)
     temp_path.write_text(text, encoding="utf-8")
 

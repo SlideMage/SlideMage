@@ -88,7 +88,7 @@ class Visibility(SidePanel):
         return slot
 
     def _set(self, call: SlideCall, view: str, visible: bool) -> None:
-        done = self.app.slide_list.edit(
+        done = self.actions.edit_deck(
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {call.id_slug} in {VIEW_LABELS[view]} of {self.state.deck.name}",
             lambda path, deck_text: set_calls_visibility(path, deck_text, [call], view, visible))

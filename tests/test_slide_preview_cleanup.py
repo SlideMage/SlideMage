@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from slidemage import slide_preview
+from conftest import use_project
 
 
 def _fake_run_streamed(build_dir: Path):
@@ -37,9 +38,7 @@ def project(monkeypatch, tmp_path):
     build = tmp_path / ".build"
     build.mkdir()
     (tmp_path / "decks").mkdir()
-    monkeypatch.setattr(slide_preview, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(slide_preview, "DECKS_DIR", tmp_path / "decks")
-    monkeypatch.setattr(slide_preview, "BUILD_DIR", build)
+    use_project(monkeypatch, tmp_path)
     monkeypatch.setattr(slide_preview, "build_env", lambda: {})
     monkeypatch.setattr(slide_preview, "_LOCK_RETRY_DELAY", 0)
     # renders must never touch the real temp directory

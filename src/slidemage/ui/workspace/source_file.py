@@ -18,15 +18,14 @@ from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
+from ... import app_settings
 from ... import (
-    bibliography,
     latex_edit,
     latex_lint,
     slide_preview,
     slide_source,
     slide_versioning,
 )
-from ...deck_scan import PROJECT_ROOT
 from ...slide_language import bare_id
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from ..kit import kit_qss as q
@@ -95,11 +94,12 @@ class SourceFile(Surface):
             self.is_slide = self.is_current_slide = False
             self.id_slug = ""
         self.bare_id = bare_id(self.id_slug)
-        self.is_bib = path == bibliography.DEFAULT_BIB
+        self.is_bib = path == self.app.project.bibliography_path
         self.lint: Optional[latex_lint.CheckResult] = None     # of the buffer; None for a .bib
 
         self.text, self.eol = slide_source.read_slide_source(path)
-        self.editor = LatexPlainTextEdit(app.theme)
+        tab_width = app_settings.get(app.project, latex_edit.TAB_WIDTH_SETTING_KEY, latex_edit.DEFAULT_TAB_WIDTH_CHARS)
+        self.editor = LatexPlainTextEdit(app.theme, tab_width)
         self.editor.set_text(self.text)
         self.editor.modified_changed.connect(self.modified_changed)
         self.editor.escape_pressed.connect(self._abort_ai_fix)
@@ -357,7 +357,7 @@ class SourceFile(Surface):
         if versions.open_translation is not None and self.on_open is not None:
             self.on_open(versions.open_translation)
         if backup_path is not None:
-            self.app.log(f"Saved {self.path.name} (backup: {backup_path.relative_to(PROJECT_ROOT)})")
+            self.app.log(f"Saved {self.path.name} (backup: {backup_path.relative_to(self.app.project.root)})")
         else:
             self.app.log(f"Saved {self.path.name} (new file, no prior content to back up)")
         if self.on_saved is not None:

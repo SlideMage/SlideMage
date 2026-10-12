@@ -12,6 +12,8 @@ from slidemage import preview_target, slide_snapshot
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
 from slidemage.ui.workspace.state import WorkspaceState
+from conftest import use_project
+from slidemage.project import transitional_context
 
 
 @pytest.fixture
@@ -22,8 +24,7 @@ def pane(qapp, tmp_path, monkeypatch):
         log=logged.append,
         signals=SimpleNamespace(log=SimpleNamespace(emit=logged.append)),
     )
-    monkeypatch.setattr(preview_target, "SLIDES_DIR", tmp_path)
-    monkeypatch.setattr(slide_snapshot, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    use_project(monkeypatch, tmp_path)
     monkeypatch.setattr(preview_target, "cached_image", lambda target: None)
     # Thread creation is controlled; finishing a job exercises the real worker/GUI handoff.
     monkeypatch.setattr(
@@ -32,8 +33,9 @@ def pane(qapp, tmp_path, monkeypatch):
         lambda **kw: SimpleNamespace(start=lambda: launched.append(kw["args"])),
     )
     buffer = ["BODY"]
-    view = preview_view.PreviewPane(app, WorkspaceState(), lambda: (buffer[0], ""))
-    path = tmp_path / "abc-EN-One-current.tex"
+    view = preview_view.PreviewPane(app, WorkspaceState(transitional_context()), lambda: (buffer[0], ""))
+    path = tmp_path / "slides" / "abc-EN-One-current.tex"
+    path.parent.mkdir()
     path.write_text("BODY")
     target = preview_target.for_path(path)
     view.show_slide(target, None, "One", "")
@@ -94,7 +96,7 @@ def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
     view._start(lambda: pdf, job)
     if change == "slide":
         view.show_slide(
-            preview_target.for_path(tmp_path / "bbb-EN-Two-current.tex"),
+            preview_target.for_path(tmp_path / "slides" / "bbb-EN-Two-current.tex"),
             None,
             "Two",
             "",

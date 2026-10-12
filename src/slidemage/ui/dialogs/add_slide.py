@@ -396,7 +396,7 @@ class AddSlideSheet(ModalSheet):
     def _fill_models(self) -> None:
         if not self._models_filled:
             self._models_filled = True
-            fill_model_combo(self.model, "translation", OllamaProvider().list_models(),
+            fill_model_combo(self.app.project, self.model, "translation", OllamaProvider().list_models(),
                              "(no AI models available)", fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
 
     def _sync(self) -> None:

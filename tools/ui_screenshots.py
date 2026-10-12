@@ -39,8 +39,7 @@ def main(argv: list[str] | None = None) -> int:
 
     repo = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo / "src"))
-    # project imports no UI or module that fixes PROJECT_ROOT at import time.
-    from slidemage.project import _ignore_template_build_output
+    from slidemage.project import ProjectContext, _ignore_template_build_output
 
     with tempfile.TemporaryDirectory(prefix="slidemage-ui-project-") as folder:
         root = Path(folder)
@@ -54,10 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         from PySide6.QtCore import QCoreApplication, QEvent, QSize, Qt
         from PySide6.QtWidgets import QApplication
 
-        from slidemage import app_settings
         from slidemage.ui import layout_settings
 
-        app_settings.STORE_PATH = root / "app_settings.json"
         layout_settings.STORE_PATH = root / "layout.json"
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         app = QApplication([])
@@ -70,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         for name, dark in (("light", False), ("dark", True)):
             theme = ThemeManager(dark=dark)
             theme.apply()
-            window = WorkspaceWindow(theme)
+            window = WorkspaceWindow(theme, ProjectContext.at(project))
             if args.mode:
                 window.state.set_mode(args.mode)
             try:

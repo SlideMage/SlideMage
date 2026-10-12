@@ -11,6 +11,8 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMessageBox, QWidget
 
+from slidemage.project import transitional_context
+from slidemage.project import ProjectContext
 from slidemage import deck_editor, deck_scan, slide_add
 from slidemage.ai.providers import Cancelled, ChatReply, OllamaProvider
 from slidemage.ui.dialogs import add_slide
@@ -25,8 +27,9 @@ HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
 class FakeWindow(QWidget):
     """What the sheet asks of the main window."""
 
-    def __init__(self):
+    def __init__(self, project):
         super().__init__()
+        self.project = project
         self.dirty: set = set()
         self.edits, self.opened, self.slots = [], [], []
         self.centre = SimpleNamespace(is_dirty=lambda path: path in self.dirty)
@@ -73,8 +76,6 @@ def project(tmp_path, monkeypatch, qapp):
     """A deck with two slides, a project with four, one of them frozen and one German."""
     decks, slides = tmp_path / "decks", tmp_path / "slides"
     (decks / "archive").mkdir(parents=True)
-    monkeypatch.setattr(deck_scan, "DECKS_DIR", decks)
-    monkeypatch.setattr(deck_scan, "ARCHIVE_DIR", decks / "archive")
     use_new_slide_files(monkeypatch, tmp_path)
     for name, title in (("abc-EN-Demo", "Demo"), ("xyz-EN-Other", "Other"), ("ccc-DE-Drei", "Dritte")):
         (slides / f"{name}-current.tex").write_bytes((FRAME % title).encode("utf-8"))
@@ -93,8 +94,8 @@ def make(project, qapp):
     keep = []
 
     def make(**start):
-        window = FakeWindow()
-        deck = next(d for d in deck_scan.scan_decks() if d.name == "course")
+        window = FakeWindow(ProjectContext.at(project.slides.parent))
+        deck = next(d for d in deck_scan.scan_decks(transitional_context()) if d.name == "course")
         insert_at, indent = deck_editor.append_position(deck)
         sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", **start)
         keep.append((window, sheet))

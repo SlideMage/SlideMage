@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import write_test_file as write
+from conftest import use_project, write_test_file as write
 
 from slidemage import compile_records, compiler, deck_scan
 from slidemage.compile_records import fresh_output, write_record
@@ -134,7 +134,7 @@ def test_slide_previews_are_kept_not_compared(compiled):
 
 def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
     c = compiled
-    monkeypatch.setattr(compiler, "BUILD_DIR", c["build"])
+    use_project(monkeypatch, c["build"].parent)
     deck = deck_scan.Deck(name="t-Deck", path=c["deck"], archived=False, text="deck\n",
                           supports_version=True, uses_biblatex=False, preamble_end=None,
                           chapters=[], output_folders={})
@@ -154,7 +154,7 @@ def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
 def test_remove_temp_files_keeps_the_records(compiled, monkeypatch):
     c = compiled
     record(c)
-    monkeypatch.setattr(compiler, "BUILD_DIR", c["build"])
+    use_project(monkeypatch, c["build"].parent)
     removable = {p.name for p in compiler.removable_build_entries()}
     assert "t-Deck-instructor-abc" in removable
     assert compile_records.RECORDS_DIRNAME not in removable
@@ -170,7 +170,7 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
     """compiler._relocate_pdf_and_finish writes the record once the PDF is
     published (here a during-course job: no preview capture involved)."""
     c = compiled
-    monkeypatch.setattr(compiler, "BUILD_DIR", c["build"])
+    use_project(monkeypatch, c["build"].parent)
     write(c["inv"] / "t-Deck-during-course.pdf", b"%PDF during")
     for ext in (".fls", ".log", ".blg", ".timestamp"):
         src = c["inv"] / f"t-Deck-instructor{ext}"

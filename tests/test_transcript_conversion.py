@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from slidemage import transcript
+from conftest import use_project
 
 
 def _render(tmp_path: Path, source: str, slide_id: str = "abc"):
@@ -123,7 +124,7 @@ def test_sideimageframe_standout_frame_and_quote_source(tmp_path):
 def test_table_of_contents_lists_the_deck_chapters(tmp_path, monkeypatch):
     slides = tmp_path / "slides"
     slides.mkdir()
-    monkeypatch.setattr(transcript, "SLIDES_DIR", slides)
+    use_project(monkeypatch, tmp_path)
     (slides / "aaa-EN-Contents-current.tex").write_text(_frame(
         "\\begin{enumerate}\\tableofcontents[sections={2-3},hideallsubsections]"
         "\\end{enumerate}"), encoding="utf-8")

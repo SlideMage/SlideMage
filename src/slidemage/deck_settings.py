@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import deck_editor
+from . import deck_editor, project
 from .alt_blocks import braced_argument
 from .deck_scan import (
     DOCUMENT_BEGIN_LINE_RE,
@@ -141,7 +141,7 @@ def template_choices(root: Path | None = None) -> list[tuple[str, str]]:
     project folder or the framework."""
     from . import slide_snapshot
 
-    root = root or slide_snapshot.PROJECT_ROOT
+    root = root or project.transitional_context().root
     keys = list(slide_snapshot.available_templates(root))
     prefix = "Slidemaster_preamble_"
     for folder in (root, *slide_snapshot.framework_dirs(root)):

@@ -7,7 +7,7 @@ import pytest
 from slidemage import alt_blocks, deck_editor, project, slide_add, slide_ids, slide_import, slide_versioning
 from slidemage.ai.providers import ChatReply, ProviderError
 
-from conftest import TEMPLATE, use_new_slide_files
+from conftest import TEMPLATE, use_new_slide_files, use_project
 
 
 @pytest.fixture
@@ -68,9 +68,7 @@ def test_empty_project_can_add_a_standard_slide(tmp_path, monkeypatch, custom_te
     project.init_project(target, copy_example=False)
     relative = ".scripts/R_Slidemaster/inst/templates/slide-template.tex"
     template = target / relative
-    monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", template)
-    monkeypatch.setattr(slide_ids, "SLIDES_DIR", target / "slides")
-    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", target / "slide_ids.csv")
+    use_project(monkeypatch, target)
     expected = (project.template_dir("example") / relative).read_bytes().decode("utf-8")
     if custom_template is not None:
         template.parent.mkdir(parents=True)
@@ -85,7 +83,7 @@ def test_empty_project_can_add_a_standard_slide(tmp_path, monkeypatch, custom_te
 
 @pytest.mark.parametrize("bundled_available", [False, True])
 def test_missing_project_and_bundled_templates_raise(tmp_path, monkeypatch, bundled_available):
-    monkeypatch.setattr(slide_ids, "TEMPLATE_PATH", tmp_path / "missing-template.tex")
+    use_project(monkeypatch, tmp_path)     # no template in it
     monkeypatch.setattr(project, "template_dir", lambda _name: tmp_path if bundled_available else None)
 
     with pytest.raises(FileNotFoundError, match="No slide template found"):
@@ -487,15 +485,13 @@ def test_slide_content_to_tex_standardframe_vs_figureframe():
 
 
 def test_import_presentation_writes_files_and_appends_deck_calls(sample_presentation, tmp_path, monkeypatch):
-    from slidemage import deck_scan, slide_ids, slide_import
+    from slidemage import deck_scan, slide_import
 
     path, _extractor = sample_presentation
     project_root = tmp_path / "project"
     (project_root / "slides").mkdir(parents=True)
     (project_root / "decks").mkdir()
-    monkeypatch.setattr(slide_import, "PROJECT_ROOT", project_root)
-    monkeypatch.setattr(slide_ids, "SLIDES_DIR", project_root / "slides")
-    monkeypatch.setattr(slide_ids, "SLIDE_IDS_CSV", project_root / "slide_ids.csv")
+    use_project(monkeypatch, project_root)
 
     deck_text = "\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n"
     deck_path = project_root / "decks" / "test.tex"

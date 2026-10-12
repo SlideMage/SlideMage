@@ -57,9 +57,9 @@ Filled in by the orchestrator after each step.
 
 ## Continuation (user's decision, 12 October evening)
 
-The user chose to continue through steps 3–6 despite the stop rule, with the goal **clean code and
-structure** rather than line count. Line counts are still recorded; a step may add lines when
-ownership becomes clearer. Steps run without pausing.
+The user chose to continue through steps 3–6 despite the stop rule, with two goals: **clean code and
+structure, and fewer lines** (user, 12 October). Delete what a clearer structure makes redundant and prefer
+the shorter of two equally clear designs; where a structural improvement costs lines, the step report says so. Steps run without pausing.
 
 | Step | Work | Hard token cap |
 | --- | --- | ---: |
@@ -67,4 +67,8 @@ ownership becomes clearer. Steps run without pausing.
 | 4 | Compile execution and controller (replace CompileJobsMixin) | 900k |
 | 5 | Parsing, settings helpers, specialised workflow plumbing | 800k |
 | 6 | Integration: full checks, fixtures, Linux build, final report | 300k |
+
+| Step | Commit | Version | Physical | Code | Net physical | Tests | Notes |
+| --- | --- | --- | ---: | ---: | ---: | --- | --- |
+| 3 | (this commit) | v8.3.4 | 47,250 | 32,951 | +138 | 1,858 passed, 8 skipped | ProjectContext in project.py; no project chosen at import (0 import-time path constants left); app_settings, deck_scan, housekeeping, snapshots and all of ui/ take an explicit context; 41 backend modules (compile, editing, AI stacks) use project.transitional_context() at call time. MaintenanceMixin and DeckActionsMixin removed (plain functions); side panels use PanelActions instead of reaching into the window. Lines: +~180 src, −~67 tests (−~200 lines of path patching). ~546k tokens, 67 min |
 

@@ -4,6 +4,7 @@ import pkgutil
 import pytest
 
 import slidemage
+from slidemage.project import transitional_context
 from slidemage import project
 
 from conftest import EXAMPLE
@@ -14,6 +15,7 @@ def test_project_discovery(monkeypatch, tmp_path, available):
     if available:
         assert project.is_project(EXAMPLE)
         assert project.find_upward(EXAMPLE / "decks") == EXAMPLE
+        monkeypatch.setenv(project.ENV_VAR, str(EXAMPLE))
         assert project.discover() == EXAMPLE
     else:
         # 2026-09-23: an unrelated cwd must not invent a last project on first run.
@@ -28,7 +30,7 @@ def test_project_discovery(monkeypatch, tmp_path, available):
 def test_scan_finds_demo_decks():
     from slidemage import deck_scan
 
-    names = {deck.path.name for deck in deck_scan.scan_decks()}
+    names = {deck.path.name for deck in deck_scan.scan_decks(transitional_context())}
     assert "slidemage-manual.tex" in names
 
 

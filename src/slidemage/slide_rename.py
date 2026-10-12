@@ -35,14 +35,10 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from . import alt_images, deck_headers, slide_ids, slide_language, slide_snapshot
-from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from . import alt_images, deck_headers, project, slide_ids, slide_language
 from .processes import is_git_repo, is_git_tracked, no_console_kwargs
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
-WORKDECK_PATH = DECKS_DIR / "#workdeck.tex"
 # Decks and archived decks can hold \slide{}-family references.
-_REFERENCE_DIRS = (DECKS_DIR, ARCHIVE_DIR)
 
 # the slidemage GUI script runs with no console of its own -- same
 # fix, same reason, as compiler.py's/archive.py's own subprocess calls.
@@ -61,10 +57,11 @@ _MACROS = (
 
 
 def _move(src: Path, dest: Path) -> None:
-    if is_git_repo(PROJECT_ROOT) and is_git_tracked(src, PROJECT_ROOT):
+    ctx = project.transitional_context()
+    if is_git_repo(ctx.root) and is_git_tracked(src, ctx.root):
         subprocess.run(
-            ["git", "mv", str(src.relative_to(PROJECT_ROOT)), str(dest.relative_to(PROJECT_ROOT))],
-            cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,
+            ["git", "mv", str(src.relative_to(ctx.root)), str(dest.relative_to(ctx.root))],
+            cwd=ctx.root, check=True, **_NO_CONSOLE_KWARGS,
         )
     else:
         shutil.move(str(src), str(dest))
@@ -101,14 +98,17 @@ def count_references(id_slug: str) -> int:
     confirmation dialog before set_slide_language() rewrites them."""
     pattern = _reference_pattern(id_slug)
     total = 0
-    deck_paths = [
-        p for directory in _REFERENCE_DIRS if directory.is_dir()
-        for p in directory.glob("*.tex")
-    ]
+    deck_paths = _reference_decks()
     for deck_path in deck_paths:
         text = deck_path.read_bytes().decode("utf-8")
         total += len(pattern.findall(text))
     return total
+
+
+def _reference_decks() -> list[Path]:
+    """Every deck file that can call a slide: the decks and the archived decks, #workdeck.tex among them."""
+    return [p for directory in project.transitional_context().deck_folders if directory.is_dir()
+            for p in directory.glob("*.tex")]
 
 
 def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str) -> int:
@@ -132,21 +132,22 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
     registration, are untouched either way (that's rename_slide_id()'s own,
     separate job). Returns new_id_slug unchanged, for a symmetric call
     signature with both callers."""
+    ctx = project.transitional_context()
     if new_id_slug == id_slug:
         return id_slug
 
-    current_src = SLIDES_DIR / slide_language.current_name(id_slug)
+    current_src = ctx.slides_dir / slide_language.current_name(id_slug)
     if not current_src.exists():
         raise FileNotFoundError(f"{current_src} does not exist")
-    current_dest = SLIDES_DIR / slide_language.current_name(new_id_slug)
+    current_dest = ctx.slides_dir / slide_language.current_name(new_id_slug)
     if current_dest.exists():
         raise FileExistsError(f"{current_dest} already exists")
 
     renames: list[tuple[Path, Path]] = [(current_src, current_dest)]
     version_prefix_len = len(id_slug)
-    for version_src in SLIDES_DIR.glob(f"{id_slug}-v*.tex"):
+    for version_src in ctx.slides_dir.glob(f"{id_slug}-v*.tex"):
         suffix = version_src.name[version_prefix_len:]  # "-vX-Y-Z.tex"
-        version_dest = SLIDES_DIR / f"{new_id_slug}{suffix}"
+        version_dest = ctx.slides_dir / f"{new_id_slug}{suffix}"
         if version_dest.exists():
             raise FileExistsError(f"{version_dest} already exists")
         renames.append((version_src, version_dest))
@@ -154,13 +155,7 @@ def _apply_id_slug_rename(id_slug: str, new_id_slug: str) -> str:
     for src, dest in renames:
         _move(src, dest)
 
-    deck_paths = [
-        p for directory in _REFERENCE_DIRS if directory.is_dir()
-        for p in directory.glob("*.tex")
-        if p.name != "#workdeck.tex"
-    ]
-    if WORKDECK_PATH.exists():
-        deck_paths.append(WORKDECK_PATH)
+    deck_paths = _reference_decks()
     for deck_path in deck_paths:
         _rewrite_references_in_file(deck_path, id_slug, new_id_slug)
 
@@ -235,7 +230,7 @@ def regenerate_translation_links() -> tuple[int, list[str]]:
     changed = 0
     missing: list[str] = []
 
-    for path in sorted(SLIDES_DIR.glob("*-current.tex")):
+    for path in sorted(project.transitional_context().slides_dir.glob("*-current.tex")):
         own_name = path.name[: -len(slide_language.CURRENT_SUFFIX)]
         text = path.read_bytes().decode("utf-8")
         new_text = text
@@ -298,6 +293,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
 
     Returns {old id-slug: new id-slug} for every renamed slide.
     """
+    ctx = project.transitional_context()
     check = slide_ids.reserved_id_reason if reserved else slide_ids.regular_id_reason
     reason = check(new_id)
     if reason:
@@ -308,13 +304,13 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
     taken = slide_ids.existing_ids_from_csv() | slide_ids.existing_ids_from_disk()
     if new_id.lower() in {i.lower() for i in taken}:
         raise FileExistsError(f"slide id {new_id!r} is already in use")
-    old_files = sorted(SLIDES_DIR.glob(f"{old_id}-*.tex"))
+    old_files = sorted(ctx.slides_dir.glob(f"{old_id}-*.tex"))
     if not old_files:
         raise FileNotFoundError(f"no slides/{old_id}-*.tex")
 
     mapping: dict[str, str] = {}
     for src in old_files:
-        dest = SLIDES_DIR / (new_id + src.name[len(old_id):])
+        dest = ctx.slides_dir / (new_id + src.name[len(old_id):])
         if dest.exists():
             raise FileExistsError(f"{dest} already exists")
         _move(src, dest)
@@ -327,13 +323,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
             r"(\\(?:" + "|".join(_MACROS) + r")(?:\[[^\]]*\])?\{)("
             + "|".join(re.escape(s) for s in mapping) + r")(\})"
         )
-        deck_paths = [
-            p for directory in _REFERENCE_DIRS if directory.is_dir()
-            for p in directory.glob("*.tex")
-            if p.name != "#workdeck.tex"
-        ]
-        if WORKDECK_PATH.exists():
-            deck_paths.append(WORKDECK_PATH)
+        deck_paths = _reference_decks()
         for deck_path in deck_paths:
             text = deck_path.read_bytes().decode("utf-8")
             new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
@@ -341,7 +331,7 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
                 deck_path.write_text(new_text, encoding="utf-8", newline="")
 
     link = re.compile(r"(\\hyperlink\{)" + re.escape(old_id) + r"(\})")
-    for path in SLIDES_DIR.glob("*.tex"):
+    for path in ctx.slides_dir.glob("*.tex"):
         text = path.read_bytes().decode("utf-8")
         new_text = link.sub(r"\g<1>" + new_id + r"\g<2>", text)
         if new_text != text:
@@ -365,8 +355,8 @@ def rename_slide_id(old_id: str, new_id: str, reserved: bool = False) -> dict[st
 
     alt_images.update_slide_notes(_move_notes)
 
-    if slide_snapshot.SNAPSHOT_DIR.is_dir():
-        for src in slide_snapshot.SNAPSHOT_DIR.glob(f"{old_id}-*.png"):
+    if ctx.slide_previews_dir.is_dir():
+        for src in ctx.slide_previews_dir.glob(f"{old_id}-*.png"):
             dest = src.with_name(new_id + src.name[len(old_id):])
             if not dest.exists():
                 src.rename(dest)
@@ -386,10 +376,7 @@ def deck_names_referencing(id_slug: str) -> list[str]:
     to lose a reference before confirming, not just a bare count."""
     pattern = _reference_pattern(id_slug)
     names: list[str] = []
-    deck_paths = [
-        p for directory in _REFERENCE_DIRS if directory.is_dir()
-        for p in directory.glob("*.tex")
-    ]
+    deck_paths = _reference_decks()
     for deck_path in deck_paths:
         text = deck_path.read_bytes().decode("utf-8")
         if pattern.search(text):
@@ -460,29 +447,24 @@ def delete_slide_id(id_slug: str, remove_deck_references: bool = True) -> dict[s
     this function itself deletes unconditionally, no confirmation of its
     own. Returns {"files_removed": n, "deck_references_removed": n} for
     the caller's own confirmation/log message."""
-    current = SLIDES_DIR / slide_language.current_name(id_slug)
+    ctx = project.transitional_context()
+    current = ctx.slides_dir / slide_language.current_name(id_slug)
     if not current.exists():
         raise FileNotFoundError(f"{current} does not exist")
 
-    files = sorted(SLIDES_DIR.glob(f"{id_slug}-*.tex"))
+    files = sorted(ctx.slides_dir.glob(f"{id_slug}-*.tex"))
     for path in files:
-        if is_git_repo(PROJECT_ROOT) and is_git_tracked(path, PROJECT_ROOT):
+        if is_git_repo(ctx.root) and is_git_tracked(path, ctx.root):
             subprocess.run(
-                ["git", "rm", "-q", str(path.relative_to(PROJECT_ROOT))],
-                cwd=PROJECT_ROOT, check=True, **_NO_CONSOLE_KWARGS,
+                ["git", "rm", "-q", str(path.relative_to(ctx.root))],
+                cwd=ctx.root, check=True, **_NO_CONSOLE_KWARGS,
             )
         else:
             path.unlink()
 
     deck_refs_removed = 0
     if remove_deck_references:
-        deck_paths = [
-            p for directory in _REFERENCE_DIRS if directory.is_dir()
-            for p in directory.glob("*.tex")
-            if p.name != "#workdeck.tex"
-        ]
-        if WORKDECK_PATH.exists():
-            deck_paths.append(WORKDECK_PATH)
+        deck_paths = _reference_decks()
         for deck_path in deck_paths:
             deck_refs_removed += _remove_references_in_file(deck_path, id_slug)
 

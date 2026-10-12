@@ -9,7 +9,7 @@ import shutil
 import time
 from pathlib import Path
 
-from slidemage import deck_scan, deck_editor, slide_preview
+from slidemage import deck_scan, project, deck_editor, slide_preview
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--limit', type=int)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    deck = next(d for d in deck_scan.scan_decks() if d.name == 'slidemage-manual')
+    deck = next(d for d in deck_scan.scan_decks(project.transitional_context()) if d.name == 'slidemage-manual')
     calls = [c for c in deck_editor.parse_slide_calls(deck)
              if not deck_editor.is_commented_out(deck.text, c)]
     for i, call in enumerate(calls[:args.limit], 1):
