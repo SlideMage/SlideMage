@@ -1,4 +1,5 @@
-"""Window layout preferences for this user and machine, outside the project."""
+"""Preferences of this user and machine, outside the project: the window layout, and the model and effort the
+Claude Code tab runs its tasks with."""
 from __future__ import annotations
 
 import json

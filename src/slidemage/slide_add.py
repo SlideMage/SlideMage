@@ -99,10 +99,17 @@ def create_copy(
     body = slide_versioning.strip_marker(body)
     if language is None:
         return _create(slug, slide_language.own_language(source_id_slug) or "EN", body)
-    created = _create(slug, language, body, translation_of=source_id_slug)
+    created = create_translation(source_id_slug, slug, language, body)
     slide_ids.add_translation_backreference(source, language, created.id_slug)
     slide_rename.regenerate_translation_links()
     return created
+
+
+def create_translation(source_id_slug: str, slug: str, language: str, body: str) -> CreatedSlide:
+    """A new slide in `language` holding `body`, its header saying it is a translation of
+    `source_id_slug`. The source's own "<LANG> translation" line is the caller's to add
+    (slide_ids.with_translation_backreference), e.g. into the source's open editor buffer."""
+    return _create(slug, language, body, translation_of=source_id_slug)
 
 
 def _create(slug: str, language: str, body: str, translation_of: Optional[str] = None) -> CreatedSlide:

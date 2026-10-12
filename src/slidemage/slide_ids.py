@@ -199,11 +199,15 @@ def build_new_slide_header(cross_ref_id_slug: Optional[str] = None) -> str:
 
 
 def slide_body(path: Path) -> str:
-    """The content of the slide file `path` without its header comments -- its "Included in
+    """The content of the slide file `path` without its header comments (see body_of)."""
+    return body_of(path.read_bytes().decode("utf-8"))
+
+
+def body_of(body_text: str) -> str:
+    """The content of a slide file's `body_text` without its header comments -- its "Included in
     decks", "Translation of" and "<LANG> translation" blocks describe *that* file, not a copy
     of it. Each is its own two-line block (the comment line plus a bare "%%" closer): strip
     the whole block, or a dangling "%%" is left behind."""
-    body_text = path.read_bytes().decode("utf-8")
     body_text = _INCLUDED_IN_DECKS_RE.sub("", body_text)
     body_text = re.sub(r"%% Translation of: [^\r\n]*\r?\n%%\r?\n", "", body_text)
     body_text = re.sub(r"%% (?:EN|DE|mult) translation: [^\r\n]*\r?\n%%\r?\n", "", body_text)
@@ -273,6 +277,12 @@ def add_translation_backreference(source_path: Path, language: str, new_id_slug:
     if language not in slide_language.LANGUAGES:
         raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
     text = source_path.read_bytes().decode("utf-8")
+    source_path.write_text(with_translation_backreference(text, language, new_id_slug), encoding="utf-8", newline="")
+
+
+def with_translation_backreference(text: str, language: str, new_id_slug: str) -> str:
+    """`text` of a slide file with the "%% <language> translation: <new_id_slug>" block added (see
+    add_translation_backreference)."""
     eol = "\r\n" if "\r\n" in text else "\n"
     new_line = f"%% {language} translation: {new_id_slug}{eol}%%{eol}"
 
@@ -282,5 +292,4 @@ def add_translation_backreference(source_path: Path, language: str, new_id_slug:
     else:
         m2 = re.search(r"\r?\n\r?\n", text)
         insert_at = m2.end() if m2 else 0
-    new_text = text[:insert_at] + new_line + text[insert_at:]
-    source_path.write_text(new_text, encoding="utf-8", newline="")
+    return text[:insert_at] + new_line + text[insert_at:]

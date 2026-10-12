@@ -30,6 +30,7 @@ from .sync import DiskSync
 class ClaudeCodeSession(QObject):
     output = Signal(bytes)         # on the GUI thread
     exited = Signal(int)           # the exit code, on the GUI thread
+    focus_changed = Signal()       # what publish_focus found different: the focus, the scope, the buffer's state
     _chunk = Signal(int, bytes)    # generation, output: from the reader thread
     _ended = Signal(int, int)      # generation, exit code: from the reader thread
 
@@ -43,7 +44,7 @@ class ClaudeCodeSession(QObject):
         self._timer = QTimer(self)                  # the focus also moves without a signal (a file opened)
         self._timer.setInterval(400)
         self._timer.timeout.connect(self.publish_focus)
-        self._workspace = GuiWorkspace(window)      # its own focus, apart from the chat's
+        self.workspace = GuiWorkspace(window)      # its own focus, apart from the chat's
         self._server: McpServer | None = None
         self._process: PtyProcess | None = None
         self._generation = 0                        # which process the callbacks belong to
@@ -99,6 +100,7 @@ class ClaudeCodeSession(QObject):
         if values == self._published and not force:
             return
         self._published = values
+        self.focus_changed.emit()
         try:
             claude_scope.publish(self._focus_file, values[0], PROJECT_ROOT, *values[1:])
         except OSError:
@@ -124,7 +126,7 @@ class ClaudeCodeSession(QObject):
 
     def shutdown(self) -> None:
         """The window closes: end everything, and release the MCP calls that wait for the GUI."""
-        self._workspace.close()
+        self.workspace.close()
         self.stop(last_look=False)
         if self._server is not None:
             self._server.stop()
@@ -135,8 +137,8 @@ class ClaudeCodeSession(QObject):
 
     def _toolbox(self) -> ToolBox:
         """The tools for one MCP call, looking at the window as it is now."""
-        self._workspace.on_gui(self._workspace.begin_request)
-        return build_toolbox(self._workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO,
+        self.workspace.on_gui(self.workspace.begin_request)
+        return build_toolbox(self.workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO,
                              tools=CLAUDE_CODE_TOOLS)
 
     # The reader thread's callbacks only name the process they come from. What arrives on the GUI thread

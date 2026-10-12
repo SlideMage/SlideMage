@@ -5,22 +5,31 @@ Three states. No `claude` found: an install hint and "Check again". Otherwise a 
 time the view is shown (not at launch, and the web view is not even created before): the process lives on
 while the user looks at the chat. When it ends, the terminal keeps its text, the status chip says so and
 Restart starts a new one. Closing the window, switching project and `shutdown()` end the process.
+
+Under the status row: the suggestion bubbles for the slide in the Source view, the model and effort the next
+bubble task runs with (remembered per user), and the status line of the running or last task, with Stop
+(tasks.py does the work).
 """
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt
-from PySide6.QtGui import QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout
+from PySide6.QtGui import QGuiApplication, QShowEvent
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
 
-from ....ai import claude_launch
+from ....ai import claude_launch, claude_runner
 from ....ai.claude_scope import DECK, SLIDE
+from ... import layout_settings
 from ...kit import kit_qss as q
-from ...kit.widgets import Button, Chip, SegmentedControl, Surface, caption
+from ...kit.widgets import (
+    Button, Chip, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
 from ..state import WorkspaceState
+from .tasks import Bubble, TaskRunner, bubbles
 
 HINT, TERMINAL = 0, 1
+MODEL_SETTING, EFFORT_SETTING = "claude_task_model", "claude_task_effort"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
 INSTALL_STEPS = (f'Install it as the <a href="{claude_launch.INSTALL_URL}">Claude Code setup guide</a> says, '
@@ -33,7 +42,11 @@ class ClaudeCodeView(Surface):
         self.app = app
         self.state = state
         self.session = None                       # created with the terminal
+        self.tasks: TaskRunner | None = None
         self.terminal = None
+        self._bubbles: list[Bubble] = []          # the buttons shown
+        self._model = self._remembered(MODEL_SETTING, claude_runner.MODELS, claude_runner.MODEL)
+        self._effort = self._remembered(EFFORT_SETTING, claude_runner.EFFORTS, claude_runner.EFFORT)
         self._started = False
         self._size = (80, 24)
         self._stack = QStackedWidget()
@@ -47,6 +60,8 @@ class ClaudeCodeView(Surface):
         self._terminal_layout.setContentsMargins(0, 0, 0, 0)
         self._terminal_layout.setSpacing(4)
         self._terminal_layout.addLayout(self._build_status_row())
+        self._terminal_layout.addLayout(self._build_bubble_row())
+        self._terminal_layout.addLayout(self._build_task_row())
         self._stack.addWidget(self._terminal_page)
         QCoreApplication.instance().aboutToQuit.connect(self.shutdown)
 
@@ -91,9 +106,107 @@ class ClaudeCodeView(Surface):
         row.addWidget(self.restart_button)
         return row
 
+    def _build_bubble_row(self) -> QHBoxLayout:
+        self._bubble_row = QHBoxLayout()
+        self._bubble_row.setContentsMargins(0, 0, 0, 0)
+        self._bubble_row.addStretch(1)
+        return self._bubble_row
+
+    def _build_task_row(self) -> QHBoxLayout:
+        """The status line of the task, its buttons and the picker: the picker is always there, so that it never
+        takes room from the bubbles."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        self.task_status = caption("")
+        row.addWidget(self.task_status, 1)
+        self.result_button = Button("Show result", "ghost", compact=True)
+        self.result_button.clicked.connect(self._show_result)
+        self.result_button.hide()
+        row.addWidget(self.result_button)
+        self.stop_button = Button("Stop", "secondary", compact=True)
+        self.stop_button.clicked.connect(lambda: self.tasks.stop())
+        self.stop_button.hide()
+        row.addWidget(self.stop_button)
+        self.picker = Button("", "ghost", compact=True)
+        self.picker.setToolTip("The model and the effort the next task runs with.")
+        self.picker.clicked.connect(self._open_picker)
+        self._show_pick()
+        row.addWidget(self.picker)
+        return row
+
     def _on_scope(self, scope: str) -> None:
         if self.session is not None:
             self.session.set_scope(scope)
+
+    # -- bubbles and tasks ------------------------------------------------------------------------
+
+    @staticmethod
+    def _remembered(key: str, choices: tuple[str, ...], default: str) -> str:
+        value = layout_settings.get(key)
+        return value if value in choices else default
+
+    def _show_pick(self) -> None:
+        self.picker.setText(f"{self._model.capitalize()} · {self._effort}  ▾")
+
+    def _open_picker(self) -> None:
+        menu = PopoverMenu(self, min_width=160)
+        menu.add_header("Model")
+        for model in claude_runner.MODELS:
+            menu.add_item(f"{MODEL_SETTING}:{model}", model.capitalize(), icon="check" if model == self._model else "")
+        menu.add_header("Effort")
+        for effort in claude_runner.EFFORTS:
+            menu.add_item(f"{EFFORT_SETTING}:{effort}", effort, icon="check" if effort == self._effort else "")
+        menu.triggered.connect(self._on_picked)
+        menu.closed.connect(menu.deleteLater)
+        menu.popup_below(self.picker, align_right=True)
+
+    def _on_picked(self, key: str) -> None:
+        setting, _, value = key.partition(":")
+        layout_settings.set(setting, value)
+        if setting == MODEL_SETTING:
+            self._model = value
+        else:
+            self._effort = value
+        self._show_pick()
+
+    def _refresh_bubbles(self) -> None:
+        """Show the buttons for the tasks that fit the slide now (none while a task runs)."""
+        if self.tasks is None:
+            return
+        found = [] if self.tasks.busy else bubbles(self.app)
+        if found == self._bubbles:
+            return
+        for _ in self._bubbles:
+            button = self._bubble_row.takeAt(0).widget()
+            button.setParent(None)                     # gone now, not at the next event loop
+            button.deleteLater()
+        for index, bubble in enumerate(found):
+            button = Button(bubble.label, "secondary", compact=True)
+            button.clicked.connect(partial(self._run, bubble))
+            self._bubble_row.insertWidget(index, button)
+        self._bubbles = found
+
+    def _run(self, bubble: Bubble) -> None:
+        self.tasks.start(bubble.task, self._model, self._effort)
+
+    def _on_task_status(self, text: str, tone: str) -> None:
+        self.task_status.setText(text)
+        set_property(self.task_status, "tone", tone)
+        self.result_button.setVisible(bool(self.tasks.unapplied))
+
+    def _on_busy(self, busy: bool) -> None:
+        self.stop_button.setVisible(busy)
+        self.result_button.hide()
+        self._refresh_bubbles()
+
+    def _show_result(self) -> None:
+        sheet = ModalSheet("Claude's result", self.app, width=640)
+        text = QPlainTextEdit(self.tasks.unapplied)
+        text.setReadOnly(True)
+        sheet.add_tab("Claude's result", text)
+        sheet.add_button("Copy").clicked.connect(lambda: QGuiApplication.clipboard().setText(text.toPlainText()))
+        sheet.add_button("Close", kind="primary", role="accept")
+        sheet.exec()
 
     # -- starting and stopping --------------------------------------------------------------------
 
@@ -127,6 +240,12 @@ class ClaudeCodeView(Surface):
         self.session.scope = self.scope.current()
         self.terminal = TerminalWidget(self.app.theme.tokens)
         self._terminal_layout.addWidget(self.terminal, 1)
+        self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)
+        self.tasks.status.connect(self._on_task_status)
+        self.tasks.busy_changed.connect(self._on_busy)
+        self.session.focus_changed.connect(self._refresh_bubbles)
+        self.state.lint_errors_changed.connect(self._refresh_bubbles)
+        self._refresh_bubbles()
         self.terminal.ready.connect(self._on_ready)
         self.terminal.resized.connect(self._on_resized)
         self.terminal.input_data.connect(self.session.write)
@@ -176,6 +295,9 @@ class ClaudeCodeView(Surface):
         """End the process, the MCP server and the terminal page (window close, project switch, app quit)."""
         if self.session is not None:
             self.session.shutdown()
+        if self.tasks is not None:
+            self.tasks.shutdown()
+            self.tasks = None
         if self.terminal is not None:
             self.terminal.shutdown()
             self.terminal = None

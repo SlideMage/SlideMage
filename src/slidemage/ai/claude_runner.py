@@ -28,6 +28,8 @@ from .workspace import Workspace
 # 2-10 s there (the slowest run 13 s), so 60 s is a deadline for a service that has gone wrong.
 MODEL = "sonnet"
 EFFORT = "medium"
+MODELS = ("sonnet", "haiku", "opus")      # what the tab's picker offers
+EFFORTS = ("low", "medium", "high")
 TEXT_DEADLINE_S = 60
 # What a task skips: the user's and the project's MCP servers, settings, hooks, plugins and skills. Together
 # with --system-prompt (replacing Claude Code's own) and the empty working folder (no CLAUDE.md, no memory).

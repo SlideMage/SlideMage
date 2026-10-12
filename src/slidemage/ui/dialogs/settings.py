@@ -2,7 +2,8 @@
 
 * General: dark mode, the Source editor's tab width, the template single slides render with, how
   updates are handled and the GitHub token for them.
-* AI models: the default model of each AI task (a local Ollama model or a Claude one).
+* AI models: the default model of each AI task (a local Ollama model or a Claude one), and how Claude Code
+  translations address the audience in German (this project's `de_address`; ai/translation_style.py).
 * Cloud: "Local AI only" -- for every project, and this project's own override -- and the
   Anthropic API key, with where it is stored.
 * Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
@@ -23,7 +24,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
 
 from ... import app_settings, slide_snapshot, updater
-from ...ai import credentials, resolver
+from ...ai import credentials, resolver, translation_style
 from ...ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from .. import background
@@ -162,6 +163,13 @@ class ModelsTab(Page):
                 self.combos[task] = combo
                 fields.append(Field(label, combo))
             layout.addWidget(columns(*fields))
+        self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
+                                        current=translation_style.de_address())
+        self.address.changed.connect(translation_style.set_de_address)
+        layout.addWidget(Field("German address in Claude Code translations (this project)", self.address))
+        layout.addWidget(caption(
+            f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, one \"English = "
+            "German\" per line; every translation request carries the file as it is."))
         self.unreachable = caption("")
         layout.addWidget(self.unreachable)
         layout.addStretch(1)
