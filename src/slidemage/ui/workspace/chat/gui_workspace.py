@@ -96,6 +96,7 @@ class GuiWorkspace(Workspace):
         self._closed = False
         self._stopping = False                 # Stop was pressed: no edit is asked about until the next request
         self._pending: EditAsk | None = None   # the tools run one after the other: at most one edit waits
+        self.translate: Callable[[Path], str] | None = None    # the Claude Code tab's Translate bubble, if any
 
     # -- crossing threads ----------------------------------------------------------------
 
@@ -232,6 +233,10 @@ class GuiWorkspace(Workspace):
                 window.open_slide_editor(self._local(path))
 
         self.on_gui(show)
+
+    def translate_slide(self, path: Path) -> str:
+        return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else
+                           "SlideMage cannot translate now: the Claude Code tab has no task runner.", "")
 
     def _show_written(self, path: Path) -> None:
         """Bring the views up to date with a file the agent wrote on disk."""

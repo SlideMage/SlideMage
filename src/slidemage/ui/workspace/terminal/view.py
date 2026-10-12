@@ -19,7 +19,7 @@ from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
 
-from ....ai import claude_launch, claude_runner
+from ....ai import claude_launch, claude_runner, claude_tasks
 from ....ai.claude_scope import DECK, SLIDE
 from ... import layout_settings
 from ...kit import kit_qss as q
@@ -232,6 +232,17 @@ class ClaudeCodeView(Surface):
     def _run(self, bubble: Bubble) -> None:
         self.tasks.start(bubble.task, self._model, self._effort, bubble.paths)
 
+    def _translate_slide(self, path: Path) -> str:
+        """The terminal's translate_slide: the slide into view, then its Translate bubble (GUI thread)."""
+        self.session.workspace.show_slide(path)
+        bubble = next((b for b in bubbles(self.app) if b.task is claude_tasks.TRANSLATE), None)
+        if bubble is None:
+            return f"{path.name} has a translation already, or is not EN or DE: there is nothing to translate."
+        if self.tasks.busy:
+            return "SlideMage is busy with another task; ask the user to try again when its status line is done."
+        self._run(bubble)
+        return f"SlideMage is translating it ({bubble.label}); the new slide opens when it is done."
+
     def _on_task_status(self, text: str, tone: str) -> None:
         self.task_status.setText(text)
         set_property(self.task_status, "tone", tone)
@@ -289,6 +300,7 @@ class ClaudeCodeView(Surface):
         self.terminal = TerminalWidget(self.app.theme.tokens)
         self._terminal_layout.addWidget(self.terminal, 1)
         self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)
+        self.session.workspace.translate = self._translate_slide
         self.tasks.status.connect(self._on_task_status)
         self.tasks.busy_changed.connect(self._on_busy)
         self.tasks.summary.connect(lambda text: self._show_text("Summary of the deck", text))

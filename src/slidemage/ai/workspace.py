@@ -85,6 +85,11 @@ class Workspace:
         """Bring the slide file `path` into focus for the user: its preview and its source. Headless
         there is nobody to show it to."""
 
+    def translate_slide(self, path: Path) -> str:
+        """Start SlideMage's own translation of the slide `path` (its Translate bubble); what to tell the
+        model."""
+        return "SlideMage cannot translate here: there is no window."
+
     # -- compiling -------------------------------------------------------------------------------
 
     def compile_deck(

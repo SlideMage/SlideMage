@@ -39,7 +39,8 @@ ORIENTATION = (
     "decks/<name>.tex. Never edit a frozen slides/*-vX-Y-Z.tex, a slide's leading '%%' comment block, its "
     "\\setSlideVersion line or a \\vbox to 0pt{...} block: a hook refuses those edits. SlideMage reloads files "
     "you change; if the user has unsaved edits in the same file it asks them first. After creating a slide, or "
-    "changing one the user is not looking at, call show_slide so they see it. Answers are short: one or two "
+    "changing one the user is not looking at, call show_slide so they see it. To translate a slide, call "
+    "translate_slide and then only say that SlideMage is translating it. Answers are short: one or two "
     "sentences on what you did, no recap of the slide's content, no list of things to check; end with at most "
     "one question offering a concrete next step (e.g. 'Create the German version?').")
 

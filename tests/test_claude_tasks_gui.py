@@ -243,6 +243,21 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(fake)
     assert "\\setSlideVersion" not in call["request"] and "Included in decks" not in call["request"]
 
 
+def test_the_terminal_translates_through_the_bubble(fake):
+    from mcp_client import Client
+    from test_claude_code_gui import on_thread
+
+    env = fake.env
+    fake.reply({"answer": GERMAN})
+    client = Client(env.view.session._server)
+    answer = on_thread(lambda: client.text("translate_slide", path=SLIDE))
+    assert answer == "SlideMage is translating it (Translate to German); the new slide opens when it is done."
+    settled(env)
+    (partner,) = german_files(env)
+    assert "Hallo" in partner.read_text() and env.window.centre.path == partner
+    assert "nothing to translate" in on_thread(lambda: client.text("translate_slide", path=SLIDE))
+
+
 def test_a_failed_translation_creates_nothing(fake):
     env = fake.env
     deck = (env.root / "decks" / "test.tex").read_bytes()

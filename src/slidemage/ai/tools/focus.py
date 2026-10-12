@@ -56,6 +56,19 @@ def show_slide(ctx: ToolContext, args: dict) -> str:
     return f"SlideMage shows {relative(ctx.root, path)}."
 
 
+@tool("translate_slide",
+      "Translate a slide into the other language (EN <-> DE) with SlideMage's own translation, the one of its "
+      "Translate bubble: the project's form of address and glossary, a new linked slide placed after the "
+      "source in the deck. It runs in SlideMage, which shows its progress; do not translate by hand.",
+      {"path": {"type": "string", "description": "Project-relative path, e.g. slides/1y8-EN-Title-current.tex"}},
+      ("path",))
+def translate_slide(ctx: ToolContext, args: dict) -> str:
+    path = project_path(ctx.root, args["path"])
+    if path.parent.name != "slides" or path.suffix != ".tex" or not path.is_file():
+        raise ToolError(f"{args['path']} is no slide file: slides/<id>-<LANG>-<Slug>-current.tex.")
+    return ctx.workspace.translate_slide(path)
+
+
 @tool("read_buffer",
       "Read a file as the SlideMage editor has it, unsaved edits included (the numbered lines of "
       "read_file). Only for files open in the editor; use your own Read for the rest.",
