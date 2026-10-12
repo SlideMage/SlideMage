@@ -340,6 +340,25 @@ def build_prompt(context: SlideContext) -> str:
     )
 
 
+def draft_from_fields(fields: dict, model: str, elapsed_s: float) -> DraftResult:
+    """The draft for a model's answer in RESPONSE_SCHEMA's shape: trimmed, and with a value table removed
+    that looks interpolated rather than measured (detect_value_ramp)."""
+    long_text = (fields.get("long") or "").strip()
+    ramp = detect_value_ramp(long_text)
+    if ramp:
+        long_text = _strip_ramp_table(long_text)
+
+    return DraftResult(
+        short=(fields.get("short") or "").strip(),
+        long=long_text,
+        takeaway=(fields.get("takeaway") or "").strip(),
+        role_suggestion=(fields.get("role_suggestion") or "").strip(),
+        model=model,
+        elapsed_s=elapsed_s,
+        suspected_fabrication=ramp,
+    )
+
+
 # --------------------------------------------------------------------------
 # Backends
 # --------------------------------------------------------------------------
@@ -496,21 +515,7 @@ class ModelBackend:
                 message = f"Model returned non-JSON output: {shown[:200]!r}"
             return DraftResult(model=self.label, elapsed_s=attempt.elapsed_s, error=message)
 
-        fields = attempt.fields
-        long_text = (fields.get("long") or "").strip()
-        ramp = detect_value_ramp(long_text)
-        if ramp:
-            long_text = _strip_ramp_table(long_text)
-
-        return DraftResult(
-            short=(fields.get("short") or "").strip(),
-            long=long_text,
-            takeaway=(fields.get("takeaway") or "").strip(),
-            role_suggestion=(fields.get("role_suggestion") or "").strip(),
-            model=self.label,
-            elapsed_s=attempt.elapsed_s,
-            suspected_fabrication=ramp,
-        )
+        return draft_from_fields(attempt.fields, self.label, attempt.elapsed_s)
 
 
 _TABLE_ROW_RE = re.compile(r"^\s*\|(.+)\|\s*$", re.MULTILINE)

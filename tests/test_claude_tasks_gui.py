@@ -1,7 +1,7 @@
 """The bubbles of the Claude Code tab (ui/workspace/terminal/tasks.py and view.py), with the fake `claude -p` of
 tests/fake_claude.py: which bubbles the focus and the lint offer, a fix applied into the open buffer, a
 translation that creates the partner only on success, the conflicts (typing, a changed source), Stop, the
-picker and the project's German address. The project is a throwaway one, never example/."""
+picker and the project's German address, the image bubbles (describe, translate the descriptions). The project is a throwaway one, never example/."""
 from __future__ import annotations
 
 import json
@@ -10,8 +10,9 @@ import sys
 import pytest
 from conftest import SLIDE_TEXT
 from test_claude_code_gui import env as claude_env, pump, start_view, wait_until  # noqa: F401 -- a fixture
+from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, add_pictures
 
-from slidemage import slide_ids, slide_language, slide_versioning
+from slidemage import alt_images, slide_ids, slide_language, slide_versioning
 from slidemage.ai import claude_launch, claude_runner, translation_style
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.widgets import PopoverMenu
@@ -538,3 +539,79 @@ def test_bubbles_that_do_not_fit_go_under_more(fake, monkeypatch):
     menu._on_activated(str(TEXT_BUBBLES.index("Better title")))
     assert view.tasks.busy
     settled(env)
+
+
+# -- images ---------------------------------------------------------------------------------------------------
+
+def with_pictures(fake, **entries):
+    """Slide abc with these images (name -> fields of the store entry), in its file, the store and the buffer."""
+    slide = add_pictures(fake.monkeypatch, fake.env.root, **entries)
+    slide_file(fake.env).editor.replace_all_text(slide.read_bytes().decode().replace("\r\n", "\n"))
+    return alt_images.load_store
+
+
+def test_the_image_bubbles_count_what_is_still_to_do(fake):
+    env = fake.env
+    store = with_pictures(fake, a={}, b={}, c=dict(role=alt_images.ROLE_DECORATIVE), d=dict(short="s", long="l"))
+    wait_until(lambda: "Describe images (2)" in buttons(env))
+    assert "Translate image descriptions (1)" in buttons(env)
+    alt_images.update_store(lambda e: setattr(e["media/a.png"], "long", "now described") or True)
+    env.view._refresh_bubbles()
+    assert "Describe images (1)" in buttons(env) and "Translate image descriptions (2)" in buttons(env)
+    slide_file(env).editor.replace_all_text(LF)
+    wait_until(lambda: buttons(env) == ["Translate to German", "Better title"])
+    assert len(store()) == 4
+
+
+def test_describing_images_stores_drafts_and_shows_them_in_the_panel(fake):
+    env = fake.env
+    with_pictures(fake, a={}, b={})
+    env.window.side_panels.set_panel("images")
+    wait_until(lambda: "Describe images (2)" in buttons(env))
+    fake.reply({"answer": IMAGE_ANSWER, "delay": 0.6})
+    click(env, "Describe images (2)")
+    wait_until(lambda: "Describing images of abc … 1/2" in env.view.task_status.text())
+    assert settled(env).startswith("Done in ") and settled(env).endswith(": 2 described")
+    store = alt_images.load_store()
+    assert [(e.short, e.drafted_by) for e in store.values()] == [(IMAGE_ANSWER["short"], "Claude sonnet")] * 2
+    assert all(e.status != alt_images.STATUS_REVIEWED for e in store.values())
+    forms = env.window.side_panels.panels["images"]._forms
+    assert [form.short_edit.toPlainText() for form in forms] == [IMAGE_ANSWER["short"]] * 2
+    assert [call["images"][0]["media_type"] for call in fake.calls()] == ["image/png"] * 2
+    assert buttons(env)[-1] == "Translate image descriptions (2)"
+
+
+def test_stop_ends_the_running_image_process_and_the_rest(fake, tmp_path):
+    env = fake.env
+    with_pictures(fake, a={}, b={})
+    wait_until(lambda: "Describe images (2)" in buttons(env))
+    fake.reply({"answer": IMAGE_ANSWER, "delay": 5, "marker": str(tmp_path / "late")})
+    click(env, "Describe images (2)")
+    wait_until(lambda: fake.log.exists())
+    env.view.stop_button.click()
+    assert settled(env).startswith("Stopped after ") and settled(env).endswith(": 0 described")
+    assert len(fake.calls()) == 1 and not (tmp_path / "late").exists()
+    assert not any(e.short for e in alt_images.load_store().values())
+
+
+def test_a_failed_image_is_counted_and_the_others_are_kept(fake):
+    env = fake.env
+    with_pictures(fake, a={}, b={})
+    wait_until(lambda: "Describe images (2)" in buttons(env))
+    fake.reply({"answer": IMAGE_ANSWER}, {"error": "overloaded"})
+    click(env, "Describe images (2)")
+    assert settled(env).endswith(": 1 described, 1 failed (media/b.png: overloaded)")
+    assert [e.short for e in alt_images.load_store().values()] == [IMAGE_ANSWER["short"], ""]
+
+
+def test_translating_the_descriptions_stores_unreviewed_german_text(fake):
+    env = fake.env
+    with_pictures(fake, a=dict(short="A bar chart.", long="Two bars."))
+    wait_until(lambda: "Translate image descriptions (1)" in buttons(env))
+    assert not any(label.startswith("Describe") for label in buttons(env))
+    fake.reply({"answer": GERMAN_IMAGE})
+    click(env, "Translate image descriptions (1)")
+    assert settled(env).endswith(": 1 translated")
+    entry = alt_images.load_store()["media/a.png"]
+    assert (entry.short_de, entry.long_de) == (GERMAN_IMAGE["short_de"], GERMAN_IMAGE["long_de"])
+    assert not any(label.startswith("Translate image") for label in buttons(env))

@@ -1,8 +1,9 @@
 """A stand-in for the `claude` program, for the tests of the Claude Code view: a script that logs what it
 was started with (argv, cwd, selected environment) to $FAKE_CLAUDE_LOG, prints a banner, echoes what is typed
 (raw terminal) and ends at "/exit". With `-p` it is a one-shot task: it logs the call and the request it read
-from stdin (one JSON line per call), then answers with stream-json events as $FAKE_CLAUDE_REPLIES says, a JSON
-list with one entry per call (the last one repeats): {"answer": {...}} is the structured result, {"error":
+from stdin (one JSON line per call; with `--input-format stream-json` the text of the user message as "request"
+and its image blocks as "images", each the block's source), then answers with stream-json events as
+$FAKE_CLAUDE_REPLIES says, a JSON list with one entry per call (the last one repeats): {"answer": {...}} is the structured result, {"error":
 "text"} an error result, {"exit": code} no result at all; "delay" waits that many seconds before the result, and
 "marker" is a file touched after the delay (a process that was killed never gets there). It never talks to a
 model or the network."""
@@ -17,10 +18,14 @@ import json, os, sys, tty
 log = os.environ.get("FAKE_CLAUDE_LOG")
 if "-p" in sys.argv:
     import time
-    request = sys.stdin.read()
+    request, images = sys.stdin.read(), []
+    if "--input-format" in sys.argv:
+        content = json.loads(request.splitlines()[0])["message"]["content"]
+        images = [block["source"] for block in content if block["type"] == "image"]
+        request = "".join(block["text"] for block in content if block["type"] == "text")
     calls = len(open(log).readlines()) if os.path.exists(log) else 0
     with open(log, "a") as f:
-        f.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "request": request,
+        f.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "request": request, "images": images,
                             "env": sorted(os.environ)}}) + "\\n")
     replies = json.loads(os.environ["FAKE_CLAUDE_REPLIES"])
     reply = replies[min(calls, len(replies) - 1)]

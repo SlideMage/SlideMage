@@ -3,6 +3,7 @@ command line and environment of the process, the outcomes (done, nothing to chan
 repair attempt, the deadline, Stop, and that a changed file is not overwritten."""
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import time
@@ -136,3 +137,28 @@ def test_a_result_is_refused_if_the_file_changed(root):
     problem = claude_runner.apply_result(Workspace(root), path, LF, GOOD["body"])
     assert problem and "changed on disk" in problem
     assert path.read_bytes().decode().endswith("typed meanwhile\r\n") and "Hallo" not in path.read_text()
+
+
+def test_images_go_inline_as_one_stream_json_message(claude, tmp_path):
+    claude.script({"answer": {"ok": 1}})
+    picture = tmp_path / "chart.png"
+    picture.write_bytes(b"\x89PNG fake")
+    task = claude_tasks.Task("t", "RULES", {"type": "object", "properties": {"ok": {"type": "integer"}}})
+    cancel = threading.Event()
+    result = claude_runner.run_json(claude.path, task, "THE REQUEST", "haiku", "low", time.monotonic() + 20, cancel,
+                                    (picture,))
+    assert (result.answer, result.error) == ({"ok": 1}, "")
+    (call,) = claude.calls()
+    flags = call["argv"]
+    assert flags[flags.index("--input-format") + 1] == "stream-json" and flags[flags.index("--output-format") + 1] == "stream-json"
+    assert flags[flags.index("--system-prompt") + 1] == "RULES"
+    assert call["request"] == "THE REQUEST"
+    assert call["images"] == [{"type": "base64", "media_type": "image/png", "data": base64.b64encode(b"\x89PNG fake").decode()}]
+
+
+def test_a_request_without_images_stays_plain_text(claude):
+    claude.script({"answer": {}})
+    claude_runner.run_json(claude.path, claude_tasks.TRANSLATE, "THE REQUEST", "sonnet", "medium", time.monotonic() + 20,
+                           threading.Event())
+    (call,) = claude.calls()
+    assert "--input-format" not in call["argv"] and call["request"] == "THE REQUEST" and call["images"] == []

@@ -8,6 +8,9 @@ a closed file, onto disk with a backup; the update of a translation changes the 
 open; a translation creates the partner slide, links it to the source (a change of the source's header,
 subject to the same check) and puts its call after the source's in the deck.
 Typing in the slide meanwhile makes it a conflict: nothing is written and the result is kept for the user.
+The image bubbles (describe, translate the descriptions) are different: an _ImageWorker works through the slide's
+images one process after another and alt_draft's batch stores each draft as it is done (nothing of the slide
+changes); the Images panel is shown again at the end.
 One task at a time; Stop and closing the window end its process.
 """
 from __future__ import annotations
@@ -20,9 +23,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
-from .... import deck_editor, latex_lint, slide_add, slide_ids, slide_language, slide_source, slide_versioning
+from .... import (alt_blocks, alt_draft, alt_images, deck_editor, latex_lint, slide_add, slide_ids, slide_language,
+                  slide_source, slide_versioning)
 from ....tex_source import masked_same_length
-from ....ai import claude_runner, claude_tasks, translation_style
+from ....ai import claude_images, claude_runner, claude_tasks, translation_style
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ... import background
 
@@ -30,7 +34,8 @@ CONFLICT = "The slide changed while Claude worked."
 _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSLATION.name: "Updating",
           claude_tasks.FIX_LATEX.name: "Fixing", claude_tasks.PROOFREAD.name: "Proofreading",
           claude_tasks.CONCISE.name: "Shortening", claude_tasks.TITLE.name: "Retitling",
-          claude_tasks.NOTE.name: "Adding a note to"}
+          claude_tasks.NOTE.name: "Adding a note to", claude_images.DESCRIBE.name: "Describing",
+          claude_images.TRANSLATE.name: "Translating"}
 PROSE_WORDS = 10                       # words of running text that make a slide "have text" for the bubbles
 _WORD_RE = re.compile(r"[^\W\d_]{3,}")
 _MARKUP_RE = re.compile(r"\\(?:begin|end)\{[^}]*\}|\\[A-Za-z]+\*?|\$[^$]*\$|\\\(.*?\\\)")
@@ -47,6 +52,15 @@ class _Focus:
     path: Path
     id_slug: str
     text: str                  # as the Source view has it, unsaved edits included
+
+
+@dataclass(frozen=True)
+class _ImageCapture:
+    """An image task as it was when its bubble was clicked."""
+    task: claude_tasks.Task    # claude_images.DESCRIBE or TRANSLATE
+    path: Path                 # of the slide
+    id_slug: str
+    images: list[str]          # store keys: what to describe, what to translate
 
 
 @dataclass(frozen=True)
@@ -86,6 +100,21 @@ def _has_text(text: str) -> bool:
     return len(_WORD_RE.findall(_MARKUP_RE.sub(" ", masked_same_length(text)))) >= PROSE_WORDS
 
 
+def _slide_images(text: str) -> tuple[list[str], list[str]]:
+    """The slide's images (store keys) without a description, and those with an English text that has no
+    current German one (alt_draft.images_needing_translation). Whether a model can read the image is only
+    known at the run: a vector file or a missing one drops out there."""
+    references = alt_blocks.referenced_images(text)
+    if not references:
+        return [], []
+    entries = alt_images.load_store()
+    found = {entry.image: entry for entry in (alt_images.lookup(entries, reference) for reference in references)
+             if entry is not None}
+    translate = set(alt_draft.images_needing_translation())
+    return ([image for image, entry in found.items() if not (entry.short or entry.long or entry.is_decorative)],
+            [image for image in found if image in translate])
+
+
 def _offers(focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
     """The tasks that fit the slide `focus` with its translation partner `link`."""
     own = slide_language.own_language(focus.id_slug)
@@ -107,6 +136,11 @@ def _offers(focus: _Focus, link: slide_language.TranslationLink | None) -> list[
         found.append(Bubble(claude_tasks.TITLE, "Better title"))
     if text and not slide_source.note_calls(focus.text):
         found.append(Bubble(claude_tasks.NOTE, "Add speaker notes"))
+    describe, translate = _slide_images(focus.text)
+    if describe:
+        found.append(Bubble(claude_images.DESCRIBE, f"Describe images ({len(describe)})"))
+    if translate:
+        found.append(Bubble(claude_images.TRANSLATE, f"Translate image descriptions ({len(translate)})"))
     return found
 
 
@@ -155,6 +189,16 @@ def _capture(window, task: claude_tasks.Task) -> _Capture | None:
                     slide_source.read_slide_source(path)[1], deck.path if deck is not None else None)
 
 
+def _capture_images(window, task: claude_tasks.Task) -> _ImageCapture | None:
+    """The image task on the slide in the Source view, or None when there is nothing for it any more."""
+    focus = _focus(window)
+    if focus is None:
+        return None
+    describe, translate = _slide_images(focus.text)
+    images = describe if task is claude_images.DESCRIBE else translate
+    return _ImageCapture(task, focus.path, focus.id_slug, images) if images else None
+
+
 class _Worker(QThread):
     done = Signal(object, object)      # this worker, the Outcome
 
@@ -172,6 +216,31 @@ class _Worker(QThread):
         self.done.emit(self, outcome)
 
 
+class _ImageWorker(QThread):
+    done = Signal(object, object)      # this worker, the summary of alt_draft's batch
+
+    def __init__(self, claude: Path, capture: _ImageCapture, model: str, effort: str, cancel: threading.Event) -> None:
+        super().__init__()
+        self.capture, self.cancel = capture, cancel
+        self.backend = (claude_images.ClaudeDraftBackend if capture.task is claude_images.DESCRIBE
+                        else claude_images.ClaudeTranslationBackend)(claude, model, effort, cancel)
+        self.position = (1, len(capture.images))       # the image at work and how many: the status line reads it
+
+    def _progress(self, index: int, total: int, _item) -> None:
+        self.position = (index, total)
+
+    def run(self) -> None:
+        capture = self.capture
+        if capture.task is claude_images.DESCRIBE:
+            row = alt_blocks.SlideRow(capture.path, slide_language.bare_id(capture.id_slug), "", capture.images)
+            summary = alt_draft.run_batch(alt_draft.slide_jobs(row, alt_images.load_store()), self.backend,
+                                          on_progress=self._progress, should_stop=self.cancel.is_set)
+        else:
+            summary = alt_draft.run_translation_batch(capture.images, self.backend, on_progress=self._progress,
+                                                      should_stop=self.cancel.is_set)
+        self.done.emit(self, summary)
+
+
 class TaskRunner(QObject):
     status = Signal(str, str)          # the status line's text and tone ("muted", "ok", "warning", "error")
     busy_changed = Signal(bool)
@@ -180,7 +249,7 @@ class TaskRunner(QObject):
         """`window` is the main window, `workspace` the GuiWorkspace that applies edits to its buffers."""
         super().__init__(parent)
         self._window, self._claude, self._workspace = window, claude, workspace
-        self._worker: _Worker | None = None
+        self._worker: _Worker | _ImageWorker | None = None
         self._cancel = threading.Event()
         self._started = 0.0
         self._ticker = QTimer(self)
@@ -196,14 +265,15 @@ class TaskRunner(QObject):
         """Run `task` on the slide in the Source view, unless one is running or it no longer fits."""
         if self.busy:
             return
-        capture = _capture(self._window, task)
+        images = task in (claude_images.DESCRIBE, claude_images.TRANSLATE)
+        capture = (_capture_images if images else _capture)(self._window, task)
         if capture is None:
             self.status.emit("That no longer fits this slide.", "warning")
             return
         self._cancel = threading.Event()
         self._started = time.monotonic()
         self.unapplied = ""
-        self._worker = _Worker(self._claude, capture, model, effort, self._cancel)
+        self._worker = (_ImageWorker if images else _Worker)(self._claude, capture, model, effort, self._cancel)
         self._worker.done.connect(self._on_done)
         self.busy_changed.emit(True)
         self._tick()
@@ -222,24 +292,45 @@ class TaskRunner(QObject):
             background.stop_worker(worker)
 
     def _tick(self) -> None:
-        capture = self._worker.capture
+        worker = self._worker
         seconds = round(time.monotonic() - self._started)
-        self.status.emit(f"{_VERBS[capture.task.name]} {slide_language.bare_id(capture.id_slug)} … {seconds} s", "muted")
+        verb, slide = _VERBS[worker.capture.task.name], slide_language.bare_id(worker.capture.id_slug)
+        if isinstance(worker, _ImageWorker):
+            self.status.emit(f"{verb} images of {slide} … {worker.position[0]}/{worker.position[1]} · {seconds} s",
+                             "muted")
+        else:
+            self.status.emit(f"{verb} {slide} … {seconds} s", "muted")
 
-    def _on_done(self, worker: _Worker, outcome: Outcome) -> None:
+    def _on_done(self, worker: _Worker | _ImageWorker, outcome) -> None:
         if worker is not self._worker:         # the view was closed meanwhile
             return
         self._worker = None
         self._ticker.stop()
         worker.wait()
         worker.deleteLater()
-        if outcome.status == DONE:
+        if isinstance(worker, _ImageWorker):
+            report = self._images_report(worker.capture.task, outcome)
+            self._window.side_panels.refresh()         # shows the drafts that were stored
+        elif outcome.status == DONE:
             report = self._apply(worker.capture, outcome)
         else:
             report = {CANCELLED: ("Cancelled", "muted"), NOTHING: ("Nothing to change", "muted")}.get(
                 outcome.status, (outcome.message, "error"))
         self.busy_changed.emit(False)          # after the change: the bubbles look at the slide as it is now
         self.status.emit(*report)
+
+    def _images_report(self, task: claude_tasks.Task, summary) -> tuple[str, str]:
+        """(status text, tone) of a finished or stopped run over images, `summary` being the batch's."""
+        did = "described" if task is claude_images.DESCRIBE else "translated"
+        if self._cancel.is_set():
+            return f"Stopped after {summary.seconds:.1f} s: {summary.written} {did}", "muted"
+        if not summary.attempted:
+            return "None of these images can be read", "warning"
+        text = f"Done in {summary.seconds:.1f} s: {summary.written} {did}"
+        failed = summary.attempted - summary.written
+        if not failed:
+            return text, "ok"
+        return f"{text}, {failed} failed ({summary.errors[0]})", "warning" if summary.written else "error"
 
     # -- applying ----------------------------------------------------------------------------------------
 

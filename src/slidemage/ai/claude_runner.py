@@ -8,12 +8,14 @@ kills the process, and whatever it would have answered is dropped. No Qt.
 """
 from __future__ import annotations
 
+import base64
 import json
 import queue
 import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +33,9 @@ EFFORT = "medium"
 MODELS = ("sonnet", "haiku", "opus")      # what the tab's picker offers
 EFFORTS = ("low", "medium", "high")
 TEXT_DEADLINE_S = 60
+IMAGE_DEADLINE_S = 120           # per image: it is read as well as described
+# What Claude reads as an image, by file suffix (a task with images sends them over stream-json input).
+MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif"}
 # What a task skips: the user's and the project's MCP servers, settings, hooks, plugins and skills. Together
 # with --system-prompt (replacing Claude Code's own) and the empty working folder (no CLAUDE.md, no memory).
 ISOLATION = ("--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands")
@@ -53,7 +58,7 @@ class Outcome:
 
 
 @dataclass
-class _Run:
+class Run:
     """What one process did."""
     answer: dict | None = None
     error: str = ""
@@ -64,13 +69,26 @@ class _Run:
     tokens_out: int = 0
 
 
-def _command(claude: Path, task: claude_tasks.Task, model: str, effort: str) -> list[str]:
+def _command(claude: Path, task: claude_tasks.Task, model: str, effort: str, images: bool) -> list[str]:
     return [str(claude), "-p", "--model", model, "--effort", effort, "--tools", "", "--no-session-persistence",
+            *(("--input-format", "stream-json") if images else ()),
             "--output-format", "stream-json", "--verbose", "--json-schema", json.dumps(task.schema),
             *ISOLATION, "--system-prompt", task.rules]
 
 
-def _take_result(run: _Run, event: dict) -> None:
+def _stdin(request: str, images: Sequence[Path]) -> str:
+    """What the process reads: `request`, or with `images` (suffixes of MEDIA_TYPES) one stream-json user
+    message, a line holding the images as base64 blocks before the text."""
+    if not images:
+        return request
+    blocks = [{"type": "image", "source": {"type": "base64", "media_type": MEDIA_TYPES[image.suffix.lower()],
+                                           "data": base64.b64encode(image.read_bytes()).decode()}}
+              for image in images]
+    message = {"role": "user", "content": [*blocks, {"type": "text", "text": request}]}
+    return json.dumps({"type": "user", "message": message}) + "\n"
+
+
+def _take_result(run: Run, event: dict) -> None:
     """Note the answer, the error and the usage of a stream-json result event in `run`."""
     usage = event.get("usage", {})
     run.turns = event.get("num_turns", 0)
@@ -93,11 +111,11 @@ def _read_lines(stream, lines: queue.Queue) -> None:
 
 
 def _run(argv: list[str], request: str, cwd: Path, env: dict[str, str], deadline: float,
-         cancel: threading.Event) -> _Run:
+         cancel: threading.Event) -> Run:
     """Start `argv`, give it `request` and wait for its result event (until time.monotonic() is `deadline`);
     the process is gone when this returns."""
     started = time.monotonic()
-    run = _Run()
+    run = Run()
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             cwd=cwd, env=env, text=True, encoding="utf-8", **no_console_kwargs())
     lines: queue.Queue = queue.Queue()
@@ -140,6 +158,15 @@ def _run(argv: list[str], request: str, cwd: Path, env: dict[str, str], deadline
     return run
 
 
+def run_json(claude: Path, task: claude_tasks.Task, request: str, model: str, effort: str, deadline: float,
+             cancel: threading.Event, images: Sequence[Path] = ()) -> Run:
+    """One process for `task` with `request` (and `images`): what it answered, unchecked. `deadline` is a
+    time.monotonic() value."""
+    with tempfile.TemporaryDirectory(prefix="slidemage-claude-task-") as empty:
+        return _run(_command(claude, task, model, effort, bool(images)), _stdin(request, images), Path(empty),
+                    clean_environment(claude), deadline, cancel)
+
+
 def run_task(claude: Path, task: claude_tasks.Task, captured: str, request: str, model: str = MODEL,
              effort: str = EFFORT, deadline_s: float = TEXT_DEADLINE_S,
              cancel: threading.Event | None = None) -> Outcome:
@@ -148,30 +175,27 @@ def run_task(claude: Path, task: claude_tasks.Task, captured: str, request: str,
     attempts."""
     cancel = cancel or threading.Event()
     started = time.monotonic()
-    argv = _command(claude, task, model, effort)
-    env = clean_environment(claude)
     outcome = Outcome(FAILED)
-    with tempfile.TemporaryDirectory(prefix="slidemage-claude-task-") as empty:
-        for attempt in (1, 2):
-            run = _run(argv, request, Path(empty), env, started + deadline_s, cancel)
-            outcome.attempts = attempt
-            outcome.turns += run.turns
-            outcome.tokens_in += run.tokens_in
-            outcome.tokens_out += run.tokens_out
-            if attempt == 1:
-                outcome.first_s = run.first_s
-            if run.cancelled:
-                outcome.status, outcome.message = CANCELLED, ""
-                break
-            if run.error:
-                outcome.message = run.error
-                break
-            text, problems = claude_tasks.check(task, captured, run.answer)
-            if not problems:
-                outcome.status, outcome.text, outcome.message = (NOTHING, "", "") if text == captured else (DONE, text, "")
-                break
-            outcome.message = "Claude's answer was refused: " + "; ".join(problems)
-            request = claude_tasks.repair_request(request, run.answer, problems)
+    for attempt in (1, 2):
+        run = run_json(claude, task, request, model, effort, started + deadline_s, cancel)
+        outcome.attempts = attempt
+        outcome.turns += run.turns
+        outcome.tokens_in += run.tokens_in
+        outcome.tokens_out += run.tokens_out
+        if attempt == 1:
+            outcome.first_s = run.first_s
+        if run.cancelled:
+            outcome.status, outcome.message = CANCELLED, ""
+            break
+        if run.error:
+            outcome.message = run.error
+            break
+        text, problems = claude_tasks.check(task, captured, run.answer)
+        if not problems:
+            outcome.status, outcome.text, outcome.message = (NOTHING, "", "") if text == captured else (DONE, text, "")
+            break
+        outcome.message = "Claude's answer was refused: " + "; ".join(problems)
+        request = claude_tasks.repair_request(request, run.answer, problems)
     outcome.elapsed_s = time.monotonic() - started
     return outcome
 
