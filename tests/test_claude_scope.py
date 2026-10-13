@@ -51,3 +51,38 @@ def test_hook_prints_the_context_for_a_prompt(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", type("S", (), {"buffer": io.BytesIO(event.encode())})())
     assert claude_hook.main() == 0
     assert "THIS SLIDE" in capsys.readouterr().out
+
+
+def test_failed_focus_publish_is_retried_without_a_focus_change(qapp, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from slidemage.project import ProjectContext
+    from slidemage.ui.workspace.terminal.session import ClaudeCodeSession
+
+    window = SimpleNamespace(
+        project=ProjectContext.at(tmp_path),
+        state=SimpleNamespace(deck=None, focused_slide="abc", view="instructor", language="EN"),
+        centre=SimpleNamespace(path=tmp_path / "slides/abc-EN-Hello-current.tex", is_dirty=lambda path: False))
+    session = ClaudeCodeSession(window, tmp_path / "fake-claude")
+    session._focus_file = tmp_path / "focus.json"
+    changed, attempts = [], []
+    session.focus_changed.connect(lambda: changed.append(True))
+    publish = claude_scope.publish
+
+    def fail_once(*args):
+        attempts.append(args)
+        if len(attempts) == 1:
+            raise OSError("write failed")
+        publish(*args)
+
+    monkeypatch.setattr(claude_scope, "publish", fail_once)
+    try:
+        session.publish_focus()
+        assert session._published is None and not changed and not session._focus_file.exists()
+        session.publish_focus()
+        assert session._published is not None and changed == [True] and len(attempts) == 2
+        assert claude_scope.load(session._focus_file)["slide_id"] == "abc"
+        session.publish_focus()
+        assert len(attempts) == 2 and changed == [True]
+    finally:
+        session.shutdown()

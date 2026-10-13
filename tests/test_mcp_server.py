@@ -11,7 +11,7 @@ from conftest import SLIDE_TEXT
 from slidemage.project import ProjectContext
 from mcp_client import Client
 
-from slidemage import compiler, preview_target, slide_snapshot
+from slidemage import compiler, deck_editor, preview_target, slide_add, slide_snapshot
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ai.mcp_server import PROTOCOL_VERSIONS, McpServer
 from slidemage.ai.tools import CLAUDE_CODE_READ_ONLY, CLAUDE_CODE_TOOLS, build_toolbox
@@ -25,6 +25,19 @@ def ctx(root):
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
+
+
+@pytest.fixture
+def mcp_tools(root, monkeypatch):
+    """Exercise the real JSON-RPC tool handler without a listening socket or model."""
+    deck = next(d for d in scan_decks(ProjectContext.at(root)) if d.name == "test")
+    workspace = FakeWorkspace(root, WorkspaceContext(deck=deck, slide_id="abc", path=root / SLIDE))
+    server = McpServer(lambda: build_toolbox(workspace, lambda _e: None, compiler.CancelToken(), EDIT_AUTO,
+                                            tools=CLAUDE_CODE_TOOLS))
+    client = Client(server)
+    client.workspace, client.root = workspace, root
+    monkeypatch.setattr(client, "raw", lambda body: (200, server.handle(body)))
+    return client
 
 
 @pytest.fixture
@@ -102,6 +115,20 @@ def test_tools_list_names_the_claude_code_tools_with_their_schemas(mcp):
     assert not {"read_file", "edit_file", "write_file", "compile_deck"} & set(names)
 
 
+def test_terminal_tool_instructions_name_only_available_tools(mcp_tools):
+    mcp = mcp_tools
+    tools = mcp.rpc("tools/list")["result"]["tools"]
+    for spec in tools:
+        text = str(spec)
+        assert not any(name in text for name in ("edit_file", "write_file", "read_file", "find_files"))
+    focus = next(t for t in tools if t["name"] == "get_focus")
+    assert "missing or stale" in focus["description"] and "Call it first" not in focus["description"]
+    for args in ({"slug": "Skeleton", "title": "T", "add_to_deck": False},
+                 {"slug": "Translation", "title": "T", "language": "DE", "translation_of": "abc"}):
+        text = mcp.text("add_slide", **args)
+        assert "edit_file" not in text and "write_file" not in text
+
+
 # -- the tools ------------------------------------------------------------------------------------------------
 
 def test_get_focus_says_what_the_user_looks_at_and_whether_the_buffer_is_dirty(mcp):
@@ -145,6 +172,84 @@ def test_add_slide_goes_through_and_a_failing_tool_is_an_error_result_not_a_cras
     unknown = mcp.call("compile_deck")
     assert unknown["isError"] and "no tool 'compile_deck'" in unknown["content"][0]["text"]
     assert mcp.call("lint", path="slides/zzz-EN-Missing-current.tex")["isError"]
+
+
+@pytest.mark.parametrize("error", [deck_editor.StaleFileError, OSError, ValueError])
+@pytest.mark.parametrize("retry", ["id", "id_slug", "path"])
+def test_failed_insertion_returns_existing_slide_and_retry_never_duplicates(mcp_tools, monkeypatch, error, retry):
+    mcp = mcp_tools
+    deck = mcp.root / "decks/test.tex"
+    original_insert = deck_editor.insert_slide_call
+    original_deck = deck.read_bytes()
+
+    def fail(*args, **kwargs):
+        raise error("insertion failed")
+
+    monkeypatch.setattr(deck_editor, "insert_slide_call", fail)
+    result = mcp.call("add_slide", slug="Retry", title="T", after="abc")
+    assert result["isError"]
+    created, = (mcp.root / "slides").glob("*-EN-Retry-current.tex")
+    id_slug = created.name.removesuffix("-current.tex")
+    path = created.relative_to(mcp.root).as_posix()
+    text = result["content"][0]["text"]
+    assert id_slug in text and path in text and f"add_slide(existing='{id_slug}', after='abc')" in text
+    assert (created, None) in mcp.workspace.changed and deck.read_bytes() == original_deck
+    id_store = mcp.workspace.project.slide_ids_csv.read_bytes()
+    slide_text = created.read_bytes()
+    monkeypatch.setattr(deck_editor, "insert_slide_call", original_insert)
+    existing = {"id": id_slug[:3], "id_slug": id_slug, "path": path}[retry]
+    assert "Inserted slide" in mcp.text("add_slide", existing=existing, after="abc")
+    inserted = deck.read_bytes()
+    # The second retry is safe even if its anchor no longer exists.
+    assert "already in test" in mcp.text("add_slide", existing=existing, after="zzz")
+    calls = deck_editor.parse_slide_calls(next(d for d in scan_decks(mcp.workspace.project) if d.name == "test"))
+    assert [c.id_slug for c in calls] == ["abc-EN-Hello", id_slug, "abd-EN-Second"]
+    assert deck.read_bytes() == inserted and created.read_bytes() == slide_text
+    assert mcp.workspace.project.slide_ids_csv.read_bytes() == id_store
+    assert list((mcp.root / "slides").glob("*-EN-Retry-current.tex")) == [created]
+
+
+def test_deck_becoming_dirty_after_creation_returns_recoverable_error(mcp_tools, monkeypatch):
+    mcp = mcp_tools
+    deck = mcp.root / "decks/test.tex"
+    before = deck.read_bytes()
+    create = slide_add.create_new
+
+    def become_dirty(*args, **kwargs):
+        created = create(*args, **kwargs)
+        mcp.workspace.open(deck, "unsaved deck edits", dirty=True)
+        return created
+
+    monkeypatch.setattr(slide_add, "create_new", become_dirty)
+    result = mcp.call("add_slide", slug="Dirty", title="T")
+    assert result["isError"] and "unsaved edits" in result["content"][0]["text"]
+    created, = (mcp.root / "slides").glob("*-EN-Dirty-current.tex")
+    assert created.name in result["content"][0]["text"] and "existing=" in result["content"][0]["text"]
+    assert deck.read_bytes() == before and mcp.workspace.buffer_text(deck) == "unsaved deck edits"
+    assert mcp.call("add_slide", existing=created.relative_to(mcp.root).as_posix())["isError"]
+    mcp.workspace.dirty.clear()
+    assert "Inserted slide" in mcp.text("add_slide", existing=created.relative_to(mcp.root).as_posix())
+
+
+def test_real_stale_deck_during_creation_keeps_newer_text_and_allows_retry(mcp_tools, monkeypatch):
+    mcp = mcp_tools
+    deck = mcp.root / "decks/test.tex"
+    newer = deck.read_text() + "% changed while creating\n"
+    create = slide_add.create_new
+
+    def change_deck(*args, **kwargs):
+        created = create(*args, **kwargs)
+        deck.write_text(newer)
+        return created
+
+    monkeypatch.setattr(slide_add, "create_new", change_deck)
+    result = mcp.call("add_slide", slug="Stale", title="T")
+    assert result["isError"] and "existing=" in result["content"][0]["text"]
+    created, = (mcp.root / "slides").glob("*-EN-Stale-current.tex")
+    assert deck.read_text() == newer
+    assert "Inserted slide" in mcp.text("add_slide", existing=created.relative_to(mcp.root).as_posix())
+    assert "% changed while creating\n" in deck.read_text()
+    assert list((mcp.root / "slides").glob("*-EN-Stale-current.tex")) == [created]
 
 
 def test_the_toolbox_is_made_afresh_for_every_call(root):

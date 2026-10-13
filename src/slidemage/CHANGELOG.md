@@ -2119,3 +2119,10 @@ v8.3.8 (2026-10-13, streamlining step 6): integration check of the project-conte
 
 NEW: No visible changes; internal clean-up.
 - Nothing for you to do; this release only double-checks the earlier clean-up.
+
+v8.3.9 (2026-10-13, Claude Code speed plan C1): cheap correctness and instruction fixes for the embedded terminal. add_slide now returns an MCP error when deck insertion fails after creation, names the existing slide id and path, and gives an insertion-only retry via existing; an already-present live slide is a no-op. Deck editor dirtiness is checked again immediately before insertion, preserving edits made during confirmation or creation. The prompt orientation, scope context and get_focus description agree that focus is already supplied and needs refreshing only when missing or stale; independent reads are batched, and terminal tool descriptions/results no longer advertise chat-only file tools. Focus publishing records success only after writing the file, so a failed write is retried. Project watching shares deck_scan's generated-wrapper rule and ignores preview wrappers. Regression tests cover recoverable errors, repeated retries by id/path without new files or ids, dirty-deck races, terminal instructions, focus-write retries and wrapper changes.
+
+NEW: Claude Code creates and inserts slides more reliably.
+- If inserting a new slide fails, Claude can retry with the same slide instead of creating a duplicate; unsaved deck edits are protected.
+- Claude uses the focus supplied with your prompt, batches independent reads and gets instructions for its available tools.
+- Failed focus updates are retried, and temporary preview files no longer trigger project refreshes.

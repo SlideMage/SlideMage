@@ -13,8 +13,8 @@ LINT_SHOWN = 10
 @tool("get_focus",
       "What the user is looking at in SlideMage right now: the project, the open deck, the focused slide "
       "and the file the editor shows, the 'View as' and language, whether that file has unsaved edits in the "
-      "editor (then the file on disk is older: use read_buffer), and its lint errors. Call it first when the "
-      "user says 'this slide' or 'here'.",
+      "editor (then the file on disk is older: use read_buffer), and its lint errors. Call only if the "
+      "prompt's scope focus is missing or stale.",
       {})
 def get_focus(ctx: ToolContext, args: dict) -> str:
     focus = ctx.workspace.context()
@@ -78,8 +78,8 @@ def switch_to_deck_mode(ctx: ToolContext, args: dict) -> str:
 
 
 @tool("read_buffer",
-      "Read a file as the SlideMage editor has it, unsaved edits included (the numbered lines of "
-      "read_file). Only for files open in the editor; use your own Read for the rest.",
+      "Read a file as the SlideMage editor has it, unsaved edits included, with numbered lines. "
+      "Only for files open in the editor; use your own Read for the rest.",
       {"path": {"type": "string", "description": "Project-relative path, e.g. slides/1y8-EN-Title-current.tex"},
        "start_line": {"type": "integer", "description": "First line to read (default 1)."},
        "max_lines": {"type": "integer", "description": "How many lines at most."}},

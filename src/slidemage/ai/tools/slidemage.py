@@ -151,32 +151,49 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
 
 @tool("add_slide",
       "Create a new slide (fresh id, header, the frame's skeleton) and put its \\slide call into the deck. "
-      "Afterwards fill it in with edit_file. Frame types: see read_guide('frames'). To TRANSLATE a slide, "
+      "Fill in its body afterwards. Pass existing (id or path) to insert a created slide without minting "
+      "another; if already in the deck this is a no-op. Frame types: see read_guide('frames'). To TRANSLATE a slide, "
       "always pass translation_of (the source slide id) and language: the new slide starts as a copy of the "
-      "source, is linked to it both ways, and is then translated in place with edit_file. Never translate by "
+      "source, is linked to it both ways, and is then translated in place. Never translate by "
       "creating an unlinked slide.",
-      {"slug": {"type": "string", "description": "Hyphenated name, letters and digits: 'Capital-Budgeting'."},
-       "title": {"type": "string", "description": "The frame title (plain text)."},
+      {"existing": {"type": "string", "description": "Existing live slide id or path; insertion only, ignores creation options."},
+       "slug": {"type": "string", "description": "Required for creation: hyphenated letters and digits, e.g. 'Capital-Budgeting'."},
+       "title": {"type": "string", "description": "Required for creation: the frame title (plain text)."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Default standardframe."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default: the edited language."},
        "after": {"type": "string", "description": "Slide id to put it after; default the end of the deck."},
        "translation_of": {"type": "string", "description": "Slide id of the slide this is a translation of; "
-                          "needs a different language. The body is copied from it; translate it with edit_file."},
-       "add_to_deck": {"type": "boolean", "description": "Default true; false creates the file only."}},
-      ("slug", "title"))
+                          "needs a different language. The body is copied from it; translate it in place."},
+       "add_to_deck": {"type": "boolean", "description": "Default true; false creates the file only."}})
 def add_slide(ctx: ToolContext, args: dict) -> str:
-    slug, title = args["slug"].strip(), args["title"].strip()
+    existing = (args.get("existing") or "").strip()
+    created = None
+    if existing:
+        path = (slide_or_file(ctx, existing) if _BARE_ID.match(existing) or existing.endswith(".tex")
+                else project_path(ctx.root, str(slide_add.slide_path(ctx.project, existing))))
+        if path.parent != ctx.project.slides_dir.resolve() or not path.name.endswith(slide_language.CURRENT_SUFFIX) or not path.is_file():
+            raise ToolError(f"'{existing}' is not an existing live slide; pass its id or slides/*-current.tex path.")
+        created = slide_add.CreatedSlide(path.name.removesuffix(slide_language.CURRENT_SUFFIX), path)
+        if not args.get("add_to_deck", True):
+            raise ToolError("existing needs add_to_deck=true to insert the slide.")
+    else:
+        for name in ("slug", "title"):
+            if name not in args:
+                raise ToolError(f"Missing required argument '{name}' for creation; use existing to insert a slide.")
+    slug, title = args.get("slug", "").strip(), args.get("title", "").strip()
     frame = args.get("frame", slide_add.STANDARD_FRAME)
     language = args.get("language") or ctx.workspace.context().language
-    if not slide_add.SLUG_RE.match(slug):
+    if not existing and not slide_add.SLUG_RE.match(slug):
         raise ToolError("The slug may contain only letters, digits and single hyphens, e.g. 'Capital-Budgeting'.")
     deck, insert_at, indent, where = None, 0, "", "not added to a deck"
     if args.get("add_to_deck", True):
         deck = open_deck(ctx)
+        calls = deck_editor.parse_slide_calls(deck)
+        if created and any(c.source_filename == created.path.name for c in calls):
+            return f"Slide {created.id_slug} ({relative(ctx.root, created.path)}) is already in {deck.name}; no change."
         if ctx.workspace.is_dirty(deck.path):
             raise ToolError(f"{deck.path.name} has unsaved edits in the editor, so the call cannot be added "
-                            "to it. Ask the user to save it, or use add_to_deck=false.")
-        calls = deck_editor.parse_slide_calls(deck)
+                            "to it. Ask the user to save it." + (" Or use add_to_deck=false." if not existing else ""))
         after = (args.get("after") or "").strip()
         if after:
             anchor = next((c for c in calls if after in (c.id, c.id_slug)), None)
@@ -187,7 +204,9 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
             insert_at, indent = deck_editor.append_position(deck)
             where = f"at the end of {deck.name}"
     source_id_slug = ""
-    if (args.get("translation_of") or "").strip():
+    if existing:
+        body = ""
+    elif (args.get("translation_of") or "").strip():
         source = slide_or_file(ctx, args["translation_of"])
         source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
         if not slide_add.slide_path(ctx.project, source_id_slug).exists():
@@ -197,29 +216,40 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
         body = slide_ids.slide_body(source).replace("\r\n", "\n")
     else:
         body = slide_add.frame_body(ctx.project, frame, title).replace("\r\n", "\n")
-    planned = slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
-    if not propose(ctx, planned, "", body, f"New slide {where}"):
+    planned = deck.path if existing else slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
+    proposal = deck_editor.format_call("slide", created.id_slug) if existing else body
+    if not propose(ctx, planned, "", proposal, f"{'Insert slide' if existing else 'New slide'} {where}"):
         raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
-    try:
-        if source_id_slug:
-            created = slide_add.create_copy(ctx.project, source_id_slug, slug, language)
-        else:
-            created = slide_add.create_new(ctx.project, slug, language, frame, title)
-    except (OSError, ValueError) as exc:
-        raise ToolError(f"The slide was not created: {exc}") from None
-    note = ""
+    if not existing:
+        try:
+            created = (slide_add.create_copy(ctx.project, source_id_slug, slug, language) if source_id_slug
+                       else slide_add.create_new(ctx.project, slug, language, frame, title))
+        except (OSError, ValueError) as exc:
+            raise ToolError(f"The slide was not created: {exc}") from None
+    failure = ""
     if deck is not None:
         try:
-            deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, "slide", created.id_slug)
+            if ctx.workspace.is_dirty(deck.path):
+                raise ToolError("the deck has unsaved edits in the editor; ask the user to save it first")
+            updated = deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, "slide", created.id_slug)
             ctx.workspace.file_changed(deck.path, deck.text)
-        except (deck_editor.StaleFileError, ValueError, OSError) as exc:
-            note = f" It could not be added to {deck.name} ({exc}); it exists as a slide file only."
+            if existing:
+                ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
+        except (deck_editor.StaleFileError, ValueError, OSError, ToolError) as exc:
+            after = f", after={args['after']!r}" if args.get("after") else ""
+            failure = (f"Slide {created.id_slug} already exists at {relative(ctx.root, created.path)}, "
+                       f"but could not be inserted into {deck.name}: {exc}. "
+                       f"Retry insertion only with add_slide(existing={created.id_slug!r}{after}) "
+                       f"once {deck.name} is ready and open; do not create another slide.")
             where = "not added to a deck"
-    ctx.workspace.file_changed(created.path, None)
-    ctx.emit(EditApplied(ctx.call_id, created.path, "", body, False, undoable=False, note=where))
-    return (f"Created slide {created.id_slug} ({relative(ctx.root, created.path)}), {where}.{note} "
-            + ("It is a copy of the source, linked to it: translate its text with edit_file."
-               if source_id_slug else "It holds the frame skeleton: fill it in with edit_file."))
+    if not existing:
+        ctx.workspace.file_changed(created.path, None)
+        ctx.emit(EditApplied(ctx.call_id, created.path, "", body, False, undoable=False, note=where))
+    if failure:
+        raise ToolError(failure)
+    detail = ("It is a copy of the source, linked to it: translate its text in place." if source_id_slug
+              else "It holds the frame skeleton: fill in its body.") if not existing else ""
+    return f"{'Inserted' if existing else 'Created'} slide {created.id_slug} ({relative(ctx.root, created.path)}), {where}. {detail}".strip()
 
 
 @tool("add_bib_entry",

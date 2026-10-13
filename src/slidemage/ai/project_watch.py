@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..deck_scan import is_generated_wrapper
 from .tools.edits import EDITABLE_SUFFIXES
 from .tools.files import HIDDEN_FOLDERS
 
@@ -42,7 +43,8 @@ def scan(root: Path) -> Scan:
                     hidden = entry.name.startswith(".") or (folder == root and entry.name in HIDDEN_FOLDERS)
                     if not hidden:
                         pending.append(Path(entry.path))
-                elif entry.name.lower().endswith(EDITABLE_SUFFIXES) and not entry.name.startswith("."):
+                elif (entry.name.lower().endswith(EDITABLE_SUFFIXES) and not entry.name.startswith(".")
+                      and not is_generated_wrapper(entry.name)):
                     info = entry.stat()
                     found[Path(entry.path)] = (info.st_mtime_ns, info.st_size)
             except OSError:

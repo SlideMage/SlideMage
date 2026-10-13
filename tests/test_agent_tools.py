@@ -386,6 +386,44 @@ def test_add_slide_asks_first_and_refuses_what_it_cannot_do(root):
     assert "Ok" not in (root / "decks" / "test.tex").read_text()
 
 
+def test_add_slide_rechecks_dirty_deck_after_confirmation(box, root):
+    deck = root / "decks/test.tex"
+    before = deck.read_bytes()
+    box.ws.before_confirm = lambda: box.ws.open(deck, "user's pending edits", dirty=True)
+    text = box.error("add_slide", slug="Pending", title="T")
+    created, = (root / "slides").glob("*-EN-Pending-current.tex")
+    assert created.name in text and "unsaved edits" in text and "existing=" in text
+    assert deck.read_bytes() == before and box.ws.buffer_text(deck) == "user's pending edits"
+    applied, = box.of_type(EditApplied)
+    assert applied.path == created and applied.note == "not added to a deck"
+
+
+def test_insert_existing_slide_requires_consent_and_rechecks_dirty_deck(box, root):
+    box.ok("add_slide", slug="Existing", title="T", add_to_deck=False)
+    created, = (root / "slides").glob("*-EN-Existing-current.tex")
+    path = created.relative_to(root).as_posix()
+    deck = root / "decks/test.tex"
+    before = deck.read_bytes()
+    box.ws.approve = False
+    assert "rejected" in box.error("add_slide", existing=path)
+    assert deck.read_bytes() == before
+    box.ws.approve = True
+    box.ws.before_confirm = lambda: box.ws.open(deck, "user's pending edits", dirty=True)
+    assert "unsaved edits" in box.error("add_slide", existing=path)
+    assert deck.read_bytes() == before and box.ws.buffer_text(deck) == "user's pending edits"
+
+
+@pytest.mark.parametrize("path", ["slides/missing-current.tex", "slides/abc-EN-Hello-v1-0-0.tex", "decks/test.tex", "../outside.tex"])
+def test_insert_existing_rejects_missing_frozen_non_slide_and_outside_files(box, root, path):
+    (root / "slides/abc-EN-Hello-v1-0-0.tex").write_text("frozen")
+    files = set((root / "slides").iterdir())
+    before = (root / "decks/test.tex").read_bytes()
+    assert box.run("add_slide", existing=path).is_error
+    assert set((root / "slides").iterdir()) == files
+    assert (root / "decks/test.tex").read_bytes() == before
+
+
+
 def test_add_bib_entry_writes_a_sorted_entry_with_a_suggested_key(box, root):
     box.box.ctx.mode = EDIT_AUTO
     out = box.ok("add_bib_entry", kind="article", fields={

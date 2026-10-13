@@ -41,7 +41,7 @@ class ClaudeCodeSession(QObject):
         self.model: str | None = None               # the view's picker; read at each (re)start
         self.effort: str | None = None
         self._focus_file: Path | None = None        # what the hooks read: the focus and the scope
-        self._published: dict | None = None
+        self._published: tuple | None = None
         self._timer = QTimer(self)                  # the focus also moves without a signal (a file opened)
         self._timer.setInterval(400)
         self._timer.timeout.connect(self.publish_focus)
@@ -100,12 +100,12 @@ class ClaudeCodeSession(QObject):
                   slide is not None and window.centre.is_dirty(slide))
         if values == self._published and not force:
             return
-        self._published = values
-        self.focus_changed.emit()
         try:
             claude_scope.publish(self._focus_file, values[0], window.project.root, *values[1:])
         except OSError:
-            pass
+            return
+        self._published = values
+        self.focus_changed.emit()
 
     def write(self, data: bytes) -> None:
         if self._process is not None:

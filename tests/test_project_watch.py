@@ -28,6 +28,29 @@ def test_only_text_files_of_the_project_are_seen(tmp_path):
     assert seen == ["Slidemaster.bib", "decks/d.tex", "notes.md", "slides/a-current.tex", "sub/pdf/ok.tex"]
 
 
+def test_generated_wrappers_never_appear_as_project_changes(tmp_path):
+    from slidemage.deck_scan import scan_dir
+
+    make(tmp_path, "decks/real.tex", "_notes.md", "slides/live-current.tex")
+    (tmp_path / "decks/real.tex").write_text("\\documentclass{beamer}")
+    before = project_watch.scan(tmp_path)
+    wrappers = ("decks/_slidemage_preview-abc.tex", "decks/archive/_slidemage_preview-def.tex",
+                "_slidemage_preview-ghi.tex", "decks/_compile-wrapper.tex")
+    make(tmp_path, *wrappers)
+    for name in wrappers:
+        (tmp_path / name).write_text("\\documentclass{beamer}")
+    assert not project_watch.diff(before, project_watch.scan(tmp_path))
+    assert [d.name for d in scan_dir(tmp_path / "decks", False)] == ["real"]
+    assert scan_dir(tmp_path / "decks/archive", True) == []
+    for name in wrappers:
+        (tmp_path / name).write_text("modified wrapper")
+    assert project_watch.scan(tmp_path) == before
+    for name in wrappers:
+        (tmp_path / name).unlink()
+    assert not project_watch.diff(before, project_watch.scan(tmp_path))
+    assert tmp_path / "_notes.md" in before
+
+
 @pytest.mark.parametrize("replacement", ["longer text", "y"])
 def test_diff_names_added_removed_and_modified_files(tmp_path, replacement):
     make(tmp_path, "a.tex", "b.tex", "c.tex")

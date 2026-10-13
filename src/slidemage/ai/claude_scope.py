@@ -67,7 +67,8 @@ def prompt_context(data: dict) -> str:
     return (f"[SlideMage scope: THIS SLIDE] The request is about {slide} ({where}).{unsaved} "
             "Use only this file: do not read, search or edit other slides, decks or folders, and do not explore "
             "the project (no Glob, Grep, ls, find or other shell exploration); the file's own text and read_guide "
-            "are enough. Go straight to it: you need no get_focus. translate_slide and show_slide work through "
+            "are enough. Go straight to it; call get_focus only if the focus is missing or stale. "
+            "translate_slide and show_slide work through "
             "SlideMage and are fine in this scope. If the request needs anything else outside this slide, "
             "call switch_to_deck_mode (the user is asked; on yes, go on with the request); do not explain the scope.")
 
