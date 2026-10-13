@@ -17,14 +17,15 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
 
 from ....ai import claude_launch, claude_runner, claude_tasks
 from ....ai.claude_scope import DECK, SLIDE
 from ... import layout_settings
 from ...kit import kit_qss as q
 from ...kit.widgets import (
-    Button, Chip, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
+    Button, Chip, IconButton, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
+from ..attachments import place_file, save_image
 from ..state import WorkspaceState
 from .tasks import Bubble, TaskRunner, bubbles, deck_bubbles
 
@@ -105,6 +106,11 @@ class ClaudeCodeView(Surface):
         self.status = Chip("Starting…", "muted")
         row.addWidget(self.status)
         row.addStretch(1)
+        self.attach_button = IconButton("attach_file", "Attach a paper (PDF), a figure or another file: "
+                                                       "Claude Code gets its @path at the prompt")
+        self.attach_button.clicked.connect(self._pick_files)
+        self.attach_button.setEnabled(False)
+        row.addWidget(self.attach_button)
         self.restart_button = Button("Restart", "ghost", compact=True)
         self.restart_button.setToolTip("End Claude Code and start it again in this project (the conversation "
                                        "can be continued with /resume).")
@@ -156,6 +162,40 @@ class ClaudeCodeView(Surface):
         self.scope.set_current(DECK)
         self._on_scope(DECK)                    # set_current is no click: tell the session (and the bubbles)
         return "SlideMage is in Deck Mode now: go on with the request."
+
+    # -- attachments ------------------------------------------------------------------------------
+
+    def _pick_files(self) -> None:
+        names, _filter = QFileDialog.getOpenFileNames(self, "Attach files", str(self.state.project.root))
+        self.attach_files(names)
+
+    def attach_files(self, names: list[str]) -> None:
+        """Place the files in the project (see attachments.py) and type their @paths at the prompt."""
+        for name in names:
+            try:
+                rel = place_file(self.state.project, name, dash_spaces=True)
+            except OSError as exc:
+                self._on_task_status(f"{Path(name).name} could not be attached: {exc.strerror or exc}", "error")
+                continue
+            if rel:
+                self._mention(rel)
+
+    def attach_image(self, image) -> None:
+        rel = save_image(self.state.project, image)
+        if rel:
+            self._mention(rel)
+        else:
+            self._on_task_status("The pasted image could not be attached.", "error")
+
+    def _mention(self, rel: str) -> None:
+        """Type `@path ` at the prompt without Enter; a path with spaces is quoted."""
+        if self.session is None or not self.session.running:
+            return
+        self.session.write((f'@"{rel}" ' if " " in rel else f"@{rel} ").encode("utf-8"))
+        self.terminal.focus_terminal()
+
+    def _set_attachable(self) -> None:
+        self.attach_button.setEnabled(self.session is not None and self.session.running)
 
     # -- bubbles and tasks ------------------------------------------------------------------------
 
@@ -325,6 +365,8 @@ class ClaudeCodeView(Surface):
         self.terminal.ready.connect(self._on_ready)
         self.terminal.resized.connect(self._on_resized)
         self.terminal.input_data.connect(self.session.write)
+        self.terminal.files_dropped.connect(self.attach_files)
+        self.terminal.image_pasted.connect(self.attach_image)
         self.session.output.connect(self.terminal.write)
         self.session.exited.connect(self._on_exited)
 
@@ -348,17 +390,20 @@ class ClaudeCodeView(Surface):
             return
         self.status.set_text("Running")
         self.status.set_tone("ok")
+        self._set_attachable()
         self.terminal.focus_terminal()
 
     def restart(self) -> None:
         if self.session is not None:
             self.session.stop()
             self.terminal.reset()
+            self._set_attachable()
             self._spawn()
 
     def _on_exited(self, code: int) -> None:
         if self.terminal is None:       # reported while the window was closing
             return
+        self._set_attachable()
         self.status.set_text(f"Ended (exit code {code})")
         self.status.set_tone("muted" if code in (0, 143) else "warning")
         self.terminal.write(b"\r\n\x1b[2m[Claude Code ended. Use Restart to start it again.]\x1b[0m\r\n")

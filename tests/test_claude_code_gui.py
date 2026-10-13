@@ -426,3 +426,43 @@ def test_decks_and_new_or_removed_slides_go_through_the_deck_sequences(watch, mo
     new.unlink()
     watch.sync.poll()
     assert rescans == [1, 1]
+
+
+# -- attachments ---------------------------------------------------------------------------------------------------
+
+def test_attaching_files_types_their_at_paths_without_enter(env, tmp_path, monkeypatch):
+    start_view(env)
+    typed = []
+    monkeypatch.setattr(env.view.session, "write", typed.append)
+    assert env.view.attach_button.isEnabled()
+    outside, other = tmp_path / "paper.pdf", tmp_path / "my fig.png"
+    outside.write_bytes(b"%PDF")
+    other.write_bytes(b"x")
+    env.view.attach_files([str(outside)])
+    env.view.attach_files([str(env.path), str(other)])
+    assert (env.root / "sources" / "paper.pdf").read_bytes() == b"%PDF"
+    assert typed == [b"@sources/paper.pdf ", f"@{SLIDE} ".encode(), b"@sources/my-fig.png "]
+
+
+def test_dropping_files_on_the_terminal_attaches_them(env, tmp_path, monkeypatch):
+    from PySide6.QtCore import QMimeData, QPointF, QUrl, Qt
+    from PySide6.QtGui import QDropEvent
+    start_view(env)
+    typed = []
+    monkeypatch.setattr(env.view.session, "write", typed.append)
+    dropped = tmp_path / "notes.txt"
+    dropped.write_text("hi")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(dropped))])
+    event = QDropEvent(QPointF(5, 5), Qt.DropAction.CopyAction, mime, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    assert env.view.terminal.eventFilter(env.view.terminal.view, event)      # a synthetic drop is not routed by Qt offscreen
+    assert typed == [b"@sources/notes.txt "] and event.isAccepted()
+
+
+def test_attaching_is_off_while_claude_code_is_not_running(env):
+    assert not env.view.attach_button.isEnabled()
+    start_view(env)
+    env.view.terminal.bridge.send_input("/exit\r")
+    wait_until(lambda: "exit code" in env.view.status.text())
+    assert not env.view.attach_button.isEnabled()
+    env.view.attach_files([str(env.path)])      # nothing typed, nothing raised

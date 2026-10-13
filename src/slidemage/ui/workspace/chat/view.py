@@ -11,7 +11,6 @@ gui_workspace.py (what the agent may ask of the main window).
 """
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -35,10 +34,10 @@ from ....ai.agent_types import (
     ToolStarted,
 )
 from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderError
-from ....ai.tools.files import may_touch
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
+from ..attachments import place_file, save_image
 from ..state import WorkspaceState
 from .cards import AssistantText, DiffCard, Notice, Status, ToolCard, UserBubble, suggestion_button, text_label
 from .gui_workspace import EditAsk, GuiWorkspace
@@ -56,15 +55,6 @@ SUGGESTIONS = {
 FIX_SUGGESTION = "Fix the LaTeX errors on this slide"
 COMPOSER_LINES = (2, 6)
 CHIP_CHARS = 32
-
-
-def unique_path(folder: Path, name: str) -> Path:
-    """`folder/name`, or with -2, -3 ... before the suffix when that exists already: nothing is overwritten."""
-    path, number = folder / name, 1
-    while path.exists():
-        number += 1
-        path = folder / f"{Path(name).stem}-{number}{Path(name).suffix}"
-    return path
 
 
 class Composer(QPlainTextEdit):
@@ -336,32 +326,22 @@ class ChatView(Surface):
 
     def attach_files(self, names: list[str]) -> None:
         """Attach files: one inside the project stays where it is, any other is copied into sources/."""
-        root = self.state.project.root.resolve()
         for name in names:
-            path = Path(name).resolve()
-            if not path.is_file():
+            try:
+                rel = place_file(self.state.project, name)
+            except OSError as exc:
+                self._add(Notice(f"{Path(name).name} could not be attached: {exc.strerror or exc}", "error"))
                 continue
-            if not may_touch(root, path):
-                folder = self.state.project.sources_dir
-                folder.mkdir(exist_ok=True)
-                target = unique_path(folder, path.name)
-                try:
-                    shutil.copyfile(path, target)
-                except OSError as exc:
-                    self._add(Notice(f"{path.name} could not be attached: {exc.strerror or exc}", "error"))
-                    continue
-                path = target.resolve()
-            self._add_chip(path.relative_to(root).as_posix())
+            if rel:
+                self._add_chip(rel)
 
     def attach_image(self, image: QImage) -> None:
         """A pasted image is saved into sources/ as a PNG and attached."""
-        folder = self.state.project.sources_dir
-        folder.mkdir(exist_ok=True)
-        target = unique_path(folder, "pasted-image.png")
-        if image.isNull() or not image.save(str(target), "PNG"):
+        rel = save_image(self.state.project, image)
+        if rel:
+            self._add_chip(rel)
+        else:
             self._add(Notice("The pasted image could not be attached.", "error"))
-            return
-        self._add_chip(target.relative_to(self.state.project.root).as_posix())
 
     def _add_chip(self, rel: str) -> None:
         if rel in self._attached:

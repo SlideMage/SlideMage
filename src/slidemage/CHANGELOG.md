@@ -2177,3 +2177,9 @@ NEW: Attach papers, figures and other files to the chat.
 - Click the paperclip next to Send, drop files onto the message box, or paste an image into it.
 - Files from outside the project are copied into the project's sources/ folder; the chat then reads PDFs (text and page images) and looks at images.
 - Click a chip above the message box to remove an attachment before sending.
+
+v8.3.17 (2026-10-13, attachments in Claude Code): the Claude Code tab has the paperclip too. Picking files, dropping them onto the terminal or pasting an image (clipboard with an image and no text) places each in the project like the chat does (outside files are copied into sources/, with -2, -3 ... on a clash and spaces in the copy's name written as '-'; inside files stay) and types its @path and a space at the prompt, without Enter (a path with spaces is quoted: @"a b.pdf"), then focuses the terminal. The button is off while Claude Code is not running. The placing code moved from the chat view to ui/workspace/attachments.py (unique_path, place_file, save_image), used by both tabs. Tests cover the helper, the typed @paths, a drop event and the disabled state.
+
+NEW: Attach files in the Claude Code tab.
+- Click the paperclip, drop files onto the terminal or paste an image: Claude Code gets the file's @path at the prompt and reads PDFs and images itself.
+- Files from outside the project are copied into the project's sources/ folder.

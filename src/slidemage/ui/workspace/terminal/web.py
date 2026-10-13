@@ -13,8 +13,8 @@ import base64
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QObject, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QImage
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -39,6 +39,7 @@ class TerminalBridge(QObject):
     resized = Signal(int, int)
     input_data = Signal(bytes)        # what the user typed or pasted, as the process should read it
     selection = Signal(str)
+    image_pasted = Signal(QImage)     # paste with an image on the clipboard and no text
     # Python -> page
     output = Signal(str)              # base64 of bytes to draw
     theme = Signal(str)
@@ -87,9 +88,12 @@ class TerminalBridge(QObject):
 
     @Slot()
     def paste_requested(self) -> None:
-        text = QGuiApplication.clipboard().text()
+        clipboard = QGuiApplication.clipboard()
+        text = clipboard.text()
         if text:
             self.paste.emit(text)
+        elif not clipboard.image().isNull():
+            self.image_pasted.emit(clipboard.image())
 
     @Slot(str)
     def open_url(self, url: str) -> None:
@@ -123,6 +127,8 @@ class TerminalWidget(QWidget):
     ready = Signal(int, int)
     resized = Signal(int, int)
     input_data = Signal(bytes)
+    files_dropped = Signal(list)      # local file paths (str) dropped onto the terminal
+    image_pasted = Signal(QImage)
 
     def __init__(self, tokens: Tokens, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -131,6 +137,7 @@ class TerminalWidget(QWidget):
         self.bridge.ready.connect(self.ready)
         self.bridge.resized.connect(self.resized)
         self.bridge.input_data.connect(self.input_data)
+        self.bridge.image_pasted.connect(self.image_pasted)
         self._page = _Page(_shared_profile(), self)
         settings = self._page.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, False)
@@ -146,7 +153,25 @@ class TerminalWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
         self.setFocusProxy(self.view)
+        self.setAcceptDrops(True)
+        self.view.installEventFilter(self)           # the view's inner widget takes the drops: watch it too
+        for child in self.view.findChildren(QWidget):
+            child.installEventFilter(self)
         self.view.load(QUrl.fromLocalFile(str(PAGE)))
+
+    def eventFilter(self, watched, event) -> bool:
+        """Files dropped on the web view are taken here (the page would otherwise open them)."""
+        kind = event.type()
+        if kind == QEvent.Type.ChildAdded and isinstance(event.child(), QWidget):
+            event.child().installEventFilter(self)
+        elif kind in (QEvent.Type.DragEnter, QEvent.Type.DragMove, QEvent.Type.Drop) and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            if kind == QEvent.Type.Drop:
+                files = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+                if files:
+                    self.files_dropped.emit(files)
+            return True
+        return super().eventFilter(watched, event)
 
     def write(self, data: bytes) -> None:
         self.bridge.output.emit(base64.b64encode(data).decode("ascii"))
