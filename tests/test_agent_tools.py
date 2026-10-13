@@ -4,12 +4,13 @@ SlideMage tools over their backends, and the context block."""
 from __future__ import annotations
 
 import os
+import time
 
 import pytest
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage import compiler, preview_target, slide_snapshot
+from slidemage import compiler, preview_target, slide_snapshot, update_all_previews
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
@@ -20,6 +21,7 @@ from slidemage.ai.agent_types import (
 )
 from slidemage.ai.tools import build_toolbox, focus, undo_edit
 from slidemage.ai.tools import files as files_module
+from slidemage.ai.tools import previews as previews_tools
 from slidemage.ai.tools import slidemage as slidemage_tools
 from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace, WorkspaceContext
@@ -471,6 +473,91 @@ def test_compile_deck_reports_per_pdf_and_the_latex_errors(box, root):
     assert "test-after-course: FAILED" in out and "slides/abc-EN-Hello-current.tex:7: Undefined control sequence." in out
     box.ws.compile_log = ["some", "plain", "log"]
     assert "Log (end):\nsome\nplain\nlog" in box.ok("compile_deck")
+
+
+def fake_render(monkeypatch, root, fail=None):
+    """preview_target.render without LaTeX: records the call and writes the slide's cached preview."""
+    seen = []
+
+    def render(target, view, language, **kwargs):
+        seen.append((target.id_slug, target.frame_number, view, language, kwargs.get("capture_snapshot", True)))
+        if fail:
+            raise RuntimeError(fail)
+        png = slide_snapshot.snapshot_path(target.context, target.bare_id, target.template, id_slug=target.id_slug)
+        png.parent.mkdir(parents=True, exist_ok=True)
+        png.write_bytes(b"png")
+        folder = root / f"slidemage_preview_{target.bare_id}"
+        folder.mkdir(exist_ok=True)
+        return folder / "x.pdf"
+
+    monkeypatch.setattr(preview_target, "render", render)
+    return seen
+
+
+def test_refresh_preview_rerenders_the_focused_slide_and_an_explicit_one(box, root, monkeypatch):
+    seen = fake_render(monkeypatch, root)
+    assert box.ok("refresh_preview") == "abc: preview refreshed (UniGraz)."          # the slide in focus
+    assert seen == [("abc-EN-Hello", 1, "instructor", "EN", True)]                    # as the open deck calls it
+    assert not (root / "slidemage_preview_abc").exists()                              # the temporary PDF is gone
+    assert slide_snapshot.snapshot_path(box.ws.project, "abc", "uni-graz", id_slug="abc-EN-Hello").is_file()
+    assert "abd: preview refreshed" in box.ok("refresh_preview", slide="abd")
+    assert seen[-1][:2] == ("abd-EN-Second", 2)
+    assert "abc: preview refreshed" in box.ok("refresh_preview", slide="slides/abc-EN-Hello-current.tex")
+
+
+def test_refresh_preview_renders_the_instructor_view_whatever_the_user_looks_at(box, root, monkeypatch):
+    box.ws._context = WorkspaceContext(deck=box.ws.context().deck, slide_id="abc", path=root / SLIDE,
+                                       view="after-course", language="DE")
+    seen = fake_render(monkeypatch, root)
+    box.ok("refresh_preview")
+    assert seen[0][2:4] == ("instructor", "EN")                    # the slide's own language, not the editing one
+
+
+def test_refresh_preview_reports_the_first_latex_error_and_other_problems(box, root, monkeypatch):
+    fake_render(monkeypatch, root, fail="Render failed for abc-EN-Hello:\nnoise\n! Undefined control sequence.\nmore")
+    assert box.error("refresh_preview") == "abc: the preview was not refreshed. ! Undefined control sequence."
+    fake_render(monkeypatch, root, fail="Render failed")
+    assert box.error("refresh_preview", slide="abd").endswith("Render failed")
+    assert "not a slide file" in box.error("refresh_preview", slide="Slidemaster.bib")
+    assert "frozen version" in box.error("refresh_preview", slide="slides/abc-EN-Hello-v1-0-0.tex")
+    monkeypatch.setattr(preview_target, "render", lambda *a, **k: root)         # compiled, but no snapshot appeared
+    assert "could not be written" in box.error("refresh_preview")
+
+
+def test_refresh_deck_previews_reports_counts_and_lists(box, root):
+    box.ws.refresh_result = update_all_previews.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"],
+                                                           error="! Undefined control sequence.")
+    out = box.ok("refresh_deck_previews")                                       # the open deck
+    assert box.ws.refreshed == ["test"]
+    assert out == ("test: 1 of 2 slide preview(s) refreshed, 1 failed.\nRefreshed: abc\nFailed: abd\n"
+                   "First error: ! Undefined control sequence.")
+    box.ws.refresh_result = update_all_previews.DeckResult(refreshed=["abc-EN-Hello", "abd-EN-Second"])
+    assert box.ok("refresh_deck_previews", deck="test") == "test: 2 of 2 slide preview(s) refreshed, 0 failed.\nRefreshed: abc, abd"
+    box.ws.refresh_result = update_all_previews.DeckResult()
+    assert "no slides to refresh" in box.ok("refresh_deck_previews")
+    assert "There is no deck 'nope'" in box.error("refresh_deck_previews", deck="nope")
+    assert box.ws.refreshed == ["test"] * 3
+
+
+def test_refresh_deck_previews_says_why_it_could_not_run_or_was_stopped(box):
+    box.ws.refresh_result = RuntimeError("SlideMage is busy with another compile run.")
+    assert box.error("refresh_deck_previews") == "SlideMage is busy with another compile run."
+    box.ws.refresh_result = update_all_previews.DeckResult()
+    box.box.ctx.cancel.request_stop()
+    assert "stopped by the user" in box.error("refresh_deck_previews")
+
+
+def test_refresh_deck_previews_is_stopped_after_its_deadline(box, monkeypatch):
+    monkeypatch.setattr(previews_tools, "DECK_TIMEOUT_S", 0.3)
+
+    def slow(deck, cancel):                                  # a compile that only the deadline ends
+        end = time.monotonic() + 5
+        while not cancel.is_set() and time.monotonic() < end:
+            time.sleep(0.02)
+        return update_all_previews.DeckResult()
+
+    monkeypatch.setattr(box.ws, "refresh_deck_previews", slow)
+    assert "longer than" in box.error("refresh_deck_previews")
 
 
 def test_read_guide_returns_a_frame_example_and_rejects_unknown_topics(box):

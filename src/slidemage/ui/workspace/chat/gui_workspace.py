@@ -26,6 +26,7 @@ from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
 from ....deck_scan import Deck
 from ....slide_language import bare_id, own_language
+from ....update_all_previews import DeckResult, needed_slides_by_template
 from .. import compile_actions
 from ...ai_models import confirm_cloud_request
 
@@ -321,3 +322,37 @@ class GuiWorkspace(Workspace):
             if not self._closed:
                 self.on_gui(detach)
         return outcome
+
+    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken) -> DeckResult:
+        """The window's own "Rerender all previews for this deck" run (compile slot, job panel, Log
+        drawer), without its questions; returns when the slot is free again."""
+        window = self.window
+        finished = threading.Event()
+        outcome: list[object] = []
+
+        def on_done(result: object) -> None:
+            outcome.append(result)
+            finished.set()
+
+        def start() -> bool:
+            if window.compile.running:
+                return False
+            needed = needed_slides_by_template(window.project, deck)
+            if any(needed.values()):
+                compile_actions.start_deck_previews(window, deck, needed, on_done)
+            else:
+                on_done(DeckResult())
+            return True
+
+        if not self.on_gui(start, False):
+            raise RuntimeError("SlideMage is busy with another compile run; try again when it has finished.")
+        stopping = False
+        while not finished.wait(POLL_S):
+            if self._closed:
+                raise RuntimeError("SlideMage is closing.")
+            if cancel.is_set() and not stopping:
+                stopping = True
+                self.on_gui(lambda: compile_actions.stop_now(window))
+        if not isinstance(outcome[0], DeckResult):
+            raise RuntimeError("The preview run failed; SlideMage's Log drawer shows why.")
+        return outcome[0]

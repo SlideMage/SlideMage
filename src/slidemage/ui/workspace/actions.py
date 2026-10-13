@@ -224,6 +224,8 @@ def build_registry() -> CommandRegistry:
     add("export_pptx", "Export PPTX…", DECK, lambda w: compile_actions.export_pptx(w, w.state.deck), enabled=_active_deck)
     add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
+    add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,
+        enabled=_has_deck)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
     add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))

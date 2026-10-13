@@ -21,7 +21,7 @@ COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group
                          course_url="https://example.org/course", supports_version=True)
 
 LEFT = [("header", "This deck"), "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
-        "export_pptx", "create_snapshot", ("sep",), "archive_deck"]
+        "export_pptx", "create_snapshot", "rerender_deck_previews", ("sep",), "archive_deck"]
 RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project",
          ("header", "Housekeeping"), "housekeeping", "archive_unused",
          ("header", "Info"), "version_history", "check_updates", "project_compat"]
@@ -99,13 +99,13 @@ def test_archive_deck_is_red_after_a_separator_in_the_left_column(qapp):
     index = layout.indexOf(rows["archive_deck"])
     separator = layout.itemAt(index - 2).widget()      # spacing, separator, spacing, the row
     assert separator.objectName() == q.MENU_SEPARATOR and separator.height() == 1
-    assert layout.itemAt(index - 4).widget() is rows["create_snapshot"]
+    assert layout.itemAt(index - 4).widget() is rows["rerender_deck_previews"]
 
 
 def test_commands_not_available_now_are_disabled(qapp):
     rows = rows_of(build_more_menu(None, command_context(None)))
     assert [k for k, r in rows.items() if not r.isEnabled()] == [
-        "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx", "archive_deck"]
+        "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx", "rerender_deck_previews", "archive_deck"]
 
 
 # -- using it ------------------------------------------------------------------------

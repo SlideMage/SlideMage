@@ -644,7 +644,17 @@ What matters when touching *this code*:
   `RUNNING_LOG_RE` handling matches the line fine, but its
   `_job_progress_texts` lookup finds nothing, since that dict is normally
   only populated by `_start_jobs()` for the real compile queue, which
-  this ad-hoc job never goes through.
+  this ad-hoc job never goes through. `run(deck=...)` / `rerender_deck()` (v8.11.0) narrow
+  the same run to one deck's slides (`needed_slides_by_template(ctx, deck)`) and prune
+  nothing, because only a scan of every deck knows which files are stale; `run()` also waits
+  for `run_job()`'s background PDF relocation (`on_relocated`) so the snapshots exist when it
+  returns, and `rerender_deck()` reports which of the deck's snapshot files were written
+  (`DeckResult`). One implementation for **Rerender all previews for this deck**
+  (`compile_actions.rerender_deck_previews`, the ⋮ menu's *This deck* column and ⌘K) and the
+  agent's `refresh_deck_previews` (`Workspace.refresh_deck_previews`: the window runs it on its
+  compile slot, the headless workspace calls it directly); `refresh_preview` renders one slide
+  with `preview_target.render` (the locked, reusable preview build of the Preview pane), which
+  writes the cached PNGs itself (`ai/tools/previews.py`).
 - [`ui/workspace/preview_view.py`](../src/slidemage/ui/workspace/preview_view.py) -- the
   Preview view (the redesign's replacement of the old preview popup and the deck editor's
   List / Thumbnail / Grid views, hover tooltip and chapter dropdown, all gone): the
@@ -793,12 +803,13 @@ What matters when touching *this code*:
   context; `workspace.py`: the `Workspace` the GUI implements; `guides.py`: the guides
   `read_guide` loads) and its tools (`tools/`: `read_file`, `find_files`, `search`,
   `edit_file`, `write_file`, `list_slides`, `lint`, `render_preview`, `add_slide`,
-  `add_bib_entry`, `compile_deck`, `read_guide`, `undo_edit`; the dot-folders and `pdf/` are
+  `add_bib_entry`, `compile_deck`, `read_guide`, `refresh_preview`, `refresh_deck_previews`,
+  `undo_edit`; the dot-folders and `pdf/` are
   invisible, edits that touch a protected region -- `protected_regions.py` -- or a frozen
   version are refused, a file open in a buffer is edited in the buffer). The Claude Code
   tab's side: `mcp_server.py` (a small MCP server on `http.server`, 127.0.0.1, bearer
   token: `get_focus`, `read_buffer`, `list_slides`, `lint`, `render_preview`,
-  `read_guide`, `add_slide`), `claude_launch.py` (finds `claude`, passes the MCP config, a
+  `refresh_preview`, `read_guide`, `add_slide`, `refresh_deck_previews`), `claude_launch.py` (finds `claude`, passes the MCP config, a
   PreToolUse hook and the system prompt; the child environment drops the API key
   variables so the user's own login is used), `claude_hook.py` (exit code 2 blocks an edit
   of a protected region or a frozen version; `python -m slidemage.ai.claude_hook`, or

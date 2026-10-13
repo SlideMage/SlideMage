@@ -115,7 +115,7 @@ screenshots.
   is sent). *Back to conversation* leaves a pill in the header while it runs. On Local and Cloud · API the body is the chat: the
   chat is an agent that works on the focused
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a
-  slide or a bibliography entry, compile). Edits wait for **Apply** / **Reject** in
+  slide or a bibliography entry, compile, refresh cached previews). Edits wait for **Apply** / **Reject** in
   *Ask before edits* mode, or apply at once with **Undo** in *Edit automatically* mode; a
   slide's header comment, `\setSlideVersion` line, `\vbox to 0pt` blocks and frozen
   versions can never be edited. The model is a local Ollama model that can call tools or,
@@ -413,7 +413,8 @@ copied package files in `texmf/` record the exact originals.
   (`<bare id>-<TemplateName>-<width>-<height>.png`, e.g.
   `22s-UniGraz-1920-1080.png` and `22s-UniGraz-304-171.png` — bare id
   first, to sort/glob-match by slide before institution), refreshed as
-  a side effect of any compile that touches that slide, or in bulk via
+  a side effect of any compile that touches that slide, for one deck via
+  **⋮ → This deck → Rerender all previews for this deck**, or for the whole project via
   SlideMage's "Update slide previews" (⋮ → *Housekeeping…*). A best-effort cache for
   SlideMage's own Preview view and slide-list thumbnails, not a
   guaranteed-fresh one. Gitignored, same category as `transcripts/`.
@@ -2745,6 +2746,7 @@ before rendering when it finds an **error**:
   `\slidestep` left out of the version is not checked -- plus any `\input`ed deck fragment
   such as `test-slides.tex`.
 - **Update slide previews:** every slide any deck uses.
+- **Rerender all previews for this deck:** every slide of the current deck.
 
 No findings: the render simply starts (one log line). Warnings only: listed in the log, the
 render starts. Errors: a sheet lists them; **Cancel** (the default), **Show in editor**
@@ -2841,6 +2843,15 @@ needed slides, and deletes any cached preview no deck uses any more
 institution). This is one long compile (well over an hour is plausible
 for the whole project) that occupies the compile slot until it finishes,
 so no other compile can start in the meantime.
+
+To refresh only the current deck's previews, choose **⋮ → This deck → Rerender all
+previews for this deck** (also in ⌘K / Ctrl+K). It asks first, then runs the same
+compile for just this deck's slides (both languages) with the same job panel and Log; it
+deletes nothing, and the cached previews of other decks are left as they are. It is
+distinct from **Render** in the Preview (one slide) and from **Update slide previews**
+(every deck, with the clean-up). The agent has the same two jobs as tools:
+`refresh_preview` (one slide, default the focused one) and `refresh_deck_previews` (one
+deck, default the open one), which report what was refreshed and what failed.
 
 ## Deck version system
 

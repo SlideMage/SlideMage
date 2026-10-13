@@ -36,6 +36,8 @@ class FakeWorkspace(Workspace):
         self.compiled: list[tuple[str, str]] = []
         self.compile_results = {"test": True}
         self.compile_log: list[str] = []
+        self.refreshed: list[str] = []
+        self.refresh_result = None
         self.consent = False
         self.before_confirm = None      # a hook run while an edit waits for the user
 
@@ -79,6 +81,12 @@ class FakeWorkspace(Workspace):
         for line in self.compile_log:
             log(line)
         return self.compile_results
+
+    def refresh_deck_previews(self, deck, cancel):
+        self.refreshed.append(deck.name)
+        if isinstance(self.refresh_result, Exception):
+            raise self.refresh_result
+        return self.refresh_result
 
 
 class ScriptedProvider:

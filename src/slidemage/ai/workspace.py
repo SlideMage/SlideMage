@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import compiler, preview_target, slide_snapshot
+from .. import compiler, preview_target, slide_snapshot, update_all_previews
 from ..deck_scan import Deck
 from ..project import ProjectContext
 from ..preview_requests import RenderRequest
@@ -133,3 +133,9 @@ class Workspace:
         done (the Stop of the chat ends it through `cancel`). The window overrides this to run
         the jobs through its job panel."""
         return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel)
+
+    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken) -> update_all_previews.DeckResult:
+        """Rerender the cached previews of every slide of `deck` and no other deck's. Blocks until the
+        snapshots are written (the Stop of the chat ends it through `cancel`). The window overrides this
+        to run it on the compile slot, with its job panel; raises RuntimeError when it cannot run."""
+        return update_all_previews.rerender_deck(self.project, deck, lambda _line: None, cancel)

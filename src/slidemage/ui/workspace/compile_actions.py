@@ -431,20 +431,62 @@ def update_previews(window) -> None:
         f"occupies the compile slot, so no other compile can start "
         f"until it's done.",
     )
-    if reply != QMessageBox.StandardButton.Yes:
+    if reply != QMessageBox.StandardButton.Yes or not _confirm_previews_lint(window, needed):
         return
+    _start_previews(
+        window, needed, "Update previews",
+        lambda log, cancel, base_jobnames: update_all_previews.run(
+            window.project, log, cancel=cancel, base_jobnames=base_jobnames, needed=needed))
 
-    # Pre-render syntax check (2026-09-26) of every slide about to be
-    # compiled -- "everything" scope, still only a few tens of ms.
+
+def rerender_deck_previews(window) -> None:
+    """"Rerender all previews for this deck": the same run as Update previews, narrowed to the current
+    deck's slides (update_all_previews.rerender_deck()). Nothing is deleted, other decks' previews are
+    left alone."""
+    deck = window.state.deck
+    if deck is None or _busy(window):
+        return
+    needed = update_all_previews.needed_slides_by_template(window.project, deck)
+    total_slides = sum(len(ids) for ids in needed.values())
+    if not total_slides:
+        QMessageBox.information(window, "Nothing to do", f"{deck.name} has no slides to render.")
+        return
+    reply = QMessageBox.question(
+        window, "Rerender previews",
+        f"Rerender the cached previews of the {total_slides} slide(s) of {deck.name}? The previews "
+        f"of other decks are left alone.\n\nThis is one long compile (minutes for a big deck) -- it "
+        f"runs in the background, but occupies the compile slot, so no other compile can start until "
+        f"it's done.")
+    if reply == QMessageBox.StandardButton.Yes and _confirm_previews_lint(window, needed):
+        start_deck_previews(window, deck, needed)
+
+
+def start_deck_previews(window, deck: Deck, needed: dict[str, set[str]],
+                        on_done: Optional[Callable[[object], None]] = None) -> None:
+    """Take the compile slot for update_all_previews.rerender_deck(); `on_done(DeckResult)` runs when
+    the slot is free again (None if the run failed outright). No question is asked: the callers did."""
+    _start_previews(
+        window, needed, f"Rerender previews of {deck.name}",
+        lambda log, cancel, base_jobnames: update_all_previews.rerender_deck(
+            window.project, deck, log, cancel, base_jobnames, needed), on_done)
+
+
+def _confirm_previews_lint(window, needed: dict[str, set[str]]) -> bool:
+    """Pre-render syntax check (2026-09-26) of every slide about to be compiled -- "everything" scope,
+    still only a few tens of ms. False when it found errors and the user cancelled."""
     all_slides = sorted({slug for slugs in needed.values() for slug in slugs})
-    if not _confirm_build(
-            window,
-            latex_lint.check_slide_files(
-                window.project,
-                (window.project.slides_dir / slide_language.current_name(slug) for slug in all_slides)),
-            f"{len(all_slides)} slides"):
-        return
+    return _confirm_build(
+        window,
+        latex_lint.check_slide_files(
+            window.project,
+            (window.project.slides_dir / slide_language.current_name(slug) for slug in all_slides)),
+        f"{len(all_slides)} slides")
 
+
+def _start_previews(window, needed: dict[str, set[str]], title: str, run: Callable[..., object],
+                    on_done: Optional[Callable[[object], None]] = None) -> None:
+    """The compile-slot run behind Update previews and the deck rerender: `run(log, cancel, base_jobnames)`
+    does the work and returns what `on_done` gets (a falsy result is a failure)."""
     # This operation builds its own temp deck/CompileJob entirely inside update_all_previews.run(),
     # with no channel back to this module except the log stream, so the run's rows are registered
     # here first: one jobname per template (there can be several, run one after another), generated
@@ -452,16 +494,17 @@ def update_previews(window) -> None:
     # "-instructor" matches CompileJob.jobname's own "-{version}" suffix (compiler.py) --
     # update_all_previews.run() always compiles the instructor version.
     base_jobnames = {template: f"{update_all_previews.JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}" for template in needed}
-    labels = {f"{base}-instructor": f"Update previews ({slide_snapshot.TEMPLATES.get(template, template)})"
+    labels = {f"{base}-instructor": f"{title} ({slide_snapshot.TEMPLATES.get(template, template)})"
               for template, base in base_jobnames.items()}
 
-    def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
+    def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> object:
         try:
-            ok = update_all_previews.run(window.project, log, cancel=cancel, base_jobnames=base_jobnames, needed=needed)
+            result = run(log, cancel, base_jobnames)
         except Exception as exc:  # noqa: BLE001 -- reported, batch must still clean up state
-            log(f"*** Update previews failed: {exc} ***")
-            ok = False
-        log("==== Update previews: compile finished ====" if ok else "==== Update previews: FAILED ====")
+            log(f"*** {title} failed: {exc} ***")
+            result = None
+        log(f"==== {title}: compile finished ====" if result else f"==== {title}: FAILED ====")
+        return result
 
     # One throw-away megadeck per template (with a bibliography, so 4 passes), each typesetting that
     # template's own slides. Nobody wants a 639-slide throwaway PDF popping open, whatever the
@@ -471,4 +514,4 @@ def update_previews(window) -> None:
         {f"{base}-instructor": compile_progress.JobSpec(
             compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]), estimated=True)
          for template, base in base_jobnames.items()},
-        work, opens_pdfs=False)
+        work, opens_pdfs=False, on_done=on_done)

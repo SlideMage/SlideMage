@@ -741,6 +741,68 @@ def test_the_chats_stop_ends_a_compile_without_asking(env, monkeypatch):
     assert box["r"] == {}
 
 
+def refresh(env, cancel=None):
+    """What the agent's refresh_deck_previews asks of the window's workspace, on a thread: the result or the error."""
+    deck = next(d for d in scan_decks(env.window.project) if d.name == "test")
+
+    def call():
+        try:
+            return env.chat.workspace.refresh_deck_previews(deck, cancel or compiler.CancelToken())
+        except RuntimeError as exc:
+            return exc
+
+    return on_thread(call)
+
+
+def test_refreshing_a_decks_previews_runs_on_the_compile_slot_and_returns_its_result(env, monkeypatch):
+    from slidemage import update_all_previews
+    given = []
+
+    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None):
+        given.append((deck.name, needed))
+        log("==== Rerender previews of test: 2 slide(s) ====")
+        return update_all_previews.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"])
+
+    monkeypatch.setattr(update_all_previews, "rerender_deck", rerender)
+    result = refresh(env)
+    assert (result.refreshed, result.failed) == (["abc-EN-Hello"], ["abd-EN-Second"])
+    assert given == [("test", {"uni-graz": {"abc-EN-Hello", "abd-EN-Second"}})]       # this deck's slides only
+    row, = env.window.compile.run.rows.values()
+    assert row.label == "Rerender previews of test (UniGraz)"                          # the window's own job panel
+    assert not env.window.compile.running
+
+
+def test_refreshing_previews_says_when_the_window_is_busy_or_the_run_failed(env, monkeypatch):
+    from slidemage import update_all_previews
+    monkeypatch.setattr(type(env.window.compile), "running", property(lambda _self: True))
+    assert "busy with another compile run" in str(refresh(env))
+    monkeypatch.undo()
+
+    def broken(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(update_all_previews, "rerender_deck", broken)
+    assert "Log drawer" in str(refresh(env))
+
+
+def test_the_chats_stop_ends_a_preview_refresh_without_asking(env, monkeypatch):
+    from slidemage import update_all_previews
+    release = threading.Event()
+    stopped = []
+
+    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None):
+        release.wait(5)
+        return update_all_previews.DeckResult()
+
+    monkeypatch.setattr(update_all_previews, "rerender_deck", rerender)
+    monkeypatch.setattr(compile_actions, "stop_now", lambda _window: stopped.append(True) or release.set())
+    cancel = compiler.CancelToken()
+    threading.Timer(0.2, cancel.request_stop).start()
+    result = refresh(env, cancel)
+    assert not isinstance(result, Exception), result
+    assert result.failed == [] and stopped == [True]
+
+
 def test_a_tool_call_is_summarised_in_a_few_words():
     assert summarize_call(ToolCall("1", "read_file", {"path": "slides/a.tex"})) == "slides/a.tex"
     assert summarize_call(ToolCall("1", "list_slides", {})) == ""
