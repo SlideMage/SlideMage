@@ -256,9 +256,11 @@ class SourcePane(Surface):
             self._dirty = dirty
             self.dirty_changed.emit(dirty)
 
-    def buffer(self) -> Optional[tuple[str, str]]:
-        """(the whole text, the selected text) of the file shown, if it is a slide."""
-        file = self._current
+    def buffer(self, path: Optional[Path] = None) -> Optional[tuple[str, str]]:
+        """(the whole text, the selected text) of the file shown, if it is a slide. With `path`: of
+        that file if it is open here (the current file is not necessarily the previewed slide: the
+        Source view is not updated while the centre is in Preview mode)."""
+        file = self._current if path is None else self._files.get(path)
         return (file.editor.text(), file.editor.selected_text()) if file is not None and file.is_slide else None
 
     def stop_ai_checks(self) -> None:

@@ -463,6 +463,18 @@ def test_rendering_the_source_buffer_shows_the_page_in_the_active_language(centr
         assert draft in renders[0][2][0]
 
 
+def test_the_preview_never_renders_the_buffer_of_another_slide(centre, renders):
+    """Source view on slide aaa, then Preview mode on another slide: Render must use that slide's file."""
+    state = centre.state
+    state.set_mode("split")
+    state.set_focused_slide("aaa")
+    state.set_mode("preview")
+    state.set_focused_slide("ddd")
+    assert centre.source.current is not None                     # still the earlier slide
+    assert centre._preview_buffer() is None
+    assert centre.preview._is_draft(centre.preview._target) is False
+
+
 def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monkeypatch, project):
     from slidemage.ui.workspace import source_file
 

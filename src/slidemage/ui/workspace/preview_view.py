@@ -303,6 +303,10 @@ class PreviewPane(Surface):
         self._shown_mtime = mtime
         self._refresh()
 
+    @property
+    def target_path(self) -> Optional[Path]:
+        return self._target.source_path if self._target is not None else None
+
     def _on_context_changed(self, _value: str) -> None:
         self._invalidate()
         self._error = ""      # a failure belongs to the view and language it happened in

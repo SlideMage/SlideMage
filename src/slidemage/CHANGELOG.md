@@ -2250,3 +2250,8 @@ NEW: Dialogs that use AI show which route they run on, and the AI switch, its po
 - Buttons answer Enter as well as Space and show a blue focus ring when you reach them with the Tab key.
 - A task card takes the focus on its first button and keeps it from phase to phase; the screen reader hears each phase, the end of an image batch, the switch's change and AI setup's confirmations.
 - Icon-only buttons and the route and step icons have names a screen reader can read.
+
+v8.10.1 (2026-10-14, bug fix): the preview never renders the Source view's buffer of another slide. In Preview mode the Source view keeps the slide it last showed, so the preview pane asked it for "the current buffer" and could render that other slide's unsaved text under the previewed slide. CentreColumn._preview_buffer now asks SourcePane.buffer(path) for the previewed slide's own file (PreviewPane.target_path), and gets nothing when that file is not open there. Test: test_the_preview_never_renders_the_buffer_of_another_slide.
+
+NEW: The preview always shows the slide you are looking at.
+- After switching slides in Preview mode, Render no longer shows the unsaved text of the slide you edited before.

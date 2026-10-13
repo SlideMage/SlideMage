@@ -73,7 +73,7 @@ class CentreColumn(QFrame):
         self._opening = False               # open_file() is changing the focus itself
 
         self.source = SourcePane(app)
-        self.preview = PreviewPane(app, state, self.source.buffer)
+        self.preview = PreviewPane(app, state, self._preview_buffer)
         self.details = DetailsPane(app, state, self.is_dirty)
         self.details.duplicate_requested.connect(self.duplicate_requested)
         ratio = layout_settings.get(SPLIT_SETTING)
@@ -163,6 +163,11 @@ class CentreColumn(QFrame):
         if outcome == RELOADED and path == self._path:
             self._on_saved(path)
         return outcome
+
+    def _preview_buffer(self) -> Optional[tuple[str, str]]:
+        """The Source view's buffer of the previewed slide, never that of another slide."""
+        path = self.preview.target_path
+        return self.source.buffer(path) if path is not None else None
 
     def slide_text(self, path: Path) -> str:
         """The text of a slide file as the Source view has it, unsaved edits included, else the saved file."""
