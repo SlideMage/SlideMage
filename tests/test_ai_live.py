@@ -8,7 +8,7 @@ import os
 import pytest
 from conftest import SLIDE_TEXT, make_project
 
-from slidemage.ai import resolver
+from slidemage.ai import ai_profile
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import EDIT_AUTO, Done, EditApplied, TextDelta, ToolFinished
 from slidemage.ai.providers import AnthropicProvider, OllamaProvider
@@ -63,7 +63,7 @@ def test_live_claude_agent_changes_a_slide_with_its_tools(ctx, tmp_path, monkeyp
         pytest.skip("ANTHROPIC_API_KEY not set")
     root = make_project(monkeypatch, tmp_path / "project")
     slide = root / "slides" / "abc-EN-Hello-current.tex"
-    resolver.record_cloud_consent(ctx)
+    ai_profile.mark_cloud_seen(ctx)
     events = []
     agent = Agent(AnthropicProvider(api_key=LIVE_KEY), Workspace(ProjectContext.at(root), WorkspaceContext(slide_id="abc", path=slide)),
                   on_event=events.append, mode=EDIT_AUTO, max_turns=8)

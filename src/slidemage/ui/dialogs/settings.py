@@ -2,9 +2,10 @@
 
 * General: dark mode, the Source editor's tab width, the template single slides render with, how
   updates are handled and the GitHub token for them.
-* AI models: the default model of each AI task (a local Ollama model or a Claude one), and how Claude Code
-  translations address the audience in German (this project's `de_address`; ai/translation_style.py).
-* Cloud: "Local AI only" -- for every project, and this project's own override -- and the
+* AI models: the default model of each AI task on each route (Local · Ollama, Claude Code, Anthropic API;
+  ai/ai_profile.py), and how Claude Code translations address the audience in German (this project's
+  `de_address`; ai/translation_style.py).
+* Cloud: what Cloud means (Claude Code or the Anthropic API), this project's Local | Cloud setting and the
   Anthropic API key, with where it is stored.
 * Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
 * Prompts: the system prompts of image descriptions and translation:
@@ -24,7 +25,8 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
 
 from ... import app_settings, slide_snapshot, updater
-from ...ai import credentials, resolver, translation_style
+from ...ai import ai_profile, credentials, translation_style
+from ...ai.ai_profile import API, CLAUDE_CODE, LOCAL
 from ...ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ...project import ProjectContext
@@ -34,14 +36,9 @@ from .settings_ollama import OllamaTab
 from .settings_prompts import PromptsTab
 
 GENERAL, MODELS, CLOUD, OLLAMA, PROMPTS = range(5)
-TASKS = (
-    ("syntax_check", "Syntax check"),
-    ("image_description", "Image descriptions"),
-    ("translation", "Translation"),
-    ("chat", "Chat assistant"),
-)
-TASK_NOTES = {"image_description": "Only vision-capable local models are listed.",
-              "chat": "Only local models that can call tools are listed."}
+ROUTE_LABELS = ((LOCAL, "Local · Ollama"), (CLAUDE_CODE, "Cloud · Claude Code"), (API, "Cloud · Anthropic API"))
+TASK_NOTES = {ai_profile.IMAGE_DESCRIPTION: "Only vision-capable local models are listed.",
+              ai_profile.CHAT: "Only local models that can call tools are listed."}
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
 UPDATE_NOTES = {
@@ -52,13 +49,13 @@ UPDATE_NOTES = {
     updater.UPDATE_MODE_AUTO: "Checked when SlideMage starts; a newer release is installed automatically. "
                               "One that changes how SlideMage works is always asked about.",
 }
-PROJECT_CHOICES = (("follow", "Follow the global setting"), ("local", "Local AI only"), ("cloud", "Allow cloud models"))
-PROJECT_OVERRIDES = {"follow": None, "local": True, "cloud": False}
+CONNECTION_LABELS = ((CLAUDE_CODE, "Claude Code"), (API, "Anthropic API"))
+POLICY_LABELS = ((LOCAL, "Local"), (ai_profile.CLOUD, "Cloud"))
 
 
 class _ModelLoader(QThread):
-    """The installed Ollama models and the Claude models on offer (the live list with a key, else the
-    built-in one; none in local-only mode)."""
+    """The installed Ollama models and the Claude models on offer (the live list while the API is the route in
+    use and a key is set, else the built-in one: nothing is asked of Anthropic in Local)."""
 
     loaded = Signal(object, object, object)       # this loader, [InstalledModel], [model id]
 
@@ -68,8 +65,8 @@ class _ModelLoader(QThread):
 
     def run(self) -> None:
         installed = OllamaProvider.for_project(self.project).installed(detailed=True)
-        cloud = [] if resolver.local_only(self.project) else (
-            AnthropicProvider.for_project(self.project).list_models() or list(ANTHROPIC_FALLBACK_MODELS))
+        cloud = (AnthropicProvider.for_project(self.project).list_models()
+                 if ai_profile.active_route(self.project) == API else []) or list(ANTHROPIC_FALLBACK_MODELS)
         self.loaded.emit(self, installed, cloud)
 
 
@@ -151,24 +148,26 @@ class ModelsTab(Page):
         super().__init__()
         self.project = project
         self.combos: dict[str, QComboBox] = {}
+        self._lists: tuple[list[str], list[str], list[str], list[str]] = ([], [], [], [])   # local, vision, tools, api
         layout = self.body
         layout.addWidget(caption(
-            "The model each AI task starts on. Every model picker begins here; choosing another one in the "
-            "picker applies to that use only. Claude models are listed unless \"Local AI only\" is on (Cloud tab); "
-            "a picker offers them once an API key is set."))
-        for start in range(0, len(TASKS), 2):
+            "The model each AI task starts on, for each route: every route keeps its own models, and switching "
+            "back restores them. Every model picker begins here; choosing another one in the picker applies to "
+            "that use only."))
+        self.route = SegmentedControl(ROUTE_LABELS, current=ai_profile.active_route(project))
+        self.route.changed.connect(lambda _route: self._show())
+        layout.addWidget(Field("Models of", self.route))
+        for start in range(0, len(ai_profile.TASKS), 2):
             fields = []
-            for task, label in TASKS[start:start + 2]:
+            for task in ai_profile.TASKS[start:start + 2]:
                 combo = QComboBox()
                 # A long model tag must not widen the whole sheet; the dropdown still shows full names.
                 combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
                 combo.setMinimumContentsLength(16)
-                if task in TASK_NOTES:
-                    combo.setToolTip(TASK_NOTES[task])
-                combo.activated.connect(lambda i, t=task, c=combo: app_settings.set(
-                    self.project, app_settings.MODEL_SETTINGS[t], c.itemData(i) or ""))       # "<provider>:<model>"
+                combo.activated.connect(lambda i, t=task, c=combo: ai_profile.set_model_choice(
+                    self.project, self.route.current(), t, c.itemData(i) or ""))
                 self.combos[task] = combo
-                fields.append(Field(label, combo))
+                fields.append(Field(ai_profile.TASK_LABELS[task], combo))
             layout.addWidget(columns(*fields))
         self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
                                         current=translation_style.de_address(project))
@@ -182,44 +181,55 @@ class ModelsTab(Page):
         layout.addStretch(1)
 
     def fill(self, local: list[str], vision: list[str], tools: list[str], cloud: list[str]) -> None:
-        """(Re)fill the pickers from the model lists, keeping each task's saved default selected --
-        listed as "(not available)" rather than silently dropped when it is missing, so an unreachable
-        Ollama never rewrites a setting."""
-        for task, combo in self.combos.items():
-            combo.clear()
-            combo.addItem("(none chosen -- built-in fallback)", "")
-            for model in {"image_description": vision, "chat": tools}.get(task, local):
-                combo.addItem(model, f"ollama:{model}")
-            for model in cloud:
-                combo.addItem(f"{model} (cloud)", f"anthropic:{model}")
-            saved = app_settings.default_model(self.project, task)
-            if saved and combo.findData(saved) == -1:
-                combo.addItem(f"{app_settings.split_spec(saved)[1]} (not available)", saved)
-            combo.setCurrentIndex(max(0, combo.findData(saved)))
+        """Take the model lists (installed Ollama models, the vision and the tool-calling ones, the API's) and
+        show them."""
+        self._lists = (local, vision, tools, cloud)
+        self._show()
         self.unreachable.setText(
             "" if local else f"Ollama is not reachable at {app_settings.get_ollama_host(self.project)}, or has no models installed.")
         self.unreachable.setVisible(not local)
 
+    def _show(self) -> None:
+        """(Re)fill the pickers for the route on show, keeping each task's saved default selected -- listed as
+        "(not available)" rather than silently dropped when it is missing, so an unreachable Ollama never rewrites
+        a setting."""
+        route = self.route.current()
+        local, vision, tools, cloud = self._lists
+        for task, combo in self.combos.items():
+            combo.clear()
+            combo.setToolTip(TASK_NOTES.get(task, "") if route == LOCAL else "")
+            if route == CLAUDE_CODE and task == ai_profile.CHAT:
+                combo.addItem("set in Claude Code", "")
+                combo.setEnabled(False)
+                continue
+            combo.setEnabled(True)
+            offered = {LOCAL: {ai_profile.IMAGE_DESCRIPTION: vision, ai_profile.CHAT: tools}.get(task, local),
+                       API: cloud, CLAUDE_CODE: ai_profile.claude_code_choices()}[route]
+            if route == LOCAL:
+                combo.addItem("(none chosen -- built-in fallback)", "")
+            for choice in offered:
+                combo.addItem(ai_profile.choice_label(route, choice), choice)
+            saved = ai_profile.model_choice(self.project, route, task)
+            if saved and combo.findData(saved) == -1:
+                combo.addItem(f"{ai_profile.choice_label(route, saved)} (not available)", saved)
+            combo.setCurrentIndex(max(0, combo.findData(saved)))
+
 
 class CloudTab(Page):
-    cloud_changed = Signal()         # Local AI only or the API key changed: the model lists differ now
+    cloud_changed = Signal()         # the connection, the project setting or the API key changed: lists and routes differ now
 
     def __init__(self, project: ProjectContext) -> None:
         super().__init__()
         self.project = project
         layout = self.body
         layout.addWidget(caption(
-            "A cloud model (Claude) receives whatever its task sends: slide text, images. The first cloud "
-            "request in a project asks for confirmation."))
-        self.local_only_check = QCheckBox("Local AI only: never use a cloud model")
-        self.local_only_check.setChecked(resolver.global_local_only(project))
-        self.local_only_check.toggled.connect(self._on_local_only)
-        layout.addWidget(Field("Every project", self.local_only_check))
-
-        override = resolver.project_local_only(project)
-        self.project_choice = SegmentedControl(
-            PROJECT_CHOICES, current="follow" if override is None else "local" if override else "cloud")
-        self.project_choice.changed.connect(self._on_project_choice)
+            "A cloud route (Claude Code or the Anthropic API) receives whatever its task sends: slide text, images, "
+            "notes. The first cloud request in a project asks for confirmation."))
+        self.connection = SegmentedControl(CONNECTION_LABELS, current=ai_profile.cloud_conn(project))
+        self.connection.changed.connect(self._on_connection)
+        layout.addWidget(Field("Cloud means", self.connection))
+        self.project_choice = SegmentedControl(POLICY_LABELS, current=ai_profile.policy(project))
+        self.project_choice.changed.connect(self._on_policy)
         layout.addWidget(Field("This project", self.project_choice))
         self.project_note = caption("")
         layout.addWidget(self.project_note)
@@ -239,11 +249,11 @@ class CloudTab(Page):
 
     def _refresh_notes(self) -> None:
         key = credentials.get_api_key(self.project)
-        if resolver.local_only(self.project):
-            self.project_note.setText("Cloud models are off in this project.")
+        if ai_profile.mode(self.project) == LOCAL:
+            self.project_note.setText("AI tasks of this project use Ollama on this computer; nothing is sent to the cloud.")
         else:
-            self.project_note.setText(
-                "Cloud models can be used in this project" + ("." if key else ", once an API key is set."))
+            via = {CLAUDE_CODE: "Claude Code", API: "the Anthropic API" + ("" if key else " (add an API key below)")}
+            self.project_note.setText(f"AI tasks of this project use {via[ai_profile.cloud_conn(self.project)]}.")
         self.key_status.setText(self.key_message(key))
 
     @staticmethod
@@ -270,12 +280,15 @@ class CloudTab(Page):
         self._refresh_notes()
         self.cloud_changed.emit()
 
-    def _on_local_only(self, checked: bool) -> None:
-        resolver.set_global_local_only(self.project, checked)
+    def _on_connection(self, value: str) -> None:
+        ai_profile.set_cloud_conn(self.project, value)
         self._on_cloud_changed()
 
-    def _on_project_choice(self, key: str) -> None:
-        resolver.set_project_local_only(self.project, PROJECT_OVERRIDES[key])
+    def _on_policy(self, value: str) -> None:
+        """The project's setting, which the switch starts on when the project opens; until the switch has its own
+        control (top bar) it also moves this session."""
+        ai_profile.set_policy(self.project, value)
+        ai_profile.set_mode(self.project, value)
         self._on_cloud_changed()
 
     def _on_key_save(self) -> None:

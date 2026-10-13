@@ -16,12 +16,12 @@ import tempfile
 import threading
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..processes import no_console_kwargs
 from ..project import ProjectContext
-from . import claude_tasks
+from . import claude_tasks, translation_style
 from .claude_launch import clean_environment
 
 # Chosen by docs/CLAUDE_CODE_TASKS_BENCHMARK.md: the fastest and best setup measured. A text task takes
@@ -208,3 +208,34 @@ def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, capture
     outcome.elapsed_s = time.monotonic() - started
     return outcome
 
+
+
+@dataclass
+class SlideTranslator:
+    """slide_add.translate_body on Claude Code: the Translate task on a slide body, its answer checked. What
+    the Add slide sheet holds in place of a provider: it takes no Ollama slot and abort() ends the process."""
+    ctx: ProjectContext
+    claude: Path
+    model: str
+    effort: str
+    cancel: threading.Event = field(default_factory=threading.Event, init=False)
+    is_local = False
+
+    @property
+    def label(self) -> str:
+        return f"Claude {self.model}"
+
+    def abort(self) -> None:
+        self.cancel.set()
+
+    def translate(self, body: str) -> tuple[str, str | None]:
+        """(translation, error) of an English slide body into German, with the line ends of `body`."""
+        request = claude_tasks.translate_request(body, "EN", "DE", translation_style.de_address(self.ctx),
+                                                 translation_style.glossary(self.ctx))
+        outcome = run_task(self.ctx, self.claude, claude_tasks.TRANSLATE, body, request, self.model, self.effort,
+                           cancel=self.cancel)
+        if outcome.status == DONE:
+            return (outcome.text.replace("\n", "\r\n") if "\r\n" in body else outcome.text), None
+        if outcome.status == NOTHING:
+            return body, None
+        return "", "Cancelled" if outcome.status == CANCELLED else outcome.message

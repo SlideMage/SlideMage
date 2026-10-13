@@ -4,8 +4,8 @@ review state, editable here.
 A save goes through alt_images.save_slide_image() (the same store, media/alt-text.json, as the
 Images page, which has all the fields and the batch drafting): "Save draft" keeps the text unreviewed for this slide,
 "Mark reviewed" confirms the image and this slide's use of it. Redraft asks the vision model
-chosen under Settings -> AI models for a new description (local or cloud, with the one-time
-cloud consent) and puts it into the fields; nothing is stored until it is saved. A pending edit is
+of the active route (Local, Claude Code or the API, with the one-time cloud consent) for a new
+description and puts it into the fields; nothing is stored until it is saved. A pending edit is
 saved as a draft when the slide, the deck or the panel changes. The takeaway, the German texts
 and the source line are the Images page's."""
 from __future__ import annotations
@@ -19,9 +19,10 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit
 
 from .... import alt_blocks, alt_draft, alt_images, image_review
-from ...ai_models import provider_for_task
+from ....ai import ai_profile, resolver
 from ....project import ProjectContext
 from ....slide_language import bare_id
+from ...ai_models import built, task_route
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
 from ...pages.image_form import ROLES, STATE_TONES, review_refused
@@ -67,8 +68,8 @@ class ImageForm(Row):
         self.body.addWidget(self.note)
         buttons = QHBoxLayout()
         self.redraft_button = Button("Redraft…", "secondary", compact=True)
-        self.redraft_button.setToolTip("Ask the vision model chosen under Settings -> AI models for a new "
-                                       "description. It fills the fields; nothing is saved until you save.")
+        self.redraft_button.setToolTip("Ask the vision model of the active AI route (Settings -> AI models) for a "
+                                       "new description. It fills the fields; nothing is saved until you save.")
         self.save_button = Button("Save draft", "secondary", compact=True)
         self.review_button = Button("Mark reviewed", "primary", compact=True)
         buttons.addWidget(self.redraft_button)
@@ -179,15 +180,16 @@ class ImageDescriptions(SidePanel):
             QMessageBox.information(self, "Redraft", "The model cannot read this image: it is a vector file "
                                     "it cannot render, or the file is missing.")
             return
-        provider = provider_for_task(self, self.app.project, "image_description", "the slide's text and this image")
-        if provider is None or not self.app.try_start_ollama_task("drafting a description", provider):
+        route = task_route(self, self.app.project, ai_profile.IMAGE_DESCRIPTION, "the slide's text and this image")
+        backend = None if route is None else built(self, resolver.draft_backend, self.app.project, route)
+        if backend is None or not self.app.try_start_ollama_task("drafting a description", backend.provider):
             return
         form.redraft_button.setEnabled(False)
-        form.note.setText(f"Drafting with {provider.label}…")
+        form.note.setText(f"Drafting with {backend.label}…")
         form.note.show()
         context = alt_draft.build_context(self.app.project, path, form.reference)
-        threading.Thread(target=self._draft_bg, args=(slide_id, form.reference, provider, alt_draft.ModelBackend(self.app.project, provider),
-                                                      found[0][1], context), daemon=True).start()
+        threading.Thread(target=self._draft_bg, args=(slide_id, form.reference, backend.provider, backend, found[0][1], context),
+                         daemon=True).start()
 
     def _draft_bg(self, slide_id: str, reference: str, provider, backend, resolved: Path, context) -> None:
         try:

@@ -1,90 +1,109 @@
-"""Qt glue shared by every AI model picker (2026-10-09, UI redesign step 2):
-filling a picker with local and cloud models, turning the selection into a
-provider, and the one-time privacy confirmation before the first cloud
-request in a project. One helper set so the five pickers behave alike.
+"""Qt glue shared by every AI model picker (UI redesign step 2, reworked by the workspace v6 route audit): filling
+a picker with the models of the active route, turning the selection into a Route, and the one-time privacy
+confirmation before the first cloud request in a project. One helper set so the pickers behave alike.
 
-Each picker item's data is the model spec ("ollama:qwen3",
-"anthropic:claude-sonnet-5-5"); local items show the plain model name,
-cloud items add " (cloud)".
+A picker lists only the models of the route the switch is on (ai_profile.resolve) and preselects the saved
+default of that route for its task; its item data is the choice that ai_profile.route_for takes: an Ollama or
+API model name, for Claude Code "<model>:<effort>". The caller turns the Route into a provider or backend
+(ai/resolver.py). A picker is filled for one route: it is filled again when the route changes.
 """
 from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
-from .. import app_settings
+from ..ai import ai_profile, resolver
+from ..ai.ai_profile import API, CLAUDE_CODE, Route
+from ..ai.providers import ChatProvider, OllamaProvider, ProviderError
 from ..project import ProjectContext
-from ..ai import resolver
-from ..ai.providers import ChatProvider, ProviderError
 
 
 def fill_model_combo(
-    project: ProjectContext, combo: QComboBox, task: str, local_models: list[str], empty_text: str,
-    fallback_local: str = "",
+    project: ProjectContext, combo: QComboBox, task: str, empty_text: str, *, local_models: list[str] | None = None,
+    vision_only: bool = False, fallback_local: str = "",
 ) -> bool:
-    """(Re)fill `combo` with `local_models` plus the cloud models on offer
-    (none in local-only mode or without an API key) and preselect the
-    task's default from Settings -> "AI models", else `fallback_local` when
-    it is installed. With nothing to offer it shows `empty_text` disabled
-    and returns False."""
+    """(Re)fill `combo` with the models of the active route for `task` and preselect its saved default, else
+    `fallback_local` when installed. Local lists `local_models` (the installed ones, asked of Ollama when None);
+    API the Claude models once a key is set; Claude Code its models with their efforts. With nothing to offer it
+    shows `empty_text` disabled and returns False."""
+    route = ai_profile.resolve(project, task)
     combo.clear()
-    for model in local_models:
-        combo.addItem(model, f"ollama:{model}")
-    for model in resolver.cloud_models(project):
-        combo.addItem(f"{model} (cloud)", f"anthropic:{model}")
+    if route.route == API:
+        for model in resolver.api_models(project):
+            combo.addItem(model, model)
+    elif route.route == CLAUDE_CODE:
+        for choice in ai_profile.claude_code_choices():
+            combo.addItem(ai_profile.choice_label(CLAUDE_CODE, choice), choice)
+    else:
+        if local_models is None:
+            local_models = OllamaProvider.for_project(project).list_models(vision_only=vision_only)
+        for model in local_models:
+            combo.addItem(model, model)
     usable = combo.count() > 0
     combo.setEnabled(usable)
     if not usable:
         combo.addItem(empty_text, "")
         return False
-    index = combo.findData(app_settings.default_model(project, task))
-    if index == -1 and fallback_local:
-        index = combo.findData(f"ollama:{fallback_local}")
+    index = combo.findData(ai_profile.model_choice(project, route.route, task))
+    if index == -1 and fallback_local and route.is_local:
+        index = combo.findData(fallback_local)
     if index != -1:
         combo.setCurrentIndex(index)
     return True
 
 
-def confirm_cloud_request(parent: QWidget, project: ProjectContext, provider: ChatProvider, what: str) -> bool:
-    """True when a request to `provider` may go ahead. A local provider
-    always may; the first cloud request in a project asks once, naming
-    `what` is sent, and remembers a yes (resolver.record_cloud_consent)."""
-    if not resolver.needs_cloud_consent(project, provider):
-        return True
+def confirm_cloud_request(parent: QWidget, project: ProjectContext, label: str, what: str) -> bool:
+    """Ask before the first cloud request in a project: it goes to `label`, naming what `what` is sent. A yes
+    is remembered (ai_profile.mark_cloud_seen), so this is asked once per project."""
     answer = QMessageBox.question(
         parent, "Send to the cloud?",
-        f"This request goes to a cloud model ({provider.label}) and sends {what} "
-        "to Anthropic. Nothing is sent unless you agree.\n\n"
-        "You are asked this once per project; \"Local AI only\" in Settings "
-        "turns cloud models off.",
+        f"This request goes to the cloud ({label}) and sends {what} to Anthropic. Nothing is sent unless you "
+        "agree.\n\nYou are asked this once per project; the Local setting for this project in Settings "
+        "keeps everything on this computer.",
     )
     if answer != QMessageBox.StandardButton.Yes:
         return False
-    resolver.record_cloud_consent(project)
+    ai_profile.mark_cloud_seen(project)
     return True
 
 
-def provider_from_combo(parent: QWidget, project: ProjectContext, combo: QComboBox, what: str) -> ChatProvider | None:
-    """The provider for the picker's selection, or None after telling the user why not (no
-    model, local-only, or consent declined)."""
-    return _confirmed_provider(parent, project, combo.currentData(), what, "No AI model is available. "
-                               "Install an Ollama model or add an API key in Settings.")
-
-
-def _confirmed_provider(parent: QWidget, project: ProjectContext, spec: str, what: str, missing: str) -> ChatProvider | None:
-    if not spec:
-        QMessageBox.critical(parent, "AI model", missing)
+def picked_route(parent: QWidget, project: ProjectContext, combo: QComboBox, task: str, what: str) -> Route | None:
+    """The Route of the picker's selection, or None after telling the user why not (nothing to pick, the route
+    is not ready, or a first cloud request was declined)."""
+    choice = combo.currentData() or ""
+    route = ai_profile.resolve(project, task, choice)
+    reason = resolver.problem(project, route) or ("" if choice else "No AI model is available on this route.")
+    if reason:
+        QMessageBox.critical(parent, "AI model", reason)
         return None
+    return route if confirm_if_new(parent, project, route, what) else None
+
+
+def confirm_if_new(parent: QWidget, project: ProjectContext, route: Route, what: str) -> bool:
+    """Whether a request on `route` may go ahead: Local always; a cloud route once the project has been asked."""
+    return route.is_local or ai_profile.cloud_seen(project) or confirm_cloud_request(parent, project, route.label, what)
+
+
+def built(parent: QWidget, make, project: ProjectContext, route: Route):
+    """`make(project, route)` (one of resolver's provider_for, draft_backend, translation_backend), or None
+    after telling the user why the route cannot run it."""
     try:
-        provider = resolver.provider_for(project, spec)
+        return make(project, route)
     except ProviderError as exc:
         QMessageBox.critical(parent, "AI model", str(exc))
         return None
-    return provider if confirm_cloud_request(parent, project, provider, what) else None
 
 
-def provider_for_task(parent: QWidget, project: ProjectContext, task: str, what: str) -> ChatProvider | None:
-    """The provider Settings -> "AI models" names for `task` (a MODEL_SETTINGS key), for a place
-    with no picker of its own; None after telling the user why not (no model chosen, local-only,
-    or consent declined)."""
-    return _confirmed_provider(parent, project, app_settings.default_model(project, task), what,
-                               "No AI model is chosen for this task. Choose one under Settings -> AI models.")
+def provider_from_combo(parent: QWidget, project: ProjectContext, combo: QComboBox, task: str, what: str) -> ChatProvider | None:
+    """The provider for the picker's selection, or None after telling the user why not."""
+    route = picked_route(parent, project, combo, task, what)
+    return None if route is None else built(parent, resolver.provider_for, project, route)
+
+
+def task_route(parent: QWidget, project: ProjectContext, task: str, what: str) -> Route | None:
+    """The Route of the active route for `task`, for a place with no picker of its own; None after telling the
+    user why not (the route is not ready, or a first cloud request was declined)."""
+    route = ai_profile.resolve(project, task)
+    if reason := resolver.problem(project, route):
+        QMessageBox.critical(parent, "AI model", reason)
+        return None
+    return route if confirm_if_new(parent, project, route, what) else None

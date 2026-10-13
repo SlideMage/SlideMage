@@ -9,8 +9,9 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 
 from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater
 from slidemage import translation_prompts as tp
-from slidemage.ai import credentials, ollama_admin, resolver
-from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
+from slidemage.ai import ai_profile, credentials, ollama_admin
+from slidemage.ai.providers import (
+    ANTHROPIC_FALLBACK_MODELS, DEFAULT_ANTHROPIC_MODEL, AnthropicProvider, InstalledModel, OllamaProvider)
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.dialogs.settings import CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
 from conftest import EXAMPLE_PROJECT, wait_until
@@ -131,31 +132,50 @@ def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):
 
 # -- AI models ---------------------------------------------------------------------------------
 
-def choose(sheet, task, model):
+def show_route(sheet, route):
+    sheet.models.route.set_current(route)
+    sheet.models.route.changed.emit(route)
+
+
+def choose(sheet, task, choice):
     combo = sheet.models.combos[task]
-    index = combo.findData(f"ollama:{model}")
-    assert index != -1, (task, model)
+    index = combo.findData(choice)
+    assert index != -1, (task, choice)
     combo.setCurrentIndex(index)
     combo.activated.emit(index)
 
 
+def offered(combo):
+    return [combo.itemData(i) for i in range(combo.count())]
+
+
 def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missing(qapp):
-    app_settings.set(EXAMPLE_PROJECT, app_settings.MODEL_SETTINGS["translation"], "ollama:gone")
+    ai_profile.set_model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.TRANSLATION, "gone")
     sheet = open_sheet(qapp)
+    assert sheet.models.route.current() == ai_profile.LOCAL
     assert sheet.available_models == [m.name for m in INSTALLED]
     assert sheet.vision_models == ["vision", "vision-2"]
-    # Image descriptions offer vision models among the local ones; the cloud list is the built-in one.
-    image = sheet.models.combos["image_description"]
-    assert [image.itemData(i) for i in range(image.count())] == [
-        "", "ollama:vision", "ollama:vision-2", *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
-    # The chat needs a model that calls tools.
+    # Image descriptions offer the vision models among the local ones, the chat the ones that call tools; no cloud ones.
+    assert offered(sheet.models.combos[ai_profile.IMAGE_DESCRIPTION]) == ["", "vision", "vision-2"]
     assert sheet.tool_models == ["general-text"]
-    chat = sheet.models.combos["chat"]
-    assert [chat.itemData(i) for i in range(chat.count())] == [
-        "", "ollama:general-text", *(f"anthropic:{m}" for m in ANTHROPIC_FALLBACK_MODELS)]
-    translation = sheet.models.combos["translation"]
-    assert translation.currentData() == "ollama:gone" and translation.currentText() == "gone (not available)"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "translation") == "ollama:gone"      # an unreachable model never rewrites it
+    assert offered(sheet.models.combos[ai_profile.CHAT]) == ["", "general-text"]
+    translation = sheet.models.combos[ai_profile.TRANSLATION]
+    assert translation.currentData() == "gone" and translation.currentText() == "gone (not available)"
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.TRANSLATION) == "gone"   # never rewritten
+
+
+def test_each_route_shows_its_own_models(qapp):
+    sheet = open_sheet(qapp)
+    show_route(sheet, ai_profile.API)
+    assert offered(sheet.models.combos[ai_profile.CHAT]) == list(ANTHROPIC_FALLBACK_MODELS)
+    assert sheet.models.combos[ai_profile.CHAT].currentData() == DEFAULT_ANTHROPIC_MODEL
+    show_route(sheet, ai_profile.CLAUDE_CODE)
+    chat = sheet.models.combos[ai_profile.CHAT]
+    assert chat.currentText() == "set in Claude Code" and not chat.isEnabled()
+    translation = sheet.models.combos[ai_profile.TRANSLATION]
+    assert offered(translation) == ai_profile.claude_code_choices() and translation.currentText() == "Sonnet · medium"
+    show_route(sheet, ai_profile.LOCAL)
+    assert offered(sheet.models.combos[ai_profile.CHAT]) == ["", "general-text"] and chat.isEnabled()
 
 
 def test_an_unreachable_ollama_is_said_and_costs_no_setting(monkeypatch, qapp):
@@ -165,17 +185,20 @@ def test_an_unreachable_ollama_is_said_and_costs_no_setting(monkeypatch, qapp):
     assert not sheet.ollama.models_list.isEnabled() and not sheet.ollama.delete_button.isEnabled()
 
 
-def test_choosing_a_default_saves_it_for_that_task_only(qapp):
+def test_choosing_a_default_saves_it_for_that_route_and_task_only(qapp):
     sheet = open_sheet(qapp)
-    choose(sheet, "syntax_check", "general-text")
-    choose(sheet, "image_description", "vision-2")
-    cloud = sheet.models.combos["translation"]
-    cloud.setCurrentIndex(cloud.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"))
-    cloud.activated.emit(cloud.currentIndex())
-    assert app_settings.default_model(EXAMPLE_PROJECT, "syntax_check") == "ollama:general-text"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "image_description") == "ollama:vision-2"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "translation") == f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "chat") == ""
+    choose(sheet, ai_profile.FIXES, "general-text")
+    choose(sheet, ai_profile.IMAGE_DESCRIPTION, "vision-2")
+    show_route(sheet, ai_profile.API)
+    choose(sheet, ai_profile.TRANSLATION, ANTHROPIC_FALLBACK_MODELS[0])
+    show_route(sheet, ai_profile.CLAUDE_CODE)
+    choose(sheet, ai_profile.FIXES, "haiku:high")
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.FIXES) == "general-text"
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.CLAUDE_CODE, ai_profile.FIXES) == "haiku:high"
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.API, ai_profile.TRANSLATION) == ANTHROPIC_FALLBACK_MODELS[0]
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.IMAGE_DESCRIPTION) == "vision-2"
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.TRANSLATION) == ""
+    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.CHAT) == ""
 
 
 def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
@@ -188,9 +211,9 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
 
     app = FakeApp()
     sheet = open_sheet(qapp, app)
-    choose(sheet, "syntax_check", "general-text")
-    choose(sheet, "image_description", "vision-2")
-    choose(sheet, "translation", "translator")
+    choose(sheet, ai_profile.FIXES, "general-text")
+    choose(sheet, ai_profile.IMAGE_DESCRIPTION, "vision-2")
+    choose(sheet, ai_profile.TRANSLATION, "translator")
     app_settings.set_ollama_host(EXAMPLE_PROJECT, "http://ollama.example:11434")
 
     (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
@@ -218,8 +241,8 @@ def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path
     assert tab.draft_model.currentText() == "vision-2" and tab.translate_model.currentText() == "translator"
 
     # A default changed in Settings reaches the open pickers from the sheet's own model lists.
-    choose(sheet, "syntax_check", "vision")
-    choose(sheet, "image_description", "vision")
+    choose(sheet, ai_profile.FIXES, "vision")
+    choose(sheet, ai_profile.IMAGE_DESCRIPTION, "vision")
     app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
     route_refreshes = []
     app.assistant = SimpleNamespace(chat=SimpleNamespace(refresh_route=lambda: route_refreshes.append(True)))
@@ -312,42 +335,32 @@ class FakeKeyring:
         self.store.pop((service, user), None)
 
 
-def test_local_only_hides_the_cloud_models_at_once(qapp):
+def test_the_cloud_connection_is_chosen_here_and_saved(qapp):
     sheet = open_sheet(qapp, tab=CLOUD)
     cloud = sheet.cloud
-    assert not cloud.local_only_check.isChecked()
-    translation = sheet.models.combos["translation"]
-    assert translation.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}") != -1
-
-    cloud.local_only_check.setChecked(True)
-    assert resolver.global_local_only(EXAMPLE_PROJECT) and "off in this project" in cloud.project_note.text()
-    loaded(sheet, qapp)
-    assert [translation.itemData(i) for i in range(translation.count())] == ["", *(f"ollama:{m.name}" for m in INSTALLED)]
-
-    cloud.local_only_check.setChecked(False)
-    loaded(sheet, qapp)
-    assert translation.findData(f"anthropic:{ANTHROPIC_FALLBACK_MODELS[0]}") != -1
+    assert cloud.connection.current() == ai_profile.CLAUDE_CODE
+    cloud.connection.changed.emit(ai_profile.API)
+    assert ai_profile.cloud_conn(EXAMPLE_PROJECT) == ai_profile.API
+    assert open_sheet(qapp, tab=CLOUD).cloud.connection.current() == ai_profile.API
 
 
-def test_this_project_can_override_the_global_switch_either_way(qapp):
+def test_the_project_setting_is_saved_with_the_project_and_moves_this_session(qapp):
     sheet = open_sheet(qapp, tab=CLOUD)
     cloud = sheet.cloud
-    assert cloud.project_choice.current() == "follow" and resolver.project_local_only(EXAMPLE_PROJECT) is None
-    cloud.project_choice.changed.emit("local")
-    assert resolver.project_local_only(EXAMPLE_PROJECT) is True and resolver.local_only(EXAMPLE_PROJECT)
-    assert "off in this project" in cloud.project_note.text()
-    resolver.set_global_local_only(EXAMPLE_PROJECT, True)
-    cloud.project_choice.changed.emit("cloud")
-    assert resolver.project_local_only(EXAMPLE_PROJECT) is False and not resolver.local_only(EXAMPLE_PROJECT)
-    assert "once an API key is set" in cloud.project_note.text()
-    cloud.project_choice.changed.emit("follow")
-    assert resolver.project_local_only(EXAMPLE_PROJECT) is None and resolver.local_only(EXAMPLE_PROJECT)      # the global switch again
+    assert cloud.project_choice.current() == ai_profile.LOCAL and "Ollama on this computer" in cloud.project_note.text()
+    cloud.project_choice.changed.emit(ai_profile.CLOUD)
+    assert ai_profile.policy(EXAMPLE_PROJECT) == ai_profile.CLOUD and ai_profile.mode(EXAMPLE_PROJECT) == ai_profile.CLOUD
+    assert "Claude Code" in cloud.project_note.text()
+    cloud.connection.changed.emit(ai_profile.API)
+    assert "add an API key" in cloud.project_note.text()
+    cloud.project_choice.changed.emit(ai_profile.LOCAL)
+    assert ai_profile.policy(EXAMPLE_PROJECT) == ai_profile.LOCAL and ai_profile.mode(EXAMPLE_PROJECT) == ai_profile.LOCAL
 
 
-def test_the_override_of_a_project_is_shown_when_the_sheet_opens(qapp):
-    resolver.set_project_local_only(EXAMPLE_PROJECT, False)
+def test_the_project_setting_is_shown_when_the_sheet_opens(qapp):
+    ai_profile.set_policy(EXAMPLE_PROJECT, ai_profile.CLOUD)
     assert open_sheet(qapp).cloud.project_choice.current() == "cloud"
-    resolver.set_project_local_only(EXAMPLE_PROJECT, True)
+    ai_profile.set_policy(EXAMPLE_PROJECT, ai_profile.LOCAL)
     assert open_sheet(qapp).cloud.project_choice.current() == "local"
 
 

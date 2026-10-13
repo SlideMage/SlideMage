@@ -1,4 +1,5 @@
-"""One chat conversation: its history, the agent thread that answers a request, and which model answers.
+"""One chat conversation: its history and the agent thread that answers a request (which model answers is
+ai_profile.resolve's: the view asks it for each request).
 
 `ChatSession.start()` runs one `Agent` (ai/agent.py) on a worker thread; everything the agent reports
 arrives as the `event` signal on the GUI thread, `Done` last. The history list is extended by the agent
@@ -10,47 +11,13 @@ earlier.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from PySide6.QtCore import QObject, QThread, Signal
 
-from .... import app_settings
-from ....project import ProjectContext
-from ....ai import credentials, resolver
 from ....ai.agent import Agent
 from ....ai.agent_types import EDIT_ASK, AgentEvent, AgentMessage, Done
-from ....ai.providers import DEFAULT_ANTHROPIC_MODEL, ChatProvider, OllamaProvider
+from ....ai.providers import ChatProvider, OllamaProvider
 from ... import background
 from .gui_workspace import GuiWorkspace
-
-CLOUD = "anthropic"
-LOCAL_ONLY_HINT = ("Local AI only is on, so the cloud model is off. Switch it off under Settings → Cloud, "
-                   "or choose a local model.")
-NO_KEY_HINT = "No Anthropic API key yet. Add one under Settings → Cloud."
-NO_MODEL_HINT = "Choose a model for the chat under Settings → AI models → Chat assistant."
-
-
-@dataclass(frozen=True)
-class Route:
-    """The model that answers the next request: its stored spec, the label to show, and why it cannot be
-    used right now ("" if it can)."""
-    spec: str
-    label: str
-    problem: str = ""
-
-
-def current_route(project: ProjectContext) -> Route:
-    """Settings → AI models → "Chat assistant"; Claude while nothing is chosen but an API key is set."""
-    spec = app_settings.default_model(project, "chat")
-    if not spec and credentials.get_api_key(project) is not None and not resolver.local_only(project):
-        spec = f"{CLOUD}:{DEFAULT_ANTHROPIC_MODEL}"
-    if not spec:
-        return Route("", "no model chosen", NO_MODEL_HINT)
-    name, model = app_settings.split_spec(spec)
-    if name != CLOUD:
-        return Route(spec, f"{model} · local")
-    problem = LOCAL_ONLY_HINT if resolver.local_only(project) else NO_KEY_HINT if credentials.get_api_key(project) is None else ""
-    return Route(spec, f"{model} · cloud", problem)
 
 
 class LocalModels(QThread):

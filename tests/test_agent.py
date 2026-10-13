@@ -5,7 +5,7 @@ import pytest
 from agent_fakes import FakeWorkspace, ScriptedProvider, call, reply
 from conftest import SLIDE_TEXT, make_project
 
-from slidemage.ai import resolver
+from slidemage.ai import ai_profile
 from slidemage.project import ProjectContext
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import (
@@ -258,14 +258,6 @@ class CloudProvider(ScriptedProvider):
     label = "scripted · cloud"
 
 
-def test_local_only_stops_a_cloud_provider(ctx, workspace):
-    resolver.set_global_local_only(ctx, True)
-    provider = CloudProvider(reply("never"))
-    done, events, history = run(provider, workspace)
-    assert done.reason == "error" and "Local AI only" in done.message
-    assert not provider.sent and history == []
-
-
 def test_the_first_cloud_request_needs_consent_once(ctx, workspace):
     provider = CloudProvider(reply("no"), reply("yes"), reply("again"))
     done, _events, history = run(provider, workspace)                  # the user declines
@@ -274,9 +266,8 @@ def test_the_first_cloud_request_needs_consent_once(ctx, workspace):
     assert run(provider, workspace)[0].reason == "end_turn"            # agrees: remembered
     workspace.consent = False
     assert run(provider, workspace)[0].reason == "end_turn"            # not asked again
-    assert resolver.cloud_consent_given(ctx)
+    assert ai_profile.cloud_seen(ctx)
 
 
 def test_a_local_provider_never_asks(ctx, workspace):
-    resolver.set_global_local_only(ctx, True)
     assert run(ScriptedProvider(reply("fine")), workspace)[0].reason == "end_turn"

@@ -7,8 +7,8 @@ while the user looks at the chat. When it ends, the terminal keeps its text, the
 Restart starts a new one. Closing the window, switching project and `shutdown()` end the process.
 
 Under the status row: the suggestion bubbles for the slide in the Source view (with the scope on Deck, for the
-open deck), the model and effort the next bubble task runs with (remembered per user), and the status line of
-the running or last task, with Stop (tasks.py does the work).
+open deck) and the status line of the running or last task, with Stop (tasks.py does the work; the model and
+effort of a task are the active route's, ai_profile.resolve). The terminal's own model is Claude Code's.
 """
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
 
-from ....ai import claude_launch, claude_runner, claude_tasks
+from ....ai import claude_launch, claude_tasks
 from ....ai.claude_scope import DECK, SLIDE
-from ... import layout_settings
 from ...kit import kit_qss as q
 from ...kit.widgets import (
     Button, Chip, IconButton, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
@@ -31,7 +30,6 @@ from .tasks import Bubble, TaskRunner, bubbles, deck_bubbles
 
 HINT, TERMINAL = 0, 1
 BUBBLE_DELAY_MS = 500
-MODEL_SETTING, EFFORT_SETTING = "claude_task_model", "claude_task_effort"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
 INSTALL_STEPS = (f'Install it as the <a href="{claude_launch.INSTALL_URL}">Claude Code setup guide</a> says, '
@@ -52,8 +50,6 @@ class ClaudeCodeView(Surface):
         self._typing.timeout.connect(self._refresh_bubbles)
         self._shown = 0                           # of them, the buttons that fit
         self._bubbles: list[Bubble] = []          # the tasks that fit the slide, as buttons or under "More"
-        self._model = self._remembered(MODEL_SETTING, claude_runner.MODELS, claude_runner.MODEL)
-        self._effort = self._remembered(EFFORT_SETTING, claude_runner.EFFORTS, claude_runner.EFFORT)
         self._started = False
         self._size = (80, 24)
         self._stack = QStackedWidget()
@@ -130,8 +126,7 @@ class ClaudeCodeView(Surface):
         return self._bubble_row
 
     def _build_task_row(self) -> QHBoxLayout:
-        """The status line of the task, its buttons and the picker: the picker is always there, so that it never
-        takes room from the bubbles."""
+        """The status line of the task and its buttons."""
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         self.task_status = caption("")
@@ -144,11 +139,6 @@ class ClaudeCodeView(Surface):
         self.stop_button.clicked.connect(lambda: self.tasks.stop())
         self.stop_button.hide()
         row.addWidget(self.stop_button)
-        self.picker = Button("", "ghost", compact=True)
-        self.picker.setToolTip("The model and the effort of the tasks and of the terminal (from its next start).")
-        self.picker.clicked.connect(self._open_picker)
-        self._show_pick()
-        row.addWidget(self.picker)
         return row
 
     def _on_scope(self, scope: str) -> None:
@@ -198,40 +188,6 @@ class ClaudeCodeView(Surface):
         self.attach_button.setEnabled(self.session is not None and self.session.running)
 
     # -- bubbles and tasks ------------------------------------------------------------------------
-
-    @staticmethod
-    def _remembered(key: str, choices: tuple[str, ...], default: str) -> str:
-        value = layout_settings.get(key)
-        return value if value in choices else default
-
-    def _show_pick(self) -> None:
-        self.picker.setText(f"{self._model.capitalize()} · {self._effort}  ▾")
-
-    def _open_picker(self) -> None:
-        menu = PopoverMenu(self, min_width=160)
-        menu.add_header("Model")
-        for model in claude_runner.MODELS:
-            menu.add_item(f"{MODEL_SETTING}:{model}", model.capitalize(), icon="check" if model == self._model else "")
-        menu.add_header("Effort")
-        for effort in claude_runner.EFFORTS:
-            menu.add_item(f"{EFFORT_SETTING}:{effort}", effort, icon="check" if effort == self._effort else "")
-        menu.triggered.connect(self._on_picked)
-        menu.closed.connect(menu.deleteLater)
-        menu.popup_below(self.picker, align_right=True)
-
-    def _on_picked(self, key: str) -> None:
-        setting, _, value = key.partition(":")
-        layout_settings.set(setting, value)
-        if setting == MODEL_SETTING:
-            self._model = value
-        else:
-            self._effort = value
-        self._show_pick()
-        if self.session is not None:
-            self.session.model, self.session.effort = self._model, self._effort
-            if self.session.running:     # switching would end the conversation: the user restarts when it suits
-                self._on_task_status(f"Tasks use {self._model.capitalize()} · {self._effort} now; "
-                                     "the terminal after Restart.", "muted")
 
     def _refresh_bubbles(self) -> None:
         """Show the buttons for the tasks that fit the slide now (none while a task runs)."""
@@ -283,7 +239,7 @@ class ClaudeCodeView(Surface):
         self._fit()
 
     def _run(self, bubble: Bubble) -> None:
-        self.tasks.start(bubble.task, self._model, self._effort, bubble.paths)
+        self.tasks.start(bubble.task, bubble.paths)
 
     def _translate_slide(self, path: Path) -> str:
         """The terminal's translate_slide: the slide into view, then its Translate bubble (GUI thread)."""
@@ -293,6 +249,8 @@ class ClaudeCodeView(Surface):
             return f"{path.name} has a translation already, or is not EN or DE: there is nothing to translate."
         if self.tasks.busy:
             return "SlideMage is busy with another task; ask the user to try again when its status line is done."
+        if reason := self.tasks.refusal(bubble.task):
+            return reason
         self._run(bubble)
         return f"SlideMage is translating it ({bubble.label}); the new slide opens when it is done."
 
@@ -350,7 +308,6 @@ class ClaudeCodeView(Surface):
 
         self.session = ClaudeCodeSession(self.app, claude, self)
         self.session.scope = self.scope.current()
-        self.session.model, self.session.effort = self._model, self._effort
         self.terminal = TerminalWidget(self.app.theme.tokens)
         self._terminal_layout.addWidget(self.terminal, 1)
         self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)

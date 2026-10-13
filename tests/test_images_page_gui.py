@@ -12,6 +12,8 @@ import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
 from slidemage import alt_blocks, alt_draft, alt_images, image_review
+from slidemage.ai import ai_profile, claude_images, claude_launch, resolver
+from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
 from slidemage.ai.providers import OllamaProvider
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
@@ -95,7 +97,11 @@ def run_jobs_inline(monkeypatch):
 
 
 def choose_provider(monkeypatch, provider=None):
-    monkeypatch.setattr(image_runs, "provider_from_combo", lambda *_args: provider or OllamaProvider("offline-test"))
+    """The picked route is Local, and the provider its backends are built on the given one."""
+    provider = provider or OllamaProvider("offline-test")
+    monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
+    monkeypatch.setattr(image_runs, "provider_from_combo", lambda *_args: provider)
+    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
 
 
 def type_into(page, key, text, index=0):
@@ -538,8 +544,8 @@ def translation_for(entry):
 
 
 class FakeTranslator:
-    def __init__(self, *_args, **_kwargs):
-        self.label = "offline-test"
+    def __init__(self, _ctx, provider, **_kwargs):
+        self.provider, self.label = provider, "offline-test"
 
     def translate(self, entry):
         return translation_for(entry)
@@ -923,3 +929,72 @@ def test_a_show_filter_that_keeps_the_slide_does_not_ask_and_keeps_the_translati
     page.nav._on_filter(str([label for label, _ in image_review.FILTERS].index("All slides with images")))
     assert page._current is shown and page._forms[0] is form
     assert page.nav.slide_list.currentRow() == 1
+
+
+# -- the other routes ---------------------------------------------------------------------------------------
+
+def on_claude_code(ctx, monkeypatch, tmp_path):
+    claude = tmp_path / "claude"
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: claude)
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(ctx)
+    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.IMAGE_DESCRIPTION, "haiku:low")
+    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.TRANSLATION, "opus:high")
+    return claude
+
+
+def test_on_claude_code_the_pickers_offer_its_models_and_the_backends_are_claudes(make_page, ctx, monkeypatch, tmp_path):
+    page = make_page()
+    claude = on_claude_code(ctx, monkeypatch, tmp_path)
+    page.refresh_model_preferences()
+    assert page.draft_model.isEnabled() and page.draft_model.currentText() == "Haiku · low"
+    assert page.translate_model.currentData() == "opus:high"
+    drafting, translating = page._draft_backend(), page._translation_backend("the text")
+    assert isinstance(drafting, claude_images.ClaudeDraftBackend) and (drafting.model, drafting.effort) == ("haiku", "low")
+    assert isinstance(translating, claude_images.ClaudeTranslationBackend) and (translating.model, translating.effort) == ("opus", "high")
+    assert drafting.claude == claude and not drafting.provider.is_local
+
+
+def test_a_drafting_run_on_claude_code_takes_no_ollama_slot_and_stop_ends_its_process(make_page, ctx, monkeypatch, tmp_path):
+    page = make_page()
+    on_claude_code(ctx, monkeypatch, tmp_path)
+    page.refresh_model_preferences()
+    started = threading.Event()
+
+    def draft(self, _path, _context):
+        started.set()
+        self.cancel.wait(5)
+        return alt_draft.DraftResult(error="Cancelled")
+
+    monkeypatch.setattr(claude_images.ClaudeDraftBackend, "draft", draft)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
+    monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
+        alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
+    page._draft_slide()
+    assert started.wait(5) and page.app.slots == ["took"]              # asks the window, which gives no slot to a cloud route
+    job = page._job
+    page._abort_job()
+    assert job.provider.cancel.is_set()                                 # Stop ended the process
+    job.wait()
+
+
+def test_tuning_a_prompt_is_not_offered_on_claude_code(make_page, ctx, monkeypatch, tmp_path):
+    page = make_page()
+    on_claude_code(ctx, monkeypatch, tmp_path)
+    page.refresh_model_preferences()
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
+    page._tune(page._forms[0])
+    assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and page.app.slots == []
+
+
+def test_claude_code_that_is_missing_stops_a_run_before_anything_starts(make_page, ctx, monkeypatch):
+    page = make_page()
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(ctx)
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
+    page.refresh_model_preferences()
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
+    page._translate_all()
+    assert len(told) == 1 and "not installed" in told[0] and page.app.slots == [] and page._job is None

@@ -22,7 +22,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from .. import compiler
-from . import agent_context, resolver
+from . import agent_context, ai_profile
 from .agent_types import (
     EDIT_ASK,
     AgentEvent,
@@ -158,14 +158,10 @@ class Agent:
             self._on_event(ToolFinished(call, result))
 
     def _preflight(self) -> None:
-        """Whether this provider may be used: for a cloud model "Local AI only" and the first-request
-        consent apply as they do to every cloud task."""
-        if self.provider.is_local:
+        """Whether this provider may be used: the first cloud request in a project is confirmed once. Which
+        provider answers was decided when the request was made (ai_profile.resolve); it never changes here."""
+        if self.provider.is_local or ai_profile.cloud_seen(self.workspace.project):
             return
-        if resolver.local_only(self.workspace.project):
-            raise resolver.LocalOnlyError(
-                "Local AI only is on, so cloud models are disabled (Settings -> AI models).")
-        if resolver.needs_cloud_consent(self.workspace.project, self.provider):
-            if not self.workspace.confirm_cloud(self.provider):
-                raise ProviderError("Nothing was sent: using a cloud model was not confirmed.")
-            resolver.record_cloud_consent(self.workspace.project)
+        if not self.workspace.confirm_cloud(self.provider):
+            raise ProviderError("Nothing was sent: using a cloud model was not confirmed.")
+        ai_profile.mark_cloud_seen(self.workspace.project)

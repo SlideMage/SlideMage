@@ -14,7 +14,8 @@ from typing import Optional
 from PySide6.QtWidgets import QCheckBox, QMessageBox
 
 from ... import alt_draft, alt_images
-from ..ai_models import provider_from_combo
+from ...ai import resolver
+from ..ai_models import built, picked_route, provider_from_combo
 from .. import background
 from .image_dialogs import PromptTuningSheet
 from .image_form import ImageForm
@@ -118,11 +119,18 @@ class ImageRunsMixin:
 
     # drafting
 
-    def _draft_backend(self) -> Optional[alt_draft.ModelBackend]:
-        """The backend for the picked model; None (the user is told) when there is none or a cloud request
-        was declined. Asked on the GUI thread, before an Ollama slot is reserved."""
-        provider = provider_from_combo(self, self.app.project, self.draft_model, "the slide's text and the images to describe")
-        return None if provider is None else alt_draft.ModelBackend(self.app.project, provider)
+    def _draft_backend(self):
+        """The backend that describes images on the active route with the picked model; None (the user is
+        told) when there is none, the route cannot run it or a cloud request was declined. Asked on the GUI
+        thread, before an Ollama slot is reserved."""
+        route = picked_route(self, self.app.project, self.draft_model, "image_description",
+                             "the slide's text and the images to describe")
+        return None if route is None else built(self, resolver.draft_backend, self.app.project, route)
+
+    def _translation_backend(self, what: str):
+        """The same for translating descriptions: None (the user is told) when there is none."""
+        route = picked_route(self, self.app.project, self.translate_model, "translation", what)
+        return None if route is None else built(self, resolver.translation_backend, self.app.project, route)
 
     def _draft_slide(self) -> None:
         view = self._current
@@ -183,7 +191,8 @@ class ImageRunsMixin:
         view = self._current
         if view is None or self._job is not None:
             return
-        provider = provider_from_combo(self, self.app.project, self.draft_model, "the slide's text and the image to describe")
+        provider = provider_from_combo(self, self.app.project, self.draft_model, "image_description",
+                                       "the slide's text and the image to describe")
         if provider is None:
             return
         found = alt_draft.draftable_images(self.app.project, replace(view.row, images=[form.reference]), self._entries)
@@ -211,15 +220,14 @@ class ImageRunsMixin:
     # translating
 
     def _translate_all(self) -> None:
-        provider = provider_from_combo(self, self.app.project, self.translate_model, "the descriptions of all untranslated images")
-        if provider is None or not self.app.try_start_ollama_task("translating images", provider):
+        backend = self._translation_backend("the descriptions of all untranslated images")
+        if backend is None or not self.app.try_start_ollama_task("translating images", backend.provider):
             return
-        backend = alt_draft.ModelTranslationBackend(self.app.project, provider)
         queue = alt_draft.images_needing_translation(self.app.project)
         if not queue:
             QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
                                     "current (non-stale) German translation.")
-            self.app.end_ollama_task(provider)
+            self.app.end_ollama_task(backend.provider)
             return
         go, _again = self._confirm_batch(
             "Translate all images", f"Translate {len(queue)} image(s) into German using {backend.label}?",
@@ -227,9 +235,9 @@ class ImageRunsMixin:
             "recomputed from the files.\n\nThese are unreviewed translations, like a drafted description: check "
             "them before relying on them.")
         if not go:
-            self.app.end_ollama_task(provider)
+            self.app.end_ollama_task(backend.provider)
             return
-        job = Job("Translating descriptions to German", provider, translate_work(self.app.project, queue, backend))
+        job = Job("Translating descriptions to German", backend.provider, translate_work(self.app.project, queue, backend))
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated)
 
     def _translated(self, outcome: object) -> None:
@@ -270,16 +278,15 @@ class ImageRunsMixin:
             if not self._save(reviewed=False):
                 return
             english = form.english()
-        provider = provider_from_combo(self, self.app.project, self.translate_model, "this image's description text")
-        if provider is None or not self.app.try_start_ollama_task("translating this image", provider):
+        backend = self._translation_backend("this image's description text")
+        if backend is None or not self.app.try_start_ollama_task("translating this image", backend.provider):
             return
         short, long, takeaway = english
         entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
         form.begin_translation(english)
         self._translating = form
-        backend = alt_draft.ModelTranslationBackend(self.app.project, provider)
-        job = Job("Translating to German", provider, lambda _job: backend.translate(entry))
-        self._start(job, f"{form.reference} via {provider.label}", 1, lambda outcome: self._translated_one(form, outcome))
+        job = Job("Translating to German", backend.provider, lambda _job: backend.translate(entry))
+        self._start(job, f"{form.reference} via {backend.label}", 1, lambda outcome: self._translated_one(form, outcome))
 
     def _translated_one(self, form: ImageForm, outcome: object) -> None:
         self._translating = None

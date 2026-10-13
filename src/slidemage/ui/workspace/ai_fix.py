@@ -10,9 +10,12 @@ as the model quoted it, so a misremembered or shifted line is never
 overwritten (see syntax_check.py). Applying edits the editor (one undo step
 per fix); everything stays reviewable against the editor, which is never
 locked. The check runs on a worker thread; Esc or Stop ends it. The model
-comes from Settings -> "AI models" (local or cloud; the first cloud request in
-a project asks for consent, ui/ai_models.provider_from_combo), and the
-answering model is named in the panel.
+comes from the active AI route (Settings -> "AI models", task "Fixes, notes,
+transcripts"; the first cloud request in a project asks for consent,
+ui/ai_models.provider_from_combo), and the answering model is named in the
+panel. Only Local and the API run it: Claude Code's equivalent is its "Fix
+LaTeX errors" task, which edits the slide (ui/workspace/terminal/tasks.py), so
+on that route Check says so and nothing is sent.
 """
 from __future__ import annotations
 
@@ -31,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import ai_review, syntax_check
-from ...ai.providers import OllamaProvider
+from ...ai import ai_profile
 from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
@@ -211,11 +214,9 @@ class AiFixPanel(Surface):
         models": on the first check, and again from the main window when the Settings
         dialog closes, so a default changed there reaches an open panel (before the first
         check there is nothing to refresh)."""
-        if models is None:
-            models = OllamaProvider().list_models()
-        elif not self._models_loaded:
+        if models is not None and not self._models_loaded:
             return
-        fill_model_combo(self.app.project, self.model_combo, "syntax_check", models, "(no AI models available)")
+        fill_model_combo(self.app.project, self.model_combo, ai_profile.FIXES, "(no AI models available)", local_models=models)
         self._models_loaded = True
 
     # -- running -------------------------------------------------------------------
@@ -227,7 +228,8 @@ class AiFixPanel(Surface):
             return
         if not self._models_loaded:
             self.refresh_model_preference()
-        provider = provider_from_combo(self, self.app.project, self.model_combo, "this file's full LaTeX source")
+        provider = provider_from_combo(self, self.app.project, self.model_combo, ai_profile.FIXES,
+                                       "this file's full LaTeX source")
         if provider is None or not self.app.try_start_ollama_task("checking syntax", provider):
             self._show_state()
             return

@@ -229,7 +229,7 @@ class GuiWorkspace(Workspace):
         return ask.approved
 
     def confirm_cloud(self, provider: ChatProvider) -> bool:
-        return self.on_gui(lambda: confirm_cloud_request(self.window, self.project, provider, CLOUD_SENDS), False)
+        return self.on_gui(lambda: confirm_cloud_request(self.window, self.project, provider.label, CLOUD_SENDS), False)
 
     def file_changed(self, path: Path, previous_text: str | None) -> None:
         self.on_gui(lambda: self._show_written(self._local(path)))

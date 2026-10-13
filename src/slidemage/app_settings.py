@@ -1,6 +1,5 @@
-"""Local SlideMage UI preferences -- dark mode, plus (2026-08-25,
-direct instruction) the preferred translation and other AI models.
-Older per-feature model choices remain readable as a migration fallback.
+"""Local SlideMage UI preferences -- dark mode, the Ollama host, and the saved
+settings of the AI routes (ai/ai_profile.py reads and writes those keys).
 A plain JSON file lives inside SlideMage/ itself, not the Windows registry (2026-08-25,
 direct instruction, replacing an earlier QSettings-based design used for
 one day: "I want everything pertaining to SlideMage to be saved in its
@@ -87,41 +86,3 @@ def set_ollama_host(ctx: ProjectContext, host: str) -> None:
     else:
         settings.pop(OLLAMA_HOST_SETTING_KEY, None)
     save(ctx, settings)
-
-
-# Default model per AI task (2026-09-26, direct instruction), set in
-# Settings -> "AI models" and read by every place that offers a model
-# picker -- which now only *preselects* this default; picking another
-# model there applies to that dialog/tab only and is no longer remembered
-# as "whatever was used last". The setting keys are the same ones the old
-# remember-last-choice code used, so an existing app_settings.json keeps
-# working as the initial default.
-#
-# Since 2026-10-09 (UI redesign step 2) a value is "<provider>:<model>",
-# e.g. "ollama:qwen3" or "anthropic:claude-sonnet-5-5". An older bare
-# model name reads as an Ollama model (split_spec), so no settings file
-# needs rewriting; "chat" is the future chat pane's task.
-MODEL_SETTINGS: dict[str, str] = {
-    "syntax_check": "syntax_check_model",
-    "image_description": "drafting_model",
-    "translation": "translation_model",
-    "chat": "chat_model",
-}
-PROVIDER_NAMES = ("ollama", "anthropic")
-
-
-def split_spec(spec: str) -> tuple[str, str]:
-    """("provider", "model") of a stored model spec. Only a known provider
-    prefix counts, because Ollama tags contain colons themselves
-    ("qwen3:8b", "sun_leaf/HY-MT:7b" are bare Ollama names)."""
-    head, sep, rest = spec.partition(":")
-    if sep and head in PROVIDER_NAMES:
-        return head, rest
-    return "ollama", spec
-
-
-def default_model(ctx: ProjectContext, task: str) -> str:
-    """The configured default "<provider>:<model>" for `task` (a
-    MODEL_SETTINGS key), or "" when none has been chosen yet."""
-    provider, model = split_spec(str(get(ctx, MODEL_SETTINGS[task]) or ""))
-    return f"{provider}:{model}" if model else ""

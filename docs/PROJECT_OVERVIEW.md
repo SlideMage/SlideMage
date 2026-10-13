@@ -127,9 +127,8 @@ during-course/after-course versions only.
 Drafting image descriptions runs, by default, against a **local** Ollama server
 (`http://localhost:11434` by default — see `src/slidemage/alt_draft.py`): no API
 key, no per-image cost, nothing leaves the machine. (Since 6.0 any AI task can
-use a Claude model instead when you add an Anthropic API key and don't turn on
-"Local AI only" in Settings → Cloud; the first cloud request in a project says
-what will be sent.) "Draft all…" on the Images page queues every image still needing a
+use a Claude model, or Claude Code, instead when the project's setting in Settings →
+Cloud is Cloud; the first cloud request in a project says what will be sent.) "Draft all…" on the Images page queues every image still needing a
 description, runs a vision-capable model over each one, and is resumable —
 stop it, close the app, come back later. The original project uses
 `qwen3-vl:32b` for drafting and `translategemma:12b` (a dedicated

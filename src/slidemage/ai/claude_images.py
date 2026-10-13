@@ -31,10 +31,20 @@ class _ClaudeBackend:
     model: str = claude_runner.MODEL
     effort: str = claude_runner.EFFORT
     cancel: threading.Event = field(default_factory=threading.Event)    # set: the running process is ended
+    is_local = False        # takes no Ollama slot
 
     @property
     def label(self) -> str:
         return f"Claude {self.model}"
+
+    @property
+    def provider(self) -> "_ClaudeBackend":
+        """What a run of the Images page holds, as it holds the provider of a ModelBackend: it says whether
+        the run needs the Ollama slot (never) and abort() ends it."""
+        return self
+
+    def abort(self) -> None:
+        self.cancel.set()
 
     def _ask(self, task: claude_tasks.Task, request: str, deadline_s: float,
              images: tuple[Path, ...] = ()) -> tuple[dict, str]:

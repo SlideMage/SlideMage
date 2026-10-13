@@ -478,12 +478,13 @@ What matters when touching *this code*:
   **General** (dark mode, the Source editor's tab width, the template single slides render
   with, and the **Updates** group -- since v4.1.0 the update mode and the GitHub token for
   update checks, both stored per user in `project.config_dir()`, never in the project
-  folder), **AI models** (the default model of each task -- Syntax check, Image
-  descriptions, Translation and the Chat assistant -- a local Ollama model or a Claude
-  one; every model picker preselects it, and picking another there applies to that use
-  only; the chat assistant lists only local models that can call tools, image
-  descriptions only vision models), **Cloud** ("Local AI only" for every project, with a
-  per-project override, and the Anthropic API key with where it is stored), **Ollama**
+  folder), **AI models** (the default model of each task -- Chat, Image
+  descriptions, Translation and Fixes/notes/transcripts -- for each route: Local · Ollama,
+  Claude Code, Anthropic API; every model picker lists the models of the route in use and
+  preselects its default, and picking another there applies to that use only; the local
+  chat lists only models that can call tools, local image descriptions only vision
+  models), **Cloud** ("Cloud means" Claude Code or the Anthropic API, the project's
+  Local | Cloud setting, and the Anthropic API key with where it is stored), **Ollama**
   (`settings_ollama.py`: the host URL and the installed models, update and delete) and
   **Prompts** (`settings_prompts.py`: the editable system prompt of image descriptions,
   stored by `draft_prompts.py`, and the translation prompts of `translation_prompts.py`:
@@ -753,8 +754,10 @@ What matters when touching *this code*:
     one-file build about 300 MB.
 - **The `ai/` package** (no Qt): `providers.py` (`ChatProvider`, `OllamaProvider`,
   `AnthropicProvider`; both stream a tool-using turn, `ProviderError`, `Cancelled`),
-  `resolver.py` (`provider_for_task`: the model chosen for a task, "Local AI only", the
-  once-per-project cloud consent), `credentials.py` (API key: environment, then the keychain
+  `ai_profile.py` (`resolve(ctx, task)`: the route and model of a request from the
+  session's Local | Cloud mode, the cloud connection, the project's policy and the models
+  per route and task; the once-per-project first-use flag), `resolver.py` (turns that
+  Route into a provider or backend, or refuses it with "not available on <route>"), `credentials.py` (API key: environment, then the keychain
   through the optional `keyring`, then the settings file), `ollama_admin.py`; the agent
   (`agent.py`: `Agent(...).run()` on a worker thread, one per request, events in
   `agent_types.py`; `agent_context.py`: the fixed system prompt plus the per-request

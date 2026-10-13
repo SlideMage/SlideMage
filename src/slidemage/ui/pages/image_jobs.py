@@ -14,7 +14,6 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
 from ... import alt_draft
-from ...ai.providers import ChatProvider
 from ...project import ProjectContext
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, caption
@@ -25,11 +24,11 @@ class Job(QThread):
     image_done = Signal(str, bool)      # a drafted image, whether the store changed
     result = Signal(object, object)     # this job, what `work` returned or the exception it raised
 
-    def __init__(self, title: str, provider: ChatProvider, work: Callable[["Job"], object]) -> None:
+    def __init__(self, title: str, provider, work: Callable[["Job"], object]) -> None:
         """`work(job)` does the run and returns its summary; it polls `should_stop()` between images."""
         super().__init__()
         self.title = title
-        self.provider = provider      # whose Ollama slot the run holds
+        self.provider = provider      # a ChatProvider or Claude backend: whose Ollama slot the run holds, and abort() ends it
         self._work = work
         self.stop_requested = False   # Stop was clicked (a second click takes it back)
 
@@ -44,13 +43,13 @@ class Job(QThread):
         self.result.emit(self, outcome)
 
 
-def draft_work(ctx: ProjectContext, queue: list[alt_draft.ImageJob], backend: alt_draft.ModelBackend) -> Callable[[Job], object]:
+def draft_work(ctx: ProjectContext, queue: list[alt_draft.ImageJob], backend: alt_draft.DraftBackend) -> Callable[[Job], object]:
     return lambda job: alt_draft.run_batch(
         ctx, queue, backend, on_progress=lambda i, n, image_job: job.progress.emit(i, n, image_job.image),
         on_slide_done=job.image_done.emit, should_stop=job.should_stop)
 
 
-def translate_work(ctx: ProjectContext, queue: list[str], backend: alt_draft.ModelTranslationBackend) -> Callable[[Job], object]:
+def translate_work(ctx: ProjectContext, queue: list[str], backend: alt_draft.TranslationBackend) -> Callable[[Job], object]:
     return lambda job: alt_draft.run_translation_batch(
         ctx, queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image), should_stop=job.should_stop)
 

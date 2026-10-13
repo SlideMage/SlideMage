@@ -106,14 +106,16 @@ screenshots.
   *Ask before edits* mode, or apply at once with **Undo** in *Edit automatically* mode; a
   slide's header comment, `\setSlideVersion` line, `\vbox to 0pt` blocks and frozen
   versions can never be edited. The model is a local Ollama model that can call tools or,
-  with an Anthropic API key, a Claude model; **Local AI only** (Settings → Cloud; per
-  project too) turns the cloud off, and the first cloud request in a project says what
-  will be sent. *Claude Code* is a terminal tab running the user's own installed `claude`
+  with an Anthropic API key, a Claude model. Every AI request goes through one setting,
+  **Local | Cloud** (Settings → Cloud: the project's setting, with "Cloud means" Claude
+  Code or the Anthropic API); each route keeps its own models, a task a route cannot do is
+  refused instead of using another route, and the first cloud request in a project says
+  what will be sent. *Claude Code* is a terminal tab running the user's own installed `claude`
   in the project folder; SlideMage serves it the focused slide over a local MCP server
   and blocks edits to protected parts with a hook (the tab is only offered when `claude`
   is found).
-- **Settings** (⋮ → Project): General, AI models (a model per task: syntax check, image
-  descriptions, translation, chat), Cloud (Local AI only, API key), Ollama (models,
+- **Settings** (⋮ → Project): General, AI models (a model per route and task: chat, image
+  descriptions, translation, fixes/notes/transcripts), Cloud (Local | Cloud, API key), Ollama (models,
   updating, deleting), Prompts (image-description and translation prompts).
 
 ## Releases and updates

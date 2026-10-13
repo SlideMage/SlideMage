@@ -1,31 +1,27 @@
-"""Which provider and model answers an AI task, and whether it may be a
-cloud one (2026-10-09, UI redesign step 2).
+"""What runs a Route (workspace v6 handoff, step 1): ai_profile.resolve() says which route and model answer a
+task; this module turns that Route into a provider or a backend, or says why it cannot.
 
-A task's choice is one string, ``ollama:<model>`` or ``anthropic:<model>``
-(app_settings.default_model(); an older bare model name reads as Ollama).
-provider_for() turns such a spec into a provider object.
+A route that cannot run a request raises RouteUnavailable, with a message ready to show: it names the route
+and what is missing or not offered there. Nothing here, and nothing that calls it, falls back to another
+route or model: the user chose it, a silent swap would answer with something they did not pick, and
+"Anthropic API is never a fallback" of Claude Code, nor the reverse.
 
-"Local AI only": a global switch in app_settings.json, overridable per
-project in the project's ``.slidemage/project.json`` under
-``"ai": {"local_only": true|false}`` (tracked with the project, like the
-"compat" state, so a project that must keep its content off the cloud says
-so for everyone who opens it; absent means "follow the global switch").
-When it is on, provider_for() *raises* LocalOnlyError for a cloud spec
-rather than quietly substituting some Ollama model: the user chose that
-model, a silent swap would answer with something they did not pick, and
-the pickers do not list cloud models in this mode, so the error only
-surfaces for a stale selection.
-
-Consent: the first cloud request in a project must be confirmed once. The
-flag lives in app_settings.json, which already sits inside the project
-folder, so it is per project; the prompt itself is the UI's job
-(ui/ai_models.confirm_cloud_request).
+  * Local and API run through a ChatProvider (providers.py), for the chat, the syntax check, the slide
+    translation of the Add slide sheet and the image pipeline (alt_draft's ModelBackend).
+  * Claude Code runs the image pipeline (claude_images' backends), the slide translation and the bubble tasks
+    (ui/workspace/terminal/tasks.py) as one-shot `claude -p` processes, and the chat as the terminal.
+    It has no ChatProvider: provider_for() refuses it.
 """
 from __future__ import annotations
 
-from .. import app_settings, project
+from pathlib import Path
+
+from .. import alt_draft
 from ..project import ProjectContext
-from . import credentials
+from . import ai_profile, claude_launch, credentials
+from .ai_profile import API, CLAUDE_CODE, LOCAL, Route
+from .claude_images import ClaudeDraftBackend, ClaudeTranslationBackend
+from .claude_runner import SlideTranslator
 from .providers import (
     ANTHROPIC_FALLBACK_MODELS,
     AnthropicProvider,
@@ -34,88 +30,76 @@ from .providers import (
     ProviderError,
 )
 
-LOCAL_ONLY_SETTING_KEY = "local_ai_only"
-CLOUD_CONSENT_SETTING_KEY = "cloud_consent"
+NO_KEY = "No Anthropic API key yet. Add one under Settings → Cloud."
+NO_CLAUDE = "Claude Code is not installed on this computer, so nothing was sent and no other model is used."
+CHAT_IN_TERMINAL = ("On Cloud · Claude Code the conversation is the terminal in the Claude Code tab; the chat "
+                    "with Ollama or the API is not available on this route.")
 
 
-class LocalOnlyError(ProviderError):
-    """A cloud model was requested while "Local AI only" is on."""
+class RouteUnavailable(ProviderError):
+    """A route cannot run this request; str(exc) says what is missing there."""
 
 
-def provider_for(ctx: ProjectContext, spec: str) -> ChatProvider:
-    """The provider for a "<provider>:<model>" spec (a bare name is Ollama)."""
-    name, model = app_settings.split_spec(spec)
-    if name == "ollama":
-        return OllamaProvider.for_project(ctx, model)
-    if local_only(ctx):
-        raise LocalOnlyError(
-            "Local AI only is on, so cloud models are disabled "
-            "(Settings -> AI models).")
-    return AnthropicProvider.for_project(ctx, model)
+def not_offered(route: Route, what: str, instead: str = "") -> str:
+    """The message for `what` that `route` has no implementation of; `instead` says what to do."""
+    return " ".join([f"{what} is not available on {route.name}: nothing was sent and no other route or model "
+                     "is used.", instead]).strip()
 
 
-def provider_for_task(ctx: ProjectContext, task: str) -> ChatProvider:
-    """The provider configured for `task`; the Ollama default (no model
-    chosen yet) when nothing is configured."""
-    return provider_for(ctx, app_settings.default_model(ctx, task) or "ollama:")
+def api_models(ctx: ProjectContext) -> list[str]:
+    """The API models to list in the pickers: none without a key. The static list, so opening a dialog never
+    waits on the network; Settings shows the live list."""
+    return [] if credentials.get_api_key(ctx) is None else list(ANTHROPIC_FALLBACK_MODELS)
 
 
-# -- local only -----------------------------------------------------------
-
-def project_local_only(ctx: ProjectContext) -> bool | None:
-    """This project's override of the global switch; None = follow it."""
-    ai = project.read_project_json(ctx.root).get("ai")
-    value = ai.get("local_only") if isinstance(ai, dict) else None
-    return value if isinstance(value, bool) else None
-
-
-def set_project_local_only(ctx: ProjectContext, value: bool | None) -> None:
-    data = project.read_project_json(ctx.root)
-    ai = data.get("ai") if isinstance(data.get("ai"), dict) else {}
-    if value is None:
-        ai.pop("local_only", None)
-    else:
-        ai["local_only"] = value
-    if ai:
-        data["ai"] = ai
-    else:
-        data.pop("ai", None)
-    project.write_project_json(ctx.root, data)
+def problem(ctx: ProjectContext, route: Route) -> str:
+    """Why `route` cannot run its task right now, or "" when it can: no model chosen, no API key, or the
+    chat of Claude Code (the terminal)."""
+    if route.route == CLAUDE_CODE:
+        return CHAT_IN_TERMINAL if route.task == ai_profile.CHAT else ""
+    if route.route == API:
+        return "" if credentials.get_api_key(ctx) is not None else NO_KEY
+    if not route.model:
+        return (f"Choose an Ollama model for {ai_profile.TASK_LABELS[route.task].lower()} under "
+                "Settings → AI models.")
+    return ""
 
 
-def global_local_only(ctx: ProjectContext) -> bool:
-    return bool(app_settings.get(ctx, LOCAL_ONLY_SETTING_KEY))
+def provider_for(ctx: ProjectContext, route: Route) -> ChatProvider:
+    """The provider of a Local or API route. A new one on each call: abort() ends one request only."""
+    if route.route == CLAUDE_CODE:
+        raise RouteUnavailable(not_offered(route, "This feature", "It needs an Ollama or an API model: switch the route."))
+    if reason := problem(ctx, route):
+        raise RouteUnavailable(reason)
+    if route.route == LOCAL:
+        return OllamaProvider.for_project(ctx, route.model)
+    return AnthropicProvider.for_project(ctx, route.model)
 
 
-def set_global_local_only(ctx: ProjectContext, value: bool) -> None:
-    app_settings.set(ctx, LOCAL_ONLY_SETTING_KEY, value)
+def claude_path() -> Path:
+    claude = claude_launch.find_claude()
+    if claude is None:
+        raise RouteUnavailable(NO_CLAUDE)
+    return claude
 
 
-def local_only(ctx: ProjectContext) -> bool:
-    override = project_local_only(ctx)
-    return global_local_only(ctx) if override is None else override
+def slide_translator(ctx: ProjectContext, route: Route) -> ChatProvider | SlideTranslator:
+    """What translates the body of a slide on `route`: slide_add.translate_body takes the provider of Local and
+    the API, Claude Code runs its Translate task."""
+    if route.route == CLAUDE_CODE:
+        return SlideTranslator(ctx, claude_path(), route.model, route.effort)
+    return provider_for(ctx, route)
 
 
-# -- cloud models on offer --------------------------------------------------
-
-def cloud_models(ctx: ProjectContext) -> list[str]:
-    """Cloud models to list in the task pickers: none in local-only mode or
-    without a key. The static list, so opening a dialog never waits on the
-    network; Settings shows the live list."""
-    if local_only(ctx) or credentials.get_api_key(ctx) is None:
-        return []
-    return list(ANTHROPIC_FALLBACK_MODELS)
+def draft_backend(ctx: ProjectContext, route: Route) -> alt_draft.ModelBackend | ClaudeDraftBackend:
+    """What describes images on `route`."""
+    if route.route == CLAUDE_CODE:
+        return ClaudeDraftBackend(ctx, claude_path(), route.model, route.effort)
+    return alt_draft.ModelBackend(ctx, provider_for(ctx, route))
 
 
-# -- consent ------------------------------------------------------------
-
-def cloud_consent_given(ctx: ProjectContext) -> bool:
-    return bool(app_settings.get(ctx, CLOUD_CONSENT_SETTING_KEY))
-
-
-def record_cloud_consent(ctx: ProjectContext) -> None:
-    app_settings.set(ctx, CLOUD_CONSENT_SETTING_KEY, True)
-
-
-def needs_cloud_consent(ctx: ProjectContext, provider: ChatProvider) -> bool:
-    return not provider.is_local and not cloud_consent_given(ctx)
+def translation_backend(ctx: ProjectContext, route: Route) -> alt_draft.ModelTranslationBackend | ClaudeTranslationBackend:
+    """What translates the descriptions of images on `route`."""
+    if route.route == CLAUDE_CODE:
+        return ClaudeTranslationBackend(ctx, claude_path(), route.model, route.effort)
+    return alt_draft.ModelTranslationBackend(ctx, provider_for(ctx, route))

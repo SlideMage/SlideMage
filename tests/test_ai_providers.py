@@ -1,7 +1,6 @@
 """ChatProvider implementations against a throwaway local HTTP server (no
 external network): request shape, response parsing, error mapping; plus the
-API-key sources, the task->provider resolver, settings migration, local-only
-and consent state."""
+API-key sources. (The route resolver and its settings are in test_ai_profile.py.)"""
 from __future__ import annotations
 
 import base64
@@ -9,10 +8,9 @@ import threading
 
 import pytest
 
-from slidemage import app_settings, project
-from slidemage.ai import credentials, resolver
+from slidemage import app_settings
+from slidemage.ai import credentials
 from slidemage.ai.providers import (
-    ANTHROPIC_FALLBACK_MODELS,
     AnthropicProvider,
     Cancelled,
     OllamaProvider,
@@ -21,7 +19,6 @@ from slidemage.ai.providers import (
 )
 
 from fake_http import message_sse
-from conftest import EXAMPLE_PROJECT
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 
@@ -326,63 +323,3 @@ def test_keychain_is_available_only_with_a_real_backend(monkeypatch):
     for backend, expected in ((Backend(5), True), (Backend(0), False), (RuntimeError("broken"), False)):
         monkeypatch.setattr(credentials, "_keyring", lambda backend=backend: Keyring(backend))
         assert credentials.keychain_available() is expected
-
-
-# -- resolver, migration, local-only, consent ----------------------------------
-
-def test_old_bare_model_names_read_as_ollama(settings):
-    app_settings.set(EXAMPLE_PROJECT, "drafting_model", "qwen3:8b")           # pre-provider settings file
-    app_settings.set(EXAMPLE_PROJECT, "translation_model", "sun_leaf/HY-MT:7b")
-    app_settings.set(EXAMPLE_PROJECT, "syntax_check_model", "anthropic:claude-opus-5-5")
-    assert app_settings.default_model(EXAMPLE_PROJECT, "image_description") == "ollama:qwen3:8b"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "translation") == "ollama:sun_leaf/HY-MT:7b"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "syntax_check") == "anthropic:claude-opus-5-5"
-    assert app_settings.default_model(EXAMPLE_PROJECT, "chat") == ""
-    assert app_settings.get(EXAMPLE_PROJECT, "drafting_model") == "qwen3:8b"  # file not rewritten
-
-
-def test_provider_for_builds_the_right_provider(ctx, settings):
-    local = resolver.provider_for(ctx, "ollama:qwen3:8b")
-    assert isinstance(local, OllamaProvider) and local.model == "qwen3:8b"
-    assert resolver.provider_for(ctx, "qwen3").model == "qwen3"   # bare name = Ollama
-    cloud = resolver.provider_for(ctx, "anthropic:claude-opus-5-5")
-    assert isinstance(cloud, AnthropicProvider) and cloud.model == "claude-opus-5-5"
-
-    app_settings.set(ctx, "chat_model", "anthropic:claude-haiku-4-5-20251001")
-    assert resolver.provider_for_task(ctx, "chat").model == "claude-haiku-4-5-20251001"
-    assert isinstance(resolver.provider_for_task(ctx, "translation"), OllamaProvider)  # unset
-
-
-def test_local_only_blocks_cloud_globally_and_per_project(ctx, settings):
-    assert not resolver.local_only(ctx) and resolver.project_local_only(ctx) is None
-    resolver.set_global_local_only(ctx, True)
-    assert resolver.local_only(ctx)
-    with pytest.raises(resolver.LocalOnlyError, match="Local AI only"):
-        resolver.provider_for(ctx, "anthropic:claude-sonnet-5-5")
-    assert resolver.provider_for(ctx, "ollama:x").is_local  # local still works
-
-    resolver.set_project_local_only(ctx, False)               # project overrides the global switch
-    assert not resolver.local_only(ctx)
-    assert not resolver.provider_for(ctx, "anthropic:claude-sonnet-5-5").is_local
-    resolver.set_global_local_only(ctx, False)
-    resolver.set_project_local_only(ctx, True)
-    assert resolver.local_only(ctx)
-    resolver.set_project_local_only(ctx, None)
-    assert resolver.project_local_only(ctx) is None and not resolver.local_only(ctx)
-
-
-def test_project_override_lives_in_project_json_next_to_other_keys(ctx, settings):
-    project.write_project_json(settings, {"format": 1, "compat": {"x": 1}})
-    resolver.set_project_local_only(ctx, True)
-    data = project.read_project_json(settings)
-    assert data["ai"] == {"local_only": True} and data["compat"] == {"x": 1}
-    resolver.set_project_local_only(ctx, None)
-    assert "ai" not in project.read_project_json(settings)
-
-
-def test_cloud_models_on_offer_need_a_key_and_no_local_only(ctx, settings, monkeypatch):
-    assert resolver.cloud_models(ctx) == []                       # no key
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    assert resolver.cloud_models(ctx) == list(ANTHROPIC_FALLBACK_MODELS)
-    resolver.set_global_local_only(ctx, True)
-    assert resolver.cloud_models(ctx) == []

@@ -297,3 +297,20 @@ def test_the_panels_model_picker_follows_the_settings_defaults(make_file, monkey
     file.refresh_model_preference(["qwen3", "other"])
     assert [file.fix_panel.model_combo.itemText(i) for i in range(file.fix_panel.model_combo.count())] == [
         "qwen3", "other"]
+
+
+def test_on_claude_code_the_check_is_refused_with_the_routes_name_and_sends_nothing(make_file, monkeypatch):
+    from slidemage.ai import ai_profile
+    from slidemage.ui import ai_models
+
+    file = make_file()
+    monkeypatch.setattr(ai_fix, "provider_from_combo", ai_models.provider_from_combo)
+    ai_profile.set_mode(file.app.project, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(file.app.project)
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
+    file.ask_ai_button.click()
+    panel = file.fix_panel
+    assert not panel.running and file.app.started == []
+    assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and "no other route or model" in told[0]
+    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.claude_code_choices()

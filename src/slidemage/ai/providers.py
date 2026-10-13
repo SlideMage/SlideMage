@@ -473,7 +473,7 @@ def _sdk():
 class AnthropicProvider:
     """Claude through the official SDK. Whatever is sent here leaves the
     machine -- callers get the user's per-project consent first (see
-    resolver.py)."""
+    ai_profile.cloud_seen)."""
 
     service = "Anthropic"
     is_local = False

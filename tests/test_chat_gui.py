@@ -15,9 +15,9 @@ from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from slidemage import app_settings, compiler
-from slidemage.ai import credentials, resolver
+from slidemage.ai import ai_profile, credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
-from slidemage.ai.providers import Cancelled
+from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, Cancelled
 from slidemage.deck_scan import scan_decks
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.widgets import PopoverMenu
@@ -27,7 +27,6 @@ from slidemage.ui.workspace.chat import view as chat_view
 from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE, AssistantArea
 from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, ToolCard, UserBubble
 from slidemage.ui.workspace.chat.format import diff_rows, summarize_call
-from slidemage.ui.workspace.chat.session import current_route
 from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT, SPLIT_SETTING
 from slidemage.project import ProjectContext
 
@@ -48,19 +47,21 @@ def pump(seconds=0.0):
 
 @pytest.fixture
 def env(qapp, tmp_path, monkeypatch):
-    """The main window on a throwaway project, the chat set to a Claude model with a key, and every request
+    """The main window on a throwaway project, the chat on Cloud · Anthropic API with a key, and every request
     answered by the provider the test scripts."""
     root = make_project(monkeypatch, tmp_path / "project")
     context = ProjectContext.at(root)
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
-    app_settings.set(context, "chat_model", "anthropic:claude-sonnet-5-5")
+    ai_profile.set_cloud_conn(context, ai_profile.API)
+    ai_profile.set_mode(context, ai_profile.CLOUD)
+    ai_profile.set_model_choice(context, ai_profile.API, ai_profile.CHAT, "claude-sonnet-5-5")
     window = build_window(monkeypatch, context)
     window.show()
     window.state.set_mode("source")     # no Preview render thread to outlive the test
     window.state.set_deck(next(d for d in scan_decks(window.project) if d.name == "test"))
     window.state.set_focused_slide("abc")
     providers = []
-    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, spec: providers.pop(0))
+    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, route: providers.pop(0))
 
     class Env:
         pass
@@ -244,9 +245,10 @@ def test_a_local_model_answers_through_ollama_and_holds_the_slot(env):
     server.content_type = "application/x-ndjson"
     server.script = [ollama_ndjson(["Looking."], [("read_file", {"path": SLIDE})]), ollama_ndjson(["Fine as is."])]
     try:
-        app_settings.set(env.window.project, "chat_model", "ollama:qwen3")
+        ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+        ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3")
         env.providers.append(OllamaProvider("qwen3", host=server.url))
-        assert current_route(env.window.project).label == "qwen3 · local"
+        assert ai_profile.resolve(env.window.project, ai_profile.CHAT).label == "qwen3 · Ollama"
         ask(env)
         assert [type(w).__name__ for w in widgets(env, (AssistantText, ToolCard))] == [
             "AssistantText", "ToolCard", "AssistantText"]
@@ -359,7 +361,7 @@ def test_the_permission_is_remembered(env):
 @pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
 def test_stop_ends_a_run_that_waits_for_the_model(env, monkeypatch, local):
     if not local:
-        monkeypatch.setattr(resolver, "cloud_consent_given", lambda _ctx: True)
+        ai_profile.mark_cloud_seen(env.window.project)
     script(env, blocked()).is_local = local
     env.chat.send("go")
     assert slot(env) == ("answering in the chat" if local else None)
@@ -441,36 +443,50 @@ def test_new_chat_forgets_the_conversation(env):
     assert not env.chat.session.history and not widgets(env, AssistantText) and not env.chat._empty.isHidden()
 
 
-# -- the model and Local AI only -------------------------------------------------------------------------
+# -- the route and its model -----------------------------------------------------------------------------
 
-def test_local_ai_only_disables_the_cloud_model_with_a_hint(env):
-    app_settings.set(env.window.project, "local_ai_only", True)
-    env.chat.refresh_route()
-    route = current_route(env.window.project)
-    assert route.problem and "Local AI only" in env.chat.route_note.text() and not env.chat.route_note.isHidden()
-    env.chat.send("go")
-    assert not env.chat.session.running and not widgets(env, UserBubble)   # nothing was sent
+def open_route_menu(env):
     env.chat._open_route_menu()
-    menu = next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
-    assert menu._rows and not any(row.isEnabled() for row in menu._rows[:-1])   # the cloud models; "More" stays
+    return next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
+
+
+def test_on_claude_code_the_chat_is_the_terminal_and_nothing_is_sent(env):
+    ai_profile.set_cloud_conn(env.window.project, ai_profile.CLAUDE_CODE)
+    env.chat.refresh_route()
+    assert env.chat.route_chip.text() == "Claude Code · terminal"
+    assert "terminal" in env.chat.route_note.text() and not env.chat.route_note.isHidden()
+    env.chat.send("go")
+    assert not env.chat.session.running and not widgets(env, UserBubble)   # nothing was sent, no other model used
+    assert [n.text() for n in widgets(env, Notice)] == [resolver.CHAT_IN_TERMINAL]
+    menu = open_route_menu(env)
+    assert menu._rows and not any(row.isEnabled() for row in menu._rows[:-1])      # "More in Settings" stays
     menu.close()
 
 
 def test_the_picker_lists_the_local_models_that_call_tools(env):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
     env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
-    app_settings.set(env.window.project, "chat_model", "ollama:old-model:7b")
-    env.chat._open_route_menu()
-    menu = next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
+    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "old-model:7b")
+    menu = open_route_menu(env)
     keys = [entry[1] for entry in menu._entries if entry[0] == "item"]
-    assert keys[-4:] == ["ollama:old-model:7b", "ollama:qwen3:8b", "ollama:llama3.1:8b", "settings"]
-    chosen = next(entry for entry in menu._entries if entry[1] == "ollama:old-model:7b")
+    assert keys == ["old-model:7b", "qwen3:8b", "llama3.1:8b", "settings"]         # no cloud models on this route
+    chosen = next(entry for entry in menu._entries if entry[1] == "old-model:7b")
     assert "cannot call tools" in chosen[3] and chosen[4] == "check"
     menu.close()
-    env.chat._set_route("ollama:qwen3:8b")
-    assert app_settings.default_model(env.window.project, "chat") == "ollama:qwen3:8b" and env.chat.route_chip.text() == "qwen3:8b · local"
-    env.chat._set_route("anthropic:claude-opus-5-5")
-    assert app_settings.default_model(env.window.project, "chat") == "anthropic:claude-opus-5-5"
-    assert env.chat.route_chip.text() == "claude-opus-5-5 · cloud"
+    env.chat._set_route("qwen3:8b")
+    assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == "qwen3:8b"
+    assert env.chat.route_chip.text() == "qwen3:8b · Ollama"
+
+
+def test_the_picker_of_the_api_route_lists_its_models_and_saves_the_pick_for_that_route(env):
+    menu = open_route_menu(env)
+    keys = [entry[1] for entry in menu._entries if entry[0] == "item"]
+    assert keys == [*ANTHROPIC_FALLBACK_MODELS, "settings"] and all(row.isEnabled() for row in menu._rows)
+    menu.close()
+    env.chat._set_route("claude-opus-5-5")
+    assert ai_profile.model_choice(env.window.project, ai_profile.API, ai_profile.CHAT) == "claude-opus-5-5"
+    assert env.chat.route_chip.text() == "claude-opus-5-5 · API"
+    assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == ""     # Local keeps its own
 
 
 def test_while_a_run_is_going_the_model_and_the_scope_stay_as_they_are(env):
@@ -498,13 +514,18 @@ def test_only_one_question_to_ollama_about_local_models_is_out_at_a_time(env, mo
     assert len(started) == 2
 
 
-def test_without_a_chosen_model_or_key_the_chat_says_what_to_do(env, monkeypatch):
-    app_settings.save(env.window.project, {})       # no model, and no key in the settings file either
+def test_without_a_key_or_a_chosen_model_the_chat_says_what_to_do(env, monkeypatch):
     monkeypatch.delenv(credentials.ENV_VAR)
+    credentials.set_api_key(env.window.project, "")        # the one a test project's settings file holds
     env.chat.refresh_route()
-    assert "Chat assistant" in env.chat.route_note.text()
+    assert "API key" in env.chat.route_note.text()
     env.chat.send("go")
-    assert not env.chat.session.running
+    assert not env.chat.session.running and not widgets(env, UserBubble)
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)         # Local has no model until one is chosen
+    env.chat.refresh_route()
+    assert "Choose an Ollama model for chat" in env.chat.route_note.text()
+    env.chat.send("go")
+    assert not env.chat.session.running and not widgets(env, UserBubble)
 
 
 # -- the palette -------------------------------------------------------------------------------------------
@@ -682,8 +703,8 @@ def test_the_cloud_consent_is_the_windows_question(ctx, env, monkeypatch):
     from slidemage.ai.providers import AnthropicProvider
     ws = env.chat.workspace
     assert on_thread(lambda: ws.confirm_cloud(AnthropicProvider("claude-sonnet-5-5"))) is True
-    assert "cloud model (claude-sonnet-5-5 · cloud)" in asked[0]
-    assert "rendered previews" in asked[0] and resolver.cloud_consent_given(env.window.project)
+    assert "cloud (claude-sonnet-5-5 · cloud)" in asked[0]
+    assert "rendered previews" in asked[0] and ai_profile.cloud_seen(env.window.project)
 
 
 def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monkeypatch):

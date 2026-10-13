@@ -62,6 +62,14 @@ def _fresh_example_state():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_ai_session():
+    """Every test starts with no AI mode chosen in this session (it then starts from the project's policy)."""
+    from slidemage.ai import ai_profile
+
+    ai_profile._modes.clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_layout_settings(monkeypatch, tmp_path_factory):
     """Window layout belongs to this machine; tests must not read or change the user's layout."""
     from slidemage.ui import layout_settings

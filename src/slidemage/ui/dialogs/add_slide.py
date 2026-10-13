@@ -7,7 +7,7 @@ The slide comes from one of four sources:
   reveal step (\\slidestep).
 * Duplicate: a copy of a slide in its own language, independent of the original.
 * Translate: a copy in another language, linked to the original; EN to DE can be machine-
-  translated first (the model picker and the cloud consent are those of Settings -> AI models).
+  translated first (the model picker, the route and the cloud consent are those of the active AI route, Settings -> AI models).
 
 "Appears in" says in which deck versions the slide shows. The new slide goes in at the position
 the caller names (after a slide, at the end of a section, ...). The files and the deck call are
@@ -36,10 +36,10 @@ from PySide6.QtWidgets import (
 )
 
 from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
-from ...ai.providers import ChatProvider, OllamaProvider
+from ...ai import ai_profile, claude_runner, resolver
 from ...deck_scan import Deck
 from ...project import ProjectContext
-from ..ai_models import fill_model_combo, provider_from_combo
+from ..ai_models import built, fill_model_combo, picked_route
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
@@ -61,18 +61,21 @@ MARGINS = 48     # of the sheet
 
 
 class _TranslateWorker(QThread):
-    """One slide_add.translate_body() off the GUI thread, so that Cancel can end it."""
+    """One translation of a slide body off the GUI thread, so that Cancel can end it. `translator` is a
+    ChatProvider (slide_add.translate_body) or a claude_runner.SlideTranslator; either has is_local and abort()."""
 
     translated = Signal(object, str, object)     # this worker, the text, the error (None if none)
 
-    def __init__(self, ctx: ProjectContext, provider: ChatProvider, body: str) -> None:
+    def __init__(self, ctx: ProjectContext, translator, body: str) -> None:
         super().__init__()
         self.ctx = ctx
-        self.provider = provider
+        self.translator = translator
         self.body = body
 
     def run(self) -> None:
-        text, error = slide_add.translate_body(self.ctx, self.provider, self.body)
+        translate = (self.translator.translate if isinstance(self.translator, claude_runner.SlideTranslator)
+                     else lambda body: slide_add.translate_body(self.ctx, self.translator, body))
+        text, error = translate(self.body)
         self.translated.emit(self, text, error)
 
 
@@ -92,7 +95,8 @@ class AddSlideSheet(ModalSheet):
         self._slug_edited = False
         self._models_filled = False
         self._worker: Optional[_TranslateWorker] = None
-        self._provider: Optional[ChatProvider] = None
+        self._route: Optional[ai_profile.Route] = None      # of the running translation
+        self._translator = None                            # what it runs on: its Ollama slot and abort()
         self._slides = slide_add.project_slides(self.app.project)
         self._template = slide_snapshot.detect_template(deck.preamble_text)
 
@@ -400,8 +404,8 @@ class AddSlideSheet(ModalSheet):
     def _fill_models(self) -> None:
         if not self._models_filled:
             self._models_filled = True
-            fill_model_combo(self.app.project, self.model, "translation", OllamaProvider().list_models(),
-                             "(no AI models available)", fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
+            fill_model_combo(self.app.project, self.model, ai_profile.TRANSLATION, "(no AI models available)",
+                             fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
 
     def _sync(self) -> None:
         """Show what the choices allow, and what Add will do."""
@@ -496,13 +500,16 @@ class AddSlideSheet(ModalSheet):
     # -- translating ------------------------------------------------------------------------------
 
     def _start_translation(self) -> None:
-        provider = provider_from_combo(self, self.app.project, self.model, "the slide's LaTeX body")
-        if provider is None or not self.app.try_start_ollama_task("translating a slide", provider):
+        route = picked_route(self, self.app.project, self.model, ai_profile.TRANSLATION, "the slide's LaTeX body")
+        if route is None:
             return
-        self._provider = provider
-        self._worker = _TranslateWorker(self.app.project, provider, slide_add.source_body(self.app.project, self.picked()))
+        translator = built(self, resolver.slide_translator, self.app.project, route)
+        if translator is None or not self.app.try_start_ollama_task("translating a slide", translator):
+            return
+        self._route, self._translator = route, translator
+        self._worker = _TranslateWorker(self.app.project, translator, slide_add.source_body(self.app.project, self.picked()))
         self._worker.translated.connect(self._on_translated)
-        self._busy(f"Translating with {provider.label}…")
+        self._busy(f"Translating with {translator.label}…")
         self._worker.start()
 
     def _busy(self, text: str) -> None:
@@ -522,7 +529,7 @@ class AddSlideSheet(ModalSheet):
         self._worker = None
         worker.wait()
         worker.deleteLater()
-        self.app.end_ollama_task(self._provider)
+        self.app.end_ollama_task(self._translator)
         self._busy("")
         if error:
             self._sync()
@@ -535,7 +542,7 @@ class AddSlideSheet(ModalSheet):
             self._sync()
             self._set_status(str(exc), error=True)
             return
-        if getattr(self._provider, "service", "") == "Anthropic":
+        if not self._route.is_local:
             ai_review.mark(self.app.project, created.path, "translation", "Add slide translation")
             ai_review.mark(self.app.project, slide_add.slide_path(self.app.project, self.picked()),
                            "translation", "Add slide translation")
@@ -553,6 +560,6 @@ class AddSlideSheet(ModalSheet):
         """Closing the sheet ends a running translation: its thread must not outlive the sheet."""
         worker, self._worker = self._worker, None
         if worker is not None:
-            provider = self._provider
-            background.stop_worker(worker, worker.provider.abort, on_done=lambda: self.app.end_ollama_task(provider))
+            translator = self._translator
+            background.stop_worker(worker, translator.abort, on_done=lambda: self.app.end_ollama_task(translator))
         super().done(result)

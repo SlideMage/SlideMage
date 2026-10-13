@@ -26,10 +26,10 @@ from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
 from ... import slide_ids, slide_language, slide_search
+from ...ai import ai_profile
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Chip, MenuRow, apply_shadow, clear_layout, set_property
-from .chat.session import current_route
 
 MIN_TEXT_QUERY = 3    # characters before the files are searched
 DEBOUNCE_MS = 200     # a pause after the last key before they are
@@ -300,7 +300,7 @@ class CommandPalette(QWidget):
             entries += hit_entries(self._window, self._hits)
         if len(query) >= MIN_TEXT_QUERY:
             entries.append(Entry(CHAT, f"Ask the chat: “{query}”", lambda: self._window.ask_chat(query),
-                                 GROUP_ICONS[CHAT], current_route(self._window.project).label))
+                                 GROUP_ICONS[CHAT], ai_profile.resolve(self._window.project, ai_profile.CHAT).label))
         self._entries = entries
         self._show_entries()
         kept = next((i for i, e in enumerate(entries) if before and (e.group, e.label) == (before.group, before.label)),

@@ -13,11 +13,14 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 
 from slidemage.project import ProjectContext
 from slidemage import ai_review, deck_editor, deck_scan, slide_add
+from slidemage.ai import ai_profile, claude_launch, resolver
+from slidemage.ai.ai_profile import API, LOCAL, TRANSLATION, Route
 from slidemage.ai.providers import Cancelled, ChatReply, OllamaProvider
 from slidemage.ui.dialogs import add_slide
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
 
 from conftest import use_new_slide_files, wait_until
+from test_claude_runner import claude  # noqa: F401 -- a fixture
 
 FRAME = "\\begin{standardframe}{%s}\r\nText\r\n\\end{standardframe}\r\n"
 HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
@@ -120,8 +123,16 @@ def pick(sheet, id_slug):
 
 
 def use_provider(monkeypatch, provider):
+    """The sheet's picked route is Local (or the API, when the provider is not local) and `provider` is what
+    translates; None is a refusal (no model, cloud declined)."""
     asked = []
-    monkeypatch.setattr(add_slide, "provider_from_combo", lambda parent, project, combo, what: asked.append(what) or provider)
+
+    def picked(parent, project, combo, task, what):
+        asked.append(what)
+        return None if provider is None else Route(LOCAL if provider.is_local else API, TRANSLATION, "fake")
+
+    monkeypatch.setattr(add_slide, "picked_route", picked)
+    monkeypatch.setattr(resolver, "slide_translator", lambda _ctx, _route: provider)
     return asked
 
 
@@ -258,10 +269,10 @@ def test_a_copy_needs_the_saved_file_and_a_good_slug(make, project):
     assert "letters and digits" in sheet.status.text() and not sheet.ok.isEnabled()
 
 
-@pytest.mark.parametrize("service", ["Ollama", "Anthropic"])
-def test_translate_into_german_runs_the_model_and_links_the_translation(make, project, monkeypatch, service):
+@pytest.mark.parametrize("local", [True, False], ids=["Ollama", "API"])
+def test_translate_into_german_runs_the_model_and_links_the_translation(make, project, monkeypatch, local):
     provider = Translator()
-    provider.service = service
+    provider.is_local = local
     asked = use_provider(monkeypatch, provider)
     sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
     assert sheet.chosen_target() == "DE" and sheet.copy_slug.text() == "Demo"
@@ -276,7 +287,7 @@ def test_translate_into_german_runs_the_model_and_links_the_translation(make, pr
     assert window.slots == [("start", "translating a slide"), ("end",)] and asked == ["the slide's LaTeX body"]
     assert window.opened == [created] and created.name[:3] in deck_text(project)
     marks = ai_review.unreviewed(window.project)
-    assert len(marks) == (2 if service == "Anthropic" else 0)
+    assert len(marks) == (0 if local else 2)
     if marks:
         assert marks[created.relative_to(window.project.root).as_posix()]["decks"] == ["decks/course.tex"]
 
@@ -378,3 +389,36 @@ def test_the_sources_show_their_own_controls(make):
     assert shown() == (True, False, False, True, False)
     sheet._on_source("translate")
     assert shown() == (True, False, False, True, True)
+
+
+def test_on_claude_code_the_translation_is_a_claude_process_that_takes_no_ollama_slot(make, project, claude, monkeypatch):  # noqa: F811
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    ai_profile.set_mode(window.project, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(window.project)
+    ai_profile.set_model_choice(window.project, ai_profile.CLAUDE_CODE, ai_profile.TRANSLATION, "haiku:low")
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: claude.path)
+    sheet._models_filled = False
+    sheet._fill_models()                                            # the picker follows the route
+    assert sheet.model.currentText() == "Haiku · low"
+    claude.script({"answer": {"body": "Text auf Deutsch"}})
+    sheet.ok.click()
+    assert sheet._worker is not None and "Translating with Claude haiku" in sheet.status.text()
+    wait_until(lambda: sheet._worker is None)
+    (created,) = project.slides.glob("*-DE-Demo-current.tex")
+    assert created.read_bytes().decode().endswith("Text auf Deutsch")
+    assert claude.calls()[0]["argv"][:5] == ["-p", "--model", "haiku", "--effort", "low"]
+    assert window.slots == [("start", "translating a slide"), ("end",)]          # the window gave it no Ollama slot to hold
+    assert len(ai_review.unreviewed(window.project)) == 2                       # an AI change like the API's
+
+
+def test_a_failed_claude_translation_is_shown_like_any_other(make, project, claude, monkeypatch):  # noqa: F811
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    ai_profile.set_mode(window.project, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(window.project)
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: claude.path)
+    sheet._models_filled = False
+    sheet._fill_models()
+    claude.script({"error": "Not logged in"})
+    sheet.ok.click()
+    wait_until(lambda: sheet._worker is None)
+    assert "Translation failed" in sheet.status.text() and not list(project.slides.glob("*-DE-Demo-current.tex"))

@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
 )
 
 from ... import alt_draft, alt_images, image_review, slide_language
-from ...ai.providers import OllamaProvider
 from ..ai_models import fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
@@ -189,13 +188,10 @@ class ImagesPage(ImageRunsMixin, Surface):
         """(Re)fill both model pickers and preselect the defaults of Settings -> AI models: on the first
         show, and after the Settings sheet closed, so that a changed default reaches the open page."""
         self._models_loaded = True
-        provider = OllamaProvider()
-        fill_model_combo(self.app.project, self.draft_model, "image_description",
-                         provider.list_models(vision_only=True) if vision_models is None else vision_models,
-                         "(no vision models available)")
-        fill_model_combo(self.app.project, self.translate_model, "translation",
-                         provider.list_models() if models is None else models, "(no AI models available)",
-                         fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
+        fill_model_combo(self.app.project, self.draft_model, "image_description", "(no vision models available)",
+                         local_models=vision_models, vision_only=True)
+        fill_model_combo(self.app.project, self.translate_model, "translation", "(no AI models available)",
+                         local_models=models, fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
         self._update_buttons()
 
     def reload(self, preserve: Optional[Path] = None) -> None:

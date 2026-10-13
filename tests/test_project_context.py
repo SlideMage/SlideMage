@@ -6,7 +6,7 @@ from slidemage import (
     alt_images, app_settings, compiler, deck_scan, housekeeping, image_review, slide_ids, slide_rename, transcript,
     unused_content,
 )
-from slidemage.ai import resolver
+from slidemage.ai import ai_profile
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ai.tools import edits
 from slidemage.ai.tools.base import ToolContext
@@ -93,5 +93,5 @@ def test_the_editing_and_ai_layers_run_two_projects_side_by_side(tmp_path):
     assert "changed" not in (one.slides_dir / "aaa-EN-Renamed-current.tex").read_text(encoding="utf-8")
 
     # the AI settings are per project too
-    resolver.set_project_local_only(one, True)
-    assert resolver.local_only(one) is True and resolver.local_only(two) is False
+    ai_profile.set_policy(one, ai_profile.CLOUD)
+    assert ai_profile.policy(one) == ai_profile.CLOUD and ai_profile.policy(two) == ai_profile.LOCAL

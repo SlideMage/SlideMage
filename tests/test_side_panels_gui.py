@@ -587,6 +587,15 @@ def test_a_pending_image_edit_is_saved_as_a_draft_when_the_slide_is_left(ctx, co
     assert entry.long == "Typed, never saved." and entry.used_on["cit"].reviewed == "" and not state.dirty
 
 
+def redraft_on(monkeypatch, images, provider):
+    """The active route is Local with `provider` as its provider (the backends made on it are the test's fakes)."""
+    from slidemage.ai import resolver
+    from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
+
+    monkeypatch.setattr(images, "task_route", lambda *args: Route(LOCAL, IMAGE_DESCRIPTION, "qwen3"))
+    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
+
+
 def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content, monkeypatch, paths):
     from slidemage import alt_draft, alt_images
     from slidemage.ui.workspace.panels import images
@@ -595,12 +604,12 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content
     panel = shown(panels, "images")
     drafted = []
     provider = SimpleNamespace(label="qwen3 · local")
-    monkeypatch.setattr(images, "provider_for_task", lambda parent, project, task, what: drafted.append((task, what)) or provider)
+    redraft_on(monkeypatch, images, provider)
     monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, row, entries: [(row.images[0], paths.path)])
 
     class FakeBackend:
         def __init__(self, _ctx, given):
-            self.given = given
+            self.provider, self.label = given, given.label
 
         def draft(self, resolved, context):
             drafted.append((resolved, context.image))
@@ -617,7 +626,7 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content
     monkeypatch.setattr(images.threading, "Thread", Now)
     form = panel._forms[0]
     form.redraft_button.click()
-    assert drafted[0][0] == "image_description" and drafted[1] == (paths.path, "media/pic.png")
+    assert drafted[0] == (paths.path, "media/pic.png")
     form = panel._forms[0]
     assert (form.short_edit.toPlainText(), form.long_edit.toPlainText()) == ("Drafted short", "Drafted long")
     assert "Drafted by qwen3 · local" in form.note.text() and window.busy is None
@@ -632,9 +641,10 @@ def test_redraft_is_ignored_after_switching_to_a_slide_with_the_same_image(ctx, 
     (paths.path.parent / "abc-EN-Demo-current.tex").write_text(CITED, encoding="utf-8")
     panel = shown(panels, "images")
     provider = SimpleNamespace(label="qwen3 · local")
-    monkeypatch.setattr(images, "provider_for_task", lambda *args: provider)
+    redraft_on(monkeypatch, images, provider)
     monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, row, entries: [(row.images[0], paths.path)])
     monkeypatch.setattr(alt_draft, "ModelBackend", lambda _ctx, given: SimpleNamespace(
+        provider=given, label=given.label,
         draft=lambda *args: alt_draft.DraftResult(short="Slide A short", long="Slide A long", model=given.label)))
     pending = []
 
@@ -665,7 +675,7 @@ def test_redraft_stops_when_there_is_no_model_or_it_fails(content, monkeypatch, 
     panels, _state, window = content
     panel = shown(panels, "images")
     monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, row, entries: [(row.images[0], paths.path)])
-    monkeypatch.setattr(images, "provider_for_task", lambda *args: None)           # declined, or no model
+    monkeypatch.setattr(images, "task_route", lambda *args: None)                 # declined, or no model
     panel._forms[0].redraft_button.click()
     assert window.busy is None
     panel._on_drafted("cit", "media/pic.png", None, alt_draft.DraftResult(error="timed out"))
@@ -679,13 +689,13 @@ def test_redraft_that_raises_still_ends_with_an_error_and_gives_back_its_slot(co
 
     panels, _state, window = content
     panel = shown(panels, "images")
-    provider = SimpleNamespace(label="qwen3 · local")
-    monkeypatch.setattr(images, "provider_for_task", lambda *args: provider)
+    provider = SimpleNamespace(label="qwen3 · local", is_local=True)
+    redraft_on(monkeypatch, images, provider)
     monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, row, entries: [(row.images[0], paths.path)])
 
     class Failing:
         def __init__(self, _ctx, given):
-            pass
+            self.provider, self.label = given, given.label
 
         def draft(self, resolved, context):
             raise ValueError("boom")

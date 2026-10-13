@@ -19,7 +19,7 @@ from PySide6.QtGui import QImage, QKeyEvent
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
 
 from .... import app_settings
-from ....ai import credentials, resolver
+from ....ai import ai_profile, resolver
 from ....ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ....ai.agent_types import (
     EDIT_ASK,
@@ -41,7 +41,7 @@ from ..attachments import place_file, save_image
 from ..state import WorkspaceState
 from .cards import AssistantText, DiffCard, Notice, Status, ToolCard, UserBubble, suggestion_button, text_label
 from .gui_workspace import EditAsk, GuiWorkspace
-from .session import ChatSession, LocalModels, current_route
+from .session import ChatSession, LocalModels
 
 MODE_SETTING = "chat_edit_mode"
 MODES = ((EDIT_ASK, "Ask before edits", "each change is shown first"),
@@ -364,12 +364,13 @@ class ChatView(Surface):
         clear_layout(self._chips)
 
     def _provider_for_send(self) -> Optional[ChatProvider]:
-        """The model that answers the next request; None (and the reason shown) when it cannot be used now."""
-        route = current_route(self.state.project)
-        if route.problem:       # the note under the message box says why
+        """The model that answers the next request; None (and the reason shown) when its route cannot answer now."""
+        route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
+        if reason := resolver.problem(self.state.project, route):
+            self._add(Notice(reason, "error"))
             return None
         try:
-            return resolver.provider_for(self.state.project, route.spec)
+            return resolver.provider_for(self.state.project, route)
         except ProviderError as exc:
             self._add(Notice(str(exc), "error"))
             return None
@@ -489,13 +490,14 @@ class ChatView(Surface):
     # -- permission and model ---------------------------------------------------------------
 
     def refresh_route(self) -> None:
-        """The model that answers, named under the message box (also after Settings changed it)."""
-        route = current_route(self.state.project)
+        """The route and model that answer, named under the message box (also after Settings changed them)."""
+        route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
+        reason = resolver.problem(self.state.project, route)
         self.route_chip.set_text(route.label)
-        self.route_chip.set_tone("warning" if route.problem else "muted")
-        self.route_chip.setToolTip("The model that answers. Click to choose another (Settings → AI models → Chat assistant).")
-        self.route_note.setText(route.problem)
-        self.route_note.setVisible(bool(route.problem))
+        self.route_chip.set_tone("warning" if reason else "muted")
+        self.route_chip.setToolTip("The model that answers. Click to choose another (Settings → AI models → Chat).")
+        self.route_note.setText(reason)
+        self.route_note.setVisible(bool(reason))
 
     def _open_mode_menu(self) -> None:
         menu = PopoverMenu(self, min_width=250)
@@ -527,30 +529,30 @@ class ChatView(Surface):
         self._local_models, self._local_loader = names, None
 
     def _open_route_menu(self) -> None:
-        """The cloud models on offer, greyed with the reason while "Local AI only" is on or no key is set,
-        and the local models that can call tools (as of the last time Ollama was asked: when the menu
-        opens, for the next time)."""
-        current = current_route(self.state.project).spec
-        self._load_local_models()
-        local_only, has_key = resolver.local_only(self.state.project), credentials.get_api_key(self.state.project) is not None
+        """The models of the active route: the local ones that can call tools (as of the last time Ollama was
+        asked: when the menu opens, for the next time), or the API models, greyed with the reason without a key.
+        Claude Code has no choice here: its conversation model is set in Claude Code."""
+        route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
         menu = PopoverMenu(self, min_width=270)
-        menu.add_header("Cloud")
-        for model in ANTHROPIC_FALLBACK_MODELS:
-            spec = f"anthropic:{model}"
-            menu.add_item(spec, model, icon="check" if spec == current else "", enabled=has_key and not local_only,
-                          meta="Local AI only is on" if local_only else "" if has_key else "needs an API key")
-        menu.add_header("Local")
-        known = self._local_models
-        local = list(known or [])
-        if current.startswith("ollama:") and current.removeprefix("ollama:") not in local:
-            local.insert(0, current.removeprefix("ollama:"))      # the chosen one stays visible, with a reason
-        for model in local:
-            spec = f"ollama:{model}"
-            menu.add_item(spec, model, icon="check" if spec == current else "",
-                          meta="not installed, or cannot call tools" if known is not None and model not in known else "")
-        if not local:
-            menu.add_item("", "Looking for local models…" if known is None else "No installed model can call tools",
-                          enabled=False)
+        if route.route == ai_profile.CLAUDE_CODE:
+            menu.add_item("", "The model is set in Claude Code (Claude Code tab)", enabled=False)
+        elif route.route == ai_profile.API:
+            has_key = bool(resolver.api_models(self.state.project))
+            for model in ANTHROPIC_FALLBACK_MODELS:
+                menu.add_item(model, model, icon="check" if model == route.model else "", enabled=has_key,
+                              meta="" if has_key else "needs an API key")
+        else:
+            self._load_local_models()
+            known = self._local_models
+            local = list(known or [])
+            if route.model and route.model not in local:
+                local.insert(0, route.model)      # the chosen one stays visible, with a reason
+            for model in local:
+                menu.add_item(model, model, icon="check" if model == route.model else "",
+                              meta="not installed, or cannot call tools" if known is not None and model not in known else "")
+            if not local:
+                menu.add_item("", "Looking for local models…" if known is None else "No installed model can call tools",
+                              enabled=False)
         menu.add_separator()
         menu.add_item("settings", "More in Settings…")
         menu.triggered.connect(self._set_route)
@@ -558,8 +560,11 @@ class ChatView(Surface):
         menu.popup_below(self.route_chip)
 
     def _set_route(self, key: str) -> None:
+        """A menu pick: the new default model of the active route for the chat."""
         if key == "settings":
             self.app.commands.run("settings", self.app)
-        elif key != current_route(self.state.project).spec:
-            app_settings.set(self.state.project, app_settings.MODEL_SETTINGS["chat"], key)
+        else:
+            route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
+            if key != route.model:
+                ai_profile.set_model_choice(self.state.project, route.route, ai_profile.CHAT, key)
         self.refresh_route()

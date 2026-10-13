@@ -19,6 +19,13 @@ process and gives that slide a second try; a usage-limit error ends it. Its prog
 what became of each slide is in the "Show result" sheet. "Describe images" is one image run over the deck's images, a
 summary one process whose answer is shown, never written.
 One task or batch at a time; Stop and closing the window end its processes.
+
+Which backend runs a task is the active route's (ai_profile.resolve, captured when the task starts; the kind of
+each task is KINDS). On Cloud · Claude Code every task is a `claude -p` process, as above. On Local and
+Cloud · API only the tasks with an equivalent on a provider run, one at a time on that provider (the Ollama slot
+is held for the run): the image tasks (alt_draft's batch with a ModelBackend / ModelTranslationBackend) and
+Translate (slide_add.translate_body, its answer checked like Claude's). Every other task is refused with
+"not available on <route>", nothing sent and no other route or model used.
 """
 from __future__ import annotations
 
@@ -26,6 +33,7 @@ import re
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,11 +43,12 @@ from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, dec
                   slide_language, slide_source, slide_versioning)
 from ....project import ProjectContext
 from ....tex_source import masked_same_length
-from ....ai import claude_images, claude_runner, claude_tasks, translation_style
+from ....ai import ai_profile, claude_images, claude_runner, claude_tasks, resolver, translation_style
 from ....ai.tools.base import ToolError
 from ....ai.tools.edits import write_text
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ... import background
+from ...ai_models import confirm_if_new
 
 CONFLICT = "The slide changed while Claude worked."
 _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSLATION.name: "Updating",
@@ -47,6 +56,19 @@ _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSL
           claude_tasks.CONCISE.name: "Shortening", claude_tasks.TITLE.name: "Retitling",
           claude_tasks.NOTE.name: "Adding a note to", claude_images.DESCRIBE.name: "Describing",
           claude_images.TRANSLATE.name: "Translating", claude_tasks.SUMMARISE.name: "Summarising"}
+# What each task is, for the route's models (ai_profile.TASKS).
+KINDS = {claude_tasks.TRANSLATE.name: ai_profile.TRANSLATION, claude_tasks.UPDATE_TRANSLATION.name: ai_profile.TRANSLATION,
+         claude_images.TRANSLATE.name: ai_profile.TRANSLATION, claude_images.DESCRIBE.name: ai_profile.IMAGE_DESCRIPTION,
+         **dict.fromkeys((claude_tasks.FIX_LATEX.name, claude_tasks.PROOFREAD.name, claude_tasks.CONCISE.name,
+                          claude_tasks.TITLE.name, claude_tasks.NOTE.name, claude_tasks.SUMMARISE.name),
+                         ai_profile.FIXES)}
+# The tasks that also run on a provider, as the Add slide sheet and the Images page do (see the docstring).
+PROVIDER_TASKS = (claude_tasks.TRANSLATE, claude_images.DESCRIBE, claude_images.TRANSLATE)
+_NAMES = {claude_tasks.TRANSLATE.name: "Translating a slide", claude_tasks.UPDATE_TRANSLATION.name: "Updating a translation",
+          claude_tasks.FIX_LATEX.name: "Fixing LaTeX errors", claude_tasks.PROOFREAD.name: "Proofreading",
+          claude_tasks.CONCISE.name: "Making a slide more concise", claude_tasks.TITLE.name: "Retitling a slide",
+          claude_tasks.NOTE.name: "Adding a speaker note", claude_tasks.SUMMARISE.name: "Summarising a deck",
+          claude_images.DESCRIBE.name: "Describing images", claude_images.TRANSLATE.name: "Translating image descriptions"}
 WORKERS = 2                            # processes at a time in a batch
 DECK_LABEL = "the deck"
 BATCH_TASKS = (claude_tasks.TRANSLATE, claude_tasks.UPDATE_TRANSLATION, claude_tasks.FIX_LATEX)
@@ -294,31 +316,45 @@ def _capture_images(window, task: claude_tasks.Task, paths) -> _ImageCapture | N
 class _Worker(QThread):
     done = Signal(object, object)      # this worker, the Outcome
 
-    def __init__(self, ctx: ProjectContext, claude: Path, capture: _Capture, model: str, effort: str,
-                 cancel: threading.Event) -> None:
+    def __init__(self, capture: _Capture, run: Callable[[], Outcome]) -> None:
         super().__init__()
-        self.ctx = ctx
-        self.claude, self.capture, self.model, self.effort, self.cancel = claude, capture, model, effort, cancel
+        self.capture, self._outcome = capture, run
 
     def run(self) -> None:
-        capture = self.capture
         try:
-            outcome = claude_runner.run_task(self.ctx, self.claude, capture.task, capture.sent, capture.request,
-                                             self.model, self.effort, cancel=self.cancel)
+            outcome = self._outcome()
         except OSError as exc:         # `claude` could not be started
             outcome = Outcome(FAILED, message=str(exc))
         self.done.emit(self, outcome)
 
 
+def _translate_on_provider(ctx: ProjectContext, provider, capture: _Capture, cancel: threading.Event) -> Outcome:
+    """The Translate task on the provider of Local or the API (slide_add.translate_body). Its answer is checked as
+    a Claude answer is: the protected parts stay and the text has no new LaTeX error."""
+    started = time.monotonic()
+    text, error = slide_add.translate_body(ctx, provider, capture.sent)
+    outcome = Outcome(FAILED, attempts=1)
+    if cancel.is_set():
+        outcome.status = CANCELLED
+    elif error:
+        outcome.message = error
+    else:
+        new, problems = claude_tasks.check(ctx, capture.task, capture.sent, {capture.task.answer: text})
+        if problems:
+            outcome.message = "The translation was refused: " + "; ".join(problems)
+        else:
+            outcome.status, outcome.text = (NOTHING, "") if new == capture.sent else (DONE, new)
+    outcome.elapsed_s = time.monotonic() - started
+    return outcome
+
+
 class _ImageWorker(QThread):
     done = Signal(object, object)      # this worker, the summary of alt_draft's batch
 
-    def __init__(self, ctx: ProjectContext, claude: Path, capture: _ImageCapture, model: str, effort: str,
-                 cancel: threading.Event) -> None:
+    def __init__(self, ctx: ProjectContext, capture: _ImageCapture, backend, cancel: threading.Event) -> None:
+        """`backend` is a DraftBackend (to describe) or a TranslationBackend of any route."""
         super().__init__()
-        self.ctx, self.capture, self.cancel = ctx, capture, cancel
-        self.backend = (claude_images.ClaudeDraftBackend if capture.task is claude_images.DESCRIBE
-                        else claude_images.ClaudeTranslationBackend)(ctx, claude, model, effort, cancel)
+        self.ctx, self.capture, self.backend, self.cancel = ctx, capture, backend, cancel
         self.position = (1, len(capture.images))       # the image at work and how many: the status line reads it
 
     def _progress(self, index: int, total: int, _item) -> None:
@@ -369,7 +405,9 @@ class TaskRunner(QObject):
         self._window, self._claude, self._workspace = window, claude, workspace
         self._running: dict[_Worker | _ImageWorker, _Item | None] = {}    # with the batch item it works on
         self._batch: _Batch | None = None
-        self._model, self._effort = claude_runner.MODEL, claude_runner.EFFORT
+        self._route: ai_profile.Route | None = None        # of the task or batch under way, captured at its start
+        self._holds_slot = False                           # the app-wide Ollama slot, for a Local run
+        self._providers: list = []                         # what Stop aborts: the providers or backends of the run
         self._cancel = threading.Event()
         self._started = 0.0
         self._ticker = QTimer(self)
@@ -382,17 +420,38 @@ class TaskRunner(QObject):
     def busy(self) -> bool:
         return bool(self._running) or self._batch is not None
 
-    def start(self, task: claude_tasks.Task, model: str, effort: str, paths: tuple[Path, ...] = ()) -> None:
+    def refusal(self, task: claude_tasks.Task, route: ai_profile.Route | None = None) -> str:
+        """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready),
+        or "" when it can."""
+        route = route or ai_profile.resolve(self._window.project, KINDS[task.name])
+        if route.route == ai_profile.CLAUDE_CODE:
+            return ""
+        if task not in PROVIDER_TASKS:
+            return resolver.not_offered(route, _NAMES[task.name], "It runs on Cloud · Claude Code: switch the route to use it.")
+        return resolver.problem(self._window.project, route)
+
+    def start(self, task: claude_tasks.Task, paths: tuple[Path, ...] = ()) -> None:
         """Run `task` on the slide in the Source view, or for a deck bubble on its slides `paths`, unless one is
-        running or it no longer fits."""
+        running, the active route cannot run it (the status line says why) or it no longer fits."""
         if self.busy:
             return
-        self._model, self._effort = model, effort
+        project = self._window.project
+        route = ai_profile.resolve(project, KINDS[task.name])
+        if reason := self.refusal(task, route):
+            self.status.emit(reason, "warning")
+            return
+        if not confirm_if_new(self._window, project, route, "the slide text and images this task works on"):
+            self.status.emit("Nothing was sent: using the cloud was not confirmed.", "warning")
+            return
+        if route.is_local and not self._window.try_start_ollama_task(_NAMES[task.name].lower()):
+            return
+        self._route, self._holds_slot = route, route.is_local
         self._cancel = threading.Event()
         self._started = time.monotonic()
         self.unapplied = self.report = ""
         if paths and task in BATCH_TASKS:
-            self._batch = _Batch(task, deque(_Item(task, path) for path in paths), len(paths))
+            self._batch = _Batch(task, deque(_Item(task, path) for path in paths), len(paths),
+                                 limit=WORKERS if route.route == ai_profile.CLAUDE_CODE else 1)
             self.busy_changed.emit(True)
             self._ticker.start()
             self._tick()
@@ -405,6 +464,7 @@ class TaskRunner(QObject):
         else:
             capture = _capture(self._window, task, _focus(self._window))
         if capture is None:
+            self._release()
             self.status.emit("That no longer fits this slide.", "warning")
             return
         self._launch(capture)
@@ -412,23 +472,55 @@ class TaskRunner(QObject):
         self._tick()
         self._ticker.start()
 
+    def _release(self) -> None:
+        """The run is over: give the Ollama slot back and forget its providers."""
+        self._providers = []
+        if self._holds_slot:
+            self._holds_slot = False
+            self._window.end_ollama_task()
+
     def _launch(self, capture: _Capture | _ImageCapture, item: _Item | None = None) -> None:
-        worker = (_ImageWorker if isinstance(capture, _ImageCapture) else _Worker)(
-            self._window.project, self._claude, capture, self._model, self._effort, self._cancel)
+        if isinstance(capture, _ImageCapture):
+            backend = self._image_backend(capture.task)
+            self._providers.append(backend.provider)
+            worker = _ImageWorker(self._window.project, capture, backend, self._cancel)
+        else:
+            worker = _Worker(capture, self._text_task(capture))
         worker.done.connect(self._on_done)
         self._running[worker] = item
         background.start_detached(worker)
 
+    def _image_backend(self, task: claude_tasks.Task):
+        """What describes or translates images on the captured route."""
+        ctx, route, describe = self._window.project, self._route, task is claude_images.DESCRIBE
+        if route.route == ai_profile.CLAUDE_CODE:
+            return (claude_images.ClaudeDraftBackend if describe else claude_images.ClaudeTranslationBackend)(
+                ctx, self._claude, route.model, route.effort, self._cancel)
+        return (resolver.draft_backend if describe else resolver.translation_backend)(ctx, route)
+
+    def _text_task(self, capture: _Capture) -> Callable[[], Outcome]:
+        """The call of a worker that runs `capture` on the captured route."""
+        ctx, route, cancel = self._window.project, self._route, self._cancel
+        if route.route == ai_profile.CLAUDE_CODE:
+            return lambda: claude_runner.run_task(ctx, self._claude, capture.task, capture.sent, capture.request,
+                                                  route.model, route.effort, cancel=cancel)
+        provider = resolver.provider_for(ctx, route)
+        self._providers.append(provider)
+        return lambda: _translate_on_provider(ctx, provider, capture, cancel)
+
     def stop(self) -> None:
         self._cancel.set()
+        for provider in self._providers:
+            provider.abort()
 
     def shutdown(self) -> None:
         """The view is going away: end the processes; their outcomes are not looked at."""
         self._ticker.stop()
-        self._cancel.set()
+        self.stop()
         running, self._running, self._batch = self._running, {}, None
         for worker in running:
             background.stop_worker(worker)
+        self._release()
 
     def _tick(self) -> None:
         seconds = round(time.monotonic() - self._started)
@@ -456,6 +548,7 @@ class TaskRunner(QObject):
             self._pump()
             return
         self._ticker.stop()
+        self._release()
         if isinstance(worker, _ImageWorker):
             report = self._images_report(worker.capture.task, outcome)
             self._window.side_panels.refresh()         # shows the drafts that were stored
@@ -505,6 +598,7 @@ class TaskRunner(QObject):
 
     def _finish(self, batch: _Batch) -> None:
         self._ticker.stop()
+        self._release()
         self._batch = None
         self.report = "\n".join(batch.lines)
         seconds = time.monotonic() - self._started
