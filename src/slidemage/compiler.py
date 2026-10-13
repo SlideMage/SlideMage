@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import shutil
 import subprocess
 import threading
@@ -320,6 +321,9 @@ class CancelToken:
     def _set_process(self, proc: Optional[subprocess.Popen]) -> None:
         with self._lock:
             self._proc = proc
+            stopped = self._event.is_set()
+        if stopped:
+            self._kill(proc)
 
     def request_stop(self) -> None:
         """Stop the whole run: kill the job being compiled, skip the rest."""
@@ -368,7 +372,12 @@ class CancelToken:
                 check=False,
             )
         else:
-            proc.kill()
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                proc.kill()
 
 
 def run_streamed(
@@ -380,11 +389,14 @@ def run_streamed(
 
     Keep the caller's decoding and buffering options; launch errors propagate.
     """
+    if cancel is not None and cancel.is_set():
+        return -1
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, errors=errors, bufsize=bufsize,
             **no_console_kwargs(),
+            **({"start_new_session": True} if cancel is not None and os.name != "nt" else {}),
         )
         if cancel is not None:
             cancel._set_process(proc)

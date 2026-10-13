@@ -24,14 +24,13 @@ def env(root, monkeypatch):
     project = ProjectContext.at(root)
     deck = next(d for d in scan_decks(project) if d.name == "test")
     ws = FakeWorkspace(root, WorkspaceContext(deck=deck, path=root / SLIDE))
-    shown, previews, renders, events = [], [], [], []
+    shown, renders, events = [], [], []
     monkeypatch.setattr(ws, "show_slide", shown.append)
-    monkeypatch.setattr(ws, "show_preview", lambda *args: previews.append(args))
     monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: renders.append(a) or root / "fake.pdf")
     monkeypatch.setattr(slide_snapshot, "page_png", lambda *a: PNG)
     box = build_toolbox(ws, events.append, compiler.CancelToken(), EDIT_AUTO)
     return SimpleNamespace(root=root, project=project, ws=ws, box=box, path=root / SLIDE,
-                           shown=shown, previews=previews, renders=renders, events=events)
+                           shown=shown, renders=renders, events=events)
 
 
 def modify(env, **args):
@@ -49,8 +48,7 @@ def test_ordered_edits_mark_render_show_and_support_undo(env, slide, buffer):
     after = before.replace("First point", "Final point")
     assert (env.ws.buffer_text(env.path) if buffer else env.path.read_text()) == after
     assert result.images == [PNG] and "Lint:" in result.text and "Not reviewed" in result.text
-    assert env.shown == [env.path] and len(env.renders) == len(env.previews) == 1
-    assert env.previews[0][1:3] == (after, PNG)
+    assert env.shown == [env.path] and len(env.renders) == 1
     entry = ai_review.unreviewed(env.project)[SLIDE]
     assert entry["kind"] == "edit" and entry["source"] == "modify_slide"
     applied, = [e for e in env.events if isinstance(e, EditApplied)]
@@ -145,7 +143,7 @@ def test_render_failure_keeps_change_and_review_mark(env, monkeypatch):
     result = modify(env)
     assert result.is_error and "Undefined control sequence" in result.text and "stays in place" in result.text
     assert SLIDE in result.text and "Edited point" in env.path.read_text()
-    assert env.shown == [env.path] and len(env.renders) == 1 and not env.previews
+    assert env.shown == [env.path] and len(env.renders) == 1
     assert ai_review.is_unreviewed(env.project, env.path)
 
 

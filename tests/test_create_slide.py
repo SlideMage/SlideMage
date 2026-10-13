@@ -22,9 +22,8 @@ def env(root, monkeypatch):
     project = ProjectContext.at(root)
     deck = next(d for d in scan_decks(project) if d.name == "test")
     workspace = FakeWorkspace(root, WorkspaceContext(deck=deck))
-    shown, previews, renders, events = [], [], [], []
+    shown, renders, events = [], [], []
     monkeypatch.setattr(workspace, "show_slide", shown.append)
-    monkeypatch.setattr(workspace, "show_preview", lambda *args: previews.append(args))
 
     def render(target, text, view, language, **kwargs):
         renders.append((target, text, view, language, kwargs))
@@ -37,7 +36,7 @@ def env(root, monkeypatch):
     monkeypatch.setattr(slide_snapshot, "page_png", lambda pdf, width: PNG)
     box = build_toolbox(workspace, events.append, compiler.CancelToken(), EDIT_AUTO)
     return SimpleNamespace(root=root, project=project, deck=deck, workspace=workspace, box=box,
-                           shown=shown, previews=previews, renders=renders, events=events)
+                           shown=shown, renders=renders, events=events)
 
 
 def create(env, **args):
@@ -65,7 +64,7 @@ def test_one_call_creates_inserts_marks_renders_and_shows(env, deck, after):
     assert position == (next(i for i, c in enumerate(calls) if c.id == "abc") + 1 if after else len(calls) - 1)
     entry = ai_review.unreviewed(env.project)[path.relative_to(env.root).as_posix()]
     assert entry["kind"] == "draft" and entry["decks"] == ["decks/test.tex"]
-    assert env.shown == [path] and len(env.previews) == len(env.renders) == 1
+    assert env.shown == [path] and len(env.renders) == 1
     assert result.images == [PNG]
     assert id_slug in result.text and path.relative_to(env.root).as_posix() in result.text
     assert ("after abc" if after else "at the end") in result.text

@@ -22,7 +22,6 @@ from ... import (
     slide_add,
     slide_ids,
     slide_language,
-    slide_snapshot,
     slide_versioning,
 )
 from ...deck_editor import VIEWS
@@ -35,7 +34,6 @@ from .edits import _not_frozen, protected_problem, propose, slide_kind, write_te
 from .files import current_revision, current_text, project_path, relative
 
 LIST_LIMIT = 300
-PREVIEW_WIDTH = 1280
 LOG_TAIL = 15
 ERROR_LIMIT = 5
 _BARE_ID = re.compile(r"^[A-Za-z0-9]{3}$")
@@ -170,22 +168,13 @@ def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None
     if target is None:
         raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
     text, source = current_revision(ctx.workspace, path)
-    try:
-        pdf = preview_target.render_text(
-            target, text, context.view, language,
-            footer_timestamp=context.footer_timestamp, log=lambda _line: None)
-        png = slide_snapshot.page_png(pdf, PREVIEW_WIDTH)
-    except RuntimeError as exc:
-        if show:
-            ctx.workspace.show_slide(path)
-        raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
-    if png is None:
-        if show:
-            ctx.workspace.show_slide(path)
-        raise ToolError(f"The rendered PDF ({source}) could not be read.")
     if show:
         ctx.workspace.show_slide(path)
-        ctx.workspace.show_preview(target, text, png, context.view, language, context.footer_timestamp)
+    try:
+        png = ctx.workspace.render_preview(target, text, context.view, language,
+                                           context.footer_timestamp, ctx.cancel)
+    except RuntimeError as exc:
+        raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
     return f"{path.name} ({source}) as {context.view}, {language}:", [png]
 
 

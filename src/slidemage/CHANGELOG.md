@@ -2156,3 +2156,11 @@ v8.3.13 (2026-10-13, Claude Code speed plan C3b): composite modify_slide for ter
 NEW: Claude can change, check and show an existing slide in one call.
 - Slide changes use your current editor text and language, protect frozen versions and managed regions, and stay labelled Not reviewed.
 - Stale text and ambiguous replacements are refused; compile failures keep the change and return the error so Claude can fix it.
+
+
+v8.3.14 (2026-10-13, Claude Code speed plan C4): shared preview requests and cancellable builds. MCP render_preview and the create_slide/modify_slide tail request the pane's in-flight render service, keyed by source text/revision, target/deck/preamble, view, language and render options. Matching automatic, saved and buffer requests share one build and one raster subprocess; full-size pane images and the existing 1280-pixel MCP PNG are prepared together. The GUI publishes images and canonical snapshots through its generation, target, view, language, timestamp and source-revision checks before returning accepted tool results; another focused slide still leaves the tool's image available. The separate show_rendered path is removed. Tool waits time out; terminal stop/restart retains and cancels its session token, and cancellation reaches maintenance/build/format lock waits, preamble creation and cached/fresh latexmk runs. POSIX cancellable processes run in their own session so cancellation kills TeX children as well as latexmk. Build, format and raster caches and cross-process locks remain. Fake-builder, socket-free MCP, Qt-pane and subprocess regressions cover shared renders, stale publication, another focused slide, cancellation, timeout and released locks.
+
+NEW: Claude and the preview pane share renders, and stopping Claude cancels pending previews.
+- A matching preview builds once and appears in the pane only while its slide, settings and source are still current.
+- Claude still receives its preview image if you switch to another slide while it renders.
+- Stopping or restarting Claude ends waiting and running preview builds so later renders can proceed.

@@ -124,11 +124,14 @@ class FakeProcess:
         self.killed = True
 
 
-def test_stopping_the_current_job_kills_its_process_and_leaves_the_run_going():
+def test_stopping_the_current_job_kills_its_process_and_leaves_the_run_going(monkeypatch):
     token = compiler.CancelToken()
     token.stop_current()                       # nothing runs: nothing to stop, nothing remembered
     assert not token.job_stopped()
     proc = FakeProcess()
+    proc.pid = 123
+    monkeypatch.setattr(compiler.os, "killpg", lambda pid, sig: proc.kill(), raising=False)
+    monkeypatch.setattr(compiler.subprocess, "run", lambda *a, **k: proc.kill())
     token._set_process(proc)
     token.stop_current()
     assert proc.killed and not token.is_set()

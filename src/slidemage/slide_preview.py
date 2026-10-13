@@ -338,7 +338,7 @@ def _presenter_mode_line(presenter: bool) -> str:
 @measure('build')
 def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
-                         reuse_build: bool = True) -> Path:
+                         reuse_build: bool = True, cancel=None) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
     render_slide_text_to_pdf(): build the wrapper (preview_build.run_preview),
     check the log for a real fatal error, move the finished PDF to its own
@@ -358,8 +358,8 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
     asked to see.
     """
     env = build_env(ctx)
-    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env) if reuse_build
-                else _compile_fresh(ctx, wrapper_text, id_slug, log, env))
+    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel) if reuse_build
+                else _compile_fresh(ctx, wrapper_text, id_slug, log, env, cancel))
     if snapshot_template is not None:
         # bare id, not the full id_slug -- capture_deck() (the "Update
         # previews"/full-compile path) always keys a snapshot by the
@@ -385,7 +385,7 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
     return dest_pdf
 
 
-def _compile_fresh(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback, env: dict) -> Path:
+def _compile_fresh(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback, env: dict, cancel=None) -> Path:
     """A build of its own: a unique jobname, latexmk's output in .build/, nothing kept afterwards."""
     ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     # "_slidemage_" prefix matches compiler.py's own wrapper naming, so
@@ -400,13 +400,13 @@ def _compile_fresh(ctx: project.ProjectContext, wrapper_text: str, id_slug: str,
     safe_id_slug = re.sub(r"[^A-Za-z0-9_-]", "_", id_slug)
     jobname = f"preview-{safe_id_slug}-{uuid.uuid4().hex[:8]}"
     wrapper_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
-    with preview_build.active_build(ctx.build_dir, wrapper_path):
+    with preview_build.active_build(ctx.build_dir, wrapper_path, cancel):
         ctx.build_dir.mkdir(parents=True, exist_ok=True)
         log(compile_log.rendering(id_slug, jobname))
         try:
             with compiler.wrapper_file(wrapper_path, wrapper_text, remove=lambda p: _retry_on_lock(lambda: p.unlink(missing_ok=True))):
                 pdf, _ = preview_build.run_preview(ctx, wrapper_path, jobname, id_slug, ctx.build_dir, log,
-                                                   env=env, reusable=False)
+                                                   env=env, reusable=False, cancel=cancel)
         except RuntimeError:
             log(compile_log.render_failed(id_slug, "see log tail below"))
             raise
@@ -448,6 +448,7 @@ def render_slide_to_pdf(
     reuse_build: bool = True,
     overlay: Optional[int] = None,
     capture_snapshot: bool = True,
+    cancel=None,
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -512,7 +513,7 @@ def render_slide_to_pdf(
     )
     return compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build,
+        reuse_build=reuse_build, cancel=cancel,
     )
 
 
@@ -532,6 +533,7 @@ def render_slide_text_to_pdf(
     overlay: Optional[int] = None,
     frame_number: Optional[int] = None,
     capture_snapshot: bool = True,
+    cancel=None,
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -609,7 +611,7 @@ def render_slide_text_to_pdf(
     )
     return compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build,
+        reuse_build=reuse_build, cancel=cancel,
     )
 
 

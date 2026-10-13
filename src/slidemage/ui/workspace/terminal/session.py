@@ -50,6 +50,7 @@ class ClaudeCodeSession(QObject):
         self._process: PtyProcess | None = None
         self._generation = 0                        # which process the callbacks belong to
         self._lock = threading.Lock()
+        self._cancel = compiler.CancelToken()
         self._sync = DiskSync(window, window.project.root, self)
         self._chunk.connect(self._on_chunk)
         self._ended.connect(self._on_ended)
@@ -65,6 +66,8 @@ class ClaudeCodeSession(QObject):
     def start(self, cols: int, rows: int) -> None:
         """(Re)start Claude Code in the project folder with a terminal of `cols` x `rows`."""
         self.stop()
+        with self._lock:
+            self._cancel = compiler.CancelToken()
         if self._server is None:
             server = McpServer(self._toolbox)
             server.start()              # kept only once it listens, so that a failed start can be retried
@@ -119,6 +122,8 @@ class ClaudeCodeSession(QObject):
         """End the process, if there is one; its late output and exit are not reported."""
         with self._lock:
             self._generation += 1
+            cancel = self._cancel
+        cancel.request_stop()
         self._timer.stop()
         self._sync.stop(last_look=last_look)
         process, self._process = self._process, None
@@ -138,8 +143,10 @@ class ClaudeCodeSession(QObject):
 
     def _toolbox(self) -> ToolBox:
         """The tools for one MCP call, looking at the window as it is now."""
+        with self._lock:
+            cancel = self._cancel
         self.workspace.on_gui(self.workspace.begin_request)
-        return build_toolbox(self.workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO,
+        return build_toolbox(self.workspace, lambda _event: None, cancel, EDIT_AUTO,
                              tools=CLAUDE_CODE_TOOLS)
 
     # The reader thread's callbacks only name the process they come from. What arrives on the GUI thread

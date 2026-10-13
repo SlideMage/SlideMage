@@ -32,7 +32,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from .compiler import FATAL_ERROR_RE
+from .compiler import FATAL_ERROR_RE, run_streamed
 from .preview_metrics import stage
 from .processes import no_console_kwargs
 
@@ -152,7 +152,7 @@ def disable(directory: Path) -> None:
 
 
 def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env: dict,
-           log, lock) -> Path | None:
+           log, lock, cancel=None) -> Path | None:
     """Return the format's directory (its `preamble.fmt` is the format), or None.
 
     `lock` is preview_build.build_lock: formats are shared by every slide of a
@@ -163,19 +163,19 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
     directory = build_dir / 'preview-formats' / f'{SCHEMA}-{key}'
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        with lock(directory / 'build.lock'):
+        with lock(directory / 'build.lock', cancel=cancel):
             if (directory / 'format.bad').exists():
                 return None
             fmt = stem(directory).with_suffix('.fmt')
             if fmt.is_file() and _fresh(directory / 'format.json'):
                 return directory
             return _build(preamble, directory, project_root=project_root, env=env,
-                          log=log)
+                          log=log, cancel=cancel)
     except OSError:
         return None
 
 
-def _build(preamble, directory, *, project_root: Path, env, log):
+def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
     for old in directory.glob(NAME + '.*'):
         old.unlink(missing_ok=True)
     source = stem(directory).with_suffix('.tex')
@@ -193,9 +193,14 @@ def _build(preamble, directory, *, project_root: Path, env, log):
     log('==== Precompiling preamble (once per preamble) ====')
     with stage('format_build'):
         try:
-            subprocess.run(cmd, cwd=cwd, env=run_env, stdin=subprocess.DEVNULL,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                  timeout=300, **kwargs)
+            if cancel is None:
+                subprocess.run(cmd, cwd=cwd, env=run_env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=300, **kwargs)
+            else:
+                run_streamed(cmd, cwd=cwd, env=run_env, log=lambda _: None, cancel=cancel)
+                if cancel.is_set():
+                    raise RuntimeError('Preview cancelled')
         except (OSError, subprocess.TimeoutExpired):
             disable(directory)
             return None

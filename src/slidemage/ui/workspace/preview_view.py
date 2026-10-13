@@ -35,6 +35,7 @@ from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QV
 from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
+from ...preview_requests import RenderRequest, RenderService
 from ...preview_metrics import PreviewMetrics
 from ...slide_language import TranslationLink, translation_link
 from ..dialogs.transcript_preview import show_transcript_preview
@@ -107,10 +108,14 @@ class _Job:
     images: tuple = ()
     requested: float = 0
     metrics: Optional[dict] = None
+    request: Optional[RenderRequest] = None
+    revision_text: Optional[str] = None
+    remote: bool = False
 
 
 def _discard_job(job: _Job) -> None:
-    if job.pdf is not None and job.pdf.parent.name.startswith('slidemage_preview_'):
+    # Shared PDFs remain available to every consumer; the normal render sweep removes them.
+    if job.request is None and job.pdf is not None and job.pdf.parent.name.startswith('slidemage_preview_'):
         shutil.rmtree(job.pdf.parent, ignore_errors=True)
 
 
@@ -127,6 +132,7 @@ class _Lifetime:
         owner = self.owner()
         if owner is not None:
             # Only Python attributes; the C++ QWidget may already be gone.
+            owner._renders.close()
             owner._pending = None
             owner._generation += 1
         if self.job is not None:
@@ -216,6 +222,8 @@ class PreviewPane(Surface):
         self._active: Optional[_Job] = None
         self._pending = None
         self._lifetime = _Lifetime(self)
+        self._renders = RenderService()
+        self._remote = {}
         self._shown_mtime = 0
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
@@ -299,26 +307,6 @@ class PreviewPane(Surface):
         self._invalidate()
         self._error = ""      # a failure belongs to the view and language it happened in
         self._refresh()
-
-    def show_rendered(self, target: PreviewTarget, text: str, png: bytes, view: str,
-                      language: str, footer_timestamp: bool) -> None:
-        """Show a composite tool's image without another build; reject a superseded revision."""
-        if self._target is None or self._target.key != target.key or (
-                self.state.view, self.state.language, self.state.footer_timestamp) != (view, language, footer_timestamp):
-            return
-        buffer = self._buffer()
-        try:
-            current = buffer[0] if buffer is not None else target.source_path.read_text(encoding="utf-8")
-        except OSError:
-            return
-        if current != text:
-            return
-        pixmap = QPixmap()
-        if pixmap.loadFromData(png):
-            self._invalidate()
-            key = (target.key, view, language, footer_timestamp)
-            self._adhoc, self._adhoc_text = (key, pixmap, ""), text
-            self._refresh()
 
     def buffer_changed(self, path: Path) -> None:
         """Refresh a buffer preview's age after typing pauses, without compiling."""
@@ -469,10 +457,15 @@ class PreviewPane(Surface):
     def _invalidate(self) -> None:
         self._generation += 1
         self._error = ''
+        self._forget_pending()
         self._pending = None
         self._debounce.stop()
         self._buffer_notice.stop()
         self._busy = self._active is not None
+
+    def _forget_pending(self) -> None:
+        if self._pending is not None and self._pending[1].request is not None:
+            self._pending[1].request.forget_unstarted()
 
     def _start(self, work: Callable[[], Path], job: _Job, *, debounce: bool = False) -> None:
         """One running compile and one replaceable latest request; never overlap."""
@@ -480,6 +473,8 @@ class PreviewPane(Surface):
         job.generation = self._generation
         job.requested = time.perf_counter()
         self._shown_mtime = job.mtime
+        if self._pending is None or self._pending[1].request is not job.request:
+            self._forget_pending()
         self._pending = (work, job)
         self._busy, self._error = True, ""
         if debounce:
@@ -501,12 +496,15 @@ class PreviewPane(Surface):
     def _run(self, work: Callable[[], Path], job: _Job) -> None:
         with PreviewMetrics() as metrics:
             try:
-                job.pdf = work()
-                if not job.external and not self._closed and job.generation == self._generation:
+                if job.request is not None:
+                    job.pdf, job.png, job.images, _ = job.request.wait()
+                else:
+                    job.pdf = work()
+                if job.request is None and not job.external and not self._closed and job.generation == self._generation:
                     job.png, job.images = slide_snapshot.prepare_preview(job.pdf, bool(job.snapshot_template))
             except Exception as exc:  # noqa: BLE001 -- shown as the error; the render must always end
                 job.error = str(exc) or type(exc).__name__
-        job.metrics = metrics.to_dict()
+        job.metrics = dict(job.request.metrics or {}) if job.request is not None else metrics.to_dict()
         if self._closed:
             self._discard(job)
             return
@@ -520,24 +518,35 @@ class PreviewPane(Surface):
 
     def _accepts(self, job: _Job) -> bool:
         target = self._target
+        if job.request is not None and job.request.cancelled():
+            return False
         if (target is None or job.generation != self._generation or target.key != job.target_key
                 or (self.state.view, self.state.language, self.state.footer_timestamp)
                 != (job.view, job.language, job.timestamp)
                 or _mtime(job.source) != job.mtime):
             return False
         buffer = self._buffer()
-        return job.buffer_text is None or buffer is None or buffer[0] == job.buffer_text
+        text = job.revision_text if job.revision_text is not None else job.buffer_text
+        if text is None:
+            return True
+        try:
+            current = buffer[0] if buffer is not None else job.source.read_text(encoding='utf-8')
+            return current == text
+        except OSError:
+            return False
 
     def _on_finished(self, job: _Job) -> None:
+        self._remote.pop(job.request, None)
         if self._closed:
             self._discard(job)
             return
-        if self._active is not job:
+        if self._active is not job and not job.remote:
             self._discard(job)
             return
-        self._active = None
-        self._lifetime.job = None
-        self._busy = self._pending is not None
+        if self._active is job:
+            self._active = None
+            self._lifetime.job = None
+        self._busy = self._active is not None or self._pending is not None
         publish_start = time.perf_counter()
         accepted = self._accepts(job)
         if not accepted:
@@ -615,10 +624,11 @@ class PreviewPane(Surface):
             return
         view, language = self.state.view, self.state.language
         timestamp = self._footer_timestamp()
-        self._start(lambda: preview_target.render(
-            target, view, language, footer_timestamp=timestamp, log=self.app.log, capture_snapshot=False),
-            self._job(target, snapshot_template=target.template
-                      if view == 'instructor' and not target.is_frozen_alone else None), debounce=debounce)
+        text = path.read_text(encoding='utf-8')
+        job = self._job(target, revision_text=text, snapshot_template=target.template
+                        if view == 'instructor' and not target.is_frozen_alone else None)
+        job.request = self._renders.request(target, text, view, language, timestamp, self.app.log, saved=True)
+        self._start(lambda: None, job, debounce=debounce)
 
     def render_after_save(self) -> None:
         """The slide was saved: render it again, unless its source has errors (then
@@ -649,13 +659,53 @@ class PreviewPane(Surface):
         view, language = self.state.view, self.state.language
         overlay = None if scope == "element" else (self._overlay or None)
         timestamp = self._footer_timestamp()
-        self._start(lambda: preview_target.render_text(
-            target, body, view, language, footer_timestamp=timestamp, log=self.app.log,
-            presenter=presenter, mode=scope, overlay=overlay, capture_snapshot=False),
-            self._job(target, external=presenter, buffer_text=text,
-                      snapshot_template=target.template if view == 'instructor' and not presenter
-                      and scope == 'slide' and overlay is None and not target.is_frozen_alone else None,
-                      note="Rendered from the editor buffer, not the saved file"))
+        job = self._job(target, external=presenter, buffer_text=text, revision_text=text,
+                        snapshot_template=target.template if view == 'instructor' and not presenter
+                        and scope == 'slide' and overlay is None and not target.is_frozen_alone else None,
+                        note="Rendered from the editor buffer, not the saved file")
+        job.request = self._renders.request(target, body, view, language, timestamp, self.app.log,
+                                            presenter=presenter, mode=scope, overlay=overlay)
+        self._start(lambda: None, job)
+
+    def request_render(self, target, text, view, language, timestamp) -> RenderRequest:
+        """GUI-thread entry for tools; publication uses the ordinary job acceptance checks."""
+        if self._closed:
+            raise RuntimeError('Preview pane closed')
+        saved = target.source_path.read_text(encoding='utf-8') == text
+        request = self._renders.request(target, text, view, language, timestamp, self.app.log, saved=saved)
+        # An ordinary pane worker already delivers this exact build to the GUI.
+        for job in (self._active, self._pending[1] if self._pending else None, self._remote.get(request)):
+            if job is not None and job.request is request and job.generation == self._generation:
+                return request
+        job = _Job(target_key=target.key, source=target.source_path, mtime=_mtime(target.source_path),
+                   view=view, language=language, timestamp=timestamp, generation=self._generation,
+                   revision_text=text, buffer_text=None if saved else text,
+                   note='' if saved else 'Rendered from the editor buffer, not the saved file',
+                   snapshot_template=target.template if view == 'instructor' and not target.is_frozen_alone else None,
+                   requested=time.perf_counter(), request=request, remote=True)
+        self._remote[request] = job
+        return request
+
+    def finish_render(self, request: RenderRequest) -> None:
+        """Publish a tool's settled request on the GUI thread before returning its image."""
+        job = self._remote.pop(request, None)
+        if self._active is not None and self._active.request is request and self._active.generation == self._generation:
+            job = self._active
+        elif (self._pending is not None and self._pending[1].request is request
+              and self._pending[1].generation == self._generation):
+            job = self._pending[1]
+            self._pending = None
+            self._debounce.stop()
+            job.remote = True
+        if job is None or not request.done.is_set():
+            return
+        if request.error is not None:
+            job.error = str(request.error)
+        else:
+            job.pdf, job.png, job.images, _ = request.result
+        job.metrics = dict(request.metrics or {})
+        self._on_finished(job)
+        job.remote = False
 
     def render_transcript(self) -> None:
         """A one-slide transcript preview of the buffer (nothing is written to disk)."""

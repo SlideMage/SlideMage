@@ -380,7 +380,7 @@ def test_any_exception_in_the_render_worker_ends_the_render_with_a_fail_line(pan
 
 @pytest.mark.parametrize("language", ["EN", "DE"])
 @pytest.mark.parametrize("mode", ["source", "details"])
-def test_composite_show_focuses_slide_and_displays_returned_image_in_student_view(pane, tmp_path, language, mode):
+def test_composite_show_focuses_slide_and_displays_returned_image_in_student_view(pane, tmp_path, monkeypatch, language, mode):
     from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
 
     view, _, _ = pane
@@ -401,16 +401,23 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     assert not workspace.is_open_deck(tmp_path / "other.tex")
     png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     workspace.show_slide(path)
-    workspace.show_preview(target, "BODY", png, state.view, language, state.footer_timestamp)
+    monkeypatch.setattr(preview_target, 'render', lambda *a, **k: tmp_path / 'composite.pdf')
+    assert workspace.render_preview(target, "BODY", state.view, language, state.footer_timestamp,
+                                    preview_view.slide_preview.compiler.CancelToken()) == png
     assert state.focused_slide == "bbb" and state.mode == "split" and state.language == language
     assert view._page.message == "" and not view._page.pixmap.isNull()
-    assert not view.launched  # the already rendered image needs no second build
+    assert not view.launched
 
 
 @pytest.mark.parametrize("change", ["slide", "view", "language", "timestamp", "buffer", "disk", "deleted"])
-def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, change):
+def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, monkeypatch, change):
     view, target, path = pane
     png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
+    publications = []
+    monkeypatch.setattr(preview_target, 'render', lambda *a, **k: tmp_path / 'composite.pdf')
+    monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
+    request = view.request_render(target, 'BODY', 'instructor', 'EN', False)
+    assert request.wait()[3] == png
     if change == "slide":
         view.show_slide(None, None, "", "No slide")
     elif change == "view":
@@ -427,5 +434,76 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, ch
             path.write_text("NEW")
         else:
             path.unlink()
-    view.show_rendered(target, "BODY", png, "instructor", "EN", False)
-    assert view._adhoc is None and not view.launched
+    view.finish_render(request)
+    assert view._adhoc is None and not view._pixmaps and not publications
+
+
+@pytest.mark.parametrize('debounce', [False, True])
+def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, debounce):
+    import base64
+    from agent_fakes import FakeWorkspace
+    from slidemage import compiler
+    from slidemage.ai.mcp_server import McpServer
+    from slidemage.ai.tools import build_toolbox
+    from slidemage.ai.workspace import WorkspaceContext
+
+    view, target, path = pane
+    builds, rasters = [], []
+    started, release = threading.Event(), threading.Event()
+    pdf = pdf_at(tmp_path / 'shared.pdf')
+    png = slide_snapshot.page_png(pdf, 1280)
+    def builder(*a, **kw):
+        builds.append(kw)
+        started.set()
+        assert release.wait(3)
+        return pdf
+
+    monkeypatch.setattr(preview_target, 'render', builder)
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: rasters.append(a) or ((png, png), ()))
+    view._render_saved(False, debounce=debounce)
+    job = view._pending[1] if debounce else view._active
+    if not debounce:
+        worker = WorkerThread(target=view._run, args=view.launched[0])
+        worker.start()
+        assert started.wait(2)
+    ws = FakeWorkspace(tmp_path, WorkspaceContext(path=path, footer_timestamp=False))
+
+    def render(target, text, mode, language, timestamp, cancel):
+        request = view.request_render(target, text, mode, language, timestamp)
+        assert request is job.request
+        release.set()
+        return request.wait(cancel)[3]
+
+    monkeypatch.setattr(ws, 'render_preview', render)
+    server = McpServer(lambda: build_toolbox(ws, lambda _: None, compiler.CancelToken()))
+    response = server.handle(dict(jsonrpc='2.0', id=1, method='tools/call', params=dict(
+        name='render_preview', arguments={})))['result']
+    assert not response['isError']
+    assert response['content'][1] == dict(type='image', mimeType='image/png', data=base64.b64encode(png).decode())
+    if debounce:
+        view._debounce.stop()
+        view._launch_pending()
+        view._run(*view.launched[0])
+    else:
+        worker.join(3)
+        assert not worker.is_alive()
+        view._on_finished(job)
+    assert len(builds) == len(rasters) == 1 and view._page.pixmap is not None
+    assert not builds[0]['capture_snapshot'] and builds[0]['cancel'] is job.request.cancel
+
+
+def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkeypatch):
+    from slidemage import compiler
+    from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
+
+    view, _, _ = pane
+    path = tmp_path / 'slides' / 'bbb-EN-Other-current.tex'
+    path.write_text('OTHER')
+    target = preview_target.for_path(view.state.project, path)
+    pdf = pdf_at(tmp_path / 'other.pdf')
+    publications = []
+    monkeypatch.setattr(preview_target, 'render', lambda *a, **k: pdf)
+    monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
+    workspace = GuiWorkspace(SimpleNamespace(project=view.state.project, centre=SimpleNamespace(preview=view)))
+    png = workspace.render_preview(target, 'OTHER', 'instructor', 'EN', False, compiler.CancelToken())
+    assert png.startswith(b'\x89PNG') and not publications and view._page.pixmap is None

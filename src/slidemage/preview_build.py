@@ -27,12 +27,12 @@ _ACTIVE = {}
 
 
 @contextmanager
-def active_build(cache: Path, wrapper: Path):
+def active_build(cache: Path, wrapper: Path, cancel=None):
     """Reserve paths before mutation; maintenance cannot race a preview process."""
     paths = (cache.resolve(), wrapper.resolve())
     # This lock stays outside removable .build entries. POSIX readers may
     # compile concurrently; Windows uses its exclusive byte-lock primitive.
-    with build_lock(maintenance_lock(wrapper.parent.parent), shared=True):
+    with build_lock(maintenance_lock(wrapper.parent.parent), shared=True, cancel=cancel):
         with _ACTIVE_LOCK:
             for path in paths:
                 _ACTIVE[path] = _ACTIVE.get(path, 0) + 1
@@ -53,7 +53,7 @@ def is_active(path: Path) -> bool:
 
 
 @contextmanager
-def build_lock(path: Path, *, blocking=True, shared=False):
+def build_lock(path: Path, *, blocking=True, shared=False, cancel=None):
     """OS-owned lock, released on crashes as well as normal returns."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a+b') as stream:
@@ -65,6 +65,7 @@ def build_lock(path: Path, *, blocking=True, shared=False):
                     stream.write(b'\0')
                     stream.flush()
                 while True:
+                    check_cancel(cancel)
                     try:
                         stream.seek(0)
                         msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
@@ -79,11 +80,16 @@ def build_lock(path: Path, *, blocking=True, shared=False):
             else:
                 import fcntl
                 mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
-                try:
-                    fcntl.flock(stream, mode | (0 if blocking else fcntl.LOCK_NB))
-                    acquired = True
-                except BlockingIOError:
-                    pass
+                while True:
+                    check_cancel(cancel)
+                    try:
+                        fcntl.flock(stream, mode | fcntl.LOCK_NB)
+                        acquired = True
+                        break
+                    except BlockingIOError:
+                        if not blocking:
+                            break
+                        time.sleep(.05)
         try:
             yield acquired
         finally:
@@ -94,6 +100,11 @@ def build_lock(path: Path, *, blocking=True, shared=False):
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def check_cancel(cancel):
+    if cancel is not None and cancel.is_set():
+        raise RuntimeError('Preview cancelled')
 
 
 def maintenance_lock(project_root: Path) -> Path:
@@ -207,32 +218,34 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()[:24]
 
 
-def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env):
+def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cancel=None):
     """Build with the preamble precompiled when that works, else the ordinary way.
 
     A run that fails only with the format is repeated without it, so a preamble
     the format cannot reproduce costs one slower build, never a wrong preview.
     """
+    check_cancel(cancel)
     preamble, marker, body = wrapper_text.partition(r'\begin{document}')
     format_dir = None
     if marker:
         format_dir = preview_format.ensure(
             preamble, configuration_key(wrapper_text, '', ctx.root, env),
-            project_root=ctx.root, build_dir=ctx.build_dir, env=env, log=log, lock=build_lock)
+            project_root=ctx.root, build_dir=ctx.build_dir, env=env, log=log, lock=build_lock, cancel=cancel)
     if format_dir is not None:
         try:
             return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
-                                   key_text=wrapper_text, format_dir=format_dir)
+                                   key_text=wrapper_text, format_dir=format_dir, cancel=cancel)
         except RuntimeError as exc:
+            check_cancel(cancel)
             log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
-    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None)
+    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel)
     if format_dir is not None:
         # The slide builds without the format but not with it: stop using it.
         preview_format.disable(format_dir)
     return pdf
 
 
-def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir):
+def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None):
     key = configuration_key(key_text, id_slug, ctx.root, env)
     if format_dir is not None:
         # A rebuilt format means changed preamble inputs, which latexmk's own
@@ -243,17 +256,17 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
     prune_unused(ctx.root, ctx.build_dir)
     jobname = 'preview-' + key
     wrapper = ctx.root / 'decks' / ('_slidemage_' + jobname + '.tex')
-    with active_build(cache, wrapper):
+    with active_build(cache, wrapper, cancel):
         cache.mkdir(parents=True, exist_ok=True)
         (cache / 'build.lock').touch()
         wrapper.parent.mkdir(parents=True, exist_ok=True)
-        with build_lock(cache / 'build.lock'):
+        with build_lock(cache / 'build.lock', cancel=cancel):
             return _compile_reserved(wrapper_text, id_slug, log, ctx=ctx, env=env,
                                      cache=cache, wrapper=wrapper, jobname=jobname,
-                                     format_dir=format_dir)
+                                     format_dir=format_dir, cancel=cancel)
 
 
-def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None):
+def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None, cancel=None):
     unstable = cache / 'rerun-limit'
     if unstable.exists():
         # Retaining oscillating layout state changes the next preview.
@@ -276,7 +289,7 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
         env = dict(env, TEXFORMATS=str(format_dir) + os.pathsep)
     log(f'==== Rendering {id_slug} (reusable build) ====')
     pdf, rerun_limit = run_preview(ctx, wrapper, jobname, id_slug, cache, log, env=env, reusable=True,
-                                   options=options)
+                                   options=options, cancel=cancel)
     if rerun_limit:
         unstable.touch()
         log('    (PDF produced, but latexmk reached its rerun limit; layout may not be stable)')
@@ -287,7 +300,7 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
 
 
 def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, outdir: Path, log, *, env, reusable: bool,
-                options=()) -> tuple[Path, bool]:
+                options=(), cancel=None) -> tuple[Path, bool]:
     """latexmk on a preview wrapper into `outdir`: the one execution of a fresh build (a folder of its
     own, .build/) and a reusable one (its cache folder, keeping latexmk's state between edits).
     Returns the PDF and whether latexmk gave up at its rerun limit. Raises RuntimeError (with the
@@ -298,6 +311,7 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
     oscillating .top correction), and never returns a previous successful PDF after an unsuccessful
     edit. A fresh build keeps latexmk's auxiliary files where .latexmkrc puts them ($aux_dir is
     this same .build/), so it passes no -auxdir."""
+    check_cancel(cancel)
     pdf = outdir / (jobname + '.pdf')
     previous_pdf = pdf.stat().st_mtime_ns if pdf.exists() else None
     output_tail = deque(maxlen=200)
@@ -310,10 +324,11 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
         try:
             build = compiler.run_latexmk(
                 compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable),
-                jobname=jobname, outdir=outdir, cwd=ctx.root, env=env, log=log, on_line=on_line, bufsize=-1)
+                jobname=jobname, outdir=outdir, cwd=ctx.root, env=env, log=log, on_line=on_line, bufsize=-1, cancel=cancel)
         except FileNotFoundError as exc:
             raise RuntimeError('latexmk not found on PATH -- is a TeX distribution installed?') from exc
         finish_rules()
+    check_cancel(cancel)
     tail = ''.join(output_tail)
     rerun_limit = bool(reusable and build.returncode and pdf.exists() and pdf.stat().st_mtime_ns != previous_pdf
                        and 'Maximum runs of' in tail and 'needed too many passes' in tail)

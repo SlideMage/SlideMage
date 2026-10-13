@@ -636,7 +636,9 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
     monkeypatch.setattr(env.window.centre, "disk_changed", reload)
     monkeypatch.setattr(preview_target, "render_text", lambda target, text, *a, **k:
                         checked.append(text) or env.root / "fake.pdf")
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda *_args: b"PNG")
+    monkeypatch.setattr(preview_target, "render", lambda target, *a, **k:
+                        checked.append(target.source_path.read_text()) or env.root / "fake.pdf")
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((b"PNG", b"PNG"), ()))
     server = McpServer(toolbox)
     client = Client(server)
     monkeypatch.setattr(client, "raw", lambda body: (200, server.handle(body)))
@@ -755,6 +757,7 @@ def test_create_slide_shows_its_returned_preview_in_the_real_window(env, monkeyp
             doc.save(pdf)
         return pdf
     monkeypatch.setattr(preview_target, "render_text", render)
+    monkeypatch.setattr(preview_target, "render", lambda target, *a, **k: render(target, "", *a, **k))
     box = build_toolbox(workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO)
     result = on_thread(lambda: box.execute(call("create_slide", title="New", slug="New", deck="test",
         language=language, body="\\begin{standardframe}{New}\nContent.\n\\end{standardframe}\n")))
@@ -778,12 +781,11 @@ def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
     before = file.editor.text()
     disk_text = env.path.read_text().replace("First point", "New disk point")
     env.path.write_bytes(disk_text.replace("\n", "\r\n").encode())
-    rendered, published = [], []
+    rendered = []
     monkeypatch.setattr(preview_target, "render_text", lambda target, text, *a, **k:
                         rendered.append(text) or env.root / "fake.pdf")
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda *a: b"PNG")
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((b"PNG", b"PNG"), ()))
     monkeypatch.setattr(ws, "show_slide", lambda path: None)
-    monkeypatch.setattr(ws, "show_preview", lambda *args: published.append(args))
     expected = before if dirty else disk_text
 
     def run():
@@ -798,7 +800,7 @@ def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
     assert ("base: editor (unsaved)" if dirty else "base: file") in result.text
     assert file.editor.text() == after and file.dirty
     assert env.path.read_text() == disk_text
-    assert rendered == [after] and published[0][1:3] == (after, b"PNG")
+    assert rendered == [after] and result.images == [b"PNG"]
     assert ai_review.is_unreviewed(env.window.project, env.path)
     file.editor.undo()
     assert file.editor.text() == expected

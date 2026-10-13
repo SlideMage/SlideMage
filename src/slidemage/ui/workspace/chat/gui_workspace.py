@@ -251,9 +251,15 @@ class GuiWorkspace(Workspace):
 
         self.on_gui(show)
 
-    def show_preview(self, target, text, png, view, language, footer_timestamp) -> None:
-        self.on_gui(lambda: self.window.centre.preview.show_rendered(
-            target, text, png, view, language, footer_timestamp))
+    def render_preview(self, target, text, view, language, footer_timestamp, cancel) -> bytes:
+        request = self.on_gui(lambda: self.window.centre.preview.request_render(
+            target, text, view, language, footer_timestamp))
+        if request is None:
+            raise RuntimeError('Preview pane closed')
+        try:
+            return request.wait(cancel)[3]
+        finally:
+            self.on_gui(lambda: self.window.centre.preview.finish_render(request))
 
     def translate_slide(self, path: Path) -> str:
         return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else

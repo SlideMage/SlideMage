@@ -257,12 +257,18 @@ def prepare_preview(pdf_path: Path, snapshots: bool = False):
     The GUI accepts the request first, then writes its canonical snapshots.
     Full-slide display reuses the already rasterized full-size snapshot.
     """
-    display = (FULL_SIZE[0], None)
-    sizes = (FULL_SIZE, THUMB_SIZE, display) if snapshots else (display,)
+    displays, images = prepare_preview_images(pdf_path, snapshots, (FULL_SIZE[0],))
+    return displays[0], images
+
+
+def prepare_preview_images(pdf_path: Path, snapshots: bool, widths):
+    """Pane and tool display sizes in one raster subprocess, with optional snapshots."""
+    displays = tuple((width, None) for width in widths)
+    sizes = (FULL_SIZE, THUMB_SIZE) + displays if snapshots else displays
     images = _preview_pngs(pdf_path, sizes)
     if not images:
         raise RuntimeError('Preview PDF has no pages')
-    return images[-1], tuple(zip(sizes[:2], images[:2])) if snapshots else ()
+    return images[-len(displays):], tuple(zip(sizes[:2], images[:2])) if snapshots else ()
 
 
 @measure('snapshot_write')

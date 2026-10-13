@@ -19,10 +19,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import compiler
+from .. import compiler, preview_target, slide_snapshot
 from ..deck_scan import Deck
 from ..project import ProjectContext
-from ..preview_target import PreviewTarget
+from ..preview_requests import RenderRequest
 from .providers import ChatProvider
 
 
@@ -103,9 +103,17 @@ class Workspace:
         """Bring the slide file `path` into focus for the user: its preview and its source. Headless
         there is nobody to show it to."""
 
-    def show_preview(self, target: PreviewTarget, text: str, png: bytes, view: str,
-                     language: str, footer_timestamp: bool) -> None:
-        """Display the composite tool's already rendered image, if its context still matches."""
+    def render_preview(self, target, text, view, language, footer_timestamp, cancel) -> bytes:
+        """Headless render; GUI workspaces share the pane's build and publication path."""
+        def render(token):
+            pdf = preview_target.render_text(target, text, view, language, footer_timestamp=footer_timestamp,
+                                             log=lambda _: None, capture_snapshot=False, cancel=token)
+            png = slide_snapshot.page_png(pdf, 1280)
+            if png is None:
+                raise RuntimeError('The rendered PDF could not be read')
+            return png
+
+        return RenderRequest(render, lambda: None).wait(cancel)
 
     def translate_slide(self, path: Path) -> str:
         """Start SlideMage's own translation of the slide `path` (its Translate bubble); what to tell the
