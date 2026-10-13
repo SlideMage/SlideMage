@@ -25,7 +25,7 @@ from ....ai.tools import undo_edit
 from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
 from ....deck_scan import Deck
-from ....slide_language import bare_id
+from ....slide_language import bare_id, own_language
 from .. import compile_actions
 from ...ai_models import confirm_cloud_request
 
@@ -144,6 +144,10 @@ class GuiWorkspace(Workspace):
             deck=state.deck, slide_id=state.focused_slide, path=window.centre.path, view=state.view,
             language=state.language, footer_timestamp=state.footer_timestamp)
 
+    def is_open_deck(self, path: Path) -> bool:
+        return self.on_gui(lambda: self.window.state.deck is not None and
+                           self.window.state.deck.path.resolve() == path.resolve(), False)
+
     # -- editor buffers ---------------------------------------------------------------------
 
     def _local(self, path: Path) -> Path:
@@ -236,13 +240,20 @@ class GuiWorkspace(Workspace):
     def show_slide(self, path: Path) -> None:
         def show() -> None:
             window, slide_id = self.window, bare_id(path.name)
+            window.state.set_language(own_language(path.name))
             deck = window.state.deck
             if deck is not None and any(call.id == slide_id for call in deck_editor.parse_slide_calls(deck)):
                 window.state.set_focused_slide(slide_id)     # as "Go to slide": the preview follows
             else:
                 window.open_slide_editor(self._local(path))
+            if window.state.mode not in ("preview", "split"):
+                window.state.set_mode("split")
 
         self.on_gui(show)
+
+    def show_preview(self, target, text, png, view, language, footer_timestamp) -> None:
+        self.on_gui(lambda: self.window.centre.preview.show_rendered(
+            target, text, png, view, language, footer_timestamp))
 
     def translate_slide(self, path: Path) -> str:
         return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else

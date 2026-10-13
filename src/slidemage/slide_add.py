@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_outline, slide_ids, slide_language, slide_rename, slide_versioning
+from . import alt_draft, deck_editor, deck_outline, fileio, slide_ids, slide_language, slide_rename, slide_versioning
 from .ai.providers import ChatProvider
 from .project import ProjectContext
 from .slide_import import escape_latex
@@ -82,9 +82,10 @@ class CreatedSlide:
     path: Path
 
 
-def create_new(ctx: ProjectContext, slug: str, language: str, frame: str = STANDARD_FRAME, title: str = "") -> CreatedSlide:
+def create_new(ctx: ProjectContext, slug: str, language: str, frame: str = STANDARD_FRAME, title: str = "",
+               *, body: str | None = None) -> CreatedSlide:
     """A new slide of `frame` in `language` (one of slide_language.LANGUAGES), with a fresh id."""
-    return _create(ctx, slug, language, frame_body(ctx, frame, title))
+    return _create(ctx, slug, language, frame_body(ctx, frame, title) if body is None else body)
 
 
 def create_copy(
@@ -115,9 +116,24 @@ def create_translation(ctx: ProjectContext, source_id_slug: str, slug: str, lang
 
 def _create(ctx: ProjectContext, slug: str, language: str, body: str, translation_of: Optional[str] = None) -> CreatedSlide:
     new_id = slide_ids.mint_slide_id(ctx)
-    slide_ids.append_slide_id(ctx, new_id)
     path = slide_ids.create_slide_file(ctx, new_id, slug, language, translation_of, body)
+    try:
+        slide_ids.append_slide_id(ctx, new_id)
+    except OSError:
+        path.unlink()
+        raise
     return CreatedSlide(f"{new_id}-{language}-{slug}", path)
+
+
+def remove_created(ctx: ProjectContext, created: CreatedSlide) -> None:
+    """Rollback a new slide, preserving other CSV rows and a retryable file on failure."""
+    csv = ctx.slide_ids_csv
+    text = fileio.read_text_exact(csv)
+    slide_id = slide_language.bare_id(created.id_slug)
+    rows = text.splitlines(keepends=True)
+    fileio.atomic_write(csv, "".join(row for row in rows if row.strip().strip('"') != slide_id),
+                        expected_text=text)
+    created.path.unlink()
 
 
 def source_body(ctx: ProjectContext, id_slug: str) -> str:

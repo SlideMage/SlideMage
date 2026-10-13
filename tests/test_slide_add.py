@@ -521,3 +521,19 @@ def test_import_presentation_writes_files_and_appends_deck_calls(sample_presenta
 
     media_files = list((project_root / "media").glob("*.png"))
     assert len(media_files) == 2
+
+
+def test_new_slide_file_failure_does_not_leave_an_id_row(ctx, monkeypatch):
+    before = slide_ids.existing_ids_from_csv(ctx)
+    monkeypatch.setattr(slide_ids, "create_slide_file", lambda *args: (_ for _ in ()).throw(OSError("write failed")))
+    with pytest.raises(OSError, match="write failed"):
+        slide_add.create_new(ctx, "Failed", "EN")
+    assert slide_ids.existing_ids_from_csv(ctx) == before
+    assert not list(ctx.slides_dir.glob("*-Failed-current.tex"))
+
+
+def test_new_slide_id_failure_removes_the_created_file(ctx, monkeypatch):
+    monkeypatch.setattr(slide_ids, "append_slide_id", lambda *args: (_ for _ in ()).throw(OSError("id write failed")))
+    with pytest.raises(OSError, match="id write failed"):
+        slide_add.create_new(ctx, "Failed", "EN")
+    assert not list(ctx.slides_dir.glob("*-Failed-current.tex"))

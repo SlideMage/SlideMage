@@ -376,3 +376,56 @@ def test_any_exception_in_the_render_worker_ends_the_render_with_a_fail_line(pan
     assert not view._busy and view._active is None
     assert any(line.startswith("*** Render failed:") for line in view.logged)
     assert swept == [True]      # and the old renders are swept after every render
+
+
+@pytest.mark.parametrize("language", ["EN", "DE"])
+@pytest.mark.parametrize("mode", ["source", "details"])
+def test_composite_show_focuses_slide_and_displays_returned_image_in_student_view(pane, tmp_path, language, mode):
+    from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
+
+    view, _, _ = pane
+    state = view.state
+    state.set_mode(mode)
+    state.set_view("after-course")
+    path = tmp_path / "slides" / f"bbb-{language}-New-current.tex"
+    path.write_text("BODY")
+    target = preview_target.for_path(state.project, path)
+    deck = SimpleNamespace(path=tmp_path / "decks" / "open.tex", text=f"\\slide{{bbb-{language}-New}}\n", chapters=[])
+    state.deck = deck
+    state.focused_slide_changed.connect(lambda _: view.show_slide(target, None, "New", ""))
+    window = SimpleNamespace(project=state.project, state=state, centre=SimpleNamespace(preview=view))
+    workspace = GuiWorkspace(window)
+    # The focus snapshot deliberately describes another deck: the live recheck must ignore it.
+    workspace._context = SimpleNamespace(deck=None)
+    assert workspace.is_open_deck(deck.path)
+    assert not workspace.is_open_deck(tmp_path / "other.tex")
+    png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
+    workspace.show_slide(path)
+    workspace.show_preview(target, "BODY", png, state.view, language, state.footer_timestamp)
+    assert state.focused_slide == "bbb" and state.mode == "split" and state.language == language
+    assert view._page.message == "" and not view._page.pixmap.isNull()
+    assert not view.launched  # the already rendered image needs no second build
+
+
+@pytest.mark.parametrize("change", ["slide", "view", "language", "timestamp", "buffer", "disk", "deleted"])
+def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, change):
+    view, target, path = pane
+    png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
+    if change == "slide":
+        view.show_slide(None, None, "", "No slide")
+    elif change == "view":
+        view.state.set_view("after-course")
+    elif change == "language":
+        view.state.set_language("DE")
+    elif change == "timestamp":
+        view.state.set_footer_timestamp(True)
+    elif change == "buffer":
+        view.buffer[0] = "NEW"
+    else:
+        view._buffer = lambda: None
+        if change == "disk":
+            path.write_text("NEW")
+        else:
+            path.unlink()
+    view.show_rendered(target, "BODY", png, "instructor", "EN", False)
+    assert view._adhoc is None and not view.launched

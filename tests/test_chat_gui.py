@@ -733,3 +733,36 @@ def test_diff_rows_show_changes_with_two_lines_of_context_and_gaps(ctx):
     assert [r for r in rows if r[0] in ("add", "del")] == [("del", "line 5"), ("add", "LINE 5"), ("add", "extra")]
     assert [r[1] for r in rows if r[0] == "ctx"] == ["line 3", "line 4", "line 6", "line 7"]
     assert diff_rows("", "a\n\tb") == [("add", "a"), ("add", "  b")]      # a new file; tabs shown narrow
+
+
+@pytest.mark.parametrize("language", ["EN", "DE"])
+@pytest.mark.parametrize("view", ["instructor", "after-course"])
+def test_create_slide_shows_its_returned_preview_in_the_real_window(env, monkeypatch, language, view):
+    import pymupdf
+    from slidemage import preview_target
+    from slidemage.ai.tools import build_toolbox
+
+    env.window.state.set_view(view)
+    workspace = env.chat.workspace
+    workspace.begin_request()
+    rendered = []
+    def render(target, text, *args, **kwargs):
+        rendered.append(target)
+        pdf = env.root / "fake.pdf"
+        with pymupdf.open() as doc:
+            page = doc.new_page(width=320, height=180)
+            page.insert_text((30, 30), "Created slide")
+            doc.save(pdf)
+        return pdf
+    monkeypatch.setattr(preview_target, "render_text", render)
+    box = build_toolbox(workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO)
+    result = on_thread(lambda: box.execute(call("create_slide", title="New", slug="New", deck="test",
+        language=language, body="\\begin{standardframe}{New}\nContent.\n\\end{standardframe}\n")))
+    assert not result.is_error, result.text
+    path, = (env.root / "slides").glob(f"*-{language}-New-current.tex")
+    pane = env.window.centre.preview
+    assert env.window.state.focused_slide == path.name[:3]
+    assert env.window.state.mode == "split" and env.window.state.language == language
+    assert env.window.centre.path == path and pane._target.source_path == path
+    assert not pane._page.pixmap.isNull() and pane._page.message == ""
+    assert len(rendered) == 1 and result.images

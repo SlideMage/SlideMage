@@ -6,10 +6,12 @@ slide_add + deck_editor, bibliography, compiler); nothing here parses or writes 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from ... import (
     ai_review,
+    alt_blocks,
     bibliography,
     compile_status,
     deck_editor,
@@ -21,14 +23,16 @@ from ... import (
     slide_ids,
     slide_language,
     slide_snapshot,
+    slide_versioning,
 )
 from ...deck_editor import VIEWS
 from ...deck_scan import Deck
 from .. import guides
 from ..agent_types import EditApplied
 from .base import ToolContext, ToolError, tool
-from .edits import propose
-from .files import current_revision, project_path, relative
+from ...tex_source import blanked_verbatim, braced_argument
+from .edits import protected_problem, propose, write_text
+from .files import current_revision, current_text, project_path, relative
 
 LIST_LIMIT = 300
 PREVIEW_WIDTH = 1280
@@ -59,6 +63,26 @@ def open_deck(ctx: ToolContext, name: str | None = None) -> Deck:
             return deck
     available = ", ".join(d.name for d in decks if not d.archived) or "none"
     raise ToolError((f"There is no deck '{wanted}'." if wanted else "No deck is open.") + f" Decks: {available}.")
+
+
+def _insertion(ctx: ToolContext, deck: Deck, after: str) -> tuple[int, str, str]:
+    if ctx.workspace.is_dirty(deck.path):
+        raise ToolError(f"{deck.path.name} has unsaved edits in the editor; ask the user to save it first.")
+    if after:
+        anchor = next((c for c in deck_editor.parse_slide_calls(deck) if after in (c.id, c.id_slug)), None)
+        if anchor is None:
+            raise ToolError(f"The deck has no slide '{after}'. list_slides shows the ids.")
+        return anchor.line_end, anchor.indent, f"after {anchor.id} in {deck.name}"
+    insert_at, indent = deck_editor.append_position(deck)
+    return insert_at, indent, f"at the end of {deck.name}"
+
+
+def _insertion_error(ctx: ToolContext, created: slide_add.CreatedSlide, deck: Deck, after: str, exc: Exception) -> str:
+    anchor = f", after={after!r}" if after else ""
+    return (f"Slide {created.id_slug} already exists at {relative(ctx.root, created.path)}, "
+            f"but could not be inserted into {deck.name}: {exc}. "
+            f"Retry insertion only with add_slide(existing={created.id_slug!r}{anchor}) "
+            f"once {deck.name} is ready and open; do not create another slide.")
 
 
 @tool("list_slides",
@@ -129,11 +153,17 @@ def lint(ctx: ToolContext, args: dict) -> str:
       {"slide": {"type": "string", "description": "A slide id (1y8) or a path; default the slide in focus."}})
 def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     path = slide_or_file(ctx, args.get("slide"))
+    return _render_preview(ctx, path)
+
+
+def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None,
+                    show: bool = False) -> tuple[str, list[bytes]]:
     context = ctx.workspace.context()
+    language = language or context.language
     target = None
     if context.deck is not None:
         deck = open_deck(ctx)
-        row = deck_outline.slide_row(ctx.project, deck, slide_language.bare_id(path.name), context.view, context.language)
+        row = deck_outline.slide_row(ctx.project, deck, slide_language.bare_id(path.name), context.view, language)
         if row is not None and row.call.source_filename == path.name:
             target = preview_target.for_call(ctx.project, deck, row.call, row.position)
     target = target or preview_target.for_path(ctx.project, path)
@@ -142,14 +172,79 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     text, source = current_revision(ctx.workspace, path)
     try:
         pdf = preview_target.render_text(
-            target, text, context.view, context.language,
+            target, text, context.view, language,
             footer_timestamp=context.footer_timestamp, log=lambda _line: None)
         png = slide_snapshot.page_png(pdf, PREVIEW_WIDTH)
     except RuntimeError as exc:
+        if show:
+            ctx.workspace.show_slide(path)
         raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
     if png is None:
+        if show:
+            ctx.workspace.show_slide(path)
         raise ToolError(f"The rendered PDF ({source}) could not be read.")
-    return f"{path.name} ({source}) as {context.view}, {context.language}:", [png]
+    if show:
+        ctx.workspace.show_slide(path)
+        ctx.workspace.show_preview(target, text, png, context.view, language, context.footer_timestamp)
+    return f"{path.name} ({source}) as {context.view}, {language}:", [png]
+
+
+def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
+                commit: Callable[[], Path] | None = None, protected_before: str | None = None,
+                kind: str = "edit", source: str = "modify_slide", note: str = "",
+                deck: Path | None = None) -> tuple[str, list[bytes]]:
+    """Check/propose, write (or commit a creation), mark, render once and show; shared with C3b.
+
+    Creation passes a planned path and an atomic commit returning the real path. Edits use
+    write_text's expected-text, backup and buffer undo path. Validation always precedes writes.
+    """
+    findings = latex_lint.lint_text(ctx.project, after, "body" if commit else path.name, path)
+    problems = [latex_lint.format_issue(i) for i in findings if i.severity == latex_lint.ERROR]
+    protected = protected_before if protected_before is not None else (before if commit is None else None)
+    if protected is not None and (problem := protected_problem(protected, after)):
+        problems.append(problem)
+    frames = []
+    for name, _, end in alt_blocks.iter_tex_commands(blanked_verbatim(after)):
+        if name in ("documentclass", "usepackage", "RequirePackage", "input", "include", *deck_editor.ALL_MACROS):
+            problems.append(f"A slide body cannot contain \\{name}.")
+        if name in ("begin", "end"):
+            cursor = end
+            while cursor < len(after) and after[cursor].isspace():
+                cursor += 1
+            env, _ = braced_argument(after, cursor)
+            if env == "document":
+                problems.append("A slide body cannot contain a document environment.")
+            if name == "begin" and (env == "frame" or env in slide_add.FRAMES):
+                frames.append(env)
+        elif name in ("titleframe", "quoteframe", "fullbleedframe", "frame"):
+            frames.append(name)
+    if len(frames) != 1:
+        problems.append(f"A slide body needs exactly one frame; found {len(frames)}.")
+    if problems:
+        raise ToolError("Slide not written:\n" + "\n".join(problems))
+    if not propose(ctx, path, before, after, note):
+        raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
+    via_buffer = False
+    if commit is None:
+        via_buffer = write_text(ctx.workspace, path, before, after, kind=kind, source=source)
+    else:
+        path = commit()
+        ai_review.mark(ctx.project, path, kind, source, deck=deck)
+        ctx.workspace.review_changed()
+        ctx.workspace.file_changed(path, None)
+    ctx.emit(EditApplied(ctx.call_id, path, before, current_text(ctx.workspace, path), via_buffer,
+                         undoable=commit is None, note=note))
+    status = f"Slide {path.name.removesuffix(slide_language.CURRENT_SUFFIX)} ({relative(ctx.root, path)})"
+    status += (f", {note}" if note else "") + "; Not reviewed."
+    warnings = "\n".join(latex_lint.format_issue(i) for i in findings if i.severity != latex_lint.ERROR)
+    status += "\nLint: " + (warnings or "no problems found.")
+    try:
+        language = slide_language.own_language(path.name)
+        rendered, images = _render_preview(ctx, path,
+                                          language=language if language in slide_language.TRANSLATION_LANGUAGES else None, show=True)
+    except ToolError as exc:
+        raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\n{exc}") from None
+    return f"{status}\n{rendered}", images
 
 
 @tool("add_slide",
@@ -194,18 +289,8 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
         calls = deck_editor.parse_slide_calls(deck)
         if created and any(c.source_filename == created.path.name for c in calls):
             return f"Slide {created.id_slug} ({relative(ctx.root, created.path)}) is already in {deck.name}; no change."
-        if ctx.workspace.is_dirty(deck.path):
-            raise ToolError(f"{deck.path.name} has unsaved edits in the editor, so the call cannot be added "
-                            "to it. Ask the user to save it." + (" Or use add_to_deck=false." if not existing else ""))
         after = (args.get("after") or "").strip()
-        if after:
-            anchor = next((c for c in calls if after in (c.id, c.id_slug)), None)
-            if anchor is None:
-                raise ToolError(f"The deck has no slide '{after}'. list_slides shows the ids.")
-            insert_at, indent, where = anchor.line_end, anchor.indent, f"after {anchor.id} in {deck.name}"
-        else:
-            insert_at, indent = deck_editor.append_position(deck)
-            where = f"at the end of {deck.name}"
+        insert_at, indent, where = _insertion(ctx, deck, after)
     source_id_slug = ""
     if existing:
         body = ""
@@ -246,11 +331,7 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
             if existing:
                 ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
         except (deck_editor.StaleFileError, ValueError, OSError, ToolError) as exc:
-            after = f", after={args['after']!r}" if args.get("after") else ""
-            failure = (f"Slide {created.id_slug} already exists at {relative(ctx.root, created.path)}, "
-                       f"but could not be inserted into {deck.name}: {exc}. "
-                       f"Retry insertion only with add_slide(existing={created.id_slug!r}{after}) "
-                       f"once {deck.name} is ready and open; do not create another slide.")
+            failure = _insertion_error(ctx, created, deck, args.get("after", ""), exc)
             where = "not added to a deck"
     if not existing:
         ctx.workspace.file_changed(created.path, None)
@@ -260,6 +341,87 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     detail = ("It is a copy of the source, linked to it: translate its text in place." if source_id_slug
               else "It holds the frame skeleton: fill in its body.") if not existing else ""
     return f"{'Inserted' if existing else 'Created'} slide {created.id_slug} ({relative(ctx.root, created.path)}), {where}. {detail}".strip()
+
+
+@tool("create_slide",
+      "Draft the complete LaTeX frame body yourself, then create, insert, mark Not reviewed, render and "
+      "show it in one call. deck must name the open deck. Invalid bodies write nothing; a compile "
+      "failure keeps the slide for one edit. Use add_slide for skeletons or translations in place.",
+      {"title": {"type": "string", "description": "Slide title (plain text)."},
+       "slug": {"type": "string", "description": "Hyphenated letters and digits, e.g. Capital-Budgeting."},
+       "body": {"type": "string", "description": "Complete LaTeX frame, without a document wrapper or managed header."},
+       "deck": {"type": "string", "description": "Required open deck name or project/absolute deck path."},
+       "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default edited language."},
+       "after": {"type": "string", "description": "Slide id; default end of deck."},
+       "translation_of": {"type": "string", "description": "Source slide id; preserve its protected body regions."},
+       "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Optional frame type."}},
+      ("title", "slug", "body", "deck"))
+def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
+    deck = open_deck(ctx)
+
+    def check_deck() -> None:
+        wanted = args["deck"].strip()
+        matches = wanted in (deck.name, deck.path.name) or (
+            bool(wanted) and project_path(ctx.root, wanted) == deck.path.resolve())
+        if not matches or not ctx.workspace.is_open_deck(deck.path):
+            raise ToolError(f"Requested deck '{wanted}' is not the open deck {deck.name}; no slide created.")
+
+    check_deck()
+    slug, title = args["slug"].strip(), args["title"].strip()
+    if not slide_add.SLUG_RE.fullmatch(slug):
+        raise ToolError("The slug may contain only letters, digits and single hyphens.")
+    language = args.get("language") or ctx.workspace.context().language
+    after = args.get("after", "").strip()
+    insert_at, indent, where = _insertion(ctx, deck, after)
+    body = args["body"].replace("\r\n", "\n")
+    source, source_text, source_id_slug, protected = None, "", "", None
+    if args.get("translation_of", "").strip():
+        source = slide_or_file(ctx, args["translation_of"])
+        if source.parent != ctx.project.slides_dir.resolve() or not source.name.endswith(slide_language.CURRENT_SUFFIX) or not source.is_file():
+            raise ToolError("translation_of must name a live slide.")
+        source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
+        if slide_language.own_language(source_id_slug) == language:
+            raise ToolError(f"{source_id_slug} is already {language}; pass the target language.")
+        source_text = current_text(ctx.workspace, source)
+        protected = slide_ids.body_of(source_text)
+
+    def commit() -> Path:
+        check_deck()
+        _insertion(ctx, deck, after)  # recheck dirtiness after confirmation, before creating anything
+        created = (slide_add.create_translation(ctx.project, source_id_slug, slug, language, slide_versioning.strip_marker(body)) if source
+                   else slide_add.create_new(ctx.project, slug, language, args.get("frame", slide_add.STANDARD_FRAME), title, body=body))
+        linked = slide_ids.with_translation_backreference(source_text, language, created.id_slug) if source else ""
+        source_changed = False
+        try:
+            if source:
+                write_text(ctx.workspace, source, source_text, linked, review=False)
+                source_changed = True
+            check_deck()
+            _insertion(ctx, deck, after)
+            updated = deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, "slide", created.id_slug)
+        except (OSError, ValueError, deck_editor.StaleFileError, ToolError) as exc:
+            try:
+                if source_changed:
+                    write_text(ctx.workspace, source, linked, source_text, review=False)
+                slide_add.remove_created(ctx.project, created)
+            except (OSError, ValueError, deck_editor.StaleFileError, ToolError) as rollback:
+                ai_review.mark(ctx.project, created.path, "translation" if source else "draft", "create_slide")
+                if source_changed:
+                    ai_review.mark(ctx.project, source, "translation", "create_slide: translation partner",
+                                   text=current_text(ctx.workspace, source))
+                ctx.workspace.review_changed()
+                ctx.workspace.file_changed(created.path, None)
+                raise ToolError(_insertion_error(ctx, created, deck, after, exc) + f" Rollback failed: {rollback}.") from None
+            raise ToolError(f"Slide not created: {exc}. File and id rolled back; retry create_slide.") from None
+        if source:
+            ai_review.mark(ctx.project, source, "translation", "create_slide: translation partner", text=linked)
+        ctx.workspace.file_changed(deck.path, deck.text)
+        ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
+        return created.path
+
+    planned = slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
+    return apply_slide(ctx, planned, "", body, commit=commit, protected_before=protected,
+                       kind="translation" if source else "draft", source="create_slide", note=where, deck=deck.path)
 
 
 @tool("add_bib_entry",

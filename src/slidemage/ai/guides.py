@@ -24,8 +24,8 @@ Slides, files and decks.
 - Decks are decks/<name>.tex. A deck calls slides: \\slide{id-slug} (follows -current.tex),
   \\slideversion{id-slug}{1-0-0} (pinned), \\conditionalslide{id-slug}[versions] (only in some deck
   versions), \\slidestep{id-slug}[versions]{steps} (only some reveal steps), \\omitslide{...} (left out of
-  student versions). Sections are \\section{Title}. Do not hand-edit these calls unless asked; add_slide
-  puts a new slide's call into the deck.
+  student versions). Sections are \\section{Title}. Do not hand-edit these calls unless asked;
+  create_slide (full draft) or add_slide (skeleton) puts the call into the deck.
 - Deck versions: instructor (everything), during-course, after-course (student versions).
 - Find a slide with list_slides (ids, titles, sections) or search; read it before changing it."""
 
@@ -83,7 +83,8 @@ Layout helpers (prefer these to hand-measured shifts).
 
 
 def _frames(ctx: ProjectContext) -> str:
-    lines = ["Frame types (the first line of a new slide). Skeletons as add_slide writes them:"]
+    lines = ["For free-form creation, draft one full frame body and call create_slide once with the open deck name. "
+             "It checks, inserts, renders and shows it. add_slide stays for skeletons/translations in place. Frame skeletons:"]
     for frame in slide_add.FRAMES:
         body = slide_add.frame_body(ctx, frame, "Title").replace("\r\n", "\n").strip()
         if frame == slide_add.STANDARD_FRAME:

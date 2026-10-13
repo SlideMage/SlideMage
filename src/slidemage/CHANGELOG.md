@@ -2141,3 +2141,11 @@ NEW: Claude's slide changes stay labelled until you review them.
 - A Not reviewed label appears on slides Claude creates or changes, including translations and terminal edits.
 - Use Mark reviewed after checking a slide, or select several slides to mark them together; the Not reviewed filter finds slides still waiting.
 - Editing a slide yourself keeps its label until you explicitly mark it reviewed.
+
+
+v8.3.12 (2026-10-13, Claude Code speed plan C3): composite create_slide for terminal MCP and chat. A complete drafted frame is checked for lint errors, single-frame structure and translation protection before any write. Existing slide_add creation and deck insertion are combined with rollback of the new file/id and translation backreference on insertion failure; a failed rollback uses C1's existing-slide insertion retry. The explicit deck identity is rechecked against the live GUI deck at commit. The apply_slide helper shares validation, checked write/creation, review marking, one cached render and show with C3b. Returned PNGs are handed to the preview pane with target/context/revision checks, including student views; showing a slide makes the preview visible. Orientation and the frames guide direct free-form drafting to create_slide, leaving add_slide for skeletons/translations in place. Fake workspace/renderer and socket-free MCP regressions cover creation, refusal without writes, rollback/retry, translation links and protection, compile errors and preview publication.
+
+NEW: Claude can draft, insert and show a complete slide in one call.
+- New drafts are checked before writing, inserted into the named open deck, marked Not reviewed and shown with their preview.
+- Failed insertion rolls back the draft; if cleanup fails, Claude can insert the existing slide without creating a duplicate.
+- A slide that fails to compile stays in place with its error and file path so Claude can fix it directly.

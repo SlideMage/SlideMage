@@ -22,6 +22,7 @@ from pathlib import Path
 from .. import compiler
 from ..deck_scan import Deck
 from ..project import ProjectContext
+from ..preview_target import PreviewTarget
 from .providers import ChatProvider
 
 
@@ -48,6 +49,11 @@ class Workspace:
     def context(self) -> WorkspaceContext:
         """A snapshot of the focus, taken when a request starts."""
         return self._context
+
+    def is_open_deck(self, path: Path) -> bool:
+        """Recheck the live deck at commit time, beyond the request's focus snapshot."""
+        deck = self.context().deck
+        return deck is not None and deck.path.resolve() == path.resolve()
 
     # -- editor buffers: a file that is open is edited there, not on disk --------------------------
 
@@ -96,6 +102,10 @@ class Workspace:
     def show_slide(self, path: Path) -> None:
         """Bring the slide file `path` into focus for the user: its preview and its source. Headless
         there is nobody to show it to."""
+
+    def show_preview(self, target: PreviewTarget, text: str, png: bytes, view: str,
+                     language: str, footer_timestamp: bool) -> None:
+        """Display the composite tool's already rendered image, if its context still matches."""
 
     def translate_slide(self, path: Path) -> str:
         """Start SlideMage's own translation of the slide `path` (its Translate bubble); what to tell the

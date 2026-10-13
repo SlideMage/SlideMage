@@ -300,6 +300,26 @@ class PreviewPane(Surface):
         self._error = ""      # a failure belongs to the view and language it happened in
         self._refresh()
 
+    def show_rendered(self, target: PreviewTarget, text: str, png: bytes, view: str,
+                      language: str, footer_timestamp: bool) -> None:
+        """Show a composite tool's image without another build; reject a superseded revision."""
+        if self._target is None or self._target.key != target.key or (
+                self.state.view, self.state.language, self.state.footer_timestamp) != (view, language, footer_timestamp):
+            return
+        buffer = self._buffer()
+        try:
+            current = buffer[0] if buffer is not None else target.source_path.read_text(encoding="utf-8")
+        except OSError:
+            return
+        if current != text:
+            return
+        pixmap = QPixmap()
+        if pixmap.loadFromData(png):
+            self._invalidate()
+            key = (target.key, view, language, footer_timestamp)
+            self._adhoc, self._adhoc_text = (key, pixmap, ""), text
+            self._refresh()
+
     def buffer_changed(self, path: Path) -> None:
         """Refresh a buffer preview's age after typing pauses, without compiling."""
         if self._target is not None and path == self._target.source_path:
