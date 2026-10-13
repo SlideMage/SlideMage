@@ -70,9 +70,9 @@ tab's terminal is xterm.js in a web view), the bundled fonts and the `anthropic`
 It was built and started on Linux (Python 3.14); Windows and macOS builds are untested. On
 a bare Linux QtWebEngine needs more system libraries than Qt's base set (for instance
 `libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6` and an ALSA
-library); install them with the package manager. The **Claude Code** tab is optional: it
-runs the user's own `claude` command (installed and logged in) and is offered only when
-that is found; everything else works without it. A cloud model in the chat needs an
+library); install them with the package manager. The **Claude Code** route is optional: it
+runs the user's own `claude` command (installed and logged in); without it the assistant
+says so and nothing is sent, and everything else works. A cloud model in the chat needs an
 Anthropic API key (`ANTHROPIC_API_KEY`, else the system keychain through the optional
 `keyring` package, else the settings file); local models need Ollama.
 
@@ -100,7 +100,13 @@ screenshots.
   opens by itself on a failure.
 - **Images page:** a full-window page for describing, drafting, translating and reviewing
   image descriptions (see "Describing images").
-- **AI assistant** (under the side panels): *Chat* is an agent that works on the focused
+- **AI assistant** (one card under the side panels, 360 px column; *Focus assistant* hides the
+  panels). Its header names the route (Local · Ollama, Cloud · Claude Code, Cloud ·
+  Anthropic API) and what the conversation runs on, has a scope (*This slide* | *Whole deck*)
+  with its target, the two most relevant tasks the route can run (Translate, Fix LaTeX
+  errors, Make more concise, ...; the others are in Ctrl+K) and *New conversation*, which
+  clears this route's conversation only. On Local and Cloud · API the body is the chat: the
+  chat is an agent that works on the focused
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a
   slide or a bibliography entry, compile). Edits wait for **Apply** / **Reject** in
   *Ask before edits* mode, or apply at once with **Undo** in *Edit automatically* mode; a
@@ -114,10 +120,10 @@ screenshots.
   starts when the project opens); each route keeps its own models and its own chat draft
   and conversation, a task a route cannot do is
   refused instead of using another route, and the first cloud request in a project says
-  what will be sent. *Claude Code* is a terminal tab running the user's own installed `claude`
-  in the project folder; SlideMage serves it the focused slide over a local MCP server
-  and blocks edits to protected parts with a hook (the tab is only offered when `claude`
-  is found).
+  what will be sent. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`
+  in the project folder (permissions and its model are Claude Code's); SlideMage serves it
+  the focused slide over a local MCP server and blocks edits to protected parts with a hook.
+  If `claude` is missing or signed out, an amber card says so and offers to sign in.
 - **Settings** (⋮ → Project): General, AI (German address of translations), Cloud (the API
   key), Ollama (models, updating, deleting), Prompts (image-description and translation
   prompts). The model of each task is in AI setup, not here.

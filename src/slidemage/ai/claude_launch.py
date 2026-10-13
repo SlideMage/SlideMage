@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from ..cli import CLAUDE_HOOK_FLAG
+from ..processes import no_console_kwargs
 from .claude_scope import FOCUS_ENV
 from .tools import CLAUDE_CODE_READ_ONLY
 
@@ -24,6 +25,7 @@ SERVER_NAME = "slidemage"
 TOKEN_ENV = "SLIDEMAGE_MCP_TOKEN"
 HOOK_MATCHER = "Edit|Write|MultiEdit"
 INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/setup"
+AUTH_TIMEOUT_S = 15
 
 ORIENTATION = (
     "You are running inside SlideMage, a desktop app for writing LaTeX (beamer) slide decks; the project is the "
@@ -72,6 +74,19 @@ def find_claude() -> Path | None:
             if candidate.is_file() and os.access(candidate, os.X_OK):
                 return candidate
     return None
+
+
+def signed_in(claude: Path) -> bool | None:
+    """Whether `claude auth status` says the user is signed in; None when it cannot tell (an older Claude Code
+    without the command, no answer in time). Blocks for a moment: not for the GUI thread."""
+    try:
+        done = subprocess.run([str(claude), "auth", "status"], capture_output=True, text=True, timeout=AUTH_TIMEOUT_S,
+                              stdin=subprocess.DEVNULL, env=clean_environment(claude), **no_console_kwargs())
+        status = json.loads(done.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    logged = status.get("loggedIn") if isinstance(status, dict) else None
+    return logged if isinstance(logged, bool) else None
 
 
 def hook_command() -> str:

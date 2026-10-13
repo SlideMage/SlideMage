@@ -56,7 +56,7 @@ message), never silently on another route.
 |---|---|---|---|---|---|---|
 | 1 | `ui/workspace/chat/view.py:ChatView.send` -> `ChatSession.start` -> `ai/agent.py:Agent`. Composer Send, suggestion buttons, palette "Ask the chat" (`window.ask_chat`), Source view "Ask AI" (`focus_chat`) | chat | `OllamaProvider` (tool-calling model) | n/a: the conversation is the terminal (path 2); Notice `CHAT_IN_TERMINAL`, nothing sent | `AnthropicProvider`; first use asks (`Agent._preflight`, `cloud_seen`) | `resolve(CHAT)` + `resolver.problem` + `provider_for` |
 | 1b | `chat/view.py:_open_route_menu/_set_route` (model chip); palette entry label (`palette.py`) | chat | tool-calling Ollama models, saved as `models.local.chat` | disabled item "set in Claude Code" | API models, saved as `models.api.chat` | `resolve(CHAT)`, `set_model_choice(route.route, ...)` |
-| 2 | `ui/workspace/terminal/view.py:ClaudeCodeView._spawn` -> `session.start`. The Claude Code tab | chat | not gated (see Gaps) | the user's own `claude` in a terminal | not gated (see Gaps) | not routed in step 1 |
+| 2 | `ui/workspace/terminal/view.py:ClaudeCodeView._spawn` -> `session.start`. The assistant body on Cloud · Claude Code | chat | n/a: the body is the native chat | the user's own `claude` in a terminal | n/a | shown only while `state.ai_route` is Claude Code (`assistant.py`) |
 | 3 | `ui/pages/image_runs.py:_draft_slide`, `_draft_all`. Images page: Draft, Draft all | image_description | `alt_draft.ModelBackend` on Ollama (vision model) | `claude_images.ClaudeDraftBackend` (model, effort) | `ModelBackend` on `AnthropicProvider` | `picked_route(IMAGE_DESCRIPTION)` -> `resolver.draft_backend` |
 | 4 | `ui/workspace/panels/images.py:_redraft`. Image descriptions panel: Redraft | image_description | as 3 | as 3 | as 3 | `task_route(IMAGE_DESCRIPTION)` -> `draft_backend` |
 | 5 | `image_runs.py:_tune` -> `image_dialogs.PromptTuningSheet`. Images page: Tune prompt | image_description | `ModelBackend` with the edited system prompt | n/a: no Claude backend takes an edited prompt; dialog "not available on Cloud · Claude Code" | as 3 | `provider_from_combo` -> `provider_for` |
@@ -97,10 +97,14 @@ path that has a dialog parent) asks once, `ai_models.confirm_if_new`, and sets `
 
 Deliberately left for later steps:
 
-* **The Claude Code terminal (path 2)** is still started from its tab whatever the mode is. Its tab, and the
-  per-route assistant body that decides what shows on each route, are step 3. The terminal keeps its own model: the
-  tab's model/effort picker is gone (README section 3: "Conversation model: set in Claude Code"), so
-  `build_command` no longer passes `--model/--effort`.
+* **The Claude Code terminal (path 2)** is done (step 3): the assistant card (`ui/workspace/assistant.py`) shows it
+  only while the route is Cloud · Claude Code and starts it when it is first shown there; leaving the route ends it
+  (the switch's session popup asks first) and coming back starts a new one. When `claude` is missing or `claude auth
+  status` says it is signed out, an amber card replaces the terminal and nothing is sent. The terminal keeps its own
+  model ("Conversation model: set in Claude Code"; `build_command` passes no `--model/--effort`). The task buttons
+  (paths 9a-9f) are the assistant header's two most relevant tasks the route can run, and every task is a palette
+  command (`task:<scope>:<name>`); both go through `TaskRunner.refusal`, which now also refuses Claude Code tasks when
+  `claude` is not installed. The terminal's own bubble strip is gone.
 * **Changing the mode** is done (step 2): the top-bar switch, its popovers and AI setup (`ui/workspace/ai_switch.py`,
   `ai_route.py`, `ai_popups.py`, `ai_setup.py`). Every move, from the switch, the palette ("Use Local AI", "Use Cloud
   AI") or AI setup's cloud connection, is `AiRoute.request`: busy work (`WorkspaceWindow.running_ai_work`, built from
@@ -115,7 +119,8 @@ Deliberately left for later steps:
   `ui/ai_models.LocalModelList`. A pick that Claude Code does not offer is ignored (it falls back to Claude Code's
   saved choice), never sent to another route.
 * **Per-route composer drafts and chat history** are kept in memory by the chat (`chat/route_chat.py`, swapped by
-  `ChatView.show_route` on `state.ai_route_changed`); the unified assistant (step 3) builds on them. Task cards and
+  `ChatView.show_route` on `state.ai_route_changed`); the unified assistant (step 3) shows the route's own. The chat's model chip picks a model for
+  that chat only (kept per route, forgotten by New conversation); the default stays AI setup's. Task cards and
   their route label (`Route.label` is ready for them), the batch result panel and the dialog badge: steps 3-7.
 * **Review marks** (`ai_review`, "Not reviewed") are written for any AI-authored change of path 9a, also from a Local
   provider, where the Add slide sheet (path 7) marks only cloud routes. More is flagged, not less.

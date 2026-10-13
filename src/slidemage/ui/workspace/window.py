@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, updater
 from ... import version as version_mod
+from ...ai import ai_profile, resolver
 from ...ai.providers import ChatProvider
 from ...deck_scan import Deck, scan_decks
 from .. import layout_settings
@@ -57,6 +58,7 @@ from .ai_fix import AiFixPanel
 from .ai_route import AiRoute
 from .ai_work import RunningWork
 from .centre import CentreColumn
+from .chat.view import ChatView
 from . import maintenance
 from .build_options import BuildOptionsDialog
 from .compile_controller import CompileController
@@ -151,7 +153,7 @@ class WorkspaceWindow(QMainWindow):
         if snapshot_banner is not None:
             outer.addWidget(snapshot_banner)
 
-        # Left: the slide list, right: side panels with the assistant (chat) area below them.
+        # Left: the slide list, right: side panels with the assistant card below them.
         self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.toast = Toast(central)
@@ -212,6 +214,7 @@ class WorkspaceWindow(QMainWindow):
         self.state.dirty_changed.connect(self._on_dirty_changed)
         self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
         self.centre.source.file_closed.connect(self._on_source_closed)
+        self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+S saves the file open in the Source view whichever view has the focus.
@@ -369,19 +372,24 @@ class WorkspaceWindow(QMainWindow):
         self.stack.setCurrentWidget(self.images_page)
         self.images_page.show_slide(id_slug)
 
-    def _show_chat(self) -> None:
+    def _show_chat(self) -> Optional[ChatView]:
+        """The chat, with the right column in view; None (and the reason shown) on Cloud · Claude Code, where the
+        conversation is the terminal."""
         self.stack.setCurrentWidget(self.centre)   # the Images page hides the right column
-        self.assistant.show_view("chat")
+        if self.state.ai_route == ai_profile.CLAUDE_CODE:
+            self.toast.show_message(resolver.CHAT_IN_TERMINAL)
+            return None
+        return self.assistant.chat
 
     def ask_chat(self, text: str) -> None:
         """Put `text` to the chat as a question about the focused slide (the command palette)."""
-        self._show_chat()
-        self.assistant.chat.ask(text, "slide")
+        if (chat := self._show_chat()) is not None:
+            chat.ask(text, "slide")
 
     def focus_chat(self) -> None:
         """Open the chat on the focused slide with the cursor in the message box (the Source view's Tools menu)."""
-        self._show_chat()
-        self.assistant.chat.focus_composer("slide")
+        if (chat := self._show_chat()) is not None:
+            chat.focus_composer("slide")
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
@@ -536,12 +544,12 @@ class WorkspaceWindow(QMainWindow):
         models = self.local_models
         self.images_page.refresh_model_preferences(models.models, models.vision)
         self.centre.refresh_model_preferences(models.models)
-        self.assistant.chat.refresh_route()
+        self.assistant.refresh_models()
 
     def running_ai_work(self) -> list[RunningWork]:
         """Every AI request that is under way, each with the route it captured (the AI switch's busy popover; the
         sources are listed in ai_work.py)."""
-        work = [*self.assistant.chat.running_work(), *self.assistant.claude_code.running_work(),
+        work = [*self.assistant.chat.running_work(), *self.assistant.tasks.running_work(),
                 *self.images_page.running_work(),
                 *(w for panel in self.centre.findChildren(AiFixPanel) for w in panel.running_work())]
         if self._ollama_task_label is not None and not any(w.local for w in work):   # a sheet's own request

@@ -1,5 +1,8 @@
-"""The right column (UI_REDESIGN_PLAN.md, steps 6 and 10): a panel picker and the chosen panel for
-the focused slide, and below them, in the same splitter, the assistant area (chat/assistant.py).
+"""The right column (UI_REDESIGN_PLAN.md, steps 6 and 10; workspace v6 handoff, section 3): a panel picker and the
+chosen panel for the focused slide, and below them, 12 px apart, the assistant card (assistant.py). The panels
+take 38 % of the column and the assistant the rest, but the assistant is never shorter than 380 px, so the panels
+give way first (down to 128 px). "Focus assistant" in the assistant's header hides the panels' card and brings it
+back; it is not remembered.
 
 The picker (▾) names the shown panel and lists the others with a few facts about the
 slide. The choice is remembered across sessions (app_settings, like the centre's mode).
@@ -10,24 +13,24 @@ before anything it belongs to changes, and counts as an unsaved edit of the work
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QSplitter, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ... import app_settings
 from ...project import ProjectContext
 from .. import layout_settings
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
-from .chat.assistant import AssistantArea
+from .assistant import AssistantArea
 from .panels import PANELS
 from .panels.base import PanelActions, SidePanel
 from .state import WorkspaceState
 
-WIDTH = 340   # the prototype's width of the column; the least it may be dragged to, and the default
+WIDTH = 360   # the prototype's width of the column; the least it may be dragged to, and the default
 MAX_WIDTH = 900
 WIDTH_SETTING = "right_column_width"
 SETTING = "side_panel"
-ASSISTANT_SPLIT = (300, 500)   # starting heights of the panels and of the assistant area
-SPLIT_SETTING = "right_column_split"
+GAP = 12   # between the two cards
+PANELS_SHARE, ASSISTANT_SHARE = 38, 62   # the stretch of the cards: 38 % and the rest
 PANEL_MIN_HEIGHT = 128   # 24 px padding, 32 px picker, 8 px gap and a 64 px content row
 
 
@@ -40,22 +43,17 @@ def remembered_width(project: ProjectContext) -> int:
     return min(max(value, WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 
-class SidePanels(QSplitter):
+class SidePanels(QWidget):
     def __init__(self, app, state: WorkspaceState, actions: PanelActions) -> None:
-        super().__init__(Qt.Orientation.Vertical)
+        super().__init__()
         self.setMinimumWidth(WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
-        self.setChildrenCollapsible(False)
         self.project = state.project
-        ratio = layout_settings.get(SPLIT_SETTING)
-        self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
-                             and 0 < ratio < 1 else ASSISTANT_SPLIT[0] / sum(ASSISTANT_SPLIT))
-        self._split_restored = False
         self.panels: dict[str, SidePanel] = {cls.key: cls(app, state, actions) for cls in PANELS}
         remembered = app_settings.get(state.project, SETTING)
         self.current = remembered if remembered in self.panels else next(iter(self.panels))
 
-        card = Card()
+        self.card = card = Card()
         card.setMinimumHeight(PANEL_MIN_HEIGHT)
         outer = card.layout()
         header = QHBoxLayout()
@@ -80,29 +78,19 @@ class SidePanels(QSplitter):
         stack.addStretch(1)
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
-        self.addWidget(card)
         self.assistant = AssistantArea(app, state)
-        self.addWidget(self.assistant)
-        self.splitterMoved.connect(self._remember_split)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(GAP)
+        column.addWidget(card, PANELS_SHARE)
+        column.addWidget(self.assistant, ASSISTANT_SHARE)
+        self.assistant.focus_toggled.connect(lambda focused: card.setVisible(not focused))
 
         for panel in self.panels.values():
             panel.dirty_changed.connect(lambda _dirty: state.set_dirty(bool(self.dirty_panels()), "panels"))
         for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed):
             signal.connect(lambda _value: self.refresh())
         self.refresh()
-
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        if not self._split_restored:
-            self._split_restored = True
-            # Use weights so an initially short column keeps the ratio when it grows.
-            self.setSizes([round(10_000 * self._split_ratio), round(10_000 * (1 - self._split_ratio))])
-
-    def _remember_split(self, _position: int, _index: int) -> None:
-        panel, assistant = self.sizes()
-        if panel + assistant:
-            self._split_ratio = panel / (panel + assistant)
-            layout_settings.set(SPLIT_SETTING, self._split_ratio)
 
     def set_panel(self, key: str) -> None:
         if key in self.panels and key != self.current:

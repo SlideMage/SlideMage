@@ -113,6 +113,32 @@ class IconLabel(QLabel):
         set_property(self, "tone", tone)
 
 
+class ElidedLabel(QLabel):
+    """One line of text, cut with … to the width it gets (it never asks for more); the whole text is the tooltip
+    and `full_text()`."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full = ""
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.set_full_text(text)
+
+    def full_text(self) -> str:
+        return self._full
+
+    def set_full_text(self, text: str) -> None:
+        self._full = text
+        self.setToolTip(text)
+        self._elide()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self) -> None:
+        self.setText(self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideRight, self.width()))
+
+
 class IconButton(QToolButton):
     """Flat icon-only button (30 px for the prototype's 18 px icon). `clicked`
     is the plain QAbstractButton signal; `set_active(True)` keeps the hover

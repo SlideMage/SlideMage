@@ -11,13 +11,12 @@ from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QW
 from slidemage import app_settings, deck_scan
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
-from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.panels import PANELS
 from slidemage.ui.workspace.panels.base import Row
-from slidemage.ui.workspace.side_panels import ASSISTANT_SPLIT, PANEL_MIN_HEIGHT, SETTING, SPLIT_SETTING, SidePanels
+from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT, SETTING, SidePanels
 from slidemage.ui.workspace.panels.base import PanelActions
 from slidemage.ui.workspace.slide_list import SlideList
 from slidemage.ui.workspace.state import WorkspaceState
@@ -31,6 +30,7 @@ class FakeCentre:
     """What the panels ask of the centre column: versions, the Source view's buffers and its Save."""
 
     def __init__(self):
+        self.path = None
         self.restored, self.frozen, self.saved, self.references = [], [], [], []
         self.buffers: dict = {}
         self.unsaved: set = set()
@@ -59,6 +59,7 @@ class FakeWindow:
 
     def __init__(self, state):
         self.state = state
+        self.theme = ThemeManager()
         self.slide_list = None
         self.panels = None
         self.centre = FakeCentre()
@@ -173,50 +174,55 @@ def rows(panel):
 
 # -- the host ---------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("ratio", [None, True, "0.25", 0, 1, -0.1, 2, float("nan")])
-def test_an_invalid_or_missing_split_uses_the_original_proportions(column, qapp, ratio):
-    panels, state, window = column
-    layout_settings.set(SPLIT_SETTING, ratio)
-    again = SidePanels(window, state, window.actions)
-    again.resize(340, 1000)
-    again.show()
-    qapp.processEvents()
-    panel, assistant = again.sizes()
-    assert panel == pytest.approx((panel + assistant) * ASSISTANT_SPLIT[0] / sum(ASSISTANT_SPLIT), abs=1)
-    again.deleteLater()
+def card_heights(panels):
+    return panels.card.height(), panels.assistant.height()
 
 
-@pytest.mark.parametrize("ratio", [0.1, 0.375, 0.6])
-def test_a_short_column_protects_the_controls_and_grows_back_to_the_users_split(ctx, column, qapp, ratio):
+def test_the_cards_share_the_column_38_to_62_with_a_12_px_gap(column, qapp):
     panels, state, _window = column
     state.set_focused_slide("abc")
-    panels.resize(340, 1600)
+    panels.resize(360, 1000)
     panels.show()
     qapp.processEvents()
-    panels.moveSplitter(round(sum(panels.sizes()) * ratio), 1)
-    saved = layout_settings.get(SPLIT_SETTING)
-    assert saved == panels.sizes()[0] / sum(panels.sizes())
-    assert app_settings.get(ctx, SPLIT_SETTING) is None
+    top, bottom = card_heights(panels)
+    assert panels.assistant.geometry().top() - panels.card.geometry().bottom() - 1 == 12
+    assert top + bottom + 12 == 1000
+    assert top == pytest.approx((1000 - 12) * 0.38, abs=2)
 
-    panels.resize(340, 560)
+
+@pytest.mark.parametrize("height", [700, 600, 540])
+def test_a_short_column_gives_way_in_the_side_panels_first(column, qapp, height):
+    panels, state, _window = column
+    state.set_focused_slide("abc")
+    panels.resize(360, height)
+    panels.show()
     qapp.processEvents()
-    assert panels.height() == 560
-    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
-    assert panels.sizes()[1] >= panels.assistant.minimumHeight()
-    if ratio == 0.1:
-        assert panels.sizes()[0] == PANEL_MIN_HEIGHT
-    else:
-        assert panels.sizes()[1] == panels.assistant.minimumHeight()
-    assert panels.picker.isVisible() and panels.widget(0).rect().contains(panels.picker.geometry())
+    top, bottom = card_heights(panels)
+    assert panels.height() == height
+    assert top >= PANEL_MIN_HEIGHT and bottom >= panels.assistant.minimumHeight() == 380
+    if height <= 600:
+        assert bottom == pytest.approx(380, abs=2)
+    assert panels.picker.isVisible() and panels.card.rect().contains(panels.picker.geometry())
     chat = panels.assistant.chat
     for control in (chat.composer, chat.mode_picker, chat.send_button):
         assert control.isVisible() and chat.rect().contains(control.geometry())
-    assert layout_settings.get(SPLIT_SETTING) == saved
 
-    panels.resize(340, 1600)
+
+def test_focus_assistant_hides_the_side_panels_and_brings_them_back(column, qapp):
+    panels, _state, _window = column
+    panels.resize(360, 800)
+    panels.show()
     qapp.processEvents()
-    assert panels.sizes()[0] == pytest.approx(sum(panels.sizes()) * saved, abs=1)
-    assert layout_settings.get(SPLIT_SETTING) == saved
+    header = panels.assistant.header
+    assert panels.card.isVisible() and header.focus_button.text() == "open_in_full"
+    header.focus_button.click()
+    qapp.processEvents()
+    assert not panels.card.isVisible() and header.focus_button.text() == "close_fullscreen"
+    assert panels.assistant.height() == 800
+    header.focus_button.click()
+    qapp.processEvents()
+    assert panels.card.isVisible() and header.focus_button.text() == "open_in_full"
+    assert panels.card.height() == pytest.approx((800 - 12) * 0.38, abs=2)
 
 
 def test_the_picker_names_the_panel_and_lists_all_of_them(ctx, column):

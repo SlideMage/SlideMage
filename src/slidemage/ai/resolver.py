@@ -32,7 +32,7 @@ from .providers import (
 
 NO_KEY = "No Anthropic API key yet. Add one under Settings → Cloud."
 NO_CLAUDE = "Claude Code is not installed on this computer, so nothing was sent and no other model is used."
-CHAT_IN_TERMINAL = ("On Cloud · Claude Code the conversation is the terminal in the Claude Code tab; the chat "
+CHAT_IN_TERMINAL = ("On Cloud · Claude Code the conversation is the terminal in the assistant; the chat "
                     "with Ollama or the API is not available on this route.")
 
 

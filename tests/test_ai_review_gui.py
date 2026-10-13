@@ -1,5 +1,4 @@
 """Review controls and text task application without a terminal socket or model."""
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -144,7 +143,7 @@ def test_every_headless_text_task_marks_its_actual_target(window, task, open_buf
     path = window.project.root / SLIDE if open_buffer else window.project.slides_dir / "abd-EN-Second-current.tex"
     before = window.centre.slide_text(path)
     capture = _Capture(task, path, path.name.removesuffix("-current.tex"), before, "", before, "", "", "\r\n", window.state.deck.path)
-    runner = TaskRunner(window, Path("fake-claude"), workspace)
+    runner = TaskRunner(window, workspace)
     assert runner._write(capture, before.replace("First point", "New point")) is not None
     saved = ai_review.unreviewed(window.project)[path.relative_to(window.project.root).as_posix()]
     assert saved["kind"] == ("translation" if task is claude_tasks.UPDATE_TRANSLATION else "edit")
@@ -158,7 +157,7 @@ def test_translation_marks_both_partner_and_changed_source_and_inserted_call(win
     before = window.centre.slide_text(path)
     body = slide_ids.body_of(before).replace("Hello", "Hallo")
     capture = _Capture(claude_tasks.TRANSLATE, path, "abc-EN-Hello", before, "", body, "", "DE", "\r\n", window.state.deck.path)
-    runner = TaskRunner(window, Path("fake-claude"), workspace)
+    runner = TaskRunner(window, workspace)
     assert "created" in runner._translate(capture, body)
     entries = ai_review.unreviewed(window.project)
     assert len(entries) == 2 and SLIDE in entries
@@ -172,7 +171,7 @@ def test_task_conflict_does_not_mark_and_summary_does_not_mark(window):
     path = window.project.root / SLIDE
     before = window.centre.slide_text(path)
     capture = _Capture(claude_tasks.TITLE, path, "abc-EN-Hello", "old", "", before, "", "", "\r\n", window.state.deck.path)
-    runner = TaskRunner(window, Path("fake-claude"), workspace)
+    runner = TaskRunner(window, workspace)
     assert runner._write(capture, "new") is None
     capture = _Capture(claude_tasks.SUMMARISE, path, "abc", "", "", "", "", "", "", None)
     runner._apply(capture, SimpleNamespace(text="summary", elapsed_s=1))

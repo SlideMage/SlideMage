@@ -1,105 +1,146 @@
-"""The Claude Code view of the assistant area (UI redesign step 10c): the user's own `claude`, running in a
-terminal in the project folder, connected to SlideMage (session.py).
+"""The Claude Code body of the assistant card (assistant.py), shown while the route is Cloud · Claude Code: the
+user's own `claude`, running in a terminal in the project folder, connected to SlideMage (session.py).
 
-Three states. No `claude` found: an install hint and "Check again". Otherwise a terminal, started the first
-time the view is shown (not at launch, and the web view is not even created before): the process lives on
-while the user looks at the chat. When it ends, the terminal keeps its text, the status chip says so and
-Restart starts a new one. Closing the window, switching project and `shutdown()` end the process.
+Two bodies. No `claude` found, or not signed in (`claude auth status`): an amber card says so, with "Check again"
+or "Sign in…" (which starts the terminal, where Claude Code asks for its login itself); nothing is sent and no other
+model is used meanwhile. Otherwise a terminal, started the first time the view is shown (not at launch, and the
+web view is not even created before): the process lives on while the view is out of sight (the column hidden, the
+Images page). Leaving the route ends it
+(`end_session`, after the switch asked), and showing the view again starts a new one. When it ends by itself, the
+terminal keeps its text, the status chip says so and Restart starts a new one. Closing the window and `shutdown()`
+end the process.
 
-Under the status row: the suggestion bubbles for the slide in the Source view (with the scope on Deck, for the
-open deck) and the status line of the running or last task, with Stop (tasks.py does the work; the model and
-effort of a task are the active route's, ai_profile.resolve). The terminal's own model is Claude Code's.
+Under the terminal: the caption with the model the task buttons of the header use. The task buttons, their status
+line and the scope (This slide | Whole deck) are the assistant card's (tasks.py does the work).
 """
 from __future__ import annotations
 
-from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, Qt, QTimer
-from PySide6.QtGui import QGuiApplication, QShowEvent
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPlainTextEdit, QStackedWidget, QVBoxLayout
+from PySide6.QtCore import QCoreApplication, Qt, QThread, Signal
+from PySide6.QtGui import QColor, QPalette, QShowEvent
+from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout
 
-from ....ai import claude_launch, claude_tasks
-from ....ai.claude_scope import DECK, SLIDE
+from ....ai import ai_profile, claude_launch, claude_tasks
+from ....ai.claude_scope import DECK
+from ... import background
 from ...kit import kit_qss as q
-from ...kit.widgets import (
-    Button, Chip, IconButton, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
+from ...kit.widgets import Button, Chip, IconButton, IconLabel, SegmentedControl, Surface, caption
 from ..attachments import place_file, save_image
-from ..ai_work import RunningWork
 from ..state import WorkspaceState
-from .tasks import Bubble, TaskRunner, bubbles, deck_bubbles
+from .tasks import TaskRunner, bubbles
 
-HINT, TERMINAL = 0, 1
-BUBBLE_DELAY_MS = 500
+SETUP, TERMINAL = 0, 1
+NEVER_SENT = "Cloud stays selected. Nothing is sent and no other model is used"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
 INSTALL_STEPS = (f'Install it as the <a href="{claude_launch.INSTALL_URL}">Claude Code setup guide</a> says, '
                  "start <b>claude</b> once in a terminal to sign in, then come back and check again.")
+NOT_INSTALLED = ("Claude Code is not installed", f"{INSTALL_TEXT} {NEVER_SENT} until it is.", INSTALL_STEPS, "Check again")
+NOT_SIGNED_IN = ("Claude Code is not signed in", f"{NEVER_SENT} until you sign in.", "", "Sign in…")
+
+
+class _SignedIn(QThread):
+    """Asks `claude auth status`, off the GUI thread."""
+
+    answer = Signal(object)         # True, False, or None when Claude Code cannot say
+
+    def __init__(self, claude: Path) -> None:
+        super().__init__()
+        self.claude = claude
+
+    def run(self) -> None:
+        self.answer.emit(claude_launch.signed_in(self.claude))
 
 
 class ClaudeCodeView(Surface):
-    def __init__(self, app, state: WorkspaceState) -> None:
+    notice = Signal(str, str)       # a line for the assistant's task row: its text and tone
+    setup_changed = Signal()        # the amber card came up or went (the task buttons wait for it)
+
+    def __init__(self, app, state: WorkspaceState, scope: SegmentedControl, tasks: TaskRunner) -> None:
+        """`scope` is the assistant header's; `tasks` its runner, which the terminal's translate tool asks."""
         super().__init__()
         self.app = app
         self.state = state
+        self.scope = scope
+        self.tasks = tasks
         self.session = None                       # created with the terminal
-        self.tasks: TaskRunner | None = None
         self.terminal = None
-        self._typing = QTimer(self)               # the bubbles follow the text a moment after the last keystroke
-        self._typing.setSingleShot(True)
-        self._typing.setInterval(BUBBLE_DELAY_MS)
-        self._typing.timeout.connect(self._refresh_bubbles)
-        self._shown = 0                           # of them, the buttons that fit
-        self._bubbles: list[Bubble] = []          # the tasks that fit the slide, as buttons or under "More"
         self._started = False
+        self._closed = False
+        self._restart_on_show = False             # the route left and came back: a new session
+        self._checking: _SignedIn | None = None
+        self._claude: Path | None = None
         self._size = (80, 24)
+        scope.changed.connect(self._on_scope)
         self._stack = QStackedWidget()
         self._stack.setObjectName(q.SURFACE)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._stack)
-        self._stack.addWidget(self._build_hint())
+        self._stack.addWidget(self._build_setup())
         self._terminal_page = Surface()
         self._terminal_layout = QVBoxLayout(self._terminal_page)
         self._terminal_layout.setContentsMargins(0, 0, 0, 0)
         self._terminal_layout.setSpacing(4)
         self._terminal_layout.addLayout(self._build_status_row())
-        self._terminal_layout.addLayout(self._build_bubble_row())
-        self._terminal_layout.addLayout(self._build_task_row())
+        self.caption = caption("")
+        self.caption.setTextFormat(Qt.TextFormat.RichText)
+        self.caption.linkActivated.connect(lambda _link: self.app.ai_route.open_setup())
+        self._terminal_layout.addWidget(self.caption)
         self._stack.addWidget(self._terminal_page)
+        self.refresh_caption()
+        self.refresh_colors()
         QCoreApplication.instance().aboutToQuit.connect(self.shutdown)
 
     # -- building ---------------------------------------------------------------------------
 
-    def _build_hint(self) -> Surface:
+    def _build_setup(self) -> Surface:
+        """The amber card that replaces the terminal while Claude Code cannot be used."""
         page = Surface()
         box = QVBoxLayout(page)
-        box.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title = QLabel("Claude Code is not installed")
-        title.setObjectName(q.CHAT_TEXT)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        box.addWidget(title)
-        for text in (INSTALL_TEXT, INSTALL_STEPS):
-            note = caption(text)
-            note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            note.setOpenExternalLinks(True)
-            box.addWidget(note)
-        check = Button("Check again", "secondary", compact=True)
-        check.clicked.connect(self.check_again)
-        box.addWidget(check, 0, Qt.AlignmentFlag.AlignCenter)
+        box.setAlignment(Qt.AlignmentFlag.AlignTop)
+        card = QFrame()
+        card.setObjectName(q.CLOUD_CARD)
+        inner = QVBoxLayout(card)
+        inner.setContentsMargins(14, 14, 14, 14)
+        inner.setSpacing(8)
+        head = QHBoxLayout()
+        head.addWidget(IconLabel("cloud", 20))
+        self.setup_title = QLabel()
+        self.setup_title.setObjectName(q.ASSISTANT_TITLE)
+        head.addWidget(self.setup_title, 1)
+        inner.addLayout(head)
+        self.setup_text = QLabel()
+        self.setup_text.setWordWrap(True)
+        inner.addWidget(self.setup_text)
+        self.setup_steps = QLabel()
+        self.setup_steps.setWordWrap(True)
+        self.setup_steps.setOpenExternalLinks(True)
+        inner.addWidget(self.setup_steps)
+        self.setup_button = Button("", "cloud", compact=True)
+        self.setup_button.clicked.connect(self._on_setup_button)
+        inner.addWidget(self.setup_button, 0, Qt.AlignmentFlag.AlignLeft)
+        box.addWidget(card)
         return page
+
+    def _show_setup(self, title: str, text: str, steps: str, button: str) -> None:
+        self.setup_title.setText(title)
+        self.setup_text.setText(text)
+        self.setup_steps.setText(steps)
+        self.setup_steps.setVisible(bool(steps))
+        self.setup_button.setText(button)
+        self._stack.setCurrentIndex(SETUP)
+        self.setup_changed.emit()
+
+    @property
+    def needs_setup(self) -> bool:
+        """The amber card is up: Claude Code is not installed or not signed in."""
+        return self._stack.currentIndex() == SETUP and self._started
 
     def _build_status_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        labels = {SLIDE: "Slide", DECK: "Deck"}
-        self.scope = SegmentedControl(tuple(labels.items()), current=SLIDE)
-        self.scope.set_labels(labels, compact=True, tooltips={   # compact: fits the narrowest column
-            SLIDE: "Claude Code works only on the slide you are looking at: it is told to read nothing else, "
-                   "and edits of other slides or decks are refused.",
-            DECK: "Claude Code may look at and change any slide of the open deck."})
-        self.scope.changed.connect(self._on_scope)
-        row.addWidget(self.scope)
         self.status = Chip("Starting…", "muted")
         row.addWidget(self.status)
         row.addStretch(1)
@@ -115,32 +156,12 @@ class ClaudeCodeView(Surface):
         row.addWidget(self.restart_button)
         return row
 
-    def _build_bubble_row(self) -> QHBoxLayout:
-        self._bubble_row = QHBoxLayout()
-        self._bubble_row.setContentsMargins(0, 0, 0, 0)
-        self.more = Button("More  ▾", "ghost", compact=True)
-        self.more.setToolTip("The other tasks that fit this slide.")
-        self.more.clicked.connect(self._open_more)
-        self.more.hide()
-        self._bubble_row.addWidget(self.more)
-        self._bubble_row.addStretch(1)
-        return self._bubble_row
-
-    def _build_task_row(self) -> QHBoxLayout:
-        """The status line of the task and its buttons."""
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        self.task_status = caption("")
-        row.addWidget(self.task_status, 1)
-        self.result_button = Button("Show result", "ghost", compact=True)
-        self.result_button.clicked.connect(self._show_result)
-        self.result_button.hide()
-        row.addWidget(self.result_button)
-        self.stop_button = Button("Stop", "secondary", compact=True)
-        self.stop_button.clicked.connect(lambda: self.tasks.stop())
-        self.stop_button.hide()
-        row.addWidget(self.stop_button)
-        return row
+    def refresh_caption(self) -> None:
+        """What the header's task buttons run on: the model of the Claude Code route for fixes (AI setup)."""
+        route = ai_profile.route_for(self.state.project, ai_profile.CLAUDE_CODE, ai_profile.FIXES)
+        self.caption.setText("Permissions are handled in Claude Code. Conversation model: set in Claude Code. "
+                             f"Task buttons: {route.label.removeprefix('Claude Code · ')} "
+                             '(<a href="setup">AI setup</a>).')
 
     def _on_scope(self, scope: str) -> None:
         if self.session is not None:
@@ -151,7 +172,7 @@ class ClaudeCodeView(Surface):
         if self.state.deck is None:
             return "No deck is open in SlideMage: ask the user to open one."
         self.scope.set_current(DECK)
-        self._on_scope(DECK)                    # set_current is no click: tell the session (and the bubbles)
+        self.scope.changed.emit(DECK)           # set_current is no click: tell the session and the header
         return "SlideMage is in Deck Mode now: go on with the request."
 
     # -- attachments ------------------------------------------------------------------------------
@@ -166,7 +187,7 @@ class ClaudeCodeView(Surface):
             try:
                 rel = place_file(self.state.project, name, dash_spaces=True)
             except OSError as exc:
-                self._on_task_status(f"{Path(name).name} could not be attached: {exc.strerror or exc}", "error")
+                self.notice.emit(f"{Path(name).name} could not be attached: {exc.strerror or exc}", "error")
                 continue
             if rel:
                 self._mention(rel)
@@ -176,7 +197,7 @@ class ClaudeCodeView(Surface):
         if rel:
             self._mention(rel)
         else:
-            self._on_task_status("The pasted image could not be attached.", "error")
+            self.notice.emit("The pasted image could not be attached.", "error")
 
     def _mention(self, rel: str) -> None:
         """Type `@path ` at the prompt without Enter; a path with spaces is quoted."""
@@ -188,59 +209,7 @@ class ClaudeCodeView(Surface):
     def _set_attachable(self) -> None:
         self.attach_button.setEnabled(self.session is not None and self.session.running)
 
-    # -- bubbles and tasks ------------------------------------------------------------------------
-
-    def _refresh_bubbles(self) -> None:
-        """Show the buttons for the tasks that fit the slide now (none while a task runs)."""
-        if self.tasks is None:
-            return
-        if self.tasks.busy:
-            found = []
-        else:
-            found = deck_bubbles(self.app) if self.scope.current() == DECK else bubbles(self.app)
-        if found == self._bubbles:
-            return
-        for _ in self._bubbles:
-            button = self._bubble_row.takeAt(0).widget()
-            button.setParent(None)                     # gone now, not at the next event loop
-            button.deleteLater()
-        for index, bubble in enumerate(found):
-            button = Button(bubble.label, "secondary", compact=True)
-            button.clicked.connect(partial(self._run, bubble))
-            self._bubble_row.insertWidget(index, button)
-        self._bubbles = found
-        self._fit()
-
-    def _fit(self) -> None:
-        """Show as many bubble buttons as fit the row, and the rest under "More"."""
-        buttons = [self._bubble_row.itemAt(i).widget() for i in range(len(self._bubbles))]
-        spacing, room = self._bubble_row.spacing(), self.width()
-        widths = [button.sizeHint().width() + spacing for button in buttons]
-        reserve = 0 if sum(widths) <= room else self.more.sizeHint().width() + spacing
-        shown, used = 0, reserve
-        for width in widths:
-            if used + width > room:
-                break
-            used, shown = used + width, shown + 1
-        for index, button in enumerate(buttons):
-            button.setVisible(index < shown)
-        self.more.setVisible(shown < len(buttons))
-        self._shown = shown
-
-    def _open_more(self) -> None:
-        menu = PopoverMenu(self, min_width=180)
-        for index in range(self._shown, len(self._bubbles)):
-            menu.add_item(str(index), self._bubbles[index].label)
-        menu.triggered.connect(lambda key: self._run(self._bubbles[int(key)]))
-        menu.closed.connect(menu.deleteLater)
-        menu.popup_below(self.more)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._fit()
-
-    def _run(self, bubble: Bubble) -> None:
-        self.tasks.start(bubble.task, bubble.paths)
+    # -- the terminal's translate tool ---------------------------------------------------------------
 
     def _translate_slide(self, path: Path) -> str:
         """The terminal's translate_slide: the slide into view, then its Translate bubble (GUI thread)."""
@@ -252,32 +221,8 @@ class ClaudeCodeView(Surface):
             return "SlideMage is busy with another task; ask the user to try again when its status line is done."
         if reason := self.tasks.refusal(bubble.task):
             return reason
-        self._run(bubble)
+        self.tasks.start(bubble.task, bubble.paths)
         return f"SlideMage is translating it ({bubble.label}); the new slide opens when it is done."
-
-    def _on_task_status(self, text: str, tone: str) -> None:
-        self.task_status.setText(text)
-        set_property(self.task_status, "tone", tone)
-        self.result_button.setVisible(bool(self.tasks.unapplied or self.tasks.report))
-
-    def _on_busy(self, busy: bool) -> None:
-        self.stop_button.setVisible(busy)
-        self.result_button.hide()
-        self._refresh_bubbles()
-
-    def _show_result(self) -> None:
-        tasks = self.tasks
-        self._show_text(*(("Claude's result", tasks.unapplied) if tasks.unapplied
-                          else ("What became of each slide", tasks.report)))
-
-    def _show_text(self, title: str, content: str) -> None:
-        sheet = ModalSheet(title, self.app, width=640)
-        text = QPlainTextEdit(content)
-        text.setReadOnly(True)
-        sheet.add_tab(title, text)
-        sheet.add_button("Copy").clicked.connect(lambda: QGuiApplication.clipboard().setText(text.toPlainText()))
-        sheet.add_button("Close", kind="primary", role="accept")
-        sheet.exec()
 
     # -- starting and stopping --------------------------------------------------------------------
 
@@ -286,40 +231,57 @@ class ClaudeCodeView(Surface):
         if not self._started:
             self._started = True
             self._open()
+        elif self._restart_on_show:
+            self._restart_on_show = False
+            self.restart()
         if self.terminal is not None:
             self.terminal.focus_terminal()
 
-    def check_again(self) -> None:
-        self._open()
-
     def _open(self) -> None:
-        """Show the install hint, or build the terminal (once) and start Claude Code in it."""
-        claude = claude_launch.find_claude()
-        if claude is None:
-            self._stack.setCurrentIndex(HINT)
+        """Show the card that says what is missing, or build the terminal (once) and start Claude Code in it."""
+        self._claude = claude_launch.find_claude()
+        if self._claude is None:
+            self._show_setup(*NOT_INSTALLED)
+        elif self.terminal is None and self._checking is None:
+            self._stack.setCurrentIndex(TERMINAL)
+            self.setup_changed.emit()
+            self._checking = checking = _SignedIn(self._claude)
+            checking.answer.connect(self._on_signed_in)
+            background.start_detached(checking)
+
+    def _on_signed_in(self, signed_in) -> None:
+        """`claude auth status` answered: the terminal, unless Claude Code says it is signed out."""
+        self._checking = None
+        if self._closed:
             return
-        self._stack.setCurrentIndex(TERMINAL)
-        if self.terminal is None:
-            self._build_terminal(claude)
+        if signed_in is False:
+            self._show_setup(*NOT_SIGNED_IN)
+        else:
+            self._build_terminal(self._claude)
+
+    def _on_setup_button(self) -> None:
+        """"Check again" looks for `claude` again; "Sign in…" starts the terminal, where Claude Code asks for
+        its login itself."""
+        if self._claude is None:
+            self._open()
+        else:
+            self._stack.setCurrentIndex(TERMINAL)
+            self._build_terminal(self._claude)
 
     def _build_terminal(self, claude: Path) -> None:
         # Imported here: the web engine is heavy, and most sessions never open this view.
         from .session import ClaudeCodeSession
         from .web import TerminalWidget
 
+        if self.terminal is not None:
+            return
         self.session = ClaudeCodeSession(self.app, claude, self)
+        self.setup_changed.emit()
         self.session.scope = self.scope.current()
         self.terminal = TerminalWidget(self.app.theme.tokens)
-        self._terminal_layout.addWidget(self.terminal, 1)
-        self.tasks = TaskRunner(self.app, claude, self.session.workspace, self)
+        self._terminal_layout.insertWidget(1, self.terminal, 1)
         self.session.workspace.translate = self._translate_slide
         self.session.workspace.widen = self._switch_to_deck
-        self.tasks.status.connect(self._on_task_status)
-        self.tasks.busy_changed.connect(self._on_busy)
-        self.tasks.summary.connect(lambda text: self._show_text("Summary of the deck", text))
-        self.session.focus_changed.connect(self._refresh_bubbles)
-        self.app.centre.source.buffer_changed.connect(lambda _path: self._typing.start())
-        self._refresh_bubbles()
         self.terminal.ready.connect(self._on_ready)
         self.terminal.resized.connect(self._on_resized)
         self.terminal.input_data.connect(self.session.write)
@@ -364,18 +326,16 @@ class ClaudeCodeView(Surface):
         return self.session is not None and self.session.running
 
     def end_session(self) -> None:
-        """The AI switch leaves Claude Code: end the process; Restart starts a new one."""
+        """The AI switch leaves Claude Code: end the process; showing the view again starts a new one."""
         if not self.session_live:
             return
         self.session.stop()
+        self._restart_on_show = True
         self._set_attachable()
         self.status.set_text("Ended")
         self.status.set_tone("muted")
         self.terminal.write(b"\r\n\x1b[2m[Claude Code ended: AI tasks use another route now. "
-                            b"Use Restart to start it again.]\x1b[0m\r\n")
-
-    def running_work(self) -> list[RunningWork]:
-        return self.tasks.running_work() if self.tasks is not None else []
+                            b"It starts again when you switch back.]\x1b[0m\r\n")
 
     def _on_exited(self, code: int) -> None:
         if self.terminal is None:       # reported while the window was closing
@@ -386,16 +346,17 @@ class ClaudeCodeView(Surface):
         self.terminal.write(b"\r\n\x1b[2m[Claude Code ended. Use Restart to start it again.]\x1b[0m\r\n")
 
     def refresh_colors(self) -> None:
+        palette = self.caption.palette()           # the caption's link: QSS cannot color it
+        palette.setColor(QPalette.ColorRole.Link, QColor(self.app.theme.tokens.info))
+        self.caption.setPalette(palette)
         if self.terminal is not None:
             self.terminal.set_tokens(self.app.theme.tokens)
 
     def shutdown(self) -> None:
         """End the process, the MCP server and the terminal page (window close, project switch, app quit)."""
+        self._closed = True
         if self.session is not None:
             self.session.shutdown()
-        if self.tasks is not None:
-            self.tasks.shutdown()
-            self.tasks = None
         if self.terminal is not None:
             self.terminal.shutdown()
             self.terminal = None

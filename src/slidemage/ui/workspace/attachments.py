@@ -1,5 +1,5 @@
 """Putting a file the user brings (paperclip, drop, pasted image) into the project, for the Chat and the
-Claude Code tab alike: a file inside the project stays where it is, any other is copied into sources/."""
+Claude Code terminal alike: a file inside the project stays where it is, any other is copied into sources/."""
 from __future__ import annotations
 
 import shutil

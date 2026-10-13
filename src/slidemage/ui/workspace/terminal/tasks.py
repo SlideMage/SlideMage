@@ -1,6 +1,7 @@
-"""The suggestion bubbles of the Claude Code tab and what a click does (Claude Code tasks plan, step 2).
+"""The tasks the assistant header offers and what a click does (Claude Code tasks plan, step 2).
 
-`bubbles(window)` says which tasks fit the slide in the Source view (and translation partner). A click goes through TaskRunner:
+`bubbles(window)` says which tasks fit the slide in the Source view (and translation partner); `contextual` picks the
+two the header shows. A click goes through TaskRunner:
 `start` captures the task on the GUI thread (the slide's text as its buffer has it, the request), a worker thread
 runs ai/claude_runner.run_task, and the outcome comes back to the GUI thread as a signal. Only then is anything
 changed, and only if the slide still has the captured text: a fix goes into the buffer (Ctrl+Z undoes it) or, for
@@ -11,7 +12,7 @@ Typing in the slide meanwhile makes it a conflict: nothing is written and the re
 The image bubbles (describe, translate the descriptions) are different: an _ImageWorker works through the slide's
 images one process after another and alt_draft's batch stores each draft as it is done (nothing of the slide
 changes); the Images panel is shown again at the end.
-The deck bubbles (`deck_bubbles`, shown while the tab's scope is Deck) run one of these tasks over the deck's
+The deck bubbles (`deck_bubbles`, shown while the assistant's scope is Whole deck) run one of these tasks over the deck's
 slides: a batch with up to WORKERS processes at a time. Each slide is captured when its turn comes, so what the user
 typed meanwhile is in the request; every result is applied by `_on_done` on the GUI thread, one after the other,
 whichever process finished first, so writes, ids and links never race. A rate-limit error drops the batch to one
@@ -43,7 +44,7 @@ from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, dec
                   slide_language, slide_source, slide_versioning)
 from ....project import ProjectContext
 from ....tex_source import masked_same_length
-from ....ai import ai_profile, claude_images, claude_runner, claude_tasks, resolver, translation_style
+from ....ai import ai_profile, claude_images, claude_launch, claude_runner, claude_tasks, resolver, translation_style
 from ....ai.tools.base import ToolError
 from ....ai.tools.edits import write_text
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
@@ -218,7 +219,7 @@ def bubbles(window) -> list[Bubble]:
     return [] if focus is None else _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug))
 
 
-def _deck_slides(window) -> list[Path]:
+def deck_slides(window) -> list[Path]:
     """The current files of the slides of the open deck in the current view and language, in the deck's order,
     each once however often the deck calls it."""
     state = window.state
@@ -233,7 +234,7 @@ def _deck_slides(window) -> list[Path]:
 def deck_bubbles(window) -> list[Bubble]:
     """The tasks that fit the open deck: the slide tasks of BATCH_TASKS with the number of slides each fits (the
     same test as the slide's own bubble, no compile), the images still to describe, and the summary."""
-    paths = _deck_slides(window)
+    paths = deck_slides(window)
     if not paths:
         return []
     fits: dict[str, list[Path]] = {task.name: [] for task in BATCH_TASKS}      # the slides each task fits
@@ -251,6 +252,22 @@ def deck_bubbles(window) -> list[Bubble]:
         found.append(Bubble(claude_images.DESCRIBE, f"Describe images ({sum(len(row.images) for row in rows)})",
                             tuple(row.path for row in rows)))
     return found + [Bubble(claude_tasks.SUMMARISE, "Summarise this deck", tuple(paths))]
+
+
+# Which of the tasks that fit come first in the header (the prototype: the translation, then shortening).
+PRIORITY = (claude_tasks.UPDATE_TRANSLATION, claude_tasks.TRANSLATE, claude_tasks.FIX_LATEX, claude_tasks.CONCISE,
+            claude_tasks.PROOFREAD, claude_tasks.TITLE, claude_tasks.NOTE, claude_images.DESCRIBE, claude_images.TRANSLATE,
+            claude_tasks.SUMMARISE)
+
+
+SLIDE_TASKS = tuple(task for task in PRIORITY if task is not claude_tasks.SUMMARISE)    # what `bubbles` can offer
+DECK_TASKS = (*BATCH_TASKS, claude_images.DESCRIBE, claude_tasks.SUMMARISE)                # what `deck_bubbles` can
+
+
+def contextual(found: list[Bubble], runner: "TaskRunner", limit: int = 2) -> list[Bubble]:
+    """The `limit` most relevant of the tasks `found` that the active route can run (a refused one is not offered)."""
+    runnable = [bubble for bubble in found if not runner.refusal(bubble.task)]
+    return sorted(runnable, key=lambda bubble: PRIORITY.index(bubble.task))[:limit]
 
 
 def _capture(window, task: claude_tasks.Task, focus: _Focus | None) -> _Capture | None:
@@ -400,10 +417,10 @@ class TaskRunner(QObject):
     busy_changed = Signal(bool)
     summary = Signal(str)              # the summary of the deck, to show
 
-    def __init__(self, window, claude: Path, workspace, parent: QObject | None = None) -> None:
+    def __init__(self, window, workspace, parent: QObject | None = None) -> None:
         """`window` is the main window, `workspace` the GuiWorkspace that applies edits to its buffers."""
         super().__init__(parent)
-        self._window, self._claude, self._workspace = window, claude, workspace
+        self._window, self._workspace = window, workspace
         self._running: dict[_Worker | _ImageWorker, _Item | None] = {}    # with the batch item it works on
         self._batch: _Batch | None = None
         self._route: ai_profile.Route | None = None        # of the task or batch under way, captured at its start
@@ -442,7 +459,7 @@ class TaskRunner(QObject):
         or "" when it can."""
         route = route or ai_profile.resolve(self._window.project, KINDS[task.name])
         if route.route == ai_profile.CLAUDE_CODE:
-            return ""
+            return "" if claude_launch.find_claude() is not None else resolver.NO_CLAUDE
         if task not in PROVIDER_TASKS:
             return resolver.not_offered(route, _NAMES[task.name], "It runs on Cloud · Claude Code: switch the route to use it.")
         return resolver.problem(self._window.project, route)
@@ -512,14 +529,15 @@ class TaskRunner(QObject):
         ctx, route, describe = self._window.project, self._route, task is claude_images.DESCRIBE
         if route.route == ai_profile.CLAUDE_CODE:
             return (claude_images.ClaudeDraftBackend if describe else claude_images.ClaudeTranslationBackend)(
-                ctx, self._claude, route.model, route.effort, self._cancel)
+                ctx, resolver.claude_path(), route.model, route.effort, self._cancel)
         return (resolver.draft_backend if describe else resolver.translation_backend)(ctx, route)
 
     def _text_task(self, capture: _Capture) -> Callable[[], Outcome]:
         """The call of a worker that runs `capture` on the captured route."""
         ctx, route, cancel = self._window.project, self._route, self._cancel
         if route.route == ai_profile.CLAUDE_CODE:
-            return lambda: claude_runner.run_task(ctx, self._claude, capture.task, capture.sent, capture.request,
+            claude = resolver.claude_path()
+            return lambda: claude_runner.run_task(ctx, claude, capture.task, capture.sent, capture.request,
                                                   route.model, route.effort, cancel=cancel)
         provider = resolver.provider_for(ctx, route)
         self._providers.append(provider)
@@ -539,20 +557,29 @@ class TaskRunner(QObject):
             background.stop_worker(worker)
         self._release()
 
+    def describe(self) -> str:
+        """What is running, by verb and slide: "Updating 1y8", "Translating the deck"."""
+        if (batch := self._batch) is not None:
+            return f"{_VERBS[batch.task.name]} {DECK_LABEL}"
+        worker = next(iter(self._running))
+        capture = worker.capture
+        if isinstance(worker, _ImageWorker):
+            return f"{_VERBS[capture.task.name]} images of {capture.label}"
+        return f"{_VERBS[capture.task.name]} {slide_language.bare_id(capture.id_slug)}"
+
     def _tick(self) -> None:
         seconds = round(time.monotonic() - self._started)
+        what = self.describe()
         if (batch := self._batch) is not None:
-            parts = [f"{_VERBS[batch.task.name]} {DECK_LABEL} … {len(batch.lines)}/{batch.total}",
+            parts = [f"{what} … {len(batch.lines)}/{batch.total}",
                      *([f"{batch.failed} failed"] if batch.failed else []), f"{seconds} s", *([batch.note] if batch.note else [])]
             self.status.emit(" · ".join(parts), "muted")
             return
         worker = next(iter(self._running))
         if isinstance(worker, _ImageWorker):
-            self.status.emit(f"{_VERBS[worker.capture.task.name]} images of {worker.capture.label} … "
-                             f"{worker.position[0]}/{worker.position[1]} · {seconds} s", "muted")
+            self.status.emit(f"{what} … {worker.position[0]}/{worker.position[1]} · {seconds} s", "muted")
         else:
-            self.status.emit(f"{_VERBS[worker.capture.task.name]} {slide_language.bare_id(worker.capture.id_slug)}"
-                             f" … {seconds} s", "muted")
+            self.status.emit(f"{what} … {seconds} s", "muted")
 
     def _on_done(self, worker: _Worker | _ImageWorker, outcome) -> None:
         if worker not in self._running:        # the view was closed meanwhile

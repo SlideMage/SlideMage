@@ -1,5 +1,5 @@
 """The chat in the right column: streaming, tool and diff cards, Apply / Reject / Undo against the real editor
-buffers, Stop, closing mid-run, Local AI only, the palette row, and the Chat | Claude Code switch. The model
+buffers, Stop, closing mid-run, the model chip, the palette row and the route's own conversation. The model
 is scripted (agent_fakes); the project is a throwaway one, never example/."""
 from __future__ import annotations
 
@@ -19,15 +19,13 @@ from slidemage.ai import ai_profile, credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
 from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, Cancelled
 from slidemage.deck_scan import scan_decks
-from slidemage.ui import layout_settings
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import compile_actions
-from slidemage.ui.workspace.chat import assistant as assistant_module
+from slidemage.ui.workspace.assistant import AssistantArea
 from slidemage.ui.workspace.chat import view as chat_view
-from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE, AssistantArea
 from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, ToolCard, UserBubble
 from slidemage.ui.workspace.chat.format import diff_rows, summarize_call
-from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT, SPLIT_SETTING
+from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT
 from slidemage.project import ProjectContext
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
@@ -114,30 +112,6 @@ def blocked(_provider=None):
     return step
 
 
-def test_the_right_column_split_is_saved_on_drag_and_restored_by_a_new_window(env, monkeypatch):
-    env.window.resize(1280, 1000)
-    pump()
-    panels = env.window.side_panels
-    panels.moveSplitter(400, 1)
-    panel, assistant = panels.sizes()
-    ratio = panel / (panel + assistant)
-    assert layout_settings.get(SPLIT_SETTING) == ratio
-    assert app_settings.get(env.window.project, SPLIT_SETTING) is None
-
-    again = build_window(monkeypatch)
-    again.resize(1280, 800)
-    again.show()
-    pump()
-    sizes = again.side_panels.sizes()
-    expected = max(PANEL_MIN_HEIGHT, min(sum(sizes) * ratio, sum(sizes) - again.assistant.minimumHeight()))
-    assert sizes[0] == pytest.approx(expected, abs=1)
-    again.resize(1280, 1000)
-    pump()
-    sizes = again.side_panels.sizes()
-    assert sizes[0] == pytest.approx(sum(sizes) * ratio, abs=1)
-    assert layout_settings.get(SPLIT_SETTING) == ratio
-
-
 @pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
 @pytest.mark.parametrize("scope", ["slide", "deck"])
 @pytest.mark.parametrize("lines", [2, 6])
@@ -146,15 +120,15 @@ def test_at_640px_every_suggestion_is_reachable_without_scrolling_and_the_contro
         env.window.theme.set_dark(theme)
         env.window.theme.apply()
     env.window.state.set_lint_errors(1)
-    env.chat.scope.set_current(scope)
+    env.window.assistant.scope.set_current(scope)
     env.chat._fill_empty()
     env.chat.composer.setPlainText("\n".join(["A line of the message"] * lines))
     env.window.resize(1280, 640)
     pump()
     chat, panels = env.chat, env.window.side_panels
     assert env.window.height() == 640
-    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
-    for control in (chat.scope, chat.composer, chat.mode_picker, chat.send_button):
+    assert panels.card.height() >= PANEL_MIN_HEIGHT
+    for control in (chat.composer, chat.mode_picker, chat.send_button):
         assert control.isVisible() and chat.rect().contains(control.geometry())
     assert chat._scroll.verticalScrollBar().maximum() == 0
 
@@ -192,7 +166,7 @@ def test_a_six_line_input_and_send_row_fit_at_640px(env):
     env.chat.composer.setPlainText("\n".join(["A line of the message"] * 6))
     wait_until(lambda: env.chat.composer.geometry().bottom() < env.chat.mode_picker.geometry().top())
     chat, panels = env.chat, env.window.side_panels
-    assert panels.sizes()[0] >= PANEL_MIN_HEIGHT
+    assert panels.card.height() >= PANEL_MIN_HEIGHT
     assert chat.composer.isVisible() and chat.send_button.isVisible()
     assert chat.rect().contains(chat.composer.geometry()) and chat.rect().contains(chat.send_button.geometry())
     assert chat.composer.geometry().bottom() < chat.mode_picker.geometry().top()
@@ -458,35 +432,61 @@ def test_on_claude_code_the_chat_is_the_terminal_and_nothing_is_sent(env):
     env.chat.send("go")
     assert not env.chat.session.running and not widgets(env, UserBubble)   # nothing was sent, no other model used
     assert [n.text() for n in widgets(env, Notice)] == [resolver.CHAT_IN_TERMINAL]
-    menu = open_route_menu(env)
-    assert menu._rows and not any(row.isEnabled() for row in menu._rows[:-1])      # "More in Settings" stays
-    menu.close()
 
 
-def test_the_picker_lists_the_local_models_that_call_tools(env):
+def items(menu):
+    return [(entry[1], entry[3], entry[4]) for entry in menu._entries if entry[0] == "item"]
+
+
+def test_the_picker_lists_the_local_models_that_call_tools_and_marks_the_default(env):
     ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
     env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
     ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "old-model:7b")
+    env.chat.refresh_route()
     menu = open_route_menu(env)
-    keys = [entry[1] for entry in menu._entries if entry[0] == "item"]
-    assert keys == ["old-model:7b", "qwen3:8b", "llama3.1:8b", "settings"]         # no cloud models on this route
-    chosen = next(entry for entry in menu._entries if entry[1] == "old-model:7b")
-    assert "cannot call tools" in chosen[3] and chosen[4] == "check"
+    assert items(menu) == [                                                          # no cloud models on this route
+        ("old-model:7b", "default · not installed, or cannot call tools", "check"),
+        ("qwen3:8b", "this chat only", ""), ("llama3.1:8b", "this chat only", ""), ("setup", "", "")]
     menu.close()
-    env.chat._set_route("qwen3:8b")
+
+
+def test_a_model_picked_in_the_menu_is_for_this_chat_only_and_the_default_stays(env):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+    env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
+    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
+    env.chat._set_route("llama3.1:8b")
     assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == "qwen3:8b"
-    assert env.chat.route_chip.text() == "qwen3:8b · Ollama"
-
-
-def test_the_picker_of_the_api_route_lists_its_models_and_saves_the_pick_for_that_route(env):
+    assert env.chat.route_chip.text() == "llama3.1:8b · Ollama" and env.chat.route().model == "llama3.1:8b"
+    assert env.window.assistant.header.subtitle.full_text().startswith("Chat with llama3.1:8b")
     menu = open_route_menu(env)
-    keys = [entry[1] for entry in menu._entries if entry[0] == "item"]
-    assert keys == [*ANTHROPIC_FALLBACK_MODELS, "settings"] and all(row.isEnabled() for row in menu._rows)
+    assert items(menu)[:2] == [("qwen3:8b", "default", ""), ("llama3.1:8b", "this chat only", "check")]
+    menu.close()
+    env.chat._set_route("qwen3:8b")                       # the default again: nothing is overridden
+    assert env.chat._model == "" and env.chat.route_chip.text() == "qwen3:8b · Ollama"
+    env.chat._set_route("llama3.1:8b")
+    env.chat.new_chat()                                    # a new conversation forgets the pick
+    assert env.chat._model == "" and env.chat.route_chip.text() == "qwen3:8b · Ollama"
+
+
+def test_the_picker_of_the_api_route_lists_its_models(env):
+    menu = open_route_menu(env)
+    assert [key for key, _meta, _icon in items(menu)] == [*ANTHROPIC_FALLBACK_MODELS, "setup"]
+    assert all(row.isEnabled() for row in menu._rows)
+    assert dict((key, meta) for key, meta, _icon in items(menu))["claude-sonnet-5-5"] == "default"
     menu.close()
     env.chat._set_route("claude-opus-5-5")
-    assert ai_profile.model_choice(env.window.project, ai_profile.API, ai_profile.CHAT) == "claude-opus-5-5"
     assert env.chat.route_chip.text() == "claude-opus-5-5 · API"
+    assert ai_profile.model_choice(env.window.project, ai_profile.API, ai_profile.CHAT) == "claude-sonnet-5-5"
     assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == ""     # Local keeps its own
+
+
+def test_a_model_picked_for_one_route_stays_with_it(env):
+    env.chat._set_route("claude-opus-5-5")
+    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
+    env.window.state.set_ai_route(ai_profile.LOCAL)
+    assert env.chat.route().model == "qwen3:8b"
+    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.API)
+    assert env.chat.route().model == "claude-opus-5-5"
 
 
 def test_while_a_run_is_going_the_model_and_the_scope_stay_as_they_are(env):
@@ -531,7 +531,7 @@ def test_without_a_key_or_a_chosen_model_the_chat_says_what_to_do(env, monkeypat
 # -- the palette -------------------------------------------------------------------------------------------
 
 def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
-    env.window.assistant.show_view(CLAUDE_CODE)
+    env.window.assistant.scope.set_current("deck")
     script(env, reply("On it."))
     palette = env.window.palette
     palette.open()
@@ -541,7 +541,8 @@ def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
     palette._run(len(palette._entries) - 1)
     wait_until(lambda: not env.chat.session.running)
     pump()
-    assert env.window.assistant.current == CHAT and env.chat.scope.current() == "slide"
+    assert env.window.assistant._stack.currentWidget() is env.chat and env.chat.scope.current() == "slide"
+    assert env.window.assistant.header.target.full_text() == "abc · Hello"      # the header follows the scope
     assert len(widgets(env, UserBubble)) == 1 and widgets(env, AssistantText)[0].raw == "On it."
 
 
@@ -578,24 +579,20 @@ def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, mo
 
 
 def test_the_tools_menu_entry_opens_the_chat_on_this_slide_ready_to_type(env):
-    env.window.assistant.show_view(CLAUDE_CODE)
     env.chat.scope.set_current("deck")
     env.window.focus_chat()
-    assert env.window.assistant.current == CHAT and env.chat.scope.current() == "slide"
+    assert env.window.assistant._stack.currentWidget() is env.chat and env.chat.scope.current() == "slide"
     assert not env.chat.session.running and not widgets(env, UserBubble)
 
 
-# -- the switch ------------------------------------------------------------------------------------------------
-
-def test_the_switch_is_remembered(env):
-    area = env.window.assistant
-    assert area.current == CHAT
-    area.switch.changed.emit(CLAUDE_CODE)
-    assert area.current == CLAUDE_CODE and app_settings.get(env.window.project, assistant_module.SETTING) == CLAUDE_CODE
-    assert area._stack.currentWidget() is area._pages[CLAUDE_CODE] and not area.chat.isVisibleTo(area)
-    again = AssistantArea(env.window, env.window.state)
-    assert again.current == CLAUDE_CODE
-    again.shutdown()
+def test_on_claude_code_the_chat_entries_say_the_conversation_is_the_terminal(env):
+    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
+    shown = []
+    env.window.toast.show_message = shown.append
+    env.window.ask_chat("hello")
+    env.window.focus_chat()
+    assert shown == [resolver.CHAT_IN_TERMINAL] * 2
+    assert not env.chat.session.running and not widgets(env, UserBubble)
 
 
 # -- the workspace of the window ----------------------------------------------------------------------------------

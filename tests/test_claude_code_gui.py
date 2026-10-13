@@ -22,10 +22,8 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
-from slidemage import app_settings
-from slidemage.ai import claude_launch
+from slidemage.ai import ai_profile, claude_launch
 from slidemage.deck_scan import scan_decks
-from slidemage.ui.workspace.chat.assistant import CHAT, CLAUDE_CODE
 from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_file import SAME
 from slidemage.ui.workspace.terminal import session as session_module
@@ -68,7 +66,6 @@ class Env:
 def env(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
     context = ProjectContext.at(root)
-    app_settings.set(context, "assistant_view", CHAT)
     fake = make_fake_claude(tmp_path)
     e = Env()
     e.root, e.fake, e.log = root, fake, tmp_path / "fake.log"
@@ -94,8 +91,14 @@ def terminal_text(env) -> str:
     return box["text"]
 
 
+def use_claude_code(env):
+    """The AI switch on Cloud · Claude Code (as it is committed: the first-use question is behind it)."""
+    ai_profile.mark_cloud_seen(env.window.project)
+    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
+
+
 def start_view(env):
-    env.window.assistant.show_view(CLAUDE_CODE)
+    use_claude_code(env)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
     wait_until(lambda: "Fake Claude Code" in terminal_text(env))
 
@@ -126,14 +129,14 @@ def test_copy_and_paste_go_through_the_clipboard_and_only_web_links_open(qapp, m
 
 def test_without_claude_the_view_says_how_to_install_it_and_starts_no_process(env, monkeypatch):
     monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
-    env.window.assistant.show_view(CLAUDE_CODE)
+    use_claude_code(env)
     pump(0.2)
-    assert env.view._stack.currentIndex() == view_module.HINT and env.view.terminal is None and env.view.session is None
+    assert env.view._stack.currentIndex() == view_module.SETUP and env.view.terminal is None and env.view.session is None
     assert env.view._stack.currentWidget().isVisibleTo(env.view)
     texts = " ".join(label.text() for label in env.view._stack.currentWidget().findChildren(QLabel))
     assert "not installed" in texts and claude_launch.INSTALL_URL in texts
     monkeypatch.setattr(claude_launch, "find_claude", lambda: env.fake)
-    env.view.check_again()
+    env.view.setup_button.click()
     wait_until(lambda: env.view.session is not None and env.view.session.running)
     assert env.view._stack.currentIndex() == view_module.TERMINAL
 
@@ -144,7 +147,7 @@ def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, mo
 
     original = session_module.McpServer.start
     monkeypatch.setattr(session_module.McpServer, "start", busy)
-    env.window.assistant.show_view(CLAUDE_CODE)
+    use_claude_code(env)
     wait_until(lambda: env.view.status.text() == "Could not start")
     wait_until(lambda: "could not be started" in terminal_text(env).replace("\n", " "))     # the terminal is narrow
     assert not env.view.session.running
@@ -174,8 +177,10 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     # the terminal's size is the process's size
     cols, rows = env.view._size
     assert cols > 20 and rows > 5
-    env.view.terminal.resize(900, 300)
+    env.view.terminal.setFixedSize(900, 300)           # the layout leaves it alone
     wait_until(lambda: env.view._size != (cols, rows))
+    env.view.terminal.view.page().runJavaScript("refit();")        # the page settles (a scrollbar may take a column)
+    pump(0.5)
     reported = []                                   # a refit that finds the same size tells nobody (no SIGWINCH)
     env.view.terminal.resized.connect(lambda c, r: reported.append((c, r)))
     env.view.terminal.view.page().runJavaScript("refit(); refit();")

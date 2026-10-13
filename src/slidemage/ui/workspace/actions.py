@@ -26,6 +26,8 @@ from . import compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile
+from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
+from .terminal.tasks import DECK_TASKS, SLIDE_TASKS
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
@@ -58,6 +60,11 @@ def _versioned(w) -> bool:
 
 def _admin_slides_possible(w) -> bool:
     return _active_deck(w) and w.state.deck.group == TAG_COURSE and bool(w.state.deck.course_url)
+
+
+def _offered(w, scope: str, task):
+    """The bubble of `task` the assistant offers for `scope` now, or None."""
+    return next((bubble for bubble in w.assistant.header.offers(scope) if bubble.task is task), None)
 
 
 def _current(is_current: bool) -> str:
@@ -248,4 +255,11 @@ def build_registry() -> CommandRegistry:
             meta=lambda w, m=mode: _current(w.state.ai_mode == m))
     add("ai:setup", "AI setup…", AI, lambda w: w.ai_route.open_setup(), icon="tune",
         meta="models per task, cloud connection, project setting")
+    # The tasks that fit the slide or the deck now, as the assistant header offers them (two of them there):
+    # a task the route cannot run says why instead of running.
+    for scope, scope_meta, tasks in ((SLIDE_SCOPE, "this slide", SLIDE_TASKS), (DECK_SCOPE, "the deck", DECK_TASKS)):
+        for task in tasks:
+            add(f"task:{scope}:{task.name}", lambda w, sc=scope, t=task: getattr(_offered(w, sc, t), "label", t.name), AI,
+                lambda w, sc=scope, t=task: w.assistant.run_task(_offered(w, sc, t)), icon="auto_fix_high",
+                meta=scope_meta, visible=lambda w, sc=scope, t=task: _offered(w, sc, t) is not None)
     return registry

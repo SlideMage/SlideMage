@@ -357,7 +357,7 @@ def test_settings_link_opens_the_ai_tab(window, monkeypatch):
 def test_the_palette_has_the_switch_and_ai_setup_and_they_go_through_the_request_flow(window):
     ai_profile.set_policy(window.project, CLOUD)
     ai_profile.mark_cloud_seen(window.project)
-    titles = {c.id: c.title(window) for c in window.commands if c.group == "AI"}
+    titles = {c.id: c.title(window) for c in window.commands if c.group == "AI" and c.id.startswith("ai:")}
     assert titles == {"ai:local": "Use Local AI", "ai:cloud": "Use Cloud AI", "ai:setup": "AI setup…"}
     window.commands.run("ai:cloud", window)
     assert window.state.ai_mode == CLOUD

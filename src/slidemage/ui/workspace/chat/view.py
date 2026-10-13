@@ -5,8 +5,10 @@ with a card for every tool the agent runs and a diff card for every edit. In "As
 edit waits for Apply / Reject; in "Edit automatically" mode it is applied at once and its card offers
 Undo. Stop ends a run. Files come in with the paperclip, by drop or by pasting an image: they are chips above
 the box, and the request names them ("Attached: sources/paper.pdf") for the agent to read. The conversation (history) lasts for the session; New chat starts afresh.
-Each route (Local, Cloud · API, Cloud · Claude Code) has a conversation and a draft of its own: when the AI switch
-moves, `show_route` puts this one away and brings the new route's back (route_chat.py).
+Each route (Local, Cloud · API) has a conversation and a draft of its own: when the AI switch moves, `show_route` puts
+this one away and brings the new route's back (route_chat.py). The assistant card around the view (assistant.py) owns
+the scope (This slide | Whole deck) and the New conversation button; the model chip picks a model for this chat only
+(the default of the route is set in AI setup).
 
 Threading is in session.py (the agent thread, `ChatSession.event` on the GUI thread) and
 gui_workspace.py (what the agent may ask of the main window).
@@ -50,7 +52,6 @@ from .session import ChatSession, LocalModels
 MODE_SETTING = "chat_edit_mode"
 MODES = ((EDIT_ASK, "Ask before edits", "each change is shown first"),
          (EDIT_AUTO, "Edit automatically", "applied at once, with Undo"))
-SCOPES = ((SCOPE_SLIDE, "This slide"), (SCOPE_DECK, "Whole deck"))
 SUGGESTIONS = {
     SCOPE_SLIDE: ("Make this slide more concise", "Suggest a better title", "Add speaker notes to this slide"),
     SCOPE_DECK: ("Summarise the structure of this deck", "Which slides have LaTeX errors?",
@@ -59,6 +60,7 @@ SUGGESTIONS = {
 FIX_SUGGESTION = "Fix the LaTeX errors on this slide"
 COMPOSER_LINES = (2, 6)
 CHIP_CHARS = 32
+LIST_MIN_HEIGHT = 40   # the header takes room, and the assistant card is 380 px at the least
 
 
 class Composer(QPlainTextEdit):
@@ -108,10 +110,14 @@ class _Column(Surface):
 
 
 class ChatView(Surface):
-    def __init__(self, app, state: WorkspaceState) -> None:
+    route_changed = Signal()        # the route or the model that answers changed: refresh_route has run
+
+    def __init__(self, app, state: WorkspaceState, scope: SegmentedControl) -> None:
+        """`scope` is the assistant header's (This slide | Whole deck): the view reads it and asks to change it."""
         super().__init__()
         self.app = app
         self.state = state
+        self.scope = scope
         self.workspace = GuiWorkspace(app)
         self.session = ChatSession(self.workspace, app, self)
         mode = app_settings.get(state.project, MODE_SETTING)
@@ -126,19 +132,12 @@ class ChatView(Surface):
         self._attached: list[str] = []                 # project-relative paths the next request names
         self._chats = route_chats()                    # what the other routes' conversations left behind
         self._route_key = state.ai_route               # whose conversation is on show
+        self._model = ""                               # the model picked for this chat only ("" is the route's default)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        top = QHBoxLayout()
-        self.scope = SegmentedControl(SCOPES, current=SCOPE_SLIDE)
-        self.scope.changed.connect(lambda _scope: self._fill_empty())
-        top.addWidget(self.scope)
-        top.addStretch(1)
-        self.new_button = IconButton("add_comment", "New chat: forget the conversation so far")
-        self.new_button.clicked.connect(lambda: self.new_chat())
-        top.addWidget(self.new_button)
-        layout.addLayout(top)
+        scope.changed.connect(lambda _scope: self._fill_empty())
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -146,6 +145,7 @@ class ChatView(Surface):
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setObjectName(q.SURFACE)
         self._scroll.viewport().setObjectName(q.SURFACE)
+        self._scroll.setMinimumHeight(LIST_MIN_HEIGHT)     # the message list gives way to the controls
         content = _Column()
         self._messages = QVBoxLayout(content)
         self._messages.setContentsMargins(0, 0, 4, 0)
@@ -269,10 +269,12 @@ class ChatView(Surface):
         self._add(text_label(label, q.CHAT_MODEL))
 
     def new_chat(self) -> None:
-        """Forget the conversation of the route on show (the others keep theirs)."""
+        """Forget the conversation of the route on show (the others keep theirs), and the model picked for it."""
         if self.session.running:
             return
         self.session.new_chat()
+        self._model = ""
+        self.refresh_route()
         self._clear_attachments()
         for widget in self._take_messages():
             widget.deleteLater()
@@ -299,11 +301,11 @@ class ChatView(Surface):
             return
         left = self._chats[self._route_key]
         left.draft, left.attached = self.composer.toPlainText(), list(self._attached)
-        left.history, left.started = self.session.history, self._empty.isHidden()
+        left.history, left.started, left.model = self.session.history, self._empty.isHidden(), self._model
         left.messages = self._take_messages()
         self._route_key = route
         arrived = self._chats[route]
-        self.session.history = arrived.history
+        self.session.history, self._model = arrived.history, arrived.model
         self._clear_attachments()
         for rel in arrived.attached:
             self._add_chip(rel)
@@ -313,8 +315,14 @@ class ChatView(Surface):
             widget.show()
         self._empty.setVisible(not arrived.started)
         self._fill_empty()
+        self.refresh_route()
 
     # -- asking ------------------------------------------------------------------------------
+
+    def _set_scope(self, scope: str) -> None:
+        """Move the header's scope (no click: its owners are told through `changed`)."""
+        self.scope.set_current(scope)
+        self.scope.changed.emit(scope)
 
     def ask(self, text: str, scope: str = "") -> None:
         """Put `text` to the agent now (a suggestion, the command palette); while it is busy the text
@@ -323,15 +331,13 @@ class ChatView(Surface):
             self.composer.setPlainText(text)
             return
         if scope:
-            self.scope.set_current(scope)
-            self._fill_empty()
+            self._set_scope(scope)
         self.send(text)
 
     def focus_composer(self, scope: str) -> None:
         """Ready the message box for a question about `scope`."""
         if not self.session.running:
-            self.scope.set_current(scope)
-            self._fill_empty()
+            self._set_scope(scope)
         self.composer.setFocus()
 
     def send(self, text: str | None = None) -> None:
@@ -403,7 +409,7 @@ class ChatView(Surface):
     def _provider_for_send(self) -> Optional[tuple[ai_profile.Route, ChatProvider]]:
         """The route and the model that answer the next request; None (and the reason shown) when the route cannot
         answer now."""
-        route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
+        route = self.route()
         if reason := resolver.problem(self.state.project, route):
             self._add(Notice(reason, "error"))
             return None
@@ -434,8 +440,6 @@ class ChatView(Surface):
     def _set_running(self, running: bool) -> None:
         self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
-        self.new_button.setEnabled(not running)
-        self.scope.setEnabled(not running)
         self.route_chip.setEnabled(not running)         # the model of a run under way does not change
         if not running:
             self.status.stop()
@@ -533,15 +537,20 @@ class ChatView(Surface):
 
     # -- permission and model ---------------------------------------------------------------
 
+    def route(self) -> ai_profile.Route:
+        """The route and model that answer the next request: the model picked for this chat, else the route's default."""
+        return ai_profile.resolve(self.state.project, ai_profile.CHAT, self._model)
+
     def refresh_route(self) -> None:
-        """The route and model that answer, named under the message box (also after Settings changed them)."""
-        route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
+        """The route and model that answer, named under the message box (also after AI setup changed them)."""
+        route = self.route()
         reason = resolver.problem(self.state.project, route)
         self.route_chip.set_text(route.label)
         self.route_chip.set_tone("warning" if reason else "muted")
-        self.route_chip.setToolTip("The model that answers. Click to choose another; the default is set in AI setup.")
+        self.route_chip.setToolTip("The model that answers. Click to choose another for this chat; the default is set in AI setup.")
         self.route_note.setText(reason)
         self.route_note.setVisible(bool(reason))
+        self.route_changed.emit()
 
     def _open_mode_menu(self) -> None:
         menu = PopoverMenu(self, min_width=250)
@@ -573,42 +582,44 @@ class ChatView(Surface):
         self._local_models, self._local_loader = names, None
 
     def _open_route_menu(self) -> None:
-        """The models of the active route: the local ones that can call tools (as of the last time Ollama was
-        asked: when the menu opens, for the next time), or the API models, greyed with the reason without a key.
-        Claude Code has no choice here: its conversation model is set in Claude Code."""
-        route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
+        """The models of the active route, the default marked "default" and the others "this chat only": the local
+        ones that can call tools (as of the last time Ollama was asked: when the menu opens, for the next time), or
+        the API models, greyed with the reason without a key."""
+        project = self.state.project
+        route = self.route()
+        default = ai_profile.model_choice(project, route.route, ai_profile.CHAT)
         menu = PopoverMenu(self, min_width=270)
-        if route.route == ai_profile.CLAUDE_CODE:
-            menu.add_item("", "The model is set in Claude Code (Claude Code tab)", enabled=False)
-        elif route.route == ai_profile.API:
-            has_key = bool(resolver.api_models(self.state.project))
+
+        def add(model: str, note: str = "", enabled: bool = True) -> None:
+            meta = " · ".join(filter(None, ["default" if model == default else "this chat only", note]))
+            menu.add_item(model, model, icon="check" if model == route.model else "", meta=meta, enabled=enabled)
+
+        if route.route == ai_profile.API:
+            has_key = bool(resolver.api_models(project))
             for model in ANTHROPIC_FALLBACK_MODELS:
-                menu.add_item(model, model, icon="check" if model == route.model else "", enabled=has_key,
-                              meta="" if has_key else "needs an API key")
+                add(model, "" if has_key else "needs an API key", has_key)
         else:
             self._load_local_models()
             known = self._local_models
             local = list(known or [])
-            if route.model and route.model not in local:
-                local.insert(0, route.model)      # the chosen one stays visible, with a reason
+            for model in dict.fromkeys(filter(None, [route.model, default])):
+                if model not in local:
+                    local.insert(0, model)      # the chosen and the default one stay visible
             for model in local:
-                menu.add_item(model, model, icon="check" if model == route.model else "",
-                              meta="not installed, or cannot call tools" if known is not None and model not in known else "")
+                add(model, "not installed, or cannot call tools" if known is not None and model not in known else "")
             if not local:
                 menu.add_item("", "Looking for local models…" if known is None else "No installed model can call tools",
                               enabled=False)
         menu.add_separator()
-        menu.add_item("settings", "More in Settings…")
+        menu.add_item("setup", "Set the default in AI setup…")
         menu.triggered.connect(self._set_route)
         menu.closed.connect(menu.deleteLater)
         menu.popup_below(self.route_chip)
 
     def _set_route(self, key: str) -> None:
-        """A menu pick: the new default model of the active route for the chat."""
-        if key == "settings":
-            self.app.commands.run("settings", self.app)
+        """A menu pick: the model of this chat only (the default stays as AI setup has it), or AI setup itself."""
+        if key == "setup":
+            self.app.commands.run("ai:setup", self.app)
         else:
-            route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
-            if key != route.model:
-                ai_profile.set_model_choice(self.state.project, route.route, ai_profile.CHAT, key)
+            self._model = "" if key == ai_profile.model_choice(self.state.project, self.state.ai_route, ai_profile.CHAT) else key
         self.refresh_route()

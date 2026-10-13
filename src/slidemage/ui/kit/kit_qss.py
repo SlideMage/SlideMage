@@ -141,6 +141,12 @@ AI_POPUP_TEXT = "kitAiPopupText"
 AI_POPUP_LINK = "kitAiPopupLink"
 AI_SETUP_HEAD = "kitAiSetupHead"
 AI_SETUP_CELL = "kitAiSetupCell"
+# The assistant card's header, the running-task pill and the Claude Code setup card (ui/workspace/assistant*.py).
+ASSISTANT_TITLE = "kitAssistantTitle"
+ASSISTANT_SUB = "kitAssistantSub"
+ASSISTANT_TARGET = "kitAssistantTarget"
+TASK_PILL = "kitTaskPill"
+CLOUD_CARD = "kitCloudCard"
 
 WARNING_LABEL = "warningLabel"
 
@@ -653,6 +659,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QLabel#{ICON}[tone="muted"] {{ color: {t.text_4}; }}
         QLabel#{ICON}[tone="strong"] {{ color: {t.text}; }}
         QLabel#{ICON}[tone="warning"] {{ color: {t.warning}; }}
+        QLabel#{ICON}[tone="local"] {{ color: {t.local_icon}; }}
+        QLabel#{ICON}[tone="cloud"] {{ color: {t.cloud_solid}; }}
         QToolButton#{ICON_BUTTON} {{
             background-color: transparent;
             color: {t.text};
@@ -902,6 +910,22 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text_3};
         }}
         {text(f"QLabel#{TOPBAR_SAVE}", 11.5, t.text_3)}
+
+        /* The assistant header: the route's title (amber in Cloud), its model, and the target of the scope. */
+        {text(f"QLabel#{ASSISTANT_TITLE}", 14, t.text, 600)}
+        QLabel#{ASSISTANT_TITLE}[cloud="true"] {{ color: {t.cloud_fg}; }}
+        {text(f"QLabel#{ASSISTANT_SUB}", 12, t.text_2)}
+        {text(f"QLabel#{ASSISTANT_TARGET}", 12.5, t.text_2)}
+        QFrame#{TASK_PILL} {{ background-color: {t.bg}; border-radius: {RADIUS_SM}px; }}
+        {text(f"QFrame#{TASK_PILL} QLabel", 12.5, t.text)}
+        QFrame#{CLOUD_CARD} {{
+            background-color: {t.cloud_bg};
+            border: 1px solid {t.cloud_border};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QFrame#{CLOUD_CARD} QLabel {{ background-color: transparent; color: {t.cloud_fg}; }}
+        QFrame#{CLOUD_CARD} QLabel#{ICON} {{ color: {t.cloud_solid}; }}
+        {text(f"QFrame#{CLOUD_CARD} QLabel#{ASSISTANT_TITLE}", 14, t.cloud_fg, 600)}
 
         /* Slide list: the find box is a white field on the grey page, the
            tree draws its own rows (slide_tree.py). */

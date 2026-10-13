@@ -46,6 +46,14 @@ def _no_cloud_credentials(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _claude_signed_in(monkeypatch):
+    """No test may run the real `claude auth status`: Claude Code counts as signed in unless a test says not."""
+    from slidemage.ai import claude_launch
+
+    monkeypatch.setattr(claude_launch, "signed_in", lambda claude: True)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_temp_dir(monkeypatch, tmp_path_factory):
     """Renders leave their PDF folder (slidemage_preview_*) under the temp directory and sweep
     old ones after every render; a test must neither litter nor sweep the real one."""

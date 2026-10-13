@@ -1,5 +1,5 @@
-"""The bubbles of the Claude Code tab (ui/workspace/terminal/tasks.py and view.py), with the fake `claude -p` of
-tests/fake_claude.py: which bubbles the focus and the lint offer, a fix applied into the open buffer, a
+"""The tasks of the assistant card (ui/workspace/terminal/tasks.py, assistant.py and assistant_header.py), with the fake
+`claude -p` of tests/fake_claude.py: which tasks the focus and the lint offer, a fix applied into the open buffer, a
 translation that creates the partner only on success, the conflicts (typing, a changed source), Stop, the
 route's model and effort and the project's German address, the image bubbles (describe, translate the descriptions), the deck bubbles
 (counts, two processes at a time, fresh captures, conflicts, duplicate partners, rate and usage limits, Stop, the
@@ -18,8 +18,8 @@ from test_claude_code_gui import env as claude_env, pump, start_view, wait_until
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, add_pictures
 
 from slidemage import alt_draft, alt_images, app_settings, slide_ids, slide_language, slide_versioning
-from slidemage.ai import ai_profile, claude_launch, claude_runner, credentials, translation_style
-from slidemage.ui.kit.widgets import ModalSheet, PopoverMenu
+from slidemage.ai import ai_profile, claude_launch, claude_runner, credentials, resolver, translation_style
+from slidemage.ui.kit.widgets import ModalSheet
 from slidemage.ui.workspace import render_check
 from slidemage.ui.workspace.terminal import tasks as tasks_module
 
@@ -55,9 +55,7 @@ def ctx(claude_env):  # noqa: F811
 
 @pytest.fixture
 def fake(claude_env, tmp_path, monkeypatch):  # noqa: F811
-    ai_profile.set_mode(claude_env.window.project, ai_profile.CLOUD)       # the route of these tasks: Cloud · Claude Code
-    ai_profile.mark_cloud_seen(claude_env.window.project)
-    start_view(claude_env)
+    start_view(claude_env)                                                  # the route of these tasks: Cloud · Claude Code
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(tmp_path / "tasks.jsonl"))   # not the terminal's log
     return Fake(claude_env, tmp_path, monkeypatch)
 
@@ -66,23 +64,22 @@ def slide_file(env):
     return env.window.centre.source.file_for(env.path)
 
 
-def bubble_buttons(env):
-    row = env.view._bubble_row
-    return [row.itemAt(i).widget() for i in range(len(env.view._bubbles))]
-
-
 def buttons(env):
-    return [bubble.label for bubble in env.view._bubbles]
+    """Every task that fits the scope now (the header shows the two most relevant of them)."""
+    area = env.window.assistant
+    return [bubble.label for bubble in area.header.offers(area.scope.current())]
 
 
 def click(env, label):
-    next(b for b in bubble_buttons(env) if b.text() == label).click()
+    """Run the task of that label, as the header's button or the palette's command does."""
+    area = env.window.assistant
+    area.run_task(next(b for b in area.header.offers(area.scope.current()) if b.label == label))
 
 
 def settled(env):
-    wait_until(lambda: not env.view.tasks.busy)
+    wait_until(lambda: not env.window.assistant.tasks.busy)
     pump(0.05)
-    return env.view.task_status.text()
+    return env.window.assistant.task_row.status.text()
 
 
 def german_files(env):
@@ -121,12 +118,18 @@ def test_a_slide_with_a_partner_is_not_offered_a_translation(fake):
     wait_until(lambda: env.window.centre.path == env.path and buttons(env) == ["Better title"])
 
 
-def test_without_claude_there_are_no_bubbles(claude_env, monkeypatch):  # noqa: F811
+def test_without_claude_the_header_offers_no_task_and_the_palette_says_why(claude_env, monkeypatch, tmp_path):  # noqa: F811
     env = claude_env
+    ai_profile.mark_cloud_seen(env.window.project)
+    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
     monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
-    env.window.assistant.show_view(1)
-    pump(0.2)
-    assert env.view.tasks is None and env.view._bubbles == []
+    shown = []
+    env.window.toast.show_message = shown.append
+    area = env.window.assistant
+    area.header.refresh_content()
+    assert "Better title" in buttons(env) and area.header.shown == []
+    click(env, "Better title")
+    assert shown == [resolver.NO_CLAUDE] and not area.tasks.busy
 
 
 # -- fixing ---------------------------------------------------------------------------------------------------
@@ -139,12 +142,12 @@ def test_a_fix_goes_into_the_open_buffer_and_ctrl_z_takes_it_back(fake, monkeypa
     break_slide(env)
     fake.reply({"answer": FIX})
     click(env, "Fix LaTeX errors")
-    assert env.view.tasks.busy and env.view._bubbles == [] and env.view.stop_button.isVisibleTo(env.view)
+    assert env.window.assistant.tasks.busy and env.window.assistant.header.shown == [] and env.window.assistant.task_row.stop_button.isVisibleTo(env.window.assistant)
     assert settled(env).startswith("Done in ")
     editor = slide_file(env).editor
     assert editor.text() == LF and rendered == []                    # Source mode: the mode stays, nothing renders
     assert env.window.state.mode == "source"
-    assert not env.view.stop_button.isVisibleTo(env.view) and buttons(env) == ["Translate to German", "Better title"]
+    assert not env.window.assistant.task_row.stop_button.isVisibleTo(env.window.assistant) and buttons(env) == ["Translate to German", "Better title"]
     editor.undo()
     assert editor.text() == BROKEN
     request = fake.calls()[0]["request"]
@@ -184,7 +187,7 @@ def test_typing_during_a_fix_is_a_conflict_and_nothing_is_overwritten(fake):
     editor.replace_all_text(typed)
     assert settled(env) == tasks_module.CONFLICT
     assert editor.text() == typed
-    assert env.view.result_button.isVisibleTo(env.view) and "Second point" in env.view.tasks.unapplied
+    assert env.window.assistant.task_row.result_button.isVisibleTo(env.window.assistant) and "Second point" in env.window.assistant.tasks.unapplied
 
 
 def test_a_focus_change_during_a_task_does_not_change_its_target(fake):
@@ -205,7 +208,7 @@ def test_stop_cancels_and_the_late_result_is_dropped(fake, tmp_path):
     fake.reply({"answer": FIX, "delay": 5, "marker": str(tmp_path / "late")})
     click(env, "Fix LaTeX errors")
     wait_until(lambda: fake.log.exists())
-    env.view.stop_button.click()
+    env.window.assistant.task_row.stop_button.click()
     assert settled(env) == "Cancelled"
     assert slide_file(env).editor.text() == BROKEN and not (tmp_path / "late").exists()
 
@@ -282,7 +285,7 @@ def test_a_source_that_changed_meanwhile_gets_no_partner(fake):
     slide_file(env).editor.replace_all_text(typed)
     assert settled(env) == tasks_module.CONFLICT
     assert german_files(env) == [] and slide_file(env).editor.text() == typed
-    assert "Hallo" in env.view.tasks.unapplied and env.view.result_button.isVisibleTo(env.view)
+    assert "Hallo" in env.window.assistant.tasks.unapplied and env.window.assistant.task_row.result_button.isVisibleTo(env.window.assistant)
     assert (env.root / "decks" / "test.tex").read_text().count("\\slide") == 2
 
 
@@ -349,7 +352,7 @@ def test_two_clicks_start_one_task(fake):
     env = fake.env
     fake.reply({"answer": GERMAN, "delay": 0.3})
     click(env, "Translate to German")
-    env.view.tasks.start(tasks_module.claude_tasks.TRANSLATE)
+    env.window.assistant.tasks.start(tasks_module.claude_tasks.TRANSLATE)
     settled(env)
     assert len(fake.calls()) == 1
 
@@ -451,15 +454,15 @@ def test_typing_during_a_title_task_is_a_conflict(fake):
     typed = LF + "% typed\n"
     slide_file(env).editor.replace_all_text(typed)
     assert settled(env) == tasks_module.CONFLICT
-    assert slide_file(env).editor.text() == typed and env.view.tasks.unapplied.startswith("A better title") is False
+    assert slide_file(env).editor.text() == typed and env.window.assistant.tasks.unapplied.startswith("A better title") is False
 
 
 def test_the_status_names_what_is_done(fake, tmp_path):
     env = fake.env
     fake.reply({"answer": {"title": "T"}, "delay": 1.5})
     click(env, "Better title")
-    assert env.view.task_status.text().startswith("Retitling abc … ")
-    env.view.stop_button.click()
+    assert env.window.assistant.task_row.status.text().startswith("Retitling abc … ")
+    env.window.assistant.task_row.stop_button.click()
     settled(env)
 
 
@@ -481,7 +484,7 @@ def outdated(fake):
     backup.parent.mkdir(parents=True)
     backup.write_text("x")
     fake.partner, fake.german = path, german
-    env.view._refresh_bubbles()
+    env.window.assistant.header.schedule()
     return fake
 
 
@@ -535,7 +538,7 @@ def test_a_translation_that_changed_meanwhile_is_not_overwritten(outdated):
     typed = editor.text() + "% getippt\n"
     editor.replace_all_text(typed)
     assert settled(env) == tasks_module.CONFLICT
-    assert editor.text() == typed and "Erster Punkt!" in env.view.tasks.unapplied
+    assert editor.text() == typed and "Erster Punkt!" in env.window.assistant.tasks.unapplied
 
 
 def test_a_translation_that_changed_on_disk_meanwhile_is_not_overwritten(outdated):
@@ -546,30 +549,6 @@ def test_a_translation_that_changed_on_disk_meanwhile_is_not_overwritten(outdate
     changed = outdated.partner.read_bytes() + b"% getippt\r\n"
     outdated.partner.write_bytes(changed)
     assert settled(env) == tasks_module.CONFLICT and outdated.partner.read_bytes() == changed
-
-
-# -- more than fits ---------------------------------------------------------------------------------------
-
-def test_bubbles_that_do_not_fit_go_under_more(fake, monkeypatch):
-    env = fake.env
-    show_text(env, PROSE)
-    wait_until(lambda: buttons(env) == TEXT_BUBBLES)
-    view = env.view
-    monkeypatch.setattr(view, "width", lambda: 5000)
-    view._fit()
-    assert not view.more.isVisibleTo(view) and all(b.isVisibleTo(view) for b in bubble_buttons(env))
-    monkeypatch.setattr(view, "width", lambda: 330)
-    view._fit()
-    shown = [b for b in bubble_buttons(env) if b.isVisibleTo(view)]
-    assert 0 < len(shown) < len(TEXT_BUBBLES) and view.more.isVisibleTo(view)
-    assert [b.text() for b in shown] == TEXT_BUBBLES[:len(shown)]
-    view._open_more()
-    (menu,) = [m for m in view.findChildren(PopoverMenu) if m.isVisible()]
-    assert [entry[2] for entry in menu._entries] == TEXT_BUBBLES[len(shown):]
-    fake.reply({"answer": {"title": "T"}, "delay": 0.2})
-    menu._on_activated(str(TEXT_BUBBLES.index("Better title")))
-    assert view.tasks.busy
-    settled(env)
 
 
 # -- images ---------------------------------------------------------------------------------------------------
@@ -587,7 +566,7 @@ def test_the_image_bubbles_count_what_is_still_to_do(ctx, fake):
     wait_until(lambda: "Describe images (2)" in buttons(env))
     assert "Translate image descriptions (1)" in buttons(env)
     alt_images.update_store(ctx, lambda e: setattr(e["media/a.png"], "long", "now described") or True)
-    env.view._refresh_bubbles()
+    env.window.assistant.header.schedule()
     assert "Describe images (1)" in buttons(env) and "Translate image descriptions (2)" in buttons(env)
     slide_file(env).editor.replace_all_text(LF)
     wait_until(lambda: buttons(env) == ["Translate to German", "Better title"])
@@ -601,7 +580,7 @@ def test_describing_images_stores_drafts_and_shows_them_in_the_panel(ctx, fake):
     wait_until(lambda: "Describe images (2)" in buttons(env))
     fake.reply({"answer": IMAGE_ANSWER, "delay": 0.6})
     click(env, "Describe images (2)")
-    wait_until(lambda: "Describing images of abc … 1/2" in env.view.task_status.text())
+    wait_until(lambda: "Describing images of abc … 1/2" in env.window.assistant.task_row.status.text())
     assert settled(env).startswith("Done in ") and settled(env).endswith(": 2 described")
     store = alt_images.load_store(ctx)
     assert [(e.short, e.drafted_by) for e in store.values()] == [(IMAGE_ANSWER["short"], "Claude haiku")] * 2
@@ -619,7 +598,7 @@ def test_stop_ends_the_running_image_process_and_the_rest(ctx, fake, tmp_path):
     fake.reply({"answer": IMAGE_ANSWER, "delay": 5, "marker": str(tmp_path / "late")})
     click(env, "Describe images (2)")
     wait_until(lambda: fake.log.exists())
-    env.view.stop_button.click()
+    env.window.assistant.task_row.stop_button.click()
     assert settled(env).startswith("Stopped after ") and settled(env).endswith(": 0 described")
     assert len(fake.calls()) == 1 and not (tmp_path / "late").exists()
     assert not any(e.short for e in alt_images.load_store(ctx).values())
@@ -659,7 +638,7 @@ def add_slide(env, word):
 
 
 def deck_scope(env, label="Summarise this deck"):
-    env.view.scope._buttons["deck"].click()
+    env.window.assistant.scope._buttons["deck"].click()
     wait_until(lambda: label in buttons(env))
 
 
@@ -669,7 +648,7 @@ def german(word):
 
 
 def lines(env):
-    return env.view.tasks.report.splitlines()
+    return env.window.assistant.tasks.report.splitlines()
 
 
 def test_the_deck_bubbles_follow_the_scope_and_count_each_slide_once(fake):
@@ -683,7 +662,7 @@ def test_the_deck_bubbles_follow_the_scope_and_count_each_slide_once(fake):
     slide_file(env).editor.replace_all_text(BROKEN)
     wait_until(lambda: "Fix LaTeX errors (1 slides)" in buttons(env))
     assert buttons(env) == ["Translate missing slides (2)", "Fix LaTeX errors (1 slides)", "Summarise this deck"]
-    env.view.scope._buttons["slide"].click()
+    env.window.assistant.scope._buttons["slide"].click()
     wait_until(lambda: buttons(env) == ["Translate to German", "Fix LaTeX errors", "Better title"])
 
 
@@ -706,8 +685,8 @@ def test_two_processes_run_at_once_and_each_result_is_applied_on_the_gui_thread_
     fake.reply(*({"when": "{" + word + "}", "answer": german(word), "delay": 1.0} for word in ("Hello", "Second", "Third")))
     deck_scope(env)
     click(env, "Translate missing slides (3)")
-    wait_until(lambda: "Translating the deck … " in env.view.task_status.text())
-    assert settled(env).startswith("Done in ") and "3 applied" in env.view.task_status.text()
+    wait_until(lambda: "Translating the deck … " in env.window.assistant.task_row.status.text())
+    assert settled(env).startswith("Done in ") and "3 applied" in env.window.assistant.task_row.status.text()
     first, second, third = sorted(call["time"] for call in fake.calls())
     assert second - first < 0.8 and third - first >= 0.9                 # two together; the third waits for one
     assert sorted(slug for slug, _ in applied) == ["abc-EN-Hello", "abd-EN-Second", "abe-EN-Third"]
@@ -717,7 +696,7 @@ def test_two_processes_run_at_once_and_each_result_is_applied_on_the_gui_thread_
     deck = (env.root / "decks" / "test.tex").read_text().replace("\r\n", "\n")
     assert deck.count("\\slide{") == 6 and all(f"\\slide{{{id_slug}}}\n" in deck for id_slug in (
         "abc-EN-Hello", "abd-EN-Second", "abe-EN-Third"))
-    assert len(lines(env)) == 3 and env.view.result_button.isVisibleTo(env.view)
+    assert len(lines(env)) == 3 and env.window.assistant.task_row.result_button.isVisibleTo(env.window.assistant)
     assert env.window.centre.path == env.path                                # no partner was opened
 
 
@@ -742,7 +721,7 @@ def test_a_slide_edited_during_its_run_is_a_conflict_for_that_slide_only(fake):
     click(env, "Translate missing slides (2)")
     wait_until(lambda: len(fake.calls()) == 2)
     slide_file(env).editor.replace_all_text(LF + "% typed meanwhile\n")
-    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.view.task_status.text()
+    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.window.assistant.task_row.status.text()
     (partner,) = german_files(env)
     assert "-DE-Second-" in partner.name
     assert any(line == f"abc-EN-Hello: {tasks_module.CONFLICT}" for line in lines(env))
@@ -757,7 +736,7 @@ def test_a_partner_made_meanwhile_is_not_made_again(fake):
     wait_until(lambda: len(fake.calls()) == 2)
     (env.root / "slides" / "abf-DE-Zweite-current.tex").write_bytes(
         b"%% Translation of: abd-EN-Second\r\n%%\r\n\r\nHand made\r\n")                  # by the user
-    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.view.task_status.text()
+    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.window.assistant.task_row.status.text()
     names = [path.name for path in german_files(env)]
     assert len(names) == 2 and "abf-DE-Zweite-current.tex" in names
     assert not any("Zweite" in line or "Second" in line for line in lines(env) if "created" in line)
@@ -782,8 +761,8 @@ def test_a_rate_limit_drops_to_one_worker_and_gives_the_slide_a_second_try(fake)
                {"when": "{Second}", "answer": german("Second"), "delay": 1.5}, {"answer": german("Hello")})
     deck_scope(env)
     click(env, "Translate missing slides (2)")
-    wait_until(lambda: tasks_module.SLOWED in env.view.task_status.text())
-    assert settled(env).startswith("Done in ") and "2 applied" in env.view.task_status.text()
+    wait_until(lambda: tasks_module.SLOWED in env.window.assistant.task_row.status.text())
+    assert settled(env).startswith("Done in ") and "2 applied" in env.window.assistant.task_row.status.text()
     calls = fake.calls()
     assert len(calls) == 3 and len(german_files(env)) == 2
     assert calls[2]["time"] - calls[1]["time"] >= 1.4 and "{Hello}" in calls[2]["request"]    # alone, after the other
@@ -795,7 +774,7 @@ def test_a_second_rate_limit_fails_that_slide_only(fake):
                {"error": "overloaded"})
     deck_scope(env)
     click(env, "Translate missing slides (2)")
-    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.view.task_status.text()
+    assert settled(env).startswith("Done in ") and "1 applied, 1 failed" in env.window.assistant.task_row.status.text()
     assert "abc-EN-Hello: overloaded" in lines(env) and len(fake.calls()) == 3
 
 
@@ -820,8 +799,8 @@ def test_stop_ends_both_processes_and_the_queue_but_keeps_what_was_applied(fake,
     click(env, "Translate missing slides (3)")
     wait_until(lambda: len(german_files(env)) == 1)                       # abc is done, abe has started
     wait_until(lambda: len(fake.calls()) == 3)
-    env.view.stop_button.click()
-    assert settled(env).startswith("Stopped after ") and "1 applied" in env.view.task_status.text()
+    env.window.assistant.task_row.stop_button.click()
+    assert settled(env).startswith("Stopped after ") and "1 applied" in env.window.assistant.task_row.status.text()
     assert len(german_files(env)) == 1 and not (tmp_path / "late").exists() and len(fake.calls()) == 3
 
 
@@ -829,7 +808,7 @@ def test_the_summary_is_shown_in_a_sheet_and_nothing_is_written(fake, monkeypatc
     env = fake.env
     shown = []
     monkeypatch.setattr(ModalSheet, "exec", lambda sheet: shown.append(
-        (sheet.findChild(QPlainTextEdit).toPlainText(), [b.text() for b in sheet.findChildren(type(env.view.stop_button))])))
+        (sheet.findChild(QPlainTextEdit).toPlainText(), [b.text() for b in sheet.findChildren(type(env.window.assistant.task_row.stop_button))])))
     before = {path: path.read_bytes() for path in (env.root / "slides").iterdir()} | {
         env.root / "decks" / "test.tex": (env.root / "decks" / "test.tex").read_bytes()}
     fake.reply({"answer": {"summary": "Two slides: Hello and Second."}})
@@ -851,7 +830,7 @@ def test_describing_the_decks_images_runs_over_every_image_once(ctx, fake):
     deck_scope(env, "Describe images (2)")
     fake.reply({"answer": IMAGE_ANSWER, "delay": 0.2})
     click(env, "Describe images (2)")
-    wait_until(lambda: "Describing images of the deck" in env.view.task_status.text())
+    wait_until(lambda: "Describing images of the deck" in env.window.assistant.task_row.status.text())
     assert settled(env).endswith(": 2 described") and len(fake.calls()) == 2
     assert all(e.short == IMAGE_ANSWER["short"] for e in alt_images.load_store(ctx).values())
 
@@ -879,9 +858,9 @@ def test_on_local_a_task_with_no_ollama_path_says_so_and_nothing_runs(ctx, fake)
     break_slide(env)
     for label in ("Fix LaTeX errors", "Better title"):
         click(env, label)
-        text = env.view.task_status.text()
+        text = env.window.assistant.task_row.status.text()
         assert "is not available on Local · Ollama" in text and "no other route or model is used" in text
-        assert not env.view.tasks.busy
+        assert not env.window.assistant.tasks.busy
     assert fake.calls() == [] and slide_file(env).editor.text() == BROKEN
     assert env.window._ollama_task_label is None                                 # the slot was never taken
 
@@ -907,7 +886,7 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
     assert settled(env).startswith("Done in ")
     assert len(german_files(env)) == 1 and fake.calls() == []                    # no claude process
     assert [(r.route, r.model) for r in seen] == [("local", "translator")] and held == ["translating a slide"]
-    assert env.window._ollama_task_label is None and env.view.tasks._providers == []
+    assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []
 
 
 def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ctx, fake, monkeypatch):
@@ -924,7 +903,7 @@ def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ct
     release = threading.Event()
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: (release.wait(5), ("", "Aborted."))[1])
     click(env, "Translate to German")
-    env.view.tasks.stop()
+    env.window.assistant.tasks.stop()
     assert provider.aborted.is_set()
     release.set()
     assert settled(env) == "Cancelled" and german_files(env) == []
@@ -971,12 +950,12 @@ def test_a_route_that_is_not_ready_starts_no_task_and_no_other_route_is_used(ctx
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
     click(env, "Translate to German")                                            # no Ollama model is chosen
-    assert "Choose an Ollama model for translation" in env.view.task_status.text() and fake.calls() == []
+    assert "Choose an Ollama model for translation" in env.window.assistant.task_row.status.text() and fake.calls() == []
     credentials.set_api_key(ctx, "")
     on_route(fake, ai_profile.CLOUD, ai_profile.API)                             # no API key: Claude Code does not stand in
     click(env, "Translate to German")
-    assert "No Anthropic API key" in env.view.task_status.text() and fake.calls() == []
-    assert german_files(env) == [] and not env.view.tasks.busy
+    assert "No Anthropic API key" in env.window.assistant.task_row.status.text() and fake.calls() == []
+    assert german_files(env) == [] and not env.window.assistant.tasks.busy
 
 
 def test_the_first_cloud_task_of_a_project_asks_once(ctx, fake, monkeypatch):
@@ -986,7 +965,7 @@ def test_the_first_cloud_task_of_a_project_asks_once(ctx, fake, monkeypatch):
     monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args[2]) or QMessageBox.StandardButton.No)
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
-    assert env.view.task_status.text() == "Nothing was sent: using the cloud was not confirmed." and fake.calls() == []
+    assert env.window.assistant.task_row.status.text() == "Nothing was sent: using the cloud was not confirmed." and fake.calls() == []
     monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
     click(env, "Translate to German")
     assert settled(env).startswith("Done in ") and ai_profile.cloud_seen(ctx)
@@ -1002,4 +981,4 @@ def test_the_terminal_is_told_why_translate_slide_cannot_run_on_the_route(ctx, f
     on_route(fake, ai_profile.CLOUD, ai_profile.API)
     client = Client(env.view.session._server)
     answer = on_thread(lambda: client.text("translate_slide", path=SLIDE))
-    assert "No Anthropic API key" in answer and fake.calls() == [] and not env.view.tasks.busy
+    assert "No Anthropic API key" in answer and fake.calls() == [] and not env.window.assistant.tasks.busy

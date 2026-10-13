@@ -71,7 +71,11 @@ deck switcher offers the rest). From top to bottom and left to right:
   (`ui/pages/images.py`) as a sibling that replaces the columns.
 - **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
   versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker
-  notes. **Lower:** the **AI assistant** (`chat/`, `terminal/`): *Chat* and *Claude Code*.
+  notes. **Lower:** the **assistant card** (`assistant.py`; 360 px column, the panels take 38 %
+  and give way first, "Focus assistant" hides them): a header with the route, the scope
+  (This slide | Whole deck), at most two task buttons and the running task, and a body that
+  follows the AI switch: the native chat (`chat/`) on Local and Cloud · API, the real terminal
+  (`terminal/`) on Cloud · Claude Code.
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
   entry is a registered command.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck
@@ -747,8 +751,9 @@ What matters when touching *this code*:
   - `ui/workspace/chat/` -- the Chat view: `session.py` (`ChatSession`: the history and the
     agent thread), `view.py`, `cards.py` (text, tool and diff cards with Apply / Reject /
     Undo), `gui_workspace.py` (`GuiWorkspace`: runs the agent's workspace calls on the GUI
-    thread and waits for them). `assistant.py` holds the Chat | Claude Code switch.
-  - `ui/workspace/terminal/` -- the Claude Code tab: xterm.js (vendored under
+    thread and waits for them). The assistant card is `ui/workspace/assistant.py` (with
+    `assistant_header.py` and `task_row.py`).
+  - `ui/workspace/terminal/` -- the Claude Code body: xterm.js (vendored under
     `assets/terminal/`) in a `QWebEngineView` with a `QWebChannel`, on a pty
     (`pty_process.py`: `ptyprocess`, `pywinpty` on Windows). QtWebEngine is what makes the
     one-file build about 300 MB.
@@ -1081,7 +1086,7 @@ directly inside `decks/`/`decks/archive/` (skipping only SlideMage's own
   all the tools and the same system prompt, and a long conversation can outgrow
   the 16384-token window asked of Ollama (`providers.AGENT_NUM_CTX`) without a
   warning; a local model's "thinking" output is dropped, not shown.
-- The Claude Code tab (6.0): URLs in the terminal are not clickable; Windows
+- The Claude Code terminal (6.0): URLs in the terminal are not clickable; Windows
   (`pywinpty`, `claude.cmd`, the frozen hook's stdin) and macOS are untested.
 - ~~`unused_content.py`'s scans don't strip LaTeX comments before
   matching~~ -- fixed 2026-08-25, direct instruction: both scans now strip

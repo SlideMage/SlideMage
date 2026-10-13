@@ -884,7 +884,7 @@ def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch
     assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 600
 
 
-@pytest.mark.parametrize("value, expected", [(None, 340), (200, 340), (1000, 900), ("wide", 340)])
+@pytest.mark.parametrize("value, expected", [(None, 360), (200, 360), (1000, 900), ("wide", 360)])
 def test_the_right_column_keeps_its_width_limits(value, expected):
     layout_settings.set(side_panels.WIDTH_SETTING, value)
     assert side_panels.remembered_width(EXAMPLE_PROJECT) == expected
