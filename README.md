@@ -86,7 +86,7 @@ screenshots.
   course / After course and EN / DE (what the Preview shows and the slide list marks as
   hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
   offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
-  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (this deck, decks, project incl. Images, housekeeping, info).
+  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (two columns: this deck | project incl. Images, housekeeping, info; Settings… at the bottom; everything else is in `Ctrl+K`).
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
   variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
   Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
@@ -131,7 +131,7 @@ screenshots.
   in the project folder (permissions and its model are Claude Code's); SlideMage serves it
   the focused slide over a local MCP server and blocks edits to protected parts with a hook.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.
-- **Settings** (⋮ → Project): General, AI (German address of translations), Cloud (the API
+- **Settings** (⋮ → Settings…): General, AI (German address of translations), Cloud (the API
   key), Ollama (models, updating, deleting), Prompts (image-description and translation
   prompts). The model of each task is in AI setup, not here.
 
@@ -269,7 +269,7 @@ framework next to the project has the new command.
 
 A snapshot is a self-contained copy of a deck that compiles exactly as the deck
 compiles today, whatever later happens to the project, the framework or SlideMage.
-**⋮ → Decks → Create deck snapshot…** takes one or more decks (each gets its own
+**⋮ → This deck → Create deck snapshot…** takes one or more decks (each gets its own
 snapshot; they are made one after the other), **Folder** or **.zip file**, and whether
 to **include the LaTeX package files** and **the SlideMage app**. Archiving a deck asks
 first: **Snapshot, then archive** / **Archive only** / Cancel (the snapshot uses the
@@ -413,7 +413,7 @@ copied package files in `texmf/` record the exact originals.
   `22s-UniGraz-1920-1080.png` and `22s-UniGraz-304-171.png` — bare id
   first, to sort/glob-match by slide before institution), refreshed as
   a side effect of any compile that touches that slide, or in bulk via
-  SlideMage's "Update slide previews" (⋮ menu, *Housekeeping*). A best-effort cache for
+  SlideMage's "Update slide previews" (⋮ → *Housekeeping…*). A best-effort cache for
   SlideMage's own Preview view and slide-list thumbnails, not a
   guaranteed-fresh one. Gitignored, same category as `transcripts/`.
 - `slide_ids.csv` — registry of all slide IDs in use, so new IDs never collide.
@@ -587,7 +587,7 @@ last compile (see "Deck snapshots").
 
 Every PDF of one click on **Compile PDF** carries the moment of that click in its PDF info
 dictionary (`/SlideMageRun`; a page compile that swaps pages in stamps its own). **Open
-latest PDF** (⋮ menu, *This deck*) opens the deck's usual PDF -- the instructor version, or
+latest PDF** (`Ctrl+K`) opens the deck's usual PDF -- the instructor version, or
 another one chosen in the **Deck settings** ("Open pdf opens", stored as
 `%% SlideMage open PDF: <version>` in the preamble) -- unless a newer PDF of the deck comes
 from a later click (or carries no stamp, i.e. predates v5.34.0); then it asks which one to
@@ -1219,7 +1219,7 @@ older, not-yet-tagged slide), select it and use the
 **Language** panel's language choice — this renames the file (and any frozen
 versions) and rewrites every deck reference for you; it asks for
 confirmation first, naming how many references will change. **Reestablish broken
-translation links** (⋮ menu, *Housekeeping*) refreshes every `Translation
+translation links** (⋮ → *Housekeeping…*) refreshes every `Translation
 of:`/`... translation:` comment from current disk state — safe to run
 any time, e.g. after a manual rename elsewhere.
 
@@ -2831,7 +2831,7 @@ unsaved (or even a saved but never recompiled) edit. **Render ▾ → Render the
 always compiles your current text directly and is unaffected by any of this.
 
 To refresh every slide's preview in one pass (e.g. after a preamble/theme
-change), choose **Update slide previews** (⋮ menu, *Housekeeping*) and confirm — no
+change), choose **Update slide previews** (⋮ → *Housekeeping…*) and confirm — no
 institution to pick any more: it scans every deck (active and archived)
 for which slides it actually uses under which template, compiles one
 throwaway deck per template containing exactly that template's own

@@ -70,7 +70,7 @@ def topbar(window, qapp):
 def entries(menu):
     """(key, text, enabled) of a menu's items, and its headers as ("", text, True)."""
     return [(e[1], e[2], e[6]) if e[0] == "item" else ("", e[1], True)
-            for e in menu._entries if e[0] != "sep"]
+            for e in menu._entries if e[0] in ("item", "header")]
 
 
 def items(menu):
@@ -511,13 +511,13 @@ def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
 @pytest.mark.parametrize("deck, disabled", [
     (COURSE, []),
     (MANUAL, ["deck_settings", "deck_tags"]),              # the manual keeps its settings and group
-    (OLD, ["open_pdf", "deck_source", "deck_tags", "duplicate_deck", "export_pptx", "archive_deck"]),
-    (None, ["open_pdf", "deck_settings", "deck_source", "deck_tags", "duplicate_deck", "export_pptx",
+    (OLD, ["deck_source", "deck_tags", "duplicate_deck", "export_pptx", "archive_deck"]),
+    (None, ["deck_settings", "deck_source", "deck_tags", "duplicate_deck", "export_pptx",
             "archive_deck"]),
 ])
 def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, deck, disabled):
     enabled = items(build_more_menu(None, command_context(deck)))
-    deck_keys = ["open_pdf", "deck_settings", "deck_source", "deck_tags", "duplicate_deck",
+    deck_keys = ["deck_settings", "deck_source", "deck_tags", "duplicate_deck",
                  "export_pptx", "archive_deck"]
     assert [key for key in deck_keys if not enabled[key]] == disabled
 
@@ -528,8 +528,8 @@ def test_the_more_button_opens_the_menu_and_forwards_the_choice(window):
     window.topbar._more.click()
     menu = window.topbar.findChildren(PopoverMenu)[-1]
     assert menu.isVisible()
-    menu._on_activated("refresh_decks")
-    assert seen == ["refresh_decks"] and not menu.isVisible()
+    menu._on_activated("edit_bib")
+    assert seen == ["edit_bib"] and not menu.isVisible()
 
 
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):
@@ -895,7 +895,7 @@ def test_the_right_column_keeps_its_width_limits(value, expected):
 @pytest.mark.parametrize("side, label, shortcut", [
     ("left", "slide list", "Ctrl+Alt+["), ("right", "side panel", "Ctrl+Alt+]"),
 ])
-@pytest.mark.parametrize("trigger", ["command", "shortcut", "button", "menu", "palette"])
+@pytest.mark.parametrize("trigger", ["command", "shortcut", "button", "palette"])
 def test_column_toggles_update_visibility_labels_and_buttons(window, qapp, tmp_path, side, label, shortcut, trigger):
     window.resize(2400, 800)
     window.show()
@@ -920,12 +920,6 @@ def test_column_toggles_update_visibility_labels_and_buttons(window, qapp, tmp_p
             QTest.keySequence(window.centre.source.current.editor, QKeySequence(shortcut))
         elif trigger == "button":
             button.click()
-        elif trigger == "menu":
-            window.topbar._more.click()
-            menu = window.topbar.findChildren(PopoverMenu)[-1]
-            assert ("", "View", True) in entries(menu)
-            assert (command.id, command.title(window), True) in entries(menu)
-            menu._on_activated(command.id)
         else:
             entry = next(e for e in command_entries(window, [label]) if e.label == command.title(window))
             entry.run()

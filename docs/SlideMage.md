@@ -48,8 +48,9 @@ deck switcher offers the rest). From top to bottom and left to right:
   **Instructor / During course / After course** and **EN / DE** (the version and language
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
   **Preview | Split | Source | Details**, the **Compile PDF** split button, and
-  the **⋮** menu (This deck, Decks, Project, Housekeeping, Info -- what the old menu bar
-  and the deck table's per-row buttons held).
+  the **⋮** menu (one popover in two columns, *This deck* | *Project, Housekeeping, Info*, with Settings… in
+  its footer -- what the old menu bar and the deck table's per-row buttons held; the rest, such as the
+  column toggles, Import, Refresh, Log, Open latest PDF and Exit, is in `Ctrl+K`).
 - **Compile PDF** compiles the deck for the view chosen in the top bar; its arrow lists
   every version the old deck table's checkboxes made (Instructor, During course, After
   course, *All views*, *After course, one PDF per chapter*, *Presenter*), the pages of the
@@ -439,7 +440,7 @@ What matters when touching *this code*:
   bare ID no longer resolves to a `-current.tex` file, same as
   `alt_images.SyncReport.missing`. Wired in three places: automatically
   after a rename, automatically after the Add slide sheet's "Translate"
-  flow, and as **⋮ → Housekeeping → Reestablish broken translation
+  flow, and as **⋮ → Housekeeping… → Reestablish broken translation
   links** (a plain toolbar button until 2026-08-25) for running by hand
   any time.
 - [`translation_prompts.py`](../src/slidemage/translation_prompts.py) -- per-(model, source
@@ -751,7 +752,8 @@ What matters when touching *this code*:
     ThumbnailGrid, ...); `python -m slidemage.ui.kit.gallery` shows them all.
   - `ui/commands.py` -- `Command`, `CommandRegistry`, `bind_shortcuts`; the ~95 commands
     are registered in `ui/workspace/actions.py` (`build_registry()`), and the menus in
-    `menus.py` are lists of command ids, so the top bar, the ⋮ menu, the context menus and the
+    `menus.py` are lists of command ids (the ⋮ menu's two columns and footer are `MORE_COLUMNS`, drawn by
+    `PopoverMenu.add_column()`/`add_footer()`), so the top bar, the ⋮ menu, the context menus and the
     palette share one definition (`slide:*`, `section:*`, `compile:*`, ...). A new feature
     registers its command there.
   - `ui/workspace/` -- `window.py` (`WorkspaceWindow`) with `state.py` (`WorkspaceState`: the

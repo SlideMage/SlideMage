@@ -724,15 +724,21 @@ class PopoverMenu(Popover):
     """Popup list of actions with an optional right-hand metadata column
     (shortcut, count, date). `triggered(key)` fires on click or Enter, then
     the menu closes. Rows are added with add_item/add_header/add_separator
-    before popup_below()/popup_at()."""
+    before popup_below()/popup_at().
+
+    add_column() starts a further column and add_footer() a footer row below the columns (items and a
+    right-hand add_note()); then the menu is the compact columns layout, ↑/↓ move within a column or the
+    footer and ←/→ switch between them. `focus_first` opens it with the first enabled item current."""
 
     triggered = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None, *, min_width: int = 220) -> None:
+    def __init__(self, parent: QWidget | None = None, *, min_width: int = 220, focus_first: bool = False) -> None:
         super().__init__(parent, min_width=min_width)
         self._layout = self.body
         self._rows: list[MenuRow] = []
+        self._row_group: list[int] = []   # the column (the footer last) of each row
         self._current = -1
+        self._focus_first = focus_first
         self._entries: list[tuple] = []  # queued by add_*, built on popup
 
     def add_item(self, key: str, text: str, *, meta: str = "", icon: str = "",
@@ -747,24 +753,58 @@ class PopoverMenu(Popover):
     def add_separator(self) -> None:
         self._entries.append(("sep",))
 
+    def add_column(self) -> None:
+        self._entries.append(("column",))
+
+    def add_footer(self) -> None:
+        self._entries.append(("footer",))
+
+    def add_note(self, text: str) -> None:
+        """A caption at the right end of the footer."""
+        self._entries.append(("note", text))
+
     def _build(self) -> None:
         clear_layout(self._layout)
         self._rows.clear()
+        self._row_group.clear()
         self._current = -1
+        columns = any(e[0] in ("column", "footer") for e in self._entries)
+        set_property(self, "columns", columns)
+        margin = 6 if columns else 4
+        self._layout.setContentsMargins(margin, margin, margin, margin)
         # An icon slot is reserved for every row once any row has an icon.
         slot = any(e[0] == "item" and e[4] for e in self._entries)
+        group, target, across, boxes = 0, self._layout, QHBoxLayout(), []
+        if columns:
+            across.setSpacing(4)
+            self._layout.addLayout(across)
+            target = self._add_box(across, QVBoxLayout, q.MENU_COLUMN, divided=False)
+            boxes.append(target)
         for entry in self._entries:
-            if entry[0] == "header":
+            if entry[0] == "column":
+                group += 1
+                target = self._add_box(across, QVBoxLayout, q.MENU_COLUMN, divided=True)
+                boxes.append(target)
+            elif entry[0] == "footer":
+                group += 1
+                target = self._add_box(self._layout, QHBoxLayout, q.MENU_FOOTER)
+            elif entry[0] == "header":
                 header = QLabel(entry[1])
                 header.setObjectName(q.MENU_HEADER)
-                self._layout.addWidget(header)
+                header.setIndent(0)   # the QSS padding is the whole inset, so the text lines up with the rows
+                target.addWidget(header)
+            elif entry[0] == "note":
+                note = QLabel(entry[1])
+                note.setObjectName(q.MENU_NOTE)
+                target.addStretch(1)
+                target.addWidget(note)
             elif entry[0] == "sep":
                 sep = QFrame()
                 sep.setObjectName(q.MENU_SEPARATOR)
                 sep.setFixedHeight(1)
-                self._layout.addSpacing(4)
-                self._layout.addWidget(sep)
-                self._layout.addSpacing(4)
+                target.addSpacing(5)
+                target.addWidget(sep)
+                target.addSpacing(5)
             else:
                 _, key, text, meta, icon, tone, enabled, swatch = entry
                 row = MenuRow(key, text, meta, icon, tone, slot, swatch)
@@ -772,8 +812,24 @@ class PopoverMenu(Popover):
                 row.setProperty("off", not enabled)
                 row.activated.connect(self._on_activated)
                 row.hovered.connect(lambda r: self._set_current(self._rows.index(r)))
-                self._layout.addWidget(row)
+                target.addWidget(row)
                 self._rows.append(row)
+                self._row_group.append(group)
+        for box in boxes:
+            box.addStretch(1)   # the rows stay at the top of a column the other one makes taller
+
+    @staticmethod
+    def _add_box(parent: QLayout, kind: type, name: str, **properties: object) -> QLayout:
+        """A framed column (in the row `parent`) or the footer (below it); returns its layout."""
+        frame = QFrame()
+        frame.setObjectName(name)
+        for key, value in properties.items():
+            set_property(frame, key, value)
+        box = kind(frame)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(0)
+        parent.addWidget(frame, 1 if kind is QVBoxLayout else 0)
+        return box
 
     def _on_activated(self, key: str) -> None:
         self.close()
@@ -786,13 +842,32 @@ class PopoverMenu(Popover):
         if 0 <= index < len(self._rows):
             set_property(self._rows[index], "current", True)
 
+    def _enabled(self) -> list[int]:
+        return [i for i, r in enumerate(self._rows) if r.isEnabled()]
+
     def _step(self, delta: int) -> None:
-        enabled = [i for i, r in enumerate(self._rows) if r.isEnabled()]
+        """The next enabled row in the current column, wrapping round; the first or last if none is current."""
+        enabled = self._enabled()
+        if 0 <= self._current < len(self._rows):
+            enabled = [i for i in enabled if self._row_group[i] == self._row_group[self._current]]
         if not enabled:
             return
         later = [i for i in enabled if (i - self._current) * delta > 0]
         target = (later[0] if delta > 0 else later[-1]) if later else (enabled[0] if delta > 0 else enabled[-1])
         self._set_current(target)
+
+    def _switch_column(self, delta: int) -> None:
+        """The same position in the next (previous) column that has an enabled row, wrapping round."""
+        if not 0 <= self._current < len(self._rows):
+            return
+        enabled = self._enabled()
+        groups = sorted({self._row_group[i] for i in enabled})
+        group = self._row_group[self._current]
+        if len(groups) < 2 or group not in groups:
+            return
+        own = [i for i in enabled if self._row_group[i] == group]
+        there = [i for i in enabled if self._row_group[i] == groups[(groups.index(group) + delta) % len(groups)]]
+        self._set_current(there[min(own.index(self._current) if self._current in own else 0, len(there) - 1)])
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
@@ -800,6 +875,10 @@ class PopoverMenu(Popover):
             self._step(1)
         elif key == Qt.Key.Key_Up:
             self._step(-1)
+        elif key == Qt.Key.Key_Right:
+            self._switch_column(1)
+        elif key == Qt.Key.Key_Left:
+            self._switch_column(-1)
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and 0 <= self._current < len(self._rows):
             self._on_activated(self._rows[self._current].key)
         else:
@@ -807,6 +886,8 @@ class PopoverMenu(Popover):
 
     def _prepare(self) -> None:
         self._build()
+        if self._focus_first:
+            self._step(1)
 
 
 class SplitButton(QFrame):

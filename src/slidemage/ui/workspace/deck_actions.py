@@ -102,7 +102,7 @@ def tags_with_group(deck_tags: list[str], group: str) -> list[str]:
 
 
 def on_open_latest_pdf(window, deck: Deck) -> None:
-    """⋮ → "Open latest PDF" (2026-09-21): opens the
+    """⌘K "Open latest PDF" (2026-09-21): opens the
     deck's preferred PDF (Settings -> "Open pdf opens", else the
     instructor PDF), unless a newer PDF of the deck comes from another
     compile run -- then it asks which one, newest first (2026-10-08,

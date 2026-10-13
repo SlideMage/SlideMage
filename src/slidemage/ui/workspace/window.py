@@ -335,7 +335,7 @@ class WorkspaceWindow(QMainWindow):
             app_settings.set(self.project, LAST_DECK_KEY, deck.name)
 
     def _on_refresh_decks_clicked(self) -> None:
-        """⋮ -> "Refresh decks": a wait cursor for the duration of the rescan,
+        """⌘K "Refresh decks": a wait cursor for the duration of the rescan,
         so a scan slow enough to notice (every deck file re-read and
         re-parsed) has some visible sign it's working rather than looking
         like the click did nothing. A thin wrapper around reload_decks()

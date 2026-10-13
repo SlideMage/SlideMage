@@ -5,8 +5,8 @@ A menu here is only a layout, which commands in which sections; the labels, the
 shortcuts and when an entry is available come from the command registry
 (actions.py). The item keys are command ids, which `WorkspaceWindow.run_command`
 runs. The old menu bar's System, Decks, Tabs, Housekeeping and Info menus became
-the sections of the ⋮ menu, and the deck table's per-deck buttons its "This deck"
-section.
+the ⋮ menu's sections or ⌘K commands, and the deck table's per-deck buttons its
+"This deck" section.
 """
 from __future__ import annotations
 
@@ -67,15 +67,17 @@ def _add_deck(menu: PopoverMenu, deck: Deck, current: Optional[Deck]) -> None:
     menu.add_item(deck_key(deck), deck.name, icon="check" if is_current else "")
 
 
-def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str], header: str = "") -> None:
-    """The visible commands `ids` as items (disabled where they are not available now),
-    under `header` if any of them is shown."""
+def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str], header: str = "", *,
+                 hints: bool = True) -> None:
+    """The visible commands `ids` as items (disabled where they are not available now), under
+    `header` if any of them is shown; `hints` False leaves the commands' meta texts out, so only
+    the shortcuts show."""
     commands = [c for c in (ctx.commands[i] for i in ids) if c.visible(ctx)]
     if commands and header:
         menu.add_header(header)
     for command in commands:
-        menu.add_item(command.id, command.title(ctx), meta=command.info(ctx), tone=command.tone,
-                      enabled=command.enabled(ctx))
+        menu.add_item(command.id, command.title(ctx), meta=command.info(ctx) if hints else command.key_text(),
+                      tone=command.tone, enabled=command.enabled(ctx))
 
 
 def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
@@ -94,22 +96,31 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
     return menu
 
 
-# The ⋮ menu: (header, command ids).
-MORE_SECTIONS = (
-    ("View", ("column:left", "column:right")),
-    ("This deck", ("open_pdf", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
-                   "export_pptx", "archive_deck")),
-    ("Decks", ("create_snapshot", "import_presentation", "refresh_decks")),
-    ("Project", ("palette", "images", "log", "edit_bib", "edit_test_slides", "open_project", "settings")),
-    ("Housekeeping", ("housekeeping", "empty_pdf", "remove_temp", "archive_unused", "update_previews", "sync_links")),
-    ("Info", ("version_history", "check_updates", "project_compat")),
+# The ⋮ menu: two columns of (header, command ids) and a footer; a section without a header is set off
+# by a separator. The View toggles, Decks, Log, Exit and the single housekeeping jobs (they are in the
+# Housekeeping dialog) are ⌘K commands only.
+MORE_COLUMNS = (
+    (("This deck", ("deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx",
+                    "create_snapshot")),
+     ("", ("archive_deck",))),
+    (("Project", ("palette", "images", "edit_bib", "edit_test_slides", "open_project")),
+     ("Housekeeping", ("housekeeping", "archive_unused")),
+     ("Info", ("version_history", "check_updates", "project_compat"))),
 )
+MORE_FOOTER = ("settings",)
+MORE_NOTE = "Everything here is also in ⌘K / Ctrl+K"
 
 
 def build_more_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
-    menu = PopoverMenu(parent, min_width=260)
-    for header, ids in MORE_SECTIONS:
-        add_commands(menu, ctx, ids, header)
-    menu.add_separator()
-    add_commands(menu, ctx, ["exit"])
+    menu = PopoverMenu(parent, min_width=520, focus_first=True)
+    for index, sections in enumerate(MORE_COLUMNS):
+        if index:
+            menu.add_column()
+        for header, ids in sections:
+            if not header:
+                menu.add_separator()
+            add_commands(menu, ctx, ids, header, hints=False)
+    menu.add_footer()
+    add_commands(menu, ctx, MORE_FOOTER, hints=False)
+    menu.add_note(MORE_NOTE)
     return menu

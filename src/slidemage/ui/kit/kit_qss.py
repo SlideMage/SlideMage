@@ -44,6 +44,9 @@ MENU_TEXT = "kitMenuText"
 MENU_META = "kitMenuMeta"
 MENU_HEADER = "kitMenuHeader"
 MENU_SEPARATOR = "kitMenuSeparator"
+MENU_COLUMN = "kitMenuColumn"
+MENU_FOOTER = "kitMenuFooter"
+MENU_NOTE = "kitMenuNote"
 MENU_SWATCH = "kitMenuSwatch"
 TOAST = "kitToast"
 TOAST_ACTION = "kitToastAction"
@@ -737,7 +740,32 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{MENU_SEPARATOR} {{
             background-color: {t.line};
             border: none;
+            margin: 0 6px;
         }}
+
+        /* The columns layout (PopoverMenu.add_column): denser rows and bigger headers, a hairline
+           between the columns and above the footer. */
+        QFrame#{MENU_COLUMN}, QFrame#{MENU_FOOTER} {{ border: none; background-color: transparent; }}
+        QFrame#{MENU_COLUMN}[divided="true"] {{
+            border-left: 1px solid {t.line};
+            margin-left: 2px;
+            padding-left: 4px;
+        }}
+        QFrame#{MENU_FOOTER} {{
+            border-top: 1px solid {t.line};
+            margin-top: 4px;
+            padding: 6px 4px 2px 4px;
+        }}
+        QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} {{ font-size: 12.5px; }}
+        QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} QLabel#{MENU_META} {{
+            {mono}
+            font-size: 10.5px;
+        }}
+        {text(f'QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER}', 13, t.text_2, 500)}
+        QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER} {{ padding: 8px 10px 3px 10px; }}
+        QFrame#{MENU_FOOTER} QWidget#{MENU_ROW} QLabel#{MENU_TEXT} {{ font-weight: 500; }}
+        {text(f"QLabel#{MENU_NOTE}", 11.5, t.text_3)}
+        QLabel#{MENU_NOTE} {{ padding: 0 8px; }}
 
         QFrame#{MENU_SWATCH} {{
             border: 1px solid {t.line};

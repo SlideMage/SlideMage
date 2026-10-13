@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QWidget
 from conftest import command_context
 from slidemage.ui.commands import Command, CommandRegistry
 from slidemage.ui.workspace.actions import build_registry
-from slidemage.ui.workspace.menus import MORE_SECTIONS, build_compile_menu, build_more_menu
+from slidemage.ui.workspace.menus import MORE_COLUMNS, MORE_FOOTER, build_compile_menu, build_more_menu
 
 
 # -- the registry ---------------------------------------------------------------------
@@ -87,7 +87,7 @@ def test_every_action_of_the_former_menu_bar_and_deck_row_is_in_the_registry():
 
 def test_every_command_a_menu_lists_exists_and_every_command_is_in_a_menu_or_the_palette(qapp):
     registry = build_registry()
-    listed = {i for _header, ids in MORE_SECTIONS for i in ids}
+    listed = {i for sections in MORE_COLUMNS for _header, ids in sections for i in ids} | set(MORE_FOOTER)
     assert [i for i in listed if i not in registry] == []
     context = command_context()
     assert {k for menu in (build_more_menu(None, context), build_compile_menu(None, context))
@@ -101,5 +101,5 @@ def test_a_menu_entry_shows_the_commands_label_tone_shortcut_and_availability(qa
     entries = {e[1]: e for e in build_more_menu(None, context)._entries if e[0] == "item"}
     archive = entries["archive_deck"]
     assert (archive[2], archive[5], archive[6]) == ("Archive deck…", "danger", False)
-    assert entries["palette"][3] == "Ctrl+K" and entries["log"][3] == "Ctrl+L"
+    assert entries["palette"][3] == "Ctrl+K" and "deck_settings" in entries and "log" not in entries
     assert entries["create_snapshot"][6]

@@ -44,11 +44,13 @@ class Command:
     def title(self, ctx: Context) -> str:
         return self.label(ctx) if callable(self.label) else self.label
 
+    def key_text(self) -> str:
+        """The shortcut as the platform writes it."""
+        return QKeySequence(self.shortcut).toString(QKeySequence.SequenceFormat.NativeText) if self.shortcut else ""
+
     def info(self, ctx: Context) -> str:
-        """The metadata column: the meta text, else the shortcut as the platform writes it."""
-        meta = self.meta(ctx) if callable(self.meta) else self.meta
-        return meta or (QKeySequence(self.shortcut).toString(QKeySequence.SequenceFormat.NativeText)
-                        if self.shortcut else "")
+        """The metadata column: the meta text, else the shortcut."""
+        return (self.meta(ctx) if callable(self.meta) else self.meta) or self.key_text()
 
 
 class CommandRegistry:
