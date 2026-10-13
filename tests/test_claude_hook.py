@@ -13,7 +13,7 @@ import pytest
 from conftest import SLIDE_TEXT
 
 from slidemage.ai import claude_hook
-from slidemage.ai.tools.edits import PROTECTED_MESSAGE
+from slidemage.slide_protection import PROTECTED_MESSAGE
 
 from slidemage.project import ProjectContext
 
@@ -163,3 +163,12 @@ def test_a_slide_that_cannot_be_read_is_refused_not_waved_through(ctx, root):
     for call in (edit(root, "not utf-8", "x"), event(root, "Write", content="\\begin{x}")):
         reason = claude_hook.blocked_reason(ctx, call)
         assert reason and CURRENT in reason and "UTF-8" in reason
+
+
+def test_the_hook_does_not_import_the_heavy_packages():
+    """Each hook is a fresh process: it must start without the tools package, the compiler, PDF code or Qt."""
+    code = ("import sys, slidemage.ai.claude_hook; "
+            "print([m for m in sys.modules if m.split('.')[0] in ('fitz', 'pymupdf', 'PySide6') "
+            "or m.startswith(('slidemage.ai.tools', 'slidemage.compiler', 'slidemage.preview_build', 'slidemage.slide_preview'))])")
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert done.stdout.strip() == "[]", done.stdout + done.stderr

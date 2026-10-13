@@ -2164,3 +2164,9 @@ NEW: Claude and the preview pane share renders, and stopping Claude cancels pend
 - A matching preview builds once and appears in the pane only while its slide, settings and source are still current.
 - Claude still receives its preview image if you switch to another slide while it renders.
 - Stopping or restarting Claude ends waiting and running preview builds so later renders can proceed.
+
+v8.3.15 (2026-10-13, Claude Code speed plan C5): light hooks and optional timing. The Claude Code hook process no longer imports the ai tools package, the compiler, PyMuPDF or Qt: the protection rules (slide_kind, protected_problem) moved to slide_protection.py, the cross-process build_lock to filelock.py (preview_build re-exports it) and call_for_slide_path to slide_language.py, so the review store (ai_review) needs neither slide_preview nor preview_build. Hook start-up per event fell from about 230 ms to about 55 ms (median of 10 subprocess runs); decisions, exit codes and review marks are unchanged. SLIDEMAGE_TIMING=1 in the environment appends JSON lines (prompt received by the hook, tool start/end, slide written, render done, pane published) to <project>/.slidemage/timing.jsonl; python tools/timing_summary.py <project> prints the latest request's timeline. Off by default and silent when off. Tests check that the hook modules import none of the heavy packages and that the events appear in order only when timing is on.
+
+NEW: Claude Code's hooks start faster, and prompt-to-preview time can be measured.
+- Each hook call before and after Claude's edits now takes roughly a quarter of the time.
+- A debug switch (SLIDEMAGE_TIMING=1) logs when a request, its tool calls and its preview happen.

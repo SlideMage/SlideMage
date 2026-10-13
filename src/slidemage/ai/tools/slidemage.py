@@ -23,6 +23,7 @@ from ... import (
     slide_ids,
     slide_language,
     slide_versioning,
+    timing,
 )
 from ...deck_editor import VIEWS
 from ...deck_scan import Deck
@@ -175,6 +176,7 @@ def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None
                                            context.footer_timestamp, ctx.cancel)
     except RuntimeError as exc:
         raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
+    timing.event(ctx.root, "render_done", file=path.name)
     return f"{path.name} ({source}) as {context.view}, {language}:", [png]
 
 
@@ -221,6 +223,7 @@ def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
         ai_review.mark(ctx.project, path, kind, source, deck=deck)
         ctx.workspace.review_changed()
         ctx.workspace.file_changed(path, None)
+    timing.event(ctx.root, "slide_written", file=path.name)
     ctx.emit(EditApplied(ctx.call_id, path, before, current_text(ctx.workspace, path), via_buffer,
                          undoable=commit is None, note=note))
     status = f"Slide {path.name.removesuffix(slide_language.CURRENT_SUFFIX)} ({relative(ctx.root, path)})"

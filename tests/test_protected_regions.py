@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from conftest import SLIDE_TEXT
 
-from slidemage.ai.tools.edits import PROTECTED_MESSAGE, protected_problem
+from slidemage.slide_protection import PROTECTED_MESSAGE, protected_problem
 from slidemage.protected_regions import mask_protected_regions
 
 TEXT = SLIDE_TEXT.replace("\r\n", "\n")

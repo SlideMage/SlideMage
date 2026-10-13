@@ -22,7 +22,7 @@ from ... import app_settings
 from ... import (
     latex_edit,
     latex_lint,
-    slide_preview,
+    slide_language,
     slide_source,
     slide_versioning,
 )
@@ -85,7 +85,7 @@ class SourceFile(Surface):
         self.on_saved = on_saved
         self.on_open = on_open
         try:
-            macro, self.id_slug, _version = slide_preview.call_for_slide_path(path)
+            macro, self.id_slug, _version = slide_language.call_for_slide_path(path)
             self.is_slide = True
             # Only a slide's own current.tex is version-tracked (call_for_slide_path
             # says "slideversion" for a frozen file).

@@ -17,7 +17,7 @@ import tempfile
 import time
 import re
 import threading
-import errno
+from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
 from .project import ProjectContext
@@ -50,61 +50,6 @@ def is_active(path: Path) -> bool:
     path = path.resolve()
     with _ACTIVE_LOCK:
         return any(path.is_relative_to(active) or active.is_relative_to(path) for active in _ACTIVE)
-
-
-@contextmanager
-def build_lock(path: Path, *, blocking=True, shared=False, cancel=None):
-    """OS-owned lock, released on crashes as well as normal returns."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('a+b') as stream:
-        acquired = False
-        with stage('lock_wait'):
-            if os.name == 'nt':
-                import msvcrt
-                if not path.stat().st_size:
-                    stream.write(b'\0')
-                    stream.flush()
-                while True:
-                    check_cancel(cancel)
-                    try:
-                        stream.seek(0)
-                        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-                        acquired = True
-                        break
-                    except OSError as exc:
-                        if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
-                            raise
-                        if not blocking:
-                            break
-                        time.sleep(.1)
-            else:
-                import fcntl
-                mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
-                while True:
-                    check_cancel(cancel)
-                    try:
-                        fcntl.flock(stream, mode | fcntl.LOCK_NB)
-                        acquired = True
-                        break
-                    except BlockingIOError:
-                        if not blocking:
-                            break
-                        time.sleep(.05)
-        try:
-            yield acquired
-        finally:
-            if not acquired:
-                pass
-            elif os.name == 'nt':
-                stream.seek(0)
-                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(stream, fcntl.LOCK_UN)
-
-
-def check_cancel(cancel):
-    if cancel is not None and cancel.is_set():
-        raise RuntimeError('Preview cancelled')
 
 
 def maintenance_lock(project_root: Path) -> Path:

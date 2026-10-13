@@ -245,20 +245,6 @@ def default_preamble(ctx: project.ProjectContext) -> str:
     return template_preamble(slide_snapshot.render_template(ctx))
 
 
-def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
-    """Given slides/<id>-<slug>-current.tex or slides/<id>-<slug>-vX-Y-Z.tex,
-    return (macro, id_slug, version) for the \\slide{}/\\slideversion{}
-    call that loads exactly that file -- used by the slide-source editor,
-    which only knows its own file path, not a deck-parsed SlideCall."""
-    name = path.name
-    if name.endswith(slide_language.CURRENT_SUFFIX):
-        return "slide", name[: -len(slide_language.CURRENT_SUFFIX)], None
-    m = slide_language.FROZEN_RE.search(name)
-    if m:
-        return "slideversion", name[: m.start()], m.group(1)
-    raise ValueError(f"{name}: doesn't look like a slides/ current or version file")
-
-
 def _frame_number_line(frame_number: Optional[int]) -> str:
     """\\setcounter{framenumber}{...}, placed right before the \\slide{}-
     family call so its own \\stepcounter lands on frame_number exactly --

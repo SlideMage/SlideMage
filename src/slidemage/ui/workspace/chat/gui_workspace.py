@@ -18,7 +18,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
-from .... import compiler, deck_editor
+from .... import compiler, deck_editor, timing
 from ....ai.agent_types import EditApplied
 from ....ai.providers import ChatProvider
 from ....ai.tools import undo_edit
@@ -260,6 +260,7 @@ class GuiWorkspace(Workspace):
             return request.wait(cancel)[3]
         finally:
             self.on_gui(lambda: self.window.centre.preview.finish_render(request))
+            timing.event(self.project.root, "pane_published")
 
     def translate_slide(self, path: Path) -> str:
         return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else

@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 
-from . import deck_editor, fileio, slide_preview
-from .preview_build import build_lock
+from . import deck_editor, fileio, slide_language
+from .filelock import build_lock
 from .project import ProjectContext
 
 
@@ -23,7 +23,7 @@ def _key(ctx: ProjectContext, path: Path | str) -> str | None:
     if path.parent != ctx.slides_dir.resolve():
         return None
     try:
-        macro, _, _ = slide_preview.call_for_slide_path(path)
+        macro, _, _ = slide_language.call_for_slide_path(path)
     except ValueError:
         return None
     return path.relative_to(ctx.root.resolve()).as_posix() if macro == "slide" else None

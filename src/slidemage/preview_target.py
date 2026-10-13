@@ -75,7 +75,7 @@ def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]
     """The slide file `path` rendered alone; None if it is not a slides/ current
     or version file."""
     try:
-        macro, id_slug, version = slide_preview.call_for_slide_path(path)
+        macro, id_slug, version = slide_language.call_for_slide_path(path)
     except ValueError:
         return None
     return PreviewTarget(ctx, macro, id_slug, version, None, None, None, None)

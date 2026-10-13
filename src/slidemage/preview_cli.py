@@ -36,10 +36,10 @@ def main():
     parser.add_argument('--open', action='store_true')
     parser.add_argument('--profile', action='store_true', help='Print timings and latexmk pass durations as JSON')
     args = parser.parse_args()
-    from . import deck_scan, slide_preview
+    from . import deck_scan, slide_language, slide_preview
     ctx = project.from_environment()
     source = args.source.resolve()
-    _, slug, _ = slide_preview.call_for_slide_path(source)
+    _, slug, _ = slide_language.call_for_slide_path(source)
     paths = {source, ctx.root / '.latexmkrc', ctx.root / 'decks/.latexmkrc'}
     deck = next((d for d in deck_scan.scan_decks(ctx) if d.name == args.deck), None) if args.deck else None
     if args.deck and deck is None:

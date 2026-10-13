@@ -1,6 +1,8 @@
 # Claude Code free-form tasks: speed and reliability plan
 
-Status: plan, 13 October 2026. Based on the Codex review (gpt-6-astra, xhigh) of v8.3.8 on branch
+Status: done, 13 October 2026 — C1–C5 committed as v8.3.9–v8.3.15 (C1–C3b by Codex gpt-6.1-sol; C4 started by Codex, finished by Sonnet; C5 by Sonnet). Hook start-up ~225 ms → ~55 ms; set SLIDEMAGE_TIMING=1 and run tools/timing_summary.py to measure prompt-to-preview time.
+
+Original status: plan, 13 October 2026. Based on the Codex review (gpt-6-astra, xhigh) of v8.3.8 on branch
 `streamlining`: a free-form request such as "draft a slide about X and insert it after slide Y" takes
 an estimated 15–50 s in about six model turns (skeleton → read → edit → lint/render → show), and a new
 slide is not guaranteed to reach the preview pane. Implementation by Codex (gpt-6.1-sol, high), one

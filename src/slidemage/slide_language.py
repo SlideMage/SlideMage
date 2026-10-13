@@ -245,3 +245,17 @@ def badge_for(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationL
     own = own_language(id_slug)
     cross = cross_referenced_language(ctx, id_slug, links=links) if own is not None else None
     return LanguageBadge(own=own, cross_referenced=cross)
+
+
+def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
+    """Given slides/<id>-<slug>-current.tex or slides/<id>-<slug>-vX-Y-Z.tex,
+    return (macro, id_slug, version) for the \\slide{}/\\slideversion{}
+    call that loads exactly that file -- used by the slide-source editor,
+    which only knows its own file path, not a deck-parsed SlideCall."""
+    name = path.name
+    if name.endswith(CURRENT_SUFFIX):
+        return "slide", name[: -len(CURRENT_SUFFIX)], None
+    m = FROZEN_RE.search(name)
+    if m:
+        return "slideversion", name[: m.start()], m.group(1)
+    raise ValueError(f"{name}: doesn't look like a slides/ current or version file")

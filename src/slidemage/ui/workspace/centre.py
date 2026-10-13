@@ -26,7 +26,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
 
-from ... import deck_outline, slide_language, slide_preview, slide_source, slide_versioning
+from ... import deck_outline, slide_language, slide_source, slide_versioning
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import bare_id, current_path_for_bare_id
 from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
@@ -346,7 +346,7 @@ class CentreColumn(QFrame):
         if self._path is None:
             return "", None
         try:
-            _macro, id_slug, version = slide_preview.call_for_slide_path(self._path)
+            _macro, id_slug, version = slide_language.call_for_slide_path(self._path)
         except ValueError:
             return "", None
         return id_slug, version

@@ -18,10 +18,10 @@ import sys
 from pathlib import Path
 from hashlib import sha256
 
-from .. import ai_review, fileio, project
+from .. import ai_review, fileio, project, timing
 from ..project import ProjectContext
 from . import claude_scope
-from .tools.edits import protected_problem, slide_kind
+from ..slide_protection import protected_problem, slide_kind
 
 BLOCK = 2
 FROZEN_MESSAGE = ("{name} is a frozen version of a slide: a historical record, read-only. "
@@ -134,6 +134,8 @@ def main() -> int:
     try:
         event = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
         if isinstance(event, dict) and event.get("hook_event_name") == "UserPromptSubmit":
+            if timing.enabled():
+                timing.event(project.from_environment().root, "prompt")
             data = claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV))
             if data:
                 print(claude_scope.prompt_context(data))   # stdout becomes context for this prompt

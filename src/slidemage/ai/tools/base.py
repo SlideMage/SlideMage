@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ... import compiler
+from ... import compiler, timing
 from ...project import ProjectContext
 from ..agent_types import EDIT_ASK, AgentEvent, ToolCall, ToolResult, ToolSpec
 from ..workspace import Workspace
@@ -95,6 +95,7 @@ class ToolBox:
         if found is None:
             return ToolResult(call.id, f"There is no tool '{call.name}'. Tools: {', '.join(self._tools)}.", True)
         self.ctx.call_id = call.id
+        timing.event(self.ctx.root, "tool_start", tool=call.name)
         try:
             check_arguments(found.spec, call.input)
             output = found.run(self.ctx, call.input)
@@ -103,4 +104,5 @@ class ToolBox:
         except Exception as exc:  # noqa: BLE001 -- a bug in a tool must not end the chat
             return ToolResult(call.id, f"{call.name} failed unexpectedly: {type(exc).__name__}: {exc}", True)
         text, images = (output, []) if isinstance(output, str) else output
+        timing.event(self.ctx.root, "tool_end", tool=call.name)
         return ToolResult(call.id, text, False, images)

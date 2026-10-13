@@ -1,11 +1,16 @@
 """Composite slide edits with fake buffers/rendering and socket-free MCP."""
 import base64
+import importlib.util
+import io
+import json
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from agent_fakes import FakeWorkspace, call
 
+from slidemage.ai import claude_hook
 from slidemage import ai_review, compiler, preview_target, slide_snapshot
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, EditApplied
 from slidemage.ai.mcp_server import McpServer
@@ -187,3 +192,33 @@ def test_mcp_returns_preview_and_exposes_modify_as_mutating(env):
         name="modify_slide", arguments=dict(slide="abc", edits=EDITS))))["result"]
     assert not response["isError"]
     assert response["content"][1] == dict(type="image", mimeType="image/png", data=base64.b64encode(PNG).decode())
+
+
+# -- optional timing (SLIDEMAGE_TIMING=1) ---------------------------------------------------------------
+
+def _timeline(env):
+    log = env.project.settings_dir / "timing.jsonl"
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+def test_timing_is_silent_when_off(env, monkeypatch):
+    monkeypatch.delenv("SLIDEMAGE_TIMING", raising=False)
+    assert not modify(env).is_error
+    assert _timeline(env) == []
+
+
+def test_timing_records_the_request_in_order(env, monkeypatch):
+    monkeypatch.setenv("SLIDEMAGE_TIMING", "1")
+    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(env.root))
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(buffer=io.BytesIO(b'{"hook_event_name": "UserPromptSubmit"}')))
+    assert claude_hook.main() == 0
+    assert not modify(env).is_error
+    events = _timeline(env)
+    assert [e["event"] for e in events] == ["prompt", "tool_start", "slide_written", "render_done", "tool_end"]
+    assert [e["t"] for e in events] == sorted(e["t"] for e in events)
+    assert events[1]["tool"] == events[4]["tool"] == "modify_slide"
+    spec = importlib.util.spec_from_file_location("timing_summary", Path(__file__).parents[1] / "tools" / "timing_summary.py")
+    timing_summary = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(timing_summary)
+    lines = timing_summary.summarize([json.dumps(e) for e in [{"t": 1, "event": "prompt"}, *events]])
+    assert lines[0].endswith("prompt") and "tool=modify_slide" in lines[1] and len(lines) == 5
