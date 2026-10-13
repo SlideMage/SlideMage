@@ -465,6 +465,7 @@ class ProjectContext:
     archive_dir = _Under("decks", "archive")
     media_dir = _Under("media")
     snippets_dir = _Under("snippets")
+    sources_dir = _Under("sources")              # papers and figures the user attached to the chat
     pdf_dir = _Under("pdf")
     temp_dir = _Under(".temp")
     previews_dir = _Under(".previews")

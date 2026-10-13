@@ -34,6 +34,18 @@ def close():
 
 
 def render(data, sizes, full_size):
+    request = dict(pdf=base64.b64encode(data).decode("ascii"), sizes=sizes, full_size=full_size)
+    return tuple(_ask(request, "Cannot prepare preview images", len(sizes))["images"])
+
+
+def read_document(path, op, start=1, count=1, dpi=110):
+    """Ask the child to read a file for the chat (ops of preview_raster.document): the response with
+    "count", and "texts" (str) or "images" (PNG bytes). RuntimeError when it cannot."""
+    return _ask(dict(op=op, path=str(path), start=start, count=count, dpi=dpi), "Cannot read the file")
+
+
+def _ask(request, failure, expected_images=None):
+    """Send one JSON request to the child (started or restarted as needed) and return its checked response."""
     global _process
     with _lock:
         if _process is None or _process.poll() is not None:
@@ -74,16 +86,7 @@ def render(data, sizes, full_size):
         deadline.daemon = True
         deadline.start()
         try:
-            _process.stdin.write(
-                json.dumps(
-                    dict(
-                        pdf=base64.b64encode(data).decode("ascii"),
-                        sizes=sizes,
-                        full_size=full_size,
-                    )
-                )
-                + "\n"
-            )
+            _process.stdin.write(json.dumps(request) + "\n")
             _process.stdin.flush()
             line = _process.stdout.readline()
             if expired.is_set():
@@ -98,17 +101,18 @@ def render(data, sizes, full_size):
             encoded = response.get("images")
             if not isinstance(encoded, list) or not all(isinstance(item, str) for item in encoded):
                 raise ValueError("Invalid preview image payload")
-            images = tuple(base64.b64decode(image, validate=True) for image in encoded)
-            if len(images) != len(sizes):
-                raise RuntimeError("Incomplete preview image response")
+            images = [base64.b64decode(image, validate=True) for image in encoded]
             if any(not item.startswith(b'\x89PNG\r\n\x1a\n') for item in images):
                 raise ValueError("Invalid preview PNG payload")
-            return images
+            if expected_images is not None and len(images) != expected_images:
+                raise RuntimeError("Incomplete preview image response")
+            response["images"] = images
+            return response
         except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:  # noqa: F841 -- original error is used when not timed out
             close()
             if expired.is_set():
                 exc = RuntimeError("Preview image request timed out")
-            raise RuntimeError(f"Cannot prepare preview images: {exc}") from exc
+            raise RuntimeError(f"{failure}: {exc}") from exc
         finally:
             deadline.cancel()
 

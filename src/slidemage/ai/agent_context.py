@@ -34,7 +34,7 @@ or undo them.
 the language is EN, DE or mult. slides/*-v1-0-0.tex are frozen older versions: never edit them.
 - decks/<name>.tex: a deck is a LaTeX document that calls its slides (\\slide{{id-slug}}, \\conditionalslide, \
 \\slidestep, \\slideversion ...) between \\section{{...}} markers. Slidemaster.bib holds the references; media/ \
-the images; snippets/ small code files that slides show.
+the images; snippets/ small code files that slides show; sources/ files the user attached (papers, figures).
 - The user works in one deck at a time, in a view (instructor, during-course or after-course) and a \
 language. The context block of each request says which, and what slide they are looking at.
 - Indent with tabs, like the existing slides. Lines of a frame stay short; one idea per slide.
@@ -63,6 +63,9 @@ user asked for exactly that.
 scope "This slide"). Use modify_slide with ordered edits (old/new, each old matches exactly once) \
 or full text; pass expected to guard the text you read. It checks, writes and shows the preview. \
 Use edit_file for other files.
+- Attached files ("Attached: sources/paper.pdf" in a request): read_file reads a PDF as text by page \
+(start_page, max_pages) and, with pages_as_images, shows pages to see figures, formulas and tables; it \
+shows image files directly. A paper can go into the bibliography with add_bib_entry.
 - Make the smallest change that does what was asked. Keep the slide's own style and wording; do not \
 rewrite what was not mentioned. Use only LaTeX and macros that exist: standard LaTeX, beamer, and macros \
 you saw in the project's slides or in a guide. Never invent a macro, a citation key or a fact.

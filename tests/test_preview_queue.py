@@ -1,5 +1,6 @@
 """Newest-request publication, source/context changes, and image reuse."""
 
+import gc
 from types import SimpleNamespace
 import threading
 from threading import Thread as WorkerThread
@@ -14,6 +15,13 @@ from slidemage.ui.workspace import preview_view
 from slidemage.ui.workspace.state import WorkspaceState
 from slidemage.project import ProjectContext
 from conftest import EXAMPLE_PROJECT
+
+
+@pytest.fixture(autouse=True)
+def collect_garbage_first():
+    """Qt wrappers that earlier tests left as cyclic garbage must not be freed by a render worker's garbage
+    collection: PySide then deletes them on the main thread after Qt did, and crashes the run."""
+    gc.collect()
 
 
 @pytest.fixture

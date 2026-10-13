@@ -19,6 +19,7 @@ from slidemage.ai.agent_types import (
     EditRejected,
 )
 from slidemage.ai.tools import build_toolbox, focus, undo_edit
+from slidemage.ai.tools import files as files_module
 from slidemage.ai.tools import slidemage as slidemage_tools
 from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace, WorkspaceContext
@@ -133,10 +134,10 @@ def test_read_file_numbers_lines_normalises_line_ends_and_pages(box):
 
 def test_read_file_refuses_folders_missing_and_binary_files(box):
     (box.root / "media").mkdir()
-    (box.root / "media" / "pic.png").write_bytes(b"\x89PNG\0\0data")
+    (box.root / "media" / "pic.bin").write_bytes(b"\x89PNG\0\0data")
     assert "is a folder" in box.error("read_file", path="slides")
     assert "does not exist" in box.error("read_file", path="slides/nope.tex")
-    assert "not a text file" in box.error("read_file", path="media/pic.png")
+    assert "not a text file" in box.error("read_file", path="media/pic.bin")
 
 
 def test_find_files_matches_patterns(box):
@@ -510,3 +511,68 @@ def test_add_slide_translation_of_links_both_ways_and_copies_the_body(box, root)
     assert "%% Translation of: abc-EN-Hello" in created.read_text()
     assert f"%% DE translation: {created.name[:-12]}" in (root / "slides" / "abc-EN-Hello-current.tex").read_text()
     assert "already EN" in box.error("add_slide", slug="Same", title="T", language="EN", translation_of="abc")
+
+
+# -- PDFs and images (attachments) ------------------------------------------------------------------
+
+def make_pdf(path, pages=3):
+    """A small PDF written by hand (MuPDF repairs the missing xref), so no MuPDF runs in the test process."""
+    objects = ["<< /Type /Catalog /Pages 2 0 R >>",
+               f"<< /Type /Pages /Kids [{' '.join(f'{4 + 2 * n} 0 R' for n in range(pages))}] /Count {pages} >>",
+               "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    for n in range(1, pages + 1):
+        stream = f"BT /F1 12 Tf 72 200 Td (Findings of page {n}) Tj ET"
+        objects += [f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents {5 + 2 * (n - 1)} 0 R "
+                    f"/Resources << /Font << /F1 3 0 R >> >> >>",
+                    f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream"]
+    body = "%PDF-1.4\n" + "".join(f"{i} 0 obj\n{o}\nendobj\n" for i, o in enumerate(objects, 1))
+    path.write_bytes((body + "trailer\n<< /Root 1 0 R /Size 99 >>\n%%EOF\n").encode())
+
+
+def test_read_file_pages_through_a_pdf_as_numbered_text(box, root):
+    (root / "sources").mkdir()
+    make_pdf(root / "sources" / "paper.pdf")
+    text = box.ok("read_file", path="sources/paper.pdf")
+    assert "(3 pages)" in text and "--- page 1 ---\nFindings of page 1" in text and "page 3" in text
+    text = box.ok("read_file", path="sources/paper.pdf", start_page=2, max_pages=1)
+    assert "Findings of page 2" in text and "page 1 ---" not in text and "start_page=3" in text
+    assert "There is no page 9" in box.ok("read_file", path="sources/paper.pdf", start_page=9)
+
+
+def test_read_file_shows_pdf_pages_and_image_files_as_images(box, root):
+    make_pdf(root / "paper.pdf", pages=6)
+    result = box.run("read_file", path="paper.pdf", pages_as_images=True, start_page=2)
+    assert not result.is_error and len(result.images) == 4 and result.images[0].startswith(b"\x89PNG")
+    assert "pages 2-5" in result.text
+    import base64
+    (root / "fig.png").write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+    (root / "fig.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20"/></svg>')
+    for name in ("fig.png", "fig.svg"):
+        result = box.run("read_file", path=name)
+        assert not result.is_error and result.images[0].startswith(b"\x89PNG"), result.text
+
+
+def test_read_file_refuses_other_binaries_broken_pdfs_and_pdfs_outside(box, root, tmp_path):
+    (root / "data.bin").write_bytes(b"\0\1\2" * 100)
+    assert "not a text file" in box.error("read_file", path="data.bin")
+    (root / "bad.pdf").write_bytes(b"not a pdf")
+    assert "not a readable PDF" in box.error("read_file", path="bad.pdf")
+    make_pdf(tmp_path / "outside.pdf")
+    assert "outside the project folder" in box.error("read_file", path=str(tmp_path / "outside.pdf"))
+
+
+def test_reading_files_never_runs_mupdf_in_the_app_process(box, root, monkeypatch):
+    """MuPDF crashes when used from worker threads, so PDFs and drawings are read by the raster child process."""
+    import pymupdf
+    make_pdf(root / "paper.pdf")
+    (root / "fig.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20"/></svg>')
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("MuPDF used in the app process")
+
+    monkeypatch.setattr(pymupdf, "open", refuse)
+    assert "Findings of page 1" in box.ok("read_file", path="paper.pdf")
+    assert box.run("read_file", path="paper.pdf", pages_as_images=True).images
+    assert box.run("read_file", path="fig.svg").images
+    assert "pymupdf" not in open(files_module.__file__).read()

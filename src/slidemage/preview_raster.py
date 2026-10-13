@@ -45,6 +45,23 @@ def raster(data, sizes, full_size):
         return [images[tuple(size)] for size in sizes]
 
 
+def document(path, op, start=1, count=1, dpi=110):
+    """The chat's file reads: op "pdf" gives the page count and the text of `count` pages from page
+    `start`; "pdf_images" the same pages as PNGs; "drawing" an SVG or EPS file as one PNG."""
+    import pymupdf
+
+    if op == "drawing":
+        with open(path, "rb") as file:
+            data = file.read()
+        with pymupdf.open(stream=data, filetype=os.path.splitext(path)[1][1:]) as doc:
+            return dict(count=1, images=[doc[0].get_pixmap(dpi=dpi).tobytes("png")])
+    with pymupdf.open(path) as doc:
+        pages = range(start, min(start + count, doc.page_count + 1))
+        if op == "pdf_images":
+            return dict(count=doc.page_count, images=[doc[n - 1].get_pixmap(dpi=dpi).tobytes("png") for n in pages])
+        return dict(count=doc.page_count, texts=[doc[n - 1].get_text() for n in pages])
+
+
 def _pipe_stream(number, mode):
     """Restore redirected pipes in a Windows windowed executable/pythonw."""
     try:
@@ -77,12 +94,17 @@ def serve():
         try:
             request = json.loads(line)
             with redirect_stdout(errors):
-                images = raster(
-                    base64.b64decode(request["pdf"]),
-                    request["sizes"],
-                    request["full_size"],
-                )
-            response = dict(
+                if "op" in request:
+                    response = document(**request)
+                    images = response.pop("images", [])
+                else:
+                    images = raster(
+                        base64.b64decode(request["pdf"]),
+                        request["sizes"],
+                        request["full_size"],
+                    )
+                    response = {}
+            response |= dict(
                 ok=True,
                 images=[base64.b64encode(image).decode("ascii") for image in images],
             )

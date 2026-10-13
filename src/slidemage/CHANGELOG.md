@@ -2170,3 +2170,10 @@ v8.3.15 (2026-10-13, Claude Code speed plan C5): light hooks and optional timing
 NEW: Claude Code's hooks start faster, and prompt-to-preview time can be measured.
 - Each hook call before and after Claude's edits now takes roughly a quarter of the time.
 - A debug switch (SLIDEMAGE_TIMING=1) logs when a request, its tool calls and its preview happen.
+
+v8.3.16 (2026-10-13, chat attachments): the chat can read papers and figures. read_file now reads a PDF as text by page (start_page, max_pages; scanned pages are flagged), shows PDF pages as images with pages_as_images (4 pages per call at 110 dpi, for figures, formulas and tables) and shows PNG, JPEG, GIF, WebP, SVG and EPS files to the model (a model without vision gets the existing note instead). The composer has a paperclip button, accepts dropped files and pasted images; a file from outside the project is copied into the new sources/ folder (ProjectContext.sources_dir; -2, -3 ... on a name clash, nothing is overwritten), a file already in the project is referenced in place. Attachments show as removable chips above the box and the request lists them ("Attached: sources/paper.pdf"); the agent is told to read them with read_file and to use add_bib_entry for a paper. All MuPDF work runs in the existing preview raster child process (new document requests in its JSON protocol), never in the app process or its worker threads. Tests cover PDF paging, page images, image files, refusals, copying, chips, the request text, drop and paste.
+
+NEW: Attach papers, figures and other files to the chat.
+- Click the paperclip next to Send, drop files onto the message box, or paste an image into it.
+- Files from outside the project are copied into the project's sources/ folder; the chat then reads PDFs (text and page images) and looks at images.
+- Click a chip above the message box to remove an attachment before sending.

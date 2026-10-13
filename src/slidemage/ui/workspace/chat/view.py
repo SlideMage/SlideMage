@@ -3,18 +3,21 @@
 The user asks in the composer (Enter sends, Shift+Enter breaks the line); the answer streams in as text,
 with a card for every tool the agent runs and a diff card for every edit. In "Ask before edits" mode an
 edit waits for Apply / Reject; in "Edit automatically" mode it is applied at once and its card offers
-Undo. Stop ends a run. The conversation (history) lasts for the session; New chat starts afresh.
+Undo. Stop ends a run. Files come in with the paperclip, by drop or by pasting an image: they are chips above
+the box, and the request names them ("Attached: sources/paper.pdf") for the agent to read. The conversation (history) lasts for the session; New chat starts afresh.
 
 Threading is in session.py (the agent thread, `ChatSession.event` on the GUI thread) and
 gui_workspace.py (what the agent may ask of the main window).
 """
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QMimeData, QSize, Qt, Signal
+from PySide6.QtGui import QImage, QKeyEvent
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
 
 from .... import app_settings
 from ....ai import credentials, resolver
@@ -32,6 +35,7 @@ from ....ai.agent_types import (
     ToolStarted,
 )
 from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderError
+from ....ai.tools.files import may_touch
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
@@ -51,12 +55,24 @@ SUGGESTIONS = {
 }
 FIX_SUGGESTION = "Fix the LaTeX errors on this slide"
 COMPOSER_LINES = (2, 6)
+CHIP_CHARS = 32
+
+
+def unique_path(folder: Path, name: str) -> Path:
+    """`folder/name`, or with -2, -3 ... before the suffix when that exists already: nothing is overwritten."""
+    path, number = folder / name, 1
+    while path.exists():
+        number += 1
+        path = folder / f"{Path(name).stem}-{number}{Path(name).suffix}"
+    return path
 
 
 class Composer(QPlainTextEdit):
     """The message box: Enter sends, Shift+Enter breaks the line; grows with its text."""
 
     submitted = Signal()
+    files_dropped = Signal(list)        # local file paths (str) dropped or pasted onto the box
+    image_pasted = Signal(QImage)
 
     def __init__(self) -> None:
         super().__init__()
@@ -67,6 +83,19 @@ class Composer(QPlainTextEdit):
         line = self.fontMetrics().lineSpacing()
         lines = min(max(round(self.document().size().height()), COMPOSER_LINES[0]), COMPOSER_LINES[1])
         self.setFixedHeight(lines * line + 18)
+
+    def canInsertFromMimeData(self, source: QMimeData) -> bool:
+        return source.hasImage() or source.hasUrls() or super().canInsertFromMimeData(source)
+
+    def insertFromMimeData(self, source: QMimeData) -> None:
+        """Dropped or pasted files and images become attachments; anything else is text as usual."""
+        files = [url.toLocalFile() for url in source.urls() if url.isLocalFile()] if source.hasUrls() else []
+        if files:
+            self.files_dropped.emit(files)
+        elif source.hasImage() and not source.hasText():
+            self.image_pasted.emit(source.imageData())
+        else:
+            super().insertFromMimeData(source)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
@@ -100,6 +129,7 @@ class ChatView(Surface):
         self._stick = True                             # the list follows the newest content
         self._local_models: Optional[list[str]] = None  # the tool-capable Ollama models; None until Ollama has answered
         self._local_loader: Optional[LocalModels] = None  # the question to Ollama that is out, if any
+        self._attached: list[str] = []                 # project-relative paths the next request names
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -140,6 +170,11 @@ class ChatView(Surface):
 
         self.composer = Composer()
         self.composer.submitted.connect(self.send)
+        self.composer.files_dropped.connect(self.attach_files)
+        self.composer.image_pasted.connect(self.attach_image)
+        self._chips = QVBoxLayout()
+        self._chips.setSpacing(4)
+        layout.addLayout(self._chips)
         layout.addWidget(self.composer)
         controls = QHBoxLayout()
         controls.setSpacing(6)
@@ -147,6 +182,9 @@ class ChatView(Surface):
         self.mode_picker.clicked.connect(self._open_mode_menu)
         controls.addWidget(self.mode_picker)
         controls.addStretch(1)
+        self.attach_button = IconButton("attach_file", "Attach a paper (PDF), a figure or another file")
+        self.attach_button.clicked.connect(self._pick_files)
+        controls.addWidget(self.attach_button)
         self.send_button = Button("Send", "primary", compact=True)
         self.send_button.clicked.connect(lambda: self.send())
         self.stop_button = Button("Stop", "secondary", compact=True)
@@ -237,6 +275,7 @@ class ChatView(Surface):
         if self.session.running:
             return
         self.session.new_chat()
+        self._clear_attachments()
         self._text, self._stick = None, True
         self._tools.clear()
         self._diffs.clear()
@@ -270,20 +309,79 @@ class ChatView(Surface):
 
     def send(self, text: str | None = None) -> None:
         text = (self.composer.toPlainText() if text is None else text).strip()
-        if not text or self.session.running:
+        if (not text and not self._attached) or self.session.running:
             return
+        request = text
+        if self._attached:
+            request = (text or "Please look at the attached file.") + "\n\nAttached: " + ", ".join(self._attached)
         provider = self._provider_for_send()
-        if provider is None or not self.session.start(provider, text, self.scope.current()):
+        if provider is None or not self.session.start(provider, request, self.scope.current()):
             if self.composer.toPlainText().strip() != text:
                 self.composer.setPlainText(text)        # a suggestion that could not be sent is kept
             return
         self.composer.clear()
+        self._clear_attachments()
         self._begin_conversation()
-        self._add(UserBubble(text))
+        self._add(UserBubble(request))
         self._start_turn(provider.label)
         self._stick = True
         self._set_running(True)
         self.status.run()
+
+    # -- attachments -------------------------------------------------------------------------
+
+    def _pick_files(self) -> None:
+        names, _filter = QFileDialog.getOpenFileNames(self, "Attach files", str(self.state.project.root))
+        self.attach_files(names)
+
+    def attach_files(self, names: list[str]) -> None:
+        """Attach files: one inside the project stays where it is, any other is copied into sources/."""
+        root = self.state.project.root.resolve()
+        for name in names:
+            path = Path(name).resolve()
+            if not path.is_file():
+                continue
+            if not may_touch(root, path):
+                folder = self.state.project.sources_dir
+                folder.mkdir(exist_ok=True)
+                target = unique_path(folder, path.name)
+                try:
+                    shutil.copyfile(path, target)
+                except OSError as exc:
+                    self._add(Notice(f"{path.name} could not be attached: {exc.strerror or exc}", "error"))
+                    continue
+                path = target.resolve()
+            self._add_chip(path.relative_to(root).as_posix())
+
+    def attach_image(self, image: QImage) -> None:
+        """A pasted image is saved into sources/ as a PNG and attached."""
+        folder = self.state.project.sources_dir
+        folder.mkdir(exist_ok=True)
+        target = unique_path(folder, "pasted-image.png")
+        if image.isNull() or not image.save(str(target), "PNG"):
+            self._add(Notice("The pasted image could not be attached.", "error"))
+            return
+        self._add_chip(target.relative_to(self.state.project.root).as_posix())
+
+    def _add_chip(self, rel: str) -> None:
+        if rel in self._attached:
+            return
+        self._attached.append(rel)
+        shown = rel if len(rel) <= CHIP_CHARS else "…" + rel[-(CHIP_CHARS - 1):]
+        chip = Chip(shown, "info", "close")
+        chip.setToolTip(f"{rel}\nClick to remove")
+        chip.clicked.connect(lambda: self._remove_chip(rel))     # not capturing chip: a cycle through a Qt wrapper crashes when a worker's GC frees it
+        self._chips.addWidget(chip, 0, Qt.AlignmentFlag.AlignLeft)
+
+    def _remove_chip(self, rel: str) -> None:
+        widget = self._chips.takeAt(self._attached.index(rel)).widget()
+        self._attached.remove(rel)
+        widget.setParent(None)
+        widget.deleteLater()
+
+    def _clear_attachments(self) -> None:
+        self._attached.clear()
+        clear_layout(self._chips)
 
     def _provider_for_send(self) -> Optional[ChatProvider]:
         """The model that answers the next request; None (and the reason shown) when it cannot be used now."""

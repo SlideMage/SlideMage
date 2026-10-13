@@ -5,7 +5,7 @@ Everything is confined to the project folder: a path is resolved (symlinks
 included) before it is judged, so neither `..` nor a link that leads out gets
 through. Hidden folders (`.build/`, `.slidemage/` -- which holds the settings
 file and possibly the API key --, `.previews/`, `.git/` ...) and `pdf/` do not
-exist as far as the model can tell. Only text is read; "\n" is the line end the
+exist as far as the model can tell. Text, PDFs (text by page, or the pages as images) and images are read; "\n" is the line end the
 model sees whatever the file uses (edits.py writes the file's own back).
 """
 from __future__ import annotations
@@ -15,14 +15,21 @@ import posixpath
 from fnmatch import fnmatch
 from pathlib import Path
 
-from ... import slide_search
+from ... import preview_raster_client, slide_search
 from ..workspace import Workspace
-from .base import ToolContext, ToolError, tool
+from .base import ToolContext, ToolError, ToolOutput, tool
 
 HIDDEN_FOLDERS = ("pdf",)        # besides everything whose name starts with "."
 MAX_FILE_BYTES = 2_000_000
 READ_LINES = 400                 # lines read_file returns unless asked for fewer
 READ_CHARS = 30_000
+MAX_BINARY_BYTES = 50_000_000    # a paper as PDF
+MAX_IMAGE_BYTES = 5_000_000      # what the model accepts per image
+PDF_PAGES = 10                   # pages of text read_file returns unless asked for fewer
+PAGE_IMAGES = 4                  # rendered pages per call, at PAGE_DPI
+PAGE_DPI = 110
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+DRAWING_SUFFIXES = (".svg", ".eps")     # rasterised by PyMuPDF
 FIND_LIMIT = 200
 SEARCH_LIMIT = 40
 
@@ -93,16 +100,84 @@ def current_revision(workspace: Workspace, path: Path) -> tuple[str, str]:
     return read_disk_text(path), "file"
 
 
+def _binary_file(path: Path, limit: int) -> Path:
+    if not path.is_file():
+        raise ToolError(f"{path.name} does not exist.")
+    if path.stat().st_size > limit:
+        raise ToolError(f"{path.name} is too large to read ({path.stat().st_size // 1_000_000} MB).")
+    return path
+
+
+def _read_pdf(ctx: ToolContext, path: Path, args: dict) -> ToolOutput:
+    """The text of PDF pages "--- page N ---" (like the line paging), or, with pages_as_images, the pages as PNGs.
+    MuPDF runs in the raster child process, never in this (worker) thread."""
+    _binary_file(path, MAX_BINARY_BYTES)
+    name = relative(ctx.root, path)
+    start = max(1, args.get("start_page", 1))
+    images = args.get("pages_as_images", False)
+    count = min(max(1, args.get("max_pages", PAGE_IMAGES if images else PDF_PAGES)), PAGE_IMAGES if images else 50)
+    try:
+        got = preview_raster_client.read_document(path, "pdf_images" if images else "pdf", start, count, PAGE_DPI)
+    except RuntimeError as exc:
+        raise ToolError(f"{path.name} is not a readable PDF: {exc}") from None
+    total = got["count"]
+    last = start + len(got.get("texts") or got["images"]) - 1
+    if last < start:
+        return f"{name} ({total} pages)\nThere is no page {start}."
+    if images:
+        return f"{name} ({total} pages): pages {start}-{last} as images.", got["images"]
+    shown, size = [], 0
+    for number, body in enumerate(got["texts"], start):
+        page = f"--- page {number} ---\n{body.strip()}"
+        size += len(page) + 1
+        if size > READ_CHARS and shown:
+            break
+        shown.append(page)
+    last = start + len(shown) - 1
+    text = f"{name} ({total} pages)\n" + "\n".join(shown)
+    if not any(body.strip() for body in got["texts"]):
+        text += "\n[No text layer found (a scan or a drawing): read it with pages_as_images.]"
+    if last < total:
+        text += f"\n[Pages {start}-{last} of {total}; read on with start_page={last + 1}.]"
+    return text
+
+
+def _read_image(ctx: ToolContext, path: Path, suffix: str) -> ToolOutput:
+    """An image file for the model to look at; an SVG or EPS drawing is rasterised first (in the child)."""
+    _binary_file(path, MAX_BINARY_BYTES)
+    if suffix in DRAWING_SUFFIXES:
+        try:
+            data = preview_raster_client.read_document(path, "drawing", dpi=PAGE_DPI * 2)["images"][0]
+        except RuntimeError as exc:
+            raise ToolError(f"{path.name} cannot be rasterised: {exc}") from None
+    else:
+        data = path.read_bytes()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ToolError(f"{path.name} is too large to look at ({len(data) // 1_000_000} MB; the limit is 5 MB).")
+    return f"{relative(ctx.root, path)}:", [data]
+
+
 @tool("read_file",
-      "Read a text file of the project (a slide, a deck, Slidemaster.bib ...). Lines come numbered "
+      "Read a file of the project. Text (a slide, a deck, Slidemaster.bib ...) comes numbered "
       "(\"12<tab>text\"); the numbers are not part of the file, leave them out of old_text. If a file "
-      "is open in the editor you get its current text, unsaved edits included.",
+      "is open in the editor you get its current text, unsaved edits included. A PDF (an attached paper) "
+      "comes as text per page; set pages_as_images to see the pages themselves (figures, formulas, "
+      "tables). An image (png, jpg, gif, webp, svg, eps) is shown to you.",
       {"path": {"type": "string", "description": "Project-relative path, e.g. slides/1y8-EN-Title-current.tex"},
        "start_line": {"type": "integer", "description": "First line to read (default 1)."},
-       "max_lines": {"type": "integer", "description": f"How many lines at most (default and cap {READ_LINES})."}},
+       "max_lines": {"type": "integer", "description": f"How many lines at most (default and cap {READ_LINES})."},
+       "start_page": {"type": "integer", "description": "PDF: first page to read (default 1)."},
+       "max_pages": {"type": "integer",
+                     "description": f"PDF: how many pages at most (default {PDF_PAGES} as text, cap {PAGE_IMAGES} as images)."},
+       "pages_as_images": {"type": "boolean", "description": "PDF: look at the pages as images instead of reading their text."}},
       ("path",))
-def read_file(ctx: ToolContext, args: dict) -> str:
+def read_file(ctx: ToolContext, args: dict) -> ToolOutput:
     path = project_path(ctx.root, args["path"])
+    suffix = path.suffix.casefold()
+    if suffix == ".pdf":
+        return _read_pdf(ctx, path, args)
+    if suffix in IMAGE_SUFFIXES + DRAWING_SUFFIXES:
+        return _read_image(ctx, path, suffix)
     text, source = current_revision(ctx.workspace, path)
     lines = text.split("\n")
     if lines and lines[-1] == "":

@@ -3,6 +3,7 @@ buffers, Stop, closing mid-run, Local AI only, the palette row, and the Chat | C
 is scripted (agent_fakes); the project is a throwaway one, never example/."""
 from __future__ import annotations
 
+import gc
 import threading
 import time
 from functools import partial
@@ -804,3 +805,67 @@ def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
     assert ai_review.is_unreviewed(env.window.project, env.path)
     file.editor.undo()
     assert file.editor.text() == expected
+
+
+# -- attachments ------------------------------------------------------------------------------------------
+
+def collect_garbage():
+    """Qt wrappers freed by a worker thread's garbage collection are deleted on the main thread later, and
+    crash if Qt has deleted the widget by then: let the main thread free this test's wrappers now."""
+    pump()
+    gc.collect()
+
+
+def chips(env):
+    return [env.chat._chips.itemAt(i).widget() for i in range(env.chat._chips.count())]
+
+
+def test_an_outside_file_is_copied_into_sources_without_overwriting_and_an_inside_file_stays(env, tmp_path):
+    outside = tmp_path / "elsewhere" / "paper.pdf"
+    outside.parent.mkdir()
+    outside.write_bytes(b"%PDF one")
+    env.chat.attach_files([str(outside)])
+    outside.write_bytes(b"%PDF two")
+    env.chat.attach_files([str(outside), str(env.path), str(tmp_path / "missing.pdf")])
+    sources = env.root / "sources"
+    assert (sources / "paper.pdf").read_bytes() == b"%PDF one" and (sources / "paper-2.pdf").read_bytes() == b"%PDF two"
+    assert env.chat._attached == ["sources/paper.pdf", "sources/paper-2.pdf", SLIDE]
+    assert len(chips(env)) == 3
+    chips(env)[0].clicked.emit()
+    pump()
+    assert env.chat._attached == ["sources/paper-2.pdf", SLIDE] and len(chips(env)) == 2
+    collect_garbage()
+
+
+def test_the_sent_request_names_the_attachments_and_clears_the_chips(env, tmp_path):
+    outside = tmp_path / "fig.png"
+    outside.write_bytes(b"x")
+    env.chat.attach_files([str(outside)])
+    provider = script(env, reply("Read it."))
+    env.chat.composer.setPlainText("Use this figure")
+    ask(env, None)
+    assert "Use this figure\n\nAttached: sources/fig.png" in provider.sent[0][-1].text
+    assert env.chat._attached == [] and chips(env) == []
+    collect_garbage()
+
+
+def test_dropping_files_and_pasting_an_image_attach_them(env, tmp_path):
+    from PySide6.QtCore import QMimeData, QUrl
+    from PySide6.QtGui import QColor, QImage
+    dropped = tmp_path / "notes.txt"
+    dropped.write_text("hi")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(dropped))])
+    assert env.chat.composer.canInsertFromMimeData(mime)
+    env.chat.composer.insertFromMimeData(mime)
+    assert env.chat._attached == ["sources/notes.txt"] and env.chat.composer.toPlainText() == ""
+    image = QImage(8, 8, QImage.Format.Format_RGB32)
+    image.fill(QColor("red"))
+    mime = QMimeData()
+    mime.setImageData(image)
+    env.chat.composer.insertFromMimeData(mime)
+    env.chat.composer.insertFromMimeData(mime)
+    assert env.chat._attached[1:] == ["sources/pasted-image.png", "sources/pasted-image-2.png"]
+    assert (env.root / "sources" / "pasted-image-2.png").read_bytes().startswith(b"\x89PNG")
+    del mime, image
+    collect_garbage()
