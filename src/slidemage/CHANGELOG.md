@@ -2133,3 +2133,11 @@ v8.3.10 (2026-10-13, Claude Code speed plan C2): fresh reads and protected backg
 NEW: Claude Code checks the latest slide text and background header updates protect your edits.
 - A quick read, lint or preview after a terminal edit sees the new file immediately; unsaved editor edits take priority and are identified in the result.
 - Updating deck-inclusion headers preserves newer slide content when another writer edits the slide at the same time.
+
+
+v8.3.11 (2026-10-13, Claude Code speed plan CR): persistent review labels for Claude slide changes. A per-project JSON store records author, kind, source, ISO time, text hash and deck insertion provenance; read/modify/write uses the existing interprocess lock and fileio atomic replacement, shared directly by the app and the terminal PostToolUse hook. Chat edits (including unsaved buffers), slide drafts, translation partners and all headless text tasks mark live slides; frozen versions and image-description drafts are excluded. Renames carry marks and deletion/archiving drops them. The slide list and Details show Not reviewed, with a registry action for focused or selected slides, a review button and list filter. Manual edits keep the mark; terminal disk polling also watches the review store. Regression tests cover persistence, concurrent writers, hook events, write paths and review controls.
+
+NEW: Claude's slide changes stay labelled until you review them.
+- A Not reviewed label appears on slides Claude creates or changes, including translations and terminal edits.
+- Use Mark reviewed after checking a slide, or select several slides to mark them together; the Not reviewed filter finds slides still waiting.
+- Editing a slide yourself keeps its label until you explicitly mark it reviewed.

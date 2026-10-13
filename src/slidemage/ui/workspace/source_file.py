@@ -109,7 +109,7 @@ class SourceFile(Surface):
         self.find_bar = FindBar(self.editor)
         self.fold_button = Button("", "ghost", compact=True)
         self.fold_button.clicked.connect(self.toggle_header_fold)
-        self.fix_panel = AiFixPanel(app, self.editor, path.name)
+        self.fix_panel = AiFixPanel(app, self.editor, path)
         self.fix_panel.running_changed.connect(lambda _running: self._update_status())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

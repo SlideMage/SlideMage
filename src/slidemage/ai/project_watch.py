@@ -3,7 +3,8 @@ files, SlideMage keeps its views in step). A cheap poll instead of OS file watch
 project's text files, `diff()` compares two scans. No Qt.
 
 The same files are visible here as to the agent tools (tools/files.py `is_hidden`): dot-folders
-(`.build/`, `.slidemage/`, `.git/` ...) and `pdf/` do not exist, and only text files count.
+(`.build/`, `.slidemage/`, `.git/` ...) and `pdf/` do not exist, and only text files count. The review store is the one explicit exception: a hook
+can mark a slide after the poll already saw its source write.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..deck_scan import is_generated_wrapper
+from ..project import ProjectContext
 from .tools.edits import EDITABLE_SUFFIXES
 from .tools.files import HIDDEN_FOLDERS
 
@@ -49,6 +51,12 @@ def scan(root: Path) -> Scan:
                     found[Path(entry.path)] = (info.st_mtime_ns, info.st_size)
             except OSError:
                 continue            # gone while scanning
+    review = ProjectContext.at(root).ai_review_path
+    try:
+        info = review.stat()
+        found[review] = (info.st_mtime_ns, info.st_size)
+    except OSError:
+        pass
     return found
 
 

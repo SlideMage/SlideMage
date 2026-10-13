@@ -230,6 +230,9 @@ class GuiWorkspace(Workspace):
     def file_changed(self, path: Path, previous_text: str | None) -> None:
         self.on_gui(lambda: self._show_written(self._local(path)))
 
+    def review_changed(self) -> None:
+        self.on_gui(self.window.refresh_ai_review)
+
     def show_slide(self, path: Path) -> None:
         def show() -> None:
             window, slide_id = self.window, bare_id(path.name)

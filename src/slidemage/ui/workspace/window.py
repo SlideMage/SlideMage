@@ -539,6 +539,11 @@ class WorkspaceWindow(QMainWindow):
         self.slide_list.deck_edited(deck_path, summary, previous_text)
         self.log(summary)
 
+    def refresh_ai_review(self) -> None:
+        self.slide_list.rebuild(preserve_focus=True)
+        if self.state.mode == "details":
+            self.centre.refresh()
+
     def refresh_open_deck_editors(self) -> None:
         """Re-scans the decks and redraws the slide list from current disk state
         (2026-08-25) -- for an edit that can touch more than one deck at once and

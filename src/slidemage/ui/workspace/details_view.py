@@ -27,10 +27,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import alt_blocks, slide_language, slide_rename, slide_source, slide_versioning
+from ... import ai_review, alt_blocks, slide_language, slide_rename, slide_source, slide_versioning
 from ...deck_outline import SlideRow
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Surface
+from ..kit.widgets import Button, Chip, Surface
 from .state import WorkspaceState
 
 SAVE_FIRST = ("Save or revert this slide's unsaved changes first: the file is moved on disk, "
@@ -103,6 +103,12 @@ class DetailsPane(Surface):
         title = self._row.title if self._row else self._id_slug
         row.addWidget(_label(title, q.DETAILS_TITLE), 1)
         row.addWidget(_label(slide_language.bare_id(self._id_slug), q.PREVIEW_ID))
+        path = self.app.project.slides_dir / self._row.call.source_filename if self._row else self.current_path
+        if ai_review.is_unreviewed(self.app.project, path):
+            row.addWidget(Chip("Not reviewed", "warning"))
+            reviewed = Button("Mark reviewed", "secondary", compact=True)
+            reviewed.clicked.connect(lambda: self.app.slide_list.mark_reviewed([path]))
+            row.addWidget(reviewed)
         holder = Surface()
         holder.setLayout(row)
         return holder

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ... import slide_preview, slide_source
+from ... import ai_review, slide_preview, slide_source
 from ...project import ProjectContext
 from ...protected_regions import mask_protected_regions
 from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
@@ -83,22 +83,29 @@ def propose(ctx: ToolContext, path: Path, before: str, after: str, note: str = "
     return False
 
 
-def write_text(workspace: Workspace, path: Path, before: str, after: str) -> bool:
+def write_text(workspace: Workspace, path: Path, before: str, after: str, *,
+               kind: str = "edit", source: str = "chat agent", review: bool = True) -> bool:
     """Put `after` in place of `before` in the buffer if `path` is open, else on disk. Returns
     whether it went into the buffer; ToolError when it could not be done (also for a frozen version, whichever
     caller asks: the headless tasks and undo reach this without `_editable`)."""
     _not_frozen(workspace.project, path)
-    if workspace.is_open(path):
+    via_buffer = workspace.is_open(path)
+    if via_buffer:
         problem = workspace.apply_to_buffer(path, before, after)
         if problem:
             raise ToolError(f"{path.name} was not changed: {problem}")
-        return True
-    try:
-        slide_source.save_slide_source(workspace.project, path, after, slide_source.read_slide_source(path)[1], expected_text=before)
-    except slide_source.StaleFileError as exc:
-        raise ToolError(f"{path.name} was not changed: {exc}") from None
-    workspace.file_changed(path, before)
-    return False
+    else:
+        try:
+            slide_source.save_slide_source(workspace.project, path, after, slide_source.read_slide_source(path)[1], expected_text=before)
+        except slide_source.StaleFileError as exc:
+            raise ToolError(f"{path.name} was not changed: {exc}") from None
+    if review and before != after:
+        ai_review.mark(workspace.project, path, kind, source, text=after)
+        ai_review.inserted_slides(workspace.project, path, before, after, source)
+        workspace.review_changed()
+    if not via_buffer:
+        workspace.file_changed(path, before)
+    return via_buffer
 
 
 def undo_edit(workspace: Workspace, applied: EditApplied) -> str:
@@ -111,7 +118,7 @@ def undo_edit(workspace: Workspace, applied: EditApplied) -> str:
     if now != applied.after:
         return f"{applied.path.name} has changed since, so the edit cannot be undone automatically."
     try:
-        write_text(workspace, applied.path, applied.after, applied.before)
+        write_text(workspace, applied.path, applied.after, applied.before, review=False)
     except ToolError as exc:
         return str(exc)
     return ""
@@ -184,6 +191,8 @@ def write_file(ctx: ToolContext, args: dict) -> str:
         raise ToolError(f"{relative(ctx.root, path)} was created while the user was deciding; it was not overwritten.")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8", newline="\n")
+    ai_review.inserted_slides(ctx.project, path, "", content, "chat agent: write_file")
+    ctx.workspace.review_changed()
     ctx.workspace.file_changed(path, None)
     ctx.emit(EditApplied(ctx.call_id, path, "", content, False, undoable=False))
     return f"Created {relative(ctx.root, path)}."

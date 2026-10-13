@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_blocks, deck_editor, deck_language, latex_lint, slide_language, slide_snapshot
+from . import ai_review, alt_blocks, deck_editor, deck_language, latex_lint, slide_language, slide_snapshot
 from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
@@ -44,6 +44,7 @@ class SlideRow:
     original_call: Optional[SlideCall] = None
     folded_calls: tuple[SlideCall, ...] = ()
     related_ids: tuple[str, ...] = ()
+    unreviewed: bool = False
 
     @property
     def deck_call(self) -> SlideCall:
@@ -95,7 +96,7 @@ def slide_file_title(path: Path, id_slug: str) -> str:
 
 
 def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
-         links: slide_language.TranslationLinks) -> SlideRow:
+         links: slide_language.TranslationLinks, unreviewed_paths: set[str]) -> SlideRow:
     call = slot.call
     path = ctx.slides_dir / call.source_filename
     png = slide_snapshot.snapshot_path(ctx, call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
@@ -115,6 +116,7 @@ def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, positio
         original_call=slot.original,
         folded_calls=slot.folded,
         related_ids=slot.related_ids,
+        unreviewed=f"slides/{call.source_filename}" in unreviewed_paths,
     )
 
 
@@ -131,13 +133,14 @@ def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> 
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     occurrences: dict[tuple, int] = {}
     links = slide_language.TranslationLinks(ctx.slides_dir)
+    unreviewed_paths = set(ai_review.unreviewed(ctx))
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     for position, slot in enumerate(slots, start=1):
         call = slot.original
         base = _call_key(call)
         occurrences[base] = occurrences.get(base, 0) + 1
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
-            _row(ctx, slot, base + (occurrences[base] - 1,), position, template, view, language, links))
+            _row(ctx, slot, base + (occurrences[base] - 1,), position, template, view, language, links, unreviewed_paths))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -151,10 +154,11 @@ def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, languag
     """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
     template = slide_snapshot.detect_template(deck.preamble_text)
     links = slide_language.TranslationLinks(ctx.slides_dir)
+    unreviewed_paths = set(ai_review.unreviewed(ctx))
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     for position, slot in enumerate(slots, start=1):
         if slot.matches(slide_id):
-            return _row(ctx, slot, _call_key(slot.original) + (0,), position, template, view, language, links)
+            return _row(ctx, slot, _call_key(slot.original) + (0,), position, template, view, language, links, unreviewed_paths)
     return None
 
 

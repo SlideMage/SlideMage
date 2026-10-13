@@ -16,6 +16,7 @@ decks of the Tabs menu are `images` and `archived_decks`.
 """
 from __future__ import annotations
 
+from ... import ai_review
 from ...deck_scan import TAG_COURSE, TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
@@ -62,6 +63,14 @@ def _current(is_current: bool) -> str:
 
 def _slide_targets(w) -> list:
     return w.slide_list.targets()
+
+
+def _review_paths(w) -> list:
+    rows = _slide_targets(w)
+    if len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide)):
+        return [w.project.slides_dir / row.call.source_filename for row in rows]
+    path = w.centre.path
+    return [path] if path is not None else []
 
 
 def _one_slide(w) -> bool:
@@ -161,6 +170,11 @@ def build_registry() -> CommandRegistry:
     # Slide: the focused slide, or the selected ones ---------------------------------------
     for name, label in (("open", "Open source"), ("preview", "Preview"), ("images", "Images")):
         add(f"slide:{name}", label, SLIDE, _run_slide(name), visible=_one_slide)
+    add("slide:reviewed", "Mark reviewed", SLIDE, lambda w: w.slide_list.mark_reviewed(_review_paths(w)),
+        visible=lambda w: bool(_review_paths(w)),
+        enabled=lambda w: any(ai_review.is_unreviewed(w.project, p) for p in _review_paths(w)))
+    add("slides:unreviewed", "List not reviewed slides", SLIDE,
+        lambda w: w.slide_list.review_filter.setChecked(True), enabled=_has_deck)
     for view in VIEWS:
         add(f"slide:visible:{view}", _visibility_label(view), SLIDE, _run_slide(f"visible:{view}"),
             visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)

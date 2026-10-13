@@ -61,6 +61,7 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
+from . import ai_review
 from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES, current_name
 from .tex_source import COMMENT_RE
@@ -211,6 +212,7 @@ def archive_files(ctx: ProjectContext, media: list[Path], slides: list[Path], lo
     Returns (media moved, slides moved)."""
     media_moved = _archive_files(media, ctx.media_dir / "archive", "media file", log)
     slides_moved = _archive_files(slides, ctx.slides_dir / "archive", "slide", log)
+    ai_review.mark_reviewed(ctx, [p for p in slides if not p.exists()])
     log(
         f"==== Archive unused content done: {media_moved} media file(s), "
         f"{slides_moved} slide(s) moved ===="

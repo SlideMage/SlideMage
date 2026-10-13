@@ -472,6 +472,8 @@ class ProjectContext:
     tikz_previews_dir = _Under(".previews", "tikz_illustration_previews")
     pdf_render_cache_dir = _Under(".previews", "pdf_render_cache")
     settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json
+    ai_review_path = _Under(".slidemage", "ai-review.json")
+    claude_hook_dir = _Under(".slidemage", "claude-hooks")
     slide_ids_csv = _Under(MARKER)
     bibliography_path = _Under("Slidemaster.bib")
     slide_template_path = _Under(".scripts", "R_Slidemaster", "inst", "templates", "slide-template.tex")

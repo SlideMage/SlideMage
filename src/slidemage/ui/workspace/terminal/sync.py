@@ -64,8 +64,13 @@ class DiskSync(QObject):
         decks = {deck.path: deck for deck in window.decks}
         structural = any(p.relative_to(self.root).parts[0] in STRUCTURE_FOLDERS
                          for p in (*changes.added, *changes.removed) if p.suffix == ".tex")
+        review_changed = window.project.ai_review_path in (*changes.added, *changes.modified, *changes.removed)
+        if review_changed:
+            window.refresh_ai_review()
         edited_decks, refresh, shown = [], False, False
         for path in (*changes.modified, *changes.added):
+            if path == window.project.ai_review_path:
+                continue
             outcome = window.centre.disk_changed(path)
             if outcome == SAME:
                 continue

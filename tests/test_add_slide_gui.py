@@ -12,7 +12,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from slidemage.project import ProjectContext
-from slidemage import deck_editor, deck_scan, slide_add
+from slidemage import ai_review, deck_editor, deck_scan, slide_add
 from slidemage.ai.providers import Cancelled, ChatReply, OllamaProvider
 from slidemage.ui.dialogs import add_slide
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
@@ -244,6 +244,7 @@ def test_duplicate_adds_an_independent_copy(make, project, preset, id_slug, titl
     assert created.read_bytes().decode().endswith(FRAME % title) and "Translation of" not in created.read_text()
     assert "translation" not in (project.slides / f"{id_slug}-current.tex").read_text()
     assert window.opened == [created] and created.name[:3] in deck_text(project)
+    assert not ai_review.unreviewed(window.project)
 
 
 def test_a_copy_needs_the_saved_file_and_a_good_slug(make, project):
@@ -257,8 +258,11 @@ def test_a_copy_needs_the_saved_file_and_a_good_slug(make, project):
     assert "letters and digits" in sheet.status.text() and not sheet.ok.isEnabled()
 
 
-def test_translate_into_german_runs_the_model_and_links_the_translation(make, project, monkeypatch):
-    asked = use_provider(monkeypatch, Translator())
+@pytest.mark.parametrize("service", ["Ollama", "Anthropic"])
+def test_translate_into_german_runs_the_model_and_links_the_translation(make, project, monkeypatch, service):
+    provider = Translator()
+    provider.service = service
+    asked = use_provider(monkeypatch, provider)
     sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
     assert sheet.chosen_target() == "DE" and sheet.copy_slug.text() == "Demo"
     assert sheet.machine.isEnabled() and sheet.machine.isChecked() and not sheet.machine_box.isHidden()
@@ -271,6 +275,10 @@ def test_translate_into_german_runs_the_model_and_links_the_translation(make, pr
     assert f"%% DE translation: {created.name[:-len('-current.tex')]}" in (project.slides / "abc-EN-Demo-current.tex").read_text()
     assert window.slots == [("start", "translating a slide"), ("end",)] and asked == ["the slide's LaTeX body"]
     assert window.opened == [created] and created.name[:3] in deck_text(project)
+    marks = ai_review.unreviewed(window.project)
+    assert len(marks) == (2 if service == "Anthropic" else 0)
+    if marks:
+        assert marks[created.relative_to(window.project.root).as_posix()]["decks"] == ["decks/course.tex"]
 
 
 def test_a_failed_translation_is_shown_and_nothing_is_made(make, project, monkeypatch):

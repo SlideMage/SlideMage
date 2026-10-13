@@ -1,4 +1,4 @@
-"""The PreToolUse hook that keeps the embedded Claude Code away from what SlideMage manages (UI redesign
+"""The hooks that record Claude writes and keep the embedded Claude Code away from what SlideMage manages (UI redesign
 step 10c). Claude Code runs this command before every Edit, Write or MultiEdit, with the call as JSON on
 stdin; exit code 2 blocks the call and hands stderr to Claude as the reason, any other code lets it go.
 
@@ -16,8 +16,9 @@ import json
 import os
 import sys
 from pathlib import Path
+from hashlib import sha256
 
-from .. import project
+from .. import ai_review, fileio, project
 from ..project import ProjectContext
 from . import claude_scope
 from .tools.edits import protected_problem, slide_kind
@@ -94,6 +95,41 @@ def blocked_reason(ctx: ProjectContext, event: dict) -> str | None:
     return protected_problem(before, after) if after is not None else None
 
 
+def record_write(ctx: ProjectContext, event: dict) -> None:
+    """Pre captures text; successful Post records the slide and inserted calls.
+
+    Tool ids isolate simultaneous calls. The temporary pre snapshot is only
+    needed to identify deck insertions and no-op writes; the review store itself is locked.
+    """
+    args = event.get("tool_input")
+    raw = args.get("file_path") if isinstance(args, dict) else None
+    if event.get("tool_name") not in FILE_TOOLS or not isinstance(raw, str):
+        return
+    base = Path(event.get("cwd") or ctx.root)
+    path = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
+    if not path.is_relative_to(ctx.root.resolve()):
+        return
+    slide = slide_kind(ctx, path) == "current"
+    deck = path.suffix == ".tex" and path.is_relative_to(ctx.decks_dir.resolve())
+    if not slide and not deck:
+        return
+    identity = str(event.get("tool_use_id") or f"{event.get('session_id', '')}:{path}")
+    snapshot = ctx.claude_hook_dir / (sha256(identity.encode()).hexdigest() + ".json")
+    if event.get("hook_event_name") == "PreToolUse":
+        fileio.write_json(snapshot, {"new": not path.exists(), "before": _read(path)})
+        return
+    saved = fileio.read_json(snapshot)
+    snapshot.unlink(missing_ok=True)
+    response = event.get("tool_response")
+    if isinstance(response, dict) and (response.get("isError") or response.get("is_error")):
+        return
+    source = f"Claude Code terminal: {event['tool_name']}"
+    if slide and ("before" not in saved or saved["before"] != _read(path)):
+        ai_review.mark(ctx, path, "draft" if saved.get("new") else "edit", source)
+    elif deck and path.is_file() and "before" in saved:
+        ai_review.inserted_slides(ctx, path, saved["before"] or "", fileio.read_text_exact(path), source)
+
+
 def main() -> int:
     try:
         event = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
@@ -102,7 +138,13 @@ def main() -> int:
             if data:
                 print(claude_scope.prompt_context(data))   # stdout becomes context for this prompt
             return 0
-        reason = blocked_reason(project.from_environment(), event) if isinstance(event, dict) else None
+        ctx = project.from_environment()
+        if isinstance(event, dict) and event.get("hook_event_name") == "PostToolUse":
+            record_write(ctx, event)
+            return 0
+        reason = blocked_reason(ctx, event) if isinstance(event, dict) else None
+        if not reason and isinstance(event, dict) and event.get("hook_event_name") == "PreToolUse":
+            record_write(ctx, event)
     except Exception as exc:  # noqa: BLE001 -- not the hook's business to stop a call that is fine
         print(f"SlideMage hook: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1

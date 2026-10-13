@@ -31,7 +31,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
-from .... import (alt_blocks, alt_draft, alt_images, deck_editor, deck_language, latex_lint, slide_add, slide_ids,
+from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, latex_lint, slide_add, slide_ids,
                   slide_language, slide_source, slide_versioning)
 from ....project import ProjectContext
 from ....tex_source import masked_same_length
@@ -552,7 +552,9 @@ class TaskRunner(QObject):
         None if the file has changed. What to append to the status line."""
         new = capture.header + result
         try:
-            write_text(self._workspace, capture.path, capture.text, new)
+            write_text(self._workspace, capture.path, capture.text, new,
+                       kind="translation" if capture.task is claude_tasks.UPDATE_TRANSLATION else "edit",
+                       source=capture.task.name)
         except ToolError:
             return None
         window = self._window
@@ -572,10 +574,13 @@ class TaskRunner(QObject):
             return None
         created = slide_add.create_translation(
             window.project, capture.id_slug, slide_add.slug_of(capture.id_slug), capture.language, translated.replace("\n", capture.eol))
+        ai_review.mark(window.project, created.path, "translation", capture.task.name)
+        self._workspace.review_changed()
         linked = slide_ids.with_translation_backreference(capture.text, capture.language, created.id_slug)
         note = f": {created.id_slug} created"
         try:
-            write_text(self._workspace, capture.path, capture.text, linked)
+            write_text(self._workspace, capture.path, capture.text, linked,
+                       kind="translation", source=capture.task.name)
         except ToolError as exc:
             note += f", not linked to {capture.id_slug} ({exc})"
         if not self._add_to_deck(capture, created.id_slug):
@@ -593,7 +598,9 @@ class TaskRunner(QObject):
         if call is None:
             return False
         try:
-            deck_editor.insert_slide_call(deck.path, deck.text, call.line_end, call.indent, "slide", id_slug)
+            updated = deck_editor.insert_slide_call(deck.path, deck.text, call.line_end, call.indent, "slide", id_slug)
+            ai_review.inserted_slides(window.project, deck.path, deck.text, updated, capture.task.name)
+            self._workspace.review_changed()
         except (deck_editor.StaleFileError, ValueError, OSError):
             return False
         window.after_deck_edit(deck.path, f"Added \\slide{{{id_slug}}} to {deck.name}", previous_text=deck.text)

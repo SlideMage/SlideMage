@@ -506,7 +506,7 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
     assert keys_of(menu) == [
-        "slide:open", "slide:preview", "slide:images",
+        "slide:open", "slide:preview", "slide:images", "slide:reviewed",
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
@@ -567,7 +567,7 @@ def test_the_bulk_menu_moves_slides_into_a_section(make_list):
     menu = slide_list._bulk_menu()
     assert keys_of(menu) == [
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
-        "move:0", "move:1", "move:2", "move:3", "compile:slides", "slide:clear", "slide:remove"]
+        "move:0", "move:1", "move:2", "move:3", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"]
     assert _entry(menu, "slide:remove")[2] == "Remove 2 from the deck"
     slide_list._on_menu_chosen("move:2")               # into the empty section
     assert deck_lines(path) == ["\\section{One}", "\\slide{bbb-One}", "\\section{Empty}", "\\slide{aaa-Front}",

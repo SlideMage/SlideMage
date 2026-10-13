@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import alt_images, deck_editor, deck_headers, slide_ids, slide_language
+from . import ai_review, alt_images, deck_editor, deck_headers, slide_ids, slide_language
 from .project import ProjectContext
 from .processes import delete_file, move_file
 
@@ -129,6 +129,7 @@ def _apply_id_slug_rename(ctx: ProjectContext, id_slug: str, new_id_slug: str) -
 
     for src, dest in renames:
         move_file(src, dest, ctx.root)
+        ai_review.rename(ctx, src, dest)
 
     deck_paths = _reference_decks(ctx)
     for deck_path in deck_paths:
@@ -288,6 +289,7 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
         if dest.exists():
             raise FileExistsError(f"{dest} already exists")
         move_file(src, dest, ctx.root)
+        ai_review.rename(ctx, src, dest)
         if src.name.endswith(slide_language.CURRENT_SUFFIX):
             old_slug = src.name[: -len(slide_language.CURRENT_SUFFIX)]
             mapping[old_slug] = new_id + old_slug[len(old_id):]
@@ -428,6 +430,7 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
     files = sorted(ctx.slides_dir.glob(f"{id_slug}-*.tex"))
     for path in files:
         delete_file(path, ctx.root)
+    ai_review.mark_reviewed(ctx, files)
 
     deck_refs_removed = 0
     if remove_deck_references:

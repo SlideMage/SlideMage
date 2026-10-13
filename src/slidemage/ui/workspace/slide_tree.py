@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QModelIndex, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QModelIndex, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeyEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -35,6 +35,7 @@ from .topbar import VIEW_TONES
 DATA = Qt.ItemDataRole.UserRole       # the SectionRow or SlideRow of an item
 SECTION_HEIGHT = 36                   # 8 px gap above the heading, then 28
 SLIDE_HEIGHT = 44
+REVIEW_HEIGHT = 68
 THUMB_W, THUMB_H = 56, 31.5
 
 
@@ -69,6 +70,8 @@ def meta_text(row: SlideRow, language: str) -> str:
 def tooltip_text(row: SlideRow, view_label: str, language: str) -> str:
     call = row.call
     lines = [call.id_slug]
+    if row.unreviewed:
+        lines.append("Not reviewed: changed by Claude. Click the check button to mark reviewed after checking it.")
     if row.hidden:
         lines.append(f"Not typeset in {view_label}.")
     if row.missing_translation:
@@ -85,6 +88,7 @@ def tooltip_text(row: SlideRow, view_label: str, language: str) -> str:
 class SlideDelegate(QStyledItemDelegate):
     """Paints sections and slides, and edits a section's name inline."""
 
+    reviewed = Signal(object)       # SlideRow whose review button was clicked
     renamed = Signal(object, str)    # SectionRow, new title
 
     def __init__(self, tree: "SlideTree", theme: ThemeManager, state: WorkspaceState) -> None:
@@ -98,7 +102,21 @@ class SlideDelegate(QStyledItemDelegate):
         self._pixmaps.clear()
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
-        return QSize(0, SECTION_HEIGHT if isinstance(index.data(DATA), SectionRow) else SLIDE_HEIGHT)
+        row = index.data(DATA)
+        return QSize(0, SECTION_HEIGHT if isinstance(row, SectionRow) else REVIEW_HEIGHT if row.unreviewed else SLIDE_HEIGHT)
+
+    @staticmethod
+    def review_button(rect) -> QRectF:
+        return QRectF(rect.right() - 28, rect.bottom() - 25, 24, 20)
+
+    def editorEvent(self, event, model, option, index) -> bool:
+        row = index.data(DATA)
+        if (isinstance(row, SlideRow) and row.unreviewed
+                and event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton
+                and self.review_button(option.rect).contains(event.position())):
+            self.reviewed.emit(row)
+            return True
+        return super().editorEvent(event, model, option, index)
 
     # -- inline rename -------------------------------------------------------
 
@@ -189,6 +207,25 @@ class SlideDelegate(QStyledItemDelegate):
             painter.drawRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), 4, 4)
         if row.hidden and not current:
             painter.setOpacity(0.4)
+
+        if row.unreviewed:
+            font = self._font(FONT_SANS, 10.5, QFont.Weight.Medium)
+            width = QFontMetrics(font).horizontalAdvance("Not reviewed") + 14
+            chip = QRectF(rect.left() + THUMB_W + 15, rect.bottom() - 22, width, 16)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(t.warning_bg))
+            painter.drawRoundedRect(chip, 8, 8)
+            painter.setFont(font)
+            painter.setPen(QColor(t.warning_fg))
+            painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, "Not reviewed")
+            button = self.review_button(option.rect)
+            painter.setBrush(QColor(t.line))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(button, 4, 4)
+            painter.setPen(QColor(t.text_2))
+            painter.setFont(self._font(FONT_ICONS, 16))
+            painter.drawText(button, Qt.AlignmentFlag.AlignCenter, "done")
+            rect.setBottom(rect.bottom() - 24)
 
         # thumbnail, white like a slide, with a red dot when the source has an error
         thumb = QRectF(rect.left() + 6, rect.center().y() - THUMB_H / 2, THUMB_W, THUMB_H)

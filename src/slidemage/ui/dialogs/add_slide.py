@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
+from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
 from ...ai.providers import ChatProvider, OllamaProvider
 from ...deck_scan import Deck
 from ...project import ProjectContext
@@ -485,6 +485,8 @@ class AddSlideSheet(ModalSheet):
             note = "" if new_path is None else f" The new slide file {new_path.name} was created; it is not in the deck."
             QMessageBox.critical(self, "Add slide failed", f"{exc}{note}")
             return
+        if new_path is not None and ai_review.is_unreviewed(self.app.project, new_path):
+            ai_review.mark(self.app.project, new_path, "translation", "Add slide translation", deck=self.deck.path)
         self.accept()
         self.app.after_deck_edit(
             self.deck.path, f"Added \\{spec.macro}{{{id_slug}}} to {self.deck.name}", previous_text=previous_text)
@@ -533,6 +535,10 @@ class AddSlideSheet(ModalSheet):
             self._sync()
             self._set_status(str(exc), error=True)
             return
+        if getattr(self._provider, "service", "") == "Anthropic":
+            ai_review.mark(self.app.project, created.path, "translation", "Add slide translation")
+            ai_review.mark(self.app.project, slide_add.slide_path(self.app.project, self.picked()),
+                           "translation", "Add slide translation")
         self._finish(created.id_slug, created.path)
 
     def event(self, event: QEvent) -> bool:

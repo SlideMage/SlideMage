@@ -90,6 +90,9 @@ class Workspace:
         """A tool wrote `path` on disk (`previous_text` None: it is new). The application refreshes
         what shows it: the slide list, a clean buffer, the deck header sync."""
 
+    def review_changed(self) -> None:
+        """Refresh slide labels after Claude provenance changes, including buffer edits."""
+
     def show_slide(self, path: Path) -> None:
         """Bring the slide file `path` into focus for the user: its preview and its source. Headless
         there is nobody to show it to."""

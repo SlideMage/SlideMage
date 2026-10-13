@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import deck_editor, deck_outline
+from ... import ai_review, deck_editor, deck_outline
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
@@ -93,6 +93,12 @@ class SlideList(QWidget):
         escape.activated.connect(self.find.clear)
         layout.addWidget(self.find)
 
+        self.review_filter = Button("Not reviewed", "secondary", compact=True)
+        self.review_filter.setCheckable(True)
+        self.review_filter.setToolTip("Show only slides changed by Claude that still need your review")
+        self.review_filter.toggled.connect(self._apply_filter)
+        layout.addWidget(self.review_filter)
+
         self.tree = SlideTree(theme, state)
         self.tree.currentItemChanged.connect(self._on_current_changed)
         self.tree.itemSelectionChanged.connect(self._on_selection_changed)
@@ -101,6 +107,8 @@ class SlideList(QWidget):
         self.tree.command.connect(self._on_command)
         self.tree.moved.connect(self._on_moved, Qt.ConnectionType.QueuedConnection)
         self.tree.delegate.renamed.connect(self._rename_section)
+        self.tree.delegate.reviewed.connect(
+            lambda row: self.mark_reviewed([self.app.project.slides_dir / row.call.source_filename]))
         layout.addWidget(self.tree, 1)
 
         self.note = QLabel()
@@ -170,7 +178,7 @@ class SlideList(QWidget):
         deck = self.state.deck
         return None if deck is None or deck.is_test_deck else deck
 
-    def rebuild(self) -> None:
+    def rebuild(self, *, preserve_focus: bool = False) -> None:
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""
         deck = self.deck
@@ -203,7 +211,8 @@ class SlideList(QWidget):
         self.tree.verticalScrollBar().setValue(scroll)
         self._apply_filter()
         self.tree.itemSelectionChanged.emit()   # it was blocked while rebuilding
-        self._on_current_changed(self.tree.currentItem(), None)
+        if not preserve_focus:
+            self._on_current_changed(self.tree.currentItem(), None)
         self.add_bar.setEnabled(deck is not None)
 
     def _apply_filter(self) -> None:
@@ -214,11 +223,12 @@ class SlideList(QWidget):
             for i in range(head.childCount()):
                 row = self.tree.data_of(head.child(i))
                 hit = all(w in f"{row.call.id_slug} {row.deck_call.id_slug} {row.title}".lower() for w in words)
+                hit = hit and (not self.review_filter.isChecked() or row.unreviewed)
                 head.child(i).setHidden(not hit)
                 shown += hit
-            head.setHidden(bool(words) and not shown)
+            head.setHidden((bool(words) or self.review_filter.isChecked()) and not shown)
             matches += shown
-        self.tree.show_sections(all_open=bool(words))
+        self.tree.show_sections(all_open=bool(words) or self.review_filter.isChecked())
         if not self.deck:
             self.note.setText("")
         elif not self.tree.slide_items() and not words:
@@ -253,6 +263,7 @@ class SlideList(QWidget):
         head = item.parent()
         self.tree.collapsed.discard(self.tree.data_of(head).title)
         if item.isHidden():
+            self.review_filter.setChecked(False)
             self.find.clear()   # shows every slide again, the sections open as the user left them
         head.setExpanded(True)
         current = self.tree.data_of(self.tree.currentItem())
@@ -285,6 +296,12 @@ class SlideList(QWidget):
     def targets(self) -> list[SlideRow]:
         """The slides the slide commands act on: the selected ones, else the focused one."""
         return self.tree.selected_rows() or ([self._current_row()] if self._current_row() else [])
+
+    def mark_reviewed(self, paths=None) -> None:
+        if paths is None:
+            paths = [self.app.project.slides_dir / row.call.source_filename for row in self.targets()]
+        ai_review.mark_reviewed(self.app.project, paths)
+        self.app.refresh_ai_review()
 
     def current_section(self) -> Optional[SectionRow]:
         """The section the section commands act on: the one chosen in the list."""
@@ -379,7 +396,7 @@ class SlideList(QWidget):
         call = row.deck_call
         menu = self._new_menu(280)
         menu.add_header(f"{row.call.id} · {row.title}")
-        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images"])
+        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images", "slide:reviewed"])
         if not call.editable:
             menu.add_header(f"Read-only here: {call.readonly_reason}")
         menu.add_separator()
@@ -412,7 +429,7 @@ class SlideList(QWidget):
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
-        add_commands(menu, self.app, ["compile:slides", "slide:clear", "slide:remove"])
+        add_commands(menu, self.app, ["slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
         return menu
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:

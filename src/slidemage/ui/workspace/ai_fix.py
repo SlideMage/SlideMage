@@ -17,6 +17,7 @@ answering model is named in the panel.
 from __future__ import annotations
 
 from typing import Optional
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ... import syntax_check
+from ... import ai_review, syntax_check
 from ...ai.providers import OllamaProvider
 from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
@@ -144,11 +145,11 @@ class _IssueRow(Surface):
 class AiFixPanel(Surface):
     running_changed = Signal(bool)
 
-    def __init__(self, app, editor: SourceEditor, filename: str) -> None:
+    def __init__(self, app, editor: SourceEditor, path: Path) -> None:
         super().__init__()
         self.app = app
         self.editor = editor
-        self.filename = filename
+        self.path, self.filename = path, path.name
         self._worker: Optional[_CheckWorker] = None
         self._provider = None   # the running check's, whose Ollama slot it holds
         self._rows: list[_IssueRow] = []
@@ -297,6 +298,10 @@ class AiFixPanel(Surface):
         self._rows.clear()
 
     def _on_applied(self, _issue) -> None:
+        if getattr(self._provider, "service", "") == "Anthropic":
+            ai_review.mark(self.app.project, self.path,
+                           "edit", "Ask AI to fix", text=self.editor.text())
+            self.app.refresh_ai_review()
         self.app.log(f"Applied syntax fix on line {_issue.line} of {self.filename}")
         for row in self._rows:
             row.update_state()

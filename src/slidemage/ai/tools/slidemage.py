@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from ... import (
+    ai_review,
     bibliography,
     compile_status,
     deck_editor,
@@ -228,12 +229,19 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
                        else slide_add.create_new(ctx.project, slug, language, frame, title))
         except (OSError, ValueError) as exc:
             raise ToolError(f"The slide was not created: {exc}") from None
+    if not existing:
+        ai_review.mark(ctx.project, created.path, "translation" if source_id_slug else "draft", "add_slide")
+        if source_id_slug:
+            ai_review.mark(ctx.project, source, "translation", "add_slide: translation partner")
+        ctx.workspace.review_changed()
     failure = ""
     if deck is not None:
         try:
             if ctx.workspace.is_dirty(deck.path):
                 raise ToolError("the deck has unsaved edits in the editor; ask the user to save it first")
             updated = deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, "slide", created.id_slug)
+            ai_review.inserted_slides(ctx.project, deck.path, deck.text, updated, "add_slide")
+            ctx.workspace.review_changed()
             ctx.workspace.file_changed(deck.path, deck.text)
             if existing:
                 ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))

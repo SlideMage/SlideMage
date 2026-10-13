@@ -91,6 +91,7 @@ def settings(hook: str) -> dict:
     without asking (add_slide asks, like any tool that changes files)."""
     return {
         "hooks": {"PreToolUse": [{"matcher": HOOK_MATCHER, "hooks": [{"type": "command", "command": hook}]}],
+                  "PostToolUse": [{"matcher": HOOK_MATCHER, "hooks": [{"type": "command", "command": hook}]}],
                   "UserPromptSubmit": [{"hooks": [{"type": "command", "command": hook}]}]},
         "permissions": {"allow": [f"mcp__{SERVER_NAME}__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]}}
 
