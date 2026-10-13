@@ -81,6 +81,14 @@ deck switcher offers the rest). From top to bottom and left to right:
   `terminal/tasks.py:TaskRunner`): Generate → Review → Apply → Check preview, or
   Conflict / Preview failed / Stopped / Setup needed; Back to conversation leaves a pill
   in the header. Batches, image tasks and the summary use the task row (`task_row.py`).
+- **Keyboard and screen readers** (workspace v6 step 7): the AI switch is a radio group with a single tab stop
+  (the selected segment; **←/→** flip Local and Cloud, **Enter**/**Space** activate, then Tab reaches ▾); its popups
+  open on their safe button, **Tab** goes secondary, primary, link and round again, **Esc** is the secondary button
+  and the focus goes back to the switch; AI setup goes through its cells in reading order and **Esc** returns to the
+  ▾. A task card takes the focus on its first action. The kit's buttons and segmented controls show a 2px blue focus
+  ring for the keyboard only. `kit.widgets.announce(widget, text)` is the one live-region helper (the switch commit
+  and "stopping…", the task card's phase text, the end of an image batch, AI setup's confirmations); the dialogs
+  that run or configure AI show the route as a `ModeBadge` under their title (`ai_models.add_route_badge`).
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
   entry is a registered command.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck

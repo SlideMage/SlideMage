@@ -154,12 +154,21 @@ def _done_text(card: TaskCard, source: str) -> str:
     return ("Applied automatically (Edit automatically is on). " if card.auto else "") + text
 
 
+STEP_WORDS = {"check_circle": "done", "radio_button_checked": "in progress", "radio_button_unchecked": "not started",
+              "remove_circle_outline": "skipped", "warning": "needs attention", "error": "failed",
+              "stop_circle": "stopped", "cloud_off": "setup needed"}      # what a step's icon says, for a screen reader
+
+
 @dataclass(frozen=True)
 class Step:
     label: str
     icon: str
     tone: str
     note: str
+
+    @property
+    def word(self) -> str:
+        return STEP_WORDS[self.icon]
 
 
 def steps(card: TaskCard) -> list[Step]:

@@ -15,7 +15,12 @@ from pathlib import Path
 
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
+from PySide6.QtGui import QAccessible, QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
+
+try:                    # Qt 6.8 and later; older Qt has no live announcements
+    from PySide6.QtGui import QAccessibleAnnouncementEvent
+except ImportError:
+    QAccessibleAnnouncementEvent = None
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -67,6 +72,16 @@ def clear_layout(layout: QLayout) -> None:
             widget.deleteLater()
         elif item.layout() is not None:
             clear_layout(item.layout())
+
+
+def announce(widget: QWidget, text: str) -> None:
+    """Tell assistive technology `text` as a polite live region (it waits for what is being read); `widget` is
+    what the announcement belongs to. Nothing happens where Qt cannot announce (before Qt 6.8)."""
+    if QAccessibleAnnouncementEvent is None:
+        return
+    event = QAccessibleAnnouncementEvent(widget, text)
+    event.setPoliteness(QAccessible.AnnouncementPoliteness.Polite)
+    QAccessible.updateAccessibility(event)
 
 
 def _repolish(widget: QWidget) -> None:
@@ -139,10 +154,21 @@ class ElidedLabel(QLabel):
         self.setText(self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideRight, self.width()))
 
 
-class IconButton(QToolButton):
+class _EnterPresses:
+    """Mixin for a button: Enter presses it like Space does (Qt does it only for the default button of a dialog)."""
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.click()
+        else:
+            super().keyPressEvent(event)
+
+
+class IconButton(_EnterPresses, QToolButton):
     """Flat icon-only button (30 px for the prototype's 18 px icon). `clicked`
     is the plain QAbstractButton signal; `set_active(True)` keeps the hover
-    wash while the menu it opened is showing."""
+    wash while the menu it opened is showing. Its tooltip is also its accessible name (the text is the icon's
+    ligature, which a screen reader would spell out)."""
 
     def __init__(self, name: str, tooltip: str = "", size: int = 18, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -153,6 +179,10 @@ class IconButton(QToolButton):
         self.setFixedSize(size + 12, size + 12)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
+    def setToolTip(self, tip: str) -> None:
+        super().setToolTip(tip)
+        self.setAccessibleName(tip)
 
     def set_icon(self, name: str) -> None:
         self.setText(name)
@@ -234,9 +264,10 @@ def columns(*widgets: QWidget) -> QWidget:
     return box
 
 
-class Button(QPushButton):
+class Button(_EnterPresses, QPushButton):
     """Text button. kind: "primary" (inverse fill), "secondary" (bordered),
-    "ghost" (flat). `compact` is the smaller padding of toolbars."""
+    "ghost" (flat). `compact` is the smaller padding of toolbars. It takes the focus from the Tab key only, so the
+    focus ring is a keyboard ring (a click does not draw it)."""
 
     def __init__(self, text: str, kind: str = "secondary", parent: QWidget | None = None, *,
                  compact: bool = False) -> None:
@@ -244,6 +275,7 @@ class Button(QPushButton):
         self.setProperty("kind", kind)
         self.setProperty("compact", compact)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
 
 class Surface(QFrame):
@@ -291,8 +323,8 @@ class SegmentedControl(QFrame):
 
     `icons` maps a key to a Material icon shown before its label. `roving` makes it a radio group for the
     keyboard (the AI switch): only the current segment is in the tab order, ←/→ ask for the neighbouring
-    segment (`changed`, like a click) and Enter clicks, and the focused segment gets a ring. Whoever owns the
-    control decides what a request means and calls set_current() to settle it."""
+    segment (`changed`, like a click) and Enter clicks. Any segment that has the focus shows the ring. Whoever owns
+    the control decides what a request means and calls set_current() to settle it."""
 
     changed = Signal(str)
 
@@ -323,8 +355,8 @@ class SegmentedControl(QFrame):
             button = QPushButton(label)
             button.setCheckable(True)
             button.setProperty("kitSegment", True)
+            button.setAccessibleName(label)
             button.setProperty("mono", mono)
-            button.setProperty("ring", roving)
             if tones and key in tones:
                 button.setProperty("tone", tones[key])
             if icons and key in icons:
@@ -333,6 +365,7 @@ class SegmentedControl(QFrame):
                 self._icons[key].setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
                 self._icons[key].move(9, 6)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)      # the ring shows for the keyboard, not for a click
             button.clicked.connect(lambda _checked=False, k=key: self._on_clicked(k))
             button.installEventFilter(self)
             badge = QLabel(button)
@@ -369,9 +402,13 @@ class SegmentedControl(QFrame):
             if self._roving:
                 button.setFocusPolicy(Qt.FocusPolicy.TabFocus if key == current else Qt.FocusPolicy.NoFocus)
 
+    def current_button(self) -> QPushButton | None:
+        key = self.current()
+        return None if key is None else self._buttons[key]
+
     def focus_current(self) -> None:
-        if (key := self.current()) is not None:
-            self._buttons[key].setFocus(Qt.FocusReason.TabFocusReason)
+        if (button := self.current_button()) is not None:
+            button.setFocus(Qt.FocusReason.TabFocusReason)
 
     def set_labels(self, labels: Mapping[str, str], *, tooltips: Mapping[str, str] | None = None,
                    compact: bool = False) -> None:
@@ -637,7 +674,9 @@ class Popover(QFrame):
     `inline` makes it a child of its parent's window instead of a popup window: it stays where the compositor
     cannot move it, and a QComboBox inside it works like anywhere. Then the click outside and Esc are watched
     here: a click outside calls `dismiss()` unless `dismiss_outside` is False (a click on the anchor is left to
-    the anchor), and Esc calls `escape()`; both close it by default."""
+    the anchor), and Esc calls `escape()`; both close it by default. The Tab key stays inside it, and a close by
+    Esc or by one of its buttons (`close_and_return`) gives the keyboard back to `focus_return`, else to the widget
+    that had it when the popover opened, else to the anchor."""
 
     closed = Signal()
 
@@ -653,8 +692,10 @@ class Popover(QFrame):
         self.body.setContentsMargins(4, 4, 4, 4)
         self.body.setSpacing(0)
         self.focus_target: QWidget | None = None
+        self.focus_return: QWidget | None = None     # where the keyboard goes back to when it closes by Esc or a button
         self._inline, self._dismiss_outside = inline, dismiss_outside
         self._anchor: QWidget | None = None
+        self._came_from: QWidget | None = None
         if inline:
             self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             self.hide()
@@ -673,6 +714,8 @@ class Popover(QFrame):
             point = window.mapFromGlobal(global_pos)
             self.move(max(0, min(point.x(), window.width() - self.width())), point.y())
             self.raise_()
+            if not self.isVisible():
+                self._came_from = QApplication.focusWidget()
             QApplication.instance().installEventFilter(self)
         else:
             screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
@@ -698,7 +741,30 @@ class Popover(QFrame):
 
     def escape(self) -> None:
         """Esc in an inline popover."""
+        self.close_and_return()
+
+    def close_and_return(self) -> None:
+        """Close, and give the keyboard back to where it was."""
         self.close()
+        for target in (self.focus_return, self._came_from, self._anchor):
+            if target is not None and target.isVisible() and target.focusPolicy() != Qt.FocusPolicy.NoFocus:
+                target.setFocus(Qt.FocusReason.OtherFocusReason)
+                return
+
+    def focusNextPrevChild(self, next: bool) -> bool:
+        """Tab and Shift+Tab go round the widgets of an inline popover instead of leaving it."""
+        focus = QApplication.focusWidget()
+        if not (self._inline and self.isVisible() and focus is not None and (focus is self or self.isAncestorOf(focus))):
+            return super().focusNextPrevChild(next)
+        step = QWidget.nextInFocusChain if next else QWidget.previousInFocusChain
+        candidate = step(focus)
+        while candidate is not focus:
+            if (candidate is not self and self.isAncestorOf(candidate) and candidate.isVisible() and candidate.isEnabled()
+                    and candidate.focusPolicy() & Qt.FocusPolicy.TabFocus):
+                candidate.setFocus(Qt.FocusReason.TabFocusReason if next else Qt.FocusReason.BacktabFocusReason)
+                break
+            candidate = step(candidate)
+        return True
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         """The click outside and Esc of an inline popover, seen by the whole application."""
@@ -994,6 +1060,37 @@ class Toast(QFrame):
         return super().eventFilter(obj, event)
 
 
+class ModeBadge(QFrame):
+    """The read-only route pill under a dialog's title (workspace v6 handoff, section 6): an icon and "Local ·
+    Ollama" or "Cloud · Claude Code", amber on Cloud. The dialog has no route picker of its own: the switch in the
+    top bar is the one place to change it, and the tooltip says so."""
+
+    TIP = "Change it with the switch in the top bar"
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName(q.MODE_BADGE)
+        self.setToolTip(self.TIP)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 3, 8, 3)
+        layout.setSpacing(5)
+        self.icon = IconLabel("computer", 14)
+        layout.addWidget(self.icon)
+        self.label = QLabel()
+        self.label.setObjectName(q.MODE_BADGE_TEXT)
+        layout.addWidget(self.label)
+
+    def set_route(self, name: str, cloud: bool) -> None:
+        self.icon.set_icon("cloud" if cloud else "computer")
+        self.label.setText(name)
+        self.setAccessibleName(f"AI route: {name}")
+        self.setAccessibleDescription(self.TIP)
+        set_property(self, "cloud", cloud)
+
+    def text(self) -> str:
+        return self.label.text()
+
+
 class ModalSheet(QDialog):
     """Modal dialog with a title, optional tabs and a button row.
 
@@ -1011,7 +1108,7 @@ class ModalSheet(QDialog):
         self.setWindowTitle(title)
         self.setModal(True)
         self.setMinimumWidth(width)
-        root = QVBoxLayout(self)
+        self._root = root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 18)
         root.setSpacing(12)
         self._title = QLabel(title)
@@ -1035,6 +1132,10 @@ class ModalSheet(QDialog):
     def set_title(self, title: str) -> None:
         self._title.setText(title)
         self.setWindowTitle(title)
+
+    def add_under_title(self, widget: QWidget) -> None:
+        """A small widget (a badge) on its own line under the title, at the left."""
+        self._root.insertWidget(1, widget, 0, Qt.AlignmentFlag.AlignLeft)
 
     def add_tab(self, label: str, widget: QWidget) -> int:
         self._tabs.addTab(label)

@@ -18,7 +18,7 @@ from functools import partial
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QHideEvent, QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ... import app_settings, deck_outline, slide_language
 from ...ai import ai_profile
@@ -37,7 +37,8 @@ SUBTITLES = {ai_profile.CLAUDE_CODE: "Terminal · permissions are handled in Cla
 
 
 class RunningPill(ClickFrame):
-    """A grey line with what the running task is doing; a click, like its Open, asks to see it."""
+    """A grey line with what the running task is doing; a click, like its Open button (the keyboard's way), asks to
+    see it."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -48,9 +49,14 @@ class RunningPill(ClickFrame):
         layout.addWidget(IconLabel("assignment", 16))
         self.label = ElidedLabel()
         layout.addWidget(self.label, 1)
-        self.open_label = QLabel("Open")
-        layout.addWidget(self.open_label)
+        self.open_button = Button("Open", "ghost", compact=True)
+        self.open_button.clicked.connect(self.clicked)
+        layout.addWidget(self.open_button)
         self.hide()
+
+    def set_text(self, text: str) -> None:
+        self.label.set_full_text(text)
+        self.open_button.setAccessibleName(f"Open: {text}")
 
 
 class AssistantHeader(Surface):
@@ -63,6 +69,7 @@ class AssistantHeader(Surface):
         """`scope` is the card's; `blocked()` says the route cannot run tasks now (Claude Code needs setup)."""
         super().__init__()
         self.app, self.state, self.scope, self.tasks, self._blocked = app, state, scope, tasks, blocked
+        scope.setAccessibleName("Scope of the assistant")
         self.focused = False
         self._offers: dict[str, list[Bubble]] = {}
         self.shown: list[Bubble] = []      # the task buttons on show
@@ -140,6 +147,7 @@ class AssistantHeader(Surface):
         cloud = not route.is_local
         self.route_icon.set_icon("cloud" if cloud else "computer")
         self.route_icon.set_tone("cloud" if cloud else "local")
+        self.route_icon.setAccessibleName("Cloud" if cloud else "Local")
         self.title.setText(route.name)
         set_property(self.title, "cloud", cloud)
         if route.route in SUBTITLES:
@@ -203,13 +211,19 @@ class AssistantHeader(Surface):
                 self._actions.addWidget(button)
         if self._actions.indexOf(self.all_actions) < 0:
             self._actions.addWidget(self.all_actions)
+        # Tab: Focus, New conversation, the scope, the task buttons, All actions…, the pill's Open (buttons made later
+        # would otherwise come last in the window).
+        order = [self.scope.current_button(), *(self._actions.itemAt(i).widget() for i in range(self._actions.count())),
+                 self.pill.open_button]
+        for before, after in zip(order, order[1:]):
+            QWidget.setTabOrder(before, after)
         card = tasks.card
         left = card is not None and card.hidden
         self.pill.setVisible(left or (card is None and tasks.busy))
         if left:
-            self.pill.label.set_full_text(f"{card.title} · {PILL_WORDS[card.phase]}")
+            self.pill.set_text(f"{card.title} · {PILL_WORDS[card.phase]}")
         elif card is None and tasks.busy:
-            self.pill.label.set_full_text(tasks.describe())
+            self.pill.set_text(tasks.describe())
 
     def target_text(self) -> str:
         """What the scope points at: the slide in the Source view (and whether it has unsaved edits), or the deck."""

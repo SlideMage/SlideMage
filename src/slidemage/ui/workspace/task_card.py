@@ -5,6 +5,11 @@ The card (task_card_model.py) is the TaskRunner's; this view shows what the mode
 slide it was started on and the route it runs on, the state line with its icon (and the seconds while it
 generates), the diff of the proposal in Review and Conflict (the chat's DiffCard), the buttons of the phase and the
 collapsible steps. It acts only through the runner and the window.
+
+For the keyboard and for assistive technology: the state line is a status (its text is announced when the phase
+changes, not on every tick of the seconds), the icons say in words what they show, the steps toggle says whether
+it is open, and the focus stays on the buttons when a phase replaces them (`focus_first`; a phase without buttons parks
+it on the steps toggle until the next one has some).
 """
 from __future__ import annotations
 
@@ -13,7 +18,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout
 
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
-from ..kit.widgets import Button, IconLabel, Surface, clear_layout, set_property
+from ..kit.widgets import Button, IconLabel, Surface, announce, clear_layout, set_property
 from . import task_card_model as model
 from .chat.cards import DiffCard
 from .task_card_model import TaskCard
@@ -32,6 +37,8 @@ class TaskCardView(Surface):
         self._shown: TaskCard | None = None
         self._compare = self._change = self._steps_open = False   # Compare with current, View change, the steps
         self._seen: dict[str, object] = {}                          # what the rebuilt parts show now
+        self._announced: tuple | None = None                        # (card, phase) the state line last announced
+        self._parked = False                                        # the keyboard waits on the steps toggle for buttons
         self._diff: DiffCard | None = None
         self._handlers = {
             "stop": tasks.stop, "apply": tasks.apply, "reject": self._reject, "diff": self._full_diff, "view": self._view,
@@ -121,6 +128,7 @@ class TaskCardView(Surface):
             self._shown = card
             self._compare = self._change = False
         if card is None:
+            self._announced = None
             self._set_diff(None)
             return
         self.title.setText(card.title)
@@ -129,6 +137,7 @@ class TaskCardView(Surface):
         self.route_icon.set_icon("cloud" if cloud else "computer")
         self.route_icon.set_tone("cloud" if cloud else "local")
         self.route.setText(card.route.label)
+        self.route_icon.setAccessibleName("Cloud" if cloud else "Local")
         set_property(self.route, "cloud", cloud)
         icon, tone = model.LOOKS[card.phase]
         text = model.state_text(card)
@@ -136,11 +145,16 @@ class TaskCardView(Surface):
         self.state_icon.set_tone(tone)
         self.state.setText(text)
         self.state.setAccessibleDescription(text)
+        if (id(card), card.phase) != self._announced:
+            self._announced = (id(card), card.phase)
+            announce(self.state, text)
         set_property(self.state, "tone", "" if tone == "strong" else tone)
         self.elapsed.setText(f"{card.elapsed} s" if card.phase == model.GENERATE else "")
         self._set_diff(self._diff_of(card))
         self._set_buttons(model.actions(card))
         self.steps_toggle.setText(("▾ " if self._steps_open else "▸ ") + model.steps_text(card))
+        self.steps_toggle.setAccessibleName(model.steps_text(card))
+        self.steps_toggle.setAccessibleDescription("Expanded" if self._steps_open else "Collapsed")
         self._set_steps(model.steps(card) if self._steps_open else [])
 
     def _target_text(self, card: TaskCard) -> str:
@@ -173,6 +187,8 @@ class TaskCardView(Surface):
         if self._seen.get("actions") == actions:
             return
         self._seen["actions"] = actions
+        focused = (self._parked and self.steps_toggle.hasFocus()) or any(
+            self._buttons.itemAt(i).widget().hasFocus() for i in range(self._buttons.count()))
         while self._buttons.count():
             button = self._buttons.takeAt(0).widget()
             button.setParent(None)
@@ -181,6 +197,15 @@ class TaskCardView(Surface):
             button = Button(action.label, "primary" if action.primary else "secondary")
             button.clicked.connect(self._handlers[action.key])
             self._buttons.addWidget(button)
+        self._parked = False
+        if focused:                     # the phase replaced the button the keyboard was on
+            self.focus_first()
+            self._parked = not actions
+
+    def focus_first(self) -> None:
+        """The keyboard goes to the first action of the phase (Stop, Apply, Run again…), else to the steps toggle."""
+        item = self._buttons.itemAt(0)
+        (item.widget() if item is not None else self.steps_toggle).setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _set_steps(self, steps: list[model.Step]) -> None:
         if self._seen.get("steps") == steps:
@@ -192,6 +217,7 @@ class TaskCardView(Surface):
             line.setSpacing(8)
             icon = IconLabel(step.icon, 17)
             icon.set_tone(step.tone)
+            icon.setAccessibleName(step.word)
             line.addWidget(icon)
             line.addWidget(QLabel(step.label), 1)
             note = QLabel(step.note)

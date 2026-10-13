@@ -29,6 +29,7 @@ from ...ai.providers import InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ...project import ProjectContext
 from .. import background
+from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, caption, columns, row
 from .settings_ollama import OllamaTab
 from .settings_prompts import PromptsTab
@@ -222,6 +223,7 @@ class SettingsSheet(ModalSheet):
         """`app` is the window (its theme, tab width, log and the Ollama slot)."""
         super().__init__("Settings", app, width=760)
         self.app = app
+        add_route_badge(self, app)
         self.installed: list[InstalledModel] = []       # what Ollama has, once `loaded`
         self.loaded = False
         self._loader: QThread | None = None

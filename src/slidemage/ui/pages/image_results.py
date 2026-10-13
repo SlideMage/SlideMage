@@ -15,7 +15,7 @@ from ...ai.ai_profile import Route
 from ...batch_result import CANCELLED, DONE, DRAFT, FAILED, KEPT, TRANSLATE, BatchResult, display_name
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
-from ..kit.widgets import Button, IconLabel, Surface, clear_layout, set_property
+from ..kit.widgets import Button, IconLabel, Surface, announce, clear_layout, set_property
 
 # What each kind of batch sends when the route is Cloud, how long it takes, and what the user is told besides.
 SENDS = {DRAFT: "sends each image and its slide text to the cloud", TRANSLATE: "sends each description to the cloud"}
@@ -58,7 +58,8 @@ def confirm(parent: QWidget, kind: str, count: int, project: str, route: Route, 
 
 class BatchResultView(Surface):
     """What became of each image of a batch (BatchResult): title with the route, summary, one row per image,
-    Retry failed (n) and Close. `back` adds ← Back to conversation above it, for the assistant."""
+    Retry failed (n) and Close. `back` adds ← Back to conversation above it, for the assistant. When a result is
+    shown its title and summary are announced to assistive technology (the batch has ended)."""
 
     retry_clicked = Signal()        # Retry failed: the owner starts a new batch of `result.failed`
     closed = Signal()               # Close, or Back to conversation
@@ -117,6 +118,7 @@ class BatchResultView(Surface):
         self.route_icon.set_icon("cloud" if cloud else "computer")
         self.route_icon.set_tone("cloud" if cloud else "local")
         self.route.setText(result.route.label)
+        self.route_icon.setAccessibleName("Cloud" if cloud else "Local")
         set_property(self.route, "cloud", cloud)
         self.summary.setText(result.summary)
         frame = QFrame()
@@ -158,6 +160,7 @@ class BatchResultView(Surface):
         self.close_button.clicked.connect(self.closed)
         self._buttons.addWidget(self.close_button)
         self.show()
+        announce(self.title, f"{result.title}. {result.summary}")
 
     def clear(self) -> None:
         self.result = None

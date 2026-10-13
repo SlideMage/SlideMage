@@ -11,6 +11,7 @@ from ... import alt_draft, image_review
 from ...ai.providers import ChatProvider
 from ...project import ProjectContext
 from .. import background
+from ..ai_models import add_route_badge
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Field, ModalSheet, Page, caption
 from .image_jobs import Job
@@ -106,6 +107,7 @@ class PromptTuningSheet(ModalSheet):
     def __init__(self, app, reference: str, image_path: Path, context: alt_draft.SlideContext,
                  provider: ChatProvider, hint: str, on_over: Callable[[], None]) -> None:
         super().__init__(f"Tune the prompt: {reference}", app, width=1100)
+        add_route_badge(self, app)
         self.setMinimumHeight(700)
         self._image_path, self._context, self._provider, self._on_over = image_path, context, provider, on_over
         self._project = app.project

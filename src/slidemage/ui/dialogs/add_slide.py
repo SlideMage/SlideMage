@@ -39,7 +39,7 @@ from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slid
 from ...ai import ai_profile, claude_runner, resolver
 from ...deck_scan import Deck
 from ...project import ProjectContext
-from ..ai_models import built, fill_model_combo, picked_route
+from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
@@ -87,6 +87,7 @@ class AddSlideSheet(ModalSheet):
         `indent`), described by `where` ("after 1y8"). `source` is the one to start on, `slide` the
         id-slug Duplicate and Translate start from, `target` the language a translation starts on."""
         super().__init__("Add slide", app, width=WIDTH)
+        add_route_badge(self, app)
         self.app, self._is_dirty = app, is_dirty
         self.deck = deck
         self.insert_at = insert_at

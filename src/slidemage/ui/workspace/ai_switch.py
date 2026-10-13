@@ -4,17 +4,16 @@ the project, the connection Cloud means, and the ▾ that opens AI setup.
 The switch only asks: moving it emits `requested(mode)` and shows the real mode again at once; ai_route.py runs
 the request flow (busy work, the Claude Code session, the cloud warnings) and commits through
 `WorkspaceState.set_ai_route`, which this widget follows. It is a radio group for the keyboard (roving tab stop,
-←/→, Enter/Space), and it announces each commit to assistive technology.
+←/→, Enter/Space), and it announces each commit and the start of stopping to assistive technology.
 """
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
 from ...ai import ai_profile
 from ..kit import kit_qss as q
-from ..kit.widgets import IconButton, SegmentedControl, set_property
+from ..kit.widgets import IconButton, SegmentedControl, announce, set_property
 from .state import WorkspaceState
 
 LOCAL, CLOUD = ai_profile.LOCAL, ai_profile.CLOUD
@@ -22,6 +21,7 @@ SEGMENTS = ((LOCAL, "Local"), (CLOUD, "Cloud"))
 CONNECTION_NAMES = {ai_profile.CLAUDE_CODE: "Claude Code", ai_profile.API: "API"}
 SETUP_TIP = "AI setup: models per task, cloud connection, project setting"
 ANNOUNCEMENTS = {LOCAL: "All AI tasks now use Local", CLOUD: "All AI tasks now use Cloud"}
+STOPPING = "Stopping AI work before switching"
 
 
 class AiSwitch(QFrame):
@@ -33,7 +33,6 @@ class AiSwitch(QFrame):
         self._state = state
         self._running = self._stopping = False
         self._shrink = 0                # 0: as designed; 1: no connection name (below 1320 px); 2: icons only
-        self.announcement = ""          # what the last commit told assistive technology
         self.setObjectName(q.AI_SWITCH)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
@@ -55,12 +54,8 @@ class AiSwitch(QFrame):
         self.refresh()
 
     def _on_segment(self, mode: str) -> None:
-        focus = QApplication.focusWidget()
-        focused = focus is not None and self.segments.isAncestorOf(focus)
         self.requested.emit(mode)
         self.refresh()
-        if focused:
-            self.segments.focus_current()
 
     # -- what the switch shows ---------------------------------------------------------------
 
@@ -74,6 +69,8 @@ class AiSwitch(QFrame):
         if stopping != self._stopping:
             self._stopping = stopping
             self.refresh()
+            if stopping:
+                announce(self.segments, STOPPING)
 
     def set_shrink(self, level: int) -> None:
         """The last item of the top bar to shrink: at 1 (below 1320 px) the connection's name goes, "running" and
@@ -107,8 +104,5 @@ class AiSwitch(QFrame):
                                               else "All AI tasks use your Ollama setup"))
 
     def announce(self, mode: str) -> None:
-        """Tell assistive technology that the switch has moved (a live region, politely)."""
-        self.announcement = ANNOUNCEMENTS[mode]
-        event = QAccessibleAnnouncementEvent(self.segments, self.announcement)
-        event.setPoliteness(QAccessible.AnnouncementPoliteness.Polite)
-        QAccessible.updateAccessibility(event)
+        """Tell assistive technology that the switch has moved."""
+        announce(self.segments, ANNOUNCEMENTS[mode])

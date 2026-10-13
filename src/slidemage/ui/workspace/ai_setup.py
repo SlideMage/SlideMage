@@ -5,6 +5,9 @@ Every model cell is saved as the user's default at once (ai_profile.set_model_ch
 starts on it. The side that is not in use is greyed but editable. Changing the cloud connection while on Cloud
 moves the route, so it goes through the same request as the switch (ai_route.py); the project setting only changes
 where the switch starts when the project opens.
+
+The keyboard goes through the cells in reading order (Task rows, Local then Cloud), then the two settings, then the
+link; Tab stays inside, and Esc closes it and gives the focus back to the ▾.
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from ...ai import ai_profile, resolver
 from ...ai.ai_profile import API, CHAT, CLAUDE_CODE, CLOUD, IMAGE_DESCRIPTION, LOCAL, TASKS, TASK_LABELS
 from ..dialogs.settings import AI
 from ..kit import kit_qss as q
-from ..kit.widgets import Popover, SegmentedControl, apply_shadow, caption, set_property
+from ..kit.widgets import Popover, SegmentedControl, announce, apply_shadow, caption, set_property
 from .ai_popups import link
 
 WIDTH = 480
@@ -80,10 +83,12 @@ class AiSetup(Popover):
         self.body.addLayout(grid)
         self.body.addWidget(caption(NOTE))
 
-        self.conn = SegmentedControl(CONNECTIONS, current=ai_profile.cloud_conn(self._project))
+        self.conn = SegmentedControl(CONNECTIONS, current=ai_profile.cloud_conn(self._project), roving=True)
+        self.conn.setAccessibleName("Cloud connection")
         self.conn.changed.connect(self._on_conn)
         self.body.addLayout(self._setting("Cloud connection", "", self.conn))
-        self.policy = SegmentedControl(POLICIES, current=ai_profile.policy(self._project))
+        self.policy = SegmentedControl(POLICIES, current=ai_profile.policy(self._project), roving=True)
+        self.policy.setAccessibleName("Project setting")
         self.policy.changed.connect(lambda value: ai_profile.set_policy(self._project, value))
         self.body.addLayout(self._setting("Project setting", "The switch starts here when the project opens",
                                           self.policy))
@@ -165,8 +170,9 @@ class AiSetup(Popover):
         combo = self.cells[(side, task)]
         choice = combo.itemData(index) or ""
         ai_profile.set_model_choice(self._project, route, task, choice)
-        self._window.toast.show_message(
-            f"Default for {TOAST_ROUTES[route]} · {TASK_LABELS[task]}: {ai_profile.choice_label(route, choice) or NO_MODEL}")
+        text = f"Default for {TOAST_ROUTES[route]} · {TASK_LABELS[task]}: {ai_profile.choice_label(route, choice) or NO_MODEL}"
+        self._window.toast.show_message(text)
+        announce(self, text)
         self._window.refresh_ai_models()
 
     # -- the settings under the grid ---------------------------------------------------------------

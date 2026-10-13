@@ -124,7 +124,8 @@ screenshots.
   stops running AI work, ends a live Claude Code terminal or sends a Local project to the
   cloud; its ▾ opens **AI setup**: the default model of every task for each side, "Cloud
   means" Claude Code or the Anthropic API, and the project's setting, where the switch
-  starts when the project opens); each route keeps its own models and its own chat draft
+  starts when the project opens; the Settings and Deck settings dialogs and the other
+  AI dialogs show the route read-only as a small badge under their title); each route keeps its own models and its own chat draft
   and conversation, a task a route cannot do is
   refused instead of using another route, and the first cloud request in a project says
   what will be sent. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`

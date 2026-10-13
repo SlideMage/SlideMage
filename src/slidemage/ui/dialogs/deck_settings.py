@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QGridLayout, QL
 from ... import deck_editor, deck_settings, open_path
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
+from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, caption, columns, row, set_property
 from .admin_slides import AdminSlidesTab
 
@@ -39,6 +40,7 @@ class DeckSettingsSheet(ModalSheet):
         project can find; the deck's current one is added if it is not there. `tab` is the one to
         open on."""
         super().__init__(f"Deck settings — {deck.name}", parent, width=700)
+        add_route_badge(self, parent)
         self.deck = deck
         self.original = deck_settings.read_settings(deck.text)
         self.settings = self.original

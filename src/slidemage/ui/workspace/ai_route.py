@@ -17,6 +17,7 @@ The "running" word of the switch follows the same query (`window.running_ai_work
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QTimer
+from PySide6.QtWidgets import QApplication
 
 from ...ai import ai_profile
 from . import ai_popups
@@ -33,6 +34,7 @@ class AiRoute(QObject):
         super().__init__(window)
         self._window, self._state = window, window.state
         self._target: tuple[str, str] | None = None     # (mode, connection) a request waits to commit
+        self._from_switch = False                       # the request came from the keyboard on the switch
         self._popover: DecisionPopover | None = None
         self.setup = None                               # AI setup (ai_setup.py), created on first use
         self._stopping = False
@@ -67,6 +69,8 @@ class AiRoute(QObject):
         if self._stopping or (mode == self._state.ai_mode and (mode == LOCAL or conn == current)):
             return
         self._close_popover()
+        focus = QApplication.focusWidget()
+        self._from_switch = focus is not None and self.switch.segments.isAncestorOf(focus)
         self._target = (mode, conn)
         self._advance()
 
@@ -98,6 +102,9 @@ class AiRoute(QObject):
         self._window.toast.show_message(LOCAL_AGAIN if mode == LOCAL else f"All AI tasks now use {route.name}")
         self.switch.announce(mode)
         self.switch.refresh()
+        if self._from_switch:           # a request that began on the switch ends there, on the segment selected now
+            self._from_switch = False
+            self.switch.segments.focus_current()
 
     # -- the popovers --------------------------------------------------------------------------
 
@@ -175,8 +182,9 @@ class AiRoute(QObject):
         if self.setup is None:
             self.setup = AiSetup(self._window, self)
         if self.setup.isVisible():
-            self.setup.close()
+            self.setup.close_and_return()
             return
         self._cancel()
         self._close_popover()
+        self.setup.focus_return = self.switch.caret
         self.setup.popup_below(self.switch)

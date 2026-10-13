@@ -52,6 +52,8 @@ TOAST = "kitToast"
 TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
 SHEET_TITLE = "kitSheetTitle"
+MODE_BADGE = "kitModeBadge"
+MODE_BADGE_TEXT = "kitModeBadgeText"
 SHEET_TABS = "kitSheetTabs"
 FIELD_LABEL = "kitFieldLabel"
 THUMB = "kitThumb"
@@ -529,12 +531,16 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QPushButton[kitSegment="true"][tone="cloud"]:checked {{
             background-color: {t.cloud_solid}; color: {t.on_solid}; border-bottom-color: transparent;
         }}
-        QPushButton[kitSegment="true"][ring="true"]:focus {{
-            border: 2px solid {t.focus}; padding: 3px 9px;
-        }}
         QPushButton[kitSegment="true"][withIcon="true"] {{
             padding-left: 30px;
         }}
+        /* The keyboard ring (2px, the border grows in the padding so the segment keeps its size). */
+        QPushButton[kitSegment="true"]:focus {{
+            border: 2px solid {t.focus}; padding: 3px 9px;
+        }}
+        QPushButton[kitSegment="true"][mono="true"]:focus {{ padding: 3px 6px; }}
+        QPushButton[kitSegment="true"][badge="true"]:focus {{ padding-right: 20px; }}
+        QPushButton[kitSegment="true"][withIcon="true"]:focus {{ padding-left: 28px; }}
         QLabel#{ICON}[segment="off"] {{ color: {t.text_2}; }}
         QLabel#{ICON}[segment="on"] {{ color: {t.text}; }}
         QLabel#{ICON}[segment="cloud"] {{ color: {t.on_solid}; }}
@@ -630,6 +636,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.bg};
             border-color: {t.line};
         }}
+        QPushButton[kind]:focus {{ border: 2px solid {t.focus}; padding: 6px 13px; }}
+        QPushButton[kind][compact="true"]:focus {{ padding: 3px 8px; }}
 
         QFrame#{SPLIT} {{
             background-color: {t.inverse};
@@ -683,6 +691,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QToolButton#{ICON_BUTTON}:disabled {{
             color: {t.text_4};
         }}
+        QToolButton#{ICON_BUTTON}:focus {{ border: 2px solid {t.focus}; }}
 
         /* Popover menu. A top-level popup, so it cannot cast a shadow
            without a translucent window (black corners on X11 without a
@@ -837,6 +846,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
         }}
         {text(f"QLabel#{SHEET_TITLE}", 18, t.text, 500)}
+        /* The read-only route badge under a dialog's title: a grey pill, amber on Cloud. */
+        QFrame#{MODE_BADGE} {{ background-color: {t.bg}; border-radius: {RADIUS_PILL}px; }}
+        QFrame#{MODE_BADGE}[cloud="true"] {{ background-color: {t.cloud_bg}; }}
+        {text(f"QLabel#{MODE_BADGE_TEXT}", 11.5, t.text_2, 500)}
+        QFrame#{MODE_BADGE}[cloud="true"] QLabel {{ color: {t.cloud_fg}; }}
         {text(f"QLabel#{FIELD_LABEL}", 13, t.text_2, 500)}
         QFrame#{THUMB} {{
             border: 2px solid {t.line};
@@ -926,7 +940,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         /* The popovers of the switch (they are kitMenu frames with 16px padding). */
         {text(f"QLabel#{AI_POPUP_TITLE}", 14, t.text, 600)}
         {text(f"QLabel#{AI_POPUP_TEXT}", 13, t.text_2)}
-        QLabel#{AI_POPUP_LINK} {{ {font} font-size: 12.5px; color: {t.text_2}; text-decoration: underline; }}
+        QPushButton#{AI_POPUP_LINK} {{
+            {font} font-size: 12.5px; color: {t.text_2}; text-decoration: underline;
+            background-color: transparent; border: 2px solid transparent; border-radius: {RADIUS_SM}px; padding: 0 2px;
+        }}
+        QPushButton#{AI_POPUP_LINK}:hover {{ color: {t.text}; }}
+        QPushButton#{AI_POPUP_LINK}:focus {{ border-color: {t.focus}; }}
         {text(f"QLabel#{AI_SETUP_HEAD}", 12.5, t.text_3, 600)}
         QLabel#{AI_SETUP_HEAD}[active="true"] {{ color: {t.text}; }}
         QFrame#{MENU} QFrame#{LIST_BOX} {{ border-radius: {RADIUS_SM}px; }}

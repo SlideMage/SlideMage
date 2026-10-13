@@ -3,7 +3,9 @@ the work ended, Claude Code session, project setting Local, first use of Cloud.
 
 One component, `DecisionPopover`: 360 px wide, under the switch, with an icon and a title, a text, an optional
 list box, and buttons with the secondary one first and the primary one last. A click outside does not dismiss it;
-Esc is the secondary button. The texts are here, as data (`PopupSpec`); which one shows when is ai_route.py's.
+Esc is the secondary button. For the keyboard the popover is a small modal group: it opens on the secondary button (the
+safe answer: nothing is sent, nothing is stopped), Tab goes secondary, primary, link and round again, and a button or Esc
+gives the focus back to where it was. The texts are here, as data (`PopupSpec`); which one shows when is ai_route.py's.
 """
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, ClickFrame, IconLabel, Popover, apply_shadow, clear_layout
+from ..kit.widgets import Button, IconLabel, Popover, apply_shadow, clear_layout
 from .ai_work import RunningWork
 
 WIDTH = 360
@@ -82,9 +84,13 @@ class DecisionPopover(Popover):
         self.body.setSpacing(10)
         apply_shadow(self, "raised")
         self.spec: PopupSpec | None = None
+        self.buttons: list[Button] = []        # of the spec on show, the secondary first
 
     def show_spec(self, spec: PopupSpec) -> None:
+        """Show `spec`; one that replaces another keeps the focus on the same button."""
+        keep = next((i for i, button in enumerate(self.buttons) if button.hasFocus()), 0)
         self.spec = spec
+        self.buttons = []
         clear_layout(self.body)
         self.setAccessibleName(spec.title)
         head = QHBoxLayout()
@@ -118,13 +124,18 @@ class DecisionPopover(Popover):
             button = Button(label, kind)
             button.clicked.connect(lambda _checked=False, c=callback: self._run(c))
             buttons.addWidget(button)
+            self.buttons.append(button)
         self.body.addLayout(buttons)
         if spec.link is not None:
             self.body.addWidget(link(spec.link[0], lambda: self._run(spec.link[1])), 0, Qt.AlignmentFlag.AlignRight)
         self.adjustSize()
+        self.focus_target = self.buttons[keep]
+        if self.isVisible():
+            self.focus_target.show()            # the layout shows its new widgets a turn later; the focus cannot wait
+            self.focus_target.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _run(self, callback: Callable[[], None]) -> None:
-        self.close()
+        self.close_and_return()
         callback()
 
     def escape(self) -> None:
@@ -132,14 +143,9 @@ class DecisionPopover(Popover):
         self._run(self.spec.actions[0][2])
 
 
-def link(text: str, on_click: Callable[[], None]) -> ClickFrame:
-    frame = ClickFrame()
-    frame.setObjectName(q.SURFACE)          # transparent on the white popover
-    frame.setCursor(Qt.CursorShape.PointingHandCursor)
-    box = QHBoxLayout(frame)
-    box.setContentsMargins(0, 0, 0, 0)
-    label = QLabel(text)
-    label.setObjectName(q.AI_POPUP_LINK)
-    box.addWidget(label)
-    frame.clicked.connect(on_click)
-    return frame
+def link(text: str, on_click: Callable[[], None]) -> Button:
+    """An underlined text button (it is in the Tab order; Enter and Space press it)."""
+    button = Button(text, "ghost")
+    button.setObjectName(q.AI_POPUP_LINK)
+    button.clicked.connect(lambda _checked=False: on_click())
+    return button

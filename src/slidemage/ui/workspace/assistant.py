@@ -9,11 +9,15 @@ back) or until it is closed; an image task, when it ends, takes it with the resu
 what became of each image, Retry failed) until Back to conversation. The scope and the TaskRunner (terminal/tasks.py) are the card's, so both bodies and the
 header share them; "New conversation" clears the route on show and no other.
 Focus hides the side panels (side_panels.py listens); it is not remembered.
+
+The keyboard follows the body: a task card that opens takes the focus on its first action, and a card or a results panel
+that closes while the keyboard is on it gives it back to the message box of the chat (the terminal takes it
+itself when it is shown).
 """
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QScrollArea, QStackedWidget
+from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget
 
 from ...ai import ai_profile
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
@@ -43,7 +47,7 @@ class AssistantArea(Card):
         self.setMinimumHeight(MIN_HEIGHT)
         self.layout().setContentsMargins(16, 12, 16, 16)
         self.app, self.state = app, state
-        self.scope = SegmentedControl(SCOPES, current=SCOPE_SLIDE)
+        self.scope = SegmentedControl(SCOPES, current=SCOPE_SLIDE, roving=True)
         self.workspace = GuiWorkspace(app)                  # where the tasks write: its own, apart from both bodies'
         self.tasks = TaskRunner(app, self.workspace, self, edit_auto=lambda: self.chat.session.mode == EDIT_AUTO)
         self.chat = ChatView(app, state, self.scope)
@@ -94,6 +98,9 @@ class AssistantArea(Card):
     def _show_body(self, _route: str = "") -> None:
         """The task card while there is one on show, else the image results, else the conversation of the route."""
         card, result = self.tasks.card, self.tasks.result
+        before = self._stack.currentWidget()
+        focus = QApplication.focusWidget()
+        had_focus = focus is not None and before.isAncestorOf(focus)
         if card is not None and not card.hidden:
             self._stack.setCurrentWidget(self.task_card)
         elif result is not None:
@@ -102,6 +109,11 @@ class AssistantArea(Card):
             self._stack.setCurrentWidget(self._results_page)
         else:
             self._stack.setCurrentWidget(self.claude_code if self.state.ai_route == ai_profile.CLAUDE_CODE else self.chat)
+        now = self._stack.currentWidget()
+        if now is self.task_card and before is not now:
+            self.task_card.focus_first()
+        elif now is self.chat and had_focus and before is not now:
+            self.chat.composer.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _open_task(self) -> None:
         """The header's pill: the task card that was left, else the line of the running batch."""

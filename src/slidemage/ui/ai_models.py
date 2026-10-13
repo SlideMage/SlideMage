@@ -17,6 +17,7 @@ from ..ai.ai_profile import API, CLAUDE_CODE, Route
 from ..ai.providers import ChatProvider, InstalledModel, OllamaProvider, ProviderError
 from ..project import ProjectContext
 from . import background
+from .kit.widgets import ModalSheet, ModeBadge
 
 
 class _Lister(QThread):
@@ -178,3 +179,25 @@ def task_route(parent: QWidget, project: ProjectContext, task: str, what: str) -
         QMessageBox.critical(parent, "AI model", reason)
         return None
     return route if confirm_if_new(parent, project, route, what) else None
+
+
+class RouteBadge(ModeBadge):
+    """The route badge of a dialog (workspace v6 handoff, section 6): the route the switch is on, kept current while
+    the dialog is open."""
+
+    def __init__(self, state) -> None:
+        super().__init__()
+        self._state = state
+        state.ai_route_changed.connect(self.refresh)
+        self.refresh()
+
+    def refresh(self, _route: str = "") -> None:
+        route = Route(self._state.ai_route, ai_profile.CHAT)
+        self.set_route(route.name, not route.is_local)
+
+
+def add_route_badge(sheet: ModalSheet, window) -> None:
+    """Put the route badge under `sheet`'s title. `window` is the main window (its `state`); a stand-in without
+    one, as in a test, gets no badge."""
+    if (state := getattr(window, "state", None)) is not None:
+        sheet.add_under_title(RouteBadge(state))

@@ -146,6 +146,22 @@ Deliberately left for later steps:
 * **Per-route composer drafts and chat history** are kept in memory by the chat (`chat/route_chat.py`, swapped by
   `ChatView.show_route` on `state.ai_route_changed`); the unified assistant (step 3) shows the route's own. The chat's model chip picks a model for
   that chat only (kept per route, forgotten by New conversation); the default stays AI setup's. The route label of
-  the task cards is `Route.label`; the batch result panel and the dialog badge: steps 5-7.
+  the task cards is `Route.label`; the batch result panel: step 5; the dialog badge: step 7 (below).
 * **Review marks** (`ai_review`, "Not reviewed") are written for any AI-authored change of path 9a, also from a Local
   provider, where the Add slide sheet (path 7) marks only cloud routes. More is flagged, not less.
+* **The dialog badge, the keyboard and the live region** are done (step 7), which completes the handoff
+  (README section 9, steps 1-7; this audit has no open gap). The Settings sheet, the Deck settings sheet, Add slide (its
+  translation) and the Images page's prompt-tuning sheet show the route as a read-only `ModeBadge` under their title
+  (`ui/kit/widgets.py`; `ai_models.add_route_badge` ties it to `WorkspaceState.ai_route_changed`; tooltip "Change it
+  with the switch in the top bar"); none of them has a route picker. Keyboard: Tab stays inside the inline popovers
+  (the switch's popups open on the secondary button and go secondary, primary, link; AI setup goes through its cells in
+  reading order), Esc and their buttons return the focus to where it was (the ▾, or the selected segment of the
+  switch), kit buttons take Enter as well as Space, show the 2px focus ring for the keyboard only, the assistant's scope
+  is a radio group, its Tab order is Focus, New conversation, scope, task buttons, All actions…, the pill's Open, and a
+  task card takes the focus on its first action and keeps it across its phases. Live region: one `kit.announce(widget,
+  text)` (polite `QAccessibleAnnouncementEvent`, nothing before Qt 6.8) for the switch's commit and "stopping", the task
+  card's phase changes, the end of an image batch and AI setup's confirmations; icon buttons are named by their tooltip.
+  What remains, none of it a route gap: the top bar's own Tab order (the ⇤ column toggle is last in the window and the
+  deck switcher is not a tab stop), the counts on "Draft all (8) · cloud" (step 5) and the Language panel's "Update DE"
+  button, and the platform's own focus return for popup-window menus (⋮, deck switcher), which Qt does but the offscreen
+  test platform does not.

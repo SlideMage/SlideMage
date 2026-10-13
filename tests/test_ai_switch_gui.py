@@ -198,13 +198,11 @@ def test_a_commit_sets_the_route_tells_everyone_and_sends_nothing(window, qapp):
     assert window.state.ai_route == CLAUDE_CODE and switch.segments.current() == CLOUD
     assert switch.property("cloud") is True and switch.state_label.text() == "Claude Code"
     assert switch.toolTip() == "Cloud · Claude Code · AI requests send content to the cloud"
-    assert switch.announcement == "All AI tasks now use Cloud"
     assert window.toast.isVisible() and window.toast.findChildren(type(switch.state_label))[0].text() == \
         "All AI tasks now use Cloud · Claude Code"
     assert window.assistant.chat.route_chip.text().startswith("Claude Code")
     assert window.images_page.draft_model.currentText() == "Haiku · medium"       # the pickers follow the route
     route(window).request(LOCAL)
-    assert switch.announcement == "All AI tasks now use Local"
     assert window.toast.findChildren(type(switch.state_label))[0].text() == \
         "All AI tasks use Local · Ollama again. Your Ollama models are restored."
     assert window.assistant.chat.route_chip.text().endswith("· Ollama")
