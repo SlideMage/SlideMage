@@ -173,7 +173,7 @@ def test_each_route_shows_its_own_models(qapp):
     chat = sheet.models.combos[ai_profile.CHAT]
     assert chat.currentText() == "set in Claude Code" and not chat.isEnabled()
     translation = sheet.models.combos[ai_profile.TRANSLATION]
-    assert offered(translation) == ai_profile.claude_code_choices() and translation.currentText() == "Sonnet · medium"
+    assert offered(translation) == ai_profile.claude_code_choices() and translation.currentText() == "Haiku · medium"
     show_route(sheet, ai_profile.LOCAL)
     assert offered(sheet.models.combos[ai_profile.CHAT]) == ["", "general-text"] and chat.isEnabled()
 

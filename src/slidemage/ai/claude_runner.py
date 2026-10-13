@@ -24,9 +24,10 @@ from ..project import ProjectContext
 from . import claude_tasks, translation_style
 from .claude_launch import clean_environment
 
-# Chosen by docs/CLAUDE_CODE_TASKS_BENCHMARK.md: the fastest and best setup measured. A text task takes
-# 2-10 s there (the slowest run 13 s), so 60 s is a deadline for a service that has gone wrong.
-MODEL = "sonnet"
+# The default of Claude Code tasks: Haiku at medium effort, tested by the user as good enough (2026-10-13;
+# docs/CLAUDE_CODE_TASKS_BENCHMARK.md measured Sonnet). A text task takes 2-10 s there (the slowest run 13 s),
+# so 60 s is a deadline for a service that has gone wrong.
+MODEL = "haiku"
 EFFORT = "medium"
 MODELS = ("sonnet", "haiku", "opus")      # what the tab's picker offers
 EFFORTS = ("low", "medium", "high")

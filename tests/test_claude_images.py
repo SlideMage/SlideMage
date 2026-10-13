@@ -59,11 +59,11 @@ def test_a_description_is_a_draft_of_the_existing_pipeline(ctx, root, claude, mo
     backend = claude_images.ClaudeDraftBackend(ctx, claude.path)
     context = alt_draft.build_context(ctx, slide, "media/chart.png")
     result = backend.draft(root / "media" / "chart.png", context)
-    assert result.ok and backend.label == result.model == "Claude sonnet"
+    assert result.ok and backend.label == result.model == "Claude haiku"
     assert alt_draft.apply_one_draft(ctx, "media/chart.png", result, backend.label)
     entry = alt_images.load_store(ctx)["media/chart.png"]
     assert (entry.short, entry.long, entry.takeaway_default) == (ANSWER["short"], ANSWER["long"], ANSWER["takeaway"])
-    assert entry.drafted_by == "Claude sonnet" and entry.status != alt_images.STATUS_REVIEWED
+    assert entry.drafted_by == "Claude haiku" and entry.status != alt_images.STATUS_REVIEWED
     (call,) = claude.calls()
     flags = call["argv"]
     assert call["request"] == alt_draft.build_prompt(context)
@@ -147,7 +147,7 @@ def test_a_translation_of_text_that_changed_meanwhile_is_not_written(ctx, root, 
     claude.script({"answer": GERMAN})
     result = claude_images.ClaudeTranslationBackend(ctx, claude.path).translate(alt_images.load_store(ctx)["media/chart.png"])
     alt_images.update_store(ctx, lambda e: setattr(e["media/chart.png"], "long", "Three bars.") or True)
-    assert not alt_draft.apply_one_translation(ctx, "media/chart.png", result, "Claude sonnet")
+    assert not alt_draft.apply_one_translation(ctx, "media/chart.png", result, "Claude haiku")
 
 
 def test_a_translation_batch_counts_what_failed(ctx, root, claude, monkeypatch):  # noqa: F811

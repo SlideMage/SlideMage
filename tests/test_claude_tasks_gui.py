@@ -604,7 +604,7 @@ def test_describing_images_stores_drafts_and_shows_them_in_the_panel(ctx, fake):
     wait_until(lambda: "Describing images of abc … 1/2" in env.view.task_status.text())
     assert settled(env).startswith("Done in ") and settled(env).endswith(": 2 described")
     store = alt_images.load_store(ctx)
-    assert [(e.short, e.drafted_by) for e in store.values()] == [(IMAGE_ANSWER["short"], "Claude sonnet")] * 2
+    assert [(e.short, e.drafted_by) for e in store.values()] == [(IMAGE_ANSWER["short"], "Claude haiku")] * 2
     assert all(e.status != alt_images.STATUS_REVIEWED for e in store.values())
     forms = env.window.side_panels.panels["images"]._forms
     assert [form.short_edit.toPlainText() for form in forms] == [IMAGE_ANSWER["short"]] * 2

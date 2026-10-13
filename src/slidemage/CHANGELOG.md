@@ -2191,3 +2191,8 @@ NEW: AI requests follow one Local / Cloud setting; each route keeps its own mode
 - Settings -> AI models keeps separate models for Local, Claude Code and the API; every picker lists only the models of the route in use.
 - A task that a route cannot do says so instead of using another route (for example, proofreading on Local).
 - The model picker of the Claude Code tab is gone: Claude Code tasks use the models set in Settings, and the terminal uses Claude Code's own default.
+
+v8.4.1 (2026-10-13, direct instruction): Claude Code tasks default to Haiku at medium effort (was Sonnet at medium); the user tested it as good enough. claude_runner.MODEL is "haiku"; a saved choice in Settings -> AI models still wins.
+
+NEW: Claude Code tasks are faster by default.
+- They use Haiku at medium effort unless another model is chosen in Settings -> AI models.

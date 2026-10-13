@@ -18,7 +18,7 @@ Concepts (the handoff README, section 2):
 * `cloud_seen`: the project's first-use flag for Cloud (app_settings.json, which sits inside the project
   folder). It replaces `cloud_consent`, which reads as the same flag until the next write.
 * models per route and task, in app_settings.json under "ai_models": {route: {task: choice}}. A choice is an
-  Ollama or API model name, or for Claude Code "<model>:<effort>" ("sonnet:medium"). The task models of the
+  Ollama or API model name, or for Claude Code "<model>:<effort>" ("haiku:medium"). The task models of the
   earlier version ("<provider>:<model>" under drafting_model, translation_model, chat_model and
   syntax_check_model) read as the Local (ollama) and API (anthropic) models until the first write moves them.
 

@@ -38,8 +38,8 @@ raise or report, and nothing is sent to another route or model ("It will not swi
 Defaults: a project without a policy is **Local** (nothing leaves the machine until someone says so; an older
 `local_only: true` reads as `local`, an explicit `false` as `cloud`). `cloud_conn` defaults to Claude Code. Models:
 Local has none until one is chosen (the pickers offer what is installed; translation preselects the built-in
-fallback when it is installed), API defaults to `claude-sonnet-5-5`, Claude Code to `sonnet:medium`
-(`claude_runner.MODEL/EFFORT`, chosen by the benchmark), and the Claude Code chat has no model (it is the terminal's).
+fallback when it is installed), API defaults to `claude-sonnet-5-5`, Claude Code to `haiku:medium`
+(`claude_runner.MODEL/EFFORT`, tested by the user as good enough), and the Claude Code chat has no model (it is the terminal's).
 
 Migration, read side: the earlier `drafting_model`, `translation_model`, `chat_model` and `syntax_check_model`
 ("ollama:x", a bare name, or "anthropic:x") read as the Local and API models of the matching task until the first

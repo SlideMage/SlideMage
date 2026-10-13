@@ -49,7 +49,7 @@ def test_the_fallback_model_is_preselected_only_on_local(ctx, qapp):
     assert combo.currentData() == "fallback"
     ai_profile.set_mode(ctx, CLOUD)
     ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", fallback_local="fallback")
-    assert combo.currentData() == "sonnet:medium"
+    assert combo.currentData() == "haiku:medium"
 
 
 def test_the_route_of_a_pick_carries_the_picked_model_and_the_active_route(ctx, qapp, monkeypatch):

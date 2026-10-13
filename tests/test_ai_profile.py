@@ -27,7 +27,7 @@ def test_default_models_of_each_route(ctx):
         assert ai_profile.model_choice(ctx, API, task) == "claude-sonnet-5-5"
     assert ai_profile.model_choice(ctx, CLAUDE_CODE, CHAT) == ""                     # its chat is the terminal's own model
     for task in (IMAGE_DESCRIPTION, TRANSLATION, FIXES):
-        assert ai_profile.model_choice(ctx, CLAUDE_CODE, task) == "sonnet:medium"
+        assert ai_profile.model_choice(ctx, CLAUDE_CODE, task) == "haiku:medium"
 
 
 # -- the session's mode and the project's policy ---------------------------------------------
@@ -110,7 +110,7 @@ def test_each_route_keeps_its_own_model_of_a_task(ctx):
 
 def test_a_claude_code_choice_must_be_one_of_its_models_and_efforts(ctx):
     app_settings.set(ctx, "ai_models", {CLAUDE_CODE: {TRANSLATION: "gpt-9:max", FIXES: "opus:low"}})
-    assert ai_profile.model_choice(ctx, CLAUDE_CODE, TRANSLATION) == "sonnet:medium"
+    assert ai_profile.model_choice(ctx, CLAUDE_CODE, TRANSLATION) == "haiku:medium"
     assert ai_profile.model_choice(ctx, CLAUDE_CODE, FIXES) == "opus:low"
 
 
