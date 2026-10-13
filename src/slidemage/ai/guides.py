@@ -27,7 +27,9 @@ Slides, files and decks.
   student versions). Sections are \\section{Title}. Do not hand-edit these calls unless asked;
   create_slide (full draft) or add_slide (skeleton) puts the call into the deck.
 - Deck versions: instructor (everything), during-course, after-course (student versions).
-- Find a slide with list_slides (ids, titles, sections) or search; read it before changing it."""
+- Find a slide with list_slides or search; read it before changing it. Use modify_slide with ordered
+  edits (old/new, each old matches once) or full text, plus expected text if read: one call checks,
+  writes and shows the preview, using the linked partner in the edited EN/DE language."""
 
 _REVEALS = """\
 Reveal steps (overlays) and deck versions.

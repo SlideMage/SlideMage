@@ -2149,3 +2149,10 @@ NEW: Claude can draft, insert and show a complete slide in one call.
 - New drafts are checked before writing, inserted into the named open deck, marked Not reviewed and shown with their preview.
 - Failed insertion rolls back the draft; if cleanup fails, Claude can insert the existing slide without creating a duplicate.
 - A slide that fails to compile stays in place with its error and file path so Claude can fix it directly.
+
+
+v8.3.13 (2026-10-13, Claude Code speed plan C3b): composite modify_slide for terminal MCP and chat. Existing slides accept ordered exact old/new replacements or full new text, with an optional expected-text guard and current-text excerpt on mismatch. The edited EN/DE language resolves linked partners; clean editor reads use C2 freshness and dirty buffers remain the reported base. Frozen versions are refused before proposal; apply_slide shares protected-region, lint and structure validation, checked writes, backup/undo, Not reviewed marking, one render and preview publication. Translation headers select translation provenance. Orientation and guides direct slide changes to the composite tool and other files to ordinary editing. Socket-free regressions cover edits, refusals without writes, buffer freshness, concurrent changes, translation resolution, review marks, undo and retained changes after render errors.
+
+NEW: Claude can change, check and show an existing slide in one call.
+- Slide changes use your current editor text and language, protect frozen versions and managed regions, and stay labelled Not reviewed.
+- Stale text and ambiguous replacements are refused; compile failures keep the change and return the error so Claude can fix it.

@@ -14,14 +14,13 @@ from .edits import undo_edit
 
 TOOLS = [files.read_file, files.find_files, files.search, edits.edit_file, edits.write_file,
          slidemage.list_slides, slidemage.lint, slidemage.render_preview, slidemage.add_slide, slidemage.create_slide,
-         slidemage.add_bib_entry, slidemage.compile_deck, slidemage.read_guide]
+         slidemage.modify_slide, slidemage.add_bib_entry, slidemage.compile_deck, slidemage.read_guide]
 
 # What the embedded Claude Code is offered over MCP (ai/mcp_server.py): the focus and the buffer, the
-# read-only SlideMage tools, and add_slide (mint a slide id/header, or retry insertion with existing).
-# Reading and editing files uses Claude Code's native Read/Edit/Write.
+# read-only tools and composite slide creation/modification. Native Edit/Write handles other files.
 CLAUDE_CODE_READ_ONLY = [focus.get_focus, focus.show_slide, focus.read_buffer, slidemage.list_slides, slidemage.lint,
                          slidemage.render_preview, slidemage.read_guide]
-CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, slidemage.create_slide, focus.translate_slide,
+CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, slidemage.create_slide, slidemage.modify_slide, focus.translate_slide,
                      focus.switch_to_deck_mode]
 
 __all__ = ["CLAUDE_CODE_READ_ONLY", "CLAUDE_CODE_TOOLS", "TOOLS", "Tool", "ToolBox", "ToolContext", "ToolError", "build_toolbox", "undo_edit"]

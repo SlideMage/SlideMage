@@ -26,7 +26,8 @@ def test_orientation_and_prompt_scope_agree_on_focus_and_keep_editor_guards():
         assert "call get_focus only if the focus is missing or stale" in text
         assert "read_buffer" in text and "call get_focus first" not in text
     assert "Batch independent reads in one turn" in orientation
-    assert "native Edit/Write" in orientation
+    assert "native Edit/Write for other files" in orientation
+    assert "modify_slide" in orientation and "one call" in orientation
     assert all(guard in orientation for guard in ("frozen", "leading '%%'", "\\setSlideVersion", "\\vbox to 0pt", "hook"))
     assert "do not explore" in scope and "switch_to_deck_mode" in scope
 
@@ -81,6 +82,7 @@ def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tm
     assert settings["permissions"]["allow"] == [f"mcp__slidemage__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]
     assert "add_slide" not in " ".join(settings["permissions"]["allow"])        # it changes files: Claude asks
     assert "create_slide" not in " ".join(settings["permissions"]["allow"])
+    assert "modify_slide" not in " ".join(settings["permissions"]["allow"])
     assert "get_focus" in flags["--append-system-prompt"] and "hook" in flags["--append-system-prompt"]
     # no bearer token on the command line (visible in `ps`)
     assert "Bearer ${" in command[2] and "--strict-mcp-config" not in command

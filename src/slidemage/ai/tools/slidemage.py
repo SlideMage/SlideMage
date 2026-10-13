@@ -31,7 +31,7 @@ from .. import guides
 from ..agent_types import EditApplied
 from .base import ToolContext, ToolError, tool
 from ...tex_source import blanked_verbatim, braced_argument
-from .edits import protected_problem, propose, write_text
+from .edits import _not_frozen, protected_problem, propose, slide_kind, write_text
 from .files import current_revision, current_text, project_path, relative
 
 LIST_LIMIT = 300
@@ -245,6 +245,51 @@ def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
     except ToolError as exc:
         raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\n{exc}") from None
     return f"{status}\n{rendered}", images
+
+
+@tool("modify_slide",
+      "Change an existing slide in the edited language with ordered exact replacements or full text. "
+      "Checks, writes (open editor or file), marks Not reviewed, renders once and shows the preview. "
+      "Frozen versions and protected changes are refused; a compile failure keeps the change.",
+      {"slide": {"type": "string", "description": "Slide id or project path; follows the EN/DE switch to its linked partner."},
+       "edits": {"type": "array", "minItems": 1, "description": "Ordered replacements; each old must match exactly once.",
+                 "items": {"type": "object", "properties": {"old": {"type": "string", "minLength": 1},
+                                                          "new": {"type": "string"}},
+                           "required": ["old", "new"], "additionalProperties": False}},
+       "body": {"type": "string", "description": "Full new slide text, including unchanged protected parts; instead of edits."},
+       "expected": {"type": "string", "description": "Text you read; refuse if the current text differs."}},
+      ("slide",))
+def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
+    if ("edits" in args) == ("body" in args):
+        raise ToolError("Pass exactly one of edits or body.")
+    path = project_path(ctx.root, str(slide_or_file(ctx, args["slide"])))
+    _not_frozen(ctx.project, path)
+    if slide_kind(ctx.project, path) != "current" or not path.is_file():
+        raise ToolError("modify_slide needs an existing live slide id or slides/*-current.tex path.")
+    links = slide_language.TranslationLinks(ctx.project.slides_dir)
+    if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), ctx.workspace.context().language):
+        path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
+    before, revision = current_revision(ctx.workspace, path)
+    if "expected" in args and args["expected"] != before:
+        raise ToolError(f"{relative(ctx.root, path)} changed since you read it; nothing written. "
+                        f"Read it again and retry. Current text ({revision}, first 1500 characters):\n{before[:1500]}")
+    after = args.get("body", before)
+    if "edits" in args:
+        if not args["edits"]:
+            raise ToolError("edits must contain at least one replacement.")
+        for index, edit in enumerate(args["edits"], 1):
+            if (not isinstance(edit, dict) or set(edit) != {"old", "new"}
+                    or not all(isinstance(edit[key], str) for key in ("old", "new")) or not edit["old"]):
+                raise ToolError(f"Edit {index} needs a nonempty old string and a new string.")
+            count = after.count(edit["old"])
+            if count != 1:
+                raise ToolError(f"Edit {index}: old occurs {count} times in {relative(ctx.root, path)}; "
+                                "nothing written. Copy enough current text to match exactly once.")
+            after = after.replace(edit["old"], edit["new"], 1)
+    if after == before:
+        return f"{relative(ctx.root, path)} ({revision}): nothing to change."
+    kind = "translation" if slide_language.TRANSLATION_OF_RE.search(before) else "edit"
+    return apply_slide(ctx, path, before, after, kind=kind, note=f"base: {revision}")
 
 
 @tool("add_slide",

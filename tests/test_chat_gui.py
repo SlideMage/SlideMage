@@ -766,3 +766,39 @@ def test_create_slide_shows_its_returned_preview_in_the_real_window(env, monkeyp
     assert env.window.centre.path == path and pane._target.source_path == path
     assert not pane._page.pixmap.isNull() and pane._page.message == ""
     assert len(rendered) == 1 and result.images
+
+
+@pytest.mark.parametrize("dirty", [False, True])
+def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
+    from slidemage import ai_review, preview_target, slide_snapshot
+    from slidemage.ai.tools import build_toolbox
+
+    ws = env.chat.workspace
+    file = open_buffer(env, dirty=dirty)
+    before = file.editor.text()
+    disk_text = env.path.read_text().replace("First point", "New disk point")
+    env.path.write_bytes(disk_text.replace("\n", "\r\n").encode())
+    rendered, published = [], []
+    monkeypatch.setattr(preview_target, "render_text", lambda target, text, *a, **k:
+                        rendered.append(text) or env.root / "fake.pdf")
+    monkeypatch.setattr(slide_snapshot, "page_png", lambda *a: b"PNG")
+    monkeypatch.setattr(ws, "show_slide", lambda path: None)
+    monkeypatch.setattr(ws, "show_preview", lambda *args: published.append(args))
+    expected = before if dirty else disk_text
+
+    def run():
+        ws.begin_request()
+        box = build_toolbox(ws, lambda event: None, compiler.CancelToken(), EDIT_AUTO)
+        return box.execute(call("modify_slide", slide="abc", expected=expected,
+                                edits=[{"old": "Hello", "new": "Changed title"}]))
+
+    result = on_thread(run)
+    after = expected.replace("Hello", "Changed title")
+    assert not result.is_error, result.text
+    assert ("base: editor (unsaved)" if dirty else "base: file") in result.text
+    assert file.editor.text() == after and file.dirty
+    assert env.path.read_text() == disk_text
+    assert rendered == [after] and published[0][1:3] == (after, b"PNG")
+    assert ai_review.is_unreviewed(env.window.project, env.path)
+    file.editor.undo()
+    assert file.editor.text() == expected
