@@ -68,7 +68,7 @@ class ImageForm(Row):
         self.body.addWidget(self.note)
         buttons = QHBoxLayout()
         self.redraft_button = Button("Redraft…", "secondary", compact=True)
-        self.redraft_button.setToolTip("Ask the vision model of the active AI route (Settings -> AI models) for a "
+        self.redraft_button.setToolTip("Ask the vision model of the active AI route (AI setup) for a "
                                        "new description. It fills the fields; nothing is saved until you save.")
         self.save_button = Button("Save draft", "secondary", compact=True)
         self.review_button = Button("Mark reviewed", "primary", compact=True)

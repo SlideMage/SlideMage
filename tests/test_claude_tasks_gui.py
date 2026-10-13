@@ -312,9 +312,9 @@ def test_the_german_address_and_the_glossary_reach_the_request(ctx, fake):
 
 
 def test_settings_set_the_german_address(ctx, fake):
-    from slidemage.ui.dialogs.settings import ModelsTab
+    from slidemage.ui.dialogs.settings import AiTab
 
-    tab = ModelsTab(ctx)
+    tab = AiTab(ctx)
     assert tab.address.current() == "Sie"
     tab.address.changed.emit("du")
     assert translation_style.de_address(ctx) == "du"

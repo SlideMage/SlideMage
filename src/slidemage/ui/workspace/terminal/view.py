@@ -25,6 +25,7 @@ from ...kit import kit_qss as q
 from ...kit.widgets import (
     Button, Chip, IconButton, ModalSheet, PopoverMenu, SegmentedControl, Surface, caption, set_property)
 from ..attachments import place_file, save_image
+from ..ai_work import RunningWork
 from ..state import WorkspaceState
 from .tasks import Bubble, TaskRunner, bubbles, deck_bubbles
 
@@ -356,6 +357,25 @@ class ClaudeCodeView(Surface):
             self.terminal.reset()
             self._set_attachable()
             self._spawn()
+
+    @property
+    def session_live(self) -> bool:
+        """Whether the terminal's Claude Code process is running (it cannot be told whether it is idle)."""
+        return self.session is not None and self.session.running
+
+    def end_session(self) -> None:
+        """The AI switch leaves Claude Code: end the process; Restart starts a new one."""
+        if not self.session_live:
+            return
+        self.session.stop()
+        self._set_attachable()
+        self.status.set_text("Ended")
+        self.status.set_tone("muted")
+        self.terminal.write(b"\r\n\x1b[2m[Claude Code ended: AI tasks use another route now. "
+                            b"Use Restart to start it again.]\x1b[0m\r\n")
+
+    def running_work(self) -> list[RunningWork]:
+        return self.tasks.running_work() if self.tasks is not None else []
 
     def _on_exited(self, code: int) -> None:
         if self.terminal is None:       # reported while the window was closing

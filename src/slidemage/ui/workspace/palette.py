@@ -42,7 +42,7 @@ LIST_HEIGHT = 440
 
 GROUP_ICONS = {"View & build": "play_arrow", "Slide": "slideshow", "Section": "view_agenda", "Deck": "folder_open",
                "Project": "settings", "Go to slide": "arrow_forward", "Go to deck": "arrow_forward",
-               "Text in project files": "description", "Chat": "chat"}
+               "Text in project files": "description", "Chat": "chat", "AI": "smart_toy"}
 GO_TO_SLIDE, GO_TO_DECK, TEXT_HITS, CHAT = "Go to slide", "Go to deck", "Text in project files", "Chat"
 
 

@@ -61,7 +61,7 @@ def problem(ctx: ProjectContext, route: Route) -> str:
         return "" if credentials.get_api_key(ctx) is not None else NO_KEY
     if not route.model:
         return (f"Choose an Ollama model for {ai_profile.TASK_LABELS[route.task].lower()} under "
-                "Settings → AI models.")
+                "AI setup (the ▾ of the AI switch).")
     return ""
 
 

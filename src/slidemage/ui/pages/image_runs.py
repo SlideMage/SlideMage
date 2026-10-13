@@ -17,6 +17,7 @@ from ... import alt_draft, alt_images
 from ...ai import resolver
 from ..ai_models import built, picked_route, provider_from_combo
 from .. import background
+from ..workspace.ai_work import RunningWork
 from .image_dialogs import PromptTuningSheet
 from .image_form import ImageForm
 from .image_jobs import Job, draft_work, translate_work
@@ -38,9 +39,20 @@ class ImageRunsMixin:
         self._update_buttons()
         job.start()
 
+    def running_work(self) -> list[RunningWork]:
+        """The run under way, for the AI switch's busy popup (workspace/ai_work.py)."""
+        job = self._job
+        if job is None:
+            return []
+        single = self.job_card.single
+        text = job.title if single else f"{job.title} · {max(job.position[0] - 1, 0)} of {job.position[1]} done"
+        return [RunningWork(text, job.route.label, job.provider.is_local, self._abort_job,
+                            "" if single else "Pending images are cancelled, not moved to the other route")]
+
     def _on_progress(self, job: Job, index: int, total: int, image: str) -> None:
         if job is not self._job:      # stopped meanwhile (its thread may still report)
             return
+        job.position = (index, total)
         self.job_card.set_progress(index, total, image)
         self.app.log(f"  [{index}/{total}] {image}")
 
@@ -120,17 +132,19 @@ class ImageRunsMixin:
     # drafting
 
     def _draft_backend(self):
-        """The backend that describes images on the active route with the picked model; None (the user is
-        told) when there is none, the route cannot run it or a cloud request was declined. Asked on the GUI
-        thread, before an Ollama slot is reserved."""
+        """(the Route, the backend) that describe images on the active route with the picked model; None (the
+        user is told) when there is none, the route cannot run it or a cloud request was declined. Asked on the
+        GUI thread, before an Ollama slot is reserved."""
         route = picked_route(self, self.app.project, self.draft_model, "image_description",
                              "the slide's text and the images to describe")
-        return None if route is None else built(self, resolver.draft_backend, self.app.project, route)
+        backend = None if route is None else built(self, resolver.draft_backend, self.app.project, route)
+        return None if backend is None else (route, backend)
 
     def _translation_backend(self, what: str):
         """The same for translating descriptions: None (the user is told) when there is none."""
         route = picked_route(self, self.app.project, self.translate_model, "translation", what)
-        return None if route is None else built(self, resolver.translation_backend, self.app.project, route)
+        backend = None if route is None else built(self, resolver.translation_backend, self.app.project, route)
+        return None if backend is None else (route, backend)
 
     def _draft_slide(self) -> None:
         view = self._current
@@ -141,16 +155,18 @@ class ImageRunsMixin:
             QMessageBox.information(self, "Nothing to draft", "This slide's images are decorative, or are vector "
                                     "files the model cannot read.")
             return
-        backend = self._draft_backend()
-        if backend is None or not self.app.try_start_ollama_task("drafting descriptions", backend.provider):
+        picked = self._draft_backend()
+        if picked is None or not self.app.try_start_ollama_task("drafting descriptions", picked[1].provider):
             return
-        job = Job("Drafting descriptions", backend.provider, draft_work(self.app.project, jobs, backend))
+        route, backend = picked
+        job = Job("Drafting descriptions", backend.provider, draft_work(self.app.project, jobs, backend), route)
         self._start(job, f"{view.row.path.name} via {backend.label}", len(jobs), self._drafted)
 
     def _draft_all(self) -> None:
-        backend = self._draft_backend()
-        if backend is None or not self.app.try_start_ollama_task("drafting descriptions", backend.provider):
+        picked = self._draft_backend()
+        if picked is None or not self.app.try_start_ollama_task("drafting descriptions", picked[1].provider):
             return
+        route, backend = picked
         queue = alt_draft.images_needing_drafts(self.app.project)
         redraftable = alt_draft.images_needing_drafts(self.app.project, redraft_unless_model=backend.label)
         other_model = max(len(redraftable) - len(queue), 0)
@@ -170,7 +186,7 @@ class ImageRunsMixin:
             return
         if again:
             queue = redraftable
-        job = Job("Drafting image descriptions", backend.provider, draft_work(self.app.project, queue, backend))
+        job = Job("Drafting image descriptions", backend.provider, draft_work(self.app.project, queue, backend), route)
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._drafted)
 
     def _drafted(self, outcome: object) -> None:
@@ -220,9 +236,10 @@ class ImageRunsMixin:
     # translating
 
     def _translate_all(self) -> None:
-        backend = self._translation_backend("the descriptions of all untranslated images")
-        if backend is None or not self.app.try_start_ollama_task("translating images", backend.provider):
+        picked = self._translation_backend("the descriptions of all untranslated images")
+        if picked is None or not self.app.try_start_ollama_task("translating images", picked[1].provider):
             return
+        route, backend = picked
         queue = alt_draft.images_needing_translation(self.app.project)
         if not queue:
             QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
@@ -237,7 +254,8 @@ class ImageRunsMixin:
         if not go:
             self.app.end_ollama_task(backend.provider)
             return
-        job = Job("Translating descriptions to German", backend.provider, translate_work(self.app.project, queue, backend))
+        job = Job("Translating descriptions to German", backend.provider, translate_work(self.app.project, queue, backend),
+                  route)
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated)
 
     def _translated(self, outcome: object) -> None:
@@ -278,14 +296,15 @@ class ImageRunsMixin:
             if not self._save(reviewed=False):
                 return
             english = form.english()
-        backend = self._translation_backend("this image's description text")
-        if backend is None or not self.app.try_start_ollama_task("translating this image", backend.provider):
+        picked = self._translation_backend("this image's description text")
+        if picked is None or not self.app.try_start_ollama_task("translating this image", picked[1].provider):
             return
+        route, backend = picked
         short, long, takeaway = english
         entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
         form.begin_translation(english)
         self._translating = form
-        job = Job("Translating to German", backend.provider, lambda _job: backend.translate(entry))
+        job = Job("Translating to German", backend.provider, lambda _job: backend.translate(entry), route)
         self._start(job, f"{form.reference} via {backend.label}", 1, lambda outcome: self._translated_one(form, outcome))
 
     def _translated_one(self, form: ImageForm, outcome: object) -> None:

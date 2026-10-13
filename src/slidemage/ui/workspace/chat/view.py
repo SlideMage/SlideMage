@@ -5,6 +5,8 @@ with a card for every tool the agent runs and a diff card for every edit. In "As
 edit waits for Apply / Reject; in "Edit automatically" mode it is applied at once and its card offers
 Undo. Stop ends a run. Files come in with the paperclip, by drop or by pasting an image: they are chips above
 the box, and the request names them ("Attached: sources/paper.pdf") for the agent to read. The conversation (history) lasts for the session; New chat starts afresh.
+Each route (Local, Cloud · API, Cloud · Claude Code) has a conversation and a draft of its own: when the AI switch
+moves, `show_route` puts this one away and brings the new route's back (route_chat.py).
 
 Threading is in session.py (the agent thread, `ChatSession.event` on the GUI thread) and
 gui_workspace.py (what the agent may ask of the main window).
@@ -37,10 +39,12 @@ from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderEr
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
+from ..ai_work import RunningWork
 from ..attachments import place_file, save_image
 from ..state import WorkspaceState
 from .cards import AssistantText, DiffCard, Notice, Status, ToolCard, UserBubble, suggestion_button, text_label
 from .gui_workspace import EditAsk, GuiWorkspace
+from .route_chat import route_chats
 from .session import ChatSession, LocalModels
 
 MODE_SETTING = "chat_edit_mode"
@@ -120,6 +124,8 @@ class ChatView(Surface):
         self._local_models: Optional[list[str]] = None  # the tool-capable Ollama models; None until Ollama has answered
         self._local_loader: Optional[LocalModels] = None  # the question to Ollama that is out, if any
         self._attached: list[str] = []                 # project-relative paths the next request names
+        self._chats = route_chats()                    # what the other routes' conversations left behind
+        self._route_key = state.ai_route               # whose conversation is on show
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -194,6 +200,7 @@ class ChatView(Surface):
         self.session.event.connect(self._on_event)
         self.workspace.edit_asked.connect(self._on_edit_asked)
         state.deck_changed.connect(self._on_deck_changed)
+        state.ai_route_changed.connect(self.show_route)
         state.lint_errors_changed.connect(lambda _count: self._fill_empty())
         self._set_running(False)
         self._fill_empty()
@@ -262,19 +269,49 @@ class ChatView(Surface):
         self._add(text_label(label, q.CHAT_MODEL))
 
     def new_chat(self) -> None:
+        """Forget the conversation of the route on show (the others keep theirs)."""
         if self.session.running:
             return
         self.session.new_chat()
         self._clear_attachments()
+        for widget in self._take_messages():
+            widget.deleteLater()
+        self._empty.show()
+        self._fill_empty()
+
+    def _take_messages(self) -> list[QWidget]:
+        """Lift the conversation out of the list, oldest first, and reset what follows the newest message."""
         self._text, self._stick = None, True
         self._tools.clear()
         self._diffs.clear()
         self._asking.clear()
-        while self._messages.count() > 3:
+        widgets = []
+        while self._messages.count() > 3:           # the first screen, the status and the stretch stay
             widget = self._messages.takeAt(1).widget()
             widget.setParent(None)
-            widget.deleteLater()
-        self._empty.show()
+            widgets.append(widget)
+        return widgets
+
+    def show_route(self, route: str) -> None:
+        """The AI switch moved: keep this route's draft, attached files and conversation, and show those of
+        `route`. Nothing is copied or sent from one to the other."""
+        if route == self._route_key:
+            return
+        left = self._chats[self._route_key]
+        left.draft, left.attached = self.composer.toPlainText(), list(self._attached)
+        left.history, left.started = self.session.history, self._empty.isHidden()
+        left.messages = self._take_messages()
+        self._route_key = route
+        arrived = self._chats[route]
+        self.session.history = arrived.history
+        self._clear_attachments()
+        for rel in arrived.attached:
+            self._add_chip(rel)
+        self.composer.setPlainText(arrived.draft)
+        for widget in arrived.messages:
+            self._add(widget)
+            widget.show()
+        self._empty.setVisible(not arrived.started)
         self._fill_empty()
 
     # -- asking ------------------------------------------------------------------------------
@@ -304,8 +341,8 @@ class ChatView(Surface):
         request = text
         if self._attached:
             request = (text or "Please look at the attached file.") + "\n\nAttached: " + ", ".join(self._attached)
-        provider = self._provider_for_send()
-        if provider is None or not self.session.start(provider, request, self.scope.current()):
+        sending = self._provider_for_send()
+        if sending is None or not self.session.start(sending[1], request, self.scope.current(), sending[0]):
             if self.composer.toPlainText().strip() != text:
                 self.composer.setPlainText(text)        # a suggestion that could not be sent is kept
             return
@@ -313,7 +350,7 @@ class ChatView(Surface):
         self._clear_attachments()
         self._begin_conversation()
         self._add(UserBubble(request))
-        self._start_turn(provider.label)
+        self._start_turn(sending[1].label)
         self._stick = True
         self._set_running(True)
         self.status.run()
@@ -363,17 +400,24 @@ class ChatView(Surface):
         self._attached.clear()
         clear_layout(self._chips)
 
-    def _provider_for_send(self) -> Optional[ChatProvider]:
-        """The model that answers the next request; None (and the reason shown) when its route cannot answer now."""
+    def _provider_for_send(self) -> Optional[tuple[ai_profile.Route, ChatProvider]]:
+        """The route and the model that answer the next request; None (and the reason shown) when the route cannot
+        answer now."""
         route = ai_profile.resolve(self.state.project, ai_profile.CHAT)
         if reason := resolver.problem(self.state.project, route):
             self._add(Notice(reason, "error"))
             return None
         try:
-            return resolver.provider_for(self.state.project, route)
+            return route, resolver.provider_for(self.state.project, route)
         except ProviderError as exc:
             self._add(Notice(str(exc), "error"))
             return None
+
+    def running_work(self) -> list[RunningWork]:
+        """The answer being streamed, for the AI switch's busy popup (ai_work.py)."""
+        if not self.session.running:
+            return []
+        return [RunningWork("Chat answer", self.session.route.label, self.session.route.is_local, self.stop)]
 
     def stop(self) -> None:
         self.session.stop()
@@ -495,7 +539,7 @@ class ChatView(Surface):
         reason = resolver.problem(self.state.project, route)
         self.route_chip.set_text(route.label)
         self.route_chip.set_tone("warning" if reason else "muted")
-        self.route_chip.setToolTip("The model that answers. Click to choose another (Settings → AI models → Chat).")
+        self.route_chip.setToolTip("The model that answers. Click to choose another; the default is set in AI setup.")
         self.route_note.setText(reason)
         self.route_note.setVisible(bool(reason))
 

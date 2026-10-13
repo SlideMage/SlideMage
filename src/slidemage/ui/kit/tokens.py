@@ -85,6 +85,17 @@ class Tokens:
     info: str
     info_bg: str
     info_fg: str
+    # The Cloud route (workspace v6): the AI switch's wrapper and its popups. `cloud_solid` fills the selected Cloud
+    # segment and the primary Cloud buttons (white text); `cloud_text` is the route text in dark amber.
+    cloud_bg: str
+    cloud_border: str
+    cloud_fg: str
+    cloud_solid: str
+    cloud_text: str
+    # The Local route: its icon and route text. `focus` is the keyboard focus ring.
+    local_icon: str
+    local_fg: str
+    focus: str
     # Text on a solid color fill (error badges, the active "View as" segment, the toast): white in both themes.
     on_solid: str
     # A slide's page and the picture on it: white in both themes, with dark text and an outline that
@@ -120,6 +131,8 @@ LIGHT = Tokens(
     # text colors are the Tailwind 100/800 shades.
     ok="#059669", ok_bg="#d1fae5", ok_fg="#065f46",
     info="#2563eb", info_bg="#dbeafe", info_fg="#1e40af",
+    cloud_bg="#fef3c7", cloud_border="#f59e0b", cloud_fg="#78350f", cloud_solid="#b45309", cloud_text="#92400e",
+    local_icon="#059669", local_fg="#065f46", focus="#2563eb",
     on_solid="#ffffff", paper="#ffffff", paper_text="#4b5563", paper_outline="#ff00ff",
     log_bg="#1d1d1d", log_text="#e8e6e1",
 )
@@ -135,6 +148,8 @@ DARK = Tokens(
     warning="#fbbf24", warning_bg="#422006", warning_fg="#fde68a",
     ok="#34d399", ok_bg="#064e3b", ok_fg="#a7f3d0",
     info="#60a5fa", info_bg="#1e3a5f", info_fg="#bfdbfe",
+    cloud_bg="#422006", cloud_border="#fbbf24", cloud_fg="#fde68a", cloud_solid="#b45309", cloud_text="#fcd34d",
+    local_icon="#34d399", local_fg="#a7f3d0", focus="#60a5fa",
     on_solid="#ffffff", paper="#ffffff", paper_text="#4b5563", paper_outline="#ff00ff",
     log_bg="#121212", log_text="#e8e6e1",
 )

@@ -49,6 +49,7 @@ from ....ai.tools.edits import write_text
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ... import background
 from ...ai_models import confirm_if_new
+from ..ai_work import RunningWork
 
 CONFLICT = "The slide changed while Claude worked."
 _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSLATION.name: "Updating",
@@ -419,6 +420,22 @@ class TaskRunner(QObject):
     @property
     def busy(self) -> bool:
         return bool(self._running) or self._batch is not None
+
+    def running_work(self) -> list[RunningWork]:
+        """The task or batch under way, for the AI switch's busy popup (ai_work.py)."""
+        if not self.busy:
+            return []
+        if (batch := self._batch) is not None:
+            text, note = (f"{_NAMES[batch.task.name]} · {len(batch.lines)} of {batch.total} done",
+                          "Slides not started are cancelled, not moved to the other route")
+        else:
+            worker = next(iter(self._running))
+            if isinstance(worker, _ImageWorker):
+                text = f"{_NAMES[worker.capture.task.name]} · {worker.position[0] - 1} of {worker.position[1]} done"
+                note = "Pending images are cancelled, not moved to the other route"
+            else:
+                text, note = f"{_NAMES[worker.capture.task.name]} · {slide_language.bare_id(worker.capture.id_slug)}", ""
+        return [RunningWork(text, self._route.label, self._holds_slot, self.stop, note)]
 
     def refusal(self, task: claude_tasks.Task, route: ai_profile.Route | None = None) -> str:
         """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready),

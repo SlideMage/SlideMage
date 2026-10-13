@@ -10,7 +10,7 @@ as the model quoted it, so a misremembered or shifted line is never
 overwritten (see syntax_check.py). Applying edits the editor (one undo step
 per fix); everything stays reviewable against the editor, which is never
 locked. The check runs on a worker thread; Esc or Stop ends it. The model
-comes from the active AI route (Settings -> "AI models", task "Fixes, notes,
+comes from the active AI route (AI setup, task "Fixes, notes,
 transcripts"; the first cloud request in a project asks for consent,
 ui/ai_models.provider_from_combo), and the answering model is named in the
 panel. Only Local and the API run it: Claude Code's equivalent is its "Fix
@@ -39,6 +39,7 @@ from ..ai_models import fill_model_combo, provider_from_combo
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
+from .ai_work import RunningWork
 from .source_editor import SourceEditor
 
 MAX_ROWS_HEIGHT = 230
@@ -155,6 +156,7 @@ class AiFixPanel(Surface):
         self.path, self.filename = path, path.name
         self._worker: Optional[_CheckWorker] = None
         self._provider = None   # the running check's, whose Ollama slot it holds
+        self._route = None      # and the Route it was started on
         self._rows: list[_IssueRow] = []
         self._models_loaded = False
         self.setObjectName(q.AI_PANEL)
@@ -168,7 +170,7 @@ class AiFixPanel(Surface):
         self.status.setWordWrap(True)
         head.addWidget(self.status, 1)
         self.model_combo = QComboBox()
-        self.model_combo.setToolTip("The model for this check (the default is set in Settings, AI models).")
+        self.model_combo.setToolTip("The model for this check (the default is set in AI setup, the ▾ of the AI switch).")
         head.addWidget(self.model_combo)
         self.check_button = Button("Check again", "secondary", compact=True)
         self.check_button.setToolTip("Check the editor's current buffer again, edits made since included.")
@@ -209,11 +211,16 @@ class AiFixPanel(Surface):
     def running(self) -> bool:
         return self._worker is not None
 
+    def running_work(self) -> list[RunningWork]:
+        """The check under way, for the AI switch's busy popup (ai_work.py)."""
+        if self._worker is None:
+            return []
+        return [RunningWork(f"Ask AI to fix · {self.filename}", self._route.label, self._provider.is_local, self.stop)]
+
     def refresh_model_preference(self, models: Optional[list[str]] = None) -> None:
-        """(Re)fill the model picker and preselect the default from Settings -> "AI
-        models": on the first check, and again from the main window when the Settings
-        dialog closes, so a default changed there reaches an open panel (before the first
-        check there is nothing to refresh)."""
+        """(Re)fill the model picker and preselect the default of AI setup: on the first check, and again from the
+        main window whenever the route, a default or the installed models changed (before the first check there
+        is nothing to refresh)."""
         if models is not None and not self._models_loaded:
             return
         fill_model_combo(self.app.project, self.model_combo, ai_profile.FIXES, "(no AI models available)", local_models=models)
@@ -234,6 +241,7 @@ class AiFixPanel(Surface):
             self._show_state()
             return
         self._provider = provider   # whose Ollama slot stop() and _on_finished() give back
+        self._route = ai_profile.resolve(self.app.project, ai_profile.FIXES, self.model_combo.currentData() or "")
         self._clear_rows()
         self.status.setText(f"Checking with {provider.label}… (Esc to abort)")
         worker = _CheckWorker(syntax_check.SyntaxChecker(provider), self.editor.text())

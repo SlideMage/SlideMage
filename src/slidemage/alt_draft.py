@@ -835,7 +835,7 @@ def run_batch(
 # picker (2026-08-25, direct instruction): sun_leaf/HY-MT (Tencent
 # Hunyuan-MT, 7B) -- a dedicated MT model, not a general instruction-
 # following LLM (Ollama reports its own capabilities as ["completion"]
-# only, no "tools"). The default per task is Settings -> AI models; this
+# only, no "tools"). The default per task is AI setup; this
 # constant is the preselection on a fresh install (nothing chosen yet), and
 # the fallback if the chosen model is no longer installed here.
 DEFAULT_TRANSLATION_MODEL = "sun_leaf/HY-MT:7b"

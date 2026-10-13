@@ -59,7 +59,7 @@ def test_it_opens_on_every_visible_command_grouped_and_closes_on_escape(window):
     window.commands.run("palette", window)
     assert palette.isVisible()
     focused = window.state.focused_slide
-    assert groups(palette) == ["View & build", f"Slide {focused}", "Deck", "Project"]
+    assert groups(palette) == ["View & build", f"Slide {focused}", "Deck", "Project", "AI"]
     assert "View as Instructor" in labels(palette) and "Find anything…" in labels(palette)
     assert not [e for e in palette._entries if e.group in (GO_TO_SLIDE, CHAT)]    # only for a text
     press(palette, Qt.Key.Key_Escape)

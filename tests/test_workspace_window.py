@@ -166,23 +166,31 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
     if theme is not None:
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
-    for width, density in ((1800, "full"), (1500, "compact"), (1000, "narrow"), (1800, "full")):
+    window.state.set_ai_route("cloud")
+    for width, density in ((2000, "full"), (1400, "narrow"), (1200, "tight"), (1024, "tiny"), (2000, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
         assert bar.width() == width and bar._density == density
         assert bar.minimumSizeHint().width() <= width
-        assert bar._view_as.isHidden() == (density != "full")
-        assert bar._images.isHidden() == (density == "narrow")
-        assert bar._save.text() == ("Saved" if density == "full" else "●")
-        assert bar._compile.text() == ("Compile PDF · Instructor" if density == "full" else "Compile")
+        short = density != "full"
+        assert bar._view_as.isHidden() == short
+        assert bar._images.isHidden()            # only while the Images page is open
+        assert bar._save.text() == ("●" if density == "tiny" else "Saved")
+        assert bar._compile.text() == ("Compile" if short else "Compile PDF · Instructor")
         assert bar._deck_button.text() == MANUAL.name
         assert [button.text() for button in bar._views._buttons.values()] == (
-            ["Instr.", "During", "After"] if density == "narrow" else ["Instructor", "During course", "After course"])
+            ["Instr.", "During", "After"] if short else ["Instructor", "During course", "After course"])
         assert [button.text() for button in bar._modes._buttons.values()] == (
-            ["Prev.", "Split", "Src.", "Info"] if density == "narrow" else ["Preview", "Split", "Source", "Details"])
-        for control in (bar._views, bar._languages, bar._modes, bar._compile):
+            ["Prev.", "Split", "Src.", "Info"] if short else ["Preview", "Split", "Source", "Details"])
+        # The AI switch is the last to shrink: it loses the name of its connection below 1320 px, and its labels
+        # in the narrowest window.
+        assert bar.ai_switch.state_label.text() == ("" if density in ("tight", "tiny") else "Claude Code")
+        assert [b.text() for b in bar.ai_switch.segments._buttons.values()] == (
+            ["", ""] if density == "tiny" else ["Local", "Cloud"])
+        for control in (bar.ai_switch, bar._views, bar._languages, bar._modes, bar._compile):
             assert control.width() >= control.minimumSizeHint().width()
-        for control in (bar._left_column, bar._views, bar._languages, bar._modes, bar._compile, bar._right_column):
+        for control in (bar._left_column, bar.ai_switch, bar._views, bar._languages, bar._modes, bar._compile,
+                        bar._right_column):
             assert bar.rect().contains(control.geometry())
         assert bar._left_column.width() == bar._right_column.width() == 30
 
@@ -191,11 +199,11 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     bar = topbar
     name = "An exceptionally long course deck name " * 10
     window.state.set_deck(make_deck(name))
-    bar.resize(1000, bar.height())
+    bar.resize(1024, bar.height())
     window.state.set_dirty(True)
     qapp.processEvents()
-    assert bar._density == "narrow" and bar.minimumSizeHint().width() <= 1000
-    assert bar._deck_button.width() <= 180 and bar._deck_button.text().endswith("…")
+    assert bar._density == "tiny" and bar.minimumSizeHint().width() <= 1024
+    assert bar._deck_button.width() <= 170 and bar._deck_button.text().endswith("…")
     assert bar._deck_button.toolTip() == name
     assert bar._views.toolTip() == "View as"
     assert [button.toolTip() for button in bar._views._buttons.values()] == [
@@ -209,22 +217,15 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     bar._more.click()
     menu = bar.findChildren(PopoverMenu)[-1]
-    assert ("images", "Images", True) in entries(menu)
+    assert ("images", "Image descriptions", True) in entries(menu)      # Images is in ⋮ → Project at every width
     menu._on_activated("images")
-    assert window.stack.currentWidget() is window.images_page
-    bar._more.click()
-    menu = bar.findChildren(PopoverMenu)[-1]
-    assert ("images", "Close images", True) in entries(menu)
-    menu._on_activated("images")
-    assert window.stack.currentWidget() is window.centre
-    bar.resize(1700, bar.height())
+    assert window.stack.currentWidget() is window.images_page and not bar._images.isHidden()
+    bar._images.click()
+    assert window.stack.currentWidget() is window.centre and bar._images.isHidden()
+    bar.resize(2000, bar.height())
     qapp.processEvents()
-    assert bar._density == "compact"    # the full deck name still cannot fit
-    assert bar._deck_button.width() <= 180 and bar._deck_button.toolTip() == name
-    bar._more.click()
-    menu = bar.findChildren(PopoverMenu)[-1]
-    assert "images" not in items(menu)
-    menu.close()
+    assert bar._density == "full"
+    assert bar._deck_button.width() <= 170 and bar._deck_button.toolTip() == name
 
 
 def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, window, qapp, monkeypatch):
@@ -232,12 +233,12 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
     window.state.set_deck(COURSE)
     buttons = {key: button for key, button in bar._modes._buttons.items()}
     window.state.set_lint_errors(120)
-    bar.resize(1000, bar.height())
+    bar.resize(1024, bar.height())
     qapp.processEvents()
     badge = bar._modes._badges["source"]
     assert badge.isVisible() and badge.text() == "99+"
     assert badge.geometry().right() < buttons["source"].width()
-    assert bar.minimumSizeHint().width() <= 1000
+    assert bar.minimumSizeHint().width() <= 1024
     bar._views._buttons["during-course"].click()
     bar._languages._buttons["DE"].click()
     buttons["source"].click()
@@ -265,11 +266,11 @@ def test_top_bar_rechecks_density_when_content_changes(topbar, window):
     window.state.set_deck(make_deck("W" * 24))
     assert bar.width() == 1800 and bar._density == "full"
     window.state.set_dirty(True)
-    assert bar._density == "compact" and bar.minimumSizeHint().width() <= bar.width()
+    assert bar._density == "narrow" and bar.minimumSizeHint().width() <= bar.width()
     window.state.set_dirty(False)
     assert bar._density == "full"
     window.state.set_deck(make_deck("W" * 100))
-    assert bar._density == "compact" and bar.minimumSizeHint().width() <= bar.width()
+    assert bar._density == "full"       # a long name is elided at 170 px and cannot make the bar wider
     window.state.set_deck(COURSE)
     assert bar._density == "full"
 
@@ -285,7 +286,7 @@ def test_top_bar_allows_the_window_to_shrink_after_full_density(window, qapp):
     qapp.processEvents()
     # A full-density minimum must not stop the parent delivering the smaller width.
     assert window.width() == 1100
-    assert bar.width() == 1100 and bar._density == "narrow"
+    assert bar.width() == 1100 and bar._density == "tiny"
     window.resize(1700, 800)
     qapp.processEvents()
     assert bar.width() == 1700 and bar._density == "full"
@@ -420,12 +421,13 @@ def test_images_button_toggles_the_images_page(window, monkeypatch):
     window.show()
     bar = window.topbar
     assert window.slide_list.isVisible() and window.side_panels.isVisible()
-    assert bar._images.text() == "Images"
-    bar._images.click()
+    assert bar._images.isHidden()            # Images is a command (⋮ → Project, ⌘K); the button only closes it
+    window.commands.run("images", window)
     assert window.stack.currentWidget() is window.images_page and bar._images.text() == "Close images"
+    assert bar._images.property("kind") == "primary" and not bar._images.isHidden()
     assert not window.slide_list.isVisible() and not window.side_panels.isVisible()
     bar._images.click()
-    assert window.stack.currentWidget() is window.centre and bar._images.text() == "Images"
+    assert window.stack.currentWidget() is window.centre and bar._images.isHidden()
     assert window.slide_list.isVisible() and window.side_panels.isVisible()
     window._toggle_images()
     window.images_page.closed.emit()

@@ -14,6 +14,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
 from ... import alt_draft
+from ...ai.ai_profile import Route
 from ...project import ProjectContext
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, caption
@@ -24,10 +25,13 @@ class Job(QThread):
     image_done = Signal(str, bool)      # a drafted image, whether the store changed
     result = Signal(object, object)     # this job, what `work` returned or the exception it raised
 
-    def __init__(self, title: str, provider, work: Callable[["Job"], object]) -> None:
-        """`work(job)` does the run and returns its summary; it polls `should_stop()` between images."""
+    def __init__(self, title: str, provider, work: Callable[["Job"], object], route: Route | None = None) -> None:
+        """`work(job)` does the run and returns its summary; it polls `should_stop()` between images. `route` is
+        the one the page started it on (the prompt-tuning sheet has none)."""
         super().__init__()
         self.title = title
+        self.route = route
+        self.position = (0, 0)        # the image at work and how many: the last progress
         self.provider = provider      # a ChatProvider or Claude backend: whose Ollama slot the run holds, and abort() ends it
         self._work = work
         self.stop_requested = False   # Stop was clicked (a second click takes it back)

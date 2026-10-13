@@ -52,7 +52,7 @@ class Language(SidePanel):
             line.addWidget(text("No translation yet", q.DETAILS_LABEL), 1)
             translate = Button(f"Translate to {OTHER[own]}…", "primary", compact=True)
             translate.setToolTip("Create the translation as a new slide linked to this one, with the text "
-                                 "translated by the model chosen under Settings -> AI models (EN to DE).")
+                                 "translated by the model chosen in AI setup, the ▾ of the AI switch (EN to DE).")
             translate.clicked.connect(lambda: self._translate(id_slug, OTHER[own]))
             line.addWidget(translate)
             row.body.addLayout(line)

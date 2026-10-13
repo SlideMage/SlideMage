@@ -133,6 +133,15 @@ CHAT_DIFF_LINE = "kitChatDiffLine"
 CHAT_NOTICE = "kitChatNotice"
 CHAT_SUGGESTION = "kitChatSuggestion"
 
+# The AI switch of the top bar and its popovers (ui/workspace/ai_switch.py, ai_popups.py, ai_setup.py).
+AI_SWITCH = "kitAiSwitch"
+AI_SWITCH_STATE = "kitAiSwitchState"
+AI_POPUP_TITLE = "kitAiPopupTitle"
+AI_POPUP_TEXT = "kitAiPopupText"
+AI_POPUP_LINK = "kitAiPopupLink"
+AI_SETUP_HEAD = "kitAiSetupHead"
+AI_SETUP_CELL = "kitAiSetupCell"
+
 WARNING_LABEL = "warningLabel"
 
 # Images the form controls draw (QSS has no glyphs): name -> (Material Icons name, token that colors it,
@@ -500,6 +509,19 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             border-bottom-color: {with_alpha(t.text, 0.18)};
         }}
         {view_segments}
+        /* The Cloud segment of the AI switch, the keyboard ring of a roving control, and the room for an icon. */
+        QPushButton[kitSegment="true"][tone="cloud"]:checked {{
+            background-color: {t.cloud_solid}; color: {t.on_solid}; border-bottom-color: transparent;
+        }}
+        QPushButton[kitSegment="true"][ring="true"]:focus {{
+            border: 2px solid {t.focus}; padding: 3px 9px;
+        }}
+        QPushButton[kitSegment="true"][withIcon="true"] {{
+            padding-left: 30px;
+        }}
+        QLabel#{ICON}[segment="off"] {{ color: {t.text_2}; }}
+        QLabel#{ICON}[segment="on"] {{ color: {t.text}; }}
+        QLabel#{ICON}[segment="cloud"] {{ color: {t.on_solid}; }}
 
         /* Fonts are set on the container and reach the labels through Qt's
            font propagation; a QSS font rule on the label itself would also
@@ -573,6 +595,16 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.hover};
             color: {t.text};
         }}
+        QPushButton[kind="cloud"] {{
+            background-color: {t.cloud_solid};
+            color: {t.on_solid};
+            border: 1px solid {t.cloud_solid};
+        }}
+        QPushButton[kind="cloud"]:hover {{
+            background-color: {t.cloud_solid};
+            color: {t.on_solid};
+            border-color: {t.cloud_text};
+        }}
         QPushButton[kind][compact="true"] {{
             font-size: 12.5px;
             padding: 4px 9px;
@@ -619,6 +651,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QLabel#{ICON}[tone="error"] {{ color: {t.error}; }}
         QLabel#{ICON}[tone="ok"] {{ color: {t.ok}; }}
         QLabel#{ICON}[tone="muted"] {{ color: {t.text_4}; }}
+        QLabel#{ICON}[tone="strong"] {{ color: {t.text}; }}
+        QLabel#{ICON}[tone="warning"] {{ color: {t.warning}; }}
         QToolButton#{ICON_BUTTON} {{
             background-color: transparent;
             color: {t.text};
@@ -827,6 +861,46 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text_2};
         }}
         {text(f"QLabel#{TOPBAR_LABEL}", 12, t.text_3)}
+
+        /* The AI switch: its wrapper is outlined while Local and amber while Cloud (the 1.5px outline of the
+           prototype is a 2px border here; the padding keeps both the same size). */
+        QFrame#{AI_SWITCH} {{
+            background-color: transparent;
+            border: 1px solid {t.line};
+            border-radius: {RADIUS_MD}px;
+            padding: 1px;
+        }}
+        QFrame#{AI_SWITCH}[cloud="true"] {{
+            background-color: {t.cloud_bg};
+            border: 2px solid {t.cloud_border};
+            padding: 0;
+        }}
+        {text(f"QLabel#{AI_SWITCH_STATE}", 12, t.text_2, 600)}
+        QLabel#{AI_SWITCH_STATE}[cloud="true"] {{ color: {t.cloud_fg}; }}
+        QFrame#{AI_SWITCH} QToolButton#{ICON_BUTTON}[cloud="true"] {{ color: {t.cloud_fg}; }}
+        QFrame#{AI_SWITCH}[cloud="true"] QFrame#{SEGMENTED} {{ background-color: {with_alpha(t.text, 0.06)}; }}
+
+        /* The popovers of the switch (they are kitMenu frames with 16px padding). */
+        {text(f"QLabel#{AI_POPUP_TITLE}", 14, t.text, 600)}
+        {text(f"QLabel#{AI_POPUP_TEXT}", 13, t.text_2)}
+        QLabel#{AI_POPUP_LINK} {{ {font} font-size: 12.5px; color: {t.text_2}; text-decoration: underline; }}
+        {text(f"QLabel#{AI_SETUP_HEAD}", 12.5, t.text_3, 600)}
+        QLabel#{AI_SETUP_HEAD}[active="true"] {{ color: {t.text}; }}
+        QFrame#{MENU} QFrame#{LIST_BOX} {{ border-radius: {RADIUS_SM}px; }}
+        QComboBox#{AI_SETUP_CELL} {{
+            {mono}
+            font-size: 12px;
+            min-height: 20px;
+            padding: 3px 6px;
+            padding-right: 22px;
+        }}
+        QComboBox#{AI_SETUP_CELL}[active="false"] {{ color: {t.text_4}; }}
+        QComboBox#{AI_SETUP_CELL}::drop-down {{ width: 20px; }}
+        QLabel#{AI_SETUP_CELL} {{
+            {mono}
+            font-size: 12px;
+            color: {t.text_3};
+        }}
         {text(f"QLabel#{TOPBAR_SAVE}", 11.5, t.text_3)}
 
         /* Slide list: the find box is a white field on the grey page, the

@@ -185,8 +185,8 @@ class ImagesPage(ImageRunsMixin, Surface):
 
     def refresh_model_preferences(self, models: Optional[list[str]] = None,
                                   vision_models: Optional[list[str]] = None) -> None:
-        """(Re)fill both model pickers and preselect the defaults of Settings -> AI models: on the first
-        show, and after the Settings sheet closed, so that a changed default reaches the open page."""
+        """(Re)fill both model pickers and preselect the defaults of AI setup: on the first show, and whenever
+        the route, a default or the installed models changed (the window's refresh_ai_models)."""
         self._models_loaded = True
         fill_model_combo(self.app.project, self.draft_model, "image_description", "(no vision models available)",
                          local_models=vision_models, vision_only=True)

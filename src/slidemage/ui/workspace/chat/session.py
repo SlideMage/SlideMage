@@ -14,6 +14,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QThread, Signal
 
 from ....ai.agent import Agent
+from ....ai.ai_profile import Route
 from ....ai.agent_types import EDIT_ASK, AgentEvent, AgentMessage, Done
 from ....ai.providers import ChatProvider, OllamaProvider
 from ... import background
@@ -51,6 +52,7 @@ class ChatSession(QObject):
         self._agent: Agent | None = None
         self._thread: _AgentThread | None = None
         self._provider: ChatProvider | None = None
+        self.route: Route | None = None     # of the request under way
         self._closed = False
         self.event.connect(self._watch)     # first in line: the thread is released before the chat hears Done
 
@@ -58,16 +60,16 @@ class ChatSession(QObject):
     def running(self) -> bool:
         return self._thread is not None
 
-    def start(self, provider: ChatProvider, request: str, scope: str) -> bool:
-        """Answer `request` with `provider` on a thread of its own. False (the window says why) when a
-        local model's Ollama slot is taken by another task."""
+    def start(self, provider: ChatProvider, request: str, scope: str, route: Route) -> bool:
+        """Answer `request` with `provider`, which is `route` resolved, on a thread of its own. False (the window
+        says why) when a local model's Ollama slot is taken by another task."""
         if not self._app.try_start_ollama_task("answering in the chat", provider):
             return False
         try:
             self.workspace.begin_request()
             self._agent = Agent(provider, self.workspace, on_event=self._emit, mode=self.mode)
             self._thread = _AgentThread(self._agent, self.history, request, scope)
-            self._provider = provider
+            self._provider, self.route = provider, route
             self._thread.start()
         except BaseException:
             self._agent = self._thread = self._provider = None

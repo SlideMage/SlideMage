@@ -43,7 +43,8 @@ from .. import layout_settings
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
-from ..dialogs.settings import SettingsSheet
+from ..dialogs.settings import GENERAL, SettingsSheet
+from ..ai_models import LocalModelList
 from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Toast
@@ -52,6 +53,9 @@ from ..pages.no_decks import NoDecksPage
 from ..text import plural
 from . import side_panels, slide_list
 from .actions import build_registry
+from .ai_fix import AiFixPanel
+from .ai_route import AiRoute
+from .ai_work import RunningWork
 from .centre import CentreColumn
 from . import maintenance
 from .build_options import BuildOptionsDialog
@@ -131,6 +135,7 @@ class WorkspaceWindow(QMainWindow):
         self._ollama_task_label: Optional[str] = None
 
         self.state = WorkspaceState(self.project, self)
+        self.local_models = LocalModelList(self.project, self)     # the installed Ollama models, for the pickers
         self.commands = build_registry()
         self.left_column_hidden = layout_settings.get("left_column_hidden", False) is True
         self.right_column_hidden = layout_settings.get("right_column_hidden", False) is True
@@ -149,7 +154,8 @@ class WorkspaceWindow(QMainWindow):
         # Left: the slide list, right: side panels with the assistant (chat) area below them.
         self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
-        self.slide_list = SlideList(self, self.state, theme, Toast(central))
+        self.toast = Toast(central)
+        self.slide_list = SlideList(self, self.state, theme, self.toast)
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.is_dirty(path),
             edit_slide_text=lambda path, change: self.centre.edit_slide_text(path, change),
@@ -195,6 +201,11 @@ class WorkspaceWindow(QMainWindow):
 
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
+        self.ai_route = AiRoute(self)
+        self.topbar.ai_switch.requested.connect(self.ai_route.request)
+        self.topbar.ai_switch.setup_requested.connect(self.ai_route.open_setup)
+        self.state.ai_route_changed.connect(self._on_ai_route_changed)
+        self.local_models.changed.connect(self.refresh_ai_models)
         self.topbar.command.connect(self._on_command)
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         self.state.deck_changed.connect(self._remember_deck)
@@ -502,12 +513,40 @@ class WorkspaceWindow(QMainWindow):
         ImportPresentationSheet(self, self.state.deck).exec()
 
     def _on_open_settings(self) -> None:
-        sheet = SettingsSheet(self)
+        self.open_settings()
+
+    def open_settings(self, tab: int = GENERAL) -> None:
+        sheet = SettingsSheet(self, tab)
         sheet.exec()
-        if sheet.loaded:        # the model pickers that are open follow a changed default
-            self.images_page.refresh_model_preferences(sheet.available_models, sheet.vision_models)
-            self.centre.refresh_model_preferences(sheet.available_models)
-            self.assistant.chat.refresh_route()
+        if sheet.loaded:        # the model pickers that are open follow what Settings found
+            self.local_models.fill(sheet.installed)
+        else:
+            self.refresh_ai_models()
+
+    # -- the AI route ------------------------------------------------------------------------
+
+    def _on_ai_route_changed(self, route: str) -> None:
+        if route == "local":
+            self.local_models.refresh()      # the pickers fill again when Ollama has answered
+        self.refresh_ai_models()
+
+    def refresh_ai_models(self) -> None:
+        """The route, a default model or a list of models changed: every picker and model label shows the models
+        of the route in use (the conversations follow `state.ai_route_changed` themselves)."""
+        models = self.local_models
+        self.images_page.refresh_model_preferences(models.models, models.vision)
+        self.centre.refresh_model_preferences(models.models)
+        self.assistant.chat.refresh_route()
+
+    def running_ai_work(self) -> list[RunningWork]:
+        """Every AI request that is under way, each with the route it captured (the AI switch's busy popover; the
+        sources are listed in ai_work.py)."""
+        work = [*self.assistant.chat.running_work(), *self.assistant.claude_code.running_work(),
+                *self.images_page.running_work(),
+                *(w for panel in self.centre.findChildren(AiFixPanel) for w in panel.running_work())]
+        if self._ollama_task_label is not None and not any(w.local for w in work):   # a sheet's own request
+            work.append(RunningWork(self._ollama_task_label.capitalize(), "Local · Ollama", True, None))
+        return work
 
     def set_dark_mode(self, checked: bool) -> None:
         """Called from the Settings sheet's Dark mode checkbox; theme.set_dark() also

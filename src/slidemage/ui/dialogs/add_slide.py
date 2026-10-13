@@ -7,7 +7,7 @@ The slide comes from one of four sources:
   reveal step (\\slidestep).
 * Duplicate: a copy of a slide in its own language, independent of the original.
 * Translate: a copy in another language, linked to the original; EN to DE can be machine-
-  translated first (the model picker, the route and the cloud consent are those of the active AI route, Settings -> AI models).
+  translated first (the model picker, the route and the cloud consent are those of the active AI route, AI setup).
 
 "Appears in" says in which deck versions the slide shows. The new slide goes in at the position
 the caller names (after a slide, at the end of a section, ...). The files and the deck call are

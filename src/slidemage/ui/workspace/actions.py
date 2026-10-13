@@ -12,7 +12,8 @@ and the section chosen in the list. The group is the palette's heading.
 Where the old menu bar's actions went: the "Open Project…", "Settings…" and
 "Exit SlideMage" of System, the Decks menu, the housekeeping and info menus are
 all commands below, in the groups Deck and Project; "Images" and the archived
-decks of the Tabs menu are `images` and `archived_decks`.
+decks of the Tabs menu are `images` and `archived_decks`. `images` is also the way out of the Images page, and the AI
+switch's moves and setup are the group AI.
 """
 from __future__ import annotations
 
@@ -24,9 +25,11 @@ from ..text import plural
 from . import compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
+from ...ai import ai_profile
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
+AI = "AI"
 LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
 
 
@@ -238,4 +241,11 @@ def build_registry() -> CommandRegistry:
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
     add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
     add("exit", "Exit SlideMage", PROJECT, lambda w: w.close())
+
+    # AI: the switch of the top bar, through its request flow (popovers included) ---------------
+    for mode, label, icon in ((ai_profile.LOCAL, "Use Local AI", "computer"), (ai_profile.CLOUD, "Use Cloud AI", "cloud")):
+        add(f"ai:{mode}", label, AI, lambda w, m=mode: w.ai_route.request(m), icon=icon,
+            meta=lambda w, m=mode: _current(w.state.ai_mode == m))
+    add("ai:setup", "AI setup…", AI, lambda w: w.ai_route.open_setup(), icon="tune",
+        meta="models per task, cloud connection, project setting")
     return registry

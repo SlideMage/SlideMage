@@ -527,10 +527,15 @@ def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_pag
         return alt_draft.BatchSummary()
 
     page.app.try_start_ollama_task("test", provider)
-    job = Job("Drafting", provider, work)
+    job = Job("Drafting", provider, work, Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
     page._start(job, "one image", 5, lambda outcome: None)
     assert job.isRunning()
+    job.position = (3, 5)
+    [work] = page.running_work()                       # what the AI switch's busy popover lists
+    assert (work.text, work.route, work.local) == ("Drafting · 2 of 5 done", "offline-test · Ollama", True)
+    assert "cancelled, not moved" in work.line and work.stop == page._abort_job
     page.shutdown()
+    assert page.running_work() == []
     assert aborted == [True] and page._job is None
     assert wait_for(job.isFinished) and wait_for(lambda: page.app.slots == ["took", "gave"])
 
@@ -949,7 +954,8 @@ def test_on_claude_code_the_pickers_offer_its_models_and_the_backends_are_claude
     page.refresh_model_preferences()
     assert page.draft_model.isEnabled() and page.draft_model.currentText() == "Haiku · low"
     assert page.translate_model.currentData() == "opus:high"
-    drafting, translating = page._draft_backend(), page._translation_backend("the text")
+    (drafting_route, drafting), (translating_route, translating) = page._draft_backend(), page._translation_backend("the text")
+    assert drafting_route.label == "Claude Code · Haiku · effort low" and translating_route.label == "Claude Code · Opus · effort high"
     assert isinstance(drafting, claude_images.ClaudeDraftBackend) and (drafting.model, drafting.effort) == ("haiku", "low")
     assert isinstance(translating, claude_images.ClaudeTranslationBackend) and (translating.model, translating.effort) == ("opus", "high")
     assert drafting.claude == claude and not drafting.provider.is_local

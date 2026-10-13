@@ -2,20 +2,19 @@
 
 * General: dark mode, the Source editor's tab width, the template single slides render with, how
   updates are handled and the GitHub token for them.
-* AI models: the default model of each AI task on each route (Local · Ollama, Claude Code, Anthropic API;
-  ai/ai_profile.py), and how Claude Code translations address the audience in German (this project's
-  `de_address`; ai/translation_style.py).
-* Cloud: what Cloud means (Claude Code or the Anthropic API), this project's Local | Cloud setting and the
-  Anthropic API key, with where it is stored.
+* AI: how Claude Code translations address the audience in German (this project's `de_address`;
+  ai/translation_style.py) and the glossary. The model of each AI task on each side, what Cloud means and the
+  project's Local | Cloud setting are not here: they are AI setup, the ▾ of the AI switch in the top bar
+  (workspace/ai_setup.py).
+* Cloud: the Anthropic API key, with where it is stored.
 * Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
 * Prompts: the system prompts of image descriptions and translation:
   ui/dialogs/settings_prompts.py.
 
 Every control applies when it changes and is saved at once, as before; only a prompt has its own
-Save button, and closing the sheet asks about prompt text not yet saved. The model lists come from
-Ollama and Claude on a thread, so opening the sheet never waits on the network;
-the window refreshes the pickers that are open from `available_models` and `vision_models` when the
-sheet closes with `loaded` set.
+Save button, and closing the sheet asks about prompt text not yet saved. The installed Ollama models come
+from Ollama on a thread, so opening the sheet never waits on the network; the window refreshes the pickers
+that are open from `installed` when the sheet closes with `loaded` set.
 """
 from __future__ import annotations
 
@@ -25,9 +24,8 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
 
 from ... import app_settings, slide_snapshot, updater
-from ...ai import ai_profile, credentials, translation_style
-from ...ai.ai_profile import API, CLAUDE_CODE, LOCAL
-from ...ai.providers import ANTHROPIC_FALLBACK_MODELS, AnthropicProvider, InstalledModel, OllamaProvider
+from ...ai import credentials, translation_style
+from ...ai.providers import InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ...project import ProjectContext
 from .. import background
@@ -35,10 +33,7 @@ from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, cap
 from .settings_ollama import OllamaTab
 from .settings_prompts import PromptsTab
 
-GENERAL, MODELS, CLOUD, OLLAMA, PROMPTS = range(5)
-ROUTE_LABELS = ((LOCAL, "Local · Ollama"), (CLAUDE_CODE, "Cloud · Claude Code"), (API, "Cloud · Anthropic API"))
-TASK_NOTES = {ai_profile.IMAGE_DESCRIPTION: "Only vision-capable local models are listed.",
-              ai_profile.CHAT: "Only local models that can call tools are listed."}
+GENERAL, AI, CLOUD, OLLAMA, PROMPTS = range(5)
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
 UPDATE_NOTES = {
@@ -49,25 +44,19 @@ UPDATE_NOTES = {
     updater.UPDATE_MODE_AUTO: "Checked when SlideMage starts; a newer release is installed automatically. "
                               "One that changes how SlideMage works is always asked about.",
 }
-CONNECTION_LABELS = ((CLAUDE_CODE, "Claude Code"), (API, "Anthropic API"))
-POLICY_LABELS = ((LOCAL, "Local"), (ai_profile.CLOUD, "Cloud"))
 
 
 class _ModelLoader(QThread):
-    """The installed Ollama models and the Claude models on offer (the live list while the API is the route in
-    use and a key is set, else the built-in one: nothing is asked of Anthropic in Local)."""
+    """The installed Ollama models."""
 
-    loaded = Signal(object, object, object)       # this loader, [InstalledModel], [model id]
+    loaded = Signal(object, object)       # this loader, [InstalledModel]
 
     def __init__(self, project: ProjectContext) -> None:
         super().__init__()
         self.project = project
 
     def run(self) -> None:
-        installed = OllamaProvider.for_project(self.project).installed(detailed=True)
-        cloud = (AnthropicProvider.for_project(self.project).list_models()
-                 if ai_profile.active_route(self.project) == API else []) or list(ANTHROPIC_FALLBACK_MODELS)
-        self.loaded.emit(self, installed, cloud)
+        self.loaded.emit(self, OllamaProvider.for_project(self.project).installed(detailed=True))
 
 
 class GeneralTab(Page):
@@ -143,32 +132,15 @@ class GeneralTab(Page):
         self.app.log("GitHub token saved" if token else "GitHub token removed")
 
 
-class ModelsTab(Page):
+class AiTab(Page):
+    """The AI settings that AI setup does not have."""
+
     def __init__(self, project: ProjectContext) -> None:
         super().__init__()
-        self.project = project
-        self.combos: dict[str, QComboBox] = {}
-        self._lists: tuple[list[str], list[str], list[str], list[str]] = ([], [], [], [])   # local, vision, tools, api
         layout = self.body
         layout.addWidget(caption(
-            "The model each AI task starts on, for each route: every route keeps its own models, and switching "
-            "back restores them. Every model picker begins here; choosing another one in the picker applies to "
-            "that use only."))
-        self.route = SegmentedControl(ROUTE_LABELS, current=ai_profile.active_route(project))
-        self.route.changed.connect(lambda _route: self._show())
-        layout.addWidget(Field("Models of", self.route))
-        for start in range(0, len(ai_profile.TASKS), 2):
-            fields = []
-            for task in ai_profile.TASKS[start:start + 2]:
-                combo = QComboBox()
-                # A long model tag must not widen the whole sheet; the dropdown still shows full names.
-                combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-                combo.setMinimumContentsLength(16)
-                combo.activated.connect(lambda i, t=task, c=combo: ai_profile.set_model_choice(
-                    self.project, self.route.current(), t, c.itemData(i) or ""))
-                self.combos[task] = combo
-                fields.append(Field(ai_profile.TASK_LABELS[task], combo))
-            layout.addWidget(columns(*fields))
+            "The model of each AI task, what Cloud means and the project's Local | Cloud setting are in AI setup, "
+            "the ▾ of the switch in the top bar."))
         self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
                                         current=translation_style.de_address(project))
         self.address.changed.connect(lambda value: translation_style.set_de_address(project, value))
@@ -176,47 +148,11 @@ class ModelsTab(Page):
         layout.addWidget(caption(
             f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, one \"English = "
             "German\" per line; every translation request carries the file as it is."))
-        self.unreachable = caption("")
-        layout.addWidget(self.unreachable)
         layout.addStretch(1)
-
-    def fill(self, local: list[str], vision: list[str], tools: list[str], cloud: list[str]) -> None:
-        """Take the model lists (installed Ollama models, the vision and the tool-calling ones, the API's) and
-        show them."""
-        self._lists = (local, vision, tools, cloud)
-        self._show()
-        self.unreachable.setText(
-            "" if local else f"Ollama is not reachable at {app_settings.get_ollama_host(self.project)}, or has no models installed.")
-        self.unreachable.setVisible(not local)
-
-    def _show(self) -> None:
-        """(Re)fill the pickers for the route on show, keeping each task's saved default selected -- listed as
-        "(not available)" rather than silently dropped when it is missing, so an unreachable Ollama never rewrites
-        a setting."""
-        route = self.route.current()
-        local, vision, tools, cloud = self._lists
-        for task, combo in self.combos.items():
-            combo.clear()
-            combo.setToolTip(TASK_NOTES.get(task, "") if route == LOCAL else "")
-            if route == CLAUDE_CODE and task == ai_profile.CHAT:
-                combo.addItem("set in Claude Code", "")
-                combo.setEnabled(False)
-                continue
-            combo.setEnabled(True)
-            offered = {LOCAL: {ai_profile.IMAGE_DESCRIPTION: vision, ai_profile.CHAT: tools}.get(task, local),
-                       API: cloud, CLAUDE_CODE: ai_profile.claude_code_choices()}[route]
-            if route == LOCAL:
-                combo.addItem("(none chosen -- built-in fallback)", "")
-            for choice in offered:
-                combo.addItem(ai_profile.choice_label(route, choice), choice)
-            saved = ai_profile.model_choice(self.project, route, task)
-            if saved and combo.findData(saved) == -1:
-                combo.addItem(f"{ai_profile.choice_label(route, saved)} (not available)", saved)
-            combo.setCurrentIndex(max(0, combo.findData(saved)))
 
 
 class CloudTab(Page):
-    cloud_changed = Signal()         # the connection, the project setting or the API key changed: lists and routes differ now
+    cloud_changed = Signal()         # the API key changed: the models on offer differ now
 
     def __init__(self, project: ProjectContext) -> None:
         super().__init__()
@@ -224,16 +160,8 @@ class CloudTab(Page):
         layout = self.body
         layout.addWidget(caption(
             "A cloud route (Claude Code or the Anthropic API) receives whatever its task sends: slide text, images, "
-            "notes. The first cloud request in a project asks for confirmation."))
-        self.connection = SegmentedControl(CONNECTION_LABELS, current=ai_profile.cloud_conn(project))
-        self.connection.changed.connect(self._on_connection)
-        layout.addWidget(Field("Cloud means", self.connection))
-        self.project_choice = SegmentedControl(POLICY_LABELS, current=ai_profile.policy(project))
-        self.project_choice.changed.connect(self._on_policy)
-        layout.addWidget(Field("This project", self.project_choice))
-        self.project_note = caption("")
-        layout.addWidget(self.project_note)
-
+            "notes. Which side the project uses is the switch in the top bar; what Cloud means (Claude Code or the "
+            "Anthropic API) and the project's own setting are in AI setup, its ▾."))
         self.key_edit = QLineEdit()
         self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.key_edit.setPlaceholderText("sk-ant-…")
@@ -242,19 +170,9 @@ class CloudTab(Page):
         remove_key = Button("Remove key", compact=True)
         remove_key.clicked.connect(self._on_key_remove)
         layout.addWidget(Field("Anthropic API key", row(self.key_edit, save_key, remove_key)))
-        self.key_status = caption("")
+        self.key_status = caption(self.key_message(credentials.get_api_key(project)))
         layout.addWidget(self.key_status)
         layout.addStretch(1)
-        self._refresh_notes()
-
-    def _refresh_notes(self) -> None:
-        key = credentials.get_api_key(self.project)
-        if ai_profile.mode(self.project) == LOCAL:
-            self.project_note.setText("AI tasks of this project use Ollama on this computer; nothing is sent to the cloud.")
-        else:
-            via = {CLAUDE_CODE: "Claude Code", API: "the Anthropic API" + ("" if key else " (add an API key below)")}
-            self.project_note.setText(f"AI tasks of this project use {via[ai_profile.cloud_conn(self.project)]}.")
-        self.key_status.setText(self.key_message(key))
 
     @staticmethod
     def key_message(key: credentials.ApiKey | None) -> str:
@@ -277,19 +195,8 @@ class CloudTab(Page):
         }[key.source]
 
     def _on_cloud_changed(self) -> None:
-        self._refresh_notes()
+        self.key_status.setText(self.key_message(credentials.get_api_key(self.project)))
         self.cloud_changed.emit()
-
-    def _on_connection(self, value: str) -> None:
-        ai_profile.set_cloud_conn(self.project, value)
-        self._on_cloud_changed()
-
-    def _on_policy(self, value: str) -> None:
-        """The project's setting, which the switch starts on when the project opens; until the switch has its own
-        control (top bar) it also moves this session."""
-        ai_profile.set_policy(self.project, value)
-        ai_profile.set_mode(self.project, value)
-        self._on_cloud_changed()
 
     def _on_key_save(self) -> None:
         key = self.key_edit.text().strip()
@@ -315,18 +222,16 @@ class SettingsSheet(ModalSheet):
         """`app` is the window (its theme, tab width, log and the Ollama slot)."""
         super().__init__("Settings", app, width=760)
         self.app = app
-        self.available_models: list[str] = []
-        self.vision_models: list[str] = []
-        self.tool_models: list[str] = []
+        self.installed: list[InstalledModel] = []       # what Ollama has, once `loaded`
         self.loaded = False
         self._loader: QThread | None = None
         self._reload_pending = False
         self.general = GeneralTab(app)
-        self.models = ModelsTab(app.project)
+        self.ai = AiTab(app.project)
         self.cloud = CloudTab(app.project)
         self.ollama = OllamaTab(app)
         self.prompts = PromptsTab(app)
-        for label, tab_widget in (("General", self.general), ("AI models", self.models), ("Cloud", self.cloud),
+        for label, tab_widget in (("General", self.general), ("AI", self.ai), ("Cloud", self.cloud),
                                   ("Ollama", self.ollama), ("Prompts", self.prompts)):
             self.add_tab(label, tab_widget)
         self.add_button("Close", kind="primary", role="accept")
@@ -336,7 +241,7 @@ class SettingsSheet(ModalSheet):
         self.reload_models()
 
     def reload_models(self) -> None:
-        """Ask Ollama and Claude again; while a request is out, the next one waits for its answer."""
+        """Ask Ollama again; while a request is out, the next one waits for its answer."""
         if self._loader is not None:
             self._reload_pending = True
             return
@@ -345,17 +250,14 @@ class SettingsSheet(ModalSheet):
         self._loader = loader
         background.start_detached(loader)
 
-    def _on_models(self, loader: QThread, installed: list[InstalledModel], cloud: list[str]) -> None:
+    def _on_models(self, loader: QThread, installed: list[InstalledModel]) -> None:
         if loader is not self._loader:
             return
-        self.available_models = [model.name for model in installed]
-        self.vision_models = [model.name for model in installed if "vision" in model.capabilities]
-        self.tool_models = [model.name for model in installed if model.supports_tools]
+        self.installed = installed
         self._loader = None
         self.loaded = True
-        self.models.fill(self.available_models, self.vision_models, self.tool_models, cloud)
         self.ollama.fill(installed)
-        self.prompts.translation.set_models(self.available_models)
+        self.prompts.translation.set_models([model.name for model in installed])
         if self._reload_pending:
             self._reload_pending = False
             self.reload_models()

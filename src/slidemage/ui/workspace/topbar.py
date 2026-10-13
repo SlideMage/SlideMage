@@ -1,5 +1,6 @@
-"""The workspace's top bar (prototype v3): logo, deck switcher, "View as",
-EN/DE, save status, Preview/Split/Source/Details, Compile, Images and ⋮.
+"""The workspace's top bar (prototype v6): logo, deck switcher, the AI switch (ai_switch.py), "View as",
+EN/DE, save status, Preview/Split/Source/Details, Compile and ⋮. While the Images page is open, a "Close images"
+button stands before ⋮ (Images itself is in ⋮ and ⌘K).
 
 The bar changes the shared WorkspaceState for the things that are state (deck,
 view, language, mode) and reports every other click as a command id through
@@ -16,11 +17,17 @@ from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
+from .ai_switch import AiSwitch
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
 LOGO_SIZE = 32
+DECK_MAX_WIDTH = 170
+# The narrowest bar each density is for, when its content fits: below 1500 px the labels shorten, below 1320 px
+# the AI switch gives up the name of its connection too, and in the narrowest window (1024 px) it is only icons:
+# it is the last to shrink.
+DENSITIES = (("full", 1500), ("narrow", 1320), ("tight", 0), ("tiny", 0))
 # The kit names the view colors "instructor", "during" and "after".
 VIEW_TONES = {"instructor": "instructor", "during-course": "during", "after-course": "after"}
 SHORT_VIEWS = {"instructor": "Instr.", "during-course": "During", "after-course": "After"}
@@ -44,7 +51,7 @@ class TopBar(QWidget):
         self._state = state = window.state
         self._decks: list[Deck] = []
         self._compile_menu = None
-        self._density = "full"
+        self._density = DENSITIES[0][0]
         self._available_width: int | None = None
         self._updating_density = False
         # Let the parent shrink before resizeEvent chooses a smaller density.
@@ -84,6 +91,9 @@ class TopBar(QWidget):
         self._deck_button.clicked.connect(self.open_deck_menu)
         add(self._deck_button)
 
+        self.ai_switch = AiSwitch(state)
+        add(self.ai_switch)
+
         self._view_as = QLabel("View as")
         self._view_as.setObjectName(q.TOPBAR_LABEL)
         add(self._view_as)
@@ -109,8 +119,9 @@ class TopBar(QWidget):
         self._compile = SplitButton("")
         self._compile.clicked.connect(lambda: self.command.emit(f"compile:{state.view}"))
         add(self._compile)
-        self._images = Button("Images", "secondary")
+        self._images = Button("Close images", "primary")
         self._images.clicked.connect(lambda: self.command.emit("images"))
+        self._images.hide()
         add(self._images)
         self._more = IconButton("more_vert", "More")
         self._more.clicked.connect(self._open_more_menu)
@@ -143,7 +154,7 @@ class TopBar(QWidget):
         self._updating_density = True
         try:
             # Start at the preferred density, then measure the actual content (including badges).
-            for density, preferred_width in (("full", 1600), ("compact", 1250), ("narrow", 0)):
+            for density, preferred_width in DENSITIES:
                 if self._available_width < preferred_width:
                     continue
                 self._apply_density(density)
@@ -154,21 +165,24 @@ class TopBar(QWidget):
 
     def _apply_density(self, density: str) -> None:
         self._density = density
-        full, narrow = density == "full", density == "narrow"
-        margin = 12 if narrow else 24
+        full = density == "full"
+        tight = density in ("tight", "tiny")
+        tiny = density == "tiny"
+        margin = 8 if tiny else 12 if tight else 24
         self._row_layout.setContentsMargins(margin, 0, margin, 0)
-        self._row_layout.setSpacing(8 if narrow else 14)
+        self._row_layout.setSpacing(6 if tiny else 8 if tight else 14)
         self._view_as.setVisible(full)
         self._views.setToolTip("View as")
-        self._views.set_labels(SHORT_VIEWS if narrow else VIEW_LABELS, tooltips=VIEW_LABELS, compact=narrow)
-        self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=narrow)
-        self._modes.set_labels(SHORT_MODES if narrow else MODE_LABELS, tooltips=MODE_LABELS, compact=narrow)
-        self._images.setVisible(not narrow)
+        self._views.set_labels(VIEW_LABELS if full else SHORT_VIEWS, tooltips=VIEW_LABELS, compact=not full)
+        self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=not full)
+        self._modes.set_labels(MODE_LABELS if full else SHORT_MODES, tooltips=MODE_LABELS, compact=not full)
+        self.ai_switch.set_shrink({"tight": 1, "tiny": 2}.get(density, 0))
         self._update_deck_label()
         self._update_save_label()
         self._update_compile_label()
         # Flush nested layout minimums before measuring; Qt otherwise updates them next event loop.
-        for widget in (self._deck_button, self._views, self._languages, self._modes, self._compile):
+        for widget in (self._deck_button, self.ai_switch.segments, self.ai_switch, self._views, self._languages,
+                       self._modes, self._compile):
             widget.layout().invalidate()
             widget.layout().activate()
         self._row_layout.invalidate()
@@ -192,9 +206,7 @@ class TopBar(QWidget):
         self._decks = decks
 
     def set_images_open(self, is_open: bool) -> None:
-        self._images.setText("Close images" if is_open else "Images")
-        self._images.setProperty("kind", "primary" if is_open else "secondary")
-        _repolish(self._images)
+        self._images.setVisible(is_open)
         self._update_density()
 
     # -- reacting to the state ---------------------------------------------
@@ -208,7 +220,7 @@ class TopBar(QWidget):
     def _update_deck_label(self) -> None:
         deck = self._state.deck
         name = deck.name if deck is not None else "No deck"
-        self._deck_button.set_text(name, max_width=None if self._density == "full" else 180)
+        self._deck_button.set_text(name, max_width=DECK_MAX_WIDTH)
         self._deck_button.setToolTip(name)
 
     def _on_dirty_changed(self, dirty: bool) -> None:
@@ -217,7 +229,7 @@ class TopBar(QWidget):
 
     def _update_save_label(self) -> None:
         text = "Unsaved changes" if self._state.dirty else "Saved"
-        self._save.setText(text if self._density == "full" else "●")
+        self._save.setText(text if self._density == "full" else "●" if self._density == "tiny" else text.split()[0])
         self._save.setToolTip(text)
 
     def _on_lint_errors_changed(self, count: int) -> None:
@@ -267,9 +279,6 @@ class TopBar(QWidget):
 
     def _open_more_menu(self) -> None:
         menu = build_more_menu(self, self._window)
-        if self._density == "narrow":
-            menu.add_separator()
-            menu.add_item("images", self._images.text(), icon="image")
         menu.triggered.connect(self.command)
         menu.closed.connect(lambda: self._more.set_active(False))
         menu.closed.connect(menu.deleteLater)

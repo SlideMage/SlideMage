@@ -5,7 +5,9 @@ panels all read and write, instead of reaching into each other: the current
 deck, the focused slide, the view being edited (Instructor / During-course /
 After-course), the language being edited (EN / DE), the selected slides, what the centre shows
 (Preview / Split / Source / Details) and whether any source has unsaved edits.
-Each field has a setter and one signal; a setter that would not change the
+The AI route (the top bar's Local | Cloud switch and the cloud connection) lives in ai/ai_profile.py; the state
+only mirrors it for the Qt side and tells everything that shows a model, a picker or a conversation when the route
+changed. Each field has a setter and one signal; a setter that would not change the
 value does nothing, so listeners can connect without guarding against loops.
 
 The view, the language and the centre's mode are remembered per deck in the project's app
@@ -19,6 +21,7 @@ from typing import Optional
 from PySide6.QtCore import QObject, Signal
 
 from ... import app_settings, deck_settings
+from ...ai import ai_profile
 from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
 from ...deck_scan import Deck
 from ...project import ProjectContext
@@ -42,6 +45,7 @@ class WorkspaceState(QObject):
     mode_changed = Signal(str)
     dirty_changed = Signal(bool)
     lint_errors_changed = Signal(int)
+    ai_route_changed = Signal(str)           # the route of new AI work: ai_profile's LOCAL, CLAUDE_CODE or API
 
     def __init__(self, project: ProjectContext, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -125,6 +129,28 @@ class WorkspaceState(QObject):
         if count != self.lint_errors:
             self.lint_errors = count
             self.lint_errors_changed.emit(count)
+
+    @property
+    def ai_mode(self) -> str:
+        """The switch: ai_profile.LOCAL or ai_profile.CLOUD (the project's setting until the user moved it)."""
+        return ai_profile.mode(self.project)
+
+    @property
+    def ai_route(self) -> str:
+        """Where new AI work goes: ai_profile.LOCAL, or the cloud connection (CLAUDE_CODE or API)."""
+        return ai_profile.active_route(self.project)
+
+    def set_ai_route(self, mode: str, conn: str | None = None) -> bool:
+        """Move the switch to `mode` and/or the cloud connection to `conn`; every model label and picker follows
+        `ai_route_changed`. The callers that ask the user first are in ai_route.py. Whether the route changed."""
+        before = self.ai_route
+        if conn is not None:
+            ai_profile.set_cloud_conn(self.project, conn)
+        ai_profile.set_mode(self.project, mode)
+        if self.ai_route == before:
+            return False
+        self.ai_route_changed.emit(self.ai_route)
+        return True
 
     def set_footer_timestamp(self, enabled: bool) -> None:
         if self.footer_timestamp != enabled:

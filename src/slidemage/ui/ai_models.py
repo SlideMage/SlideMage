@@ -9,12 +9,75 @@ API model name, for Claude Code "<model>:<effort>". The caller turns the Route i
 """
 from __future__ import annotations
 
+from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
 from ..ai import ai_profile, resolver
 from ..ai.ai_profile import API, CLAUDE_CODE, Route
-from ..ai.providers import ChatProvider, OllamaProvider, ProviderError
+from ..ai.providers import ChatProvider, InstalledModel, OllamaProvider, ProviderError
 from ..project import ProjectContext
+from . import background
+
+
+class _Lister(QThread):
+    loaded = Signal(object, object)         # this thread, [InstalledModel]
+
+    def __init__(self, project: ProjectContext) -> None:
+        super().__init__()
+        self.project = project
+
+    def run(self) -> None:
+        self.loaded.emit(self, OllamaProvider.for_project(self.project).installed(detailed=True))
+
+
+class LocalModelList(QObject):
+    """The installed Ollama models, as the last answer of Ollama (asked on a thread, so that no picker waits
+    on the network). `refresh()` asks again; `changed` follows each answer, and the pickers are filled from
+    `models`, `vision` and `tools` then. Empty until the first answer."""
+
+    changed = Signal()
+
+    def __init__(self, project: ProjectContext, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.project = project
+        self.installed: list[InstalledModel] = []
+        self._lister: _Lister | None = None
+        self._again = False
+
+    @property
+    def models(self) -> list[str]:
+        return [model.name for model in self.installed]
+
+    @property
+    def vision(self) -> list[str]:
+        return [model.name for model in self.installed if "vision" in model.capabilities]
+
+    @property
+    def tools(self) -> list[str]:
+        return [model.name for model in self.installed if model.supports_tools]
+
+    def refresh(self) -> None:
+        """Ask Ollama; while an answer is out, one more question follows it."""
+        if self._lister is not None:
+            self._again = True
+            return
+        self._lister = lister = _Lister(self.project)
+        lister.loaded.connect(self._on_loaded)
+        background.start_detached(lister)
+
+    def _on_loaded(self, lister: QThread, installed: list[InstalledModel]) -> None:
+        if lister is not self._lister:
+            return
+        self._lister = None
+        self.fill(installed)
+        if self._again:
+            self._again = False
+            self.refresh()
+
+    def fill(self, installed: list[InstalledModel]) -> None:
+        """Take a list somebody else has just asked for (the Settings sheet)."""
+        self.installed = installed
+        self.changed.emit()
 
 
 def fill_model_combo(

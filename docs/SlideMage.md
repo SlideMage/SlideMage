@@ -47,7 +47,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   (active decks under their group headings, archived decks at the foot), *View as*
   **Instructor / During course / After course** and **EN / DE** (the version and language
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
-  **Preview | Split | Source | Details**, the **Compile PDF** split button, **Images**, and
+  **Preview | Split | Source | Details**, the **Compile PDF** split button, and
   the **⋮** menu (This deck, Decks, Project, Housekeeping, Info -- what the old menu bar
   and the deck table's per-row buttons held).
 - **Compile PDF** compiles the deck for the view chosen in the top bar; its arrow lists
@@ -170,8 +170,8 @@ this repository public -- then no token is needed.
 
 ## Images page
 
-Since 6.0 a full-window page (`ui/pages/images.py`; opened by the top bar's **Images**
-button, `Ctrl+K`, or a slide row's *Images* entry, and closed by **Close images**) that
+Since 6.0 a full-window page (`ui/pages/images.py`; opened by ⋮ → Project → *Image descriptions*, `Ctrl+K`, or a slide
+row's *Images* entry, and closed by the top bar's **Close images** button) that
 replaces the workspace's columns -- before, the third permanent tab (added 2026-08-14,
 labelled "Image descriptions" until 2026-08-15). It is where every image in the
 project gets described for screen-reader users. The design, the decisions and the
@@ -478,22 +478,22 @@ What matters when touching *this code*:
   **General** (dark mode, the Source editor's tab width, the template single slides render
   with, and the **Updates** group -- since v4.1.0 the update mode and the GitHub token for
   update checks, both stored per user in `project.config_dir()`, never in the project
-  folder), **AI models** (the default model of each task -- Chat, Image
-  descriptions, Translation and Fixes/notes/transcripts -- for each route: Local · Ollama,
-  Claude Code, Anthropic API; every model picker lists the models of the route in use and
-  preselects its default, and picking another there applies to that use only; the local
-  chat lists only models that can call tools, local image descriptions only vision
-  models), **Cloud** ("Cloud means" Claude Code or the Anthropic API, the project's
-  Local | Cloud setting, and the Anthropic API key with where it is stored), **Ollama**
+  folder), **AI** (the German address of Claude Code translations; the
+  default model of each task, what Cloud means and the project's Local | Cloud setting are
+  **AI setup**, the ▾ of the AI switch in the top bar, `ui/workspace/ai_setup.py`: every
+  model picker lists the models of the route in use and preselects its default, picking
+  another there applies to that use only; the local chat lists only models that can call
+  tools, local image descriptions only vision models), **Cloud** (the Anthropic API key
+  with where it is stored), **Ollama**
   (`settings_ollama.py`: the host URL and the installed models, update and delete) and
   **Prompts** (`settings_prompts.py`: the editable system prompt of image descriptions,
   stored by `draft_prompts.py`, and the translation prompts of `translation_prompts.py`:
   a "Default prompt" group plus per-(model, source, target) overrides, the model combo
   filled from `alt_draft.list_all_models()` and editable, so a not-yet-installed model
   can be pre-configured). Every control saves when it changes; only a prompt has its own
-  Save button, and closing the sheet asks about prompt text not yet saved. The model lists
-  load on a thread (`AnthropicProvider`/`OllamaProvider`), so opening the sheet never
-  waits on the network; the window refreshes the open pickers when the sheet closes. The
+  Save button, and closing the sheet asks about prompt text not yet saved. The installed
+  models load on a thread (`OllamaProvider`), so opening the sheet never waits on the
+  network; the window refreshes the open pickers when the sheet closes. The
   "Slide rewrite" prompt page and the "AI drafting" model went away with the old AI draft
   dialog: whole-slide changes are the chat's job now (`ai/`, below).
 - [`ui/dialogs/housekeeping.py`](../src/slidemage/ui/dialogs/housekeeping.py) --

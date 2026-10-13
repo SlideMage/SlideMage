@@ -5,15 +5,15 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 
 from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater
 from slidemage import translation_prompts as tp
-from slidemage.ai import ai_profile, credentials, ollama_admin
+from slidemage.ai import credentials, ollama_admin
 from slidemage.ai.providers import (
-    ANTHROPIC_FALLBACK_MODELS, DEFAULT_ANTHROPIC_MODEL, AnthropicProvider, InstalledModel, OllamaProvider)
+    AnthropicProvider, InstalledModel, OllamaProvider)
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.dialogs.settings import CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
+from slidemage.ui.dialogs.settings import AI, CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
 from conftest import EXAMPLE_PROJECT, wait_until
 from test_templates import _framework, _project
 from slidemage.project import ProjectContext
@@ -80,7 +80,7 @@ def answer(monkeypatch, button_text):
 
 def test_the_sheet_has_a_tab_for_each_group_of_settings_and_a_sensible_width(qapp):
     sheet = open_sheet(qapp)
-    assert tab_names(sheet) == ["General", "AI models", "Cloud", "Ollama", "Prompts"]
+    assert tab_names(sheet) == ["General", "AI", "Cloud", "Ollama", "Prompts"]
     sheet.show()
     qapp.processEvents()
     assert sheet.width() < 1000            # unwrapped notes once made this ~2200 px wide
@@ -130,147 +130,38 @@ def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):
     assert general.token_edit.echoMode().name == "Normal"
 
 
-# -- AI models ---------------------------------------------------------------------------------
+# -- AI --------------------------------------------------------------------------------------
 
-def show_route(sheet, route):
-    sheet.models.route.set_current(route)
-    sheet.models.route.changed.emit(route)
-
-
-def choose(sheet, task, choice):
-    combo = sheet.models.combos[task]
-    index = combo.findData(choice)
-    assert index != -1, (task, choice)
-    combo.setCurrentIndex(index)
-    combo.activated.emit(index)
+def test_the_model_of_each_task_is_not_here_but_in_ai_setup(qapp):
+    sheet = open_sheet(qapp, tab=AI)
+    assert sheet.ai.address.current() == "Sie"
+    assert [w.text() for w in sheet.ai.findChildren(QLabel)][0].startswith("The model of each AI task")
+    assert not sheet.ai.findChildren(QComboBox)           # AI setup (workspace/ai_setup.py) has the models
 
 
-def offered(combo):
-    return [combo.itemData(i) for i in range(combo.count())]
-
-
-def test_the_pickers_list_the_installed_models_and_keep_a_default_that_is_missing(qapp):
-    ai_profile.set_model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.TRANSLATION, "gone")
+def test_what_ollama_has_is_kept_for_the_pickers_of_the_window(qapp):
     sheet = open_sheet(qapp)
-    assert sheet.models.route.current() == ai_profile.LOCAL
-    assert sheet.available_models == [m.name for m in INSTALLED]
-    assert sheet.vision_models == ["vision", "vision-2"]
-    # Image descriptions offer the vision models among the local ones, the chat the ones that call tools; no cloud ones.
-    assert offered(sheet.models.combos[ai_profile.IMAGE_DESCRIPTION]) == ["", "vision", "vision-2"]
-    assert sheet.tool_models == ["general-text"]
-    assert offered(sheet.models.combos[ai_profile.CHAT]) == ["", "general-text"]
-    translation = sheet.models.combos[ai_profile.TRANSLATION]
-    assert translation.currentData() == "gone" and translation.currentText() == "gone (not available)"
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.TRANSLATION) == "gone"   # never rewritten
+    assert [m.name for m in sheet.installed] == [m.name for m in INSTALLED]
+    assert sheet.ollama.models_list.count() == len(INSTALLED)
 
 
-def test_each_route_shows_its_own_models(qapp):
-    sheet = open_sheet(qapp)
-    show_route(sheet, ai_profile.API)
-    assert offered(sheet.models.combos[ai_profile.CHAT]) == list(ANTHROPIC_FALLBACK_MODELS)
-    assert sheet.models.combos[ai_profile.CHAT].currentData() == DEFAULT_ANTHROPIC_MODEL
-    show_route(sheet, ai_profile.CLAUDE_CODE)
-    chat = sheet.models.combos[ai_profile.CHAT]
-    assert chat.currentText() == "set in Claude Code" and not chat.isEnabled()
-    translation = sheet.models.combos[ai_profile.TRANSLATION]
-    assert offered(translation) == ai_profile.claude_code_choices() and translation.currentText() == "Haiku · medium"
-    show_route(sheet, ai_profile.LOCAL)
-    assert offered(sheet.models.combos[ai_profile.CHAT]) == ["", "general-text"] and chat.isEnabled()
-
-
-def test_an_unreachable_ollama_is_said_and_costs_no_setting(monkeypatch, qapp):
+def test_an_unreachable_ollama_is_said_by_the_ollama_tab(monkeypatch, qapp):
     monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: [])
     sheet = open_sheet(qapp)
-    assert not sheet.models.unreachable.isHidden() and "not reachable" in sheet.models.unreachable.text()
+    assert sheet.installed == [] and "not reachable" in sheet.ollama.status.text()
     assert not sheet.ollama.models_list.isEnabled() and not sheet.ollama.delete_button.isEnabled()
 
 
-def test_choosing_a_default_saves_it_for_that_route_and_task_only(qapp):
-    sheet = open_sheet(qapp)
-    choose(sheet, ai_profile.FIXES, "general-text")
-    choose(sheet, ai_profile.IMAGE_DESCRIPTION, "vision-2")
-    show_route(sheet, ai_profile.API)
-    choose(sheet, ai_profile.TRANSLATION, ANTHROPIC_FALLBACK_MODELS[0])
-    show_route(sheet, ai_profile.CLAUDE_CODE)
-    choose(sheet, ai_profile.FIXES, "haiku:high")
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.FIXES) == "general-text"
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.CLAUDE_CODE, ai_profile.FIXES) == "haiku:high"
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.API, ai_profile.TRANSLATION) == ANTHROPIC_FALLBACK_MODELS[0]
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.IMAGE_DESCRIPTION) == "vision-2"
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.TRANSLATION) == ""
-    assert ai_profile.model_choice(EXAMPLE_PROJECT, ai_profile.LOCAL, ai_profile.CHAT) == ""
-
-
-def test_per_task_defaults_reach_the_open_pickers_when_the_sheet_closes(tmp_path, monkeypatch, qapp):
-    from slidemage.ui.pages.images import ImagesPage
-    from slidemage.syntax_check import SyntaxCheckResult
-    from slidemage.ui.workspace import ai_fix
+def test_the_models_found_reach_the_window_when_the_sheet_closes(monkeypatch, qapp):
     from slidemage.ui.workspace import window as window_module
-    from slidemage.ui.workspace.source_file import SourceFile
-    from PySide6.QtWidgets import QComboBox
 
-    app = FakeApp()
-    sheet = open_sheet(qapp, app)
-    choose(sheet, ai_profile.FIXES, "general-text")
-    choose(sheet, ai_profile.IMAGE_DESCRIPTION, "vision-2")
-    choose(sheet, ai_profile.TRANSLATION, "translator")
-    app_settings.set_ollama_host(EXAMPLE_PROJECT, "http://ollama.example:11434")
-
-    (tmp_path / "slide.tex").write_text("slide text", encoding="utf-8")
-    file = SourceFile(app, tmp_path / "slide.tex")       # holds the open "Ask AI to fix" panel
-    requests = []
-
-    class Checker:
-        def __init__(self, provider):
-            requests.append((provider.model, provider.host))
-
-        def check(self, _text):
-            return SyntaxCheckResult(model="general-text")
-
-    monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
-    syntax = file.fix_panel
-    syntax.run_check()
-    if syntax._worker is not None:
-        syntax._worker.wait()
-    qapp.processEvents()
-    assert syntax.model_combo.currentText() == "general-text"
-    assert requests == [("general-text", "http://ollama.example:11434")]
-
-    tab = SimpleNamespace(app=app, draft_model=QComboBox(), translate_model=QComboBox(), _update_buttons=lambda: None)
-    ImagesPage.refresh_model_preferences(tab)
-    assert tab.draft_model.currentText() == "vision-2" and tab.translate_model.currentText() == "translator"
-
-    # A default changed in Settings reaches the open pickers from the sheet's own model lists.
-    choose(sheet, ai_profile.FIXES, "vision")
-    choose(sheet, ai_profile.IMAGE_DESCRIPTION, "vision")
-    app.centre = SimpleNamespace(refresh_model_preferences=file.refresh_model_preference)
-    route_refreshes = []
-    app.assistant = SimpleNamespace(chat=SimpleNamespace(refresh_route=lambda: route_refreshes.append(True)))
-
-    class OpenImages:
-        refresh_model_preferences = ImagesPage.refresh_model_preferences
-
-        def __init__(self):
-            self.app = app
-            self.draft_model = QComboBox()
-            self.translate_model = QComboBox()
-            self._update_buttons = lambda: None
-
-    app.images_page = OpenImages()
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app: sheet)
+    sheet = open_sheet(qapp)
     monkeypatch.setattr(sheet, "exec", lambda: None)
-
-    def no_network():
-        raise AssertionError("refresh should use the sheet's model lists")
-
-    monkeypatch.setattr(OllamaProvider, "list_models", no_network)
-    monkeypatch.setattr(OllamaProvider, "installed", no_network)
-
-    window_module.WorkspaceWindow._on_open_settings(app)
-    assert syntax.model_combo.currentText() == "vision"
-    assert route_refreshes == [True]      # the chat names its new model
-    assert app.images_page.draft_model.currentText() == "vision"
-    assert app.images_page.translate_model.currentText() == "translator"
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: sheet)
+    filled, refreshed = [], []
+    app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
+    window_module.WorkspaceWindow.open_settings(app)
+    assert filled == [sheet.installed] and refreshed == []          # the list's `changed` refreshes the pickers
 
 
 def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch, qapp):
@@ -281,15 +172,13 @@ def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch,
     sheet.reject()                                  # closed at once
     loader.wait()
     qapp.processEvents()                            # its answer arrives to nobody
-    assert not sheet.loaded and sheet.available_models == []
+    assert not sheet.loaded and sheet.installed == []
 
-    refreshed = []
-    app = SimpleNamespace(
-        images_page=SimpleNamespace(refresh_model_preferences=lambda *args: refreshed.append(args)),
-        centre=SimpleNamespace(refresh_model_preferences=lambda *args: refreshed.append(args)))
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app: SimpleNamespace(exec=lambda: 0, loaded=False))
-    window_module.WorkspaceWindow._on_open_settings(app)
-    assert refreshed == []
+    filled, refreshed = [], []
+    app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: SimpleNamespace(exec=lambda: 0, loaded=False))
+    window_module.WorkspaceWindow.open_settings(app)
+    assert filled == [] and refreshed == [True]       # nothing was found; the keys and defaults may have changed
 
 
 def test_a_reload_while_one_is_running_waits_for_its_answer_instead_of_stacking(qapp):
@@ -303,13 +192,13 @@ def test_a_reload_while_one_is_running_waits_for_its_answer_instead_of_stacking(
     second = sheet._loader
     assert second is not None and second is not first and not sheet._reload_pending
     loaded(sheet, qapp)
-    assert sheet.available_models == [m.name for m in INSTALLED] and sheet._loader is None
+    assert [m.name for m in sheet.installed] == [m.name for m in INSTALLED] and sheet._loader is None
 
 
 def test_an_answer_that_is_not_the_current_loaders_is_dropped(qapp):
     sheet = open_sheet(qapp)
-    sheet._on_models(object(), [InstalledModel("stale", 1, "")], [])
-    assert "stale" not in sheet.available_models
+    sheet._on_models(object(), [InstalledModel("stale", 1, "")])
+    assert "stale" not in [m.name for m in sheet.installed]
 
 
 # -- Cloud -------------------------------------------------------------------------------------
@@ -335,33 +224,10 @@ class FakeKeyring:
         self.store.pop((service, user), None)
 
 
-def test_the_cloud_connection_is_chosen_here_and_saved(qapp):
+def test_the_cloud_tab_has_the_key_and_points_to_the_switch_and_ai_setup_for_the_rest(qapp):
     sheet = open_sheet(qapp, tab=CLOUD)
-    cloud = sheet.cloud
-    assert cloud.connection.current() == ai_profile.CLAUDE_CODE
-    cloud.connection.changed.emit(ai_profile.API)
-    assert ai_profile.cloud_conn(EXAMPLE_PROJECT) == ai_profile.API
-    assert open_sheet(qapp, tab=CLOUD).cloud.connection.current() == ai_profile.API
-
-
-def test_the_project_setting_is_saved_with_the_project_and_moves_this_session(qapp):
-    sheet = open_sheet(qapp, tab=CLOUD)
-    cloud = sheet.cloud
-    assert cloud.project_choice.current() == ai_profile.LOCAL and "Ollama on this computer" in cloud.project_note.text()
-    cloud.project_choice.changed.emit(ai_profile.CLOUD)
-    assert ai_profile.policy(EXAMPLE_PROJECT) == ai_profile.CLOUD and ai_profile.mode(EXAMPLE_PROJECT) == ai_profile.CLOUD
-    assert "Claude Code" in cloud.project_note.text()
-    cloud.connection.changed.emit(ai_profile.API)
-    assert "add an API key" in cloud.project_note.text()
-    cloud.project_choice.changed.emit(ai_profile.LOCAL)
-    assert ai_profile.policy(EXAMPLE_PROJECT) == ai_profile.LOCAL and ai_profile.mode(EXAMPLE_PROJECT) == ai_profile.LOCAL
-
-
-def test_the_project_setting_is_shown_when_the_sheet_opens(qapp):
-    ai_profile.set_policy(EXAMPLE_PROJECT, ai_profile.CLOUD)
-    assert open_sheet(qapp).cloud.project_choice.current() == "cloud"
-    ai_profile.set_policy(EXAMPLE_PROJECT, ai_profile.LOCAL)
-    assert open_sheet(qapp).cloud.project_choice.current() == "local"
+    assert not hasattr(sheet.cloud, "connection") and not hasattr(sheet.cloud, "project_choice")
+    assert "the switch in the top bar" in sheet.cloud.findChildren(QLabel)[0].text()
 
 
 @pytest.mark.parametrize("backend", ["missing", "unusable"])
@@ -648,7 +514,7 @@ def test_a_new_override_needs_its_model_languages_and_text_and_is_selected_once_
     app = FakeApp(ctx)
     sheet = open_sheet(qapp, app, tab=PROMPTS)
     page = translation(sheet)
-    assert [page.model_combo.itemText(i) for i in range(page.model_combo.count())] == sheet.available_models
+    assert [page.model_combo.itemText(i) for i in range(page.model_combo.count())] == [m.name for m in sheet.installed]
     page.chooser.setCurrentIndex(page.chooser.count() - 1)
     page.editor.edit.setPlainText("For this model.")
     page.editor.save_button.click()

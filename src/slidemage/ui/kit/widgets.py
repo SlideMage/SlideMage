@@ -17,6 +17,7 @@ import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QDialog,
     QFrame,
@@ -108,7 +109,7 @@ class IconLabel(QLabel):
         self.setText(name)
 
     def set_tone(self, tone: str) -> None:
-        """"error", "ok" or "muted" colors the icon; "" is the default grey."""
+        """"error", "ok", "warning", "strong" or "muted" colors the icon; "" is the default grey."""
         set_property(self, "tone", tone)
 
 
@@ -260,7 +261,12 @@ class SegmentedControl(QFrame):
     items: (key, label) pairs. `tones` maps a key to "instructor", "during"
     or "after" so that segment is filled with that view color when active.
     `mono` uses the small monospace style of the EN/DE switch. `changed` is
-    emitted with the key only for user clicks, not for set_current()."""
+    emitted with the key only for user clicks, not for set_current().
+
+    `icons` maps a key to a Material icon shown before its label. `roving` makes it a radio group for the
+    keyboard (the AI switch): only the current segment is in the tab order, ←/→ ask for the neighbouring
+    segment (`changed`, like a click) and Enter clicks, and the focused segment gets a ring. Whoever owns the
+    control decides what a request means and calls set_current() to settle it."""
 
     changed = Signal(str)
 
@@ -271,10 +277,14 @@ class SegmentedControl(QFrame):
         current: str | None = None,
         tones: Mapping[str, str] | None = None,
         mono: bool = False,
+        icons: Mapping[str, str] | None = None,
+        roving: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(q.SEGMENTED)
+        self._roving = roving
+        self._icons: dict[str, IconLabel] = {}
         layout = QHBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(2)
@@ -288,10 +298,16 @@ class SegmentedControl(QFrame):
             button.setCheckable(True)
             button.setProperty("kitSegment", True)
             button.setProperty("mono", mono)
+            button.setProperty("ring", roving)
             if tones and key in tones:
                 button.setProperty("tone", tones[key])
+            if icons and key in icons:
+                button.setProperty("withIcon", True)   # the segment makes room for it
+                self._icons[key] = IconLabel(icons[key], 17, button)
+                self._icons[key].setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                self._icons[key].move(9, 6)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(lambda _checked=False, k=key: self.changed.emit(k))
+            button.clicked.connect(lambda _checked=False, k=key: self._on_clicked(k))
             button.installEventFilter(self)
             badge = QLabel(button)
             badge.setObjectName(q.SEGMENT_BADGE)
@@ -303,6 +319,10 @@ class SegmentedControl(QFrame):
             self._buttons[key] = button
         self.set_current(current if current is not None else (items[0][0] if items else None))
 
+    def _on_clicked(self, key: str) -> None:
+        self._settle()
+        self.changed.emit(key)
+
     def current(self) -> str | None:
         for key, button in self._buttons.items():
             if button.isChecked():
@@ -312,6 +332,20 @@ class SegmentedControl(QFrame):
     def set_current(self, key: str | None) -> None:
         if key in self._buttons:
             self._buttons[key].setChecked(True)
+        self._settle()
+
+    def _settle(self) -> None:
+        """What follows the current segment: its icon's color, and the segment that is in the tab order."""
+        current = self.current()
+        for key, button in self._buttons.items():
+            if key in self._icons:
+                set_property(self._icons[key], "segment", "off" if key != current else button.property("tone") or "on")
+            if self._roving:
+                button.setFocusPolicy(Qt.FocusPolicy.TabFocus if key == current else Qt.FocusPolicy.NoFocus)
+
+    def focus_current(self) -> None:
+        if (key := self.current()) is not None:
+            self._buttons[key].setFocus(Qt.FocusReason.TabFocusReason)
 
     def set_labels(self, labels: Mapping[str, str], *, tooltips: Mapping[str, str] | None = None,
                    compact: bool = False) -> None:
@@ -323,6 +357,7 @@ class SegmentedControl(QFrame):
         for key, label in labels.items():
             self._buttons[key].setText(label)
             self._buttons[key].setToolTip(tooltips.get(key, "") if tooltips else "")
+            self._buttons[key].setAccessibleName(label or (tooltips.get(key, "") if tooltips else ""))
             self._fit_button(key)
 
     def _fit_button(self, key: str) -> None:
@@ -361,7 +396,19 @@ class SegmentedControl(QFrame):
             for key, button in self._buttons.items():
                 if obj is button:
                     self._place_badge(key)
+        elif self._roving and event.type() == QEvent.Type.KeyPress and obj in self._buttons.values():
+            keys = list(self._buttons)
+            step = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1}.get(event.key())
+            if step is not None:
+                self._buttons[keys[(keys.index(self._key_of(obj)) + step) % len(keys)]].click()
+                return True
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                obj.click()
+                return True
         return super().eventFilter(obj, event)
+
+    def _key_of(self, button: QObject) -> str:
+        return next(key for key, b in self._buttons.items() if b is button)
 
 
 class Chip(ClickFrame):
@@ -485,6 +532,10 @@ class ThumbnailGrid(Surface):
             self._tiles[key] = tile
         self.set_current(current if current is not None else (items[0][0] if items else None))
 
+    def _on_clicked(self, key: str) -> None:
+        self._settle()
+        self.changed.emit(key)
+
     def current(self) -> str | None:
         return next((key for key, tile in self._tiles.items() if tile.property("current")), None)
 
@@ -555,18 +606,32 @@ class MenuRow(QWidget):
 class Popover(QFrame):
     """A frameless popup under a button, closing on a click elsewhere or Esc;
     `closed` fires whenever it hides. Fill its `body` (a QVBoxLayout) and show it with popup_below()/popup_at(); the
-    widget in `focus_target` (else the popover itself) gets the keyboard."""
+    widget in `focus_target` (else the popover itself) gets the keyboard.
+
+    `inline` makes it a child of its parent's window instead of a popup window: it stays where the compositor
+    cannot move it, and a QComboBox inside it works like anywhere. Then the click outside and Esc are watched
+    here: a click outside calls `dismiss()` unless `dismiss_outside` is False (a click on the anchor is left to
+    the anchor), and Esc calls `escape()`; both close it by default."""
 
     closed = Signal()
 
-    def __init__(self, parent: QWidget | None = None, *, min_width: int = 220) -> None:
-        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+    def __init__(self, parent: QWidget | None = None, *, min_width: int = 220, inline: bool = False,
+                 dismiss_outside: bool = True) -> None:
+        if inline:
+            super().__init__(parent.window() if parent is not None else None)
+        else:
+            super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setObjectName(q.MENU)
         self.setMinimumWidth(min_width)
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(4, 4, 4, 4)
         self.body.setSpacing(0)
         self.focus_target: QWidget | None = None
+        self._inline, self._dismiss_outside = inline, dismiss_outside
+        self._anchor: QWidget | None = None
+        if inline:
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            self.hide()
 
     def _prepare(self) -> None:
         """Called before the popup is positioned: build what is shown."""
@@ -577,24 +642,55 @@ class Popover(QFrame):
 
     def _show_at(self, global_pos: QPoint) -> None:
         self.adjustSize()
-        screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
-        if screen is not None:
-            area = screen.availableGeometry()
-            x = min(global_pos.x(), area.right() - self.width())
-            y = min(global_pos.y(), area.bottom() - self.height())
-            global_pos = QPoint(max(area.left(), x), max(area.top(), y))
-        self.move(global_pos)
+        if self._inline:
+            window = self.parentWidget()
+            point = window.mapFromGlobal(global_pos)
+            self.move(max(0, min(point.x(), window.width() - self.width())), point.y())
+            self.raise_()
+            QApplication.instance().installEventFilter(self)
+        else:
+            screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
+            if screen is not None:
+                area = screen.availableGeometry()
+                x = min(global_pos.x(), area.right() - self.width())
+                y = min(global_pos.y(), area.bottom() - self.height())
+                global_pos = QPoint(max(area.left(), x), max(area.top(), y))
+            self.move(global_pos)
         self.show()
         (self.focus_target or self).setFocus()
 
     def popup_below(self, anchor: QWidget, *, align_right: bool = False) -> None:
+        self._anchor = anchor
         self._prepare()
         self.adjustSize()
         point = anchor.mapToGlobal(QPoint(anchor.width() - self.width() if align_right else 0, anchor.height() + 4))
         self._show_at(point)
 
+    def dismiss(self) -> None:
+        """A click outside an inline popover."""
+        self.close()
+
+    def escape(self) -> None:
+        """Esc in an inline popover."""
+        self.close()
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        """The click outside and Esc of an inline popover, seen by the whole application."""
+        if event.type() == QEvent.Type.MouseButtonPress and self._dismiss_outside and isinstance(obj, QWidget):
+            inside = obj is self or self.isAncestorOf(obj) or (
+                self._anchor is not None and (obj is self._anchor or self._anchor.isAncestorOf(obj)))
+            if not inside and obj.window() is self.window():
+                self.dismiss()
+        elif (event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape
+              and QApplication.activePopupWidget() is None and obj.window() is self.window()):
+            self.escape()
+            return True
+        return super().eventFilter(obj, event)
+
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
+        if self._inline:
+            QApplication.instance().removeEventFilter(self)
         self.closed.emit()
 
 

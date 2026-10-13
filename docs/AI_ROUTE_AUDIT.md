@@ -101,13 +101,21 @@ Deliberately left for later steps:
   per-route assistant body that decides what shows on each route, are step 3. The terminal keeps its own model: the
   tab's model/effort picker is gone (README section 3: "Conversation model: set in Claude Code"), so
   `build_command` no longer passes `--model/--effort`.
-* **Changing the mode** has no top-bar switch, popups or AI setup popover yet (step 2). Until then Settings -> Cloud
-  holds "Cloud means ..." (`cloud_conn`) and "This project: Local | Cloud", which sets the project's `policy` and also
-  moves the running session's mode. The busy/session popups and "Stop and switch" do not exist yet.
-* **Pickers are filled for the route that is active when they are filled.** Without a switch that changes only when
-  Settings closes (which refills them). Step 2 must refill every picker and model label on `commitMode`. A pick that
-  Claude Code does not offer is ignored (it falls back to Claude Code's saved choice), never sent to another route.
-* **Per-route composer drafts and chat history** (`drafts[route]`, `chats[route]`), task cards and their route label
-  (`Route.label` is ready for them), the batch result panel, the dialog badge: steps 3-7.
+* **Changing the mode** is done (step 2): the top-bar switch, its popovers and AI setup (`ui/workspace/ai_switch.py`,
+  `ai_route.py`, `ai_popups.py`, `ai_setup.py`). Every move, from the switch, the palette ("Use Local AI", "Use Cloud
+  AI") or AI setup's cloud connection, is `AiRoute.request`: busy work (`WorkspaceWindow.running_ai_work`, built from
+  `RunningWork` items of Claude Code tasks and batches, a streaming chat answer, an Images page run, Ask AI to fix,
+  and the Ollama slot when none of those holds it), the Claude Code session, the policy warning, the first-use
+  question, then the commit. The Add slide translation and the prompt-tuning request run inside modal sheets, so the
+  switch cannot be moved while they run (their Ollama slot is still counted). Settings no longer holds a route
+  selector, "Cloud means" or "This project".
+* **Pickers** are refilled on every commit, default change and change of the installed models
+  (`WorkspaceWindow.refresh_ai_models`: chat chip, Images page, Ask AI to fix in every open file); the Add slide
+  sheet fills its picker when it opens (it is modal). The Ollama list is the cached, threaded
+  `ui/ai_models.LocalModelList`. A pick that Claude Code does not offer is ignored (it falls back to Claude Code's
+  saved choice), never sent to another route.
+* **Per-route composer drafts and chat history** are kept in memory by the chat (`chat/route_chat.py`, swapped by
+  `ChatView.show_route` on `state.ai_route_changed`); the unified assistant (step 3) builds on them. Task cards and
+  their route label (`Route.label` is ready for them), the batch result panel and the dialog badge: steps 3-7.
 * **Review marks** (`ai_review`, "Not reviewed") are written for any AI-authored change of path 9a, also from a Local
   provider, where the Add slide sheet (path 7) marks only cloud routes. More is flagged, not less.

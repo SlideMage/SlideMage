@@ -86,7 +86,7 @@ screenshots.
   course / After course and EN / DE (what the Preview shows and the slide list marks as
   hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
   offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
-  options), **Images** and the ⋮ menu (this deck, decks, project, housekeeping, info).
+  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (this deck, decks, project incl. Images, housekeeping, info).
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
   variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
   Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
@@ -107,16 +107,20 @@ screenshots.
   slide's header comment, `\setSlideVersion` line, `\vbox to 0pt` blocks and frozen
   versions can never be edited. The model is a local Ollama model that can call tools or,
   with an Anthropic API key, a Claude model. Every AI request goes through one setting,
-  **Local | Cloud** (Settings → Cloud: the project's setting, with "Cloud means" Claude
-  Code or the Anthropic API); each route keeps its own models, a task a route cannot do is
+  the **Local | Cloud** switch after the deck switcher in the top bar (it asks before it
+  stops running AI work, ends a live Claude Code terminal or sends a Local project to the
+  cloud; its ▾ opens **AI setup**: the default model of every task for each side, "Cloud
+  means" Claude Code or the Anthropic API, and the project's setting, where the switch
+  starts when the project opens); each route keeps its own models and its own chat draft
+  and conversation, a task a route cannot do is
   refused instead of using another route, and the first cloud request in a project says
   what will be sent. *Claude Code* is a terminal tab running the user's own installed `claude`
   in the project folder; SlideMage serves it the focused slide over a local MCP server
   and blocks edits to protected parts with a hook (the tab is only offered when `claude`
   is found).
-- **Settings** (⋮ → Project): General, AI models (a model per route and task: chat, image
-  descriptions, translation, fixes/notes/transcripts), Cloud (Local | Cloud, API key), Ollama (models,
-  updating, deleting), Prompts (image-description and translation prompts).
+- **Settings** (⋮ → Project): General, AI (German address of translations), Cloud (the API
+  key), Ollama (models, updating, deleting), Prompts (image-description and translation
+  prompts). The model of each task is in AI setup, not here.
 
 ## Releases and updates
 
@@ -2556,9 +2560,9 @@ embedded Markdown table. JSON has no such limit, so the split no longer
 earns its complexity. `media/alt-text.csv` still exists, but only as a
 generated compile-time projection — see "Repository layout" above.)
 
-**The workflow**, all on SlideMage's **Images** page (the **Images** button in the top
-bar, or **Image descriptions** in the ⋮ menu and the palette; the list on its left is
-slide-centric, filtered by state, and **Close images** returns to the deck):
+**The workflow**, all on SlideMage's **Images** page (**Image descriptions** in the ⋮ menu (Project)
+and the palette; the list on its left is
+slide-centric, filtered by state, and the top bar's **Close images** returns to the deck):
 
 1. **Draft all…** runs a vision model (a local Ollama model, or a Claude model when cloud
    use is allowed) over every image that
