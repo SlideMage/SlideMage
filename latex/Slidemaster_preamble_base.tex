@@ -2636,6 +2636,13 @@
 	\defbeamertemplate{note page}{gothampresenter}{%
 		{%
 			\scriptsize
+			% The breadcrumb typesets the frame title (twice: once to measure, once
+			% to show it), and a \footnote{}/\source{} in a frame title would run each
+			% time: the slide's last reveal step then carried its footnote three
+			% times (direct report 2026-10-13, mbz). Footnotes are switched off in
+			% this group; the slide itself keeps its own, single one.
+			\renewcommand*{\footnote}[2][]{}%
+			\renewcommand*{\footnotemark}[1][]{}%
 			\usebeamerfont{note title}\usebeamercolor[fg]{note title}%
 			% Natural-height \vbox (no "to <len>"/\vfil): this project's own
 			% real decks call \section{}/subsection ones sometimes not (a

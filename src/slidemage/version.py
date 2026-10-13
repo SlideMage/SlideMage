@@ -1970,6 +1970,11 @@ v5.36.0 (2026-10-12, direct instruction: "create or modify the frame type for th
 NEW: A chapter divider can list the chapter's subsections.
 - **Subsection agenda.** \\SMSubsectionAgenda in a chapter's divider (sectionframe) lists the chapter's \\subsection titles in two columns, each a link to the subsection's first slide. \\SMChapterAgenda still lists the chapter's slides.
 - **In transcripts** the subsections appear as a list with the slide number each one starts at.
+
+v5.36.1 (2026-10-13, direct report: "On mbz in the instructor version, on the second reveal steps, the footnote is printed three times"): in a presenter compile a slide with a \\footnote{} or \\source{} in its title and a \\note{} carried that footnote three times on its last reveal step. The presenter note page's breadcrumb typesets the frame title twice (once to measure it, once to show it) and the footnote ran each time, adding two copies to the slide's own. The breadcrumb now typesets the title with \\footnote and \\footnotemark switched off, so the slide keeps its single footnote and the breadcrumb no longer shows the marker. Checked by rendering mbz and qfk as presenter compiles: one footnote on every step. Plain instructor, during-course and after-course compiles were never affected.
+
+NEW: A footnote in a slide title is printed once in the presenter deck.
+- On the last reveal step of a slide with a footnote in its title and a speaker note, the presenter deck no longer repeats the footnote.
 """
 from __future__ import annotations
 
@@ -1979,7 +1984,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION_NUMBER = "v5.36.0"
+VERSION_NUMBER = "v5.36.1"
 
 # Matches every "vX.Y.Z (...): description..." paragraph in this module's
 # own docstring above -- anchored to a line start so it skips the
