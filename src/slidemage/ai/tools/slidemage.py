@@ -27,7 +27,7 @@ from .. import guides
 from ..agent_types import EditApplied
 from .base import ToolContext, ToolError, tool
 from .edits import propose
-from .files import current_text, project_path, relative
+from .files import current_revision, project_path, relative
 
 LIST_LIMIT = 300
 PREVIEW_WIDTH = 1280
@@ -111,8 +111,9 @@ def lint(ctx: ToolContext, args: dict) -> str:
     path = slide_or_file(ctx, args.get("path"))
     if path.suffix.lower() != ".tex":
         raise ToolError("Only .tex files are checked.")
-    issues = latex_lint.lint_text(ctx.project, current_text(ctx.workspace, path), path.name, path)
-    name = relative(ctx.root, path)
+    text, source = current_revision(ctx.workspace, path)
+    issues = latex_lint.lint_text(ctx.project, text, path.name, path)
+    name = f"{relative(ctx.root, path)} ({source})"
     if not issues:
         return f"{name}: no problems found."
     errors = sum(1 for i in issues if i.severity == latex_lint.ERROR)
@@ -137,16 +138,17 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     target = target or preview_target.for_path(ctx.project, path)
     if target is None:
         raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
+    text, source = current_revision(ctx.workspace, path)
     try:
         pdf = preview_target.render_text(
-            target, current_text(ctx.workspace, path), context.view, context.language,
+            target, text, context.view, context.language,
             footer_timestamp=context.footer_timestamp, log=lambda _line: None)
         png = slide_snapshot.page_png(pdf, PREVIEW_WIDTH)
     except RuntimeError as exc:
-        raise ToolError(f"The slide did not compile:\n{str(exc)[-1500:]}") from None
+        raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
     if png is None:
-        raise ToolError("The rendered PDF could not be read.")
-    return f"{path.name} as {context.view}, {context.language}:", [png]
+        raise ToolError(f"The rendered PDF ({source}) could not be read.")
+    return f"{path.name} ({source}) as {context.view}, {context.language}:", [png]
 
 
 @tool("add_slide",

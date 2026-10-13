@@ -232,7 +232,7 @@ def test_claude_code_reads_the_unsaved_buffer_and_the_focus_through_mcp(env):
     focus = on_thread(lambda: client.text("get_focus"))
     assert "Focused slide id: abc" in focus and "unsaved edits in the editor" in focus and SLIDE in focus
     buffer = on_thread(lambda: client.text("read_buffer", path=SLIDE))
-    assert "% typed in the editor" in buffer and "unsaved edits: yes" in buffer
+    assert "% typed in the editor" in buffer and "editor (unsaved)" in buffer
     assert "% typed in the editor" not in env.path.read_text()           # the disk is older
     env.window.state.set_focused_slide("abd")                            # the focus is read afresh per call
     assert "Focused slide id: abd" in on_thread(lambda: client.text("get_focus"))

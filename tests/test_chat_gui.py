@@ -600,6 +600,63 @@ def test_the_workspace_answers_from_the_buffers(env):
     assert on_thread(lambda: (ws.is_open(other), ws.apply_to_buffer(other, "", "x"))) == (False, "it is not open for editing")
 
 
+@pytest.mark.parametrize("tool", ["read_buffer", "lint", "render_preview", "get_focus"])
+@pytest.mark.parametrize("dirty", [False, True])
+def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, tool, dirty):
+    from conftest import SLIDE_TEXT
+    from mcp_client import Client
+    from slidemage import latex_lint, preview_target, slide_snapshot
+    from slidemage.ai.mcp_server import McpServer
+    from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox
+
+    # Use the MCP handler directly: no terminal or DiskSync poll can absorb the write first.
+    ws = env.chat.workspace
+
+    def toolbox():
+        ws.on_gui(ws.begin_request)
+        return build_toolbox(ws, lambda _event: None, compiler.CancelToken(), tools=CLAUDE_CODE_TOOLS)
+
+    file = open_buffer(env, dirty=dirty)
+    before = file.editor.text()
+    disk_text = SLIDE_TEXT.replace("\r\n", "\n").replace("First point", "Claude's new point") + "\\begin{itemize}\n"
+    env.path.write_bytes(disk_text.replace("\n", "\r\n").encode())
+    checked, reloaded = [], []
+    real_lint, real_reload = latex_lint.lint_text, env.window.centre.disk_changed
+
+    def lint(ctx, text, *args):
+        checked.append(text)
+        return real_lint(ctx, text, *args)
+
+    def reload(path):
+        assert threading.current_thread() is threading.main_thread()
+        reloaded.append(path)
+        return real_reload(path)
+
+    monkeypatch.setattr(latex_lint, "lint_text", lint)
+    monkeypatch.setattr(env.window.centre, "disk_changed", reload)
+    monkeypatch.setattr(preview_target, "render_text", lambda target, text, *a, **k:
+                        checked.append(text) or env.root / "fake.pdf")
+    monkeypatch.setattr(slide_snapshot, "page_png", lambda *_args: b"PNG")
+    server = McpServer(toolbox)
+    client = Client(server)
+    monkeypatch.setattr(client, "raw", lambda body: (200, server.handle(body)))
+    args = {"path": SLIDE} if tool in ("read_buffer", "lint") else {}
+    result = on_thread(lambda: client.call(tool, **args))
+    assert not result.get("isError"), result
+    text = result["content"][0]["text"]
+    expected = before if dirty else disk_text
+    assert file.editor.text() == expected and file.dirty == dirty
+    assert env.path.read_bytes() == disk_text.replace("\n", "\r\n").encode()
+    assert reloaded == ([] if dirty else [env.path])
+    assert "editor (unsaved)" in text if dirty else "file" in text and "unsaved" not in text
+    if tool == "read_buffer":
+        assert "% typed" in text if dirty else "Claude's new point" in text
+    else:
+        assert expected in checked
+    if tool in ("lint", "get_focus"):
+        assert "never closed" in text if not dirty else "never closed" not in text
+
+
 def test_the_context_is_the_focus_when_the_request_starts(env):
     open_buffer(env)
     env.chat.workspace.begin_request()

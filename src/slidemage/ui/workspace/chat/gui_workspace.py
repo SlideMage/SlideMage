@@ -163,13 +163,18 @@ class GuiWorkspace(Workspace):
         return self.on_gui(lambda: (file := self._file(path)) is not None and file.dirty, False)
 
     def buffer_text(self, path: Path) -> str:
-        def read() -> str:
+        return self.buffer_snapshot(path)[0]
+
+    def buffer_snapshot(self, path: Path) -> tuple[str, bool]:
+        def read() -> tuple[str, bool]:
             file = self._file(path)
             if file is None:
                 raise FileNotFoundError(path)
-            return file.editor.text()
+            if not file.dirty:
+                self.window.centre.disk_changed(self._local(path))
+            return file.editor.text(), file.dirty
 
-        return self.on_gui(read, "")
+        return self.on_gui(read, ("", False))
 
     def apply_to_buffer(self, path: Path, expected_text: str, new_text: str) -> str | None:
         def apply() -> str | None:

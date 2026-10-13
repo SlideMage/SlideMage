@@ -2126,3 +2126,10 @@ NEW: Claude Code creates and inserts slides more reliably.
 - If inserting a new slide fails, Claude can retry with the same slide instead of creating a duplicate; unsaved deck edits are protected.
 - Claude uses the focus supplied with your prompt, batches independent reads and gets instructions for its available tools.
 - Failed focus updates are retried, and temporary preview files no longer trigger project refreshes.
+
+
+v8.3.10 (2026-10-13, Claude Code speed plan C2): fresh reads and protected background header updates. Tool reads synchronously reload a clean open buffer through the same GUI-thread path as DiskSync before reading it; dirty buffers keep priority. read_buffer, lint, render_preview and get_focus report whether they checked the file or unsaved editor text, captured with the text in one GUI snapshot. Included-in-decks header regeneration uses atomic_write with an exact expected-text check immediately before replacement, including each retry after a Windows file lock; a mismatch re-reads and regenerates, and three conflicts leave the newer slide untouched for a later pass. StaleFileError is shared through fileio and remains available from slide_source. Regression tests cover clean and dirty MCP checks before polling, concurrent header edits, bounded retries, LF/CRLF preservation, failed writes and changes while an atomic write or locked-file retry is pending.
+
+NEW: Claude Code checks the latest slide text and background header updates protect your edits.
+- A quick read, lint or preview after a terminal edit sees the new file immediately; unsaved editor edits take priority and are identified in the result.
+- Updating deck-inclusion headers preserves newer slide content when another writer edits the slide at the same time.

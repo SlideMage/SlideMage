@@ -27,7 +27,7 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from .project import ProjectContext
-from .fileio import read_text_exact, write_text_exact
+from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from .deck_scan import COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, is_commented
@@ -70,13 +70,6 @@ SLIDE_CALL_RE = re.compile(
 
 _LEADING_BLANK_RE = re.compile(r"^[ \t]*$")
 _TRAILING_OK_RE = re.compile(r"^[ \t]*(%.*)?$")
-
-
-class StaleFileError(RuntimeError):
-    """The deck file on disk no longer matches the text a caller last read
-    (e.g. someone else -- another tab, TeXstudio, git -- changed it in the
-    meantime). Callers should reload the deck and let the user retry rather
-    than silently overwriting whatever's actually on disk now."""
 
 
 @dataclass

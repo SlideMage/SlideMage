@@ -63,6 +63,10 @@ class Workspace:
         """The text of an open file's buffer, unsaved edits included ("\\n" line ends)."""
         raise FileNotFoundError(path)
 
+    def buffer_snapshot(self, path: Path) -> tuple[str, bool]:
+        """Buffer text and dirtiness together; GUI implementations also refresh clean buffers."""
+        return self.buffer_text(path), self.is_dirty(path)
+
     def apply_to_buffer(self, path: Path, expected_text: str, new_text: str) -> str | None:
         """Replace the buffer's whole text as one undo step, leaving it unsaved. None when done;
         else why not: the buffer is read-only (a frozen version), or its text is no longer

@@ -10,24 +10,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from .fileio import read_text_exact, write_text_exact
+from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from . import alt_blocks
 from .project import ProjectContext
 from .tex_source import braced_argument, masked_same_length
 
-
-
-class StaleFileError(RuntimeError):
-    """The slide file on disk no longer matches the text the editor tab
-    last loaded -- something else in the app wrote to it in the meantime
-    (bibliography.add_entry() from an "Add citation" dialog on this same
-    slide, deck_headers.regenerate_headers() running in the background
-    after any deck edit, a translation back-reference, a rename/replace-
-    image rewrite, ...). Same concept, same name, as deck_editor.py's own
-    StaleFileError for deck files -- kept as a separate class here rather
-    than imported, since the two check different files for different
-    reasons and a caller should never need to catch "either kind" at
-    once."""
 
 
 def read_slide_source(path: Path) -> tuple[str, str]:

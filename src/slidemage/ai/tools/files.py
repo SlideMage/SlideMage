@@ -81,8 +81,16 @@ def read_disk_text(path: Path) -> str:
 
 
 def current_text(workspace: Workspace, path: Path) -> str:
-    """The text of `path` as the user has it: the open buffer with its unsaved edits, else the file."""
-    return workspace.buffer_text(path) if workspace.is_open(path) else read_disk_text(path)
+    """Fresh file text, with unsaved editor edits taking priority."""
+    return current_revision(workspace, path)[0]
+
+
+def current_revision(workspace: Workspace, path: Path) -> tuple[str, str]:
+    """The text and the version checked; GUI buffers sync and snapshot on the GUI thread."""
+    if workspace.is_open(path):
+        text, dirty = workspace.buffer_snapshot(path)
+        return text, "editor (unsaved)" if dirty else "file"
+    return read_disk_text(path), "file"
 
 
 @tool("read_file",
@@ -95,7 +103,8 @@ def current_text(workspace: Workspace, path: Path) -> str:
       ("path",))
 def read_file(ctx: ToolContext, args: dict) -> str:
     path = project_path(ctx.root, args["path"])
-    lines = current_text(ctx.workspace, path).split("\n")
+    text, source = current_revision(ctx.workspace, path)
+    lines = text.split("\n")
     if lines and lines[-1] == "":
         lines.pop()                      # the line end of the last line, not a line of its own
     start = max(1, args.get("start_line", 1))
@@ -107,7 +116,7 @@ def read_file(ctx: ToolContext, args: dict) -> str:
         if size > READ_CHARS and shown:
             break
         shown.append(line)
-    header = f"{relative(ctx.root, path)} ({len(lines)} lines)"
+    header = f"{relative(ctx.root, path)} ({len(lines)} lines; {source})"
     if not shown:
         return f"{header}\nThere is no line {start}."
     last = start + len(shown) - 1

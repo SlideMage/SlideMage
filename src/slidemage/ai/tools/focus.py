@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ... import latex_lint
 from .base import ToolContext, ToolError, tool
-from .files import current_text, may_touch, project_path, read_file, relative
+from .files import current_revision, may_touch, project_path, read_file, relative
 
 LINT_SHOWN = 10
 
@@ -31,13 +31,16 @@ def get_focus(ctx: ToolContext, args: dict) -> str:
                      "SlideMage's own folders).")
         return "\n".join(lines)
     name = relative(ctx.root, path.resolve())
-    is_open, dirty = ctx.workspace.is_open(path), ctx.workspace.is_dirty(path)
+    if path.suffix == ".tex":
+        text, source = current_revision(ctx.workspace, path)
+        dirty = source == "editor (unsaved)"
+    else:
+        dirty = ctx.workspace.is_dirty(path)
     lines.append(f"File shown: {name}" + (" (unsaved edits in the editor: the file on disk is older; "
                                           "read_buffer shows them)" if dirty else ""))
     if path.suffix == ".tex":
-        text = current_text(ctx.workspace, path)
         errors = [i for i in latex_lint.lint_text(ctx.project, text, path.name, path) if i.severity == latex_lint.ERROR]
-        lines.append(f"Lint errors in {'the buffer' if is_open else 'the file'}: "
+        lines.append(f"Lint errors in {source}: "
                      + ("none" if not errors else str(len(errors))))
         lines += [f"  line {i.line}: {i.message}" for i in errors[:LINT_SHOWN]]
     return "\n".join(lines)
@@ -89,5 +92,4 @@ def read_buffer(ctx: ToolContext, args: dict) -> str:
     if not ctx.workspace.is_open(path):
         raise ToolError(f"{relative(ctx.root, path)} is not open in the editor, so there is no buffer: "
                         "the file on disk is what your own Read shows.")
-    dirty = "unsaved edits: yes" if ctx.workspace.is_dirty(path) else "unsaved edits: no (same as on disk)"
-    return f"[editor buffer, {dirty}]\n" + read_file.run(ctx, args)
+    return read_file.run(ctx, args)

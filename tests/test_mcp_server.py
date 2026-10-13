@@ -135,10 +135,10 @@ def test_get_focus_says_what_the_user_looks_at_and_whether_the_buffer_is_dirty(m
     text = mcp.text("get_focus")
     assert "Open deck: decks/test.tex" in text and "Focused slide id: abc" in text
     assert f"File shown: {SLIDE}" in text and "Viewed as: instructor; editing language: EN" in text
-    assert "unsaved" not in text and "Lint errors in the file: none" in text
+    assert "unsaved" not in text and "Lint errors in file: none" in text
     mcp.workspace.open(mcp.root / SLIDE, LF + "\\begin{itemize}\n", dirty=True)
     text = mcp.text("get_focus")
-    assert "unsaved edits in the editor" in text and "Lint errors in the buffer: 1" in text and "line" in text
+    assert "unsaved edits in the editor" in text and "Lint errors in editor (unsaved): 1" in text and "line" in text
 
 
 def test_get_focus_without_a_file(mcp):
@@ -151,9 +151,9 @@ def test_read_buffer_shows_unsaved_edits_and_only_of_open_files(mcp):
     assert "not open in the editor" in mcp.call("read_buffer", path=SLIDE)["content"][0]["text"]
     mcp.workspace.open(mcp.root / SLIDE, LF + "% typed in the editor\n", dirty=True)
     text = mcp.text("read_buffer", path=SLIDE)
-    assert "unsaved edits: yes" in text and "% typed in the editor" in text
+    assert "editor (unsaved)" in text and "% typed in the editor" in text
     mcp.workspace.dirty.clear()
-    assert "unsaved edits: no" in mcp.text("read_buffer", path=SLIDE)
+    assert "; file)" in mcp.text("read_buffer", path=SLIDE)
     assert mcp.call("read_buffer", path="../outside.tex")["isError"]
 
 

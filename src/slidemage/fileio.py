@@ -10,12 +10,19 @@ from pathlib import Path
 from typing import Any
 
 
-def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: float = 0.25) -> None:
+class StaleFileError(RuntimeError):
+    """The file on disk no longer matches the text an edit was based on."""
+
+
+def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: float = 0.25,
+                       *, expected_text: str | None = None) -> None:
     """os.replace(), retried for a while: on Windows a virus scanner or the
     search indexer often holds a just-written file open for a moment, and the
     rename of a freshly written file or snapshot folder then fails with "access
     denied" although nothing is wrong."""
     for attempt in range(attempts):
+        if expected_text is not None and read_text_exact(target) != expected_text:
+            raise StaleFileError(f"{target.name} changed on disk -- reload and retry.")
         try:
             os.replace(source, target)
             return
@@ -25,9 +32,10 @@ def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: fl
             time.sleep(delay)
 
 
-def atomic_write(path: Path, data: str | bytes) -> None:
+def atomic_write(path: Path, data: str | bytes, *, expected_text: str | None = None) -> None:
     """Write `data` (text as UTF-8 with plain "\\n" line ends) to a temporary file beside `path`, flush it to
-    disk, then replace `path` with it. Missing folders are created."""
+    disk, then replace `path` with it. Missing folders are created. An expected_text mismatch
+    immediately before replacement raises StaleFileError and leaves the current file untouched."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
@@ -36,7 +44,7 @@ def atomic_write(path: Path, data: str | bytes) -> None:
             handle.write(data.encode("utf-8") if isinstance(data, str) else data)
             handle.flush()
             os.fsync(handle.fileno())
-        replace_with_retry(temporary, path, attempts=8)
+        replace_with_retry(temporary, path, attempts=8, expected_text=expected_text)
     finally:
         temporary.unlink(missing_ok=True)
 

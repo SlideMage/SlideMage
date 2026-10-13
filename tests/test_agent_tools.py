@@ -122,7 +122,7 @@ def test_get_focus_does_not_name_a_file_the_model_may_not_see(box):
 
 def test_read_file_numbers_lines_normalises_line_ends_and_pages(box):
     text = box.ok("read_file", path=SLIDE)
-    assert text.startswith(f"{SLIDE} (12 lines)\n1\t%% Included in decks: test\n")
+    assert text.startswith(f"{SLIDE} (12 lines; file)\n1\t%% Included in decks: test\n")
     assert "\r" not in text and "6\t\\begin{standardframe}{Hello}" in text
     part = box.ok("read_file", path=SLIDE, start_line=7, max_lines=2)
     assert "7\t\t\\begin{itemize}" in part and "read on with start_line=9" in part

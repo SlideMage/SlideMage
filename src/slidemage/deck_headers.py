@@ -48,23 +48,13 @@ from __future__ import annotations
 import re
 import threading
 
-from .fileio import read_text_exact, write_text_exact
+from .fileio import StaleFileError, atomic_write, read_text_exact
 from .project import ProjectContext
 from .slide_language import TRANSLATION_LANGUAGES
 
-# regenerate_headers() does a read-modify-write over every slides/*-current
-# .tex file; the GUI runs it on a background thread per edit (see gui.py's
-# after_deck_edit), and two edits close enough together would otherwise run
-# two of these concurrently and unsynchronized -- confirmed directly
-# (2026-07-23) to actually corrupt files this way: thread B can open() a
-# file for read in the gap between thread A's open(path, "w") (which
-# truncates immediately, before any write() call) and A's actual write,
-# reading a near-empty file, then dutifully writing that near-empty
-# content back once its own turn comes, permanently losing everything but
-# the header block. This lock serializes every call (across threads
-# within one process -- SlideMage is single-process/single-instance)
-# so a second call simply waits for the first to finish rather than
-# racing it.
+# Serialize header passes within the app. Atomic expected-text writes below also
+# protect edits from other writers; after three conflicts leave the file untouched
+# for a later pass rather than overwriting a slide that keeps changing.
 _LOCK = threading.Lock()
 
 HEADER_RE = re.compile(
@@ -113,24 +103,30 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
             slide_id = slide_path.name.split("-")[0]
             decks = sorted(id_to_decks.get(slide_id, []))
 
-            text = read_text_exact(slide_path)
-            eol = "\r\n" if "\r\n" in text else "\n"
+            for _attempt in range(3):
+                text = read_text_exact(slide_path)
+                eol = "\r\n" if "\r\n" in text else "\n"
 
-            listed = ", ".join(decks) if decks else "(none)"
-            new_header = f"%% Included in decks: {listed}{eol}%%{eol}{eol}"
+                listed = ", ".join(decks) if decks else "(none)"
+                new_header = f"%% Included in decks: {listed}{eol}%%{eol}{eol}"
 
-            if HEADER_RE.search(text):
-                new_text = HEADER_RE.sub(new_header, text, count=1)
-            else:
-                # No existing header block -- insert after the leading
-                # comment lines (everything up to the first blank line),
-                # matching every hand-written slide file's own convention.
-                m = re.search(r"\r?\n\r?\n", text)
-                insert_at = m.end() if m else 0
-                new_text = text[:insert_at] + new_header + text[insert_at:]
+                if HEADER_RE.search(text):
+                    new_text = HEADER_RE.sub(new_header, text, count=1)
+                else:
+                    # No existing header block -- insert after the leading
+                    # comment lines (everything up to the first blank line),
+                    # matching every hand-written slide file's own convention.
+                    m = re.search(r"\r?\n\r?\n", text)
+                    insert_at = m.end() if m else 0
+                    new_text = text[:insert_at] + new_header + text[insert_at:]
 
-            if new_text != text:
-                write_text_exact(slide_path, new_text)
+                if new_text == text:
+                    break
+                try:
+                    atomic_write(slide_path, new_text, expected_text=text)
+                except StaleFileError:
+                    continue                 # re-read the newer body; leave it alone if all retries fail
                 changed += 1
+                break
 
     return changed, len(deck_paths)
