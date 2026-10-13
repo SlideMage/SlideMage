@@ -75,7 +75,11 @@ deck switcher offers the rest). From top to bottom and left to right:
   and give way first, "Focus assistant" hides them): a header with the route, the scope
   (This slide | Whole deck), at most two task buttons and the running task, and a body that
   follows the AI switch: the native chat (`chat/`) on Local and Cloud · API, the real terminal
-  (`terminal/`) on Cloud · Claude Code.
+  (`terminal/`) on Cloud · Claude Code. A task on one slide takes the body's place with its
+  **task card** (`task_card.py`; its state is `task_card_model.TaskCard`, owned by
+  `terminal/tasks.py:TaskRunner`): Generate → Review → Apply → Check preview, or
+  Conflict / Preview failed / Stopped / Setup needed; Back to conversation leaves a pill
+  in the header. Batches, image tasks and the summary use the task row (`task_row.py`).
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
   entry is a registered command.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck

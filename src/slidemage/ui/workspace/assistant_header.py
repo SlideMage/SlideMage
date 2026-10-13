@@ -5,7 +5,8 @@
    view; for the deck "name · 80 slides";
 3. at most two task buttons that fit the scope, the slide and what the route can run (terminal/tasks.py
    `contextual`), and "All actions…" (⌘K);
-4. while a task or batch runs, a pill with what it is doing and Open.
+4. a pill with what a task is doing and Open: the task card that was left with Back to conversation ("Update DE
+   translation · generating"), or a running batch or image task, which have no card.
 
 The header only shows and asks: the card around it (assistant.py) acts. The task offers are the bubbles of
 terminal/tasks.py, worked out for the scope when the slide, its text or the route changes; the command palette
@@ -27,6 +28,7 @@ from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface, set_property
 from ..text import plural
 from .state import WorkspaceState
+from .task_card_model import PILL_WORDS
 from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides
 
 POLL_MS = 400       # how often the file shown and its unsaved state are looked at (neither has a signal)
@@ -93,6 +95,7 @@ class AssistantHeader(Surface):
 
         scope.changed.connect(lambda _scope: self.refresh_content())
         tasks.busy_changed.connect(self._on_busy)
+        tasks.card_changed.connect(self._on_busy)
         for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed,
                        state.mode_changed, state.dirty_changed, state.lint_errors_changed, state.ai_route_changed):
             signal.connect(lambda _value: self.schedule())
@@ -162,8 +165,9 @@ class AssistantHeader(Surface):
         self._offers.clear()
         self._soon.start(0)
 
-    def _on_busy(self, _busy: bool) -> None:
-        """A task started or ended: its pill and the buttons (none while it runs) now, not a turn later."""
+    def _on_busy(self, _busy: bool = False) -> None:
+        """A task started, moved on or ended: its pill and the buttons (none while it runs or waits) now, not a turn
+        later."""
         self._offers.clear()
         self.refresh_actions()
 
@@ -184,8 +188,8 @@ class AssistantHeader(Surface):
 
     def refresh_actions(self) -> None:
         """Row 3: the two most relevant tasks the route can run, then All actions…; row 4: the running pill."""
-        busy = self.tasks.busy
-        found = [] if busy or self._blocked() else contextual(self.offers(self.scope.current()), self.tasks)
+        tasks = self.tasks
+        found = [] if tasks.occupied or self._blocked() else contextual(self.offers(self.scope.current()), tasks)
         if found != self.shown:
             self.shown = found
             while self._actions.count():
@@ -199,9 +203,13 @@ class AssistantHeader(Surface):
                 self._actions.addWidget(button)
         if self._actions.indexOf(self.all_actions) < 0:
             self._actions.addWidget(self.all_actions)
-        self.pill.setVisible(busy)
-        if busy:
-            self.pill.label.set_full_text(self.tasks.describe())
+        card = tasks.card
+        left = card is not None and card.hidden
+        self.pill.setVisible(left or (card is None and tasks.busy))
+        if left:
+            self.pill.label.set_full_text(f"{card.title} · {PILL_WORDS[card.phase]}")
+        elif card is None and tasks.busy:
+            self.pill.label.set_full_text(tasks.describe())
 
     def target_text(self) -> str:
         """What the scope points at: the slide in the Source view (and whether it has unsaved edits), or the deck."""

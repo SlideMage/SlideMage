@@ -207,7 +207,7 @@ class DiffCard(QFrame):
         self._lines.setSpacing(0)
         layout.addLayout(self._lines)
         self._more = Button("", "ghost", compact=True)
-        self._more.clicked.connect(self._show_all)
+        self._more.clicked.connect(self.show_all)
         layout.addWidget(self._more, 0, Qt.AlignmentFlag.AlignLeft)
         foot = QHBoxLayout()
         foot.setContentsMargins(10, 0, 10, 0)
@@ -243,7 +243,7 @@ class DiffCard(QFrame):
         self._more.setVisible(hidden > 0)
         self._more.setText(f"Show {hidden} more lines")
 
-    def _show_all(self) -> None:
+    def show_all(self) -> None:
         self._all_rows = True
         self._fill()
 

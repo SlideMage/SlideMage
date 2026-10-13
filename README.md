@@ -105,7 +105,14 @@ screenshots.
   Anthropic API) and what the conversation runs on, has a scope (*This slide* | *Whole deck*)
   with its target, the two most relevant tasks the route can run (Translate, Fix LaTeX
   errors, Make more concise, ...; the others are in Ctrl+K) and *New conversation*, which
-  clears this route's conversation only. On Local and Cloud · API the body is the chat: the
+  clears this route's conversation only. A task on one slide (also the Language panel's
+  Translate) opens a **task card** in place of the conversation: Generate, then Review
+  (the proposed change as a diff, nothing written yet; **Apply** writes it, or it is
+  written at once in *Edit automatically* mode), Apply and Check preview (the slide is
+  rendered again); it ends done (with **Undo** where the change can be taken back),
+  as a conflict (the slide changed meanwhile: the proposal is kept, not applied),
+  with a failed preview, stopped, or asking for setup (the route cannot run it: nothing
+  is sent). *Back to conversation* leaves a pill in the header while it runs. On Local and Cloud · API the body is the chat: the
   chat is an agent that works on the focused
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a
   slide or a bibliography entry, compile). Edits wait for **Apply** / **Reject** in

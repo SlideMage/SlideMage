@@ -2,9 +2,8 @@
 
 The facts are slide_language's (the id-slug's language segment and the "Translation of" /
 "<LANG> translation" header comments); "outdated" is slide_language.translation_link()'s, which
-says exactly what it measures. Translate… opens the Add slide sheet on a translation into the
-other language, with the machine translation ticked where it is possible (EN to DE). Set language
-moved here from the Details view."""
+says exactly what it measures. Translate runs the assistant's Translate task on the slide: its task
+card shows the proposed slide, and creates it on Apply. Set language moved here from the Details view."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox
@@ -50,10 +49,10 @@ class Language(SidePanel):
             line = QHBoxLayout()
             line.addWidget(text(OTHER[own], q.PANEL_MONO))
             line.addWidget(text("No translation yet", q.DETAILS_LABEL), 1)
-            translate = Button(f"Translate to {OTHER[own]}…", "primary", compact=True)
-            translate.setToolTip("Create the translation as a new slide linked to this one, with the text "
-                                 "translated by the model chosen in AI setup, the ▾ of the AI switch (EN to DE).")
-            translate.clicked.connect(lambda: self._translate(id_slug, OTHER[own]))
+            translate = Button(f"Translate to {OTHER[own]}", "primary", compact=True)
+            translate.setToolTip("Translate this slide with the model chosen in AI setup (the ▾ of the AI switch): "
+                                 "the assistant shows the proposed slide, and creates it linked to this one when you apply it.")
+            translate.clicked.connect(lambda: self.actions.translate())
             line.addWidget(translate)
             row.body.addLayout(line)
         self.body.addWidget(frame)
@@ -88,8 +87,6 @@ class Language(SidePanel):
         row.body.addLayout(line)
         row.add_text(caption, q.PANEL_CAPTION)
 
-    # -- Translate -----------------------------------------------------------------------
-
     def _saved(self, title: str) -> bool:
         """Whether the slide's file may be moved: not while the Source view holds
         unsaved edits of it."""
@@ -98,9 +95,6 @@ class Language(SidePanel):
             QMessageBox.warning(self, title, SAVE_FIRST)
             return False
         return True
-
-    def _translate(self, id_slug: str, target: str) -> None:
-        self.actions.add_slide("translate", id_slug, target)
 
     # -- Set language ----------------------------------------------------------------------
 

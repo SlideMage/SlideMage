@@ -146,6 +146,13 @@ ASSISTANT_TITLE = "kitAssistantTitle"
 ASSISTANT_SUB = "kitAssistantSub"
 ASSISTANT_TARGET = "kitAssistantTarget"
 TASK_PILL = "kitTaskPill"
+# The task card (ui/workspace/task_card.py).
+TASK_CARD = "kitTaskCard"
+TASK_TITLE = "kitTaskTitle"
+TASK_ROUTE = "kitTaskRoute"
+TASK_STATE = "kitTaskState"
+TASK_ELAPSED = "kitTaskElapsed"
+TASK_STEP = "kitTaskStep"
 CLOUD_CARD = "kitCloudCard"
 
 WARNING_LABEL = "warningLabel"
@@ -918,6 +925,17 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         {text(f"QLabel#{ASSISTANT_TARGET}", 12.5, t.text_2)}
         QFrame#{TASK_PILL} {{ background-color: {t.bg}; border-radius: {RADIUS_SM}px; }}
         {text(f"QFrame#{TASK_PILL} QLabel", 12.5, t.text)}
+        QFrame#{TASK_CARD} {{ border: 1px solid {t.line}; border-radius: {RADIUS_MD}px; }}
+        {text(f"QLabel#{TASK_TITLE}", 15, t.text, 600)}
+        {text(f"QLabel#{TASK_ROUTE}", 12, t.local_fg, None, mono)}
+        QLabel#{TASK_ROUTE}[cloud="true"] {{ color: {t.cloud_text}; }}
+        {text(f"QLabel#{TASK_STATE}", 13.5, t.text)}
+        QLabel#{TASK_STATE}[tone="ok"] {{ color: {t.ok_fg}; }}
+        QLabel#{TASK_STATE}[tone="warning"] {{ color: {t.cloud_text}; }}
+        QLabel#{TASK_STATE}[tone="error"] {{ color: {t.error}; }}
+        QLabel#{TASK_STATE}[tone="muted"] {{ color: {t.text_2}; }}
+        {text(f"QLabel#{TASK_ELAPSED}", 12, t.text_3, None, mono)}
+        {text(f"QLabel#{TASK_STEP}", 12, t.text_3)}
         QFrame#{CLOUD_CARD} {{
             background-color: {t.cloud_bg};
             border: 1px solid {t.cloud_border};

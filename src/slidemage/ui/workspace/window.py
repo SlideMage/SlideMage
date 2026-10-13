@@ -165,6 +165,7 @@ class WorkspaceWindow(QMainWindow):
             restore_version=lambda path: self.centre.restore_version(path),
             freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),
             edit_deck=self.slide_list.edit, add_slide=self.slide_list.add_slide,
+            translate=lambda: self.assistant.translate_slide(),
             add_reference=lambda key: self.centre.source.add_reference(key)))
         self.assistant = self.side_panels.assistant
         # Centre: the views of the focused slide, or the Images page. Its first scan reads every

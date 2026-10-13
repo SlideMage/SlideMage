@@ -3,12 +3,16 @@
 `bubbles(window)` says which tasks fit the slide in the Source view (and translation partner); `contextual` picks the
 two the header shows. A click goes through TaskRunner:
 `start` captures the task on the GUI thread (the slide's text as its buffer has it, the request), a worker thread
-runs ai/claude_runner.run_task, and the outcome comes back to the GUI thread as a signal. Only then is anything
-changed, and only if the slide still has the captured text: a fix goes into the buffer (Ctrl+Z undoes it) or, for
-a closed file, onto disk with a backup; the update of a translation changes the translation, wherever it is
-open; a translation creates the partner slide, links it to the source (a change of the source's header,
-subject to the same check) and puts its call after the source's in the deck.
-Typing in the slide meanwhile makes it a conflict: nothing is written and the result is kept for the user.
+runs ai/claude_runner.run_task, and the outcome comes back to the GUI thread as a signal.
+A task on one slide is shown as a task card (task_card_model.py, task_card.py), its phases the runner's: the
+answer stops in Review with the proposed change, and Apply writes it, unless the chat's "Edit automatically" is on
+(then Apply follows at once); a fix goes into the buffer (Ctrl+Z undoes it) or, for a closed file, onto disk with a
+backup, the update of a translation changes the translation, wherever it is open, a translation creates the partner
+slide, links it to the source (a change of the source's header) and puts its call after the source's in the deck.
+Both writes happen only if the slide still has the captured text. Typing in the slide meanwhile makes the card a
+conflict: nothing is written and the proposal is kept. After the write the card renders the slide through the
+preview's shared RenderService (Check preview) and tells whether it compiled. A route that cannot run the task makes
+the card ask for setup, nothing sent.
 The image bubbles (describe, translate the descriptions) are different: an _ImageWorker works through the slide's
 images one process after another and alt_draft's batch stores each draft as it is done (nothing of the slide
 changes); the Images panel is shown again at the end.
@@ -16,9 +20,9 @@ The deck bubbles (`deck_bubbles`, shown while the assistant's scope is Whole dec
 slides: a batch with up to WORKERS processes at a time. Each slide is captured when its turn comes, so what the user
 typed meanwhile is in the request; every result is applied by `_on_done` on the GUI thread, one after the other,
 whichever process finished first, so writes, ids and links never race. A rate-limit error drops the batch to one
-process and gives that slide a second try; a usage-limit error ends it. Its progress is the task row's status line,
-what became of each slide is in the "Show result" sheet. "Describe images" is one image run over the deck's images, a
-summary one process whose answer is shown, never written.
+process and gives that slide a second try; a usage-limit error ends it. A batch, the image tasks and the summary have
+no card: their progress is the task row's status line, what became of each slide is in the "Show result" sheet.
+"Describe images" is one image run over the deck's images, a summary one process whose answer is shown, never written.
 One task or batch at a time; Stop and closing the window end its processes.
 
 Which backend runs a task is the active route's (ai_profile.resolve, captured when the task starts; the kind of
@@ -40,23 +44,26 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
-from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, latex_lint, slide_add, slide_ids,
-                  slide_language, slide_source, slide_versioning)
+from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, latex_lint, slide_add,
+                  slide_ids, slide_language, slide_source, slide_versioning)
 from ....project import ProjectContext
 from ....tex_source import masked_same_length
 from ....ai import ai_profile, claude_images, claude_launch, claude_runner, claude_tasks, resolver, translation_style
+from ....ai.agent_types import EditApplied
 from ....ai.tools.base import ToolError
 from ....ai.tools.edits import write_text
+from ....ai.tools.slidemage import slide_target
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ... import background
 from ...ai_models import confirm_if_new
+from .. import task_card_model as card_model
 from ..ai_work import RunningWork
+from ..menus import VIEW_LABELS
+from ..task_card_model import TaskCard
 
 CONFLICT = "The slide changed while Claude worked."
 _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSLATION.name: "Updating",
-          claude_tasks.FIX_LATEX.name: "Fixing", claude_tasks.PROOFREAD.name: "Proofreading",
-          claude_tasks.CONCISE.name: "Shortening", claude_tasks.TITLE.name: "Retitling",
-          claude_tasks.NOTE.name: "Adding a note to", claude_images.DESCRIBE.name: "Describing",
+          claude_tasks.FIX_LATEX.name: "Fixing", claude_images.DESCRIBE.name: "Describing",
           claude_images.TRANSLATE.name: "Translating", claude_tasks.SUMMARISE.name: "Summarising"}
 # What each task is, for the route's models (ai_profile.TASKS).
 KINDS = {claude_tasks.TRANSLATE.name: ai_profile.TRANSLATION, claude_tasks.UPDATE_TRANSLATION.name: ai_profile.TRANSLATION,
@@ -66,6 +73,9 @@ KINDS = {claude_tasks.TRANSLATE.name: ai_profile.TRANSLATION, claude_tasks.UPDAT
                          ai_profile.FIXES)}
 # The tasks that also run on a provider, as the Add slide sheet and the Images page do (see the docstring).
 PROVIDER_TASKS = (claude_tasks.TRANSLATE, claude_images.DESCRIBE, claude_images.TRANSLATE)
+# The tasks on one slide, shown as a task card (the others are batches, image runs and the summary).
+CARD_TASKS = (claude_tasks.TRANSLATE, claude_tasks.UPDATE_TRANSLATION, claude_tasks.FIX_LATEX, claude_tasks.PROOFREAD,
+              claude_tasks.CONCISE, claude_tasks.TITLE, claude_tasks.NOTE)
 _NAMES = {claude_tasks.TRANSLATE.name: "Translating a slide", claude_tasks.UPDATE_TRANSLATION.name: "Updating a translation",
           claude_tasks.FIX_LATEX.name: "Fixing LaTeX errors", claude_tasks.PROOFREAD.name: "Proofreading",
           claude_tasks.CONCISE.name: "Making a slide more concise", claude_tasks.TITLE.name: "Retitling a slide",
@@ -346,6 +356,22 @@ class _Worker(QThread):
         self.done.emit(self, outcome)
 
 
+class _PreviewWorker(QThread):
+    done = Signal(object, str)         # this worker, "" or why the render failed
+
+    def __init__(self, render: Callable[[], object]) -> None:
+        super().__init__()
+        self._render = render
+
+    def run(self) -> None:
+        try:
+            self._render()
+        except Exception as exc:  # noqa: BLE001 -- whatever the render raised is the card's message
+            self.done.emit(self, str(exc) or type(exc).__name__)
+        else:
+            self.done.emit(self, "")
+
+
 def _translate_on_provider(ctx: ProjectContext, provider, capture: _Capture, cancel: threading.Event) -> Outcome:
     """The Translate task on the provider of Local or the API (slide_add.translate_body). Its answer is checked as
     a Claude answer is: the protected parts stay and the text has no new LaTeX error."""
@@ -413,14 +439,22 @@ class _Batch:
 
 
 class TaskRunner(QObject):
-    status = Signal(str, str)          # the status line's text and tone ("muted", "ok", "warning", "error")
+    status = Signal(str, str)          # the task row's text and tone ("muted", "ok", "warning", "error"): batches, images
     busy_changed = Signal(bool)
     summary = Signal(str)              # the summary of the deck, to show
+    card_changed = Signal()            # the task card (`card`) appeared, moved on or went
 
-    def __init__(self, window, workspace, parent: QObject | None = None) -> None:
-        """`window` is the main window, `workspace` the GuiWorkspace that applies edits to its buffers."""
+    def __init__(self, window, workspace, parent: QObject | None = None, *, edit_auto: Callable[[], bool] = lambda: False) -> None:
+        """`window` is the main window, `workspace` the GuiWorkspace that applies edits to its buffers and renders
+        the preview. `edit_auto()` says whether the chat's "Edit automatically" is on."""
         super().__init__(parent)
-        self._window, self._workspace = window, workspace
+        self._window, self._workspace, self._edit_auto = window, workspace, edit_auto
+        self.card: TaskCard | None = None                  # the task on one slide, or what became of the last
+        self._proposal: tuple[_Capture, str] | None = None  # of the card in Review or Conflict: the task, the new text
+        self._applied: EditApplied | None = None           # of the card's write: what Undo puts back
+        self._preview: _PreviewWorker | None = None        # Check preview
+        self._preview_cancel = threading.Event()
+        self._was_busy = False
         self._running: dict[_Worker | _ImageWorker, _Item | None] = {}    # with the batch item it works on
         self._batch: _Batch | None = None
         self._route: ai_profile.Route | None = None        # of the task or batch under way, captured at its start
@@ -436,12 +470,27 @@ class TaskRunner(QObject):
 
     @property
     def busy(self) -> bool:
-        return bool(self._running) or self._batch is not None
+        """AI work is under way: a process, a batch or a card that generates, writes or renders."""
+        return bool(self._running) or self._batch is not None or (self.card is not None and self.card.running)
+
+    @property
+    def occupied(self) -> bool:
+        """No other task starts: one is under way, or a proposal waits for the user's answer."""
+        return self.busy or (self.card is not None and self.card.phase == card_model.REVIEW)
+
+    def _notify_busy(self) -> None:
+        if self.busy != self._was_busy:
+            self._was_busy = self.busy
+            self.busy_changed.emit(self.busy)
 
     def running_work(self) -> list[RunningWork]:
         """The task or batch under way, for the AI switch's busy popup (ai_work.py)."""
         if not self.busy:
             return []
+        if (card := self.card) is not None and card.phase in (card_model.APPLY, card_model.CHECK):
+            writing = card.phase == card_model.APPLY       # a write that has started finishes; a render can be cancelled
+            return [RunningWork(f"{_NAMES[card.task.name]} · {card.target}", card.route.label, False,
+                                None if writing else self.stop, "A file write that has started finishes" if writing else "")]
         if (batch := self._batch) is not None:
             text, note = (f"{_NAMES[batch.task.name]} · {len(batch.lines)} of {batch.total} done",
                           "Slides not started are cancelled, not moved to the other route")
@@ -464,18 +513,29 @@ class TaskRunner(QObject):
             return resolver.not_offered(route, _NAMES[task.name], "It runs on Cloud · Claude Code: switch the route to use it.")
         return resolver.problem(self._window.project, route)
 
-    def start(self, task: claude_tasks.Task, paths: tuple[Path, ...] = ()) -> None:
-        """Run `task` on the slide in the Source view, or for a deck bubble on its slides `paths`, unless one is
-        running, the active route cannot run it (the status line says why) or it no longer fits."""
+    def start(self, task: claude_tasks.Task, paths: tuple[Path, ...] = (), title: str = "", focus: Path | None = None) -> None:
+        """Run `task` on the slide in the Source view (or on `focus`, a slide's current file) with a task card, or for
+        a deck bubble on its slides `paths`, unless one is running, the active route cannot run it (a card asks for
+        setup, the task row says why) or it no longer fits. `title` is what the card calls it."""
         if self.busy:
+            return
+        if (card := self.card) is not None and card.phase == card_model.REVIEW:
+            self.show_card()                    # its proposal waits for an answer first
             return
         project = self._window.project
         route = ai_profile.resolve(project, KINDS[task.name])
+        on_card = task in CARD_TASKS and not paths
+        capture = None
+        if on_card:
+            capture = _capture(self._window, task, _focus_at(self._window, focus) if focus else _focus(self._window))
+            if capture is None:
+                self.status.emit("That no longer fits this slide.", "warning")
+                return
         if reason := self.refusal(task, route):
-            self.status.emit(reason, "warning")
+            self._refused(capture, route, title, reason, card_model.SETUP)
             return
         if not confirm_if_new(self._window, project, route, "the slide text and images this task works on"):
-            self.status.emit("Nothing was sent: using the cloud was not confirmed.", "warning")
+            self._refused(capture, route, title, "Nothing was sent: using the cloud was not confirmed.", card_model.STOPPED)
             return
         if route.is_local and not self._window.try_start_ollama_task(_NAMES[task.name].lower()):
             return
@@ -483,28 +543,45 @@ class TaskRunner(QObject):
         self._cancel = threading.Event()
         self._started = time.monotonic()
         self.unapplied = self.report = ""
-        if paths and task in BATCH_TASKS:
+        self._set_card(self._new_card(capture, route, title) if on_card else None)
+        if on_card:
+            self.status.emit("", "muted")
+        elif paths and task in BATCH_TASKS:
             self._batch = _Batch(task, deque(_Item(task, path) for path in paths), len(paths),
                                  limit=WORKERS if route.route == ai_profile.CLAUDE_CODE else 1)
-            self.busy_changed.emit(True)
+            self._notify_busy()
             self._ticker.start()
             self._tick()
             self._pump()
             return
-        if task is claude_tasks.SUMMARISE:
+        elif task is claude_tasks.SUMMARISE:
             capture = _capture_summary(self._window, paths)
-        elif task in (claude_images.DESCRIBE, claude_images.TRANSLATE):
-            capture = _capture_images(self._window, task, paths)
         else:
-            capture = _capture(self._window, task, _focus(self._window))
+            capture = _capture_images(self._window, task, paths)
         if capture is None:
             self._release()
             self.status.emit("That no longer fits this slide.", "warning")
             return
         self._launch(capture)
-        self.busy_changed.emit(True)
+        self._notify_busy()
         self._tick()
         self._ticker.start()
+
+    def _refused(self, capture: _Capture | None, route: ai_profile.Route, title: str, reason: str, phase: str) -> None:
+        """The task will not start: a task on a slide says so on its card, the others in the task row."""
+        if capture is None:
+            self.status.emit(reason, "warning")
+        else:
+            self._set_card(self._new_card(capture, route, title, phase=phase, note=reason))
+
+    def _new_card(self, capture: _Capture, route: ai_profile.Route, title: str, **fields) -> TaskCard:
+        task = capture.task
+        language = capture.language
+        if task is claude_tasks.UPDATE_TRANSLATION:
+            language = slide_language.own_language(capture.id_slug) or ""
+        return TaskCard(task, title or _NAMES[task.name], route, target=slide_language.bare_id(capture.id_slug),
+                        target_title=deck_outline.slide_file_title(capture.path, capture.id_slug), focus=capture.path,
+                        file=capture.path.name, language=language, t0=time.monotonic(), **fields)
 
     def _release(self) -> None:
         """The run is over: give the Ollama slot back and forget its providers."""
@@ -545,6 +622,7 @@ class TaskRunner(QObject):
 
     def stop(self) -> None:
         self._cancel.set()
+        self._preview_cancel.set()
         for provider in self._providers:
             provider.abort()
 
@@ -552,8 +630,9 @@ class TaskRunner(QObject):
         """The view is going away: end the processes; their outcomes are not looked at."""
         self._ticker.stop()
         self.stop()
-        running, self._running, self._batch = self._running, {}, None
-        for worker in running:
+        running, self._running, self._batch, self.card = self._running, {}, None, None
+        preview, self._preview = self._preview, None
+        for worker in (*running, *([preview] if preview is not None else [])):
             background.stop_worker(worker)
         self._release()
 
@@ -568,6 +647,10 @@ class TaskRunner(QObject):
         return f"{_VERBS[capture.task.name]} {slide_language.bare_id(capture.id_slug)}"
 
     def _tick(self) -> None:
+        if (card := self.card) is not None and card.phase == card_model.GENERATE:
+            card.elapsed = round(time.monotonic() - card.t0)
+            self.card_changed.emit()
+            return
         seconds = round(time.monotonic() - self._started)
         what = self.describe()
         if (batch := self._batch) is not None:
@@ -596,9 +679,12 @@ class TaskRunner(QObject):
         if isinstance(worker, _ImageWorker):
             report = self._images_report(worker.capture.task, outcome)
             self._window.side_panels.refresh()         # shows the drafts that were stored
+        elif worker.capture.task in CARD_TASKS:
+            self._generated(worker.capture, outcome)
+            return
         else:
             report = self._result(worker.capture, outcome)
-        self.busy_changed.emit(False)          # after the change: the bubbles look at the slide as it is now
+        self._notify_busy()                    # after the change: the bubbles look at the slide as it is now
         self.status.emit(*report)
 
     def _result(self, capture: _Capture, outcome: Outcome) -> tuple[str, str]:
@@ -653,7 +739,7 @@ class TaskRunner(QObject):
             report = f"Stopped after {seconds:.0f} s: {counts}", "muted"
         else:
             report = f"Done in {seconds:.0f} s: {counts}", "warning" if batch.failed else "ok"
-        self.busy_changed.emit(False)
+        self._notify_busy()
         self.status.emit(*report)
 
     def _images_report(self, task: claude_tasks.Task, summary) -> tuple[str, str]:
@@ -669,15 +755,176 @@ class TaskRunner(QObject):
             return text, "ok"
         return f"{text}, {failed} failed ({summary.errors[0]})", "warning" if summary.written else "error"
 
+    # -- the task card ------------------------------------------------------------------------------------
+
+    def _set_card(self, card: TaskCard | None) -> None:
+        self.card, self._proposal, self._applied = card, None, None
+        self.card_changed.emit()
+
+    def _phase(self, card: TaskCard, phase: str, **fields) -> None:
+        """Move `card` to `phase` (with the fields that go with it) and tell the views."""
+        card.phase = phase
+        for name, value in fields.items():
+            setattr(card, name, value)
+        self.card_changed.emit()
+        self._notify_busy()
+
+    def show_card(self) -> None:
+        if self.card is not None and self.card.hidden:
+            self.card.hidden = False
+            self.card_changed.emit()
+
+    def hide_card(self) -> None:
+        """Back to conversation: a card that is still going on stays, as a pill; one that has ended goes."""
+        if self.card is None:
+            return
+        if self.card.phase in (card_model.GENERATE, card_model.REVIEW, card_model.APPLY, card_model.CHECK):
+            self.card.hidden = True
+            self.card_changed.emit()
+        else:
+            self.close_card()
+
+    def close_card(self) -> None:
+        """Close, Dismiss, Reject: the card goes. A card that is still going on stays (Stop first)."""
+        if self.card is None or self.card.running:
+            return
+        self._set_card(None)
+
+    def _generated(self, capture: _Capture, outcome: Outcome) -> None:
+        """The answer of a task on a slide: its proposal goes to Review, or, with Edit automatically, straight to
+        Apply; no change, a stop and a failure end the card."""
+        card = self.card
+        if outcome.status == CANCELLED:
+            self._phase(card, card_model.STOPPED)
+        elif outcome.status == NOTHING:
+            self._phase(card, card_model.DONE, nothing=True)
+        elif outcome.status != DONE:
+            login = outcome.message == claude_runner.NOT_LOGGED_IN
+            self._phase(card, card_model.SETUP if login else card_model.FAILED, can_sign_in=login,
+                        note=outcome.message if login else f"{outcome.message.rstrip('.')}. Nothing was changed.")
+        else:
+            card.before, card.after = ("", outcome.text) if capture.language else (capture.text, capture.header + outcome.text)
+            card.changed = card_model.changed_lines(card.before, card.after)
+            self._proposal = capture, outcome.text
+            if not self._fresh(capture):
+                self._phase(card, card_model.CONFLICT)
+            elif self._edit_auto():
+                card.auto = True
+                self._write_soon(card)
+            else:
+                self._phase(card, card_model.REVIEW)
+
+    def apply(self) -> None:
+        """Review's Apply."""
+        if self.card is not None and self.card.phase == card_model.REVIEW:
+            self._write_soon(self.card)
+
+    def _write_soon(self, card: TaskCard) -> None:
+        """The card shows the write, which happens a moment later (it cannot be interrupted)."""
+        self._phase(card, card_model.APPLY)
+        QTimer.singleShot(0, lambda: self._write_card(card))
+
+    def _write_card(self, card: TaskCard) -> None:
+        if self.card is not card or card.phase != card_model.APPLY:
+            return                                          # closed meanwhile (the window shut down)
+        capture, text = self._proposal
+        try:
+            written = self._fresh(capture) and self._commit(card, capture, text)
+        except OSError as exc:
+            self._phase(card, card_model.FAILED, note=f"{exc} Nothing was changed.")
+            return
+        if written:
+            self._check_preview(card)
+        else:
+            self._phase(card, card_model.CONFLICT)
+
+    def _commit(self, card: TaskCard, capture: _Capture, text: str) -> bool:
+        """Write the proposal; False if the slide changed after all."""
+        if capture.language:
+            if (made := self._translate(capture, text)) is None:
+                return False
+            card.result_path, card.warnings = made[0].path, made[1]
+        elif (applied := self._write(capture, text)) is None:
+            return False
+        else:
+            card.result_path, card.undoable, self._applied = capture.path, True, applied
+        return True
+
+    def _check_preview(self, card: TaskCard) -> None:
+        """Render the slide that was written, in the view and language being edited, through the preview's shared
+        render service (the chat's render tool takes the same way); the card ends when it has compiled or not."""
+        window, path = self._window, card.result_path
+        state = window.state
+        language = slide_language.own_language(path.name)
+        language = language if language in slide_language.TRANSLATION_LANGUAGES else state.language
+        target = slide_target(window.project, state.deck, path, state.view, language)
+        if target is None:                                  # not a slide file: nothing to render
+            return self._phase(card, card_model.DONE, preview_skipped=True)
+        text, view, timestamp = window.centre.slide_text(path), state.view, state.footer_timestamp
+        self._preview_cancel = cancel = threading.Event()
+        self._preview = worker = _PreviewWorker(lambda: self._workspace.render_preview(target, text, view, language, timestamp, cancel))
+        worker.done.connect(self._on_preview)
+        self._phase(card, card_model.CHECK, where=f"{slide_language.bare_id(path.name)} · {VIEW_LABELS[view]} · {language}")
+        background.start_detached(worker)
+
+    def _on_preview(self, worker: _PreviewWorker, error: str) -> None:
+        if worker is not self._preview:                     # the view was closed meanwhile
+            return
+        self._preview = None
+        worker.wait()
+        worker.deleteLater()
+        card = self.card
+        if self._preview_cancel.is_set():
+            self._phase(card, card_model.DONE, preview_skipped=True)
+        elif error:
+            self._phase(card, card_model.PREVIEW_FAILED, preview_error=card_model.first_error(error))
+        else:
+            self._phase(card, card_model.DONE)
+
+    def show_result(self) -> None:
+        """View DE version: the new slide in the centre column."""
+        self._workspace.show_slide(self.card.result_path)
+
+    def run_again(self) -> None:
+        """The same task on the same slide, on the route that is active now."""
+        card = self.card
+        if card is not None and not card.running:
+            self.start(card.task, title=card.title, focus=card.focus)
+
+    def current_text(self) -> str:
+        """What the card's proposal is compared with: the text the slide has now (a translation's source, the body that
+        would be sent)."""
+        capture, _text = self._proposal
+        text = self._window.centre.slide_text(capture.path)
+        return slide_versioning.strip_marker(slide_ids.body_of(text)) if capture.language else text
+
+    def undo(self) -> str:
+        """Take the written change back. "" when done, else why not (the file changed since)."""
+        card = self.card
+        if card is None or self._applied is None:
+            return "Nothing to undo."
+        problem = self._workspace.undo_in_buffer(self._applied)
+        if not problem:
+            self._set_card(None)
+        return problem
+
     # -- applying ----------------------------------------------------------------------------------------
 
     def _apply(self, capture: _Capture, outcome: Outcome) -> tuple[str, str]:
-        """Change the slide as the result says, if it still has the captured text: (status text, tone)."""
+        """Change the slide as the result of a batch item says, if it still has the captured text (a batch has no
+        Review): (status text, tone)."""
         if capture.task is claude_tasks.SUMMARISE:
             self.summary.emit(outcome.text)
             return f"Done in {outcome.elapsed_s:.1f} s", "ok"
         try:
-            note = self._translate(capture, outcome.text) if capture.language else self._write(capture, outcome.text)
+            if capture.language:
+                created = self._translate(capture, outcome.text)
+                note = None if created is None else f": {created[0].id_slug} created" + "".join(f", {w}" for w in created[1])
+            elif (applied := self._write(capture, outcome.text)) is None:
+                note = None
+            else:
+                self._refresh_preview(capture, applied.after)
+                note = f": {capture.id_slug} updated" if capture.task is claude_tasks.UPDATE_TRANSLATION else ""
         except OSError as exc:
             return str(exc), "error"
         if note is None:
@@ -685,47 +932,54 @@ class TaskRunner(QObject):
             return CONFLICT, "warning"
         return f"Done in {outcome.elapsed_s:.1f} s{note}", "ok"
 
-    def _write(self, capture: _Capture, result: str) -> str | None:
-        """Put `result` in place of the captured text (after the part of it that was not sent) and show it;
-        None if the file has changed. What to append to the status line."""
+    def _refresh_preview(self, capture: _Capture, new: str) -> None:
+        """A batch wrote the slide that the Preview shows from the buffer: render it again (no mode switch, no
+        question); otherwise the preview offers it."""
+        window = self._window
+        if (window.centre.path == capture.path and self._workspace.is_open(capture.path)
+                and window.state.mode in ("preview", "split") and not _errors(window.project, new)):
+            window.centre.preview.render_buffer()
+
+    def _fresh(self, capture: _Capture) -> bool:
+        """Whether the slide still has the text the task was started on (and a translation still has no partner)."""
+        window = self._window
+        return window.centre.slide_text(capture.path) == capture.text and not (
+            capture.language and slide_language.translation_link(window.project, capture.id_slug))
+
+    def _write(self, capture: _Capture, result: str) -> EditApplied | None:
+        """Put `result` in place of the captured text (after the part of it that was not sent) and show it; None if
+        the file has changed. What Undo puts back."""
         new = capture.header + result
         try:
-            write_text(self._workspace, capture.path, capture.text, new,
-                       kind="translation" if capture.task is claude_tasks.UPDATE_TRANSLATION else "edit",
-                       source=capture.task.name)
+            via_buffer = write_text(self._workspace, capture.path, capture.text, new,
+                                    kind="translation" if capture.task is claude_tasks.UPDATE_TRANSLATION else "edit",
+                                    source=capture.task.name)
         except ToolError:
             return None
-        window = self._window
-        centre = window.centre
-        if (centre.path == capture.path and self._workspace.is_open(capture.path)
-                and window.state.mode in ("preview", "split") and not _errors(window.project, new)):
-            centre.preview.render_buffer()             # no mode switch, no question; else the preview offers it
         # a file on disk is shown again by the refresh of its write
-        return f": {capture.id_slug} updated" if capture.task is claude_tasks.UPDATE_TRANSLATION else ""
+        return EditApplied("", capture.path, capture.text, new, via_buffer)
 
-    def _translate(self, capture: _Capture, translated: str) -> str | None:
-        """Create the partner slide from `translated`, link it to the source and add it to the deck, and show it;
+    def _translate(self, capture: _Capture, translated: str) -> tuple[slide_add.CreatedSlide, list[str]] | None:
+        """Create the partner slide from `translated`, link it to the source and add it to the deck that was open;
         None, with nothing created, if the source has changed or has a partner by now (another slide of the batch or
-        the user made one). What to append to the status line."""
+        the user made one). The new slide and what could not be done around it."""
         window = self._window
-        if window.centre.slide_text(capture.path) != capture.text or slide_language.translation_link(window.project, capture.id_slug):
+        if not self._fresh(capture):
             return None
         created = slide_add.create_translation(
             window.project, capture.id_slug, slide_add.slug_of(capture.id_slug), capture.language, translated.replace("\n", capture.eol))
         ai_review.mark(window.project, created.path, "translation", capture.task.name)
         self._workspace.review_changed()
         linked = slide_ids.with_translation_backreference(capture.text, capture.language, created.id_slug)
-        note = f": {created.id_slug} created"
+        warnings = []
         try:
             write_text(self._workspace, capture.path, capture.text, linked,
                        kind="translation", source=capture.task.name)
         except ToolError as exc:
-            note += f", not linked to {capture.id_slug} ({exc})"
+            warnings.append(f"not linked to {capture.id_slug} ({exc})")
         if not self._add_to_deck(capture, created.id_slug):
-            note += ", not added to the deck"
-        if self._batch is None:
-            window.open_slide_editor(created.path)
-        return note
+            warnings.append("not added to the deck")
+        return created, warnings
 
     def _add_to_deck(self, capture: _Capture, id_slug: str) -> bool:
         """Put the call of `id_slug` right after the source's in the deck that was open. Whether it was."""

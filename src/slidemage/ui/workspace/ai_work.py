@@ -2,7 +2,8 @@
 
 Every place that starts AI work answers `running_work()` with a `RunningWork` per thing it has under way, built
 from its own state, so nothing is registered and the answer cannot go stale. The window gathers them
-(`WorkspaceWindow.running_ai_work`): Claude Code tasks and batches (terminal/tasks.py), a chat answer streaming
+(`WorkspaceWindow.running_ai_work`): Claude Code tasks and batches (terminal/tasks.py: a task card in Generate, Apply
+or Check preview, not one in Review), a chat answer streaming
 (chat/view.py), a drafting or translation run of the Images page (pages/images.py), an "Ask AI to fix" check
 (ai_fix.py) and, last, the app-wide Ollama slot when none of those accounts for it (an Add slide translation or a
 prompt-tuning request, which run inside a sheet of their own).

@@ -64,6 +64,7 @@ class FakeWindow:
         self.panels = None
         self.centre = FakeCentre()
         self.opened = []
+        self.translated = []
         self.logged = []
         self.busy = None
         self.actions = PanelActions(
@@ -71,7 +72,7 @@ class FakeWindow:
             edit_slide_text=self.centre.edit_slide_text, save_source=self.centre.source.save,
             restore_version=self.centre.restore_version, freeze_version=self.centre.freeze_version,
             edit_deck=lambda *a, **k: self.slide_list.edit(*a, **k),
-            add_slide=lambda *a, **k: self.slide_list.add_slide(*a, **k),
+            add_slide=lambda *a, **k: self.slide_list.add_slide(*a, **k), translate=lambda: self.translated.append(True),
             add_reference=self.centre.source.add_reference)
 
     def try_start_ollama_task(self, label, provider=None):
@@ -493,13 +494,12 @@ def test_language_shows_the_translation_and_whether_it_is_outdated(ctx, content,
     assert buttons(panel, "Open")
 
 
-def test_translate_opens_the_add_slide_sheet_on_a_translation(content, paths):
+def test_translate_runs_the_assistants_translate_task(content, paths):
     panels, _state, window = content
     panel = shown(panels, "language")
     assert "No translation yet" in texts(panel)
-    buttons(panel, "Translate to DE…")[0].click()
-    assert window.started == [{"where": "at the end of the deck", "source": "translate", "slide": "cit-EN-Cited",
-                               "target": "DE"}]
+    buttons(panel, "Translate to DE")[0].click()
+    assert window.translated == [True] and not hasattr(window, "started")
 
 
 def test_set_language_asks_and_goes_through_slide_rename(content, monkeypatch):

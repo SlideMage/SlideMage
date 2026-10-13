@@ -61,9 +61,9 @@ message), never silently on another route.
 | 4 | `ui/workspace/panels/images.py:_redraft`. Image descriptions panel: Redraft | image_description | as 3 | as 3 | as 3 | `task_route(IMAGE_DESCRIPTION)` -> `draft_backend` |
 | 5 | `image_runs.py:_tune` -> `image_dialogs.PromptTuningSheet`. Images page: Tune prompt | image_description | `ModelBackend` with the edited system prompt | n/a: no Claude backend takes an edited prompt; dialog "not available on Cloud · Claude Code" | as 3 | `provider_from_combo` -> `provider_for` |
 | 6 | `image_runs.py:_translate_image`, `_translate_all`. Images page: Translate, Translate all (the image fields) | translation | `ModelTranslationBackend` on Ollama | `claude_images.ClaudeTranslationBackend` | `ModelTranslationBackend` on the API | `picked_route(TRANSLATION)` -> `translation_backend` |
-| 7 | `ui/dialogs/add_slide.py:_start_translation`. Add slide sheet "Translate the text with a model"; opened by the Language panel's Translate…, palette "Translate slide…" (`slide:translate`), the slide list's menu | translation | `slide_add.translate_body` on the Ollama provider | `claude_runner.SlideTranslator` (the Translate task, answer checked) | `translate_body` on the API provider | `picked_route(TRANSLATION)` -> `resolver.slide_translator` |
+| 7 | `ui/dialogs/add_slide.py:_start_translation`. Add slide sheet "Translate the text with a model"; opened by palette "Translate slide…" (`slide:translate`), the slide list's menu (the Language panel's Translate and the palette's "Translate to German" are path 9a) | translation | `slide_add.translate_body` on the Ollama provider | `claude_runner.SlideTranslator` (the Translate task, answer checked) | `translate_body` on the API provider | `picked_route(TRANSLATION)` -> `resolver.slide_translator` |
 | 8 | `ui/workspace/ai_fix.py:AiFixPanel.run_check`. Source view: Ask AI to fix | fixes_notes_transcripts (was `syntax_check`) | `syntax_check.SyntaxChecker` on Ollama | n/a: its counterpart is path 9c (it edits the slide, this one lists line fixes); dialog "not available on Cloud · Claude Code" | `SyntaxChecker` on the API | `provider_from_combo(FIXES)` -> `provider_for` |
-| 9a | `terminal/tasks.py:TaskRunner.start(TRANSLATE)`; bubble "Translate to German/English", deck bubble "Translate missing slides", MCP tool `translate_slide` | translation | `slide_add.translate_body` on Ollama, answer checked with `claude_tasks.check`, one at a time, Ollama slot held | `claude_runner.run_task` | as Local on the API provider | `TaskRunner.start` -> `resolve(KINDS[task])` |
+| 9a | `terminal/tasks.py:TaskRunner.start(TRANSLATE)`; bubble "Translate to German/English", the Language panel's Translate (`AssistantArea.translate_slide`), deck bubble "Translate missing slides", MCP tool `translate_slide` | translation | `slide_add.translate_body` on Ollama, answer checked with `claude_tasks.check`, one at a time, Ollama slot held | `claude_runner.run_task` | as Local on the API provider | `TaskRunner.start` -> `resolve(KINDS[task])` |
 | 9b | `TaskRunner.start(UPDATE_TRANSLATION)`; bubble "Update DE translation" | translation | n/a | `run_task` | n/a | `TaskRunner.refusal` |
 | 9c | `TaskRunner.start(FIX_LATEX)`; bubble "Fix LaTeX errors" | fixes_notes_transcripts | n/a (the Local counterpart is path 8, a different operation) | `run_task` | n/a | `TaskRunner.refusal` |
 | 9d | `TaskRunner.start(PROOFREAD / CONCISE / TITLE / NOTE / SUMMARISE)`; bubbles "Proofread", "Make more concise", "Better title", "Add speaker notes", "Summarise this deck" | fixes_notes_transcripts | n/a | `run_task` | n/a | `TaskRunner.refusal` |
@@ -88,7 +88,8 @@ Other places checked, with no AI dispatch of their own:
 |---|---|
 | Chat, any route that cannot answer | a red Notice in the conversation, and the note under the composer (`resolver.problem`) |
 | Pickers (Images page, Add slide, Ask AI to fix, Redraft, Tune) | a critical message box with the route's name; the picker lists only the active route's models |
-| Terminal bubbles | the task row's status line (warning), also returned to Claude Code for `translate_slide` |
+| A task on one slide (bubble, palette, the Language panel's Translate) | its task card in the Setup needed phase: the reason, "nothing was sent, the slide is unchanged", no other route or model used; also returned to Claude Code for `translate_slide` |
+| A batch, an image task or the summary | the task row's status line (warning) |
 
 No path asks one route and answers from another. Consent: the first cloud request in a project (any cloud route, any
 path that has a dialog parent) asks once, `ai_models.confirm_if_new`, and sets `cloud_seen`.
@@ -105,6 +106,14 @@ Deliberately left for later steps:
   (paths 9a-9f) are the assistant header's two most relevant tasks the route can run, and every task is a palette
   command (`task:<scope>:<name>`); both go through `TaskRunner.refusal`, which now also refuses Claude Code tasks when
   `claude` is not installed. The terminal's own bubble strip is gone.
+* **Task cards** are done (step 4): a task on one slide (paths 9a-9d except the summary and the batches) is a
+  `TaskCard` (`ui/workspace/task_card_model.py`, shown by `task_card.py`) owned by `TaskRunner`, on the route captured
+  when it started. Its answer stops in Review with the proposed diff and Apply writes it, or, with the chat's "Edit
+  automatically", is written at once; then the slide is rendered through the preview's shared `RenderService` (Check
+  preview). A route that cannot run it (`refusal`) or a `claude` that is not signed in (`NOT_LOGGED_IN`) is the Setup
+  needed phase. The busy query (`TaskRunner.running_work`) counts a card in Generate, Apply (cannot be stopped) and
+  Check preview, not one in Review. Batches, the image tasks and the summary keep the task row; the image batch
+  results panel and its Retry failed are step 5.
 * **Changing the mode** is done (step 2): the top-bar switch, its popovers and AI setup (`ui/workspace/ai_switch.py`,
   `ai_route.py`, `ai_popups.py`, `ai_setup.py`). Every move, from the switch, the palette ("Use Local AI", "Use Cloud
   AI") or AI setup's cloud connection, is `AiRoute.request`: busy work (`WorkspaceWindow.running_ai_work`, built from
@@ -120,7 +129,7 @@ Deliberately left for later steps:
   saved choice), never sent to another route.
 * **Per-route composer drafts and chat history** are kept in memory by the chat (`chat/route_chat.py`, swapped by
   `ChatView.show_route` on `state.ai_route_changed`); the unified assistant (step 3) shows the route's own. The chat's model chip picks a model for
-  that chat only (kept per route, forgotten by New conversation); the default stays AI setup's. Task cards and
-  their route label (`Route.label` is ready for them), the batch result panel and the dialog badge: steps 3-7.
+  that chat only (kept per route, forgotten by New conversation); the default stays AI setup's. The route label of
+  the task cards is `Route.label`; the batch result panel and the dialog badge: steps 5-7.
 * **Review marks** (`ai_review`, "Not reviewed") are written for any AI-authored change of path 9a, also from a Local
   provider, where the Add slide sheet (path 7) marks only cloud routes. More is flagged, not less.

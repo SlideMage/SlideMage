@@ -1,6 +1,7 @@
-"""The status line of the assistant card's tasks (workspace v6 handoff, step 3; step 4 turns it into the task card):
-what the TaskRunner (terminal/tasks.py) says while a task or batch runs and when it has ended, with Stop while it
-runs and "Show result" for a result a conflict did not apply, a batch's report or the summary of a deck.
+"""The task row of the assistant card: the status line of what has no task card (workspace v6 handoff, step 4) --
+a deck batch, the image tasks and the summary. What the TaskRunner (terminal/tasks.py) says while one runs and when
+it has ended, with Stop while it runs and "Show result" for a batch's report, the result a conflict in it did not
+apply, or the summary of a deck. A task on one slide is shown by the task card (task_card.py), not here.
 """
 from __future__ import annotations
 
@@ -45,7 +46,7 @@ class TaskRow(Surface):
             self.stop_button.setFocus()
 
     def _on_busy(self, busy: bool) -> None:
-        self.stop_button.setVisible(busy)
+        self.stop_button.setVisible(busy and self.tasks.card is None)
         self.result_button.hide()
 
     def _show_result(self) -> None:

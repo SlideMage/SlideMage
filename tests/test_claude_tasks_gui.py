@@ -19,8 +19,9 @@ from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, a
 
 from slidemage import alt_draft, alt_images, app_settings, slide_ids, slide_language, slide_versioning
 from slidemage.ai import ai_profile, claude_launch, claude_runner, credentials, resolver, translation_style
-from slidemage.ui.kit.widgets import ModalSheet
-from slidemage.ui.workspace import render_check
+from slidemage.ai.agent_types import EDIT_AUTO
+from slidemage.ui.kit.widgets import Button, ModalSheet
+from slidemage.ui.workspace import task_card_model as card_model
 from slidemage.ui.workspace.terminal import tasks as tasks_module
 
 pytest.importorskip("PySide6.QtWebEngineWidgets")
@@ -40,6 +41,14 @@ class Fake:
 
     def __init__(self, env, tmp_path, monkeypatch):
         self.env, self.monkeypatch, self.log = env, monkeypatch, tmp_path / "tasks.jsonl"
+        self.renders, self.error = [], ""
+
+    def rendered(self, *args, **kwargs):
+        """The stand-in for the preview's render: it compiles unless `error` is set."""
+        self.renders.append(args)
+        if self.error:
+            raise RuntimeError(self.error)
+        return b"png"
 
     def reply(self, *replies):
         self.monkeypatch.setenv("FAKE_CLAUDE_REPLIES", json.dumps(replies))
@@ -57,7 +66,11 @@ def ctx(claude_env):  # noqa: F811
 def fake(claude_env, tmp_path, monkeypatch):  # noqa: F811
     start_view(claude_env)                                                  # the route of these tasks: Cloud · Claude Code
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(tmp_path / "tasks.jsonl"))   # not the terminal's log
-    return Fake(claude_env, tmp_path, monkeypatch)
+    made = Fake(claude_env, tmp_path, monkeypatch)
+    area = claude_env.window.assistant
+    area.chat.session.set_mode(EDIT_AUTO)                                  # most of these tests are about the write
+    monkeypatch.setattr(area.workspace, "render_preview", made.rendered)  # no LaTeX: Check preview compiles or fails at will
+    return made
 
 
 def slide_file(env):
@@ -79,7 +92,8 @@ def click(env, label):
 def settled(env):
     wait_until(lambda: not env.window.assistant.tasks.busy)
     pump(0.05)
-    return env.window.assistant.task_row.status.text()
+    card = env.window.assistant.tasks.card
+    return card_model.state_text(card) if card else env.window.assistant.task_row.status.text()
 
 
 def german_files(env):
@@ -129,25 +143,25 @@ def test_without_claude_the_header_offers_no_task_and_the_palette_says_why(claud
     area.header.refresh_content()
     assert "Better title" in buttons(env) and area.header.shown == []
     click(env, "Better title")
-    assert shown == [resolver.NO_CLAUDE] and not area.tasks.busy
+    card = area.tasks.card
+    assert card.phase == card_model.SETUP and card.note == resolver.NO_CLAUDE and not shown and not area.tasks.busy
+    assert card_model.state_text(card) == resolver.NO_CLAUDE + " The slide is unchanged."
 
 
 # -- fixing ---------------------------------------------------------------------------------------------------
 
-def test_a_fix_goes_into_the_open_buffer_and_ctrl_z_takes_it_back(fake, monkeypatch):
+def test_a_fix_goes_into_the_open_buffer_and_ctrl_z_takes_it_back(fake):
     env = fake.env
-    rendered = []
-    monkeypatch.setattr(env.window.centre.preview, "render_buffer", lambda: rendered.append(True))
-    monkeypatch.setattr(render_check, "confirm_render", lambda *a, **k: pytest.fail("a dialog opened"))
     break_slide(env)
     fake.reply({"answer": FIX})
     click(env, "Fix LaTeX errors")
-    assert env.window.assistant.tasks.busy and env.window.assistant.header.shown == [] and env.window.assistant.task_row.stop_button.isVisibleTo(env.window.assistant)
-    assert settled(env).startswith("Done in ")
+    area = env.window.assistant
+    assert area.tasks.busy and area.header.shown == [] and area._stack.currentWidget() is area.task_card
+    assert settled(env).startswith("Applied automatically (Edit automatically is on). Changed 1 line in abc-EN-Hello-current.tex.")
     editor = slide_file(env).editor
-    assert editor.text() == LF and rendered == []                    # Source mode: the mode stays, nothing renders
-    assert env.window.state.mode == "source"
-    assert not env.window.assistant.task_row.stop_button.isVisibleTo(env.window.assistant) and buttons(env) == ["Translate to German", "Better title"]
+    assert editor.text() == LF
+    assert env.window.state.mode == "source"                         # the mode stays
+    assert buttons(env) == ["Translate to German", "Better title"]
     editor.undo()
     assert editor.text() == BROKEN
     request = fake.calls()[0]["request"]
@@ -155,17 +169,17 @@ def test_a_fix_goes_into_the_open_buffer_and_ctrl_z_takes_it_back(fake, monkeypa
     assert (env.root / SLIDE).read_bytes() == SLIDE_TEXT.encode()      # nothing was saved
 
 
-def test_a_fix_renders_the_buffer_only_when_the_preview_is_showing(fake, monkeypatch):
+def test_check_preview_renders_the_slide_in_the_view_and_language_being_edited(fake):
     env = fake.env
-    rendered = []
-    monkeypatch.setattr(env.window.centre.preview, "render_buffer", lambda: rendered.append(True))
-    monkeypatch.setattr(render_check, "confirm_render", lambda *a, **k: pytest.fail("a dialog opened"))
     env.window.state.set_mode("split")
     pump(0.1)
     break_slide(env)
     fake.reply({"answer": FIX})
     click(env, "Fix LaTeX errors")
-    assert settled(env).startswith("Done in ") and rendered == [True] and env.window.state.mode == "split"
+    assert "The preview is current." in settled(env) and env.window.state.mode == "split"
+    ((target, text, view, language, _timestamp, _cancel),) = fake.renders
+    assert target.source_path == env.path and text == LF and (view, language) == ("instructor", "EN")
+    assert env.window.assistant.tasks.card.where == "abc · Instructor · EN"
 
 
 def test_a_slide_that_needs_no_change_says_so(fake):
@@ -173,7 +187,7 @@ def test_a_slide_that_needs_no_change_says_so(fake):
     break_slide(env)
     fake.reply({"answer": {"edits": []}})
     click(env, "Fix LaTeX errors")
-    assert settled(env) == "Nothing to change"
+    assert settled(env) == "Nothing to change in abc. Nothing was written."
     assert slide_file(env).editor.text() == BROKEN
 
 
@@ -185,9 +199,10 @@ def test_typing_during_a_fix_is_a_conflict_and_nothing_is_overwritten(fake):
     editor = slide_file(env).editor
     typed = BROKEN + "% typed meanwhile\n"
     editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
+    assert settled(env) == "abc changed while this task ran. The proposal is kept but not applied."
     assert editor.text() == typed
-    assert env.window.assistant.task_row.result_button.isVisibleTo(env.window.assistant) and "Second point" in env.window.assistant.tasks.unapplied
+    card = env.window.assistant.tasks.card
+    assert card.phase == card_model.CONFLICT and "Second point" in card.after and fake.renders == []
 
 
 def test_a_focus_change_during_a_task_does_not_change_its_target(fake):
@@ -197,7 +212,7 @@ def test_a_focus_change_during_a_task_does_not_change_its_target(fake):
     click(env, "Fix LaTeX errors")
     env.window.state.set_focused_slide("abd")
     wait_until(lambda: env.window.centre.path.name.startswith("abd"))
-    assert settled(env).startswith("Done in ")
+    assert "Changed 1 line in abc-EN-Hello-current.tex. The preview is current." in settled(env)
     assert slide_file(env).editor.text() == LF                       # abc, which was the target
     assert env.window.centre.source.file_for(env.window.centre.path).editor.text() == LF.replace("Hello", "Second")
 
@@ -208,8 +223,8 @@ def test_stop_cancels_and_the_late_result_is_dropped(fake, tmp_path):
     fake.reply({"answer": FIX, "delay": 5, "marker": str(tmp_path / "late")})
     click(env, "Fix LaTeX errors")
     wait_until(lambda: fake.log.exists())
-    env.window.assistant.task_row.stop_button.click()
-    assert settled(env) == "Cancelled"
+    next(b for b in env.window.assistant.task_card.findChildren(Button) if b.text() == "Stop").click()
+    assert settled(env) == "Stopped. Nothing was changed."
     assert slide_file(env).editor.text() == BROKEN and not (tmp_path / "late").exists()
 
 
@@ -218,7 +233,8 @@ def test_a_failure_is_reported_as_it_is(fake):
     break_slide(env)
     fake.reply({"error": "Not logged in · Please run /login"})
     click(env, "Fix LaTeX errors")
-    assert settled(env) == claude_runner.NOT_LOGGED_IN
+    assert settled(env) == claude_runner.NOT_LOGGED_IN + " The slide is unchanged."
+    assert env.window.assistant.tasks.card.phase == card_model.SETUP and env.window.assistant.tasks.card.can_sign_in
     assert slide_file(env).editor.text() == BROKEN
 
 
@@ -231,7 +247,8 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     status = settled(env)
     (partner,) = german_files(env)
     new_id_slug = partner.name.removesuffix("-current.tex")
-    assert status == f"Done in {status.split()[2]} s: {new_id_slug} created"
+    assert status == (f"Applied automatically (Edit automatically is on). Created {new_id_slug}-current.tex. "
+                      "It stays linked to the English slide. The preview is current.")
     text = partner.read_bytes().decode()
     assert text.startswith(f"%% Included in decks: test\r\n%%\r\n\r\n%% Translation of: abc-EN-Hello\r\n%%\r\n\r\n")
     assert "Hallo" in text and "Erster Punkt" in text and "\\setSlideVersion" not in text and "\r\n" in text
@@ -240,7 +257,11 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     source = slide_file(env).editor.text()                                # linked in the buffer, not saved
     assert f"%% DE translation: {new_id_slug}\n" in source and source != LF
     assert (env.root / SLIDE).read_bytes() == SLIDE_TEXT.encode()
-    assert env.window.centre.path == partner                              # shown
+    assert env.window.centre.path == env.path                             # not shown until View DE version
+    next(b for b in env.window.assistant.task_card.findChildren(Button) if b.text() == "View DE version").click()
+    assert env.window.centre.path == partner
+    ((target, *_),) = fake.renders
+    assert target.source_path == partner                                  # Check preview rendered the new slide
     link = slide_language.translation_link(ctx, "abc-EN-Hello")                # found although the source is unsaved
     assert link is not None and link.partner == new_id_slug and not any(b.label.startswith("Translate") for b in tasks_module._offers(ctx, 
         tasks_module._focus(env.window), link))
@@ -260,10 +281,10 @@ def test_the_terminal_translates_through_the_bubble(fake):
     fake.reply({"answer": GERMAN})
     client = Client(env.view.session._server)
     answer = on_thread(lambda: client.text("translate_slide", path=SLIDE))
-    assert answer == "SlideMage is translating it (Translate to German); the new slide opens when it is done."
+    assert answer == "SlideMage is translating it (Translate to German); the task card in the assistant shows the proposed slide."
     settled(env)
     (partner,) = german_files(env)
-    assert "Hallo" in partner.read_text() and env.window.centre.path == partner
+    assert "Hallo" in partner.read_text()
     assert "nothing to translate" in on_thread(lambda: client.text("translate_slide", path=SLIDE))
 
 
@@ -272,7 +293,7 @@ def test_a_failed_translation_creates_nothing(fake):
     deck = (env.root / "decks" / "test.tex").read_bytes()
     fake.reply({"error": "overloaded"}, {"error": "overloaded"})
     click(env, "Translate to German")
-    assert settled(env) == "overloaded"
+    assert settled(env) == "overloaded. Nothing was changed."
     assert german_files(env) == [] and (env.root / "decks" / "test.tex").read_bytes() == deck
     assert slide_file(env).editor.text() == LF
 
@@ -283,9 +304,9 @@ def test_a_source_that_changed_meanwhile_gets_no_partner(fake):
     click(env, "Translate to German")
     typed = LF + "% typed meanwhile\n"
     slide_file(env).editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
+    assert settled(env) == "abc changed while this task ran. The proposal is kept but not applied."
     assert german_files(env) == [] and slide_file(env).editor.text() == typed
-    assert "Hallo" in env.window.assistant.tasks.unapplied and env.window.assistant.task_row.result_button.isVisibleTo(env.window.assistant)
+    assert "Hallo" in env.window.assistant.tasks.card.after
     assert (env.root / "decks" / "test.tex").read_text().count("\\slide") == 2
 
 
@@ -298,7 +319,7 @@ def test_a_slide_that_is_not_in_the_deck_still_gets_its_translation(fake):
     wait_until(lambda: env.window.centre.path.name.startswith("abd") and "Translate to German" in buttons(env))
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
-    assert settled(env).endswith("created, not added to the deck")
+    assert "It is not complete: not added to the deck." in settled(env)
     assert len(german_files(env)) == 1 and deck.read_text().count("\\slide") == 1
 
 
@@ -344,7 +365,7 @@ def test_the_route_is_captured_when_a_task_starts(ctx, fake):
     fake.reply({"answer": GERMAN, "delay": 0.3})
     click(env, "Translate to German")
     ai_profile.set_mode(ctx, ai_profile.LOCAL)                     # the switch moves: the running task is not moved with it
-    assert settled(env).startswith("Done")
+    assert settled(env).startswith("Applied automatically") and "Created" in settled(env)
     assert len(fake.calls()) == 1 and len(german_files(env)) == 1
 
 
@@ -395,7 +416,7 @@ def test_proofreading_applies_its_edits_into_the_buffer(fake):
     wait_until(lambda: "Proofread" in buttons(env))
     fake.reply({"answer": {"edits": [{"before": "enough ordinary words", "after": "enough ordinary words,"}]}})
     click(env, "Proofread")
-    assert settled(env).startswith("Done in ")
+    assert "Changed 1 line" in settled(env)
     editor = slide_file(env).editor
     assert "ordinary words," in editor.text()
     editor.undo()
@@ -409,7 +430,7 @@ def test_proofreading_text_without_mistakes_says_so(fake):
     wait_until(lambda: "Proofread" in buttons(env))
     fake.reply({"answer": {"edits": []}})
     click(env, "Proofread")
-    assert settled(env) == "Nothing to change" and slide_file(env).editor.text() == PROSE
+    assert settled(env) == "Nothing to change in abc. Nothing was written." and slide_file(env).editor.text() == PROSE
 
 
 def test_a_shortened_slide_is_applied_and_one_that_loses_structure_is_refused(fake):
@@ -424,14 +445,14 @@ def test_a_shortened_slide_is_applied_and_one_that_loses_structure_is_refused(fa
     shorter = PROSE.replace(" with enough ordinary words", "")
     fake.reply({"answer": {"body": shorter}})
     click(env, "Make more concise")
-    assert settled(env).startswith("Done in ") and slide_file(env).editor.text() == shorter
+    assert "Changed 1 line" in settled(env) and slide_file(env).editor.text() == shorter
 
 
 def test_a_better_title_replaces_only_the_frame_title(fake):
     env = fake.env
     fake.reply({"answer": {"title": "A better title"}})
     click(env, "Better title")
-    assert settled(env).startswith("Done in ")
+    assert "Changed 1 line" in settled(env)
     assert slide_file(env).editor.text() == LF.replace("{Hello}", "{A better title}")
     assert "Current title: Hello" in fake.calls()[0]["request"]
 
@@ -442,7 +463,7 @@ def test_a_speaker_note_goes_before_the_frames_end_and_its_bubble_goes(fake):
     wait_until(lambda: "Add speaker notes" in buttons(env))
     fake.reply({"answer": {"note": "Open with the main idea."}})
     click(env, "Add speaker notes")
-    assert settled(env).startswith("Done in ")
+    assert "Changed 1 line" in settled(env)
     assert slide_file(env).editor.text().endswith("\t\\note{Open with the main idea.}\n\\end{standardframe}\n")
     assert "Add speaker notes" not in buttons(env)
 
@@ -453,16 +474,17 @@ def test_typing_during_a_title_task_is_a_conflict(fake):
     click(env, "Better title")
     typed = LF + "% typed\n"
     slide_file(env).editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
-    assert slide_file(env).editor.text() == typed and env.window.assistant.tasks.unapplied.startswith("A better title") is False
+    assert settled(env) == "abc changed while this task ran. The proposal is kept but not applied."
+    assert slide_file(env).editor.text() == typed and env.window.assistant.tasks.card.phase == card_model.CONFLICT
 
 
-def test_the_status_names_what_is_done(fake, tmp_path):
+def test_the_card_names_what_is_going_on(fake, tmp_path):
     env = fake.env
     fake.reply({"answer": {"title": "T"}, "delay": 1.5})
     click(env, "Better title")
-    assert env.window.assistant.task_row.status.text().startswith("Retitling abc … ")
-    env.window.assistant.task_row.stop_button.click()
+    card = env.window.assistant.tasks.card
+    assert card.phase == card_model.GENERATE and card_model.state_text(card).startswith("Looking for a better title for abc.")
+    next(b for b in env.window.assistant.task_card.findChildren(Button) if b.text() == "Stop").click()
     settled(env)
 
 
@@ -504,7 +526,7 @@ def test_an_update_goes_into_the_open_translation_and_keeps_its_header(outdated)
     open_partner(env, outdated.partner)
     outdated.reply({"answer": UPDATE_ANSWER})
     click(env, "Update German translation")
-    assert settled(env).endswith(f": {GERMAN_ID} updated")
+    assert f"Updated {GERMAN_ID}-current.tex. It stays linked to the English slide." in settled(env)
     editor = env.window.centre.source.file_for(outdated.partner).editor
     assert editor.text().startswith(GERMAN_HEADER.replace("\r\n", "\n")) and "Erster Punkt!" in editor.text()
     assert "\\setSlideVersion{1-0-0}" in editor.text()
@@ -523,7 +545,7 @@ def test_an_update_of_a_closed_translation_is_saved_to_its_file(outdated):
     wait_until(lambda: "Update German translation" in buttons(env))
     outdated.reply({"answer": UPDATE_ANSWER})
     click(env, "Update German translation")
-    assert settled(env).endswith(f": {GERMAN_ID} updated")
+    assert f"Updated {GERMAN_ID}-current.tex. It stays linked to the English slide." in settled(env)
     text = outdated.partner.read_bytes().decode()                       # its CRLF line ends are kept
     assert text.startswith(GERMAN_HEADER) and "Erster Punkt!" in text and "\\setSlideVersion{1-0-0}" in text
     assert env.window.centre.path == env.path
@@ -537,8 +559,8 @@ def test_a_translation_that_changed_meanwhile_is_not_overwritten(outdated):
     editor = env.window.centre.source.file_for(outdated.partner).editor
     typed = editor.text() + "% getippt\n"
     editor.replace_all_text(typed)
-    assert settled(env) == tasks_module.CONFLICT
-    assert editor.text() == typed and "Erster Punkt!" in env.window.assistant.tasks.unapplied
+    assert settled(env) == "abe changed while this task ran. The proposal is kept but not applied."
+    assert editor.text() == typed and "Erster Punkt!" in env.window.assistant.tasks.card.after
 
 
 def test_a_translation_that_changed_on_disk_meanwhile_is_not_overwritten(outdated):
@@ -548,7 +570,7 @@ def test_a_translation_that_changed_on_disk_meanwhile_is_not_overwritten(outdate
     click(env, "Update German translation")
     changed = outdated.partner.read_bytes() + b"% getippt\r\n"
     outdated.partner.write_bytes(changed)
-    assert settled(env) == tasks_module.CONFLICT and outdated.partner.read_bytes() == changed
+    assert settled(env) and env.window.assistant.tasks.card.phase == card_model.CONFLICT and outdated.partner.read_bytes() == changed
 
 
 # -- images ---------------------------------------------------------------------------------------------------
@@ -858,8 +880,9 @@ def test_on_local_a_task_with_no_ollama_path_says_so_and_nothing_runs(ctx, fake)
     break_slide(env)
     for label in ("Fix LaTeX errors", "Better title"):
         click(env, label)
-        text = env.window.assistant.task_row.status.text()
-        assert "is not available on Local · Ollama" in text and "no other route or model is used" in text
+        card = env.window.assistant.tasks.card
+        assert card.phase == card_model.SETUP and "is not available on Local · Ollama" in card.note
+        assert "no other route or model is used" in card_model.state_text(card)
         assert not env.window.assistant.tasks.busy
     assert fake.calls() == [] and slide_file(env).editor.text() == BROKEN
     assert env.window._ollama_task_label is None                                 # the slot was never taken
@@ -883,7 +906,7 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
     monkeypatch.setattr(tasks_module.resolver, "provider_for", provider_for)
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", translate_body)
     click(env, "Translate to German")
-    assert settled(env).startswith("Done in ")
+    assert settled(env).startswith("Applied automatically")
     assert len(german_files(env)) == 1 and fake.calls() == []                    # no claude process
     assert [(r.route, r.model) for r in seen] == [("local", "translator")] and held == ["translating a slide"]
     assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []
@@ -897,7 +920,7 @@ def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ct
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: ("", "Ollama is not reachable."))
     click(env, "Translate to German")
-    assert settled(env) == "Ollama is not reachable." and german_files(env) == []
+    assert settled(env) == "Ollama is not reachable. Nothing was changed." and german_files(env) == []
     assert env.window._ollama_task_label is None
 
     release = threading.Event()
@@ -906,7 +929,7 @@ def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ct
     env.window.assistant.tasks.stop()
     assert provider.aborted.is_set()
     release.set()
-    assert settled(env) == "Cancelled" and german_files(env) == []
+    assert settled(env) == "Stopped. Nothing was changed." and german_files(env) == []
 
 
 def test_a_provider_translation_that_breaks_the_slide_is_refused_like_a_claude_answer(ctx, fake, monkeypatch):
@@ -950,11 +973,11 @@ def test_a_route_that_is_not_ready_starts_no_task_and_no_other_route_is_used(ctx
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
     click(env, "Translate to German")                                            # no Ollama model is chosen
-    assert "Choose an Ollama model for translation" in env.window.assistant.task_row.status.text() and fake.calls() == []
+    assert "Choose an Ollama model for translation" in env.window.assistant.tasks.card.note and fake.calls() == []
     credentials.set_api_key(ctx, "")
     on_route(fake, ai_profile.CLOUD, ai_profile.API)                             # no API key: Claude Code does not stand in
     click(env, "Translate to German")
-    assert "No Anthropic API key" in env.window.assistant.task_row.status.text() and fake.calls() == []
+    assert "No Anthropic API key" in env.window.assistant.tasks.card.note and fake.calls() == []
     assert german_files(env) == [] and not env.window.assistant.tasks.busy
 
 
@@ -965,10 +988,12 @@ def test_the_first_cloud_task_of_a_project_asks_once(ctx, fake, monkeypatch):
     monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args[2]) or QMessageBox.StandardButton.No)
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
-    assert env.window.assistant.task_row.status.text() == "Nothing was sent: using the cloud was not confirmed." and fake.calls() == []
+    card = env.window.assistant.tasks.card
+    assert card.phase == card_model.STOPPED and card_model.state_text(card) == "Nothing was sent: using the cloud was not confirmed."
+    assert fake.calls() == []
     monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
     click(env, "Translate to German")
-    assert settled(env).startswith("Done in ") and ai_profile.cloud_seen(ctx)
+    assert settled(env).startswith("Applied automatically") and ai_profile.cloud_seen(ctx)
     assert len(asked) == 2 and "Claude Code" in asked[0]
 
 

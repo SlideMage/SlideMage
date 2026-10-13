@@ -158,7 +158,8 @@ def test_translation_marks_both_partner_and_changed_source_and_inserted_call(win
     body = slide_ids.body_of(before).replace("Hello", "Hallo")
     capture = _Capture(claude_tasks.TRANSLATE, path, "abc-EN-Hello", before, "", body, "", "DE", "\r\n", window.state.deck.path)
     runner = TaskRunner(window, workspace)
-    assert "created" in runner._translate(capture, body)
+    created, warnings = runner._translate(capture, body)
+    assert created.id_slug.endswith("-DE-Hello") and warnings == []
     entries = ai_review.unreviewed(window.project)
     assert len(entries) == 2 and SLIDE in entries
     partner = next(key for key in entries if key != SLIDE)

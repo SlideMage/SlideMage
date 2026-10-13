@@ -119,7 +119,7 @@ class ClaudeCodeView(Surface):
         self.setup_steps.setOpenExternalLinks(True)
         inner.addWidget(self.setup_steps)
         self.setup_button = Button("", "cloud", compact=True)
-        self.setup_button.clicked.connect(self._on_setup_button)
+        self.setup_button.clicked.connect(self.sign_in)
         inner.addWidget(self.setup_button, 0, Qt.AlignmentFlag.AlignLeft)
         box.addWidget(card)
         return page
@@ -217,12 +217,12 @@ class ClaudeCodeView(Surface):
         bubble = next((b for b in bubbles(self.app) if b.task is claude_tasks.TRANSLATE), None)
         if bubble is None:
             return f"{path.name} has a translation already, or is not EN or DE: there is nothing to translate."
-        if self.tasks.busy:
-            return "SlideMage is busy with another task; ask the user to try again when its status line is done."
+        if self.tasks.occupied:
+            return "SlideMage is busy with another task; ask the user to try again when its card is done."
         if reason := self.tasks.refusal(bubble.task):
             return reason
-        self.tasks.start(bubble.task, bubble.paths)
-        return f"SlideMage is translating it ({bubble.label}); the new slide opens when it is done."
+        self.tasks.start(bubble.task, bubble.paths, bubble.label)
+        return f"SlideMage is translating it ({bubble.label}); the task card in the assistant shows the proposed slide."
 
     # -- starting and stopping --------------------------------------------------------------------
 
@@ -259,9 +259,9 @@ class ClaudeCodeView(Surface):
         else:
             self._build_terminal(self._claude)
 
-    def _on_setup_button(self) -> None:
-        """"Check again" looks for `claude` again; "Sign in…" starts the terminal, where Claude Code asks for
-        its login itself."""
+    def sign_in(self) -> None:
+        """The amber card's button, and the task card's Sign in…: "Check again" looks for `claude` again, "Sign in…"
+        starts the terminal, where Claude Code asks for its login itself."""
         if self._claude is None:
             self._open()
         else:

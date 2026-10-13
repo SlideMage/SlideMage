@@ -211,7 +211,7 @@ def test_only_the_tasks_the_route_can_run_are_offered(env):
 def test_a_button_runs_the_task_through_the_task_runner(env, monkeypatch):
     go(env, CLOUD, CLAUDE_CODE)
     started = []
-    monkeypatch.setattr(area(env).tasks, "start", lambda task, paths=(): started.append((task.name, paths)))
+    monkeypatch.setattr(area(env).tasks, "start", lambda task, paths=(), title="": started.append((task.name, paths)))
     refreshed(env)
     next(b for b in header(env).findChildren(Button) if b.text() == "Translate to German").click()
     assert started == [("translate", ())]
@@ -234,9 +234,11 @@ def test_every_offered_task_is_a_palette_command_and_a_refused_one_says_why(env,
     assert visible == ["task:slide:translate", "task:slide:fix_latex", "task:slide:title"]
     assert {c.title(env.window) for c in commands if c.id in visible} == {"Translate to German", "Fix LaTeX errors", "Better title"}
     fix = next(c for c in commands if c.id in visible and c.title(env.window) == "Fix LaTeX errors")
-    assert commands.run(fix.id, env.window)                                # Local cannot run it
-    assert shown_messages and "is not available on Local · Ollama" in shown_messages[0]
-    assert not area(env).tasks.busy
+    assert commands.run(fix.id, env.window)                                # Local cannot run it: the card asks for setup
+    card = area(env).tasks.card
+    assert card.phase == "setup_needed" and "is not available on Local · Ollama" in card.note
+    assert area(env)._stack.currentWidget() is area(env).task_card
+    assert not area(env).tasks.busy and not shown_messages
     area(env).scope._buttons["deck"].click()
     assert [c.title(env.window) for c in commands if c.id.startswith("task:deck:") and c.visible(env.window)] \
         == ["Translate missing slides (2)", "Fix LaTeX errors (1 slides)", "Summarise this deck"]
@@ -254,16 +256,21 @@ def test_a_running_task_shows_its_pill_with_open_and_the_buttons_wait(env, tmp_p
     assert not head.pill.isVisibleTo(head)
     bubble = next(b for b in head.offers("slide") if b.label == "Better title")
     area(env).run_task(bubble)
-    assert head.pill.isVisibleTo(head) and head.pill.label.full_text() == "Retitling abc"
+    assert area(env)._stack.currentWidget() is area(env).task_card and not head.pill.isVisibleTo(head)
     assert shown(env) == ["All actions…"]
-    row = area(env).task_row
-    assert row.stop_button.isVisibleTo(area(env))
-    head.pill.clicked.emit()                                          # Open: the task's line, ready for Stop
-    assert row.stop_button.hasFocus() or row.stop_button.isVisibleTo(area(env))
-    row.stop_button.click()
+    area(env).task_card.back.click()                                  # Back to conversation: the card goes, its pill stays
+    assert area(env)._stack.currentWidget() is area(env).claude_code
+    assert head.pill.isVisibleTo(head) and head.pill.label.full_text() == "Better title · generating"
+    assert shown(env) == ["All actions…"]
+    head.pill.clicked.emit()                                          # Open
+    assert area(env)._stack.currentWidget() is area(env).task_card and not head.pill.isVisibleTo(head)
+    next(b for b in area(env).task_card.findChildren(Button) if b.text() == "Stop").click()
     wait_until(lambda: not area(env).tasks.busy)
     pump(0.1)
-    assert not head.pill.isVisibleTo(head) and "Translate to German" in shown(env)
+    assert area(env).tasks.card.phase == "stopped" and not head.pill.isVisibleTo(head)
+    area(env).tasks.close_card()
+    pump(0.1)
+    assert "Translate to German" in shown(env)
 
 
 # -- Claude Code: the card, the caption --------------------------------------------------------------------------------

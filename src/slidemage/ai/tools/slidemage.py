@@ -155,17 +155,21 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     return _render_preview(ctx, path)
 
 
+def slide_target(project, deck: Deck | None, path: Path, view: str, language: str) -> preview_target.PreviewTarget | None:
+    """The slide file `path` as a preview renders it: as `deck` calls it in `view` and `language`, else alone
+    (None when it is no slide file)."""
+    if deck is not None:
+        row = deck_outline.slide_row(project, deck, slide_language.bare_id(path.name), view, language)
+        if row is not None and row.call.source_filename == path.name:
+            return preview_target.for_call(project, deck, row.call, row.position)
+    return preview_target.for_path(project, path)
+
+
 def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None,
                     show: bool = False) -> tuple[str, list[bytes]]:
     context = ctx.workspace.context()
     language = language or context.language
-    target = None
-    if context.deck is not None:
-        deck = open_deck(ctx)
-        row = deck_outline.slide_row(ctx.project, deck, slide_language.bare_id(path.name), context.view, language)
-        if row is not None and row.call.source_filename == path.name:
-            target = preview_target.for_call(ctx.project, deck, row.call, row.position)
-    target = target or preview_target.for_path(ctx.project, path)
+    target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path, context.view, language)
     if target is None:
         raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
     text, source = current_revision(ctx.workspace, path)

@@ -41,6 +41,7 @@ class PanelActions(NamedTuple):
     freeze_version: Callable[[str, str], object]
     edit_deck: Callable[..., bool]                        # an edit of the open deck (SlideList.edit)
     add_slide: Callable[..., object]                      # SlideList.add_slide
+    translate: Callable[[], object]                       # the assistant's Translate task, on its task card
     add_reference: Callable[[str], object]
 
 
