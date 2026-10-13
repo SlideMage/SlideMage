@@ -15,6 +15,7 @@ from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QVBoxLayout
 
 from ... import alt_images, image_review
+from ..ai_models import cloud_label
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, Field, SegmentedControl, Surface, caption
 from .image_preview import ImagePreview
@@ -190,6 +191,7 @@ class ImageForm(Surface):
         self.german_group.layout().insertWidget(0, self._line(self.translation_state, self.translate_button,
                                                         self.save_translate_button))
         self._show_translation_state(alt_images.translation_state(self.entry))
+        self.refresh_route()
 
     # -- what the form holds --------------------------------------------------------------------
 
@@ -312,11 +314,18 @@ class ImageForm(Surface):
         self.translate_button.setText("Translating…")
         self._apply_role()
 
+    def refresh_route(self) -> None:
+        """The buttons that send the text to the AI say "· cloud" while the AI switch is on Cloud."""
+        project = self.app.project
+        if not self.translating:
+            self.translate_button.setText(cloud_label(project, "Translate"))
+        self.save_translate_button.setText(cloud_label(project, "Save, then translate"))
+
     def end_translation(self, result) -> None:
         """Put a finished translation (alt_draft.TranslationResult) into the German fields."""
         asked_fields, asked_english = self._asked or ({}, self.english())
         self._asked, self.translating = None, False
-        self.translate_button.setText("Translate")
+        self.refresh_route()
         self._apply_role()
         if not result.ok:
             return

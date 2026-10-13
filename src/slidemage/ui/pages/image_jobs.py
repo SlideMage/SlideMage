@@ -8,13 +8,14 @@ time, so a job holds the app-wide Ollama slot (local providers) from start to en
 """
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Sequence
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
 from ... import alt_draft
 from ...ai.ai_profile import Route
+from ...batch_result import DRAFT, TRANSLATE, BatchResult, ItemOutcome, display_name
 from ...project import ProjectContext
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, caption
@@ -22,15 +23,19 @@ from ..kit.widgets import Button, IconLabel, caption
 
 class Job(QThread):
     progress = Signal(int, int, str)    # position in the queue, its length, the image
-    image_done = Signal(str, bool)      # a drafted image, whether the store changed
+    image_done = Signal(str, object)    # an image of the queue, its ItemOutcome
     result = Signal(object, object)     # this job, what `work` returned or the exception it raised
 
-    def __init__(self, title: str, provider, work: Callable[["Job"], object], route: Route | None = None) -> None:
+    def __init__(self, title: str, provider, work: Callable[["Job"], object], route: Route | None = None,
+                 kind: str = "", queue: Sequence[str] = ()) -> None:
         """`work(job)` does the run and returns its summary; it polls `should_stop()` between images. `route` is
-        the one the page started it on (the prompt-tuning sheet has none)."""
+        the one the page started it on (the prompt-tuning sheet has none). A batch is of a `kind` (DRAFT or
+        TRANSLATE) over the images of its `queue`; the page notes what became of each in `outcomes`."""
         super().__init__()
         self.title = title
         self.route = route
+        self.kind, self.queue = kind, list(queue)
+        self.outcomes: dict[str, ItemOutcome] = {}
         self.position = (0, 0)        # the image at work and how many: the last progress
         self.provider = provider      # a ChatProvider or Claude backend: whose Ollama slot the run holds, and abort() ends it
         self._work = work
@@ -46,16 +51,25 @@ class Job(QThread):
             outcome = exc
         self.result.emit(self, outcome)
 
+    def batch_result(self) -> BatchResult:
+        """What became of the batch so far; the images it did not reach were cancelled."""
+        return BatchResult.of(self.kind, self.route, self.queue, self.outcomes)
 
-def draft_work(ctx: ProjectContext, queue: list[alt_draft.ImageJob], backend: alt_draft.DraftBackend) -> Callable[[Job], object]:
-    return lambda job: alt_draft.run_batch(
+
+def draft_job(title: str, ctx: ProjectContext, queue: list[alt_draft.ImageJob], backend: alt_draft.DraftBackend,
+              route: Route) -> Job:
+    """The batch that drafts `queue` on `route`, whose `backend` is built from that route once."""
+    return Job(title, backend.provider, lambda job: alt_draft.run_batch(
         ctx, queue, backend, on_progress=lambda i, n, image_job: job.progress.emit(i, n, image_job.image),
-        on_slide_done=job.image_done.emit, should_stop=job.should_stop)
+        on_item_done=job.image_done.emit, should_stop=job.should_stop), route, DRAFT, [image.image for image in queue])
 
 
-def translate_work(ctx: ProjectContext, queue: list[str], backend: alt_draft.TranslationBackend) -> Callable[[Job], object]:
-    return lambda job: alt_draft.run_translation_batch(
-        ctx, queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image), should_stop=job.should_stop)
+def translate_job(title: str, ctx: ProjectContext, queue: list[str], backend: alt_draft.TranslationBackend,
+                  route: Route) -> Job:
+    """The batch that translates the descriptions of `queue` on `route`, as draft_job."""
+    return Job(title, backend.provider, lambda job: alt_draft.run_translation_batch(
+        ctx, queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image),
+        on_item_done=job.image_done.emit, should_stop=job.should_stop), route, TRANSLATE, queue)
 
 
 class JobCard(QFrame):
@@ -108,8 +122,8 @@ class JobCard(QFrame):
         self.note.setVisible(not self.single)
         self.show()
 
-    def set_progress(self, index: int, total: int, image: str) -> None:
-        self.detail.setText(f"Image {index} of {total} · {image}")
+    def set_progress(self, index: int, total: int, image: str, route: str) -> None:
+        self.detail.setText(f"Image {index} of {total} · {display_name(image)} · {route}")
         done = (index - 1) * 100 // max(total, 1)
         self.bar.setValue(done)
         self.percent.setText(f"{done}%")

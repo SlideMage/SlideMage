@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Optional, Protocol
 
 from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
+from .batch_result import CANCELLED, DONE, FAILED, KEPT, ItemOutcome
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .project import ProjectContext
 from .tex_source import COMMENT_RE, braced_argument
@@ -626,9 +627,22 @@ def slide_jobs(ctx: ProjectContext, row: alt_blocks.SlideRow, entries: dict[str,
             for reference, resolved in draftable_images(ctx, row, entries)]
 
 
-def apply_one_draft(ctx: ProjectContext, image: str, result: DraftResult, model_label: str, hint: str | None = None) -> bool:
+def _english(entry: "alt_images.ImageEntry") -> tuple[str, str, str]:
+    """The English text a draft replaces: what `baseline` of apply_one_draft is compared with."""
+    return entry.short, entry.long, entry.takeaway_default
+
+
+def _german(entry: "alt_images.ImageEntry") -> tuple[str, str, str]:
+    """The German text a translation replaces: what `baseline` of apply_one_translation is compared with."""
+    return entry.short_de, entry.long_de, entry.takeaway_default_de
+
+
+def apply_one_draft(ctx: ProjectContext, image: str, result: DraftResult, model_label: str, hint: str | None = None,
+                    baseline: tuple[str, str, str] | None = None) -> bool:
     """Write one image's draft into the shared store as unreviewed. True if
     written. `hint`, when given (an empty one clears it), is stored with the draft.
+    `baseline`, when given, is the English text (short, long, takeaway) the queue saw: a person who
+    wrote something else meanwhile keeps their text and nothing is written.
 
     Goes through alt_images.update_store() for the whole load-check-save
     round trip, so a concurrent write (the review tab's own save, running on
@@ -650,6 +664,8 @@ def apply_one_draft(ctx: ProjectContext, image: str, result: DraftResult, model_
     def mutate(entries: dict[str, "alt_images.ImageEntry"]) -> bool:
         entry = entries.get(image)
         if entry is None or entry.status == alt_images.STATUS_REVIEWED:
+            return False
+        if baseline is not None and _english(entry) != baseline:
             return False
         entry.short = result.short
         entry.long = result.long
@@ -740,13 +756,14 @@ class BatchSummary:
     skipped: int = 0
     failed: int = 0
     fabrications: int = 0
-    # Skipped because the image was reviewed (or vanished from the store)
-    # after the queue was built -- i.e. the user reviewed it by hand while
-    # the batch was running.
+    # Skipped because the image was reviewed or its text edited (or it
+    # vanished from the store) after the queue was built -- i.e. the user
+    # worked on it by hand while the batch was running.
     skipped_changed: int = 0
     seconds: float = 0.0
     stopped_early: bool = False
     errors: list[str] = field(default_factory=list)
+    outcomes: dict[str, ItemOutcome] = field(default_factory=dict)    # per image that was settled
 
 
 def run_batch(
@@ -755,7 +772,7 @@ def run_batch(
     backend: DraftBackend,
     *,
     on_progress=None,
-    on_slide_done=None,
+    on_item_done=None,
     should_stop=None,
 ) -> BatchSummary:
     """Draft every image in `queue`, writing each one as it completes.
@@ -763,9 +780,15 @@ def run_batch(
     Written per image rather than at the end on purpose: a run over 100+
     images takes hours, and anything that dies, is stopped, or loses power
     partway should leave every image it finished already on disk.
+
+    What became of each image is its `ItemOutcome` in `summary.outcomes`, and is
+    handed to `on_item_done(image, outcome)` as soon as it is settled. An image
+    whose text a person wrote (or reviewed) since the run began keeps it (KEPT);
+    one whose request was ended by `should_stop` is CANCELLED, not failed.
     """
     summary = BatchSummary()
     started = time.monotonic()
+    stored = alt_images.load_store(ctx)
 
     for index, job in enumerate(queue, start=1):
         if should_stop is not None and should_stop():
@@ -779,39 +802,44 @@ def run_batch(
             context = build_context(ctx, job.slide_path, job.image)
             result = backend.draft(job.resolved, context)
         except Exception as exc:                     # never kill the batch
-            summary.failed += 1
-            summary.errors.append(f"{job.image}: {exc}")
-            continue
+            result = DraftResult(error=str(exc) or type(exc).__name__)
 
         if not result.ok:
             summary.errors.append(f"{job.image}: {result.error}")
-        elif result.suspected_fabrication:
-            summary.fabrications += 1
-            summary.errors.append(
-                f"{job.image}: value table removed — the numbers looked "
-                f"interpolated, not measured")
-        elif result.role_suggestion == alt_images.ROLE_DECORATIVE:
-            summary.errors.append(f"{job.image}: model suggests this image is decorative")
-
-        written = apply_one_draft(ctx, job.image, result, backend.label)
-        if written:
-            summary.written += 1
-        elif result.ok:
-            # The draft itself succeeded; it just wasn't applied -- the only
-            # way that happens is the entry became reviewed (or disappeared)
-            # since the queue was built.
-            summary.skipped += 1
-            summary.skipped_changed += 1
-            summary.errors.append(
-                f"{job.image}: skipped - you reviewed it while the batch "
-                f"was running, so the draft was not written over it")
+            if should_stop is not None and should_stop():     # the request was ended with the run
+                summary.stopped_early = True
+                outcome = ItemOutcome(CANCELLED)
+            else:
+                summary.failed += 1
+                outcome = ItemOutcome(FAILED, result.error or "")
         else:
-            summary.skipped += 1
+            if result.suspected_fabrication:
+                summary.fabrications += 1
+                summary.errors.append(
+                    f"{job.image}: value table removed — the numbers looked "
+                    f"interpolated, not measured")
+            elif result.role_suggestion == alt_images.ROLE_DECORATIVE:
+                summary.errors.append(f"{job.image}: model suggests this image is decorative")
+            entry = stored.get(job.image)
+            if apply_one_draft(ctx, job.image, result, backend.label, baseline=None if entry is None else _english(entry)):
+                summary.written += 1
+                outcome = ItemOutcome(DONE)
+            else:
+                # The draft itself succeeded; it just wasn't applied -- the only
+                # way that happens is the entry became reviewed (or disappeared),
+                # or its text was edited, since the queue was built.
+                summary.skipped += 1
+                summary.skipped_changed += 1
+                summary.errors.append(
+                    f"{job.image}: skipped - you edited or reviewed it while the batch "
+                    f"was running, so the draft was not written over it")
+                outcome = ItemOutcome(KEPT)
+        summary.outcomes[job.image] = outcome
 
         # Report per image, not just at the end: a run over 100+ images
         # takes hours, and the review list has to become usable as it goes.
-        if on_slide_done is not None:
-            on_slide_done(job.image, written)
+        if on_item_done is not None:
+            on_item_done(job.image, outcome)
 
     summary.seconds = time.monotonic() - started
     return summary
@@ -994,20 +1022,22 @@ class ModelTranslationBackend:
         )
 
 
-def apply_one_translation(ctx: ProjectContext, image: str, result: TranslationResult, model_label: str) -> bool:
+def apply_one_translation(ctx: ProjectContext, image: str, result: TranslationResult, model_label: str,
+                          baseline: tuple[str, str, str] | None = None) -> bool:
     """Write one image's German translation into the shared store. True if
     written. Mirrors apply_one_draft()'s update_store()-based atomicity,
     but refuses only when the *English* text has moved on since `result`
     was produced (translated_from_hash mismatch) rather than checking a
     reviewed flag -- there is no separate "German reviewed" gate to
     respect here, translation_state() derives staleness purely from the
-    hash."""
+    hash. `baseline`, when given, is the German text (short, long, takeaway) the queue saw:
+    a person who wrote something else meanwhile keeps their text and nothing is written."""
     if not result.ok:
         return False
 
     def mutate(entries: dict[str, "alt_images.ImageEntry"]) -> bool:
         entry = entries.get(image)
-        if entry is None:
+        if entry is None or (baseline is not None and _german(entry) != baseline):
             return False
         current_hash = alt_images.en_text_hash(entry)
         # The queue this came from was built against some earlier snapshot
@@ -1066,6 +1096,7 @@ class TranslationBatchSummary:
     seconds: float = 0.0
     stopped_early: bool = False
     errors: list[str] = field(default_factory=list)
+    outcomes: dict[str, ItemOutcome] = field(default_factory=dict)    # per image that was settled
 
 
 def run_translation_batch(
@@ -1074,14 +1105,15 @@ def run_translation_batch(
     backend: TranslationBackend,
     *,
     on_progress=None,
-    on_image_done=None,
+    on_item_done=None,
     should_stop=None,
 ) -> TranslationBatchSummary:
     """Translate every image in `queue`, writing each one as it completes
     -- same per-image-write, same should_stop cooperative-cancel shape as
     run_batch() above, for the same reason (a run over the whole store can
     take a while, and a stop/crash partway through should keep whatever
-    finished)."""
+    finished). The outcomes are run_batch()'s: German text a person wrote
+    (or English they changed) since the run began is KEPT."""
     summary = TranslationBatchSummary()
     started = time.monotonic()
     entries = alt_images.load_store(ctx)
@@ -1102,21 +1134,26 @@ def run_translation_batch(
         try:
             result = backend.translate(entry)
         except Exception as exc:                      # never kill the batch
-            summary.failed += 1
-            summary.errors.append(f"{image}: {exc}")
-            continue
+            result = TranslationResult(error=str(exc) or type(exc).__name__)
 
         if not result.ok:
             summary.errors.append(f"{image}: {result.error}")
-
-        written = apply_one_translation(ctx, image, result, backend.label)
-        if written:
+            if should_stop is not None and should_stop():     # the request was ended with the run
+                summary.stopped_early = True
+                outcome = ItemOutcome(CANCELLED)
+            else:
+                summary.failed += 1
+                outcome = ItemOutcome(FAILED, result.error or "")
+        elif apply_one_translation(ctx, image, result, backend.label, baseline=_german(entry)):
             summary.written += 1
+            outcome = ItemOutcome(DONE)
         else:
             summary.skipped += 1
+            outcome = ItemOutcome(KEPT)
+        summary.outcomes[image] = outcome
 
-        if on_image_done is not None:
-            on_image_done(image, written)
+        if on_item_done is not None:
+            on_item_done(image, outcome)
 
     summary.seconds = time.monotonic() - started
     return summary

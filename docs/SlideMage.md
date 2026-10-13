@@ -203,11 +203,21 @@ What matters when touching *this code*:
   once on a single image) and come back over a `Signal`. The thread holds the Ollama
   slot (`try_start_ollama_task`) -- a cloud model needs none. One image takes 10-60s;
   a full batch takes hours. Use `ui/background.stop_worker` for any new worker thread.
+- **A batch captures its route when it starts and ends in a results panel.** `Job.route` is the Route of the picker
+  at the click (`ai_profile.resolve`), and the backend is built from it once (`image_jobs.draft_job` /
+  `translate_job`), so the AI switch moving mid-run changes nothing about it; its progress line reads "Image 2 of 4 ·
+  file · route". `alt_draft.run_batch` / `run_translation_batch` settle every image as an `ItemOutcome`
+  (`batch_result.py`: done, kept, failed, cancelled); a run that ends, is stopped or is cancelled by *Stop and switch*
+  turns them into a `BatchResult` that `image_results.BatchResultView` shows (title "partly done" or "done", the
+  route, a summary, a row per image, **Retry failed (n)** and Close). The same widget serves the assistant's image
+  tasks (`TaskRunner.result`, `retry_failed`). The question before a batch, `image_results.question`, names the model,
+  on Cloud what is sent and the time. The buttons that send content say "· cloud" on Cloud (`ai_models.cloud_label`).
 - **Drafts are written to the shared store per image as they finish**, not
   buffered to the end, and the batch queue is *derived* from the store and
   the slide files rather than kept anywhere of its own -- which is what
   makes it resumable across sessions with no job state to corrupt.
-- **A running batch must not overwrite an image the user reviewed mid-run,
+- **A running batch must not overwrite an image the user reviewed or edited mid-run (it keeps the person's text and
+  reports "kept"; the check compares the entry with the text the queue saw at the start),
   and two writers (the batch thread, the GUI thread's own saves) must not
   interleave and lose each other's change to the one shared JSON file.**
   `alt_images.update_store()` closes both: it holds a process-wide lock for

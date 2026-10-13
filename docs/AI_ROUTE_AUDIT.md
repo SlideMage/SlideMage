@@ -112,8 +112,24 @@ Deliberately left for later steps:
   automatically", is written at once; then the slide is rendered through the preview's shared `RenderService` (Check
   preview). A route that cannot run it (`refusal`) or a `claude` that is not signed in (`NOT_LOGGED_IN`) is the Setup
   needed phase. The busy query (`TaskRunner.running_work`) counts a card in Generate, Apply (cannot be stopped) and
-  Check preview, not one in Review. Batches, the image tasks and the summary keep the task row; the image batch
-  results panel and its Retry failed are step 5.
+  Check preview, not one in Review. Batches and the summary keep the task row.
+* **Image batches** are done (step 5), for paths 5-8 (drafting and translating on the Images page) and 9e-9f (the
+  assistant's image tasks): the route is on what sends content ("Draft all… · cloud", "Translate · cloud", "Redraft… ·
+  cloud", the Language panel's "Translate to DE · cloud"; each follows `ai_route_changed`, `ai_models.cloud_label`), and a
+  note under each picker names the route's model and, on Cloud, what is sent. A batch captures its Route when it
+  starts (`Job.route`; the backend is built from it once, `draft_job`/`translate_job`), so a switch changes nothing
+  about a run under way, and the progress line says "Image 2 of 4 · file · route". The question before a batch names the
+  model, what is sent and the time (`image_results.question`), also before Retry failed. What became of each image is
+  an `ItemOutcome` that `alt_draft.run_batch` / `run_translation_batch` settle (done, kept, failed, cancelled; the images
+  a run did not reach are cancelled, `batch_result.BatchResult`), and one results panel (`ui/pages/image_results.py`)
+  shows it with Retry failed: under the job card of the Images page, in the assistant's body for the image tasks. The
+  busy query lists a batch as "Drafting image descriptions · 2 of 4 done · <route>"; Stop and switch ends the run and
+  the pending images show as "Cancelled · not sent". Text a person wrote or reviewed since the run began is never
+  overwritten (`apply_one_draft` / `apply_one_translation` compare against the text the queue saw) and is reported as
+  kept; so is English text typed into the open form (it wins at the next save). Not done: counts on the buttons ("Draft
+  all (8)"): the queue renders PDF and tikz images to know what it can describe, too slow to redo on every route change;
+  the counts are in the question; and no "Update DE" button in the Language panel (it only has Translate; the header's
+  "Update DE translation" task button is not suffixed).
 * **Changing the mode** is done (step 2): the top-bar switch, its popovers and AI setup (`ui/workspace/ai_switch.py`,
   `ai_route.py`, `ai_popups.py`, `ai_setup.py`). Every move, from the switch, the palette ("Use Local AI", "Use Cloud
   AI") or AI setup's cloud connection, is `AiRoute.request`: busy work (`WorkspaceWindow.running_ai_work`, built from

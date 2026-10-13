@@ -90,6 +90,7 @@ class SidePanels(QWidget):
             panel.dirty_changed.connect(lambda _dirty: state.set_dirty(bool(self.dirty_panels()), "panels"))
         for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed):
             signal.connect(lambda _value: self.refresh())
+        state.ai_route_changed.connect(lambda _route: [panel.refresh_route() for panel in self.panels.values()])
         self.refresh()
 
     def set_panel(self, key: str) -> None:

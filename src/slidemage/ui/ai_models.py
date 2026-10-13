@@ -114,6 +114,14 @@ def fill_model_combo(
     return True
 
 
+CLOUD_SUFFIX = " · cloud"
+
+
+def cloud_label(project: ProjectContext, text: str) -> str:
+    """`text` for a button that sends content to the AI: with " · cloud" while the AI switch is on Cloud."""
+    return text if ai_profile.active_route(project) == ai_profile.LOCAL else text + CLOUD_SUFFIX
+
+
 def confirm_cloud_request(parent: QWidget, project: ProjectContext, label: str, what: str) -> bool:
     """Ask before the first cloud request in a project: it goes to `label`, naming what `what` is sent. A yes
     is remembered (ai_profile.mark_cloud_seen), so this is asked once per project."""

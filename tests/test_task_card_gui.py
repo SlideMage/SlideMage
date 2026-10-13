@@ -395,7 +395,7 @@ def test_the_language_panels_translate_opens_the_card(asked):
     pump(0.1)
     panel = env.window.side_panels
     asked.reply({"answer": GERMAN})
-    next(b for b in panel.findChildren(Button) if b.text() == "Translate to DE").click()
+    next(b for b in panel.findChildren(Button) if b.text() == "Translate to DE · cloud").click()
     assert card(env).task is model.claude_tasks.TRANSLATE and area(env)._stack.currentWidget() is area(env).task_card
     wait_until(phase_is(env, model.REVIEW))
     assert state(env) == "Proposed translation of abc into German, as a new slide. Nothing is written yet."

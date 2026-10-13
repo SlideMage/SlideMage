@@ -2,25 +2,32 @@
 the prompt.
 
 A mixin of ImagesPage (images.py), which holds the state these methods work on: the slide and forms
-on show, the model pickers and the job card. One job runs at a time (image_jobs.Job, a QThread that
-`background.stop_worker` can always end) and holds the app-wide Ollama slot for its whole life; a
-cloud provider needs none, which the window's try_start_ollama_task decides.
+on show, the model pickers, the job card and the results panel. One job runs at a time (image_jobs.Job,
+a QThread that `background.stop_worker` can always end) and holds the app-wide Ollama slot for its
+whole life; a cloud provider needs none, which the window's try_start_ollama_task decides.
+
+A job captures its route when it starts: the picked Route and the backend built from it once, so a
+switch of the AI route changes nothing about a run under way. What became of each image is noted as it
+is settled (`Job.outcomes`); a run that ends, is stopped or is cancelled by "Stop and switch" shows
+them in the results panel (image_results.py).
 """
 from __future__ import annotations
 
 from dataclasses import replace
 from typing import Optional
 
-from PySide6.QtWidgets import QCheckBox, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from ... import alt_draft, alt_images
 from ...ai import resolver
+from ...batch_result import DONE, DRAFT, KEPT, TRANSLATE, ItemOutcome
 from ..ai_models import built, picked_route, provider_from_combo
 from .. import background
 from ..workspace.ai_work import RunningWork
 from .image_dialogs import PromptTuningSheet
 from .image_form import ImageForm
-from .image_jobs import Job, draft_work, translate_work
+from .image_jobs import Job, draft_job, translate_job
+from .image_results import confirm
 
 
 class ImageRunsMixin:
@@ -31,8 +38,9 @@ class ImageRunsMixin:
     def _start(self, job: Job, detail: str, steps: int, on_outcome) -> None:
         """Run `job` (its Ollama slot is taken); `on_outcome(summary or exception)` follows on this thread."""
         self._job, self._on_outcome = job, on_outcome
+        self.results.clear()
         job.progress.connect(lambda index, total, image: self._on_progress(job, index, total, image))
-        job.image_done.connect(lambda image, written: self._on_image_done(job, image, written))
+        job.image_done.connect(lambda image, outcome: self._on_image_done(job, image, outcome))
         job.result.connect(self._on_job_result)
         self.job_card.start(job.title, detail, steps)
         self.app.log(f"{job.title}: {detail}")
@@ -53,7 +61,7 @@ class ImageRunsMixin:
         if job is not self._job:      # stopped meanwhile (its thread may still report)
             return
         job.position = (index, total)
-        self.job_card.set_progress(index, total, image)
+        self.job_card.set_progress(index, total, image, job.route.label)
         self.app.log(f"  [{index}/{total}] {image}")
 
     def _on_job_result(self, job: Job, outcome: object) -> None:
@@ -66,6 +74,8 @@ class ImageRunsMixin:
         self.job_card.hide()
         self._update_buttons()
         on_outcome(outcome)
+        if job.kind:
+            self.results.show_result(job.batch_result())
 
     def _stop_clicked(self) -> None:
         job = self._job
@@ -78,9 +88,10 @@ class ImageRunsMixin:
         self.job_card.set_stopping(job.stop_requested)
         self.app.log("Stopping after the current image…" if job.stop_requested else "Stop rescinded: going on.")
 
-    def _abort_job(self) -> None:
-        """End the running job now (Stop on a single request, closing the window): its thread is kept
-        until it has ended and gives the Ollama slot back then."""
+    def _abort_job(self, *, closing: bool = False) -> None:
+        """End the running job now (Stop on a single request, "Stop and switch", closing the window): its thread
+        is kept until it has ended and gives the Ollama slot back then. What it had done stays written; the images
+        it did not reach are cancelled, which the results panel says (not while the window closes)."""
         job, self._job = self._job, None
         if job is None:
             return
@@ -92,14 +103,22 @@ class ImageRunsMixin:
         self._translating = None
         self.app.log("Stopped.")
         self._update_buttons()
+        if job.kind and not closing:
+            self._refresh_states()
+            self.results.show_result(job.batch_result())
 
     def shutdown(self) -> None:
         """The window closes: no worker thread outlives it."""
-        self._abort_job()
+        self._abort_job(closing=True)
 
-    def _on_image_done(self, job: Job, image: str, written: bool) -> None:
-        """One image of a drafting run was written."""
-        if written and job is self._job:
+    def _on_image_done(self, job: Job, image: str, outcome: ItemOutcome) -> None:
+        """One image of a batch was settled. A draft written while the form on show holds English text typed
+        since the slide was shown leaves that text to win at the next save: it counts as kept."""
+        form = next((f for f in self._forms if f.reference == image), None)
+        if outcome.kind == DONE and job.kind == DRAFT and form is not None and form.english() != form.saved_english():
+            outcome = ItemOutcome(KEPT)
+        job.outcomes[image] = outcome
+        if outcome.kind == DONE and job is self._job:
             self._refresh_states()
 
     def _finished_batch(self, verb: str, outcome: object, summary_line: str) -> None:
@@ -114,20 +133,6 @@ class ImageRunsMixin:
             self._refresh_states()
         else:
             self.reload(self._current_path())
-
-    def _confirm_batch(self, title: str, text: str, details: str, also: str = "") -> tuple[bool, bool]:
-        """Ask before a run that takes long: (whether to start, whether the extra checkbox `also`, if there is
-        one, is ticked)."""
-        box = QMessageBox(self)
-        box.setWindowTitle(title)
-        box.setText(text)
-        box.setInformativeText(details)
-        checkbox = QCheckBox(also) if also else None
-        if checkbox is not None:
-            box.setCheckBox(checkbox)
-        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        box.button(QMessageBox.StandardButton.Ok).setText("Start")
-        return box.exec() == QMessageBox.StandardButton.Ok, checkbox is not None and checkbox.isChecked()
 
     # drafting
 
@@ -159,34 +164,33 @@ class ImageRunsMixin:
         if picked is None or not self.app.try_start_ollama_task("drafting descriptions", picked[1].provider):
             return
         route, backend = picked
-        job = Job("Drafting descriptions", backend.provider, draft_work(self.app.project, jobs, backend), route)
+        job = draft_job("Drafting descriptions", self.app.project, jobs, backend, route)
         self._start(job, f"{view.row.path.name} via {backend.label}", len(jobs), self._drafted)
 
-    def _draft_all(self) -> None:
+    def _draft_all(self, only: Optional[list[str]] = None) -> None:
+        """Draft what still needs it, after asking; with `only` (Retry failed) just those images."""
         picked = self._draft_backend()
         if picked is None or not self.app.try_start_ollama_task("drafting descriptions", picked[1].provider):
             return
         route, backend = picked
         queue = alt_draft.images_needing_drafts(self.app.project)
         redraftable = alt_draft.images_needing_drafts(self.app.project, redraft_unless_model=backend.label)
+        if only is not None:
+            queue = redraftable = [job for job in redraftable if job.image in only]
         other_model = max(len(redraftable) - len(queue), 0)
         if not queue and not other_model:
             QMessageBox.information(self, "Nothing to draft",
                                     "Every describable image already has a draft or a reviewed description.")
             self.app.end_ollama_task(backend.provider)
             return
-        go, again = self._confirm_batch(
-            "Draft all descriptions", f"Draft {len(queue)} image(s) using {backend.label}?",
-            "Each image is written to disk as it finishes, so you can stop any time and resume later: the queue is "
-            "recomputed from the files.\n\nReviewed descriptions are never overwritten. Expect this to take hours; "
-            "it runs in the background.",
-            f"Also redraft {other_model} image(s) drafted by a different model" if other_model else "")
+        go, again = confirm(self, DRAFT, len(queue), self.app.project.root.name, route,
+                            f"Also redraft {other_model} image(s) drafted by a different model" if other_model else "")
         if not go:
             self.app.end_ollama_task(backend.provider)
             return
         if again:
             queue = redraftable
-        job = Job("Drafting image descriptions", backend.provider, draft_work(self.app.project, queue, backend), route)
+        job = draft_job("Drafting image descriptions", self.app.project, queue, backend, route)
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._drafted)
 
     def _drafted(self, outcome: object) -> None:
@@ -196,7 +200,7 @@ class ImageRunsMixin:
             line = (f"{'Stopped' if summary.stopped_early else 'Finished'}: {summary.written} image(s) drafted, "
                     f"{summary.skipped} skipped, {summary.failed} failed, in {summary.seconds / 60:.1f} min. "
                     + (f"{summary.fabrications} value table(s) removed as unreliable. " if summary.fabrications else "")
-                    + (f"{summary.skipped_changed} skipped because you reviewed them mid-run. "
+                    + (f"{summary.skipped_changed} kept because you edited or reviewed them mid-run. "
                        if summary.skipped_changed else "")
                     + "All drafts are unreviewed: check every number against the image.")
         self._finished_batch("Drafting", outcome, line)
@@ -235,27 +239,24 @@ class ImageRunsMixin:
 
     # translating
 
-    def _translate_all(self) -> None:
+    def _translate_all(self, only: Optional[list[str]] = None) -> None:
+        """Translate what still needs it, after asking; with `only` (Retry failed) just those images."""
         picked = self._translation_backend("the descriptions of all untranslated images")
         if picked is None or not self.app.try_start_ollama_task("translating images", picked[1].provider):
             return
         route, backend = picked
-        queue = alt_draft.images_needing_translation(self.app.project)
+        queue = [image for image in alt_draft.images_needing_translation(self.app.project)
+                 if only is None or image in only]
         if not queue:
             QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
                                     "current (non-stale) German translation.")
             self.app.end_ollama_task(backend.provider)
             return
-        go, _again = self._confirm_batch(
-            "Translate all images", f"Translate {len(queue)} image(s) into German using {backend.label}?",
-            "Each image is written to disk as it finishes, so you can stop any time and resume later: the queue is "
-            "recomputed from the files.\n\nThese are unreviewed translations, like a drafted description: check "
-            "them before relying on them.")
+        go, _again = confirm(self, TRANSLATE, len(queue), self.app.project.root.name, route)
         if not go:
             self.app.end_ollama_task(backend.provider)
             return
-        job = Job("Translating descriptions to German", backend.provider, translate_work(self.app.project, queue, backend),
-                  route)
+        job = translate_job("Translating descriptions to German", self.app.project, queue, backend, route)
         self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated)
 
     def _translated(self, outcome: object) -> None:
@@ -265,6 +266,12 @@ class ImageRunsMixin:
                     f"translated, {outcome.skipped} skipped, {outcome.failed} failed, in {outcome.seconds / 60:.1f} "
                     "min. All translations are unreviewed: check them before relying on them.")
         self._finished_batch("Translating", outcome, line)
+
+    def _retry_failed(self) -> None:
+        """Retry failed: a new batch of only the images that failed, on the route active now, asked about again."""
+        result = self.results.result
+        if result is not None and self._job is None:
+            (self._draft_all if result.kind == DRAFT else self._translate_all)(only=result.failed)
 
     def _ask_which_english(self) -> Optional[str]:
         """The English text has unsaved changes: translate "unsaved", "disk" (what is saved) or "save" it first."""

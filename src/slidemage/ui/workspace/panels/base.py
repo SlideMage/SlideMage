@@ -133,6 +133,9 @@ class SidePanel(Surface):
             self.body.addWidget(text(caption, q.PANEL_CAPTION))
         self.body.addStretch(1)
 
+    def refresh_route(self) -> None:
+        """The AI route changed: say so on what sends content to the AI ("Redraft… · cloud")."""
+
     def refresh(self) -> None:
         clear_layout(self.body)
         slide = self.id_slug()

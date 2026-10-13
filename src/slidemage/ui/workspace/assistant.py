@@ -5,14 +5,15 @@ A header (assistant_header.py: the route, the scope, the task buttons, the runni
 the status of batches, image tasks and the summary) and a body that follows the AI switch: the native chat
 (chat/view.py) on Local and Cloud · API, the real terminal (terminal/view.py) on Cloud · Claude Code. A task on one
 slide takes the body's place with its task card (task_card.py) until Back to conversation (the header's pill brings it
-back) or until it is closed. The scope and the TaskRunner (terminal/tasks.py) are the card's, so both bodies and the
+back) or until it is closed; an image task, when it ends, takes it with the results panel (pages/image_results.py:
+what became of each image, Retry failed) until Back to conversation. The scope and the TaskRunner (terminal/tasks.py) are the card's, so both bodies and the
 header share them; "New conversation" clears the route on show and no other.
 Focus hides the side panels (side_panels.py listens); it is not remembered.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QStackedWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QScrollArea, QStackedWidget
 
 from ...ai import ai_profile
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
@@ -20,6 +21,7 @@ from ...ai.agent_types import EDIT_AUTO
 from ...ai.claude_tasks import TRANSLATE
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, SegmentedControl
+from ..pages.image_results import BatchResultView
 from .assistant_header import AssistantHeader
 from .chat.gui_workspace import GuiWorkspace
 from .chat.view import ChatView
@@ -49,9 +51,11 @@ class AssistantArea(Card):
         self.header = AssistantHeader(app, state, self.scope, self.tasks, self._tasks_blocked)
         self.task_row = TaskRow(app, self.tasks)
         self.task_card = TaskCardView(app, self.tasks)
+        self.image_results = BatchResultView(back=True)
         self._stack = QStackedWidget()
         self._stack.setObjectName(q.SURFACE)
-        for body in (self.chat, self.claude_code, self.task_card):
+        self._results_page = self._scrolled(self.image_results)
+        for body in (self.chat, self.claude_code, self.task_card, self._results_page):
             self._stack.addWidget(body)
         for widget, stretch in ((self.header, 0), (self.task_row, 0), (self._stack, 1)):
             self.layout().addWidget(widget, stretch)
@@ -63,6 +67,9 @@ class AssistantArea(Card):
         self.task_card.back_clicked.connect(self.tasks.hide_card)
         self.task_card.sign_in_clicked.connect(self._sign_in)
         self.tasks.card_changed.connect(self._show_body)
+        self.tasks.result_changed.connect(self._show_body)
+        self.image_results.retry_clicked.connect(self.tasks.retry_failed)
+        self.image_results.closed.connect(self.tasks.close_result)
         self.chat.route_changed.connect(self._refresh_route)
         self.claude_code.setup_changed.connect(self.header.schedule)
         state.ai_route_changed.connect(self._show_body)
@@ -73,11 +80,26 @@ class AssistantArea(Card):
         """The task buttons wait while the amber card asks for Claude Code to be installed or signed in."""
         return self.state.ai_route == ai_profile.CLAUDE_CODE and self.claude_code.needs_setup
 
+    @staticmethod
+    def _scrolled(body: BatchResultView) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setObjectName(q.SURFACE)
+        scroll.viewport().setObjectName(q.SURFACE)
+        scroll.setWidget(body)
+        return scroll
+
     def _show_body(self, _route: str = "") -> None:
-        """The task card while there is one on show, else the conversation of the route."""
-        card = self.tasks.card
+        """The task card while there is one on show, else the image results, else the conversation of the route."""
+        card, result = self.tasks.card, self.tasks.result
         if card is not None and not card.hidden:
             self._stack.setCurrentWidget(self.task_card)
+        elif result is not None:
+            if self.image_results.result is not result:
+                self.image_results.show_result(result)
+            self._stack.setCurrentWidget(self._results_page)
         else:
             self._stack.setCurrentWidget(self.claude_code if self.state.ai_route == ai_profile.CLAUDE_CODE else self.chat)
 

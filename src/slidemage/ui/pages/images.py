@@ -10,7 +10,8 @@ Everything about an image lives once in media/alt-text.json (alt_images.py), sha
 that show it; only the takeaway can differ per slide and only the reviewed stamp is per (image,
 slide). This page and the side panel are the only writers. What a form means for the store is
 image_review's; drafting and translating are alt_draft's, run here as one job at a time on a thread
-(image_jobs.py) that holds the Ollama slot (cloud models need none) and can be stopped.
+(image_jobs.py) that holds the Ollama slot (cloud models need none) and can be stopped. A job captures the AI
+route it started on; when a batch ends the results panel (image_results.py) says what became of each image.
 
 An edit that is not saved yet is the page's `dirty`: it is saved as a draft when the slide, the
 deck or the page changes, and counts for the close prompt like the side panels' pending edits.
@@ -31,7 +32,8 @@ from PySide6.QtWidgets import (
 )
 
 from ... import alt_draft, alt_images, image_review, slide_language
-from ..ai_models import fill_model_combo
+from ...ai import ai_profile
+from ..ai_models import cloud_label, fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Card, Field, IconButton, SegmentedControl, Surface, caption
@@ -39,6 +41,7 @@ from .image_dialogs import ReplaceImageSheet
 from .image_form import ImageForm, review_refused
 from .image_jobs import Job, JobCard
 from .image_nav import SlideNav
+from .image_results import BatchResultView
 from .image_runs import ImageRunsMixin
 
 LANGUAGES = (("en", "EN"), ("de", "DE"))
@@ -46,6 +49,8 @@ DRAFT_TIP = ("Draft every image that still needs one, unattended. Each image is 
              "be stopped and resumed later.")
 TRANSLATE_TIP = ("Translate the short, long and takeaway text of every image that has English text and no current "
                  "German translation. Each image is written as it finishes.")
+SENDS_IMAGE = "sends this image to the cloud"           # what the note under a picker adds on Cloud
+SENDS_TEXT = "sends the description to the cloud"
 
 
 def review_label(image_count: int) -> str:
@@ -88,13 +93,19 @@ class ImagesPage(ImageRunsMixin, Surface):
         self.nav.back_clicked.connect(self.closed)
         state.deck_changed.connect(self._on_deck_changed)
         self._show_slide(None)
+        self._update_labels()
 
     # -- building -----------------------------------------------------------------------------------
 
     def _build_batch_controls(self, layout: QVBoxLayout) -> None:
         self.draft_model, self.translate_model = QComboBox(), QComboBox()
+        self.draft_note, self.translate_note = caption(""), caption("")
         layout.addWidget(Field("Describe images with", self.draft_model))
+        layout.addWidget(self.draft_note)
         layout.addWidget(Field("Translate with", self.translate_model))
+        layout.addWidget(self.translate_note)
+        self.draft_model.currentIndexChanged.connect(self._update_labels)
+        self.translate_model.currentIndexChanged.connect(self._update_labels)
         buttons = QHBoxLayout()
         self.draft_all_button = Button("Draft all…", "primary")
         self.draft_all_button.setToolTip(DRAFT_TIP)
@@ -157,6 +168,10 @@ class ImagesPage(ImageRunsMixin, Surface):
 
         self.job_card = JobCard(self._stop_clicked)
         layout.addWidget(self.job_card)
+        self.results = BatchResultView()
+        self.results.retry_clicked.connect(self._retry_failed)
+        self.results.closed.connect(self.results.clear)
+        layout.addWidget(self.results)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -192,6 +207,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                          local_models=vision_models, vision_only=True)
         fill_model_combo(self.app.project, self.translate_model, "translation", "(no AI models available)",
                          local_models=models, fallback_local=alt_draft.DEFAULT_TRANSLATION_MODEL)
+        self._update_labels()
         self._update_buttons()
 
     def reload(self, preserve: Optional[Path] = None) -> None:
@@ -462,6 +478,20 @@ class ImagesPage(ImageRunsMixin, Surface):
         self.reload(view.row.path)
 
     # -- jobs -------------------------------------------------------------------------------------------------
+
+    def _update_labels(self) -> None:
+        """What the route in use does with the content: a note under each picker names the model and, on Cloud, what
+        is sent; the buttons that send it say "· cloud". Asked again when the route or a picker changes."""
+        project = self.app.project
+        for combo, note, task, sends in ((self.draft_model, self.draft_note, ai_profile.IMAGE_DESCRIPTION, SENDS_IMAGE),
+                                         (self.translate_model, self.translate_note, ai_profile.TRANSLATION, SENDS_TEXT)):
+            route = ai_profile.resolve(project, task, combo.currentData() or "")
+            note.setText(" · ".join([route.label, *([] if route.is_local else [sends])]))
+        for button, text in ((self.draft_button, "Draft this slide"), (self.draft_all_button, "Draft all…"),
+                             (self.translate_all_button, "Translate all…")):
+            button.setText(cloud_label(project, text))
+        for form in self._forms:
+            form.refresh_route()
 
     def _update_buttons(self) -> None:
         busy, shown = self._job is not None, self._current is not None

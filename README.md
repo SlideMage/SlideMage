@@ -2577,13 +2577,23 @@ generated compile-time projection — see "Repository layout" above.)
 and the palette; the list on its left is
 slide-centric, filtered by state, and the top bar's **Close images** returns to the deck):
 
-1. **Draft all…** runs a vision model (a local Ollama model, or a Claude model when cloud
-   use is allowed) over every image that
+1. **Draft all…** runs a vision model (a local Ollama model, or a Claude model when the AI switch is
+   on Cloud) over every image that
    still needs a description — once per image, not once per slide it appears
    on. It writes each one as it finishes and derives its queue from the
    store, so it is resumable — stop it, close the app, come back tomorrow.
    The list updates as it goes, so you can review the early ones while the
-   rest run.
+   rest run. It asks first, naming the model and, on Cloud, what is sent
+   ("sends each image and its slide text to the cloud"); on Cloud the buttons that send
+   content say "· cloud", and a note under each picker names the route's model. A batch
+   keeps the route it started on even if you move the switch meanwhile ("Image 2 of 4 ·
+   chart.png · Claude Code · Haiku · effort medium"). When it ends, is stopped or
+   is cancelled by the switch, a results panel lists every image — drafted · needs
+   review, "You edited it during the run · your text kept" (text you wrote or reviewed
+   meanwhile is never overwritten), failed with the reason, or cancelled · not sent —
+   with **Retry failed (n)**, which runs only the failed ones as a new batch on the
+   current route. The assistant's *Describe images* and *Translate image descriptions*
+   tasks end in the same panel.
 2. **Review each one against the image**, which the page shows at full size.
    This is not optional; see the warnings below.
 3. **Save and mark reviewed** stamps the slide — both the image's

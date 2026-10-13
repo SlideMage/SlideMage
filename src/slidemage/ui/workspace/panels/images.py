@@ -22,7 +22,7 @@ from .... import alt_blocks, alt_draft, alt_images, image_review
 from ....ai import ai_profile, resolver
 from ....project import ProjectContext
 from ....slide_language import bare_id
-from ...ai_models import built, task_route
+from ...ai_models import built, cloud_label, task_route
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
 from ...pages.image_form import ROLES, STATE_TONES, review_refused
@@ -67,7 +67,8 @@ class ImageForm(Row):
         self.note.hide()
         self.body.addWidget(self.note)
         buttons = QHBoxLayout()
-        self.redraft_button = Button("Redraft…", "secondary", compact=True)
+        self.project = project
+        self.redraft_button = Button(cloud_label(project, "Redraft…"), "secondary", compact=True)
         self.redraft_button.setToolTip("Ask the vision model of the active AI route (AI setup) for a "
                                        "new description. It fills the fields; nothing is saved until you save.")
         self.save_button = Button("Save draft", "secondary", compact=True)
@@ -116,6 +117,10 @@ class ImageDescriptions(SidePanel):
     def refresh(self) -> None:
         self._forms.clear()
         super().refresh()
+
+    def refresh_route(self) -> None:
+        for form in self._forms:
+            form.redraft_button.setText(cloud_label(form.project, "Redraft…"))
 
     def build(self, id_slug: str) -> None:
         path = self.slide_path()

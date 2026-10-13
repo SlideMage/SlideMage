@@ -15,7 +15,9 @@ preview's shared RenderService (Check preview) and tells whether it compiled. A 
 the card ask for setup, nothing sent.
 The image bubbles (describe, translate the descriptions) are different: an _ImageWorker works through the slide's
 images one process after another and alt_draft's batch stores each draft as it is done (nothing of the slide
-changes); the Images panel is shown again at the end.
+changes); the Images panel is shown again at the end, and the assistant shows what became of each image in the
+results panel (`result`; pages/image_results.py) with Retry failed, which runs a new task over the failed images
+only, on the route active then.
 The deck bubbles (`deck_bubbles`, shown while the assistant's scope is Whole deck) run one of these tasks over the deck's
 slides: a batch with up to WORKERS processes at a time. Each slide is captured when its turn comes, so what the user
 typed meanwhile is in the request; every result is applied by `_on_done` on the GUI thread, one after the other,
@@ -39,7 +41,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
@@ -54,8 +56,10 @@ from ....ai.tools.base import ToolError
 from ....ai.tools.edits import write_text
 from ....ai.tools.slidemage import slide_target
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
+from ....batch_result import DRAFT, TRANSLATE, BatchResult
 from ... import background
 from ...ai_models import confirm_if_new
+from ...pages.image_results import confirm as confirm_batch
 from .. import task_card_model as card_model
 from ..ai_work import RunningWork
 from ..menus import VIEW_LABELS
@@ -400,6 +404,7 @@ class _ImageWorker(QThread):
         super().__init__()
         self.ctx, self.capture, self.backend, self.cancel = ctx, capture, backend, cancel
         self.position = (1, len(capture.images))       # the image at work and how many: the status line reads it
+        self.images = list(capture.images)             # the images the run goes over (the readable ones, to describe)
 
     def _progress(self, index: int, total: int, _item) -> None:
         self.position = (index, total)
@@ -409,6 +414,7 @@ class _ImageWorker(QThread):
         if capture.task is claude_images.DESCRIBE:
             entries = alt_images.load_store(self.ctx)
             jobs = [job for row in capture.rows for job in alt_draft.slide_jobs(self.ctx, row, entries)]
+            self.images = [job.image for job in jobs]
             summary = alt_draft.run_batch(self.ctx, jobs, self.backend, on_progress=self._progress,
                                           should_stop=self.cancel.is_set)
         else:
@@ -443,6 +449,7 @@ class TaskRunner(QObject):
     busy_changed = Signal(bool)
     summary = Signal(str)              # the summary of the deck, to show
     card_changed = Signal()            # the task card (`card`) appeared, moved on or went
+    result_changed = Signal()          # the image results (`result`) appeared or went
 
     def __init__(self, window, workspace, parent: QObject | None = None, *, edit_auto: Callable[[], bool] = lambda: False) -> None:
         """`window` is the main window, `workspace` the GuiWorkspace that applies edits to its buffers and renders
@@ -450,6 +457,8 @@ class TaskRunner(QObject):
         super().__init__(parent)
         self._window, self._workspace, self._edit_auto = window, workspace, edit_auto
         self.card: TaskCard | None = None                  # the task on one slide, or what became of the last
+        self.result: BatchResult | None = None             # what became of the images of the last image task
+        self._result_capture: _ImageCapture | None = None  # that task, for Retry failed
         self._proposal: tuple[_Capture, str] | None = None  # of the card in Review or Conflict: the task, the new text
         self._applied: EditApplied | None = None           # of the card's write: what Undo puts back
         self._preview: _PreviewWorker | None = None        # Check preview
@@ -513,10 +522,12 @@ class TaskRunner(QObject):
             return resolver.not_offered(route, _NAMES[task.name], "It runs on Cloud · Claude Code: switch the route to use it.")
         return resolver.problem(self._window.project, route)
 
-    def start(self, task: claude_tasks.Task, paths: tuple[Path, ...] = (), title: str = "", focus: Path | None = None) -> None:
+    def start(self, task: claude_tasks.Task, paths: tuple[Path, ...] = (), title: str = "", focus: Path | None = None,
+              images: _ImageCapture | None = None) -> None:
         """Run `task` on the slide in the Source view (or on `focus`, a slide's current file) with a task card, or for
         a deck bubble on its slides `paths`, unless one is running, the active route cannot run it (a card asks for
-        setup, the task row says why) or it no longer fits. `title` is what the card calls it."""
+        setup, the task row says why) or it no longer fits. `title` is what the card calls it. `images` is the capture
+        of an image task to run as it is (Retry failed) instead of the slide's."""
         if self.busy:
             return
         if (card := self.card) is not None and card.phase == card_model.REVIEW:
@@ -543,6 +554,7 @@ class TaskRunner(QObject):
         self._cancel = threading.Event()
         self._started = time.monotonic()
         self.unapplied = self.report = ""
+        self._set_result(None)
         self._set_card(self._new_card(capture, route, title) if on_card else None)
         if on_card:
             self.status.emit("", "muted")
@@ -557,7 +569,7 @@ class TaskRunner(QObject):
         elif task is claude_tasks.SUMMARISE:
             capture = _capture_summary(self._window, paths)
         else:
-            capture = _capture_images(self._window, task, paths)
+            capture = images or _capture_images(self._window, task, paths)
         if capture is None:
             self._release()
             self.status.emit("That no longer fits this slide.", "warning")
@@ -678,6 +690,8 @@ class TaskRunner(QObject):
         self._release()
         if isinstance(worker, _ImageWorker):
             report = self._images_report(worker.capture.task, outcome)
+            self._set_result(BatchResult.of(DRAFT if worker.capture.task is claude_images.DESCRIBE else TRANSLATE,
+                                            self._route, worker.images, outcome.outcomes), worker.capture)
             self._window.side_panels.refresh()         # shows the drafts that were stored
         elif worker.capture.task in CARD_TASKS:
             self._generated(worker.capture, outcome)
@@ -754,6 +768,27 @@ class TaskRunner(QObject):
         if not failed:
             return text, "ok"
         return f"{text}, {failed} failed ({summary.errors[0]})", "warning" if summary.written else "error"
+
+    def _set_result(self, result: BatchResult | None, capture: _ImageCapture | None = None) -> None:
+        self.result, self._result_capture = result, capture
+        self.result_changed.emit()
+
+    def close_result(self) -> None:
+        self._set_result(None)
+
+    def retry_failed(self) -> None:
+        """Retry failed: the image task again over only the images that failed, on the route active now (asked about
+        again, as the Images page does)."""
+        result, capture = self.result, self._result_capture
+        if result is None or capture is None or self.busy:
+            return
+        failed = result.failed
+        route = ai_profile.resolve(self._window.project, KINDS[capture.task.name])
+        if not self.refusal(capture.task, route) and not confirm_batch(
+                self._window, result.kind, len(failed), self._window.project.root.name, route)[0]:
+            return
+        rows = [replace(row, images=[image for image in row.images if image in failed]) for row in capture.rows]
+        self.start(capture.task, images=replace(capture, images=failed, rows=[row for row in rows if row.images]))
 
     # -- the task card ------------------------------------------------------------------------------------
 

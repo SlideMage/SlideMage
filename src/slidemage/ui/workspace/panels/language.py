@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMessageBox
 from .... import slide_language, slide_rename
 from ....deck_outline import slide_file_title
 from ...kit import kit_qss as q
+from ...ai_models import cloud_label
 from ...kit.widgets import Button, PopoverMenu
 from ..details_view import SAVE_FIRST
 from .base import Row, SidePanel, box, text
@@ -24,6 +25,8 @@ OTHER = {"EN": "DE", "DE": "EN"}
 class Language(SidePanel):
     key = "language"
     title = "Language"
+    translate_button: Button | None = None      # while the slide has no translation: the one that sends its text
+    translate_text = ""
 
     def meta(self) -> str:
         slide = self.id_slug()
@@ -36,6 +39,7 @@ class Language(SidePanel):
         return f"{own} · {link.language or '?'}" + (" outdated" if link.outdated else "")
 
     def build(self, id_slug: str) -> None:
+        self.translate_button = None
         own = slide_language.own_language(id_slug)
         path = self.slide_path()
         link = slide_language.translation_link(self.app.project, id_slug, path) if own in OTHER and path is not None else None
@@ -49,7 +53,8 @@ class Language(SidePanel):
             line = QHBoxLayout()
             line.addWidget(text(OTHER[own], q.PANEL_MONO))
             line.addWidget(text("No translation yet", q.DETAILS_LABEL), 1)
-            translate = Button(f"Translate to {OTHER[own]}", "primary", compact=True)
+            self.translate_text = f"Translate to {OTHER[own]}"
+            translate = self.translate_button = Button(cloud_label(self.app.project, self.translate_text), "primary", compact=True)
             translate.setToolTip("Translate this slide with the model chosen in AI setup (the ▾ of the AI switch): "
                                  "the assistant shows the proposed slide, and creates it linked to this one when you apply it.")
             translate.clicked.connect(lambda: self.actions.translate())
@@ -58,6 +63,10 @@ class Language(SidePanel):
         self.body.addWidget(frame)
         self._add_set_language(id_slug, own)
         self.body.addStretch(1)
+
+    def refresh_route(self) -> None:
+        if self.translate_button is not None:
+            self.translate_button.setText(cloud_label(self.app.project, self.translate_text))
 
     @staticmethod
     def _own_caption(own, link) -> str:
