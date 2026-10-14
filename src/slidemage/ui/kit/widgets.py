@@ -14,8 +14,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QAccessible, QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QAccessible, QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap, QRegion
 
 try:                    # Qt 6.8 and later; older Qt has no live announcements
     from PySide6.QtGui import QAccessibleAnnouncementEvent
@@ -734,6 +734,7 @@ class Popover(QFrame):
         self.focus_return: QWidget | None = None     # where the keyboard goes back to when it closes by Esc or a button
         self._inline, self._dismiss_outside = inline, dismiss_outside
         self._anchor: QWidget | None = None
+        self._scrim: QWidget | None = None
         self._came_from: QWidget | None = None
         if inline:
             self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -752,6 +753,8 @@ class Popover(QFrame):
             window = self.parentWidget()
             point = window.mapFromGlobal(global_pos)
             self.move(max(0, min(point.x(), window.width() - self.width())), point.y())
+            if self._dismiss_outside:
+                self._cover(window)
             self.raise_()
             if not self.isVisible():
                 self._came_from = QApplication.focusWidget()
@@ -765,10 +768,6 @@ class Popover(QFrame):
             self.move(global_pos)
         self.show()
         (self.focus_target or self).setFocus()
-        if self._inline:
-            # after the focus change: an application-wide Python filter is handed every QObject of the focus
-            # change, including a web view's half-torn-down Quick items, and wrapping those crashes (segfault)
-            QApplication.instance().installEventFilter(self)
 
     def popup_below(self, anchor: QWidget, *, align_right: bool = False) -> None:
         self._anchor = anchor
@@ -808,24 +807,57 @@ class Popover(QFrame):
             candidate = step(candidate)
         return True
 
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
-        """The click outside and Esc of an inline popover, seen by the whole application."""
-        if event.type() == QEvent.Type.MouseButtonPress and self._dismiss_outside and isinstance(obj, QWidget):
-            inside = obj is self or self.isAncestorOf(obj) or (
-                self._anchor is not None and (obj is self._anchor or self._anchor.isAncestorOf(obj)))
-            if not inside and obj.window() is self.window():
-                self.dismiss()
-        elif (event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape
-              and QApplication.activePopupWidget() is None and obj.window() is self.window()):
+    def _cover(self, window: QWidget) -> None:
+        """A transparent catcher over the window, under the popover: a click outside lands on it (the anchor is cut
+        out, it stays the anchor's). Not an application-wide event filter: that is handed every QObject, including
+        the ones being deleted, and wrapping those segfaults."""
+        if self._scrim is None:
+            self._scrim = _Scrim(window, self)
+            window.installEventFilter(self)     # only the window: its resizes
+        self._fit_scrim()
+        self._scrim.show()
+        self._scrim.raise_()
+
+    def _fit_scrim(self) -> None:
+        window, scrim = self.parentWidget(), self._scrim
+        if scrim is None or window is None:
+            return
+        scrim.setGeometry(window.rect())
+        region = QRegion(window.rect())
+        if self._anchor is not None:
+            region = region.subtracted(QRegion(QRect(self._anchor.mapTo(window, QPoint(0, 0)), self._anchor.size())))
+        scrim.setMask(region)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Esc in an inline popover (from the widget that has the keyboard inside it)."""
+        if self._inline and event.key() == Qt.Key.Key_Escape:
             self.escape()
-            return True
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Resize and obj is self.parentWidget() and self.isVisible():
+            self._fit_scrim()
         return super().eventFilter(obj, event)
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
-        if self._inline:
-            QApplication.instance().removeEventFilter(self)
+        if self._scrim is not None:
+            self._scrim.hide()
         self.closed.emit()
+
+
+class _Scrim(QWidget):
+    """See Popover._cover: a click on it is the click outside."""
+
+    def __init__(self, window: QWidget, popover: Popover) -> None:
+        super().__init__(window)
+        self._popover = popover
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        event.accept()
+        self._popover.dismiss()
 
 
 class PopoverMenu(Popover):
