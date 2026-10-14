@@ -554,6 +554,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             border-radius: {RADIUS_PILL}px;
         }}
         {chips}
+        QFrame#{CHIP}[pressable="true"] {{ border: 2px solid transparent; }}
+        QFrame#{CHIP}[pressable="true"]:focus {{ border-color: {t.focus}; }}
 
         /* A chip that switches on and off; on, it takes the colors of its view. */
         QPushButton#{TOGGLE_CHIP} {{

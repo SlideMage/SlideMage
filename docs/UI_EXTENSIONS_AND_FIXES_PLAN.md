@@ -39,6 +39,11 @@ compile path for a single slide, and the GUI tests that assume the English row.
 
 ## 2. Small translation fixes
 
+Status: both fixes implemented in SlideMage 8.16.0, 2026-10-14. Placement: one shared rule
+(`slide_add.translation_call`), directly after the first call of the source, called the way the source
+is; the task card and batch already placed the call after the source and now share it. Chip jump: the
+chip is a button that shows the partner file for one slide (the top bar stays).
+
 ~3-4% together; both keep working after item 1.
 
 | Fix | What it does | Cost |

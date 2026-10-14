@@ -513,6 +513,15 @@ What matters when touching *this code*:
   *different* language) is the case meant to be visually highlighted. A
   slide with no language segment at all (any of the ~665 not yet migrated)
   parses to `None` and shows no badge -- no forced migration.
+  Where a new translation is called in a deck is `slide_add.translation_call()` /
+  `translation_spec()` (v8.16.0): directly after the **first** call of its source (one
+  call, because `deck_language` folds a separately listed partner into the original's
+  slot and resolves it for every repeat of the source), called the way the source is
+  (`PARTNER_MACROS` as `resolve_call`: same views and reveal steps, a pinned version
+  becomes `\slide`). The `add_slide` / `create_slide` agent tools (an explicit `after`
+  wins), the task card's and the batch's Translate and the Add slide sheet (a translation
+  of another slide than the one it was opened for) all use it; a source the deck does not
+  call keeps the old place (the end of the deck, or where the sheet was opened).
 - [`slide_rename.py`](../src/slidemage/slide_rename.py) -- changes a slide's language
   segment: `set_slide_language()` renames `current.tex` plus every frozen
   `-vX-Y-Z.tex` sibling (`git mv` when tracked, else a plain move, same
@@ -749,7 +758,11 @@ What matters when touching *this code*:
   List / Thumbnail / Grid views, hover tooltip and chapter dropdown, all gone): the
   `slide_snapshot.py` PNG of the focused slide (instructor view; other views render on
   demand) with chips for what it is not showing (`preview_target.py`, `deck_outline`
-  facts: pinned version, language, missing translation, hidden in this view) and
+  facts: pinned version, language, missing translation, hidden in this view; the language
+  chip of a slide with a translation partner reads "EN + DE" and is a button (Tab stop,
+  Enter or Space, tooltip "Go to the German version" / "Go to the English original") that
+  shows the partner file for this one slide, in the deck's theme and typeset in its own
+  language, while the top bar's language and the mode stay, and back) and
   staleness (`slide_snapshot.is_fresh()`: a snapshot older than the slide's own source is
   flagged, not hidden). **Render** compiles the saved slide; its menu renders the editor
   buffer instead (Ctrl+Enter, or Ctrl+R in the Source view: whole slide, selection as frame or element, one reveal step),

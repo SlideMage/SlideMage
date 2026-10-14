@@ -18,6 +18,10 @@ from .project import ProjectContext
 from .tex_source import INPUT_RE, blanked_verbatim, masked_same_length
 
 
+# A partner has no version of its own to pin: the call that pins one becomes the plain call.
+PARTNER_MACROS = {"slideversion": "slide", "omitslideversion": "omitslide"}
+
+
 def resolve_call(call: SlideCall, language: str, links: slide_language.TranslationLinks) -> SlideCall:
     language = language.upper()
     if slide_language.own_language(call.id_slug) in (None, "mult", language):
@@ -28,8 +32,7 @@ def resolve_call(call: SlideCall, language: str, links: slide_language.Translati
     if partner is None:
         return call
     slide_id, slug = partner.split("-", 1)
-    macro = {"slideversion": "slide", "omitslideversion": "omitslide"}.get(call.macro, call.macro)
-    return replace(call, id=slide_id, slug=slug, macro=macro, version=None)
+    return replace(call, id=slide_id, slug=slug, macro=PARTNER_MACROS.get(call.macro, call.macro), version=None)
 
 
 @dataclass(frozen=True)

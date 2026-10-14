@@ -1089,15 +1089,17 @@ class TaskRunner(QObject):
         return created, warnings
 
     def _add_to_deck(self, capture: _Capture, id_slug: str) -> bool:
-        """Put the call of `id_slug` right after the source's in the deck that was open. Whether it was."""
+        """Put the call of `id_slug` right after the source's first call in the deck that was open, called the way the
+        source is (slide_add.translation_call). Whether it was."""
         window = self._window
         deck = next((d for d in window.decks if d.path == capture.deck_path), None)
-        call = next((c for c in deck_editor.parse_slide_calls(deck) if c.id == slide_language.bare_id(capture.id_slug)),
-                    None) if deck is not None else None
+        call = slide_add.translation_call(deck, capture.id_slug) if deck is not None else None
         if call is None:
             return False
+        spec = slide_add.translation_spec(call)
         try:
-            updated = deck_editor.insert_slide_call(deck.path, deck.text, call.line_end, call.indent, "slide", id_slug)
+            updated = deck_editor.insert_slide_call(deck.path, deck.text, call.line_end, call.indent, spec.macro, id_slug,
+                                                    spec.version, spec.conditions, spec.steps)
             ai_review.inserted_slides(window.project, deck.path, deck.text, updated, capture.task.name)
             self._workspace.review_changed()
         except (deck_editor.StaleFileError, ValueError, OSError):

@@ -10,7 +10,9 @@ class decides *what* each view shows and keeps them in step:
   purpose -- a deck's own source, Slidemaster.bib, a frozen version -- until
   another slide is focused;
 * the Preview shows the focused slide as the deck typesets it, or a frozen
-  version alone; saving re-renders it while it is visible;
+  version alone; saving re-renders it while it is visible. Its language chip
+  shows the slide's file in the other language instead (the top bar's
+  language stays), typeset in that language as the deck calls it;
 * Details shows the slide the same way.
 
 Views that are not visible are not updated, only brought up to date when they
@@ -27,8 +29,9 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
 
 from ... import deck_outline, slide_language, slide_source, slide_versioning
+from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
-from ...slide_language import bare_id, current_path_for_bare_id
+from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
 from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
 from .. import layout_settings
 from ..kit import kit_qss as q
@@ -103,6 +106,7 @@ class CentreColumn(QFrame):
         self.source.render_requested.connect(self.render_buffer)
         self.source.restore_requested.connect(self.restore_version)
         self.source.file_requested.connect(self.open_file)
+        self.preview.partner_requested.connect(lambda path: self.open_file(path, keep_mode=True))
         state.deck_changed.connect(self._on_deck_changed)
         state.focused_slide_changed.connect(self._on_focus)
         state.view_changed.connect(lambda _view: self.refresh())
@@ -113,15 +117,16 @@ class CentreColumn(QFrame):
     # -- what the window asks ----------------------------------------------------------
 
     def open_file(self, path: Path, on_saved: Optional[Callable[[str], None]] = None,
-                  line: Optional[int] = None) -> None:
-        """Show `path` in the Source view (a slide of the project focuses the slide too).
-        `on_saved(previous_text)` runs after each save of it; `line` puts the cursor there."""
+                  line: Optional[int] = None, *, keep_mode: bool = False) -> None:
+        """Show `path` in the Source view (a slide of the project focuses the slide too), and switch to the Source
+        view unless it is on show or `keep_mode`. `on_saved(previous_text)` runs after each save of it; `line` puts
+        the cursor there."""
         self._opening = True
         try:
             if path.parent == self.state.project.slides_dir:
                 self.state.set_focused_slide(bare_id(path.name))
             self._path = path
-            if self.state.mode not in ("source", "split"):
+            if self.state.mode not in ("source", "split") and not keep_mode:
                 self.state.set_mode("source")
         finally:
             self._opening = False
@@ -324,8 +329,8 @@ class CentreColumn(QFrame):
             self.source.set_message(message)
             self.source.show_path(self._path)
         if mode in ("preview", "split"):
-            target, row, title = self._preview_context()
-            self.preview.show_slide(target, row, title, self._no_preview_message(message))
+            target, row, title, language = self._preview_context()
+            self.preview.show_slide(target, row, title, self._no_preview_message(message), language)
         if mode == "details":
             row = self._focused_row()
             id_slug = row.call.id_slug if row else self._file_slide()[0]
@@ -356,18 +361,24 @@ class CentreColumn(QFrame):
             return "", None
         return id_slug, version
 
-    def _preview_context(self) -> tuple[Optional[PreviewTarget], Optional[deck_outline.SlideRow], str]:
-        """What the Preview shows: the focused slide as the deck calls it; a frozen version, or a
-        slide the deck doesn't use, alone."""
+    def _preview_context(self) -> tuple[Optional[PreviewTarget], Optional[deck_outline.SlideRow], str, Optional[str]]:
+        """(target, row, title, language) of what the Preview shows: the focused slide as the deck calls it; the
+        file of the other language that the language chip opened, as the deck calls it in that language (`row`
+        stays the slot's, `language` is the file's); a frozen version, or a slide the deck doesn't use, alone."""
         row = self._focused_row()
         id_slug, version = self._file_slide()
-        deck = self.state.deck
+        state = self.state
         if row is not None and (self._path is None or (id_slug == row.call.id_slug and version == row.call.version)):
-            return for_call(self.state.project, deck, row.call, row.position), row, row.title
+            return for_call(state.project, state.deck, row.call, row.position), row, row.title, None
         if self._path is None:
-            return None, None, ""
-        target = for_path(self.state.project, self._path)
-        return target, None, deck_outline.slide_file_title(self._path, id_slug) if target else ""
+            return None, None, "", None
+        own = own_language(id_slug)
+        partner = (row is not None and version is None and own in TRANSLATION_LANGUAGES and id_slug != row.call.id_slug
+                   and row.matches(bare_id(id_slug)))
+        target = (slide_target(state.project, state.deck, self._path, state.view, own) if partner
+                  else for_path(state.project, self._path))
+        title = deck_outline.slide_file_title(self._path, id_slug) if target else ""
+        return target, row if partner else None, title, own if partner else None
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

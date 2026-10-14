@@ -189,7 +189,7 @@ def test_an_outdated_translation_shows_a_chip(centre, project, monkeypatch):
     link = slide_language.TranslationLink("bbb-DE-Zwei", "DE", project / "bbb-DE-Zwei-current.tex", False, True)
     monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: link)
     centre.preview._refresh()
-    assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN"]
+    assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN + DE"]
     monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: None)
     centre.preview._refresh()
     assert "Translation outdated" not in chip_texts(centre)
@@ -643,3 +643,81 @@ def test_split_divider_share_is_remembered_and_double_click_resets_it(centre):
     source, preview = split.sizes()
     assert source / (source + preview) < 0.59   # back towards half (the views' minimum widths may hold it a little)
     assert layout_settings.get(centre_mod.SPLIT_SETTING) == 0.5
+
+
+# -- the language chip jumps to the translation partner ------------------------------
+
+def language_chip(centre):
+    layout = centre.preview._chips
+    return next(w for w in (layout.itemAt(i).widget() for i in range(layout.count()))
+                if w is not None and w._icon.text() == "language")
+
+
+def test_the_language_chip_shows_the_german_version_and_back_without_touching_the_top_bar(centre, project, renders):
+    english, german = link_german(project)
+    state = centre.state
+    state.set_mode("preview")
+    state.set_focused_slide("aaa")
+    chip = language_chip(centre)
+    assert chip.text() == "EN + DE" and chip.toolTip() == "Go to the German version"
+    assert chip.accessibleName() == "Go to the German version" and chip.focusPolicy() == Qt.FocusPolicy.TabFocus
+    chip.clicked.emit()
+    assert state.language == "EN" and state.mode == "preview"       # one slide: the top bar and the mode stay
+    assert centre.path == german and state.focused_slide == "ddd"
+    assert centre.preview._target.id_slug == "ddd-DE-Eins" and centre.preview._target.frame_number == 1
+    assert centre.preview.language == "DE" and centre.preview._row.call.id_slug == "aaa-EN-One"
+    assert centre.preview._target.preamble_text == centre.state.deck.preamble_text      # in the deck's theme, not alone
+    back = language_chip(centre)
+    assert back.text() == "DE + EN" and back.toolTip() == "Go to the English original"
+    centre.preview.render_now()
+    wait_idle(centre)
+    assert renders[-1][1] == "ddd-DE-Eins" and renders[-1][2][:2] == ("instructor", "DE")
+    back.clicked.emit()
+    assert centre.path == english and state.focused_slide == "aaa" and state.language == "EN"
+    assert centre.preview._target.id_slug == "aaa-EN-One" and centre.preview.language == "EN"
+
+
+def test_the_language_chip_is_a_keyboard_button(centre, project):
+    _english, german = link_german(project)
+    centre.state.set_focused_slide("aaa")
+    chip = language_chip(centre)
+    centre.preview.show()
+    chip.setFocus(Qt.FocusReason.TabFocusReason)
+    QTest.keyClick(chip, Qt.Key.Key_Return)
+    assert centre.path == german
+    chip = language_chip(centre)
+    chip.setFocus(Qt.FocusReason.TabFocusReason)
+    QTest.keyClick(chip, Qt.Key.Key_Space)
+    assert centre.path.name == "aaa-EN-One-current.tex"
+
+
+def test_a_slide_without_a_partner_has_a_plain_language_chip(centre):
+    centre.state.set_focused_slide("aaa")
+    chip = language_chip(centre)
+    assert chip.text() == "EN" and chip.focusPolicy() == Qt.FocusPolicy.NoFocus and chip.accessibleName() == ""
+    centre.state.set_mode("preview")
+    chip.clicked.emit()
+    assert centre.state.focused_slide == "aaa"
+
+
+def test_the_language_chip_works_for_a_slide_outside_the_deck(centre, project):
+    english, german = link_german(project)
+    deck = centre.state.deck
+    centre.state.set_deck(None)
+    centre.open_file(english, keep_mode=True)
+    assert language_chip(centre).text() == "EN + DE"
+    language_chip(centre).clicked.emit()
+    assert centre.path == german and centre.preview._row is None and centre.preview._target.id_slug == "ddd-DE-Eins"
+    assert language_chip(centre).toolTip() == "Go to the English original"
+    centre.state.set_deck(deck)
+
+
+def test_a_partner_that_is_gone_is_said_so(centre, project):
+    english, german = link_german(project)
+    centre.state.set_focused_slide("aaa")
+    messages = []
+    centre.app.toast = SimpleNamespace(show_message=messages.append)
+    german.unlink()
+    centre.preview._show_partner(german)
+    assert len(messages) == 1 and "ddd-DE-Eins-current.tex is missing" in messages[0]
+    assert centre.path == english

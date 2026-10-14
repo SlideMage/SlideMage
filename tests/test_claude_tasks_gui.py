@@ -273,6 +273,24 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     assert "\\setSlideVersion" not in call["request"] and "Included in decks" not in call["request"]
 
 
+def test_a_translation_is_called_once_after_the_first_call_of_its_source_the_way_the_source_is(fake):
+    env = fake.env
+    deck = env.root / "decks" / "test.tex"
+    deck.write_bytes(deck.read_bytes().replace(b"\\slide{abc-EN-Hello}\r\n", b"\\conditionalslide[instructor]{abc-EN-Hello}\r\n")
+                     .replace(b"\\end{document}", b"\\slide{abc-EN-Hello}\r\n\\end{document}"))
+    env.window.reload_decks()
+    env.window.state.set_focused_slide("abc")
+    wait_until(lambda: "Translate to German" in buttons(env))
+    fake.reply({"answer": GERMAN})
+    click(env, "Translate to German")
+    settled(env)
+    (partner,) = german_files(env)
+    new_id_slug = partner.name.removesuffix("-current.tex")
+    text = deck.read_text().replace("\r\n", "\n")
+    assert f"\\conditionalslide[instructor]{{abc-EN-Hello}}\n\\conditionalslide[instructor]{{{new_id_slug}}}\n\\section{{Main}}" in text
+    assert text.count(new_id_slug) == 1
+
+
 def test_the_terminal_translates_through_the_bubble(fake):
     from mcp_client import Client
     from test_claude_code_gui import on_thread

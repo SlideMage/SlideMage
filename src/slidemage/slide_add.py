@@ -18,8 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_outline, fileio, slide_ids, slide_language, slide_rename, slide_versioning
+from . import alt_draft, deck_editor, deck_language, deck_outline, fileio, slide_ids, slide_language, slide_rename, slide_versioning
 from .ai.providers import ChatProvider
+from .deck_scan import Deck
 from .project import ProjectContext
 from .slide_import import escape_latex
 
@@ -198,6 +199,23 @@ def call_spec(load: str, views: list[str], version: Optional[str] = None, steps:
     if conditions == deck_editor.DEFAULT_CONDITIONS:
         return CallSpec("slide")
     return CallSpec("conditionalslide", conditions=conditions)
+
+
+def translation_call(deck: Deck, source_id_slug: str) -> Optional[deck_editor.SlideCall]:
+    """The call that a new translation of `source_id_slug` goes after in `deck`: the source's first call, or
+    None when the deck does not call the source. A translation is called once: deck_language folds a separately
+    listed partner into the slot of the original, wherever it stands, and resolves it for every repeat of the
+    original, so a call per repeat would only add folded duplicates. The first call also keeps EN and DE
+    neighbours where the slide first appears."""
+    source_id = slide_language.bare_id(source_id_slug)
+    return next((call for call in deck_editor.parse_slide_calls(deck) if call.id == source_id), None)
+
+
+def translation_spec(source_call: deck_editor.SlideCall) -> CallSpec:
+    """The deck call of the translation of the slide that `source_call` calls: as deck_language.resolve_call gives
+    a partner, the same macro with the same views and reveal steps (a pinned version becomes the plain call)."""
+    return CallSpec(deck_language.PARTNER_MACROS.get(source_call.macro, source_call.macro), None,
+                    source_call.conditions, source_call.steps)
 
 
 # -- the slides to pick from -------------------------------------------------------------------

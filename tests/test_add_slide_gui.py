@@ -422,3 +422,28 @@ def test_a_failed_claude_translation_is_shown_like_any_other(make, project, clau
     sheet.ok.click()
     wait_until(lambda: sheet._worker is None)
     assert "Translation failed" in sheet.status.text() and not list(project.slides.glob("*-DE-Demo-current.tex"))
+
+
+def test_a_translation_of_another_slide_than_the_sheet_was_opened_for_goes_after_that_slide(make, project):
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    assert sheet.where_label.text() == "at the end of the deck"       # abc is the context: the place it was opened for
+    pick(sheet, "xyz-EN-Other")
+    sheet.machine.setChecked(False)
+    assert sheet.where_label.text() == "after xyz-EN-Other"
+    sheet.ok.click()
+    created = next(project.slides.glob("*-DE-Other-current.tex")).name.removesuffix("-current.tex")
+    assert deck_text(project).replace("\r\n", "\n") == (
+        HEAD + f"\\slide{{xyz-EN-Other}}\n\\slide{{{created}}}\n\\slide{{abc-EN-Demo}}\n\\end{{document}}\n")
+
+
+def test_a_translation_sheet_takes_the_views_of_the_source_call(make, project):
+    project.deck_path.write_bytes(
+        (HEAD + "\\conditionalslide[instructor]{xyz-EN-Other}\n\\slide{abc-EN-Demo}\n\\end{document}\n").encode("utf-8"))
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    assert sheet.chosen_views() == ["instructor", "during-course", "after-course"]
+    pick(sheet, "xyz-EN-Other")
+    assert sheet.chosen_views() == ["instructor"] and "conditionalslide[instructor]" in sheet.call_preview.text()
+    sheet.machine.setChecked(False)
+    sheet.ok.click()
+    created = next(project.slides.glob("*-DE-Other-current.tex")).name.removesuffix("-current.tex")
+    assert f"\\conditionalslide[instructor]{{xyz-EN-Other}}\n\\conditionalslide[instructor]{{{created}}}\n" in deck_text(project).replace("\r\n", "\n")

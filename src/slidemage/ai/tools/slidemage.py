@@ -76,6 +76,21 @@ def _insertion(ctx: ToolContext, deck: Deck, after: str) -> tuple[int, str, str]
     return insert_at, indent, f"at the end of {deck.name}"
 
 
+def _translation_placement(deck: Deck, source_id_slug: str, after: str) -> tuple[str, slide_add.CallSpec]:
+    """(the slide a call goes after, the call) for a new slide: an explicit `after` wins; a translation otherwise
+    goes directly after the first call of its source in the deck (slide_add.translation_call) and is called the
+    way the source is; elsewhere the end of the deck (`after` empty) and a plain \\slide."""
+    anchor = slide_add.translation_call(deck, source_id_slug) if source_id_slug else None
+    if anchor is None:
+        return after, slide_add.CallSpec("slide")
+    return after or anchor.id, slide_add.translation_spec(anchor)
+
+
+def _insert_call(deck: Deck, insert_at: int, indent: str, id_slug: str, spec: slide_add.CallSpec) -> str:
+    return deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, spec.macro, id_slug,
+                                         spec.version, spec.conditions, spec.steps)
+
+
 def _insertion_error(ctx: ToolContext, created: slide_add.CreatedSlide, deck: Deck, after: str, exc: Exception) -> str:
     anchor = f", after={after!r}" if after else ""
     return (f"Slide {created.id_slug} already exists at {relative(ctx.root, created.path)}, "
@@ -300,7 +315,8 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
        "title": {"type": "string", "description": "Required for creation: the frame title (plain text)."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Default standardframe."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default: the edited language."},
-       "after": {"type": "string", "description": "Slide id to put it after; default the end of the deck."},
+       "after": {"type": "string", "description": "Slide id to put it after; default the end of the deck, "
+                 "or directly after the source slide for a translation."},
        "translation_of": {"type": "string", "description": "Slide id of the slide this is a translation of; "
                           "needs a different language. The body is copied from it; translate it in place."},
        "add_to_deck": {"type": "boolean", "description": "Default true; false creates the file only."}})
@@ -324,14 +340,6 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     language = args.get("language") or ctx.workspace.context().language
     if not existing and not slide_add.SLUG_RE.match(slug):
         raise ToolError("The slug may contain only letters, digits and single hyphens, e.g. 'Capital-Budgeting'.")
-    deck, insert_at, indent, where = None, 0, "", "not added to a deck"
-    if args.get("add_to_deck", True):
-        deck = open_deck(ctx)
-        calls = deck_editor.parse_slide_calls(deck)
-        if created and any(c.source_filename == created.path.name for c in calls):
-            return f"Slide {created.id_slug} ({relative(ctx.root, created.path)}) is already in {deck.name}; no change."
-        after = (args.get("after") or "").strip()
-        insert_at, indent, where = _insertion(ctx, deck, after)
     source_id_slug = ""
     if existing:
         body = ""
@@ -345,6 +353,14 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
         body = slide_ids.slide_body(source).replace("\r\n", "\n")
     else:
         body = slide_add.frame_body(ctx.project, frame, title).replace("\r\n", "\n")
+    deck, insert_at, indent, where, spec, after = None, 0, "", "not added to a deck", slide_add.CallSpec("slide"), ""
+    if args.get("add_to_deck", True):
+        deck = open_deck(ctx)
+        calls = deck_editor.parse_slide_calls(deck)
+        if created and any(c.source_filename == created.path.name for c in calls):
+            return f"Slide {created.id_slug} ({relative(ctx.root, created.path)}) is already in {deck.name}; no change."
+        after, spec = _translation_placement(deck, source_id_slug, (args.get("after") or "").strip())
+        insert_at, indent, where = _insertion(ctx, deck, after)
     planned = deck.path if existing else slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
     proposal = deck_editor.format_call("slide", created.id_slug) if existing else body
     if not propose(ctx, planned, "", proposal, f"{'Insert slide' if existing else 'New slide'} {where}"):
@@ -365,14 +381,14 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
         try:
             if ctx.workspace.is_dirty(deck.path):
                 raise ToolError("the deck has unsaved edits in the editor; ask the user to save it first")
-            updated = deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, "slide", created.id_slug)
+            updated = _insert_call(deck, insert_at, indent, created.id_slug, spec)
             ai_review.inserted_slides(ctx.project, deck.path, deck.text, updated, "add_slide")
             ctx.workspace.review_changed()
             ctx.workspace.file_changed(deck.path, deck.text)
             if existing:
                 ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
         except (deck_editor.StaleFileError, ValueError, OSError, ToolError) as exc:
-            failure = _insertion_error(ctx, created, deck, args.get("after", ""), exc)
+            failure = _insertion_error(ctx, created, deck, after, exc)
             where = "not added to a deck"
     if not existing:
         ctx.workspace.file_changed(created.path, None)
@@ -393,7 +409,7 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
        "body": {"type": "string", "description": "Complete LaTeX frame, without a document wrapper or managed header."},
        "deck": {"type": "string", "description": "Required open deck name or project/absolute deck path."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default edited language."},
-       "after": {"type": "string", "description": "Slide id; default end of deck."},
+       "after": {"type": "string", "description": "Slide id; default end of deck, or directly after the source for a translation."},
        "translation_of": {"type": "string", "description": "Source slide id; preserve its protected body regions."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Optional frame type."}},
       ("title", "slug", "body", "deck"))
@@ -412,8 +428,6 @@ def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     if not slide_add.SLUG_RE.fullmatch(slug):
         raise ToolError("The slug may contain only letters, digits and single hyphens.")
     language = args.get("language") or ctx.workspace.context().language
-    after = args.get("after", "").strip()
-    insert_at, indent, where = _insertion(ctx, deck, after)
     body = args["body"].replace("\r\n", "\n")
     source, source_text, source_id_slug, protected = None, "", "", None
     if args.get("translation_of", "").strip():
@@ -425,6 +439,8 @@ def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
             raise ToolError(f"{source_id_slug} is already {language}; pass the target language.")
         source_text = current_text(ctx.workspace, source)
         protected = slide_ids.body_of(source_text)
+    after, spec = _translation_placement(deck, source_id_slug, args.get("after", "").strip())
+    insert_at, indent, where = _insertion(ctx, deck, after)
 
     def commit() -> Path:
         check_deck()
@@ -439,7 +455,7 @@ def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
                 source_changed = True
             check_deck()
             _insertion(ctx, deck, after)
-            updated = deck_editor.insert_slide_call(deck.path, deck.text, insert_at, indent, "slide", created.id_slug)
+            updated = _insert_call(deck, insert_at, indent, created.id_slug, spec)
         except (OSError, ValueError, deck_editor.StaleFileError, ToolError) as exc:
             try:
                 if source_changed:

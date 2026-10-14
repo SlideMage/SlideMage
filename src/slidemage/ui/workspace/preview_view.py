@@ -14,7 +14,9 @@ before rendering a slide that has errors.
 Chips say what the page is not showing at first sight: a version the deck
 pins, a language, a missing translation, a view that does not typeset the
 slide. They come from the deck outline and the slide's file name, nothing
-is guessed.
+is guessed. The language chip of a slide with a translation partner is a
+button that shows the partner file instead (one slide; the top bar's
+language stays), and back from there: it is typeset in its own language.
 """
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning
+from ...ai.claude_tasks import LANGUAGE_NAMES
 from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
@@ -57,11 +60,16 @@ def short_view(view: str) -> str:
     return VIEW_LABELS[view].replace(" course", "")
 
 
+def partner_link(target: PreviewTarget, link: Optional[TranslationLink]) -> Optional[TranslationLink]:
+    """`link` if it leads to the slide's file in the other language, else None."""
+    return link if link is not None and link.language not in (None, own_language(target.id_slug)) else None
+
+
 def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str,
               link: Optional[TranslationLink] = None) -> list[tuple]:
     """(icon, text, tone, tooltip) of the chips above the page. `row` is the
-    slide's row in the open deck, None for a file shown alone; `link` its translation
-    partner, if it has one."""
+    slide's row in the open deck, None for a file shown alone; `link` the translation
+    partner of the file shown, if it has one."""
     chips = []
     if row is None:
         if target.version:
@@ -69,8 +77,8 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
                           "A past version of the slide, shown on its own."))
     else:
         call = row.call
-        if call.version:
-            chips.append(("push_pin", f"Deck stays on {slide_versioning.version_label(call.version)}", "info",
+        if target.version:
+            chips.append(("push_pin", f"Deck stays on {slide_versioning.version_label(target.version)}", "info",
                           "The deck pins this version; changes to the current slide don't show here."))
         if not call.editable:
             chips.append(("lock", "Read-only in the deck", "muted", call.readonly_reason or ""))
@@ -83,9 +91,13 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
     if link is not None and link.outdated:
         chips.append(("translate", "Translation outdated", "warning",
                       "The original was saved after the translation was last written (Language panel)."))
-    badge = row.badge.strip("[]") if row is not None else ""
-    if badge:
-        chips.append(("language", badge, "neutral", "The slide's language, and its translation if it has one."))
+    own = own_language(target.id_slug)
+    if own and (partner := partner_link(target, link)):
+        chips.append(("language", f"{own} + {partner.language}", "neutral",
+                      f"Go to the {LANGUAGE_NAMES.get(partner.language, partner.language)} "
+                      f"{'original' if partner.is_translation else 'version'}"))
+    elif own:
+        chips.append(("language", own, "neutral", "The slide's language; it has no translation."))
     return chips
 
 
@@ -214,6 +226,7 @@ class PageView(QWidget):
 
 class PreviewPane(Surface):
     rendered = Signal()           # a render finished; the slide's snapshot (the list's thumbnail) may be new
+    partner_requested = Signal(object)   # the language chip: the Path of the slide's file in the other language
     _finished = Signal(object)    # a _Job, from the worker thread
 
     def __init__(self, app, state: WorkspaceState,
@@ -226,6 +239,7 @@ class PreviewPane(Surface):
         self._buffer = buffer
         self._target: Optional[PreviewTarget] = None
         self._row: Optional[SlideRow] = None
+        self._language: Optional[str] = None
         self._title = ""
         self._message = ""
         self._busy = False
@@ -301,8 +315,16 @@ class PreviewPane(Surface):
 
     # -- what is shown -----------------------------------------------------------------
 
-    def show_slide(self, target: Optional[PreviewTarget], row: Optional[SlideRow], title: str, message: str) -> None:
-        """Show `target` (None: just `message`). `row` is its row in the open deck, if it has one."""
+    @property
+    def language(self) -> str:
+        """The language the page is typeset in: the top bar's, but the file's own for a translation partner that the
+        language chip showed in place of the slide's file in the language being edited."""
+        return self._language or self.state.language
+
+    def show_slide(self, target: Optional[PreviewTarget], row: Optional[SlideRow], title: str, message: str,
+                   language: Optional[str] = None) -> None:
+        """Show `target` (None: just `message`). `row` is its row in the open deck, if it has one; `language` the
+        one to typeset it in when that is not the top bar's."""
         changed = target is None or self._target is None or target.key != self._target.key
         mtime = _mtime(target.source_path) if target else 0
         if changed or mtime != self._shown_mtime:
@@ -311,12 +333,20 @@ class PreviewPane(Surface):
             self._error = ""
             self._adhoc = None
         self._target, self._row, self._title, self._message = target, row, title, message
+        self._language = language
         self._shown_mtime = mtime
         self._refresh()
 
     @property
     def target_path(self) -> Optional[Path]:
         return self._target.source_path if self._target is not None else None
+
+    def _show_partner(self, path: Path) -> None:
+        """The language chip: show the slide's file in the other language, if it is still there."""
+        if path.is_file():
+            self.partner_requested.emit(path)
+        else:
+            self.app.toast.show_message(f"{path.name} is missing: the translation link points to a file that is gone.")
 
     def _on_context_changed(self, _value: str) -> None:
         self._invalidate()
@@ -332,7 +362,7 @@ class PreviewPane(Surface):
         """(the page, whether it is as new as the slide's source, a note) -- the latest
         render of the buffer, else this session's render of the saved file, else the
         cached snapshot (instructor view only)."""
-        view, language = self.state.view, self.state.language
+        view, language = self.state.view, self.language
         key = (target.key, view, language, self._footer_timestamp())
         if self._adhoc is not None and self._adhoc[0] == key:
             buffer = self._buffer()
@@ -359,16 +389,20 @@ class PreviewPane(Surface):
 
     def _refresh(self) -> None:
         target, row = self._target, self._row
-        view, language = self.state.view, self.state.language
+        view, language = self.state.view, self.language
         job = self._pending[1] if self._pending else self._active
         busy_here = (target is not None and job is not None and job.generation == self._generation
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
         clear_layout(self._chips)
         if target is not None:
-            link = translation_link(self.app.project, row.call.id_slug) if row is not None else None
+            link = translation_link(self.app.project, target.id_slug)
+            partner = partner_link(target, link)
             for icon, text, tone, tooltip in chips_for(target, row, view, language, link):
-                chip = Chip(text, tone, icon)
+                jump = icon == "language" and partner is not None
+                chip = Chip(text, tone, icon, pressable=jump)
                 chip.setToolTip(tooltip)
+                if jump:
+                    chip.clicked.connect(lambda path=partner.path: self._show_partner(path))
                 self._chips.addWidget(chip)
         self._chips.addStretch(1)
 
@@ -536,7 +570,7 @@ class PreviewPane(Surface):
         if job.request is not None and job.request.cancelled():
             return False
         if (target is None or job.generation != self._generation or target.key != job.target_key
-                or (self.state.view, self.state.language, self.state.footer_timestamp)
+                or (self.state.view, self.language, self.state.footer_timestamp)
                 != (job.view, job.language, job.timestamp)
                 or _mtime(job.source) != job.mtime):
             return False
@@ -604,7 +638,7 @@ class PreviewPane(Surface):
             self.app.log(f"Preview timing: {job.metrics}")
 
     def _job(self, target: PreviewTarget, **fields) -> _Job:
-        return _Job(target_key=target.key, view=self.state.view, language=self.state.language,
+        return _Job(target_key=target.key, view=self.state.view, language=self.language,
                     mtime=_mtime(target.source_path), source=target.source_path,
                     timestamp=self._footer_timestamp(), **fields)
 
@@ -637,7 +671,7 @@ class PreviewPane(Surface):
                 self, self.app, latex_lint.check_slide_files(self.app.project, [path]), f"{path.name} (saved file)",
                 show_in_editor=lambda issue: render_check.open_issue_in_editor(self.app, issue)):
             return
-        view, language = self.state.view, self.state.language
+        view, language = self.state.view, self.language
         timestamp = self._footer_timestamp()
         text = path.read_text(encoding='utf-8')
         job = self._job(target, revision_text=text, snapshot_template=target.template
@@ -671,7 +705,7 @@ class PreviewPane(Surface):
                 self, self.app, latex_lint.check_buffer(self.app.project, body, path.name, path), f"{path.name} (editor buffer)",
                 show_in_editor=lambda issue: self.app.open_slide_editor(path, line=issue.line)):
             return
-        view, language = self.state.view, self.state.language
+        view, language = self.state.view, self.language
         overlay = None if scope == "element" else (self._overlay or None)
         timestamp = self._footer_timestamp()
         job = self._job(target, external=presenter, buffer_text=text, revision_text=text,
@@ -729,7 +763,7 @@ class PreviewPane(Surface):
             return
         buffer = self._buffer()
         text = buffer[0] if buffer else slide_source.read_slide_source(target.source_path)[0]
-        show_transcript_preview(self.app, text, target.bare_id, target.id_slug, self.state.view, self.state.language)
+        show_transcript_preview(self.app, text, target.bare_id, target.id_slug, self.state.view, self.language)
 
 
 def _mtime(path: Optional[Path]) -> int:

@@ -85,13 +85,15 @@ class AddSlideSheet(ModalSheet):
                  is_dirty: Callable[[Path], bool]) -> None:
         """`app` is the window and `is_dirty(path)` says whether the Source view holds unsaved edits of a file; the slide goes into `deck` at the offset `insert_at` (indented by
         `indent`), described by `where` ("after 1y8"). `source` is the one to start on, `slide` the
-        id-slug Duplicate and Translate start from, `target` the language a translation starts on."""
+        id-slug Duplicate and Translate start from, `target` the language a translation starts on. A
+        translation of another slide than `slide` goes directly after that one's call instead."""
         super().__init__("Add slide", app, width=WIDTH)
         add_route_badge(self, app)
         self.app, self._is_dirty = app, is_dirty
         self.deck = deck
         self.insert_at = insert_at
         self.indent = indent
+        self._where = where
         self._context = slide
         self._slug_edited = False
         self._models_filled = False
@@ -125,10 +127,10 @@ class AddSlideSheet(ModalSheet):
         return widget
 
     def _build_source(self, where: str, source: str) -> None:
-        if where:
-            caption = QLabel(where)
-            caption.setObjectName(q.PANEL_CAPTION)
-            self._add(caption)
+        self.where_label = QLabel(where)
+        self.where_label.setObjectName(q.PANEL_CAPTION)
+        self.where_label.setVisible(bool(where))
+        self._add(self.where_label)
         self.source = SegmentedControl(SOURCES, current=source)
         self.source.changed.connect(self._on_source)
         self._add(self.source)
@@ -322,6 +324,16 @@ class AddSlideSheet(ModalSheet):
             return str(exc)
         return None
 
+    def _place(self) -> tuple[int, str, str]:
+        """(insert_at, indent, where) of the new call: where the sheet was opened for, except that the translation
+        of another slide than the one it was opened for goes directly after that slide's call in the deck."""
+        slide = self.picked()
+        if self.current_source() == "translate" and slide and slide != self._context:
+            call = slide_add.translation_call(self.deck, slide)
+            if call is not None:
+                return call.line_end, call.indent, f"after {call.id_slug}"
+        return self.insert_at, self.indent, self._where
+
     def call_spec(self) -> slide_add.CallSpec:
         return slide_add.call_spec(self.chosen_load(), self.chosen_views(), self.version.currentData(),
                                    self.steps.text())
@@ -390,6 +402,9 @@ class AddSlideSheet(ModalSheet):
             if preset >= 0:
                 self.target.setCurrentIndex(preset)
         self.target.blockSignals(False)
+        if self.current_source() == "translate" and slide and (call := slide_add.translation_call(self.deck, slide)):
+            for view, chip in self.views.items():     # the translation appears where the slide does
+                chip.setChecked(call.included_in(view))
         if not self._slug_edited and slide:
             suffix = "-Copy" if self.current_source() == "duplicate" else ""
             self.copy_slug.setText(slide_add.slug_of(slide) + suffix)
@@ -432,6 +447,9 @@ class AddSlideSheet(ModalSheet):
         self.frame_note.setText("Replace the picture in the new slide before you compile it."
                                 if frame in slide_add.NEEDS_IMAGE else "")
         self.frame_note.setVisible(bool(self.frame_note.text()))
+        where = self._place()[2]
+        self.where_label.setText(where)
+        self.where_label.setVisible(bool(where))
         problem = self.problem()
         self._set_status(problem or "", error=False)
         self.ok.setEnabled(problem is None and self._worker is None)
@@ -482,9 +500,10 @@ class AddSlideSheet(ModalSheet):
         """Put the slide's call into the deck; a new file opens in the Source view."""
         spec = self.call_spec()
         previous_text = self.deck.text
+        insert_at, indent, _where = self._place()
         try:
             deck_editor.insert_slide_call(
-                self.deck.path, self.deck.text, self.insert_at, self.indent,
+                self.deck.path, self.deck.text, insert_at, indent,
                 spec.macro, id_slug, spec.version, spec.conditions, spec.steps)
         except (deck_editor.StaleFileError, ValueError) as exc:
             note = "" if new_path is None else f" The new slide file {new_path.name} was created; it is not in the deck."

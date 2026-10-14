@@ -491,15 +491,24 @@ class SegmentedControl(QFrame):
 
 class Chip(ClickFrame):
     """Small pill with an optional icon, e.g. "pinned 1-0-0" or "outdated".
-    tone: neutral, muted, info, warning, error, ok. Emits `clicked`."""
+    tone: neutral, muted, info, warning, error, ok. Emits `clicked`. A `pressable` chip is a button: a Tab stop
+    (from Tab only, so the 2px focus ring is a keyboard ring) that Enter and Space press, named by its tooltip; its
+    ring is a transparent border until it has the focus (kit_qss), so the chip does not move."""
+
+    RING = 2
 
     def __init__(self, text: str, tone: str = "neutral", icon: str | None = None,
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None, *, pressable: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName(q.CHIP)
         self.setProperty("tone", tone)
+        ring = self.RING if pressable else 0
+        if pressable:
+            self.setProperty("pressable", True)
+            self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 2, 9, 2)
+        layout.setContentsMargins(8 - ring, 2 - ring, 9 - ring, 2 - ring)
         layout.setSpacing(4)
         self._icon = IconLabel(icon or "", 14)
         self._icon.setVisible(bool(icon))
@@ -515,6 +524,17 @@ class Chip(ClickFrame):
 
     def set_tone(self, tone: str) -> None:
         set_property(self, "tone", tone)
+
+    def setToolTip(self, tip: str) -> None:
+        super().setToolTip(tip)
+        if self.property("pressable"):
+            self.setAccessibleName(tip)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if self.property("pressable") and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit()
+        else:
+            super().keyPressEvent(event)
 
     def set_icon(self, icon: str) -> None:
         self._icon.set_icon(icon)
