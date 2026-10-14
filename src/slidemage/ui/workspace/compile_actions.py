@@ -506,6 +506,13 @@ def _start_previews(window, needed: dict[str, set[str]], title: str, run: Callab
         log(f"==== {title}: compile finished ====" if result else f"==== {title}: FAILED ====")
         return result
 
+    def done(result: object) -> None:
+        # The snapshots are written by now (run() waits for them): the rows know their thumbnail and whether
+        # it is stale from when the outline was built.
+        window.slide_list.rebuild(preserve_focus=True)
+        if on_done is not None:
+            on_done(result)
+
     # One throw-away megadeck per template (with a bibliography, so 4 passes), each typesetting that
     # template's own slides. Nobody wants a 639-slide throwaway PDF popping open, whatever the
     # auto-open checkbox says.
@@ -514,4 +521,4 @@ def _start_previews(window, needed: dict[str, set[str]], title: str, run: Callab
         {f"{base}-instructor": compile_progress.JobSpec(
             compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]), estimated=True)
          for template, base in base_jobnames.items()},
-        work, opens_pdfs=False, on_done=on_done)
+        work, opens_pdfs=False, on_done=done)
