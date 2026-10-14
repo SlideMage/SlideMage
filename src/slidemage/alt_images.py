@@ -77,6 +77,13 @@ ROLE_INFORMATIVE = "informative"
 STATUS_AUTO = "auto"
 STATUS_REVIEWED = "reviewed"
 
+# Review state of the citation (`source` and `source_de` together), apart from the description's `status`:
+# any change to either source puts it back to SOURCE_TO_REVIEW (flag_source_change(), the one place that
+# decides it), and only a person marks it reviewed again (mark_source_reviewed()).
+SOURCE_REVIEWED = "reviewed"
+SOURCE_TO_REVIEW = "to_review"
+SOURCE_LABELS = {SOURCE_TO_REVIEW: "To review", SOURCE_REVIEWED: "Reviewed"}
+
 # Same scan targets/guesses as the old alt_manifest.py. The three scheme_*
 # dirs moved under schemes/ 2026-09-18 (were project-root siblings of
 # media/ before that).
@@ -141,6 +148,9 @@ class ImageEntry:
     # exactly that combination. Auto-pulled into a compiled slide's own
     # footnote wherever this image is used.
     source: str = ""
+    # Whether the citation (source and source_de) was confirmed since it last changed. A store
+    # written before this field existed loads as reviewed; it is written only when it is to_review.
+    source_status: str = SOURCE_REVIEWED
     # Which vision model produced the current short/long, when one did.
     # Cleared on human review -- once checked, the text is yours.
     drafted_by: str = ""
@@ -237,6 +247,8 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
         "source": entry.source,
         "takeaway_default": entry.takeaway_default,
     }
+    if entry.source_status != SOURCE_REVIEWED:
+        d["source_status"] = entry.source_status
     if entry.drafted_by:
         d["drafted_by"] = entry.drafted_by
     if entry.hint:
@@ -288,6 +300,7 @@ def entry_from_dict(image: str, d: dict) -> ImageEntry:
         short=(d.get("short") or ""),
         long=(d.get("long") or ""),
         source=(d.get("source") or ""),
+        source_status=SOURCE_TO_REVIEW if d.get("source_status") == SOURCE_TO_REVIEW else SOURCE_REVIEWED,
         takeaway_default=(d.get("takeaway_default") or ""),
         drafted_by=(d.get("drafted_by") or ""),
         hint=(d.get("hint") or ""),
@@ -301,13 +314,16 @@ def entry_from_dict(image: str, d: dict) -> ImageEntry:
     )
 
 
+def _entries_from_raw(raw: dict) -> dict[str, ImageEntry]:
+    images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
+    return {image: entry_from_dict(image, d) for image, d in images.items()}
+
+
 def load_store(ctx: ProjectContext) -> dict[str, ImageEntry]:
     """Read the store, keyed by root-relative image path. {} if absent."""
     if not _store_path(ctx).is_file():
         return {}
-    raw = json.loads(_store_path(ctx).read_text(encoding="utf-8"))
-    images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
-    return {image: entry_from_dict(image, d) for image, d in images.items()}
+    return _entries_from_raw(json.loads(_store_path(ctx).read_text(encoding="utf-8")))
 
 
 @dataclass
@@ -710,24 +726,107 @@ def stamp_review(entry: ImageEntry, use: SlideUse, reviewed: bool, slide_hash: s
         use.reviewed = ""
 
 
-def set_takeaway_default(ctx: ProjectContext, image: str, slide_id: str, text: str) -> ImageEntry | None:
-    """Make `text` the image's takeaway default; this slide then follows it instead of holding an
-    override of its own. Returns the updated entry, None if the image has no entry."""
+def _update_entry(ctx: ProjectContext, image: str, change) -> ImageEntry | None:
+    """Run `change(entry) -> bool` on the existing entry of `image` as one store update. Returns the
+    updated entry, None if there is no such entry or `change` found nothing to do."""
     found: list[ImageEntry] = []
 
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         entry = entries.get(image)
-        if entry is None:
+        if entry is None or not change(entry):
             return False
-        entry.takeaway_default = text
-        use = entry.used_on.get(slide_id)
-        if use is not None:
-            use.takeaway = ""
         found.append(entry)
         return True
 
     update_store(ctx, mutate)
     return found[0] if found else None
+
+
+def set_takeaway_default(ctx: ProjectContext, image: str, slide_id: str, text: str) -> ImageEntry | None:
+    """Make `text` the image's takeaway default; this slide then follows it instead of holding an
+    override of its own. Returns the updated entry, None if the image has no entry."""
+    def change(entry: ImageEntry) -> bool:
+        entry.takeaway_default = text
+        use = entry.used_on.get(slide_id)
+        if use is not None:
+            use.takeaway = ""
+        return True
+
+    return _update_entry(ctx, image, change)
+
+
+# -- the source's review state -----------------------------------------------------------------------------
+
+
+def source_state(entry: ImageEntry) -> str:
+    """SOURCE_TO_REVIEW or SOURCE_REVIEWED; "" when the image has no source in either language (nothing
+    to review)."""
+    return entry.source_status if entry.source or entry.source_de else ""
+
+
+def flag_source_change(entry: ImageEntry, before: tuple[str, str]) -> bool:
+    """The one rule: if (source, source_de) differs from `before`, the citation is to review and its
+    reviewed state is gone. Every writer of a source ends here (set_source(), and the writes of a file
+    that cannot go through it). Returns whether it changed."""
+    if (entry.source, entry.source_de) == before:
+        return False
+    entry.source_status = SOURCE_TO_REVIEW
+    return True
+
+
+def set_source(entry: ImageEntry, source: str | None = None, source_de: str | None = None) -> bool:
+    """Set the source and/or source_de (None leaves one as it is) of `entry` in memory, with the
+    consequence of flag_source_change(). Returns whether a source changed."""
+    before = (entry.source, entry.source_de)
+    if source is not None:
+        entry.source = source
+    if source_de is not None:
+        entry.source_de = source_de
+    return flag_source_change(entry, before)
+
+
+def save_source(ctx: ProjectContext, image: str, source: str | None = None, source_de: str | None = None) -> ImageEntry | None:
+    """Store a new source and/or source_de of `image` (None leaves one as it is) as to review. Returns
+    the updated entry, None if the image has no entry or nothing changed."""
+    return _update_entry(ctx, image, lambda entry: set_source(entry, source, source_de))
+
+
+def mark_source_reviewed(ctx: ProjectContext, image: str) -> ImageEntry | None:
+    """Confirm the citation of `image` as it stands. Returns the updated entry, None if there is none."""
+    def change(entry: ImageEntry) -> bool:
+        entry.source_status = SOURCE_REVIEWED
+        return True
+
+    return _update_entry(ctx, image, change)
+
+
+def is_store(ctx: ProjectContext, path: Path) -> bool:
+    """Whether `path` is the store file itself."""
+    return path.resolve() == _store_path(ctx).resolve()
+
+
+def flag_edited_sources(ctx: ProjectContext, path: Path, before: str) -> bool:
+    """A chat tool or the embedded Claude Code wrote `path` as a file. If that is the store, every
+    entry whose source or source_de differs from the file's text `before` the write ("" for a new
+    file) goes to review, whatever status the written file claims. Returns whether any did."""
+    if not is_store(ctx, path):
+        return False
+    try:
+        previous = _entries_from_raw(json.loads(before)) if before.strip() else {}
+    except (ValueError, AttributeError):
+        previous = {}
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        changed = False
+        for image, entry in entries.items():
+            old = previous.get(image)
+            changed |= flag_source_change(entry, (old.source, old.source_de) if old else ("", ""))
+        return changed
+
+    try:
+        return update_store(ctx, mutate)
+    except (ValueError, AttributeError):   # the written file is not a readable store: nothing to flag
+        return False
 
 
 def save_slide_image(

@@ -24,6 +24,8 @@ ROLES = ((alt_images.ROLE_INFORMATIVE, "Informative"), (alt_images.ROLE_DECORATI
 # Chip tone of an alt_images state.
 STATE_TONES = {alt_images.STATE_NONE: "error", alt_images.STATE_DRAFT: "info",
                alt_images.STATE_STALE: "warning", alt_images.STATE_REVIEWED: "ok"}
+# Chip tone of the review state of the source (alt_images.SOURCE_LABELS has the texts).
+SOURCE_TONES = {alt_images.SOURCE_TO_REVIEW: "warning", alt_images.SOURCE_REVIEWED: "ok"}
 STATE_TEXT = {alt_images.STATE_NONE: "No description", alt_images.STATE_DRAFT: "Saved, not reviewed",
               alt_images.STATE_STALE: "Needs re-check", alt_images.STATE_REVIEWED: "Reviewed"}
 TRANSLATION_TEXT = {alt_images.STATE_NONE: "not translated yet",
@@ -49,25 +51,80 @@ def review_refused(parent, images: list[tuple[str, str, str]]) -> bool:
     return bool(missing)
 
 
-# (key, label, tooltip, height, placeholder) of the fields of each language, in the order they are shown.
+# (key, label, tooltip, height, placeholder) of the source field of each language; the side panel's
+# Image descriptions shows the same ones.
+SOURCE_SPECS = {
+    "source": ("source", "Source (citation or attribution)", "", 48, "e.g. Own illustration, data from …"),
+    "source_de": ("source_de", "Quelle (source_de; leave blank to use the English source)", "", 48, ""),
+}
+
+
+def labelled_edit(spec: tuple[str, str, str, int, str], value: str) -> tuple[QPlainTextEdit, Field]:
+    """The text box of a field `spec` showing `value`, and the labelled field around it."""
+    _key, label, tip, height, placeholder = spec
+    edit = QPlainTextEdit(value)
+    edit.setFixedHeight(height)
+    edit.setPlaceholderText(placeholder)
+    edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)   # the text wraps
+    field = Field(label, edit)
+    field.setToolTip(tip)
+    return edit, field
+
+
+class SourceStatus(Surface):
+    """Under a source field: whether the citation (both languages) is to review or reviewed, and the
+    button that confirms it. The form that holds it saves nothing: `review_clicked` is its to handle."""
+
+    review_clicked = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        line = QHBoxLayout(self)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(8)
+        self.chip = Chip("", "neutral")
+        self.button = Button("Mark reviewed", "ghost", compact=True)
+        self.button.setAccessibleName("Mark source reviewed")
+        self.button.clicked.connect(self.review_clicked)
+        line.addWidget(self.chip)
+        line.addWidget(self.button)
+        line.addStretch(1)
+
+    def show_state(self, stored: str, typed: tuple[str, str], baseline: tuple[str, str]) -> None:
+        """`stored` is alt_images.source_state() of the entry; `typed` and `baseline` are the (source, source_de)
+        in the boxes and as they were shown. A citation changed in the boxes is to review once saved, and
+        cannot be marked reviewed before that."""
+        pending = typed != baseline
+        state = (alt_images.SOURCE_TO_REVIEW if any(typed) else "") if pending else stored
+        self.setVisible(bool(state))
+        self.chip.set_text(alt_images.SOURCE_LABELS.get(state, ""))
+        self.chip.set_tone(SOURCE_TONES.get(state, "neutral"))
+        self.button.setVisible(state == alt_images.SOURCE_TO_REVIEW)
+        self.button.setEnabled(not pending)
+        self.button.setToolTip("Save the change first." if pending else
+                               "Confirm the citation, in both languages, as it stands.")
+
+
+# The fields of each language, in the order they are shown.
 ENGLISH = (
     ("short", "Short description (alt text)", "One locating sentence; goes into the PDF. Shared by every slide "
      "using this image.", 64, "What a sighted reader takes from the image, in one or two sentences"),
     ("long", "Long description", "Structured; goes into the transcript. Shared by every slide using this image.",
      190, "Values, axes, structure"),
     ("takeaway", "Takeaway (why this image is on this slide)", "", 64, "What the slide wants the reader to conclude"),
-    ("source", "Source (citation or attribution)", "", 48, "e.g. Own illustration, data from …"),
+    SOURCE_SPECS["source"],
 )
 GERMAN = (
     ("short_de", "Kurzbeschreibung", "", 64, "Not translated yet"),
     ("long_de", "Langbeschreibung", "", 190, "Not translated yet"),
     ("takeaway_de", "Erkenntnis (takeaway_de)", "", 64, "Not translated yet"),
-    ("source_de", "Quelle (source_de; leave blank to use the English source)", "", 48, ""),
+    SOURCE_SPECS["source_de"],
 )
 
 
 class ImageForm(Surface):
     edited = Signal()
+    source_reviewed = Signal()               # the citation was marked reviewed (and stored)
     replace_clicked = Signal(object)         # this form
     tune_clicked = Signal(object)
     translate_clicked = Signal(object, bool)  # this form, whether to save the slide first
@@ -89,6 +146,7 @@ class ImageForm(Surface):
         self._asked: Optional[tuple[dict[str, str], tuple[str, str, str]]] = None   # what a request was sent from
         self.fields: dict[str, QPlainTextEdit] = {}
         self._groups: dict[str, Surface] = {}
+        self._source_status: list[SourceStatus] = []   # one under the source field of each language
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 8, 0, 18)
@@ -144,8 +202,10 @@ class ImageForm(Surface):
         self.fields["long"].textChanged.connect(self._english_edited)
         self.fields["takeaway"].textChanged.connect(self._refresh_takeaway_state)
         self.edited.connect(self._show_state)
+        self.edited.connect(self._show_source_state)
         self._apply_role()
         self._show_state()
+        self._show_source_state()
         self.set_language("en")
 
     # -- building -------------------------------------------------------------------------------
@@ -164,16 +224,17 @@ class ImageForm(Surface):
         column = QVBoxLayout(group)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(10)
-        for key, label, tip, height, placeholder in specs:
-            edit = QPlainTextEdit(self.baseline[key])
-            edit.setFixedHeight(height)
-            edit.setPlaceholderText(placeholder)
-            edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)   # the text wraps
+        for spec in specs:
+            key = spec[0]
+            edit, field = labelled_edit(spec, self.baseline[key])
             edit.textChanged.connect(self.edited)   # connected after the text is set: showing is no edit
-            field = Field(label, edit)
-            field.setToolTip(tip)
             column.addWidget(field)
             self.fields[key] = edit
+            if key in SOURCE_SPECS:
+                status = SourceStatus()
+                status.review_clicked.connect(self._mark_source_reviewed)
+                column.addWidget(status)
+                self._source_status.append(status)
         layout.addWidget(group)
         self._groups[language] = group
         return group
@@ -224,6 +285,18 @@ class ImageForm(Surface):
         for key, group in self._groups.items():
             group.setVisible(key == language)
 
+    def _show_source_state(self) -> None:
+        typed = (self.fields["source"].toPlainText().strip(), self.fields["source_de"].toPlainText().strip())
+        for status in self._source_status:
+            status.show_state(alt_images.source_state(self.entry), typed,
+                              (self.baseline["source"], self.baseline["source_de"]))
+
+    def _mark_source_reviewed(self) -> None:
+        entry = alt_images.mark_source_reviewed(self.app.project, self.reference)
+        if entry is not None:
+            self.refresh_entry(entry)
+            self.source_reviewed.emit()
+
     def _show_state(self) -> None:
         """The chip says what is stored, or that this form differs from it."""
         if self.changed:
@@ -242,6 +315,7 @@ class ImageForm(Surface):
         """A worker wrote the store: take its entry as what is stored (what "Version on disk" translates)
         without touching the fields or the baseline the next save compares with."""
         self.entry = entry
+        self._show_source_state()
 
     def rebase(self, entry: alt_images.ImageEntry, slide_hash: str) -> None:
         """Show what the store holds now (after a save, or when a worker wrote the image) and take
@@ -259,6 +333,7 @@ class ImageForm(Surface):
         self._show_translation_state(alt_images.translation_state(entry))
         self._apply_role()
         self._show_state()
+        self._show_source_state()
 
     def _on_role(self, _role: str) -> None:
         self._apply_role()

@@ -353,17 +353,21 @@ class WorkspaceWindow(QMainWindow):
 
     def _on_page_changed(self, index: int) -> None:
         """Tell the top bar whether Images is open; the page takes the room of the slide list and the
-        side panels, and scans the slides when it is first shown. Leaving it saves a pending edit."""
+        side panels, and scans the slides when it is first shown. Both write the same image store: a
+        pending edit of the panel is saved before the page shows, one of the page when it is left, and
+        what the other wrote shows then."""
         is_images = self.stack.widget(index) is self.images_page
         self.topbar.set_images_open(is_images)
         self._apply_column_visibility()
         if is_images:
+            self.side_panels.flush()
             self.images_page.ensure_loaded()
         else:
             try:
                 self.images_page.flush()
             except Exception as exc:  # noqa: BLE001 -- the edits stay in the page (and in the close prompt)
                 QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
+            self.side_panels.refresh()
 
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)

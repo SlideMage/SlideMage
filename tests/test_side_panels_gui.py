@@ -832,3 +832,83 @@ def test_the_reference_form_can_start_from_a_missing_key(ctx, qapp, project, mon
     assert dialog.key_entry.text() == "ghost1999"                  # not replaced by the suggestion smith2020
     dialog.deleteLater()
     parent.deleteLater()
+
+
+# -- the Reference / citation of an image ------------------------------------------------------------------
+
+
+def test_the_images_panel_edits_the_source_like_the_full_editor(ctx, content):
+    from slidemage import alt_images
+    from slidemage.ui.pages import image_form
+
+    panels, _state, _window = content
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    field = form.source_edit.parentWidget()
+    assert field.label.text() == image_form.SOURCE_SPECS["source"][1] == "Source (citation or attribution)"
+    assert form.source_edit.placeholderText() == image_form.SOURCE_SPECS["source"][4]
+    assert form.source_status.isHidden()                                  # no source: nothing to review
+    form.source_edit.setPlainText("Photo: Smith")
+    assert panel.dirty and form.source_status.chip.text() == "To review" and not form.source_status.button.isEnabled()
+    form.save_button.click()                                              # saved with the description, as a draft
+    entry = alt_images.load_store(ctx)["media/pic.png"]
+    assert (entry.source, entry.source_de, entry.source_status) == ("Photo: Smith", "", alt_images.SOURCE_TO_REVIEW)
+    form = panel._forms[0]
+    assert form.source_edit.toPlainText() == "Photo: Smith" and not panel.dirty
+    assert form.source_status.chip.text() == "To review" and form.source_status.button.isEnabled()
+    form.source_status.button.click()                                     # stored at once, apart from Save
+    assert alt_images.load_store(ctx)["media/pic.png"].source_status == alt_images.SOURCE_REVIEWED
+    assert form.source_status.chip.text() == "Reviewed" and not form.source_status.button.isVisible()
+    assert alt_images.load_store(ctx)["media/pic.png"].status == alt_images.STATUS_AUTO   # the description is untouched
+
+
+def test_the_source_is_to_review_after_any_edit_and_saving_the_description_reviewed_does_not_confirm_it(ctx, content):
+    from slidemage import alt_images
+
+    panels, _state, _window = content
+    alt_images.update_store(ctx, lambda entries: entries.update({"media/pic.png": alt_images.ImageEntry(
+        image="media/pic.png", source="Own illustration", short="s", long="l")}) or True)
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    assert form.source_status.chip.text() == "Reviewed"                   # an existing citation is not flooded
+    form.source_edit.setPlainText("Own illustration, 2026")
+    form.long_edit.setPlainText("A longer description.")
+    form.review_button.click()                                            # the description reviewed, the source changed
+    entry = alt_images.load_store(ctx)["media/pic.png"]
+    assert (entry.status, entry.source_status) == ("reviewed", alt_images.SOURCE_TO_REVIEW)
+    assert panel._forms[0].state_chip.text() == "Reviewed" and panel._forms[0].source_status.chip.text() == "To review"
+
+
+def test_the_source_of_the_panels_language_is_shown_and_saved(ctx, content):
+    from slidemage import alt_images
+    from slidemage.ui.pages import image_form
+
+    panels, state, _window = content
+    alt_images.update_store(ctx, lambda entries: entries.update({"media/pic.png": alt_images.ImageEntry(
+        image="media/pic.png", source="Own illustration", source_de="Eigene Grafik")}) or True)
+    panel = shown(panels, "images")
+    assert panel._forms[0].source_edit.toPlainText() == "Own illustration"
+    state.set_language("DE")
+    form = panel._forms[0]
+    assert form.source_edit.toPlainText() == "Eigene Grafik"
+    assert form.source_edit.parentWidget().label.text() == image_form.SOURCE_SPECS["source_de"][1]
+    form.source_edit.setPlainText("Foto: Smith")
+    panel.flush()                                                         # a pending edit is saved as a draft
+    entry = alt_images.load_store(ctx)["media/pic.png"]
+    assert (entry.source, entry.source_de, entry.source_status) == ("Own illustration", "Foto: Smith", alt_images.SOURCE_TO_REVIEW)
+    assert not panel.dirty
+
+
+def test_a_source_the_panel_did_not_edit_keeps_what_another_writer_stored(ctx, content):
+    from slidemage import alt_images
+
+    panels, _state, _window = content
+    alt_images.update_store(ctx, lambda entries: entries.update({"media/pic.png": alt_images.ImageEntry(
+        image="media/pic.png", source="Own illustration")}) or True)
+    panel = shown(panels, "images")
+    form = panel._forms[0]
+    alt_images.save_source(ctx, "media/pic.png", source="Elsewhere")      # another view or an agent changed it
+    form.short_edit.setPlainText("Edited short")
+    form.save_button.click()
+    entry = alt_images.load_store(ctx)["media/pic.png"]
+    assert (entry.short, entry.source, entry.source_status) == ("Edited short", "Elsewhere", alt_images.SOURCE_TO_REVIEW)

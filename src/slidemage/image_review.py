@@ -47,10 +47,20 @@ def _in_states(*states: str) -> Callable[[SlideView, Entries], bool]:
     return lambda view, entries: view.state in states
 
 
+def _images_of(view: SlideView, entries: Entries) -> list[alt_images.ImageEntry]:
+    found = (alt_images.lookup(entries, reference) for reference in view.row.images)
+    return [entry for entry in found if entry is not None]
+
+
 def _lacks_german(view: SlideView, entries: Entries) -> bool:
     """Whether some image of the slide has no German text yet."""
-    found = (alt_images.lookup(entries, reference) for reference in view.row.images)
-    return any(entry is not None and lacks_german(entry) for entry in found)
+    return any(lacks_german(entry) for entry in _images_of(view, entries))
+
+
+def _source_to_review(view: SlideView, entries: Entries) -> bool:
+    """Whether the citation of some image of the slide is to review. Not part of the slide's state or
+    of "Needs attention": the state is about the description and this slide's use of it."""
+    return any(alt_images.source_state(entry) == alt_images.SOURCE_TO_REVIEW for entry in _images_of(view, entries))
 
 
 # (label, whether a slide is listed: (view, store entries) -> bool)
@@ -62,6 +72,7 @@ FILTERS = [
     ("Needs re-check", _in_states(alt_images.STATE_STALE)),
     ("Reviewed", _in_states(alt_images.STATE_REVIEWED)),
     ("No German", _lacks_german),
+    ("Source to review", _source_to_review),
 ]
 
 
@@ -170,9 +181,10 @@ def apply_form_edit(entry: alt_images.ImageEntry, slide_id: str, edit: FormEdit)
     stays at its newest persisted value. Returns this slide's use of the image."""
     changed = {key for key in FIELDS if edit.values[key] != edit.baseline[key]}
     values = edit.values
-    for key in ("role", "short", "long", "source", "short_de", "long_de", "source_de"):
+    for key in ("role", "short", "long", "short_de", "long_de"):
         if key in changed:
             setattr(entry, key, values[key])
+    alt_images.set_source(entry, **{key: values[key] for key in ("source", "source_de") if key in changed})
     use = entry.used_on.setdefault(slide_id, alt_images.SlideUse())
     if "takeaway" in changed:
         entry.takeaway_default, use.takeaway = _promote_takeaway(values["takeaway"], entry.takeaway_default)

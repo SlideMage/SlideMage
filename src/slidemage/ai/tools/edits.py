@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ... import ai_review, slide_source
+from ... import ai_review, alt_images, slide_source
 from ...project import ProjectContext
 from ...slide_protection import protected_problem, slide_kind
 from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
@@ -68,6 +68,8 @@ def write_text(workspace: Workspace, path: Path, before: str, after: str, *,
             slide_source.save_slide_source(workspace.project, path, after, slide_source.read_slide_source(path)[1], expected_text=before)
         except slide_source.StaleFileError as exc:
             raise ToolError(f"{path.name} was not changed: {exc}") from None
+        if review:
+            alt_images.flag_edited_sources(workspace.project, path, before)   # a changed citation is to review
     if review and before != after:
         ai_review.mark(workspace.project, path, kind, source, text=after)
         ai_review.inserted_slides(workspace.project, path, before, after, source)
@@ -160,6 +162,7 @@ def write_file(ctx: ToolContext, args: dict) -> str:
         raise ToolError(f"{relative(ctx.root, path)} was created while the user was deciding; it was not overwritten.")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8", newline="\n")
+    alt_images.flag_edited_sources(ctx.project, path, "")
     ai_review.inserted_slides(ctx.project, path, "", content, "chat agent: write_file")
     ctx.workspace.review_changed()
     ctx.workspace.file_changed(path, None)

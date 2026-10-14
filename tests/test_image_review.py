@@ -62,7 +62,7 @@ def test_visible_views_filter_and_order(store):
     # slides missing from the order keep their place, at the end
     assert ids(image_review.visible_views(views, {}, everything, order={"3aaa": 0, "1aaa": 1})) == [
         "3aaa", "1aaa", "0aaa", "2aaa"]
-    assert image_review.filter_counts(views, {}) == [3, 4, 1, 1, 1, 1, 0]
+    assert image_review.filter_counts(views, {}) == [3, 4, 1, 1, 1, 1, 0, 0]
     summary_views = [*views, views[0]]
     assert image_review.state_counts(summary_views) == {"none": 2, "draft": 1, "stale": 1, "reviewed": 1}
     assert image_review.summary_text(summary_views) == "1 reviewed · 1 need re-check · 1 draft · 2 undescribed"

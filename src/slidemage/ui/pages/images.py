@@ -191,12 +191,15 @@ class ImagesPage(ImageRunsMixin, Surface):
 
     def ensure_loaded(self) -> None:
         """The first scan, run when the page is first shown rather than at launch: it walks every slide,
-        hashes the images they reference and syncs the store."""
+        hashes the images they reference and syncs the store. Shown again, it reads the store: the side panel
+        may have written to it meanwhile (forms with edits of their own keep them)."""
         if not self._models_loaded:
             self.refresh_model_preferences()
         if not self._loaded:
             self._loaded = True
             self.reload()
+        else:
+            self._refresh_states()
 
     def refresh_model_preferences(self, models: Optional[list[str]] = None,
                                   vision_models: Optional[list[str]] = None) -> None:
@@ -279,6 +282,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                 form.set_language(self._language)
                 form.set_availability(self._job is not None, self.translate_model.isEnabled())
                 form.edited.connect(self._edited)
+                form.source_reviewed.connect(self._refresh_states)
                 form.replace_clicked.connect(self._replace_image)
                 form.tune_clicked.connect(self._tune)
                 form.translate_clicked.connect(self._translate_image)

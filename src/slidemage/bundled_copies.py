@@ -359,7 +359,8 @@ def _merge_slide_ids(project_root: Path, part: Part) -> None:
 def _merge_image_descriptions(ctx: ProjectContext, part: Part) -> None:
     """Add the manual's image descriptions the project lacks; replace the
     unreviewed descriptions of images this update replaced. Goes through
-    alt_images (the running app's project store, which regenerates the CSV)."""
+    alt_images (the running app's project store, which regenerates the CSV). A new image keeps the
+    citation it ships with; replacing an image's description with a different citation puts it to review."""
     from . import alt_images
 
     try:
@@ -377,6 +378,8 @@ def _merge_image_descriptions(ctx: ProjectContext, part: Part) -> None:
             if current is None or (image in replaced
                                    and current.status != alt_images.STATUS_REVIEWED):
                 entries[image] = entry
+                if current is not None:   # a replaced entry whose citation differs is to review
+                    alt_images.flag_source_change(entry, (current.source, current.source_de))
                 changed = True
         return changed
 

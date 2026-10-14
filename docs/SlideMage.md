@@ -247,7 +247,12 @@ What matters when touching *this code*:
   still share the page's underlying store and lock (`alt_images.py`,
   `slide_snapshot.py`) -- see those modules' own entries in the module map
   below. The Image descriptions *panel* and the page are the only writers of the
-  image forms.
+  image forms. Both show the citation field (`image_form.SOURCE_SPECS`,
+  `labelled_edit()`, `SourceStatus`: the same label, placeholder, review
+  badge and *Mark reviewed*; the panel shows the language of the top bar).
+  They are never visible together: `WorkspaceWindow._on_page_changed` saves the
+  panel's pending edit when the page opens (`ensure_loaded()` reads the store
+  again) and refreshes the panel when the page is left.
 - **A hand-drawn tikz illustration (`\tikzillustration{ID}`,
   Slidemaster_preamble_base.tex) shows up in this same per-slide list as a
   synthetic `tikz:ID` reference (2026-09-07)** -- see ALT_TEXT_NOTES.md's
@@ -274,7 +279,20 @@ What matters when touching *this code*:
   hand-authors exactly that combination; step 1 of a planned feature to
   auto-pull it into a compiled slide's own footnote, prefixed "Image
   source(s):" -- see ALT_TEXT_NOTES.md for the full plan and why the
-  schema/UI landed before the compile-time half. Replaced two former
+  schema/UI landed before the compile-time half. The citation has its own
+  review state (v8.12.0, `source_status`, `SOURCE_TO_REVIEW` /
+  `SOURCE_REVIEWED`, one state for `source` and `source_de` together):
+  `flag_source_change()` is the one rule (a changed source or source_de is
+  to review), `set_source()` / `save_source()` apply it to an entry in memory
+  / in the store (the Images page's form via `image_review.apply_form_edit`,
+  the side panel, the bundled-manual merge), `mark_source_reviewed()` is the
+  only way back, and `flag_edited_sources()` applies it to a store file
+  written as a file (the chat's `edit_file` / `write_file` and the Claude
+  Code hook compare it with the text before the write). It is written to the
+  JSON only when `to_review`, so an older store loads as reviewed (and an
+  empty source has nothing to review: `source_state()`); the compile CSV
+  does not carry it. The Images page's counts and "Needs attention" ignore it;
+  the filter "Source to review" lists the slides. Replaced two former
   stores 2026-08-14 --
   `alt_manifest.py`'s CSV (role/status/short only) and a `%%ALT` comment
   block `alt_blocks.py` used to read/write at the bottom of every slide

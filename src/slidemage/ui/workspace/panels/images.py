@@ -6,8 +6,10 @@ Images page, which has all the fields and the batch drafting): "Save draft" keep
 "Mark reviewed" confirms the image and this slide's use of it. Redraft asks the vision model
 of the active route (Local, Claude Code or the API, with the one-time cloud consent) for a new
 description and puts it into the fields; nothing is stored until it is saved. A pending edit is
-saved as a draft when the slide, the deck or the panel changes. The takeaway, the German texts
-and the source line are the Images page's."""
+saved as a draft when the slide, the deck or the panel changes. The Reference / citation is the full editor's
+field for the panel's language (source or source_de), saved with the rest and with its own review state
+(alt_images.source_state): a change makes it "To review", "Mark reviewed" under it confirms it at once.
+The takeaway and the German descriptions are the Images page's."""
 from __future__ import annotations
 
 import threading
@@ -25,7 +27,7 @@ from ....slide_language import bare_id
 from ...ai_models import built, cloud_label, task_route
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
-from ...pages.image_form import ROLES, STATE_TONES, review_refused
+from ...pages.image_form import ROLES, SOURCE_SPECS, STATE_TONES, SourceStatus, labelled_edit, review_refused
 from ...text import plural
 from .base import Row, SidePanel, box, empty_row, text
 
@@ -34,14 +36,18 @@ PIXMAP_SUFFIXES = (".png", ".jpg", ".jpeg")
 
 
 class ImageForm(Row):
-    """One image: what is typed is `role`, `short` and `long`; `baseline` is what the store had."""
+    """One image: what is typed is `role`, `short`, `long` and the source of `language`; `baseline` and
+    `source_baseline` ((source, source_de)) are what the store had."""
 
     def __init__(self, layout, project: ProjectContext, reference: str, entry: Optional[alt_images.ImageEntry],
-                 state: str) -> None:
+                 state: str, language: str) -> None:
         super().__init__(layout)
         self.reference = reference
-        self.baseline = (entry.role if entry else alt_images.ROLE_INFORMATIVE,
-                         entry.short if entry else "", entry.long if entry else "")
+        entry = entry or alt_images.ImageEntry(image=reference)
+        self.baseline = (entry.role, entry.short, entry.long)
+        self.source_baseline = (entry.source, entry.source_de)
+        self.source_key = "source_de" if language == "DE" else "source"
+        self.source_stored = alt_images.source_state(entry)
         head = QHBoxLayout()
         resolved = alt_blocks.resolve_image(project, reference)
         picture = QLabel()
@@ -63,6 +69,13 @@ class ImageForm(Row):
         self.short_edit = self._edit("Short description (the figure's caption)", self.baseline[1], 48)
         self.long_edit = self._edit("Long description (what a student who cannot see it needs to know)",
                                     self.baseline[2], 110)
+        shown = self.source_baseline[1] if self.source_key == "source_de" else self.source_baseline[0]
+        self.source_edit, source_field = labelled_edit(SOURCE_SPECS[self.source_key], shown)
+        self.body.addWidget(source_field)
+        self.source_status = SourceStatus()
+        self.body.addWidget(self.source_status)
+        self.source_edit.textChanged.connect(self.show_source)
+        self.show_source()
         self.note = text("", q.PANEL_CAPTION)
         self.note.hide()
         self.body.addWidget(self.note)
@@ -93,9 +106,20 @@ class ImageForm(Row):
     def values(self) -> tuple[str, str, str]:
         return self.role, self.short_edit.toPlainText().strip(), self.long_edit.toPlainText().strip()
 
+    def source_text(self) -> str:
+        return self.source_edit.toPlainText().strip()
+
+    def typed_source(self) -> tuple[str, str]:
+        """(source, source_de) as the store would have them: the other language's as it was shown."""
+        typed = self.source_text()
+        return (self.source_baseline[0], typed) if self.source_key == "source_de" else (typed, self.source_baseline[1])
+
+    def show_source(self) -> None:
+        self.source_status.show_state(self.source_stored, self.typed_source(), self.source_baseline)
+
     @property
     def changed(self) -> bool:
-        return self.values() != self.baseline
+        return self.values() != self.baseline or self.typed_source() != self.source_baseline
 
 
 class ImageDescriptions(SidePanel):
@@ -136,10 +160,12 @@ class ImageDescriptions(SidePanel):
             for reference in references:
                 entry = alt_images.lookup(entries, reference)
                 state = image_review.image_state(entries, reference, slide_id, slide_hash)
-                form = ImageForm(layout, self.app.project, reference, entry, state)
+                form = ImageForm(layout, self.app.project, reference, entry, state, self.state.language)
                 form.roles.changed.connect(lambda _role: self._edited())
                 form.short_edit.textChanged.connect(self._edited)
                 form.long_edit.textChanged.connect(self._edited)
+                form.source_edit.textChanged.connect(self._edited)
+                form.source_status.review_clicked.connect(lambda f=form: self._review_source(f))
                 form.redraft_button.clicked.connect(lambda _=False, f=form: self._redraft(f))
                 form.save_button.clicked.connect(lambda _=False, f=form: self._save(f, reviewed=False))
                 form.review_button.clicked.connect(lambda _=False, f=form: self._save(f, reviewed=True))
@@ -156,23 +182,33 @@ class ImageDescriptions(SidePanel):
         role, short, long = form.values()
         if reviewed and review_refused(self, [(form.reference, role, long)]):
             return
-        self._store(form.reference, role, short, long, reviewed, form.baseline)
+        self._store(form, reviewed)
         self.refresh()
 
-    def _store(self, reference: str, role: str, short: str, long: str, reviewed: bool,
-               baseline: tuple[str, str, str]) -> None:
+    def _store(self, form: ImageForm, reviewed: bool) -> None:
+        """Save the form: only what changed since it was shown, a source apart (it goes to review)."""
         slide_id, path = self._slide
-        alt_images.save_slide_image(self.app.project, reference, slide_id, path, role=role, short=short, long=long,
-                                    reviewed=reviewed, baseline=baseline)
-        self.app.log(f"{'Reviewed' if reviewed else 'Saved draft of'} {reference} on {path.name}")
+        role, short, long = form.values()
+        alt_images.save_slide_image(self.app.project, form.reference, slide_id, path, role=role, short=short,
+                                    long=long, reviewed=reviewed, baseline=form.baseline)
+        if form.typed_source() != form.source_baseline:
+            alt_images.save_source(self.app.project, form.reference, **{form.source_key: form.source_text()})
+        self.app.log(f"{'Reviewed' if reviewed else 'Saved draft of'} {form.reference} on {path.name}")
+
+    def _review_source(self, form: ImageForm) -> None:
+        """Confirm the stored citation at once, apart from the description's Save."""
+        entry = alt_images.mark_source_reviewed(self.app.project, form.reference)
+        if entry is not None:
+            form.source_stored = alt_images.source_state(entry)
+            form.show_source()
 
     def flush(self) -> None:
         """Save what was typed as drafts (this slide's use of the image becomes unreviewed)."""
         if not self.dirty or self._slide is None:
             return
         for form in [f for f in self._forms if f.changed]:
-            self._store(form.reference, *form.values(), reviewed=False, baseline=form.baseline)
-            form.baseline = form.values()
+            self._store(form, reviewed=False)
+            form.baseline, form.source_baseline = form.values(), form.typed_source()
         self.set_dirty(False)
 
     # -- redrafting ---------------------------------------------------------------------------

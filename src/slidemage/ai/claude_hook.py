@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from hashlib import sha256
 
-from .. import ai_review, fileio, project, timing
+from .. import ai_review, alt_images, fileio, project, timing
 from ..project import ProjectContext
 from . import claude_scope
 from ..slide_protection import protected_problem, slide_kind
@@ -96,7 +96,8 @@ def blocked_reason(ctx: ProjectContext, event: dict) -> str | None:
 
 
 def record_write(ctx: ProjectContext, event: dict) -> None:
-    """Pre captures text; successful Post records the slide and inserted calls.
+    """Pre captures text; successful Post records the slide and inserted calls, and sends a citation
+    changed in the image descriptions store (media/alt-text.json) to review.
 
     Tool ids isolate simultaneous calls. The temporary pre snapshot is only
     needed to identify deck insertions and no-op writes; the review store itself is locked.
@@ -111,7 +112,8 @@ def record_write(ctx: ProjectContext, event: dict) -> None:
         return
     slide = slide_kind(ctx, path) == "current"
     deck = path.suffix == ".tex" and path.is_relative_to(ctx.decks_dir.resolve())
-    if not slide and not deck:
+    store = alt_images.is_store(ctx, path)
+    if not slide and not deck and not store:
         return
     identity = str(event.get("tool_use_id") or f"{event.get('session_id', '')}:{path}")
     snapshot = ctx.claude_hook_dir / (sha256(identity.encode()).hexdigest() + ".json")
@@ -124,7 +126,9 @@ def record_write(ctx: ProjectContext, event: dict) -> None:
     if isinstance(response, dict) and (response.get("isError") or response.get("is_error")):
         return
     source = f"Claude Code terminal: {event['tool_name']}"
-    if slide and ("before" not in saved or saved["before"] != _read(path)):
+    if store:
+        alt_images.flag_edited_sources(ctx, path, saved.get("before") or "")   # a changed citation is to review
+    elif slide and ("before" not in saved or saved["before"] != _read(path)):
         ai_review.mark(ctx, path, "draft" if saved.get("new") else "edit", source)
     elif deck and path.is_file() and "before" in saved:
         ai_review.inserted_slides(ctx, path, saved["before"] or "", fileio.read_text_exact(path), source)

@@ -2556,6 +2556,30 @@ every distinct source among a frame's images, de-duplicated, prefixed
 for image attribution specifically (it still is for anything else, e.g.
 a data source for a table).
 
+The same **Source (citation or attribution)** field (**Quelle** on the DE
+side) is the **Reference / citation** box of the *Image descriptions* side
+panel, so a citation can be written next to the slide without opening the
+Images page. The box follows the language in the top bar (EN: Source, DE:
+Quelle, which falls back to the English one when blank), and is saved with
+the description, like every other field of the panel. Both views edit the
+same store entry: what one saved shows in the other the next time it is
+shown (opening the Images page saves the panel's pending edit first, and
+going back to the workspace shows what the page saved).
+
+**A citation has its own review state**, apart from the description's:
+*To review* (amber) or *Reviewed* (green), shown next to the field in both
+views, with a **Mark reviewed** button under it (enabled once the change
+is saved). Any change to either language's source puts it back to *To review*
+and clears its reviewed state: typing in either view, but also the assistant
+or Claude Code editing `media/alt-text.json` (including a bundled manual
+update that brings a different credit). It is one state for the English and
+German citation together. Marking the description reviewed does not mark the
+citation reviewed, and the other way round. A store from before this existed
+loads with its citations as *Reviewed*, and an image without a citation has
+nothing to review. A slide's review state and the Images page's "Needs
+attention" list are about the descriptions only; the filter **Source to
+review** lists the slides with a citation still to review.
+
 Two things stay per-slide rather than shared, because they're genuinely
 contextual:
 
