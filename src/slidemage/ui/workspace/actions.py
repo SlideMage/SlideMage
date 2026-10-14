@@ -195,6 +195,8 @@ def build_registry() -> CommandRegistry:
     add("slide:readability", "Check readability of this slide", SLIDE,
         lambda w: w.assistant.check_readability(SLIDE_SCOPE), icon="visibility", meta="no AI",
         enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
+    add("slide:readable", "Make this slide readable", SLIDE, lambda w: w.assistant.make_readable(), icon="auto_fix_high",
+        meta="checks it first", enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
     add("slides:unreviewed", "List not reviewed slides", SLIDE,
         lambda w: w.slide_list.review_filter.setChecked(True), enabled=_has_deck)
     for view in VIEWS:

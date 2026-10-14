@@ -3,14 +3,16 @@
 `ReadabilityPanel` takes the place of the conversation (assistant.py), like the image results, until Back to
 conversation: the findings grouped by slide, each with its severity, class, measured value against the threshold, an
 excerpt and the suggestion, a summary line, and Check again. Clicking a finding (or Show slide) focuses that slide in
-the centre. Nothing in it knows where a report comes from, so the "Make readable" task can add its per-slide button to
-`_slide_header`.
+the centre. A slide with findings it can fix (those not set by the template, which the panel marks "set by the
+template" and tells where to change) has Make readable, the AI task of terminal/tasks.py. Nothing in the panel knows
+where a report comes from.
 
 `ReadabilityCheck` runs the checks on a worker thread, on every route (no AI is used): "this slide" renders a draft of
 the slide in view as the top bar says (render_context, as the task card's Check preview does); "this deck" reads the
 deck's compiled PDF, but only while it is current. When it is not, the panel says why and offers "Compile the deck
 first", which starts the normal compile and runs the check when that run is over. Nothing is compiled silently.
-Closing the panel stops the render in progress and drops its result.
+Closing the panel stops the render in progress and drops its result. Every report is also kept per slide text
+(readability_check.KnownFindings) for Make readable and the assistant header's button.
 """
 from __future__ import annotations
 
@@ -35,6 +37,8 @@ from .menus import VIEW_LABELS
 from .preview_view import render_context
 
 LOOK = {readability.ERROR: ("error", "error"), readability.WARNING: ("warning", "warning")}   # icon and tone
+TEMPLATE_HINT = ("The slide does not set this size: it comes from the template's preamble (for the footnote and source "
+                 "font, \\setbeamerfont{footnote}). Change it there, once for every slide; Make readable leaves it alone.")
 
 
 class ReadabilityPanel(Surface):
@@ -44,6 +48,7 @@ class ReadabilityPanel(Surface):
     again_clicked = Signal()           # Check again
     compile_clicked = Signal()         # Compile the deck first
     slide_clicked = Signal(object)     # a SlideReport: take the user to that slide
+    make_readable_clicked = Signal(object)    # a SlideReport: run Make readable on that slide
 
     def __init__(self) -> None:
         super().__init__()
@@ -148,6 +153,12 @@ class ReadabilityPanel(Surface):
         show.setEnabled(bool(slide.file))
         show.clicked.connect(lambda: self.slide_clicked.emit(slide))
         header.addWidget(show)
+        if slide.fixable and slide.file:
+            fix = Button("Make readable", "secondary", compact=True)
+            fix.setAccessibleName(f"Make slide {slide.slide_id} readable")
+            fix.setToolTip("Let the AI enlarge the text and images and lay the slide out again")
+            fix.clicked.connect(lambda: self.make_readable_clicked.emit(slide))
+            header.addWidget(fix)
         return header
 
     def _finding_row(self, slide: readability.SlideReport, finding: readability.Finding) -> ClickFrame:
@@ -164,7 +175,8 @@ class ReadabilityPanel(Surface):
         words = QVBoxLayout()
         words.setSpacing(1)
         measure = QLabel(f"{readability.LABELS[finding.cls]} · {finding.measure_text}"
-                         + (f" · {finding.count} lines" if finding.count > 1 else ""))
+                         + (f" · {finding.count} lines" if finding.count > 1 else "")
+                         + (" · set by the template" if finding.template_level else ""))
         measure.setObjectName(q.TASK_STATE)
         measure.setWordWrap(True)
         set_property(measure, "tone", tone)
@@ -175,7 +187,7 @@ class ReadabilityPanel(Surface):
             excerpt.setObjectName(q.PANEL_MONO)
             excerpt.setWordWrap(True)
             words.addWidget(excerpt)
-        suggestion = QLabel(finding.suggestion)
+        suggestion = QLabel(TEMPLATE_HINT if finding.template_level else finding.suggestion)
         suggestion.setObjectName(q.PANEL_CAPTION)
         suggestion.setWordWrap(True)
         words.addWidget(suggestion)
@@ -208,12 +220,15 @@ class _Request:
     deck: Optional[Deck] = None
     view: str = ""
     language: str = ""
+    text: str = ""                     # a slide's: what was measured (set when the check starts)
 
 
 class ReadabilityCheck(QObject):
     """See the module docstring. `app` is the workspace window; `workspace` shows a slide for a click."""
 
     changed = Signal()                 # the panel came on show or went away
+    reported = Signal()                # a report arrived (the slides' known findings changed)
+    make_readable = Signal(object)     # the file (Path) of a slide whose Make readable was clicked
 
     def __init__(self, app, panel: ReadabilityPanel, workspace) -> None:
         super().__init__(panel)
@@ -227,6 +242,7 @@ class ReadabilityCheck(QObject):
         panel.again_clicked.connect(self.again)
         panel.compile_clicked.connect(self.compile_first)
         panel.slide_clicked.connect(self._show_slide)
+        panel.make_readable_clicked.connect(lambda slide: self.make_readable.emit(self.app.project.slides_dir / slide.file))
         self._watching = False         # the compile slot is looked at once Compile the deck first has used it
 
     # -- the two checks ---------------------------------------------------------------------------------
@@ -294,7 +310,7 @@ class ReadabilityCheck(QObject):
             app.toast.show_message("Open a slide first: the readability check reads a typeset slide.")
             return None
         target, view, language, timestamp = context
-        text = app.centre.slide_text(path)
+        text = request.text = app.centre.slide_text(path)
         ctx = app.project
         return lambda: readability_check.check_slide(ctx, target, text, view, language, timestamp, cancel, log=app.log)
 
@@ -308,7 +324,13 @@ class ReadabilityCheck(QObject):
         elif error is not None:
             self.panel.show_error(title, f"The check could not run: {str(error) or type(error).__name__}")
         else:
+            known = self.app.readability_known
+            if self._request.path is not None:
+                known.remember_slide(self._request.path, self._request.text, report)
+            else:
+                known.remember_deck(self.app.project, report)
             self.panel.show_report(title, report, self._titles(report))
+            self.reported.emit()
 
     def _titles(self, report: readability.Report) -> dict[str, str]:
         titles = {}

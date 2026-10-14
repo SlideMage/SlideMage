@@ -1,7 +1,7 @@
 """The state of a task card and what it says (workspace v6 handoff, sections 4 and 8). Pure: no Qt.
 
 A task card is the host-managed run of one AI task on one slide: Generate, Review, Apply, Check preview, and the
-ends it can come to (done, conflict, preview failed, stopped, failed, setup needed). The TaskRunner
+ends it can come to (done, conflict, preview failed, overflow, stopped, failed, setup needed). The TaskRunner
 (terminal/tasks.py) owns the card and moves it between phases; the view (task_card.py) shows what this module
 says: the state line, the steps and the buttons of a phase.
 """
@@ -11,20 +11,23 @@ import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ... import readability
 from ...ai import ai_profile, claude_tasks
+from ..text import plural
 
 GENERATE, REVIEW, APPLY, CHECK = "generate", "review", "apply", "check_preview"
 DONE, CONFLICT, PREVIEW_FAILED, STOPPED, FAILED, SETUP = "done", "conflict", "preview_failed", "stopped", "failed", "setup_needed"
+OVERFLOW = "overflow"                      # Make readable: the change was applied, but text is cut off or overlapping
 STEPS = ((GENERATE, "Generate"), (REVIEW, "Review"), (APPLY, "Apply"), (CHECK, "Check preview"))
 RUNNING = (GENERATE, APPLY, CHECK)         # a card in one of these phases is AI work under way
 # What the pill in the assistant's header says about a card that was left with "Back to conversation".
 PILL_WORDS = {GENERATE: "generating", REVIEW: "waiting for review", APPLY: "applying", CHECK: "checking preview",
-              DONE: "done", CONFLICT: "conflict", PREVIEW_FAILED: "preview failed", STOPPED: "stopped",
-              FAILED: "failed", SETUP: "setup needed"}
+              DONE: "done", CONFLICT: "conflict", PREVIEW_FAILED: "preview failed", OVERFLOW: "does not fit",
+              STOPPED: "stopped", FAILED: "failed", SETUP: "setup needed"}
 # Icon and tone of the state line.
 LOOKS = {GENERATE: ("autorenew", "strong"), REVIEW: ("rate_review", "strong"), APPLY: ("save", "strong"),
          CHECK: ("autorenew", "strong"), DONE: ("check_circle", "ok"), CONFLICT: ("warning", "warning"),
-         PREVIEW_FAILED: ("error", "error"), STOPPED: ("stop_circle", "muted"), FAILED: ("error", "error"),
+         PREVIEW_FAILED: ("error", "error"), OVERFLOW: ("error", "error"), STOPPED: ("stop_circle", "muted"), FAILED: ("error", "error"),
          SETUP: ("cloud_off", "warning")}
 _GENERATING = {  # the sentence of the Generate phase, by task: {id}, {src} and {dst} (language names)
     claude_tasks.TRANSLATE.name: "Translating {id} from {src} to {dst}. LaTeX commands, labels and the glossary are kept.",
@@ -34,7 +37,56 @@ _GENERATING = {  # the sentence of the Generate phase, by task: {id}, {src} and 
     claude_tasks.PROOFREAD.name: "Proofreading {id}. The meaning, the LaTeX commands and the labels are kept.",
     claude_tasks.CONCISE.name: "Shortening {id}. The frame, reveal steps and version tags are kept.",
     claude_tasks.TITLE.name: "Looking for a better title for {id}. The rest of the slide is kept.",
-    claude_tasks.NOTE.name: "Writing a speaker note for {id}. The slide itself is kept."}
+    claude_tasks.NOTE.name: "Writing a speaker note for {id}. The slide itself is kept.",
+    claude_tasks.READABLE.name: "Making {id} readable: larger text and images, the slide laid out again. The meaning, "
+                                "the LaTeX markup and the labels are kept; the result is measured before anything is written."}
+FIT_RULES = (readability.CLIPPED, readability.OVERLAP)      # what counts as "does not fit" after Make readable
+
+
+def _measured(finding: readability.Finding) -> str:
+    """What a finding measured; for text cut off or overlapping the amount, as it has no threshold to meet."""
+    return f"{finding.measured:g} {finding.unit}" if finding.rule in FIT_RULES else finding.measure_text
+
+
+@dataclass
+class Readable:
+    """What Make readable measured: the findings the slide had (those it can fix, as the request sent them) and those
+    of the proposed text rendered as a draft."""
+    before: tuple[readability.Finding, ...]
+    after: tuple[readability.Finding, ...] | None = None    # None: not measured
+    problem: str = ""                  # the draft did not compile: its first error
+
+    @property
+    def overflows(self) -> bool:
+        """Text cut off by the page or the footer, or overlapping, after the change."""
+        return any(f.rule in FIT_RULES for f in self.after or ())
+
+    @property
+    def counts(self) -> tuple[int, int]:
+        """(errors, warnings) of the slide as it stands after the change."""
+        found = self.after or ()
+        return sum(f.severity == readability.ERROR for f in found), sum(f.severity == readability.WARNING for f in found)
+
+    def numbers(self) -> str:
+        """"After the change: 0 errors, 1 warning (was 4 errors)." or why there are none."""
+        if self.after is None:
+            return f"The proposal does not compile: {self.problem}." if self.problem else ""
+        errors, warnings = self.counts
+        was = [plural(n, word) for n, word in ((sum(f.severity == readability.ERROR for f in self.before), "error"),
+                                               (sum(f.severity == readability.WARNING for f in self.before), "warning")) if n]
+        return f"After the change: {plural(errors, 'error')}, {plural(warnings, 'warning')} (was {', '.join(was)})."
+
+    def outcome(self) -> str:
+        """What is readable now and what is still below the floor."""
+        if self.after is None:
+            return ""
+        fixed = list(dict.fromkeys(readability.LABELS[f.cls] for f in self.before if f.cls not in {g.cls for g in self.after}))
+        text = f"Now readable: {', '.join(fixed)}." if fixed else ""
+        if self.after:
+            below = any(f.severity == readability.ERROR for f in self.after)
+            shown = "; ".join(f"{readability.LABELS[f.cls].lower()} ({_measured(f)})" for f in self.after[:3])
+            text += f" {'Still below the floor' if below else 'Still close to the limit'}: {shown}{' …' if len(self.after) > 3 else ''}."
+        return text.strip()
 
 
 @dataclass
@@ -63,6 +115,8 @@ class TaskCard:
     where: str = ""                    # what Check preview renders: "1y8 · Instructor · DE"
     preview_skipped: bool = False      # Check preview was stopped
     preview_error: str = ""            # the first line of the compile error
+    readable: Readable | None = None   # Make readable: what was measured before and after
+    remark: str = ""                   # the model's remark on its answer (Make readable: how to split the slide)
     hidden: bool = False               # "Back to conversation": only the pill in the header shows it
 
     @property
@@ -126,7 +180,7 @@ def state_text(card: TaskCard) -> str:
         return _GENERATING[card.task.name].format(id=card.target, src=source, dst=target)
     if phase == REVIEW:
         what = f"translation of {card.target} into {target}, as a new slide" if card.is_translation else f"change to {file}"
-        return f"Proposed {what}. Nothing is written yet."
+        return " ".join(filter(None, [f"Proposed {what}. Nothing is written yet.", _readable_review(card), _remark(card)]))
     if phase == APPLY:
         return (f"Creating the {target} slide." if card.is_translation else f"Writing {file}.") + " This step cannot be interrupted."
     if phase == CHECK:
@@ -137,6 +191,9 @@ def state_text(card: TaskCard) -> str:
         return f"{card.target} changed while this task ran. The proposal is kept but not applied."
     if phase == PREVIEW_FAILED:
         return f"Changes applied to {card.result_path.name}. The preview failed: {card.preview_error}. Nothing was rolled back."
+    if phase == OVERFLOW:
+        return (f"Changes applied to {card.result_path.name}. After the change text is still cut off or overlapping: the "
+                f"slide does not fit. {card.readable.outcome()} Undo it, or run again to fix what remains. {_remark(card)}").strip()
     if phase == STOPPED:
         return card.note or "Stopped. Nothing was changed."
     if phase == SETUP:
@@ -144,9 +201,21 @@ def state_text(card: TaskCard) -> str:
     return card.note
 
 
+def _remark(card: TaskCard) -> str:
+    return f"Note: {card.remark}" if card.remark else ""
+
+
+def _readable_review(card: TaskCard) -> str:
+    """Make readable in Review: the numbers of the proposal, and a warning when it would not fit."""
+    readable = card.readable
+    if readable is None:
+        return ""
+    return " ".join(filter(None, [readable.numbers(), "Text would be cut off or overlap." if readable.overflows else ""]))
+
+
 def _done_text(card: TaskCard, source: str) -> str:
     if card.nothing:
-        return f"Nothing to change in {card.target}. Nothing was written."
+        return " ".join(filter(None, [f"Nothing to change in {card.target}. Nothing was written.", _remark(card)]))
     name = card.result_path.name
     if card.is_translation:
         links = f"It stays linked to the {source} slide." if not card.warnings else f"It is not complete: {'; '.join(card.warnings)}."
@@ -156,7 +225,9 @@ def _done_text(card: TaskCard, source: str) -> str:
     else:
         text = f"Changed {card.changed} line{'s' if card.changed != 1 else ''} in {name}."
     text += " The preview was not rendered because the task was stopped." if card.preview_skipped else " The preview is current."
-    return ("Applied automatically (Edit automatically is on). " if card.auto else "") + text
+    if card.readable is not None:
+        text = " ".join(filter(None, [text, card.readable.numbers(), card.readable.outcome()]))
+    return ("Applied automatically (Edit automatically is on). " if card.auto else "") + " ".join(filter(None, [text, _remark(card)]))
 
 
 STEP_WORDS = {"check_circle": "done", "radio_button_checked": "in progress", "radio_button_unchecked": "not started",
@@ -179,8 +250,10 @@ class Step:
 def steps(card: TaskCard) -> list[Step]:
     """The four steps with where the card is in them."""
     phase = card.phase
-    here = {GENERATE: 0, REVIEW: 1, APPLY: 2, CHECK: 3, DONE: 4, PREVIEW_FAILED: 3, CONFLICT: 1, STOPPED: 0, FAILED: 0, SETUP: 0}[phase]
+    here = {GENERATE: 0, REVIEW: 1, APPLY: 2, CHECK: 3, DONE: 4, PREVIEW_FAILED: 3, OVERFLOW: 3, CONFLICT: 1, STOPPED: 0, FAILED: 0,
+            SETUP: 0}[phase]
     exceptions = {(CONFLICT, 1): ("warning", "warning", "slide changed"), (PREVIEW_FAILED, 3): ("error", "error", "failed"),
+                  (OVERFLOW, 3): ("error", "error", "does not fit"),
                   (STOPPED, 0): ("stop_circle", "muted", "stopped"), (FAILED, 0): ("error", "error", "failed"),
                   (SETUP, 0): ("cloud_off", "warning", "setup needed")}
     found = []
@@ -227,8 +300,11 @@ def actions(card: TaskCard) -> list[Action]:
         if card.nothing:
             return [Action("close", "Close", True)]
         view = f"View {card.language} version" if card.is_translation else "View change"
-        return [Action("view", view, True), *([Action("undo", "Undo")] if card.undoable else []), *rendered,
+        again = [Action("again", "Run again")] if card.readable is not None and card.readable.after else []
+        return [Action("view", view, True), *([Action("undo", "Undo")] if card.undoable else []), *again, *rendered,
                 Action("close", "Close")]
+    if phase == OVERFLOW:
+        return [Action("undo", "Undo", True), Action("again", "Run again"), *rendered, Action("close", "Close")]
     if phase == CONFLICT:
         return [Action("compare", "Compare with current", True), *rendered, Action("again", "Run again"), Action("close", "Dismiss")]
     if phase == PREVIEW_FAILED:

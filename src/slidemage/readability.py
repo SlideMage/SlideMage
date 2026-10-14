@@ -2,7 +2,7 @@
 
 readability_pdf.py reads a rendered PDF (in the raster child process) into `Page` data; `analyse()` classifies the
 text of the last page of each slide, applies the rules below and gives a `Report` of `Finding`s that the UI shows,
-the agent tool prints (`to_text()`) and the "Make readable" task will hand to a model (`to_dict()`).
+the agent tool prints (`to_text()`) and the "Make readable" task hands to a model (`to_dict()`).
 
 Sizes are judged relative to the slide height, not in LaTeX points, so that a projected slide is judged whatever
 its paper size: a 7.5 in (540 pt) slide is the reference for the "projected pt" in the messages. Every threshold
@@ -34,6 +34,13 @@ the upper third, are `heading`s; everything else is `body`. The text size of a l
 (a superscript marker or a bullet does not make a line small), and lines without letters or digits are ignored.
 Backgrounds come from the filled rectangles of the page (the topmost one under the text, else white); text over a
 raster image has no known background and is left out of the contrast rule.
+
+Template-level findings: small print whose size the slide did not choose (the footnote and source font is set once in
+the template's preamble) is the same finding on every slide and cannot be fixed on one slide without overriding the
+template. readability_check marks it `template_level` (and the panel says "set by the template", the Make readable
+task leaves it out): a text-size finding of the citation class, on a slide whose source sets no font size command.
+`Finding.template_level` and `SlideReport.fixable` carry that; the rule itself needs the slide's source, so it is
+applied by readability_check, not here.
 
 Pages and slides: a slide may have several overlay pages. The last page of each slide's run of pages (the same
 rule as the slide snapshots, slide_snapshot.slide_runs) is judged; earlier pages only for clipped text.
@@ -160,6 +167,7 @@ class Finding:
     file: str = ""                     # the slide's source file name
     image: str = ""                    # an image finding: the file, when the slide's source names it
     pixels: tuple[int, int] = ()       # an image finding: the picture's own size
+    template_level: bool = False       # set by the template, not by the slide (see the module docstring)
 
     @property
     def measure_text(self) -> str:
@@ -169,7 +177,8 @@ class Finding:
         what = self.image or self.excerpt or (f"{self.pixels[0]}×{self.pixels[1]} px picture" if self.pixels else "")
         return (f"{self.severity} · {LABELS[self.cls].lower()} · {self.measure_text}"
                 + (f" · {self.count} lines" if self.count > 1 else "")
-                + (f" · \"{what}\"" if what else "") + f"\n    {self.suggestion}")
+                + (f" · \"{what}\"" if what else "")
+                + f"\n    {'Set by the template, not by this slide: ' if self.template_level else ''}{self.suggestion}")
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -184,6 +193,7 @@ class SlideReport:
     page: int                          # the judged page
     file: str = ""
     findings: list[Finding] = field(default_factory=list)
+    height_pt: float = 0.0             # of the judged page: sizes are shares of it
 
     @property
     def errors(self) -> list[Finding]:
@@ -193,8 +203,14 @@ class SlideReport:
     def warnings(self) -> list[Finding]:
         return [f for f in self.findings if f.severity == WARNING]
 
-    def to_dict(self) -> dict:
-        return dict(slide=self.slide_id, file=self.file, page=self.page, findings=[f.to_dict() for f in self.findings])
+    @property
+    def fixable(self) -> list[Finding]:
+        """The findings this slide can do something about: those not set by the template."""
+        return [f for f in self.findings if not f.template_level]
+
+    def to_dict(self, fixable_only: bool = False) -> dict:
+        return dict(slide=self.slide_id, file=self.file, page=self.page, height_pt=round(self.height_pt, 1),
+                    findings=[f.to_dict() for f in (self.fixable if fixable_only else self.findings)])
 
 
 @dataclass
@@ -226,9 +242,11 @@ class Report:
             lines[0] += " Nothing to report."
         return "\n".join(lines)
 
-    def to_dict(self) -> dict:
+    def to_dict(self, fixable_only: bool = False) -> dict:
+        """The summary, the thresholds and each slide with findings (with `fixable_only`, those it can fix)."""
         return dict(summary=self.summary, thresholds=asdict(self.thresholds),
-                    slides=[slide.to_dict() for slide in self.slides if slide.findings])
+                    slides=[slide.to_dict(fixable_only) for slide in self.slides
+                            if (slide.fixable if fixable_only else slide.findings)])
 
 
 # -- the rules ---------------------------------------------------------------------------------------------------
@@ -506,7 +524,7 @@ def analyse(pages: list[Page], runs: list[tuple[str, list[int]]], thresholds: Th
     slides = []
     for slide_id, indexes in runs:
         last = indexes[-1]
-        slide = SlideReport(slide_id, last + 1)
+        slide = SlideReport(slide_id, last + 1, height_pt=pages[last].height)
         slide.findings = _PageCheck(pages[last], last + 1, slide_id, thresholds).all_findings()
         for index in indexes[:-1]:
             check = _PageCheck(pages[index], index + 1, slide_id, thresholds)

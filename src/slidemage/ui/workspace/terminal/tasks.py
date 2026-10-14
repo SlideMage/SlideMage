@@ -30,9 +30,18 @@ One task or batch at a time; Stop and closing the window end its processes.
 Which backend runs a task is the active route's (ai_profile.resolve, captured when the task starts; the kind of
 each task is KINDS). On Cloud · Claude Code every task is a `claude -p` process, as above. On Local and
 Cloud · API only the tasks with an equivalent on a provider run, one at a time on that provider (the Ollama slot
-is held for the run): the image tasks (alt_draft's batch with a ModelBackend / ModelTranslationBackend) and
-Translate (slide_add.translate_body, its answer checked like Claude's). Every other task is refused with
-"not available on <route>", nothing sent and no other route or model used.
+is held for the run): the image tasks (alt_draft's batch with a ModelBackend / ModelTranslationBackend),
+Translate (slide_add.translate_body, its answer checked like Claude's) and Make readable (ai/provider_tasks.py: the
+task's rules and schema as JSON on the provider, the same check and one repair round). Every other task is refused
+with "not available on <route>", nothing sent and no other route or model used.
+Make readable works from the findings of the last readability check of the slide (readability_check.KnownFindings,
+the window's `readability_known`, valid for exactly the text that was measured): the header offers it, and the
+palette and the findings panel start it, only for a slide with such findings, and its request carries the ones the
+slide can fix (not those set by the template). The worker also measures the proposal as a draft
+(readability_check.check_slide), so Review says "After the change: 0 errors, 1 warning (was 4 errors)"; text cut
+off or overlapping after the change ends the card in Overflow (Undo, Run again). The Check preview renders the written
+slide as usual; its numbers are those of the proposal, which is the text that was written. A card in Done with findings
+left offers Run again, which sends the findings that remain.
 """
 from __future__ import annotations
 
@@ -46,11 +55,12 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
-from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, latex_lint, slide_add,
-                  slide_ids, slide_language, slide_source, slide_versioning)
+from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, latex_lint, readability,
+                  readability_check, slide_add, slide_ids, slide_language, slide_source, slide_versioning)
 from ....project import ProjectContext
 from ....tex_source import masked_same_length
-from ....ai import ai_profile, claude_images, claude_launch, claude_runner, claude_tasks, resolver, translation_style
+from ....ai import (ai_profile, claude_images, claude_launch, claude_runner, claude_tasks, provider_tasks, resolver,
+                    translation_style)
 from ....ai.agent_types import EditApplied
 from ....ai.tools.base import ToolError
 from ....ai.tools.edits import write_text
@@ -68,22 +78,25 @@ from ..task_card_model import TaskCard
 CONFLICT = "The slide changed while Claude worked."
 _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSLATION.name: "Updating",
           claude_tasks.FIX_LATEX.name: "Fixing", claude_images.DESCRIBE.name: "Describing",
-          claude_images.TRANSLATE.name: "Translating", claude_tasks.SUMMARISE.name: "Summarising"}
+          claude_images.TRANSLATE.name: "Translating", claude_tasks.SUMMARISE.name: "Summarising",
+          claude_tasks.READABLE.name: "Making readable"}
 # What each task is, for the route's models (ai_profile.TASKS).
 KINDS = {claude_tasks.TRANSLATE.name: ai_profile.TRANSLATION, claude_tasks.UPDATE_TRANSLATION.name: ai_profile.TRANSLATION,
          claude_images.TRANSLATE.name: ai_profile.TRANSLATION, claude_images.DESCRIBE.name: ai_profile.IMAGE_DESCRIPTION,
          **dict.fromkeys((claude_tasks.FIX_LATEX.name, claude_tasks.PROOFREAD.name, claude_tasks.CONCISE.name,
-                          claude_tasks.TITLE.name, claude_tasks.NOTE.name, claude_tasks.SUMMARISE.name),
+                          claude_tasks.TITLE.name, claude_tasks.NOTE.name, claude_tasks.SUMMARISE.name,
+                          claude_tasks.READABLE.name),
                          ai_profile.FIXES)}
 # The tasks that also run on a provider, as the Add slide sheet and the Images page do (see the docstring).
-PROVIDER_TASKS = (claude_tasks.TRANSLATE, claude_images.DESCRIBE, claude_images.TRANSLATE)
+PROVIDER_TASKS = (claude_tasks.TRANSLATE, claude_tasks.READABLE, claude_images.DESCRIBE, claude_images.TRANSLATE)
 # The tasks on one slide, shown as a task card (the others are batches, image runs and the summary).
 CARD_TASKS = (claude_tasks.TRANSLATE, claude_tasks.UPDATE_TRANSLATION, claude_tasks.FIX_LATEX, claude_tasks.PROOFREAD,
-              claude_tasks.CONCISE, claude_tasks.TITLE, claude_tasks.NOTE)
+              claude_tasks.CONCISE, claude_tasks.TITLE, claude_tasks.NOTE, claude_tasks.READABLE)
 _NAMES = {claude_tasks.TRANSLATE.name: "Translating a slide", claude_tasks.UPDATE_TRANSLATION.name: "Updating a translation",
           claude_tasks.FIX_LATEX.name: "Fixing LaTeX errors", claude_tasks.PROOFREAD.name: "Proofreading",
           claude_tasks.CONCISE.name: "Making a slide more concise", claude_tasks.TITLE.name: "Retitling a slide",
           claude_tasks.NOTE.name: "Adding a speaker note", claude_tasks.SUMMARISE.name: "Summarising a deck",
+          claude_tasks.READABLE.name: "Making a slide readable",
           claude_images.DESCRIBE.name: "Describing images", claude_images.TRANSLATE.name: "Translating image descriptions"}
 WORKERS = 2                            # processes at a time in a batch
 DECK_LABEL = "the deck"
@@ -192,8 +205,10 @@ def _describe_rows(window, paths) -> list[alt_blocks.SlideRow]:
     return rows
 
 
-def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
-    """The tasks on the text that fit the slide `focus` with its translation partner `link`."""
+def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None,
+                 known: readability_check.KnownFindings | None = None) -> list[Bubble]:
+    """The tasks on the text that fit the slide `focus` with its translation partner `link`; Make readable only when
+    `known` has errors measured on the slide's text."""
     own = slide_language.own_language(focus.id_slug)
     found = []
     if link is None and own in slide_language.TRANSLATION_LANGUAGES:
@@ -204,6 +219,8 @@ def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.Transl
         found.append(Bubble(claude_tasks.UPDATE_TRANSLATION, f"Update {claude_tasks.LANGUAGE_NAMES[language]} translation"))
     if _errors(ctx, focus.text):
         found.append(Bubble(claude_tasks.FIX_LATEX, "Fix LaTeX errors"))
+    if known is not None and known.has_errors(focus.path, focus.text):
+        found.append(Bubble(claude_tasks.READABLE, "Make readable"))
     text = _has_text(focus.text)
     if text and own in claude_tasks.LANGUAGE_NAMES:
         found.append(Bubble(claude_tasks.PROOFREAD, "Proofread"))
@@ -216,9 +233,10 @@ def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.Transl
     return found
 
 
-def _offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None) -> list[Bubble]:
+def _offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None,
+            known: readability_check.KnownFindings | None = None) -> list[Bubble]:
     """The tasks that fit the slide `focus` with its translation partner `link`."""
-    found = _text_offers(ctx, focus, link)
+    found = _text_offers(ctx, focus, link, known)
     describe, translate = _slide_images(ctx, focus.text)
     if describe:
         found.append(Bubble(claude_images.DESCRIBE, f"Describe images ({len(describe)})"))
@@ -230,7 +248,8 @@ def _offers(ctx: ProjectContext, focus: _Focus, link: slide_language.Translation
 def bubbles(window) -> list[Bubble]:
     """The tasks that fit the slide in the Source view right now."""
     focus = _focus(window)
-    return [] if focus is None else _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug))
+    return [] if focus is None else _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug),
+                                            window.readability_known)
 
 
 def deck_slides(window) -> list[Path]:
@@ -269,12 +288,13 @@ def deck_bubbles(window) -> list[Bubble]:
 
 
 # Which of the tasks that fit come first in the header (the prototype: the translation, then shortening).
-PRIORITY = (claude_tasks.UPDATE_TRANSLATION, claude_tasks.TRANSLATE, claude_tasks.FIX_LATEX, claude_tasks.CONCISE,
-            claude_tasks.PROOFREAD, claude_tasks.TITLE, claude_tasks.NOTE, claude_images.DESCRIBE, claude_images.TRANSLATE,
-            claude_tasks.SUMMARISE)
+PRIORITY = (claude_tasks.UPDATE_TRANSLATION, claude_tasks.TRANSLATE, claude_tasks.FIX_LATEX, claude_tasks.READABLE,
+            claude_tasks.CONCISE, claude_tasks.PROOFREAD, claude_tasks.TITLE, claude_tasks.NOTE, claude_images.DESCRIBE,
+            claude_images.TRANSLATE, claude_tasks.SUMMARISE)
 
 
-SLIDE_TASKS = tuple(task for task in PRIORITY if task is not claude_tasks.SUMMARISE)    # what `bubbles` can offer
+# What `bubbles` can offer, as palette commands; Make readable has its own command, which checks the slide first.
+SLIDE_TASKS = tuple(task for task in PRIORITY if task not in (claude_tasks.SUMMARISE, claude_tasks.READABLE))
 DECK_TASKS = (*BATCH_TASKS, claude_images.DESCRIBE, claude_tasks.SUMMARISE)                # what `deck_bubbles` can
 
 
@@ -289,7 +309,9 @@ def _capture(window, task: claude_tasks.Task, focus: _Focus | None) -> _Capture 
     if focus is None:
         return None
     link = slide_language.translation_link(window.project, focus.id_slug)
-    if not any(bubble.task is task for bubble in _offers(window.project, focus, link)):
+    known = window.readability_known
+    if not (known.fixable(focus.path, focus.text) if task is claude_tasks.READABLE
+            else any(bubble.task is task for bubble in _offers(window.project, focus, link))):
         return None
     path, id_slug, text, header, sent, language = focus.path, focus.id_slug, focus.text, "", focus.text, ""
     own = slide_language.own_language(id_slug)
@@ -313,6 +335,8 @@ def _capture(window, task: claude_tasks.Task, focus: _Focus | None) -> _Capture 
         request = claude_tasks.proofread_request(text, own, style[0])
     elif task is claude_tasks.CONCISE:
         request = claude_tasks.concise_request(text)
+    elif task is claude_tasks.READABLE:
+        request = claude_tasks.readable_request(text, known.get(focus.path, text).to_dict(fixable_only=True))
     elif task is claude_tasks.TITLE:
         request = claude_tasks.title_request(text)
     else:
@@ -591,9 +615,12 @@ class TaskRunner(QObject):
         language = capture.language
         if task is claude_tasks.UPDATE_TRANSLATION:
             language = slide_language.own_language(capture.id_slug) or ""
-        return TaskCard(task, title or _NAMES[task.name], route, target=slide_language.bare_id(capture.id_slug),
+        card = TaskCard(task, title or _NAMES[task.name], route, target=slide_language.bare_id(capture.id_slug),
                         target_title=deck_outline.slide_file_title(capture.path, capture.id_slug), focus=capture.path,
                         file=capture.path.name, language=language, t0=time.monotonic(), **fields)
+        if task is claude_tasks.READABLE:
+            card.readable = card_model.Readable(tuple(self._window.readability_known.fixable(capture.path, capture.text)))
+        return card
 
     def _release(self) -> None:
         """The run is over: give the Ollama slot back and forget its providers."""
@@ -626,11 +653,37 @@ class TaskRunner(QObject):
         ctx, route, cancel = self._window.project, self._route, self._cancel
         if route.route == ai_profile.CLAUDE_CODE:
             claude = resolver.claude_path()
-            return lambda: claude_runner.run_task(ctx, claude, capture.task, capture.sent, capture.request,
-                                                  route.model, route.effort, cancel=cancel)
-        provider = resolver.provider_for(ctx, route)
-        self._providers.append(provider)
-        return lambda: _translate_on_provider(ctx, provider, capture, cancel)
+            run = lambda: claude_runner.run_task(ctx, claude, capture.task, capture.sent, capture.request,   # noqa: E731
+                                                 route.model, route.effort, cancel=cancel)
+        else:
+            provider = resolver.provider_for(ctx, route)
+            self._providers.append(provider)
+            if capture.task is claude_tasks.TRANSLATE:
+                run = lambda: _translate_on_provider(ctx, provider, capture, cancel)       # noqa: E731
+            else:
+                run = lambda: provider_tasks.run_task(ctx, provider, capture.task, capture.sent, capture.request, cancel)  # noqa: E731
+        return self._measuring(capture, run) if capture.task is claude_tasks.READABLE else run
+
+    def _measuring(self, capture: _Capture, run: Callable[[], Outcome]) -> Callable[[], Outcome]:
+        """`run`, then the text it proposes rendered as a draft and measured (Make readable): the Report, or why the
+        draft could not be measured, in `Outcome.measured`."""
+        window, cancel, context = self._window, self._cancel, render_context(self._window, capture.path)
+
+        def measured() -> Outcome:
+            outcome = run()
+            if outcome.status != DONE or context is None:
+                return outcome
+            target, view, language, timestamp = context
+            try:
+                outcome.measured = readability_check.check_slide(window.project, target, outcome.text, view, language,
+                                                                 timestamp, cancel, log=window.log)
+            except Exception as exc:  # noqa: BLE001 -- why the draft could not be measured is the card's text
+                if cancel.is_set():
+                    outcome.status = CANCELLED
+                outcome.measured = card_model.first_error(str(exc))
+            return outcome
+
+        return measured
 
     def stop(self) -> None:
         self._cancel.set()
@@ -832,7 +885,7 @@ class TaskRunner(QObject):
         if outcome.status == CANCELLED:
             self._phase(card, card_model.STOPPED)
         elif outcome.status == NOTHING:
-            self._phase(card, card_model.DONE, nothing=True)
+            self._phase(card, card_model.DONE, nothing=True, remark=outcome.note)
         elif outcome.status != DONE:
             login = outcome.message == claude_runner.NOT_LOGGED_IN
             self._phase(card, card_model.SETUP if login else card_model.FAILED, can_sign_in=login,
@@ -840,6 +893,9 @@ class TaskRunner(QObject):
         else:
             card.before, card.after = ("", outcome.text) if capture.language else (capture.text, capture.header + outcome.text)
             card.changed = card_model.changed_lines(card.before, card.after)
+            card.remark = outcome.note
+            if card.readable is not None:
+                self._take_measure(capture, card, outcome)
             self._proposal = capture, outcome.text
             if not self._fresh(capture):
                 self._phase(card, card_model.CONFLICT)
@@ -848,6 +904,16 @@ class TaskRunner(QObject):
                 self._write_soon(card)
             else:
                 self._phase(card, card_model.REVIEW)
+
+    def _take_measure(self, capture: _Capture, card: TaskCard, outcome: Outcome) -> None:
+        """Make readable: the measurement of the proposal goes on the card, and, for the text it was made on, into the
+        known findings (so Run again, and the header's button, start from what remains)."""
+        measured = outcome.measured
+        if isinstance(measured, readability.Report):
+            self._window.readability_known.remember_slide(capture.path, capture.header + outcome.text, measured)
+            card.readable.after = tuple(measured.slides[0].fixable) if measured.slides else ()
+        else:
+            card.readable.problem = measured or ""
 
     def apply(self) -> None:
         """Review's Apply."""
@@ -906,12 +972,13 @@ class TaskRunner(QObject):
         worker.wait()
         worker.deleteLater()
         card = self.card
+        end = card_model.OVERFLOW if card.readable is not None and card.readable.overflows else card_model.DONE
         if self._preview_cancel.is_set():
-            self._phase(card, card_model.DONE, preview_skipped=True)
+            self._phase(card, end, preview_skipped=True)
         elif error:
             self._phase(card, card_model.PREVIEW_FAILED, preview_error=card_model.first_error(error))
         else:
-            self._phase(card, card_model.DONE)
+            self._phase(card, end)
 
     def show_result(self) -> None:
         """View DE version: the new slide in the centre column."""

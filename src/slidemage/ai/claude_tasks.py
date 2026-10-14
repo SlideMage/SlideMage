@@ -2,7 +2,7 @@
 gets, the request text, the shape of the answer, and the check of an answer before anything is written.
 
 A task has no tools; the model answers with JSON that SlideMage validates and applies itself. Four answer
-shapes: a new text (`{"body": ...}`), an edit list (`{"edits": [{"before", "after"}]}`, each `before` a piece
+shapes: a new text (`{"body": ...}`; READABLE's also carries an optional `"note"`), an edit list (`{"edits": [{"before", "after"}]}`, each `before` a piece
 of the captured text that occurs exactly once), a new frame title (`{"title": ...}`) and a speaker note
 (`{"note": ...}`); the summary of a deck (`{"summary": ...}`) is read, never written. check() turns the answer into the new text and accepts it only if it is well formed, the
 protected parts of the slide are unchanged and the text has no lint error the captured text did not have.
@@ -43,6 +43,8 @@ _BODY = _schema("body", {"type": "string"})
 _TITLE = _schema("title", {"type": "string"})
 _NOTE = _schema("note", {"type": "string"})
 _SUMMARY = _schema("summary", {"type": "string"})
+_READABLE = {"type": "object", "properties": {"body": {"type": "string"}, "note": {"type": "string"}},
+             "required": ["body"], "additionalProperties": False}
 _EDITS = _schema("edits", {"type": "array", "items": {
     "type": "object", "properties": {"before": {"type": "string"}, "after": {"type": "string"}},
     "required": ["before", "after"], "additionalProperties": False}})
@@ -121,6 +123,24 @@ SUMMARISE = Task("summarise", (
     "LaTeX. Answer with the summary text only."), _SUMMARY)
 
 
+READABLE = Task("readable", (
+    "You make one beamer slide of a university course readable for an audience in a lecture hall. The request has "
+    "the slide's source between <slide> tags (the tags are not part of it) and what a measurement of the typeset "
+    "slide found, as JSON: every finding gives a measured value and its threshold, and the sizes are shares of the "
+    "slide height (the request says what they come to in points). Rewrite the source so that every finding meets its threshold and the slide "
+    "still fits on one page, with nothing cut off or overlapping. Enlarge text with the template's size commands "
+    "(\\normalsize, \\small, \\footnotesize) rather than \\fontsize; make images larger (the width of "
+    "\\includegraphics, as a fraction of \\textwidth or \\linewidth); re-lay out the slide by changing columns "
+    "and their widths, spacing and the nesting of itemize; trim wording only where the larger text needs the room, "
+    "and never change what a statement says. Do not touch the preamble, the template or the frame's options. Keep "
+    "exactly: math, overlay specifications such as <2->, labels, citation keys, image file names, slide ids, URLs "
+    "and the code shown in \\SMCode{...} and \\SMCmd{...}. "
+    "If the slide cannot be made readable without losing content, answer with the best layout that keeps all of "
+    "it (or the source as it is, if nothing helps) and say in `note`, in one or two sentences in the slide's "
+    "language, how to split the slide: what goes onto a second slide. Otherwise leave `note` out. " + _PROTECT),
+    _READABLE)
+
+
 def translate_request(text: str, source: str, target: str, address: str = "Sie", glossary: str = "") -> str:
     """Translate `text` from `source` to `target` (codes of LANGUAGE_NAMES). `address` ("Sie" or "du") is
     told to the model for German, never left to it; `glossary` is the project's "EN = DE" lines, as they are."""
@@ -187,6 +207,34 @@ def fix_request(text: str, issues: list[latex_lint.LintIssue]) -> str:
     """Fix the errors `issues` (lint_text of `text`) report in `text`."""
     errors = [latex_lint.format_issue(i) for i in issues if i.severity == latex_lint.ERROR]
     return "\n".join(["Fix these errors:", *errors, "<slide>", text, "</slide>"])
+
+
+def readable_request(text: str, report: dict) -> str:
+    """Make the slide `text` readable: `report` is the readability Report.to_dict(fixable_only=True) of this slide
+    alone (its findings are in the units of the thresholds: shares of the slide height, of the slide area or width)."""
+    slide, thresholds = report["slides"][0], report["thresholds"]
+    keys = ("body_pct", "citation_pct", "figure_text_pct", "image_min_area_pct", "image_min_width_pct", "contrast",
+            "contrast_large", "max_words", "max_lines", "min_line_spacing")
+    findings = {"thresholds": {key: thresholds[key] for key in keys},
+                "findings": [{key: value for key, value in finding.items() if key not in ("slide_id", "file", "template_level")}
+                             for finding in slide["findings"]]}
+
+    def points(share: str) -> str:
+        return f"{thresholds[share] / 100 * slide['height_pt']:.1f} pt"
+
+    return "\n".join([
+        "Make this slide readable.",
+        f"The typeset page is {slide['height_pt']:.0f} pt high. In points on this page the floors are: body text and "
+        f"headings {points('body_pct')} ({thresholds['body_pct']:g} %), sources and footnotes {points('citation_pct')}, "
+        f"text in figures {points('figure_text_pct')}.",
+        "Findings (JSON):", json.dumps(findings, ensure_ascii=False), "<slide>", text, "</slide>"])
+
+
+def answer_note(task: Task, answer: dict | None) -> str:
+    """The model's remark on its answer: READABLE's `note` (why the slide cannot be made readable as it is, and how
+    to split it), else ''."""
+    note = answer.get("note") if task is READABLE and isinstance(answer, dict) else None
+    return note.strip() if isinstance(note, str) else ""
 
 
 def repair_request(request: str, answer: dict | None, problems: list[str]) -> str:

@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, updater
+from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
 from ...ai import ai_profile, resolver
 from ...ai.providers import ChatProvider
@@ -115,6 +115,7 @@ class WorkspaceWindow(QMainWindow):
         self.theme = theme
         self.project = project_context
         self.compile = CompileController(project_context, self)
+        self.readability_known = readability_check.KnownFindings()    # what the readability checks found, per slide text
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
         self.setMinimumSize(1024, 640)
         if updater.can_self_update():

@@ -131,7 +131,21 @@ screenshots.
   of the slide area (or 35 % of its width) "may be too small to read"; contrast under 4.5:1 (3:1 for
   headings); text cut off by the page or running into the footer, overlapping lines; more than 90 words or
   14 lines of body text, or lines set closer than the font size (warnings). The assistant has the same check
-  as the tool `check_readability`.
+  as the tool `check_readability`. Small print whose size the slide does not choose (the footnote and source font,
+  set once in the template's preamble) is marked *set by the template*, with a hint where to change it, and is
+  left alone by the fix below.
+  **Make readable** (a button per slide in the findings, a task button in the assistant header once the slide in
+  view has been checked and has errors, Ctrl+K → *Make this slide readable*, which checks the slide first if it
+  has not been) asks the AI to enlarge the text and images of one slide and lay it out again until the findings
+  are met, still on one page: larger sizes through the template's own commands, wider images, other column
+  widths, spacing and list nesting, wording trimmed only where the room is needed, nothing else changed. It runs
+  as a task card on every route (Claude Code, Local, Cloud · API; the route you chose, no fallback). Before you
+  decide, Review measures the proposal and says *After the change: 0 errors, 1 warning (was 4 errors)*; Compare
+  rendered shows it against the slide. If the slide cannot be made readable without losing content, the card says
+  so and how to split it. After Apply the slide is rendered as usual and Done says what is readable now and what
+  is still below the floor (with *Run again*, which sends what remains); text cut off or overlapping after the
+  change counts as failed: the card offers *Undo* and *Run again*. A chat or terminal agent can do the same by
+  hand: `check_readability`, then `modify_slide`, then `check_readability` again.
   *Back to conversation* leaves a pill in the header while it runs. On Local and Cloud · API the body is the chat: the
   chat is an agent that works on the focused
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a

@@ -119,6 +119,34 @@ deck switcher offers the rest). From top to bottom and left to right:
   compiles by itself: the panel offers *Compile the deck first*, which runs the normal compile and the check when it
   ends. The panel (`ReadabilityPanel`) takes the conversation's place until *Back to conversation*; the header offers
   *Check readability* when no AI task is on show, and Ctrl+K has `slide:readability` and `deck:readability`.
+  **Template-level findings** (v8.15.0): `readability_check._mark_template_level` sets `Finding.template_level` on the
+  citation-class text-size findings of a slide whose source (the draft for a slide check, else the file) sets no
+  font size (`\tiny`, `\scriptsize`, `\footnotesize`, `\small`, `\normalsize`, `\large` ... , `\fontsize` or the
+  matching environment, outside comments): such a size is the template's (`\setbeamerfont{footnote}` in the
+  preamble), the same on every slide, and a slide cannot change it without overriding the template. The panel
+  shows them "set by the template" with a hint (`TEMPLATE_HINT`), `to_text` says so, `SlideReport.fixable` leaves
+  them out, and so does the Make readable request.
+- **Make readable** (v8.15.0; `claude_tasks.READABLE`, `ai/provider_tasks.py`, `readability_check.KnownFindings`,
+  `terminal/tasks.py`, `task_card_model.Readable`): the task on one slide, a FIXES-kind task on every route. The
+  answer is `{"body": <the whole new source>, "note": <optional>}`: a whole-slide relayout (columns, widths, sizes,
+  nesting) is not expressible as unique `before` pieces, and `body` goes through the same check as the other body
+  tasks (protected parts unchanged, no new lint error); `note` is the model's remark, shown on the card, which is
+  where it says that the slide cannot be made readable without losing content and how to split it (the body then is
+  the best layout, or the unchanged source: Done with "Nothing to change" and the note). The request
+  (`claude_tasks.readable_request`) carries the slide source, the floors in points for the slide's page, and the
+  findings the slide can fix (`Report.to_dict(fixable_only=True)`) with the thresholds in their units. The findings
+  come from `KnownFindings` (the window's `readability_known`): every check of the panel and every Make readable
+  measurement stores its report for exactly the text it measured, so an edit forgets it, the header's button
+  (offered when that text has errors) never runs a check to decide, and Run again sends what remained. On Claude Code
+  the task is `claude_runner.run_task`; on Local and Cloud · API `provider_tasks.run_task` sends the rules as the
+  system prompt and the schema as `schema=` (Ollama `format`, the API's system prompt), parses the reply
+  (`parse_json_object`, also from `thinking`), judges it with the same `claude_runner.judge` and gives a bad reply one
+  repair round (`repair_request`); a reply cut off at the token limit fails at once. The worker measures the proposed
+  text as a draft (`readability_check.check_slide`) before the card reaches Review, which says "After the change: 0
+  errors, 1 warning (was 4 errors)"; the written text is that same text, so the Check preview renders the slide as
+  usual and Done reuses the numbers ("Now readable: ...; Still below the floor: ..."). Cut-off or overlapping text
+  after the change (`task_card_model.FIT_RULES`) ends the card in Overflow (Undo, Run again), also when the preview
+  step was stopped. The assistant agent has no tool of its own: its guide says to check, `modify_slide`, and check again.
 - **Keyboard and screen readers** (workspace v6 step 7): the AI switch is a radio group with a single tab stop
   (the selected segment; **←/→** flip Local and Cloud, **Enter**/**Space** activate, then Tab reaches ▾); its popups
   open on their safe button, **Tab** goes secondary, primary, link and round again, **Esc** is the secondary button

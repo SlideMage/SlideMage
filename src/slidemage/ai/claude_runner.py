@@ -65,6 +65,8 @@ class Outcome:
     turns: int = 0
     tokens_in: int = 0               # input tokens, cached ones included
     tokens_out: int = 0
+    note: str = ""                   # the model's remark on its answer (claude_tasks.answer_note)
+    measured: object = None          # Make readable: the readability Report of the new text as a draft, or why not (str)
 
 
 @dataclass
@@ -177,6 +179,20 @@ def run_json(claude: Path, task: claude_tasks.Task, request: str, model: str, ef
                     clean_environment(claude), deadline, cancel)
 
 
+def judge(ctx: ProjectContext, task: claude_tasks.Task, captured: str, answer: dict | None, outcome: Outcome,
+          who: str = "Claude") -> list[str]:
+    """Settle `outcome` by the model's `answer` (claude_tasks.check): DONE with the new text, or NOTHING when it
+    changes nothing; the problems, when the answer is refused (then `outcome` says so, and they go into the repair
+    request)."""
+    outcome.note = claude_tasks.answer_note(task, answer)
+    text, problems = claude_tasks.check(ctx, task, captured, answer)
+    if problems:
+        outcome.message = f"{who}'s answer was refused: " + "; ".join(problems)
+    else:
+        outcome.status, outcome.text, outcome.message = (NOTHING, "", "") if text == captured else (DONE, text, "")
+    return problems
+
+
 def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, captured: str, request: str, model: str = MODEL,
              effort: str = EFFORT, deadline_s: float = TEXT_DEADLINE_S,
              cancel: threading.Event | None = None) -> Outcome:
@@ -200,11 +216,8 @@ def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, capture
         if run.error:
             outcome.message = run.error
             break
-        text, problems = claude_tasks.check(ctx, task, captured, run.answer)
-        if not problems:
-            outcome.status, outcome.text, outcome.message = (NOTHING, "", "") if text == captured else (DONE, text, "")
+        if not (problems := judge(ctx, task, captured, run.answer, outcome)):
             break
-        outcome.message = "Claude's answer was refused: " + "; ".join(problems)
         request = claude_tasks.repair_request(request, run.answer, problems)
     outcome.elapsed_s = time.monotonic() - started
     return outcome

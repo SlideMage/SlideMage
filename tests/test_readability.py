@@ -476,6 +476,59 @@ def test_a_deck_pdf_becomes_slides_with_their_files_and_the_images_with_the_file
     assert [s.slide_id for s in single.slides] == ["abc"] and single.slides[0].page == 3
 
 
+# -- findings set by the template, and the findings known per slide ---------------------------------------------------
+
+def small_print(pct=1.25):
+    def make(page):
+        footer(page)
+        title(page)
+        body(page, 2.8)
+        page.insert_text((12, 238), "Source: Own illustration, 2024", fontsize=size(pct), color=(0.1, 0.1, 0.1))
+    return make
+
+
+def test_small_print_on_a_slide_that_sets_no_size_is_set_by_the_template(project, tmp_path):
+    pdf = pdf_of(tmp_path, small_print())
+    text = "\\begin{standardframe}{Hello}\n\\item A point\n\\source{Own illustration}\n\\end{standardframe}\n"
+    entry, = readability_check.check_pdf(project, pdf, slide="abc", text=text).slides
+    by_class = {(f.cls, f.rule): f for f in entry.findings}
+    assert by_class[(CITATION, "text_size")].template_level and not by_class[(BODY, "text_size")].template_level
+    assert entry.fixable == [by_class[(BODY, "text_size")]] and len(entry.findings) == 2
+    assert entry.height_pt == H and entry.to_dict(fixable_only=True)["height_pt"] == H
+    assert [f["cls"] for f in entry.to_dict(fixable_only=True)["findings"]] == ["body"]
+    assert "Set by the template" in readability.Report([entry]).to_text()
+    # the slide chooses the size of its own small print: that is its to fix
+    for sized in ("\\source{\\tiny Own illustration}", "{\\fontsize{3}{4}\\selectfont x}", "\\begin{footnotesize}x\\end{footnotesize}"):
+        entry, = readability_check.check_pdf(project, pdf, slide="abc", text=text.replace("\\source{Own illustration}", sized)).slides
+        assert not any(f.template_level for f in entry.findings)
+    commented = text.replace("\\source{Own illustration}", "% \\tiny\n\\source{Own illustration}")
+    assert readability_check.check_pdf(project, pdf, slide="abc", text=commented).slides[0].fixable[0].cls == BODY
+
+
+def test_only_the_citation_size_is_template_level(project, tmp_path):
+    entry, = readability_check.check_pdf(project, pdf_of(tmp_path, slide(pct=2.8)), slide="abc", text="\\item x").slides
+    assert entry.findings and not any(f.template_level for f in entry.findings) and entry.fixable == entry.findings
+
+
+def test_the_known_findings_are_valid_for_the_text_that_was_measured(project, tmp_path):
+    report = readability_check.check_pdf(project, pdf_of(tmp_path, slide(pct=2.8)), slide="abc", text="one")
+    known = readability_check.KnownFindings()
+    path = project.slides_dir / "abc-EN-Hello-current.tex"
+    assert known.get(path, "one") is None and known.fixable(path, "one") == [] and not known.has_errors(path, "one")
+    known.remember_slide(path, "one", report)
+    assert known.has_errors(path, "one") and known.fixable(path, "one") == report.slides[0].fixable
+    assert known.get(path, "one").to_dict(fixable_only=True)["slides"][0]["findings"]
+    assert known.get(path, "two") is None and not known.has_errors(path, "two")      # an edit forgets them
+    warning_only = readability_check.check_pdf(project, pdf_of(tmp_path, slide(pct=3.4), name="w.pdf"), slide="abc", text="one")
+    known.remember_slide(path, "one", warning_only)
+    assert known.fixable(path, "one") and not known.has_errors(path, "one")
+    known.remember_slide(path, "one", readability.Report([]))                         # a render without pages
+    assert known.fixable(path, "one") == []
+    deck = readability_check.check_pdf(project, pdf_of(tmp_path, slide(pct=2.8), name="deck2.pdf"))
+    known.remember_deck(project, deck)
+    assert known.has_errors(path, path.read_text(encoding="utf-8").replace("\r\n", "\n"))
+
+
 # -- the deck's PDF -------------------------------------------------------------------------------------------------
 
 def record_for(project, deck, pdf: Path, inputs: list[Path], view="instructor", language="EN") -> dict:

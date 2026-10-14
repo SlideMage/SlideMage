@@ -1,0 +1,398 @@
+"""Make readable (small UI todos S4b): the task card from the findings of a check to the Done state, with the stand-in for
+`claude -p` (fake_claude.py), a stand-in for the preview's render and a stand-in for the readability measurement (it
+answers the reports a test queues, and notes the text it was asked to measure). The header's button, the findings panel's,
+the palette's command, the three routes and the routes that are not ready. The project is a throwaway one."""
+from __future__ import annotations
+
+import json
+import sys
+
+import pytest
+from PySide6.QtWidgets import QLabel
+from test_claude_code_gui import env as claude_env, pump, wait_until  # noqa: F401 -- a fixture
+from test_claude_tasks_gui import LF, buttons, click, ctx, fake, on_route, settled, slide_file  # noqa: F401
+from test_task_card_gui import card, phase_is, shown_buttons, state
+
+from slidemage import readability
+from slidemage.ai import ai_profile, claude_launch, claude_tasks, credentials, resolver
+from slidemage.ai.agent_types import EDIT_ASK
+from slidemage.ai.providers import ChatReply
+from slidemage.ui.kit.widgets import Button
+from slidemage.ui.workspace import task_card_model as model
+from slidemage.ui.workspace.readability_panel import TEMPLATE_HINT, ReadabilityPanel
+from slidemage.ui.workspace.terminal import tasks as tasks_module
+
+pytest.importorskip("PySide6.QtWebEngineWidgets")
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
+
+FILE = "abc-EN-Hello-current.tex"
+BIGGER = LF.replace("\\begin{itemize}", "\\begin{itemize}\\small", 1)       # a proposal that passes the checks
+
+
+def finding(cls="body", severity="error", measured=2.8, threshold=3.3, rule="text_size", unit="% of slide height",
+            template_level=False):
+    return readability.Finding("abc", 1, rule, cls, severity, measured, threshold, "min" if rule != "clipped" else "max", unit,
+                               (0.1, 0.3, 0.9, 0.6), "First point", "Enlarge it.", file=FILE, template_level=template_level)
+
+
+def report_of(*findings, slide_id="abc"):
+    return readability.Report([readability.SlideReport(slide_id, 1, FILE, list(findings), height_pt=272.0)])
+
+
+BEFORE = (finding(), finding("figure text", "error", 2.0, 2.6), finding("image", "warning", 20.0, 25.0, "image_size", "% of the slide area"))
+TEMPLATE = finding("citation", "error", 1.25, 2.2, template_level=True)
+
+
+class Measure:
+    """The readability measurement of a proposal: answers the queued reports (an exception is raised), notes the texts."""
+
+    def __init__(self, *answers):
+        self.answers, self.texts = list(answers), []
+
+    def __call__(self, _ctx, target, text, view, language, timestamp, cancel, **kwargs):
+        self.texts.append(text)
+        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+@pytest.fixture
+def measure(fake, monkeypatch):  # noqa: F811
+    made = Measure(report_of())
+    monkeypatch.setattr(tasks_module.readability_check, "check_slide", made)
+    return made
+
+
+def know(env, *findings, text=LF) -> None:
+    """The slide has been checked: these were the findings for `text`."""
+    env.window.readability_known.remember_slide(env.path, text, report_of(*findings))
+    env.window.assistant.header.schedule()
+    wait_until(lambda: ("Make readable" in buttons(env)) == any(f.severity == "error" and not f.template_level for f in findings))
+
+
+def asked_fake(fake):  # noqa: F811
+    fake.env.window.assistant.chat.session.set_mode(EDIT_ASK)
+    return fake
+
+
+def requests(made) -> list[str]:
+    return [call["request"] for call in made.calls()]
+
+
+def findings_of(request: str) -> list[dict]:
+    return json.loads(request.split("Findings (JSON):\n")[1].split("\n<slide>")[0])["findings"]
+
+
+# -- the header's button -----------------------------------------------------------------------------------------------
+
+def test_the_header_offers_make_readable_for_a_slide_with_known_errors_until_its_text_changes(fake):  # noqa: F811
+    env = fake.env
+    wait_until(lambda: buttons(env) == ["Translate to German", "Better title"])
+    know(env, finding("image", "warning", 20.0, 25.0, "image_size"))                  # a warning is no reason
+    know(env, TEMPLATE)                                                               # nor is what the template sets
+    know(env, *BEFORE)
+    assert buttons(env)[:3] == ["Translate to German", "Make readable", "Better title"]
+    assert [b.label for b in env.window.assistant.header.shown] == ["Translate to German", "Make readable"]
+    slide_file(env).editor.replace_all_text(LF + "% edited\n")                         # the text is no longer the measured one
+    wait_until(lambda: "Make readable" not in buttons(env))
+    slide_file(env).editor.replace_all_text(LF)
+    wait_until(lambda: "Make readable" in buttons(env))                                # the same text, the same findings
+
+
+def test_the_header_runs_no_check_to_decide_its_button(fake, monkeypatch):  # noqa: F811
+    env = fake.env
+    measured = []
+    monkeypatch.setattr(tasks_module.readability_check, "check_slide", lambda *a, **k: measured.append(a))
+    wait_until(lambda: buttons(env) == ["Translate to German", "Better title"])
+    env.window.assistant.header.schedule()
+    pump(0.2)
+    assert measured == [] and "Make readable" not in buttons(env)
+
+
+# -- the card: Generate, Review, Apply, Check preview ---------------------------------------------------------------
+
+def test_review_says_what_the_change_does_to_the_findings_and_done_what_is_left(fake, measure):  # noqa: F811
+    env = asked_fake(fake).env
+    know(env, *BEFORE, TEMPLATE)
+    measure.answers = [report_of(finding("image", "warning", 24.0, 25.0, "image_size", "% of the slide area"), TEMPLATE)]
+    fake.reply({"answer": {"body": BIGGER, "note": "The table could move to a second slide."}})
+    click(env, "Make readable")
+    assert card(env).route.route == ai_profile.CLAUDE_CODE
+    wait_until(phase_is(env, model.REVIEW))
+    assert state(env) == ("Proposed change to abc-EN-Hello-current.tex. Nothing is written yet. After the change: 0 errors, "
+                          "1 warning (was 2 errors, 1 warning). Note: The table could move to a second slide.")
+    assert shown_buttons(env) == ["Apply", "Reject", "View full diff", "Compare rendered"]
+    request, = requests(fake)                                                        # what the model was sent
+    assert request.startswith("Make this slide readable.\nThe typeset page is 272 pt high.") and request.endswith(f"<slide>\n{LF}\n</slide>")
+    assert [(f["cls"], f["severity"]) for f in findings_of(request)] == [("body", "error"), ("figure text", "error"), ("image", "warning")]
+    assert fake.calls()[0]["argv"][fake.calls()[0]["argv"].index("--json-schema") + 1] == json.dumps(claude_tasks.READABLE.schema)
+    assert measure.texts == [BIGGER] and slide_file(env).editor.text() == LF         # measured as a draft, nothing written
+    assert card(env).readable.before == tuple(BEFORE)
+    area = env.window.assistant
+    assert area.tasks.compare_texts() == (env.path, LF, BIGGER)                      # Compare rendered, from S3
+
+    area.tasks.apply()
+    wait_until(phase_is(env, model.DONE))
+    assert slide_file(env).editor.text() == BIGGER and len(fake.renders) == 1       # written, then rendered as always
+    assert measure.texts == [BIGGER]                                                 # the proposal's numbers are the written text's
+    assert state(env) == ("Changed 1 line in abc-EN-Hello-current.tex. The preview is current. After the change: 0 errors, "
+                          "1 warning (was 2 errors, 1 warning). Now readable: Body text, Text in a figure. Still close to the "
+                          "limit: image (24 % of the slide area, needs ≥ 25). Note: The table could move to a second slide.")
+    assert shown_buttons(env) == ["View change", "Undo", "Run again", "Compare rendered", "Close"]
+
+
+def test_run_again_sends_the_findings_that_remain_and_a_clean_result_ends_it(fake, measure):  # noqa: F811
+    env = fake.env                                                                   # Edit automatically is on
+    know(env, *BEFORE)
+    left = finding("figure text", "error", 2.4, 2.6)
+    measure.answers = [report_of(left)]
+    fake.reply({"answer": {"body": BIGGER}})
+    click(env, "Make readable")
+    assert settled(env).startswith("Applied automatically (Edit automatically is on). Changed 1 line")
+    assert "After the change: 1 error, 0 warnings (was 2 errors, 1 warning). Now readable: Body text, Image." in state(env)
+    assert "Still below the floor: text in a figure (2.4 % of slide height, needs ≥ 2.6)." in state(env)
+    assert "Run again" in shown_buttons(env)
+    assert env.window.assistant.tasks.card.readable.after == (left,)
+
+    again = BIGGER.replace("\\small", "\\normalsize", 1)
+    measure.answers = [report_of()]
+    fake.reply({"answer": {"body": again}})
+    env.window.assistant.task_card._handlers["again"]()
+    assert settled(env).startswith("Applied automatically")
+    first, second = requests(fake)
+    assert [f["cls"] for f in findings_of(second)] == ["figure text"] and findings_of(second)[0]["measured"] == 2.4
+    assert second.endswith(f"<slide>\n{BIGGER}\n</slide>")                           # the slide as the first run left it
+    assert "After the change: 0 errors, 0 warnings (was 1 error)." in state(env) and "Run again" not in shown_buttons(env)
+    assert slide_file(env).editor.text() == again
+
+
+def test_text_cut_off_after_the_change_counts_as_failed_and_offers_undo_and_run_again(fake, measure):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+    clipped = finding("body", "error", 6.0, 0, "clipped", "pt beyond the page")
+    measure.answers = [report_of(clipped, finding("body", "warning", 3.4, 3.3))]
+    fake.reply({"answer": {"body": BIGGER}})
+    click(env, "Make readable")
+    wait_until(phase_is(env, model.OVERFLOW))
+    assert state(env) == ("Changes applied to abc-EN-Hello-current.tex. After the change text is still cut off or overlapping: "
+                                 "the slide does not fit. Now readable: Text in a figure, Image. Still below the floor: body text (6 pt beyond the page); body text (3.4 % of slide height, "
+                                 "needs ≥ 3.3). Undo it, or run again to fix what remains.")
+    assert shown_buttons(env) == ["Undo", "Run again", "Compare rendered", "Close"] and card(env).running is False
+    assert [s.icon for s in model.steps(card(env))][-1] == "error"
+    measure.answers = [report_of(finding("body", "warning", 3.4, 3.3))]
+    fake.reply({"answer": {"body": LF.replace("\\begin{itemize}", "\\begin{itemize}\\normalsize", 1)}})
+    env.window.assistant.task_card._handlers["again"]()
+    wait_until(lambda: len(requests(fake)) == 2)
+    assert {f["rule"] for f in findings_of(requests(fake)[1])} == {"clipped", "text_size"}      # what remained, not the first findings
+    settled(env)
+    assert card(env).phase == model.DONE
+
+    env.window.assistant.tasks.undo()
+    assert slide_file(env).editor.text() == BIGGER and card(env) is None            # back to the first run's result
+
+
+def test_undo_after_an_overflow_puts_the_slide_back(fake, measure):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+    measure.answers = [report_of(finding("body", "error", 3.0, 0, "overlap", "% of the smaller line"))]
+    fake.reply({"answer": {"body": BIGGER}})
+    click(env, "Make readable")
+    wait_until(phase_is(env, model.OVERFLOW))
+    assert slide_file(env).editor.text() == BIGGER
+    assert env.window.assistant.tasks.undo() == ""
+    assert slide_file(env).editor.text() == LF and card(env) is None
+
+
+def test_a_proposal_that_does_not_compile_says_so_in_review_and_can_still_be_applied(fake, measure):  # noqa: F811
+    env = asked_fake(fake).env
+    know(env, *BEFORE)
+    measure.answers = [RuntimeError("! Undefined control sequence.\nl.9 \\foo")]
+    fake.reply({"answer": {"body": BIGGER}})
+    click(env, "Make readable")
+    wait_until(phase_is(env, model.REVIEW))
+    assert state(env) == ("Proposed change to abc-EN-Hello-current.tex. Nothing is written yet. The proposal does not compile: "
+                          "Undefined control sequence on line 9.")
+    assert shown_buttons(env)[0] == "Apply"
+    env.window.assistant.tasks.apply()
+    wait_until(phase_is(env, model.DONE))
+    assert slide_file(env).editor.text() == BIGGER and "does not compile" in state(env)
+
+
+def test_when_it_cannot_fit_the_note_says_so_and_nothing_is_written(fake, measure):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+    fake.reply({"answer": {"body": LF, "note": "Too much for one slide: move the second list onto a new slide."}})
+    click(env, "Make readable")
+    assert settled(env) == ("Nothing to change in abc. Nothing was written. Note: Too much for one slide: move the second list "
+                            "onto a new slide.")
+    assert slide_file(env).editor.text() == LF and measure.texts == []
+
+
+def test_a_refused_answer_gets_one_repair_round_like_the_other_tasks(fake, measure):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+    fake.reply({"answer": {"body": LF.replace("1-0-0", "2-0-0")}}, {"answer": {"body": BIGGER}})
+    click(env, "Make readable")
+    assert settled(env).startswith("Applied automatically")
+    assert len(fake.calls()) == 2 and "protected part" in fake.calls()[1]["request"]
+
+
+def test_a_stopped_run_during_the_measurement_ends_the_card_stopped(fake, monkeypatch):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+
+    def stopping(*args, **kwargs):
+        env.window.assistant.tasks.stop()
+        raise RuntimeError("Preview cancelled")
+
+    monkeypatch.setattr(tasks_module.readability_check, "check_slide", stopping)
+    fake.reply({"answer": {"body": BIGGER}})
+    click(env, "Make readable")
+    wait_until(phase_is(env, model.STOPPED))
+    assert slide_file(env).editor.text() == LF
+
+
+# -- the routes -----------------------------------------------------------------------------------------------------
+
+class JsonProvider:
+    """The provider of a Local or API route: answers every chat() with `reply`, and notes what it was asked."""
+
+    def __init__(self, reply, is_local=True):
+        self.reply, self.is_local, self.model, self.label, self.calls = reply, is_local, "offline", "offline", []
+
+    def chat(self, messages, **kwargs):
+        self.calls.append((messages, kwargs))
+        return ChatReply(self.reply)
+
+    def abort(self):
+        pass
+
+
+@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, "local"), (ai_profile.CLOUD, ai_profile.API, "api")])
+def test_on_local_and_the_api_make_readable_runs_on_the_provider_and_checks_the_answer(ctx, fake, measure, monkeypatch, mode, conn, kind):  # noqa: F811
+    env = asked_fake(fake).env
+    ai_profile.mark_cloud_seen(ctx)
+    credentials.set_api_key(ctx, "key")
+    on_route(fake, mode, conn)
+    ai_profile.set_model_choice(ctx, kind, ai_profile.FIXES, "chosen-model")
+    know(env, *BEFORE)
+    provider, seen = JsonProvider(json.dumps({"body": BIGGER, "note": "Split it."}), mode == ai_profile.LOCAL), []
+    monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, route: seen.append(route) or provider)
+    click(env, "Make readable")
+    wait_until(phase_is(env, model.REVIEW))
+    assert fake.calls() == [] and [(r.route, r.model) for r in seen] == [(kind, "chosen-model")]
+    (messages, kwargs), = provider.calls
+    assert messages[0]["content"].startswith("Make this slide readable.") and kwargs["system"] == claude_tasks.READABLE.rules
+    assert "After the change: 0 errors, 0 warnings (was 2 errors, 1 warning)." in state(env) and "Note: Split it." in state(env)
+    assert measure.texts == [BIGGER]
+    assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []    # the run is over
+    env.window.assistant.tasks.apply()
+    wait_until(phase_is(env, model.DONE))
+    assert slide_file(env).editor.text() == BIGGER
+
+
+def test_a_provider_answer_that_breaks_the_slide_is_refused_after_one_repair(ctx, fake, measure, monkeypatch):  # noqa: F811
+    env = fake.env
+    on_route(fake, ai_profile.LOCAL)
+    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.FIXES, "chosen-model")
+    know(env, *BEFORE)
+    provider = JsonProvider(json.dumps({"body": LF.replace("{Hello}", "{Hello")}))
+    monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
+    click(env, "Make readable")
+    wait_until(phase_is(env, model.FAILED))
+    assert "The model's answer was refused" in state(env) and len(provider.calls) == 2
+    assert slide_file(env).editor.text() == LF and env.window._ollama_task_label is None
+
+
+def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx, fake, measure, monkeypatch):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+    tasks = env.window.assistant.tasks
+    on_route(fake, ai_profile.LOCAL)                                                 # no Ollama model is chosen
+    click(env, "Make readable")
+    assert card(env).phase == model.SETUP and "Choose an Ollama model" in card(env).note
+    tasks.close_card()
+    credentials.set_api_key(ctx, "")
+    on_route(fake, ai_profile.CLOUD, ai_profile.API)
+    click(env, "Make readable")
+    assert card(env).phase == model.SETUP and "No Anthropic API key" in card(env).note
+    tasks.close_card()
+    on_route(fake, ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
+    assert tasks.refusal(claude_tasks.READABLE) == resolver.NO_CLAUDE
+    click(env, "Make readable")
+    assert card(env).phase == model.SETUP and card(env).note == resolver.NO_CLAUDE
+    assert fake.calls() == [] and measure.texts == [] and not tasks.busy
+
+
+def test_make_readable_is_a_task_every_route_can_run_and_one_of_the_fixes():
+    assert tasks_module.KINDS[claude_tasks.READABLE.name] == ai_profile.FIXES
+    assert claude_tasks.READABLE in tasks_module.PROVIDER_TASKS and claude_tasks.READABLE in tasks_module.CARD_TASKS
+    assert claude_tasks.READABLE not in tasks_module.DECK_TASKS
+
+
+# -- the findings panel, the palette ----------------------------------------------------------------------------------------
+
+def test_the_panel_offers_make_readable_per_slide_and_marks_what_the_template_sets(qapp):
+    panel = ReadabilityPanel()
+    report = readability.Report([
+        readability.SlideReport("abc", 1, FILE, [*BEFORE, TEMPLATE]), readability.SlideReport("abd", 1, "abd-EN-Second-current.tex", [TEMPLATE]),
+        readability.SlideReport("abe", 1, "", [finding()])])
+    panel.show_report("Readability", report, {})
+    clicked = []
+    panel.make_readable_clicked.connect(clicked.append)
+    makers = [b for b in panel.findChildren(Button) if b.text() == "Make readable"]
+    assert [b.accessibleName() for b in makers] == ["Make slide abc readable"]        # not abd (the template's), not abe (no file)
+    makers[0].click()
+    assert clicked == [report.slides[0]]
+    texts = [label.text() for label in panel.findChildren(QLabel)]
+    assert "Source or footnote text · 1.25 % of slide height, needs ≥ 2.2 · set by the template" in texts
+    assert TEMPLATE_HINT in texts and texts.count("Enlarge it.") == 4                # the template's rows have the hint instead
+
+
+def test_the_panels_button_runs_the_task_on_that_slide_and_a_changed_slide_is_checked_again_first(fake, measure):  # noqa: F811
+    env = fake.env
+    know(env, *BEFORE)
+    area = env.window.assistant
+    slide = report_of(*BEFORE).slides[0]
+    slide_file(env).editor.replace_all_text(LF + "% edited\n")
+    toasts = []
+    env.window.toast.show_message = toasts.append
+    area.readability_panel.make_readable_clicked.emit(slide)
+    assert toasts == ["The slide changed since it was checked: check it again."] and card(env) is None
+    slide_file(env).editor.replace_all_text(LF)
+    fake.reply({"answer": {"body": BIGGER}})
+    area.readability_panel.make_readable_clicked.emit(slide)
+    assert card(env).task is claude_tasks.READABLE and card(env).title == "Make readable"
+    settled(env)
+    assert slide_file(env).editor.text() == BIGGER
+
+
+def test_the_palette_command_checks_first_when_nothing_is_known_and_runs_the_task_when_it_is(fake, measure, monkeypatch):  # noqa: F811
+    env = fake.env
+    command = env.window.commands["slide:readable"]
+    assert command.label == "Make this slide readable" and command.enabled(env.window)
+    checked = []
+    monkeypatch.setattr(env.window.assistant.readability, "check_slide", lambda: checked.append(True))
+    command.run(env.window)
+    assert checked == [True] and card(env) is None                                    # no findings known: the check comes first
+    know(env, *BEFORE)
+    fake.reply({"answer": {"body": BIGGER}})
+    command.run(env.window)
+    assert card(env).task is claude_tasks.READABLE
+    settled(env)
+    assert slide_file(env).editor.text() == BIGGER
+
+
+def test_a_check_in_the_panel_remembers_the_slide_for_the_header_button(fake, monkeypatch):  # noqa: F811
+    env = fake.env
+    known = env.window.readability_known
+    monkeypatch.setattr(tasks_module.readability_check, "check_slide", Measure(report_of()))
+    check = env.window.assistant.readability
+    monkeypatch.setattr("slidemage.ui.workspace.readability_panel.readability_check.check_slide",
+                        lambda *a, **k: report_of(*BEFORE, TEMPLATE))
+    check.check_slide()
+    wait_until(lambda: check.panel.report is not None)
+    assert known.has_errors(env.path, LF) and known.fixable(env.path, LF) == list(BEFORE)
+    wait_until(lambda: "Make readable" in buttons(env))

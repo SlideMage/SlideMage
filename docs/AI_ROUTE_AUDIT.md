@@ -69,6 +69,7 @@ message), never silently on another route.
 | 9d | `TaskRunner.start(PROOFREAD / CONCISE / TITLE / NOTE / SUMMARISE)`; bubbles "Proofread", "Make more concise", "Better title", "Add speaker notes", "Summarise this deck" | fixes_notes_transcripts | n/a | `run_task` | n/a | `TaskRunner.refusal` |
 | 9e | `TaskRunner.start(DESCRIBE)`; bubble "Describe images (n)" | image_description | `alt_draft.run_batch` with `ModelBackend` | `run_batch` with `ClaudeDraftBackend` | `run_batch` with `ModelBackend` (API) | `resolver.draft_backend` |
 | 9f | `TaskRunner.start(claude_images.TRANSLATE)`; bubble "Translate image descriptions (n)" | translation | `run_translation_batch` with `ModelTranslationBackend` | with `ClaudeTranslationBackend` | with `ModelTranslationBackend` (API) | `resolver.translation_backend` |
+| 9g | `TaskRunner.start(READABLE)`; bubble "Make readable" (offered once the slide has been checked and has errors), the readability panel's "Make readable" per slide, palette "Make this slide readable" (`slide:readable`, checks first when nothing is known) | fixes_notes_transcripts | `provider_tasks.run_task` on Ollama (rules as system prompt, JSON schema, answer checked with `claude_tasks.check`, one repair round), one at a time, Ollama slot held | `run_task` | `provider_tasks.run_task` on the API provider | `TaskRunner.start` -> `resolve(KINDS[task])`; `refusal` (all three routes) |
 
 Other places checked, with no AI dispatch of their own:
 

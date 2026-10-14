@@ -3,11 +3,13 @@ may be applied: well formed, every edit's `before` found exactly once, protected
 no lint error the captured text did not have."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from slidemage.project import ProjectContext
 from conftest import SLIDE_TEXT
 
-from slidemage import latex_lint
+from slidemage import latex_lint, readability
 from slidemage.ai import claude_tasks
 from slidemage.ai.claude_tasks import FIX_LATEX, TRANSLATE, check
 
@@ -225,3 +227,66 @@ def test_the_summary_request_cuts_each_slide_and_the_whole():
     many = claude_tasks.summarise_request(["y" * claude_tasks.SLIDE_CHARS] * 50)
     assert len(many) <= claude_tasks.DECK_CHARS + 100 and many.endswith("more slides are not shown.)")
     assert many.count("<slide>") == claude_tasks.DECK_CHARS // (claude_tasks.SLIDE_CHARS + len("<slide>\n\n</slide>"))
+
+
+# -- Make readable --------------------------------------------------------------------------------------
+
+def finding(cls="body", severity="error", measured=2.8, threshold=3.3, template_level=False, rule="text_size"):
+    return readability.Finding("abc", 1, rule, cls, severity, measured, threshold, "min", "% of slide height",
+                               (0.1, 0.3, 0.9, 0.6), "First point", "Enlarge it.", count=2, file="abc-EN-Hello-current.tex",
+                               template_level=template_level)
+
+
+def readable_report(*findings):
+    slide = readability.SlideReport("abc", 1, "abc-EN-Hello-current.tex", list(findings), height_pt=272.0)
+    return readability.Report([slide]).to_dict(fixable_only=True)
+
+
+def test_a_readable_request_carries_the_slide_the_findings_and_the_floors_in_points():
+    request = claude_tasks.readable_request(LF, readable_report(finding(), finding("image", "warning", 12.0, 25.0, rule="image_size")))
+    head, rest = request.split("Findings (JSON):\n")
+    assert head.startswith("Make this slide readable.") and "272 pt high" in head
+    assert "body text and headings 9.0 pt (3.3 %)" in head and "sources and footnotes 6.0 pt" in head
+    data = json.loads(rest.split("\n<slide>")[0])
+    assert [f["rule"] for f in data["findings"]] == ["text_size", "image_size"]
+    assert data["findings"][0]["measured"] == 2.8 and data["findings"][0]["threshold"] == 3.3
+    assert data["findings"][0]["unit"] == "% of slide height" and data["findings"][0]["needs"] == "min"
+    assert data["thresholds"]["body_pct"] == 3.3 and data["thresholds"]["image_min_area_pct"] == 25.0
+    assert not {"slide_id", "file", "template_level"} & set(data["findings"][0])
+    assert request.endswith(f"<slide>\n{LF}\n</slide>")
+
+
+def test_findings_set_by_the_template_are_not_in_the_request():
+    report = readable_report(finding(), finding("citation", "error", 1.25, 2.2, template_level=True))
+    request = claude_tasks.readable_request(LF, report)
+    data = json.loads(request.split("Findings (JSON):\n")[1].split("\n<slide>")[0])
+    assert [f["cls"] for f in data["findings"]] == ["body"] and "1.25" not in request
+    assert all(f["cls"] == "body" for f in report["slides"][0]["findings"])
+
+
+def test_the_readable_rules_say_what_may_change_and_what_to_do_when_it_cannot_fit():
+    rules = claude_tasks.READABLE.rules
+    for phrase in ("columns", "\\includegraphics", "\\small", "rather than \\fontsize", "itemize", "trim wording only",
+                   "never change what a statement says", "preamble", "split the slide", "`note`", "\\setSlideVersion"):
+        assert phrase in rules, phrase
+    assert claude_tasks.READABLE.answer == "body" and claude_tasks.READABLE.schema["required"] == ["body"]
+    assert set(claude_tasks.READABLE.schema["properties"]) == {"body", "note"}
+
+
+def test_a_relaid_out_slide_is_checked_like_any_body(ctx):
+    bigger = LF.replace("\\begin{itemize}", "\\begin{columns}\\column{0.5\\textwidth}\\small\n\t\\begin{itemize}", 1) \
+        .replace("\\end{itemize}", "\\end{itemize}\\end{columns}", 1)
+    assert check(ctx, claude_tasks.READABLE, LF, {"body": bigger, "note": "Split it."}) == (bigger, [])
+    assert "protected part" in check(ctx, claude_tasks.READABLE, LF, {"body": LF.replace("1-0-0", "2-0-0")})[1][0]
+    assert "protected part" in check(ctx, claude_tasks.READABLE, LF, {"body": LF.replace("{overlay}", "{moved}")})[1][0]
+    new, problems = check(ctx, claude_tasks.READABLE, LF, {"body": LF.replace("{Hello}", "{Hello")})
+    assert new == LF and "LaTeX error" in problems[0]
+    assert check(ctx, claude_tasks.READABLE, LF, {"body": " "})[1] and check(ctx, claude_tasks.READABLE, LF, {})[1]
+    assert check(ctx, claude_tasks.READABLE, LF, {"body": LF, "note": "Split it."}) == (LF, [])
+
+
+def test_the_note_is_the_models_remark_for_readable_only():
+    assert claude_tasks.answer_note(claude_tasks.READABLE, {"body": "x", "note": " Split after the table. "}) == "Split after the table."
+    assert claude_tasks.answer_note(claude_tasks.READABLE, {"body": "x"}) == ""
+    assert claude_tasks.answer_note(claude_tasks.READABLE, None) == ""
+    assert claude_tasks.answer_note(claude_tasks.NOTE, {"note": "a speaker note"}) == ""

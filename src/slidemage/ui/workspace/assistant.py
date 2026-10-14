@@ -17,13 +17,15 @@ itself when it is shown).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget, QWidget
 
 from ...ai import ai_profile
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ...ai.agent_types import EDIT_AUTO
-from ...ai.claude_tasks import TRANSLATE
+from ...ai.claude_tasks import READABLE, TRANSLATE
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, SegmentedControl
 from ..pages.image_results import BatchResultView
@@ -79,6 +81,8 @@ class AssistantArea(Card):
         self.tasks.card_changed.connect(self._show_body)
         self.tasks.result_changed.connect(self._show_body)
         self.readability.changed.connect(self._show_body)
+        self.readability.reported.connect(self.header.schedule)
+        self.readability.make_readable.connect(self.make_readable)
         self.image_results.retry_clicked.connect(self.tasks.retry_failed)
         self.image_results.closed.connect(self.tasks.close_result)
         self.chat.route_changed.connect(self._refresh_route)
@@ -168,6 +172,25 @@ class AssistantArea(Card):
             self.readability.check_deck()
         else:
             self.readability.check_slide()
+
+    def make_readable(self, path: Path | None = None) -> None:
+        """Make readable on the slide `path` (the findings panel's button, which has just measured it) or the slide in
+        view (the palette): the task works from the findings of a check of exactly this text, so without them the
+        check runs first and its panel offers the button."""
+        in_view = path is None
+        if in_view and not self.header.can_check(SCOPE_SLIDE):
+            self.app.toast.show_message("Open a slide first: Make readable works on a slide that was measured.")
+            return
+        path = path or self.app.centre.path
+        if not self.app.readability_known.fixable(path, self.app.centre.slide_text(path)):
+            if in_view:
+                self.check_readability(SCOPE_SLIDE)
+            else:
+                self.app.toast.show_message("The slide changed since it was checked: check it again.")
+            return
+        if not in_view:
+            self.workspace.show_slide(path)
+        self.tasks.start(READABLE, title="Make readable", focus=path)
 
     def translate_slide(self) -> None:
         """The Language panel's Translate: the Translate task of the slide in view, on its card."""
