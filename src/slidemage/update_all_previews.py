@@ -133,13 +133,34 @@ def _preamble_for(template: str) -> str:
     return template_preamble(template)
 
 
-def _build_deck_text(template: str, slide_ids: list[str]) -> tuple[str, int]:
+_EXTRA_INPUT = re.compile(r"^[ \t]*\\input\{(?!Slidemaster_preamble)[^}]+\}[ \t]*$", re.MULTILINE)
+
+
+def extra_inputs_by_template(ctx: project.ProjectContext, deck: Optional[Deck] = None) -> dict[str, list[str]]:
+    """The `\\input{...}` lines (other than the framework's own preamble) of the preambles of the decks in each
+    template's group, e.g. a block that defines the colors its slides use. The generic preamble of a throwaway deck
+    has none of them, so every slide using such a color failed ("Undefined color") and the one error ended the
+    whole batch ("Emergency stop")."""
+    found: dict[str, list[str]] = {}
+    for each in [deck] if deck is not None else scan_decks(ctx):
+        lines = found.setdefault(slide_snapshot.detect_template(each.preamble_text), [])
+        for match in _EXTRA_INPUT.finditer(each.preamble_text):
+            line = match.group(0).strip()
+            if line not in lines:
+                lines.append(line)
+    return found
+
+
+def _build_deck_text(template: str, slide_ids: list[str], extra_inputs: Optional[list[str]] = None) -> tuple[str, int]:
     """(full deck text, offset just past `\\begin{document}`) -- the
     latter is `Deck.preamble_end`, needed so `Deck.preamble_text` (used by
     run_job()'s own template-detection call) returns exactly the preamble
     this function built, not something offset by a stray rstrip().
     """
     preamble = _preamble_for(template)  # already ends "\begin{document}\n"
+    if extra_inputs:
+        end = preamble.rindex("\\begin{document}")
+        preamble = preamble[:end] + "\n".join(extra_inputs) + "\n" + preamble[end:]
     body = "\n".join(f"\\slide{{{id_slug}}}" for id_slug in slide_ids)
     text = f"{preamble}{body}\n\\end{{document}}\n"
     return text, len(preamble)
@@ -148,6 +169,7 @@ def _build_deck_text(template: str, slide_ids: list[str]) -> tuple[str, int]:
 def _run_one_template(
     ctx: project.ProjectContext, template: str, slide_ids: list[str], log: LogCallback,
     cancel: Optional[CancelToken], base_jobname: Optional[str], relocated: threading.Event,
+    extra_inputs: Optional[list[str]] = None,
 ) -> bool:
     """Compile one throwaway deck for exactly this template's own needed
     slides -- same mechanics run() always used, just scoped to a subset
@@ -157,7 +179,7 @@ def _run_one_template(
     ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     jobname = base_jobname or f"{JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}"
     temp_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
-    text, preamble_end = _build_deck_text(template, slide_ids)
+    text, preamble_end = _build_deck_text(template, slide_ids, extra_inputs)
     temp_path.write_text(text, encoding="utf-8")
 
     deck = Deck(
@@ -216,6 +238,7 @@ def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelTo
 
     all_ok = True
     relocations: list[threading.Event] = []
+    extras = extra_inputs_by_template(ctx, deck)
     for template in sorted(needed):
         slide_ids = sorted(needed[template])
         template_name = slide_snapshot.TEMPLATES.get(template, template)
@@ -233,7 +256,8 @@ def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelTo
         log(f"---- {template_name}: {len(slide_ids)} slide(s) ----")
         base_jobname = (base_jobnames or {}).get(template)
         relocated = threading.Event()
-        ok = _run_one_template(ctx, template, slide_ids, log, cancel, base_jobname, relocated)
+        ok = _run_one_template(ctx, template, slide_ids, log, cancel, base_jobname, relocated,
+                               extras.get(template))
         if ok:
             relocations.append(relocated)
         all_ok = ok and all_ok
