@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QPush
 from ..kit import kit_qss as q
 
 DRAWER_HEIGHT = 240
+MAX_WIDTH = 900         # a log line is read at this width; wider only pushes Copy/Clear/Close away from the title
 MAX_LINES = 100_000
 
 
@@ -102,7 +103,7 @@ class LogDrawer(QFrame):
         parent = self.parentWidget()
         top_left = self._anchor.mapTo(parent, QPoint(0, 0))
         height = min(DRAWER_HEIGHT, self._anchor.height())
-        self.setGeometry(top_left.x(), top_left.y() + self._anchor.height() - height, self._anchor.width(), height)
+        self.setGeometry(top_left.x(), top_left.y() + self._anchor.height() - height, min(MAX_WIDTH, self._anchor.width()), height)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if self.isVisible() and event.type() in (QEvent.Type.Resize, QEvent.Type.Move):

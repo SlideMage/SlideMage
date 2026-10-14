@@ -1252,9 +1252,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             selection-background-color: {with_alpha(t.log_text, 0.25)};
         }}
         QPlainTextEdit#{LOG_TEXT} QScrollBar:vertical {{
-            background: transparent;
+            background: {t.log_bg};   /* not transparent: the strip is painted by the edit's frame, which is light */
             width: 10px;
             margin: 0;
+        }}
+        QPlainTextEdit#{LOG_TEXT} QScrollBar::add-page:vertical, QPlainTextEdit#{LOG_TEXT} QScrollBar::sub-page:vertical {{
+            background: {t.log_bg};
         }}
         QPlainTextEdit#{LOG_TEXT} QScrollBar::handle:vertical {{
             background: {with_alpha(t.log_text, 0.25)};
