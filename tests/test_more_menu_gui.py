@@ -22,7 +22,7 @@ COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group
 
 LEFT = [("header", "This deck"), "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
         "export_pptx", "create_snapshot", "rerender_deck_previews", ("sep",), "archive_deck"]
-RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project",
+RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck",
          ("header", "Housekeeping"), "housekeeping", "archive_unused",
          ("header", "Info"), "version_history", "check_updates", "project_compat"]
 

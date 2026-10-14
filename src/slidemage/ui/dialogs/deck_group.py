@@ -5,9 +5,10 @@ the deck appears in.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Callable, Optional
 
-from PySide6.QtWidgets import QButtonGroup, QLineEdit, QRadioButton, QVBoxLayout
+from PySide6.QtWidgets import QButtonGroup, QComboBox, QLineEdit, QRadioButton, QVBoxLayout
 
 from ...deck_scan import SELECTABLE_GROUP_TAGS, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK
 from ..kit.widgets import Field, ModalSheet, Surface, caption, set_property
@@ -23,9 +24,11 @@ GROUP_LABELS = {
 class DeckGroupSheet(ModalSheet):
     def __init__(self, parent, title: str, current_group: str, *, ok_text: str = "Save",
                  name_prompt: Optional[str] = None, default_name: str = "",
-                 validate_name: Optional[Callable[[str], Optional[str]]] = None) -> None:
-        """After exec(), `name` ("" without `name_prompt`) and `group` hold the choice.
-        `validate_name` returns the reason a name is unusable, shown in the sheet, or None."""
+                 validate_name: Optional[Callable[[str], Optional[str]]] = None,
+                 templates: Optional[Sequence[tuple[str, str]]] = None, current_template: str = "") -> None:
+        """After exec(), `name` ("" without `name_prompt`), `group` and `template` ("" without `templates`) hold
+        the choice. `validate_name` returns the reason a name is unusable, shown in the sheet, or None.
+        `templates` is (key, label) pairs: a deck's institution template is asked for too."""
         super().__init__(title, parent, width=480)
         self._validate_name = validate_name
         body = Surface()
@@ -38,6 +41,13 @@ class DeckGroupSheet(ModalSheet):
             self.name_edit.selectAll()
             self.name_edit.textChanged.connect(lambda _text: self._show_problem(""))
             layout.addWidget(Field(name_prompt, self.name_edit))
+        self.template_box: Optional[QComboBox] = None
+        if templates:
+            self.template_box = QComboBox()
+            for key, label in templates:
+                self.template_box.addItem(label, key)
+            self.template_box.setCurrentIndex(max(0, self.template_box.findData(current_template)))
+            layout.addWidget(Field("Template (institution layout of the deck)", self.template_box))
 
         group_box = Surface()
         group_layout = QVBoxLayout(group_box)
@@ -71,6 +81,7 @@ class DeckGroupSheet(ModalSheet):
         (self.name_edit or next(iter(self._radios.values()))).setFocus()
         self.name = ""
         self.group = current_group
+        self.template = ""
 
     def _show_problem(self, text: str) -> None:
         self.problem.setText(text)
@@ -85,4 +96,6 @@ class DeckGroupSheet(ModalSheet):
             return
         self.name = name
         self.group = next(tag for tag, radio in self._radios.items() if radio.isChecked())
+        if self.template_box is not None:
+            self.template = self.template_box.currentData()
         self.accept()

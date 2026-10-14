@@ -101,10 +101,10 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 # by a separator. The View toggles, Decks, Log, Exit and the single housekeeping jobs (they are in the
 # Housekeeping dialog) are ⌘K commands only.
 MORE_COLUMNS = (
-    (("This deck", ("deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx",
-                    "create_snapshot", "rerender_deck_previews")),
+    (("This deck", ("deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
+                    "export_pptx", "create_snapshot", "rerender_deck_previews")),
      ("", ("archive_deck",))),
-    (("Project", ("palette", "images", "edit_bib", "edit_test_slides", "open_project")),
+    (("Project", ("palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck")),
      ("Housekeeping", ("housekeeping", "archive_unused")),
      ("Info", ("version_history", "check_updates", "project_compat"))),
 )

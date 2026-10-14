@@ -10,7 +10,9 @@ from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
 
-from ... import admin_slides, deck_duplicate, deck_editor, deck_settings, deck_snapshot, open_path, transcript
+from ... import (
+    admin_slides, deck_duplicate, deck_editor, deck_new, deck_settings, deck_snapshot, open_path, slide_snapshot,
+    transcript)
 from ... import archive as archive_mod
 from ...compiler import deck_pdfs, pdf_to_open
 from ...deck_scan import GROUP_TAGS, TAG_MANUAL, Deck
@@ -206,6 +208,35 @@ def on_edit_deck_tags(window, deck: Deck) -> None:
         return
     window.log(f"Tagged {deck.name} as {group}")
     window.refresh_open_deck_editors()
+
+
+def on_new_deck(window) -> None:
+    """⌘K / ⋮ "New deck…": an empty deck; its name, template (the open deck's, else the render template, to
+    start with) and group are asked together like "Duplicate deck…"."""
+    deck = window.state.deck
+    template = slide_snapshot.detect_template(deck.preamble_text) if deck is not None \
+        else slide_snapshot.render_template(window.project)
+    available = slide_snapshot.available_templates(window.project.root) or [template]
+    labels = [(key, slide_snapshot.TEMPLATE_LABELS.get(key, key)) for key in available]
+    sheet = DeckGroupSheet(
+        window, "New deck", deck.group if deck is not None else "", ok_text="Create",
+        name_prompt="Name of the new deck (the file decks/<name>.tex)",
+        default_name="new-deck",
+        validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, window.project.decks_dir),
+        templates=labels, current_template=template,
+    )
+    if not sheet.exec():
+        return
+    try:
+        dest = deck_new.new_deck(window.project, sheet.name, sheet.template or template, sheet.group)
+    except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
+        QMessageBox.critical(window, "New deck failed", str(exc))
+        return
+    window.log(f"Created {dest.name} ({slide_snapshot.TEMPLATES.get(sheet.template or template, template)})")
+    window.reload_decks()
+    created = next((d for d in window.decks if d.path == dest), None)
+    if created is not None:
+        window.state.set_deck(created)
 
 
 def on_duplicate_deck(window, deck: Deck) -> None:

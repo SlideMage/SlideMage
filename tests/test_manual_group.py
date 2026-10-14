@@ -85,3 +85,12 @@ def test_tags_sheet_has_no_name_field_and_keeps_the_current_group(qapp):
     assert sheet.name_edit is None
     next(b for b in sheet.findChildren(QPushButton) if b.text() == "Save").click()
     assert (sheet.name, sheet.group) == ("", "research")
+
+
+def test_the_sheet_asks_for_a_template_when_given_some(qapp):
+    sheet = DeckGroupSheet(None, "New deck", "course", ok_text="Create", name_prompt="Name", default_name="x",
+                           templates=[("uni-graz", "University of Graz"), ("mci", "MCI")], current_template="mci")
+    assert sheet.template_box.currentData() == "mci"
+    sheet.template_box.setCurrentIndex(0)
+    sheet._on_ok()
+    assert sheet.template == "uni-graz" and sheet.name == "x"

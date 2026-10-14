@@ -244,6 +244,7 @@ def build_registry() -> CommandRegistry:
     add("deck_source", "Edit deck source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
     add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_edit_deck_tags(w, w.state.deck),
         enabled=lambda w: _active_deck(w) and not _keeps_group(w))
+    add("new_deck", "New deck…", DECK, deck_actions.on_new_deck)
     add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)
     add("export_pptx", "Export PPTX…", DECK, lambda w: compile_actions.export_pptx(w, w.state.deck), enabled=_active_deck)
     add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
