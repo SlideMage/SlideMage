@@ -38,6 +38,10 @@ _GENERATING = {  # the sentence of the Generate phase, by task: {id}, {src} and 
     claude_tasks.CONCISE.name: "Shortening {id}. The frame, reveal steps and version tags are kept.",
     claude_tasks.TITLE.name: "Looking for a better title for {id}. The rest of the slide is kept.",
     claude_tasks.NOTE.name: "Writing a speaker note for {id}. The slide itself is kept.",
+    claude_tasks.REWRITE.name: "Rewriting the selection in {id}. Only the selected text changes; LaTeX commands, labels and "
+                               "citations are kept.",
+    claude_tasks.PROOFREAD_SELECTION.name: "Proofreading the selection in {id}. Only the selected text can change; the "
+                                           "meaning, the LaTeX commands and the labels are kept.",
     claude_tasks.READABLE.name: "Making {id} readable: larger text and images, the slide laid out again. The meaning, "
                                 "the LaTeX markup and the labels are kept; the result is measured before anything is written."}
 FIT_RULES = (readability.CLIPPED, readability.OVERLAP)      # what counts as "does not fit" after Make readable
@@ -115,6 +119,7 @@ class TaskCard:
     where: str = ""                    # what Check preview renders: "1y8 · Instructor · DE"
     preview_skipped: bool = False      # Check preview was stopped
     preview_error: str = ""            # the first line of the compile error
+    instruction: str = ""              # of a rewrite of a selection: what it should do
     readable: Readable | None = None   # Make readable: what was measured before and after
     remark: str = ""                   # the model's remark on its answer (Make readable: how to split the slide)
     hidden: bool = False               # "Back to conversation": only the pill in the header shows it

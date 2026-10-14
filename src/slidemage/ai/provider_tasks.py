@@ -22,8 +22,9 @@ TIMEOUT_S = 600.0
 
 
 def run_task(ctx: ProjectContext, provider: ChatProvider, task: claude_tasks.Task, captured: str, request: str,
-             cancel: threading.Event | None = None) -> Outcome:
-    """Run `task` on the `captured` text with `request` on `provider` and check the answer."""
+             cancel: threading.Event | None = None, span: tuple[int, int] | None = None) -> Outcome:
+    """Run `task` on the `captured` text (or its `span`, claude_tasks.check) with `request` on `provider` and check the
+    answer."""
     cancel = cancel or threading.Event()
     started = time.monotonic()
     outcome = Outcome(FAILED)
@@ -48,7 +49,7 @@ def run_task(ctx: ProjectContext, provider: ChatProvider, task: claude_tasks.Tas
             outcome.message = f"The model's answer was refused: {problems[0]}."
             if reply.truncated:
                 break
-        elif not (problems := judge(ctx, task, captured, answer, outcome, "The model")):
+        elif not (problems := judge(ctx, task, captured, answer, outcome, "The model", span)):
             break
         request = claude_tasks.repair_request(request, answer, problems)
     outcome.elapsed_s = time.monotonic() - started

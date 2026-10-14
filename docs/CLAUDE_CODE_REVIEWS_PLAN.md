@@ -1,6 +1,9 @@
 # Claude Code reviews, selections and structural edits
 
 Status: follow-up plan, 2026-10-12, split from the (finished, removed) Claude Code tasks plan.
+Done (v8.17.0): the first two actions, Rewrite selected text and Proofread selection (step R1's selection capture, the two tasks on
+every route, the context menu, header buttons and palette commands, and the read-only MCP tool `read_selection`). Left for R1: the shared
+checked-apply service and the MCP edit tool with expected text/revision for the terminal.
 Starts after that plan's step 6. Needs the user's go per step; pause after each committed step. Costs
 are estimated before each step, using the measurements from the tasks plan.
 

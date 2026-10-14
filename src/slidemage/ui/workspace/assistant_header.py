@@ -3,7 +3,8 @@
 1. the route (icon, name in amber on Cloud, what the conversation runs on), Focus and New conversation;
 2. the scope (This slide | Whole deck) and its target: "1y8 · Title", " · unsaved" with unsaved edits in the Source
    view; for the deck "name · 80 slides";
-3. at most two task buttons that fit the scope, the slide and what the route can run (terminal/tasks.py
+3. at most two task buttons that fit the scope, the slide (with a selection in the Source view: Rewrite selection and
+   Proofread selection, which then come first) and what the route can run (terminal/tasks.py
    `contextual`), and "All actions…" (⌘K). When no task is on show the row offers "Check readability" (the slide or
    the deck; no AI, so on every route) instead: with a task the row would no longer fit one line of the column, and the
    command is always in ⌘K;
@@ -31,7 +32,7 @@ from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel
 from ..text import plural
 from .state import WorkspaceState
 from .task_card_model import PILL_WORDS
-from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides
+from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides, selection_of
 
 POLL_MS = 400       # how often the file shown and its unsaved state are looked at (neither has a signal)
 TYPING_MS = 500     # the offers follow the text a moment after the last keystroke
@@ -263,7 +264,7 @@ class AssistantHeader(Surface):
     def _now(self) -> tuple:
         centre = self.app.centre
         path = centre.path
-        return path, path is not None and centre.is_dirty(path)
+        return path, path is not None and centre.is_dirty(path), selection_of(self.app) is not None
 
     def _look(self) -> None:
         """The file shown and its unsaved state have no signal: compare them now and then."""

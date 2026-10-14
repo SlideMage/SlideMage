@@ -27,6 +27,14 @@ no card: their progress is the task row's status line, what became of each slide
 "Describe images" is one image run over the deck's images, a summary one process whose answer is shown, never written.
 One task or batch at a time; Stop and closing the window end its processes.
 
+The tasks on a selection (Rewrite selection, Proofread selection; claude_tasks.REWRITE and PROOFREAD_SELECTION) work
+on the text selected in the Source view's slide: `_capture_selection` takes the file, its text and the range when the
+button is clicked (selection.py refuses a blank selection, a frozen version and a protected part), and the model gets
+the range with some context around it. The proposal is the whole file with only the range replaced, so Review's diff
+shows it in its place, and the write is the usual one: into the editor buffer (Ctrl+Z undoes it, the card's Undo does too)
+if the file has changed in no way since, else the card ends in Conflict with the proposal kept. The header offers the
+two tasks, in place of the slide tasks, while the Source view has a selection to work on.
+
 Which backend runs a task is the active route's (ai_profile.resolve, captured when the task starts; the kind of
 each task is KINDS). On Cloud · Claude Code every task is a `claude -p` process, as above. On Local and
 Cloud · API only the tasks with an equivalent on a provider run, one at a time on that provider (the Ollama slot
@@ -58,6 +66,7 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 from .... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, latex_lint, readability,
                   readability_check, slide_add, slide_ids, slide_language, slide_source, slide_versioning)
 from ....project import ProjectContext
+from ....selection import Selection, SelectionError
 from ....tex_source import masked_same_length
 from ....ai import (ai_profile, claude_images, claude_launch, claude_runner, claude_tasks, provider_tasks, resolver,
                     translation_style)
@@ -79,24 +88,28 @@ CONFLICT = "The slide changed while Claude worked."
 _VERBS = {claude_tasks.TRANSLATE.name: "Translating", claude_tasks.UPDATE_TRANSLATION.name: "Updating",
           claude_tasks.FIX_LATEX.name: "Fixing", claude_images.DESCRIBE.name: "Describing",
           claude_images.TRANSLATE.name: "Translating", claude_tasks.SUMMARISE.name: "Summarising",
-          claude_tasks.READABLE.name: "Making readable"}
+          claude_tasks.READABLE.name: "Making readable", claude_tasks.REWRITE.name: "Rewriting",
+          claude_tasks.PROOFREAD_SELECTION.name: "Proofreading"}
 # What each task is, for the route's models (ai_profile.TASKS).
 KINDS = {claude_tasks.TRANSLATE.name: ai_profile.TRANSLATION, claude_tasks.UPDATE_TRANSLATION.name: ai_profile.TRANSLATION,
          claude_images.TRANSLATE.name: ai_profile.TRANSLATION, claude_images.DESCRIBE.name: ai_profile.IMAGE_DESCRIPTION,
          **dict.fromkeys((claude_tasks.FIX_LATEX.name, claude_tasks.PROOFREAD.name, claude_tasks.CONCISE.name,
                           claude_tasks.TITLE.name, claude_tasks.NOTE.name, claude_tasks.SUMMARISE.name,
-                          claude_tasks.READABLE.name),
+                          claude_tasks.READABLE.name, claude_tasks.REWRITE.name, claude_tasks.PROOFREAD_SELECTION.name),
                          ai_profile.FIXES)}
 # The tasks that also run on a provider, as the Add slide sheet and the Images page do (see the docstring).
-PROVIDER_TASKS = (claude_tasks.TRANSLATE, claude_tasks.READABLE, claude_images.DESCRIBE, claude_images.TRANSLATE)
+PROVIDER_TASKS = (claude_tasks.TRANSLATE, claude_tasks.READABLE, claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION,
+                  claude_images.DESCRIBE, claude_images.TRANSLATE)
+SELECTION_TASKS = (claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION)      # on the text selected in the Source view
 # The tasks on one slide, shown as a task card (the others are batches, image runs and the summary).
 CARD_TASKS = (claude_tasks.TRANSLATE, claude_tasks.UPDATE_TRANSLATION, claude_tasks.FIX_LATEX, claude_tasks.PROOFREAD,
-              claude_tasks.CONCISE, claude_tasks.TITLE, claude_tasks.NOTE, claude_tasks.READABLE)
+              claude_tasks.CONCISE, claude_tasks.TITLE, claude_tasks.NOTE, claude_tasks.READABLE, *SELECTION_TASKS)
 _NAMES = {claude_tasks.TRANSLATE.name: "Translating a slide", claude_tasks.UPDATE_TRANSLATION.name: "Updating a translation",
           claude_tasks.FIX_LATEX.name: "Fixing LaTeX errors", claude_tasks.PROOFREAD.name: "Proofreading",
           claude_tasks.CONCISE.name: "Making a slide more concise", claude_tasks.TITLE.name: "Retitling a slide",
           claude_tasks.NOTE.name: "Adding a speaker note", claude_tasks.SUMMARISE.name: "Summarising a deck",
-          claude_tasks.READABLE.name: "Making a slide readable",
+          claude_tasks.READABLE.name: "Making a slide readable", claude_tasks.REWRITE.name: "Rewriting a selection",
+          claude_tasks.PROOFREAD_SELECTION.name: "Proofreading a selection",
           claude_images.DESCRIBE.name: "Describing images", claude_images.TRANSLATE.name: "Translating image descriptions"}
 WORKERS = 2                            # processes at a time in a batch
 DECK_LABEL = "the deck"
@@ -143,6 +156,8 @@ class _Capture:
     language: str              # a translation's: the language to translate into, else ""
     eol: str                   # of the file: the line ends of a new slide
     deck_path: Path | None
+    span: tuple[int, int] | None = None   # a selection's range in `text`: the task is on that part only
+    instruction: str = ""      # of a rewrite: what it should do
 
 
 def _id_slug(path: Path) -> str:
@@ -248,8 +263,21 @@ def _offers(ctx: ProjectContext, focus: _Focus, link: slide_language.Translation
 def bubbles(window) -> list[Bubble]:
     """The tasks that fit the slide in the Source view right now."""
     focus = _focus(window)
-    return [] if focus is None else _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug),
-                                            window.readability_known)
+    if focus is None:
+        return []
+    found = _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug), window.readability_known)
+    if selection_of(window) is not None:
+        found = [Bubble(claude_tasks.REWRITE, "Rewrite selection"), Bubble(claude_tasks.PROOFREAD_SELECTION, "Proofread selection"),
+                 *found]
+    return found
+
+
+def selection_of(window) -> Selection | None:
+    """The text selected in the slide the Source view shows, when a task can work on it."""
+    try:
+        return window.centre.source.selection()
+    except SelectionError:
+        return None
 
 
 def deck_slides(window) -> list[Path]:
@@ -288,13 +316,14 @@ def deck_bubbles(window) -> list[Bubble]:
 
 
 # Which of the tasks that fit come first in the header (the prototype: the translation, then shortening).
-PRIORITY = (claude_tasks.UPDATE_TRANSLATION, claude_tasks.TRANSLATE, claude_tasks.FIX_LATEX, claude_tasks.READABLE,
+PRIORITY = (claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION, claude_tasks.UPDATE_TRANSLATION, claude_tasks.TRANSLATE, claude_tasks.FIX_LATEX, claude_tasks.READABLE,
             claude_tasks.CONCISE, claude_tasks.PROOFREAD, claude_tasks.TITLE, claude_tasks.NOTE, claude_images.DESCRIBE,
             claude_images.TRANSLATE, claude_tasks.SUMMARISE)
 
 
-# What `bubbles` can offer, as palette commands; Make readable has its own command, which checks the slide first.
-SLIDE_TASKS = tuple(task for task in PRIORITY if task not in (claude_tasks.SUMMARISE, claude_tasks.READABLE))
+# What `bubbles` can offer, as palette commands; Make readable has its own command, which checks the slide first, and
+# the tasks on a selection theirs, which are there without a selection too.
+SLIDE_TASKS = tuple(task for task in PRIORITY if task not in (claude_tasks.SUMMARISE, claude_tasks.READABLE, *SELECTION_TASKS))
 DECK_TASKS = (*BATCH_TASKS, claude_images.DESCRIBE, claude_tasks.SUMMARISE)                # what `deck_bubbles` can
 
 
@@ -304,8 +333,26 @@ def contextual(found: list[Bubble], runner: "TaskRunner", limit: int = 2) -> lis
     return sorted(runnable, key=lambda bubble: PRIORITY.index(bubble.task))[:limit]
 
 
-def _capture(window, task: claude_tasks.Task, focus: _Focus | None) -> _Capture | None:
-    """The task on the slide `focus`, or None when it no longer fits it."""
+def _capture_selection(window, task: claude_tasks.Task, instruction: str) -> _Capture:
+    """REWRITE (as `instruction` says) or PROOFREAD_SELECTION on the text selected in the Source view now; SelectionError
+    says why there is none to work on."""
+    chosen = window.centre.source.selection()
+    path, text, start, end = chosen.path, chosen.text, chosen.start, chosen.end
+    id_slug = _id_slug(path)
+    if task is claude_tasks.REWRITE:
+        request = claude_tasks.rewrite_request(text, start, end, instruction)
+    else:
+        request = claude_tasks.proofread_selection_request(
+            text, start, end, slide_language.own_language(id_slug) or "EN", translation_style.de_address(window.project))
+    deck = window.state.deck
+    return _Capture(task, path, id_slug, text, "", text, request, "", slide_source.read_slide_source(path)[1],
+                    deck.path if deck is not None else None, (start, end), instruction)
+
+
+def _capture(window, task: claude_tasks.Task, focus: _Focus | None, instruction: str = "") -> _Capture | None:
+    """The task on the slide `focus` (the selection, for a task on that), or None when it no longer fits it."""
+    if task in SELECTION_TASKS:
+        return _capture_selection(window, task, instruction)
     if focus is None:
         return None
     link = slide_language.translation_link(window.project, focus.id_slug)
@@ -547,11 +594,11 @@ class TaskRunner(QObject):
         return resolver.problem(self._window.project, route)
 
     def start(self, task: claude_tasks.Task, paths: tuple[Path, ...] = (), title: str = "", focus: Path | None = None,
-              images: _ImageCapture | None = None) -> None:
+              images: _ImageCapture | None = None, instruction: str = "") -> None:
         """Run `task` on the slide in the Source view (or on `focus`, a slide's current file) with a task card, or for
         a deck bubble on its slides `paths`, unless one is running, the active route cannot run it (a card asks for
         setup, the task row says why) or it no longer fits. `title` is what the card calls it. `images` is the capture
-        of an image task to run as it is (Retry failed) instead of the slide's."""
+        of an image task to run as it is (Retry failed) instead of the slide's. `instruction` is what a rewrite should do."""
         if self.busy:
             return
         if (card := self.card) is not None and card.phase == card_model.REVIEW:
@@ -562,7 +609,12 @@ class TaskRunner(QObject):
         on_card = task in CARD_TASKS and not paths
         capture = None
         if on_card:
-            capture = _capture(self._window, task, _focus_at(self._window, focus) if focus else _focus(self._window))
+            try:
+                capture = _capture(self._window, task, _focus_at(self._window, focus) if focus else _focus(self._window),
+                                   instruction)
+            except SelectionError as exc:
+                self.status.emit(str(exc), "warning")
+                return
             if capture is None:
                 self.status.emit("That no longer fits this slide.", "warning")
                 return
@@ -617,7 +669,8 @@ class TaskRunner(QObject):
             language = slide_language.own_language(capture.id_slug) or ""
         card = TaskCard(task, title or _NAMES[task.name], route, target=slide_language.bare_id(capture.id_slug),
                         target_title=deck_outline.slide_file_title(capture.path, capture.id_slug), focus=capture.path,
-                        file=capture.path.name, language=language, t0=time.monotonic(), **fields)
+                        file=capture.path.name, language=language, t0=time.monotonic(),
+                        instruction=capture.instruction, **fields)
         if task is claude_tasks.READABLE:
             card.readable = card_model.Readable(tuple(self._window.readability_known.fixable(capture.path, capture.text)))
         return card
@@ -654,14 +707,15 @@ class TaskRunner(QObject):
         if route.route == ai_profile.CLAUDE_CODE:
             claude = resolver.claude_path()
             run = lambda: claude_runner.run_task(ctx, claude, capture.task, capture.sent, capture.request,   # noqa: E731
-                                                 route.model, route.effort, cancel=cancel)
+                                                 route.model, route.effort, cancel=cancel, span=capture.span)
         else:
             provider = resolver.provider_for(ctx, route)
             self._providers.append(provider)
             if capture.task is claude_tasks.TRANSLATE:
                 run = lambda: _translate_on_provider(ctx, provider, capture, cancel)       # noqa: E731
             else:
-                run = lambda: provider_tasks.run_task(ctx, provider, capture.task, capture.sent, capture.request, cancel)  # noqa: E731
+                run = lambda: provider_tasks.run_task(ctx, provider, capture.task, capture.sent, capture.request, cancel,  # noqa: E731
+                                                      capture.span)
         return self._measuring(capture, run) if capture.task is claude_tasks.READABLE else run
 
     def _measuring(self, capture: _Capture, run: Callable[[], Outcome]) -> Callable[[], Outcome]:
@@ -988,7 +1042,7 @@ class TaskRunner(QObject):
         """The same task on the same slide, on the route that is active now."""
         card = self.card
         if card is not None and not card.running:
-            self.start(card.task, title=card.title, focus=card.focus)
+            self.start(card.task, title=card.title, focus=card.focus, instruction=card.instruction)
 
     def current_text(self) -> str:
         """What the card's proposal is compared with: the text the slide has now (a translation's source, the body that

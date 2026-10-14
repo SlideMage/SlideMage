@@ -180,12 +180,12 @@ def run_json(claude: Path, task: claude_tasks.Task, request: str, model: str, ef
 
 
 def judge(ctx: ProjectContext, task: claude_tasks.Task, captured: str, answer: dict | None, outcome: Outcome,
-          who: str = "Claude") -> list[str]:
+          who: str = "Claude", span: tuple[int, int] | None = None) -> list[str]:
     """Settle `outcome` by the model's `answer` (claude_tasks.check): DONE with the new text, or NOTHING when it
     changes nothing; the problems, when the answer is refused (then `outcome` says so, and they go into the repair
     request)."""
     outcome.note = claude_tasks.answer_note(task, answer)
-    text, problems = claude_tasks.check(ctx, task, captured, answer)
+    text, problems = claude_tasks.check(ctx, task, captured, answer, span)
     if problems:
         outcome.message = f"{who}'s answer was refused: " + "; ".join(problems)
     else:
@@ -195,10 +195,10 @@ def judge(ctx: ProjectContext, task: claude_tasks.Task, captured: str, answer: d
 
 def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, captured: str, request: str, model: str = MODEL,
              effort: str = EFFORT, deadline_s: float = TEXT_DEADLINE_S,
-             cancel: threading.Event | None = None) -> Outcome:
+             cancel: threading.Event | None = None, span: tuple[int, int] | None = None) -> Outcome:
     """Run `task` on the `captured` text with `request` (claude_tasks.translate_request / fix_request) and
     check the answer; an answer that fails the check gets one repair attempt. The deadline covers both
-    attempts."""
+    attempts. `span`: the task is on that range of `captured` only (claude_tasks.check)."""
     cancel = cancel or threading.Event()
     started = time.monotonic()
     outcome = Outcome(FAILED)
@@ -216,7 +216,7 @@ def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, capture
         if run.error:
             outcome.message = run.error
             break
-        if not (problems := judge(ctx, task, captured, run.answer, outcome)):
+        if not (problems := judge(ctx, task, captured, run.answer, outcome, span=span)):
             break
         request = claude_tasks.repair_request(request, run.answer, problems)
     outcome.elapsed_s = time.monotonic() - started

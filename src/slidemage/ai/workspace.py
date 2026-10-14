@@ -22,6 +22,7 @@ from pathlib import Path
 from .. import compiler, preview_target, slide_snapshot, update_all_previews
 from ..deck_scan import Deck
 from ..project import ProjectContext
+from ..selection import Selection, SelectionError
 from ..preview_requests import RenderRequest
 from .providers import ChatProvider
 
@@ -78,6 +79,10 @@ class Workspace:
         else why not: the buffer is read-only (a frozen version), or its text is no longer
         `expected_text` (the user typed while the edit waited for their answer)."""
         return "it is not open for editing"
+
+    def selection(self) -> Selection:
+        """The text selected in the slide the editor shows (selection.capture); SelectionError says why there is none."""
+        raise SelectionError("There is no editor here, so nothing is selected.")
 
     # -- asking and telling the user ---------------------------------------------------------------
 

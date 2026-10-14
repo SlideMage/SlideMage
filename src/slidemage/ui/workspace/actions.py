@@ -27,7 +27,8 @@ from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile
 from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
-from .terminal.tasks import DECK_TASKS, SLIDE_TASKS
+from .selection_tasks import REWRITE_CHOICES
+from .terminal.tasks import DECK_TASKS, SLIDE_TASKS, selection_of
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
@@ -197,6 +198,15 @@ def build_registry() -> CommandRegistry:
         enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
     add("slide:readable", "Make this slide readable", SLIDE, lambda w: w.assistant.make_readable(), icon="auto_fix_high",
         meta="checks it first", enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
+    # The tasks on the text selected in the Source view: there for every slide, enabled with a selection to work on.
+    selected = lambda w: selection_of(w) is not None     # noqa: E731
+    add("selection:rewrite", "Rewrite selection…", SLIDE, lambda w: w.assistant.rewrite_selection(), icon="edit_note",
+        meta="choose how", shortcut="Ctrl+Shift+R", enabled=selected)
+    for choice in REWRITE_CHOICES:
+        add(f"selection:rewrite:{choice}", f"Rewrite selection · {choice}", SLIDE,
+            lambda w, c=choice: w.assistant.rewrite_selection(c), icon="edit_note", meta="selected text", enabled=selected)
+    add("selection:proofread", "Proofread selection", SLIDE, lambda w: w.assistant.proofread_selection(), icon="spellcheck",
+        meta="selected text", enabled=selected)
     add("slides:unreviewed", "List not reviewed slides", SLIDE,
         lambda w: w.slide_list.review_filter.setChecked(True), enabled=_has_deck)
     for view in VIEWS:

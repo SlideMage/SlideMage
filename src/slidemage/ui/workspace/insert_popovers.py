@@ -4,7 +4,8 @@ button, as popovers under their button (docs/UI_REDESIGN_PLAN.md, step 5):
 * `LinkPopover`: the visible text and the URL of a hyperlink;
 * `CodeFilePopover`: a file from the project's snippets/ folder, or a new one,
   and listings options, for \\SMCodeFile;
-* `CitationPopover`: a search over Slidemaster.bib and the citation style.
+* `CitationPopover`: a search over Slidemaster.bib and the citation style;
+* `InstructionPopover`: what "Rewrite selection · Custom…" should do (not an insert: its `chosen` is the instruction).
 
 Each reports the LaTeX to insert through `chosen(text)`; what the text looks
 like and what is valid is in latex_edit.py, snippets.py and bibliography.py.
@@ -46,14 +47,14 @@ class _FormPopover(Popover):
         self.body.addWidget(heading)
         self.note = _note()
 
-    def _add_buttons(self) -> None:
-        """Call after the fields: the note, then Cancel and Insert."""
+    def _add_buttons(self, label: str = "Insert") -> None:
+        """Call after the fields: the note, then Cancel and the primary button."""
         self.body.addWidget(self.note)
         row = QHBoxLayout()
         row.addStretch(1)
         cancel = Button("Cancel", "ghost", compact=True)
         cancel.clicked.connect(self.close)
-        insert = Button("Insert", "primary", compact=True)
+        insert = Button(label, "primary", compact=True)
         insert.clicked.connect(self._on_insert)
         row.addWidget(cancel)
         row.addWidget(insert)
@@ -89,6 +90,19 @@ class LinkPopover(_FormPopover):
 
     def build(self) -> str:
         return latex_edit.format_hyperlink(self.word.text(), self.url.text())
+
+
+class InstructionPopover(_FormPopover):
+    def __init__(self) -> None:
+        super().__init__("Rewrite selection")
+        self.entry = self._field("What should change? e.g. more formal, as a question")
+        self._add_buttons("Rewrite")
+        self.focus_target = self.entry
+
+    def build(self) -> str:
+        if not (text := self.entry.text().strip()):
+            raise ValueError("Say what the rewrite should do.")
+        return text
 
 
 class CodeFilePopover(_FormPopover):

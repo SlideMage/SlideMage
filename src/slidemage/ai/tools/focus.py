@@ -4,6 +4,7 @@ these show what SlideMage's window knows beyond the disk."""
 from __future__ import annotations
 
 from ... import latex_lint
+from ...selection import CONTEXT_CHARS, SelectionError
 from .base import ToolContext, ToolError, tool
 from .files import current_revision, may_touch, project_path, read_file, relative
 
@@ -93,3 +94,25 @@ def read_buffer(ctx: ToolContext, args: dict) -> str:
         raise ToolError(f"{relative(ctx.root, path)} is not open in the editor, so there is no buffer: "
                         "the file on disk is what your own Read shows.")
     return read_file.run(ctx, args)
+
+
+@tool("read_selection",
+      "The text the user has selected in the SlideMage editor, for a request about 'this' or 'the selection': the "
+      "file, the selected range (characters and lines) and the exact selected text, with some text before and after "
+      "it. The selection is taken at the moment you call, from the editor's buffer (unsaved edits included). Fails "
+      "when nothing is selected, the slide is a frozen version or the selection reaches into a protected part of the "
+      "slide (the comment block at the top, the \\setSlideVersion line, a \\vbox to 0pt{...} block). It changes nothing; "
+      "to change the selected text, use modify_slide on that slide.",
+      {})
+def read_selection(ctx: ToolContext, args: dict) -> str:
+    try:
+        chosen = ctx.workspace.selection()
+    except SelectionError as exc:
+        raise ToolError(str(exc)) from None
+    text, start, end = chosen.text, chosen.start, chosen.end
+    first, last = text.count("\n", 0, start) + 1, text.count("\n", 0, end) + 1
+    return "\n".join([
+        f"File: {relative(ctx.root, chosen.path)} (the editor's buffer)",
+        f"Selected: characters {start}-{end}, lines {first}-{last}",
+        "Text before the selection:", text[max(0, start - CONTEXT_CHARS):start], "--- the selection ---", chosen.selected,
+        "--- end of the selection ---", "Text after the selection:", text[end:end + CONTEXT_CHARS]])

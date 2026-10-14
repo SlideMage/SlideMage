@@ -76,6 +76,8 @@ class SourceEditor(Protocol):
     def redo(self) -> None: ...
     def replace_line(self, line: int, text: str) -> None: ...
     def selected_text(self) -> str: ...
+    def selection_range(self) -> tuple[int, int]:
+        """(start, end) of the selection as offsets into `text()`; equal when nothing is selected."""
     def replace_selection(self, text: str) -> None:
         """Insert `text` at the cursor, replacing the selection."""
     def go_to_line(self, line: int) -> None: ...
@@ -280,6 +282,14 @@ class LatexPlainTextEdit(QPlainTextEdit):
         # selectedText() uses U+2029 for a line break; left in, a wrapped
         # multi-line selection would write that character into the .tex file.
         return self.textCursor().selectedText().replace("\u2029", "\n")
+
+    def selection_range(self) -> tuple[int, int]:
+        cursor, units = self.textCursor(), utf16_units(self.toPlainText())
+
+        def offset(position: int) -> int:     # Qt counts a character outside the BMP twice
+            return position - sum("\ud800" <= unit <= "\udbff" for unit in units[:position])
+
+        return offset(cursor.selectionStart()), offset(cursor.selectionEnd())
 
     def replace_selection(self, text: str) -> None:
         cursor = self.textCursor()

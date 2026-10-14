@@ -20,7 +20,7 @@ TOOLS = [files.read_file, files.find_files, files.search, edits.edit_file, edits
 
 # What the embedded Claude Code is offered over MCP (ai/mcp_server.py): the focus and the buffer, the
 # read-only tools and composite slide creation/modification. Native Edit/Write handles other files.
-CLAUDE_CODE_READ_ONLY = [focus.get_focus, focus.show_slide, focus.read_buffer, slidemage.list_slides, slidemage.lint,
+CLAUDE_CODE_READ_ONLY = [focus.get_focus, focus.show_slide, focus.read_buffer, focus.read_selection, slidemage.list_slides, slidemage.lint,
                          slidemage.render_preview, previews.refresh_preview, readability.check_readability,
                          slidemage.read_guide]
 CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, slidemage.create_slide, slidemage.modify_slide, focus.translate_slide,

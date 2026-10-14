@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -27,10 +27,12 @@ from PySide6.QtWidgets import (
 
 from ... import latex_edit
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
+from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs.citation import CitationDialog
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, IconButton, Popover, PopoverMenu, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
+from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
 from .source_file import SourceFile
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -216,6 +218,8 @@ class SourcePane(Surface):
                 file.modified_changed.connect(self._on_modified)
                 file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
                 file.lint_changed.connect(self._emit_lint_errors)
+                file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                file.editor.customContextMenuRequested.connect(self._on_context_menu)
                 file.saved.connect(lambda p=path: self.saved.emit(p))
                 self._files[path] = file
                 self._stack.addWidget(file)
@@ -262,6 +266,20 @@ class SourcePane(Surface):
         Source view is not updated while the centre is in Preview mode)."""
         file = self._current if path is None else self._files.get(path)
         return (file.editor.text(), file.editor.selected_text()) if file is not None and file.is_slide else None
+
+    def selection(self) -> Selection:
+        """The text selected in the slide shown, captured now, for an AI task on it. SelectionError says why there is
+        none: no slide in view, nothing selected, a frozen (read-only) version, a protected part in the selection."""
+        file = self._current
+        if file is None or not file.is_slide or not self.isVisibleTo(self.window()):
+            raise SelectionError("Open a slide in the Source view and select some of its text.")
+        start, end = file.editor.selection_range()
+        if start == end:
+            raise SelectionError(NO_SELECTION)
+        if not file.is_current_slide or file.editor.is_read_only():
+            raise SelectionError("This is a frozen version of the slide, which is read-only. Select text in its "
+                                 "current version.")
+        return capture(file.path, file.editor.text(), start, end)
 
     def stop_ai_checks(self) -> None:
         """Abort and join every running "Ask AI to fix" check, whichever file it belongs to."""
@@ -408,6 +426,49 @@ class SourcePane(Surface):
         file = self._current
         self.app.log(f"Reindented {file.path.name}" if file.editor.reindent()
                      else f"{file.path.name}: indentation already correct")
+
+    def _on_context_menu(self, pos: QPoint) -> None:
+        """Right-click in the editor: the edit commands and, in a slide, Rewrite selection and Proofread selection
+        (enabled when the selection can be worked on)."""
+        editor = self._current.editor
+        selected, writable = editor.textCursor().hasSelection(), not editor.is_read_only()
+        menu = PopoverMenu(self, min_width=240)
+        menu.add_item("undo", "Undo", meta="Ctrl+Z", enabled=writable)
+        menu.add_item("redo", "Redo", meta="Ctrl+Y", enabled=writable)
+        menu.add_separator()
+        menu.add_item("cut", "Cut", meta="Ctrl+X", enabled=selected and writable)
+        menu.add_item("copy", "Copy", meta="Ctrl+C", enabled=selected)
+        menu.add_item("paste", "Paste", meta="Ctrl+V", enabled=writable)
+        menu.add_item("selectAll", "Select all", meta="Ctrl+A")
+        if self._current.is_slide:
+            menu.add_separator()
+            try:
+                self.selection()
+                usable = True
+            except SelectionError:
+                usable = False
+            add_menu_items(menu, usable)
+        menu.triggered.connect(self._on_context_chosen)
+        self._popup_at(menu, editor.mapToGlobal(pos))
+
+    def _on_context_chosen(self, key: str) -> None:
+        if key == PROOFREAD:
+            self.app.assistant.proofread_selection()
+        elif key.startswith(REWRITE):
+            self.app.assistant.rewrite_selection(key.removeprefix(REWRITE))
+        else:
+            getattr(self._current.editor, key)()
+
+    def popup_at_selection(self, popup: Popover) -> None:
+        """Show `popup` under the cursor, which is at one end of the selection."""
+        editor = self._current.editor
+        popup.setParent(self, popup.windowFlags())     # owned by the view, not garbage collected
+        self._popup_at(popup, editor.viewport().mapToGlobal(editor.cursorRect().bottomLeft()))
+
+    @staticmethod
+    def _popup_at(popup: Popover, point: QPoint) -> None:
+        popup.closed.connect(popup.deleteLater)
+        popup.popup_at(point)
 
     # -- references --------------------------------------------------------------------
 

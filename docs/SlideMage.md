@@ -147,6 +147,31 @@ deck switcher offers the rest). From top to bottom and left to right:
   usual and Done reuses the numbers ("Now readable: ...; Still below the floor: ..."). Cut-off or overlapping text
   after the change (`task_card_model.FIT_RULES`) ends the card in Overflow (Undo, Run again), also when the preview
   step was stopped. The assistant agent has no tool of its own: its guide says to check, `modify_slide`, and check again.
+- **Rewrite selection and Proofread selection** (v8.17.0; `claude_tasks.REWRITE` and `PROOFREAD_SELECTION`, `selection.py`,
+  `terminal/tasks.py` `_capture_selection`, `ui/workspace/selection_tasks.py`; step R1 of the Claude Code reviews plan):
+  tasks on the text selected in the Source view's slide, both FIXES-kind tasks on every route (Claude Code,
+  `provider_tasks.run_task` on Local and the API) and task cards like the other single-slide tasks. The selection is
+  captured when the button is clicked (`SourcePane.selection()` -> `selection.capture`: the file, its whole text and the
+  range as Python offsets, since Qt counts UTF-16 units): a blank selection, a frozen version and a selection that
+  touches a protected part (`protected_regions.protected_spans`: the header comment, `\setSlideVersion`, a `\vbox to 0pt`
+  block) are refused with a message, nothing sent. The request carries the instruction, 800 characters of context on
+  either side (`<before>`, `<after>`, never returned) and the selection between `<selection>` tags. **Rewrite** answers
+  `{"text": ...}`, the replacement for the selection only (the whitespace at its ends is kept by the check); its
+  instruction is chosen before generation: Simplify, Shorten (`REWRITE_PRESETS`) or Custom..., which asks in a popover
+  (`InstructionPopover`); the LaTeX commands, math, labels, citations and overlays stay unless the instruction is about
+  them. **Proofread selection** answers an edit list `{"edits": [{"before", "after"}]}`, each `before` occurring exactly
+  once in the selection (chosen over a text answer because it cannot rewrite beyond the fixes, and an empty list means
+  nothing to fix). `claude_tasks.check(..., span=(start, end))` runs the answer on that range of the whole file: the
+  result is the file with only the range replaced (every character outside it is the captured one), the protected
+  parts and the lint errors are those of the whole file, and the repair round is the usual one. Review shows the diff
+  in the file's context and Compare rendered; Apply writes through `write_text` into the editor buffer (one undo step:
+  Ctrl+Z and the card's Undo work), and the card ends in Conflict, keeping the proposal, if the buffer is no longer
+  the captured text. Entry points: the Source editor's context menu (Undo ... Select all, then Rewrite selection with
+  Simplify / Shorten / Custom... and Proofread selection, enabled when the selection can be worked on), the assistant
+  header's two buttons while there is a selection (they come first in `PRIORITY`, so they replace the slide tasks in
+  the two places; the rewrite button opens the Simplify / Shorten / Custom... menu under the selection), the palette
+  commands `selection:rewrite` (Ctrl+Shift+R), `selection:rewrite:<choice>` and `selection:proofread` (enabled with a
+  selection only). The terminal has a read-only MCP tool `read_selection` (path, range, text, context).
 - **Keyboard and screen readers** (workspace v6 step 7): the AI switch is a radio group with a single tab stop
   (the selected segment; **←/→** flip Local and Cloud, **Enter**/**Space** activate, then Tab reaches ▾); its popups
   open on their safe button, **Tab** goes secondary, primary, link and round again, **Esc** is the secondary button

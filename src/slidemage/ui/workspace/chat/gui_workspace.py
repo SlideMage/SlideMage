@@ -25,6 +25,7 @@ from ....ai.tools import undo_edit
 from ....ai.workspace import Workspace, WorkspaceContext
 from ....compile_status import DONE
 from ....deck_scan import Deck
+from ....selection import Selection
 from ....slide_language import bare_id, own_language
 from ....update_all_previews import DeckResult, needed_slides_by_template
 from .. import compile_actions
@@ -180,6 +181,9 @@ class GuiWorkspace(Workspace):
             return file.editor.text(), file.dirty
 
         return self.on_gui(read, ("", False))
+
+    def selection(self) -> Selection:
+        return self.on_gui(self.window.centre.source.selection, None)
 
     def apply_to_buffer(self, path: Path, expected_text: str, new_text: str) -> str | None:
         def apply() -> str | None:

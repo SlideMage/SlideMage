@@ -25,13 +25,16 @@ from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget, QWidget
 from ...ai import ai_profile
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ...ai.agent_types import EDIT_AUTO
-from ...ai.claude_tasks import READABLE, TRANSLATE
+from ...ai.claude_tasks import PROOFREAD_SELECTION, READABLE, REWRITE, REWRITE_PRESETS, TRANSLATE
+from ...selection import SelectionError
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, SegmentedControl
 from ..pages.image_results import BatchResultView
 from .assistant_header import AssistantHeader
 from .chat.gui_workspace import GuiWorkspace
+from .insert_popovers import InstructionPopover
 from .chat.view import ChatView
+from .selection_tasks import CUSTOM, rewrite_menu
 from .readability_panel import ReadabilityCheck, ReadabilityPanel
 from .state import WorkspaceState
 from .task_card import TaskCardView
@@ -163,7 +166,46 @@ class AssistantArea(Card):
     def run_task(self, bubble: Bubble) -> None:
         """Start a task of the header or the palette; a route that cannot run it says why on the task card (or, for a
         batch, in the task row)."""
-        self.tasks.start(bubble.task, bubble.paths, bubble.label)
+        if bubble.task is REWRITE:
+            self.rewrite_selection()
+        elif bubble.task is PROOFREAD_SELECTION:
+            self.proofread_selection()
+        else:
+            self.tasks.start(bubble.task, bubble.paths, bubble.label)
+
+    def _selection_ready(self) -> bool:
+        """Whether the Source view has a selection to work on; if not, the toast says why."""
+        try:
+            self.app.centre.source.selection()
+        except SelectionError as exc:
+            self.app.toast.show_message(str(exc))
+            return False
+        return True
+
+    def rewrite_selection(self, choice: str = "") -> None:
+        """Rewrite the selected text of the slide in the Source view as `choice` says: Simplify, Shorten or Custom…
+        (which asks for the instruction in a popover); with no choice, a menu of them under the selection."""
+        if not self._selection_ready():
+            return
+        source = self.app.centre.source
+        if not choice:
+            menu = rewrite_menu(source)
+            menu.triggered.connect(self.rewrite_selection)
+            source.popup_at_selection(menu)
+        elif choice == CUSTOM:
+            popover = InstructionPopover()
+            popover.chosen.connect(self._rewrite)
+            source.popup_at_selection(popover)
+        else:
+            self._rewrite(REWRITE_PRESETS[choice], choice)
+
+    def _rewrite(self, instruction: str, label: str = "") -> None:
+        label = label or (instruction if len(instruction) <= 40 else instruction[:39] + "…")
+        self.tasks.start(REWRITE, title=f"Rewrite selection · {label}", instruction=instruction)
+
+    def proofread_selection(self) -> None:
+        if self._selection_ready():
+            self.tasks.start(PROOFREAD_SELECTION, title="Proofread selection")
 
     def check_readability(self, scope: str) -> None:
         """Check the readability of the slide in view or of the open deck (the header's button, the palette); the

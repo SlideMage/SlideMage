@@ -1,11 +1,14 @@
 """The tasks SlideMage hands to a one-shot `claude -p` (Claude Code tasks plan, step 1): the rules the model
 gets, the request text, the shape of the answer, and the check of an answer before anything is written.
 
-A task has no tools; the model answers with JSON that SlideMage validates and applies itself. Four answer
-shapes: a new text (`{"body": ...}`; READABLE's also carries an optional `"note"`), an edit list (`{"edits": [{"before", "after"}]}`, each `before` a piece
+A task has no tools; the model answers with JSON that SlideMage validates and applies itself. Five answer
+shapes: a new text (`{"body": ...}`; READABLE's also carries an optional `"note"`), the replacement for a selection
+(`{"text": ...}`), an edit list (`{"edits": [{"before", "after"}]}`, each `before` a piece
 of the captured text that occurs exactly once), a new frame title (`{"title": ...}`) and a speaker note
 (`{"note": ...}`); the summary of a deck (`{"summary": ...}`) is read, never written. check() turns the answer into the new text and accepts it only if it is well formed, the
 protected parts of the slide are unchanged and the text has no lint error the captured text did not have.
+The tasks on a selection (REWRITE, PROOFREAD_SELECTION) get the whole file as `captured` and the selected range as
+`span`: the model answers for the range, the result is the file with only the range replaced.
 Pure: no Qt, no process (ai/claude_runner.py runs the task).
 """
 from __future__ import annotations
@@ -17,6 +20,7 @@ from dataclasses import dataclass
 
 from .. import latex_lint, slide_source
 from ..project import ProjectContext
+from ..selection import CONTEXT_CHARS
 from .tools.edits import protected_problem
 
 LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
@@ -27,7 +31,7 @@ SLIDE_CHARS, DECK_CHARS = 1500, 60000      # what a summary request carries: per
 class Task:
     name: str
     rules: str                  # the system prompt
-    schema: dict                # of the answer: one property, "body", "edits", "title" or "note"
+    schema: dict                # of the answer: one property, "body", "text", "edits", "title" or "note"
     keeps_structure: bool = False   # the new text has the same environments, overlay specifications and citations
 
     @property
@@ -40,6 +44,7 @@ def _schema(field: str, item: dict) -> dict:
 
 
 _BODY = _schema("body", {"type": "string"})
+_TEXT_ANSWER = _schema("text", {"type": "string"})
 _TITLE = _schema("title", {"type": "string"})
 _NOTE = _schema("note", {"type": "string"})
 _SUMMARY = _schema("summary", {"type": "string"})
@@ -140,6 +145,31 @@ READABLE = Task("readable", (
     "language, how to split the slide: what goes onto a second slide. Otherwise leave `note` out. " + _PROTECT),
     _READABLE)
 
+# The tasks on a selection: the request has the text before and after the selection as context (never returned) and
+# the selection between <selection> tags; the answer is for the selection only.
+REWRITE_PRESETS = {
+    "Simplify": "Simplify the wording: shorter sentences, plainer words, the same statements.",
+    "Shorten": "Shorten the text: cut filler and repetition, keep every statement.",
+}
+_SELECTION = (
+    "The request has the slide's text before and after the selection as context, only for reading, and the selection "
+    "between <selection> tags (the tags are not part of it). ")
+REWRITE = Task("rewrite", (
+    "You rewrite a selected passage of the LaTeX source of one beamer slide of a university course, as the request's "
+    "instruction says. " + _SELECTION + "Answer with the replacement for the selection only, as `text`: nothing "
+    "of the context, no tags. Keep the language of the passage and its line breaks, tabs and indentation. Keep the "
+    "markup as it is, unless the instruction is about it: " + _MARKUP + "Braces and environments stay balanced. "
+    "Answer with the JSON result only."), _TEXT_ANSWER)
+
+PROOFREAD_SELECTION = Task("proofread_selection", (
+    "You proofread a selected passage of the LaTeX source of one beamer slide of a university course. Fix spelling, "
+    "grammar, punctuation and capitalization mistakes in the selection, and nothing else: no rewording, no "
+    "restyling, the meaning stays. " + _SELECTION + _TEXT + "Where there is nothing to fix, answer with an empty "
+    "edit list. Answer with an edit list. `before` is a piece of the selection copied character for character, tabs "
+    "and spaces included, that occurs exactly once in the selection (add neighbouring text to make it unique; "
+    "the context is not part of it); the pieces of different edits must not overlap; `after` replaces it. "
+    "Answer with the JSON result only."), _EDITS)
+
 
 def translate_request(text: str, source: str, target: str, address: str = "Sie", glossary: str = "") -> str:
     """Translate `text` from `source` to `target` (codes of LANGUAGE_NAMES). `address` ("Sie" or "du") is
@@ -183,6 +213,26 @@ def title_request(text: str) -> str:
     start, end = slide_source.title_span(text)
     return "\n".join(["Write a better title for this slide.", f"Current title: {text[start:end]}",
                       "<slide>", text, "</slide>"])
+
+
+def _selection_request(lines: list[str], text: str, start: int, end: int) -> str:
+    """`lines`, then `text` with the range `start`..`end` as the selection and CONTEXT_CHARS of it on either side."""
+    return "\n".join([*lines, "<before>", text[max(0, start - CONTEXT_CHARS):start], "</before>",
+                      "<selection>", text[start:end], "</selection>", "<after>", text[end:end + CONTEXT_CHARS], "</after>"])
+
+
+def rewrite_request(text: str, start: int, end: int, instruction: str) -> str:
+    """Rewrite the range `start`..`end` of the slide `text` as `instruction` says."""
+    return _selection_request(["Rewrite the selection of this slide. Instruction: " + instruction.strip()], text, start, end)
+
+
+def proofread_selection_request(text: str, start: int, end: int, language: str, address: str = "Sie") -> str:
+    """Proofread the range `start`..`end` of the slide `text`, written in `language` (a code of LANGUAGE_NAMES)."""
+    lines = [f"Proofread the selection of this {LANGUAGE_NAMES[language]} slide with the spelling rules of its "
+             "language; keep the variant of the language that it uses."]
+    if language == "DE":
+        lines.append(f'The audience is addressed with "{address}": keep it.')
+    return _selection_request(lines, text, start, end)
 
 
 def note_request(text: str) -> str:
@@ -306,16 +356,23 @@ def _new_text(task: Task, captured: str, value) -> tuple[str, list[str]]:
         return slide_source.set_title(captured, value.strip()), []
     if task.answer == "note":
         return slide_source.add_note(captured, value.strip()), []
+    if task.answer == "text":      # a selection often ends at a line break: it stays
+        return captured[:len(captured) - len(captured.lstrip())] + value.strip() + captured[len(captured.rstrip()):], []
     return value, []
 
 
-def check(ctx: ProjectContext, task: Task, captured: str, answer: dict | None) -> tuple[str, list[str]]:
+def check(ctx: ProjectContext, task: Task, captured: str, answer: dict | None,
+          span: tuple[int, int] | None = None) -> tuple[str, list[str]]:
     """(new text, problems) for the model's `answer` to `task` on `captured`. With problems the text is
     `captured` and the problems are what to tell the model; without, the text is the result, equal to
-    `captured` when there is nothing to change."""
-    new, problems = _new_text(task, captured, answer.get(task.answer) if isinstance(answer, dict) else None)
+    `captured` when there is nothing to change. With a `span` (start, end) the answer is for that range of
+    `captured` only: the result is `captured` with the range replaced, every character outside it untouched, and the
+    protected parts and the lint errors are those of the whole text."""
+    start, end = span or (0, len(captured))
+    piece, problems = _new_text(task, captured[start:end], answer.get(task.answer) if isinstance(answer, dict) else None)
     if problems:
         return captured, problems
+    new = captured[:start] + piece + captured[end:]
     if new == captured or task.answer == "summary":     # a summary is no edit of `captured`: nothing to protect
         return new, []
     if problem := protected_problem(captured, new) or (task.keeps_structure and _structure_problem(captured, new)):

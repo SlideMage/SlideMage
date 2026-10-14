@@ -46,10 +46,8 @@ class MaskResult:
     placeholders: dict[str, str]  # "%%%PROTECTED_0%%%" -> original text
 
 
-def mask_protected_regions(text: str) -> MaskResult:
-    """Replace every protected region in `text` with a unique placeholder
-    token. See this module's own docstring for exactly what "protected"
-    covers and why."""
+def protected_spans(text: str) -> list[list[int]]:
+    """The protected regions of `text` as [start, end] offsets, in order, overlapping or adjacent ones merged."""
     spans: list[list[int]] = []
 
     header = _header_comment_span(text)
@@ -76,11 +74,17 @@ def mask_protected_regions(text: str) -> MaskResult:
             merged[-1][1] = max(merged[-1][1], end)
         else:
             merged.append([start, end])
+    return merged
 
+
+def mask_protected_regions(text: str) -> MaskResult:
+    """Replace every protected region in `text` with a unique placeholder
+    token. See this module's own docstring for exactly what "protected"
+    covers and why."""
     placeholders: dict[str, str] = {}
     pieces: list[str] = []
     cursor = 0
-    for i, (start, end) in enumerate(merged):
+    for i, (start, end) in enumerate(protected_spans(text)):
         token = f"%%%PROTECTED_{i}%%%"
         placeholders[token] = text[start:end]
         pieces.append(text[cursor:start])
