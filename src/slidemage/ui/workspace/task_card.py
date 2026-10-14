@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, IconLabel, Surface, announce, clear_layout, set_property
-from . import task_card_model as model
+from . import compare_rendered, task_card_model as model
 from .chat.cards import DiffCard
 from .task_card_model import TaskCard
 from .terminal.tasks import TaskRunner
@@ -42,7 +42,7 @@ class TaskCardView(Surface):
         self._diff: DiffCard | None = None
         self._handlers = {
             "stop": tasks.stop, "apply": tasks.apply, "reject": self._reject, "diff": self._full_diff, "view": self._view,
-            "undo": self._undo, "close": tasks.close_card, "compare": self._compare_with_current, "again": tasks.run_again,
+            "undo": self._undo, "close": tasks.close_card, "compare": self._compare_with_current, "rendered": self._compare_rendered, "again": tasks.run_again,
             "source": self._open_source, "log": self._open_log, "sign_in": self.sign_in_clicked.emit}
 
         layout = QVBoxLayout(self)
@@ -242,6 +242,11 @@ class TaskCardView(Surface):
     def _compare_with_current(self) -> None:
         self._compare = True
         self.render()
+
+    def _compare_rendered(self) -> None:
+        found = self.tasks.compare_texts()
+        if found is None or compare_rendered.open_compare(self.app, *found) is None:
+            self.app.toast.show_message("Nothing to compare: the two texts are the same.")
 
     def _view(self) -> None:
         """View DE version: the new slide in the centre column; View change: the diff of what was written."""

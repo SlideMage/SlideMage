@@ -173,11 +173,13 @@ class ToolCard(QFrame):
 class DiffCard(QFrame):
     """An edit of a file as a diff. States: "proposed" (just announced), "asking" (Apply / Reject
     wait for the user), "working" (Apply was clicked), "applied" (with Undo, when it can be undone), "rejected"
-    (refused, or could not be applied) and "undone" (greyed)."""
+    (refused, or could not be applied) and "undone" (greyed). "Compare rendered" (hidden until the owner of the card
+    shows it: it fits an edit of a slide) is offered in every state."""
 
     apply_clicked = Signal()
     reject_clicked = Signal()
     undo_clicked = Signal()
+    compare_clicked = Signal()
 
     def __init__(self, title: str, before: str, after: str, note: str = "") -> None:
         super().__init__()
@@ -198,6 +200,10 @@ class DiffCard(QFrame):
         name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         name.setToolTip(title)
         head.addWidget(name, 1)
+        self.compare_button = Button("Compare rendered", "ghost", compact=True)
+        self.compare_button.clicked.connect(self.compare_clicked)
+        self.compare_button.hide()
+        head.addWidget(self.compare_button)
         layout.addLayout(head)
         if note:
             note_label = caption(note)

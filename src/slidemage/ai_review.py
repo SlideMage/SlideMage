@@ -3,6 +3,10 @@
 Every read/modify/write holds the existing OS-owned build_lock on a stable
 sidecar, then fileio replaces the JSON atomically. No queue or in-memory copy
 can lose another process's mark. Buffer writes supply their actual text.
+
+An edit that supplies the text it replaced also keeps that text, one file per slide in
+.slidemage/ai-before/ (the last edit only, kept after the slide is marked reviewed): the
+earlier side of Compare rendered for the edits that left no diff card, Claude Code's in the terminal.
 """
 from __future__ import annotations
 
@@ -39,14 +43,17 @@ def _update(ctx: ProjectContext, mutate) -> None:
 
 
 def mark(ctx: ProjectContext, path: Path | str, kind: str, source: str, *,
-         text: str | None = None, deck: Path | None = None) -> None:
-    """Mark a live slide; non-slides, frozen files and missing files are ignored."""
+         text: str | None = None, deck: Path | None = None, before: str | None = None) -> None:
+    """Mark a live slide; non-slides, frozen files and missing files are ignored. `before` is the text an
+    "edit" replaced: it is kept as the slide's last_before() unless it is the text the slide has now."""
     if kind not in ("draft", "translation", "edit"):
         raise ValueError(f"Unknown Claude change kind: {kind}")
     key = _key(ctx, path)
     if key is None or not (ctx.root / key).is_file():
         return
     text = fileio.read_text_exact(ctx.root / key) if text is None else text
+    if kind == "edit" and before is not None and before.replace("\r\n", "\n") != text.replace("\r\n", "\n"):
+        fileio.atomic_write(ctx.ai_before_dir / Path(key).name, before.replace("\r\n", "\n"))
     entry = dict(by="claude", kind=kind, source=source,
                  since=datetime.now(timezone.utc).isoformat(),
                  text_hash=sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest())
@@ -75,6 +82,15 @@ def is_unreviewed(ctx: ProjectContext, path: Path | str) -> bool:
     return _key(ctx, path) in unreviewed(ctx)
 
 
+def last_before(ctx: ProjectContext, path: Path | str) -> str | None:
+    """The text the live slide `path` had before the last AI edit that was recorded with it, else None."""
+    key = _key(ctx, path)
+    try:
+        return fileio.read_text_exact(ctx.ai_before_dir / Path(key).name) if key else None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def mark_reviewed(ctx: ProjectContext, paths) -> None:
     keys = {_key(ctx, path) for path in paths}
     _update(ctx, lambda data: [data.pop(key, None) for key in keys])
@@ -82,6 +98,8 @@ def mark_reviewed(ctx: ProjectContext, paths) -> None:
 
 def rename(ctx: ProjectContext, old: Path, new: Path) -> None:
     old_key, new_key = _key(ctx, old), _key(ctx, new)
+    if old_key and new_key and (kept := ctx.ai_before_dir / Path(old_key).name).is_file():
+        kept.replace(ctx.ai_before_dir / Path(new_key).name)
 
     def mutate(data):
         entry = data.pop(old_key, None)

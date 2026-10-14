@@ -41,6 +41,7 @@ from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderEr
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
+from .. import compare_rendered
 from ..ai_work import RunningWork
 from ..attachments import place_file, save_image
 from ..state import WorkspaceState
@@ -484,6 +485,9 @@ class ChatView(Surface):
         card = self._diffs[key] = DiffCard(self._title(path), before, after, note)
         card.apply_clicked.connect(lambda: self._answer(card, True))
         card.reject_clicked.connect(lambda: self._answer(card, False))
+        if before and compare_rendered.can_compare(self.app, path):     # an edit of a slide, not a new file
+            card.compare_button.show()
+            card.compare_clicked.connect(lambda: compare_rendered.open_compare(self.app, path, before, after))
         self._add(card)
         return card
 

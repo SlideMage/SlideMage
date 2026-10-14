@@ -474,6 +474,7 @@ class ProjectContext:
     pdf_render_cache_dir = _Under(".previews", "pdf_render_cache")
     settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json
     ai_review_path = _Under(".slidemage", "ai-review.json")
+    ai_before_dir = _Under(".slidemage", "ai-before")   # a slide's text before the last AI edit (ai_review.last_before)
     claude_hook_dir = _Under(".slidemage", "claude-hooks")
     slide_ids_csv = _Under(MARKER)
     bibliography_path = _Under("Slidemaster.bib")

@@ -129,7 +129,7 @@ def record_write(ctx: ProjectContext, event: dict) -> None:
     if store:
         alt_images.flag_edited_sources(ctx, path, saved.get("before") or "")   # a changed citation is to review
     elif slide and ("before" not in saved or saved["before"] != _read(path)):
-        ai_review.mark(ctx, path, "draft" if saved.get("new") else "edit", source)
+        ai_review.mark(ctx, path, "draft" if saved.get("new") else "edit", source, before=saved.get("before"))
     elif deck and path.is_file() and "before" in saved:
         ai_review.inserted_slides(ctx, path, saved["before"] or "", fileio.read_text_exact(path), source)
 

@@ -71,7 +71,7 @@ def write_text(workspace: Workspace, path: Path, before: str, after: str, *,
         if review:
             alt_images.flag_edited_sources(workspace.project, path, before)   # a changed citation is to review
     if review and before != after:
-        ai_review.mark(workspace.project, path, kind, source, text=after)
+        ai_review.mark(workspace.project, path, kind, source, text=after, before=before)
         ai_review.inserted_slides(workspace.project, path, before, after, source)
         workspace.review_changed()
     if not via_buffer:

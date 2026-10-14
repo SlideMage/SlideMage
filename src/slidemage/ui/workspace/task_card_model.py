@@ -84,6 +84,11 @@ class TaskCard:
         return found
 
     @property
+    def can_compare(self) -> bool:
+        """Compare rendered fits a change to a slide that exists: not a new slide, not a proposal that changes nothing."""
+        return bool(self.before) and self.after != self.before and not self.nothing
+
+    @property
     def diff_title(self) -> str:
         return f"New {self.language} slide, translated from {self.file}" if self.is_translation else self.file
 
@@ -205,7 +210,7 @@ def steps_text(card: TaskCard) -> str:
 
 @dataclass(frozen=True)
 class Action:
-    key: str            # what the view does: stop, apply, reject, diff, view, undo, close, compare, again, source, log, sign_in
+    key: str            # what the view does: stop, apply, reject, diff, view, undo, close, compare, rendered, again, source, log, sign_in
     label: str
     primary: bool = False
 
@@ -213,17 +218,19 @@ class Action:
 def actions(card: TaskCard) -> list[Action]:
     """The buttons of the card's phase, the primary first."""
     phase = card.phase
+    rendered = [Action("rendered", "Compare rendered")] if card.can_compare else []
     if phase == GENERATE:
         return [Action("stop", "Stop")]
     if phase == REVIEW:
-        return [Action("apply", "Apply", True), Action("reject", "Reject"), Action("diff", "View full diff")]
+        return [Action("apply", "Apply", True), Action("reject", "Reject"), Action("diff", "View full diff"), *rendered]
     if phase == DONE:
         if card.nothing:
             return [Action("close", "Close", True)]
         view = f"View {card.language} version" if card.is_translation else "View change"
-        return [Action("view", view, True), *([Action("undo", "Undo")] if card.undoable else []), Action("close", "Close")]
+        return [Action("view", view, True), *([Action("undo", "Undo")] if card.undoable else []), *rendered,
+                Action("close", "Close")]
     if phase == CONFLICT:
-        return [Action("compare", "Compare with current", True), Action("again", "Run again"), Action("close", "Dismiss")]
+        return [Action("compare", "Compare with current", True), *rendered, Action("again", "Run again"), Action("close", "Dismiss")]
     if phase == PREVIEW_FAILED:
         return [Action("source", "Open source", True), Action("log", "View log"), Action("close", "Close")]
     if phase in (STOPPED, FAILED):

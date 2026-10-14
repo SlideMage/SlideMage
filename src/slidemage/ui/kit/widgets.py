@@ -501,6 +501,10 @@ class Chip(ClickFrame):
     def set_tone(self, tone: str) -> None:
         set_property(self, "tone", tone)
 
+    def set_icon(self, icon: str) -> None:
+        self._icon.set_icon(icon)
+        self._icon.setVisible(bool(icon))
+
 
 class ToggleChip(QPushButton):
     """A pill that switches on and off, e.g. one of the views a slide "Appears in". `tone` is a view

@@ -396,7 +396,7 @@ class SlideList(QWidget):
         call = row.deck_call
         menu = self._new_menu(280)
         menu.add_header(f"{row.call.id} · {row.title}")
-        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images", "slide:reviewed"])
+        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images", "slide:reviewed", "slide:compare"])
         if not call.editable:
             menu.add_header(f"Read-only here: {call.readonly_reason}")
         menu.add_separator()

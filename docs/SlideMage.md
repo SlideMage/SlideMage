@@ -81,6 +81,19 @@ deck switcher offers the rest). From top to bottom and left to right:
   `terminal/tasks.py:TaskRunner`): Generate → Review → Apply → Check preview, or
   Conflict / Preview failed / Stopped / Setup needed; Back to conversation leaves a pill
   in the header. Batches, image tasks and the summary use the task row (`task_row.py`).
+- **Compare rendered** (v8.13.0, `compare_rendered.py`): a non-modal dialog, not in the 360 px column, that typesets
+  two texts of one slide as drafts for the same target, view, language and timestamp as Check preview
+  (`preview_view.render_context`) and shows "Before" and "After" in equal panes. Both go through a `RenderService` of
+  the dialog's own (the Preview pane's compile slot and build locks; nothing is written), each on a `QThread`
+  that also reads the PDF's pages as PNGs in the raster child (`preview_raster_client.read_document`); ‹ › and the
+  arrow keys move both sides to the same reveal step (a side with fewer pages says "No page N"), a side that fails
+  says why while the other is shown, *Text diff* swaps in the chat's `DiffCard`, Esc/Close cancels the pending
+  renders. Opened from the task card (Review, Conflict: the proposal against the slide as it is now, Done), the
+  chat's diff cards (slide files with a text before, not new files, .bib or others), and for Claude Code's edits
+  and every other AI edit that went through `ai_review.mark(before=)`: the text before the last edit is kept per
+  slide in `.slidemage/ai-before/` (`ai_review.last_before`; the hook's PostToolUse takes it from its PreToolUse
+  snapshot), offered by the command `slide:compare` "Compare rendered with last AI edit" (palette, slide list menu) and by
+  the Details view's *Not reviewed* row.
 - **Keyboard and screen readers** (workspace v6 step 7): the AI switch is a radio group with a single tab stop
   (the selected segment; **←/→** flip Local and Cloud, **Enter**/**Space** activate, then Tab reaches ▾); its popups
   open on their safe button, **Tab** goes secondary, primary, link and round again, **Esc** is the secondary button

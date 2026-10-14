@@ -31,6 +31,7 @@ from ... import ai_review, alt_blocks, slide_language, slide_rename, slide_sourc
 from ...deck_outline import SlideRow
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, Surface
+from . import compare_rendered
 from .state import WorkspaceState
 
 SAVE_FIRST = ("Save or revert this slide's unsaved changes first: the file is moved on disk, "
@@ -109,6 +110,10 @@ class DetailsPane(Surface):
             reviewed = Button("Mark reviewed", "secondary", compact=True)
             reviewed.clicked.connect(lambda: self.app.slide_list.mark_reviewed([path]))
             row.addWidget(reviewed)
+            if ai_review.last_before(self.app.project, path) is not None:
+                compare = Button("Compare rendered", "secondary", compact=True)
+                compare.clicked.connect(lambda: compare_rendered.compare_with_last_edit(self.app, path))
+                row.addWidget(compare)
         holder = Surface()
         holder.setLayout(row)
         return holder

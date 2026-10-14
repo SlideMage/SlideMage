@@ -115,7 +115,7 @@ def test_review_apply_check_preview_done(asked, monkeypatch):
     wait_until(phase_is(env, model.REVIEW))
     view = area(env).task_card
     assert state(env) == f"Proposed change to {FILE}. Nothing is written yet."
-    assert shown_buttons(env) == ["Apply", "Reject", "View full diff"]
+    assert shown_buttons(env) == ["Apply", "Reject", "View full diff", "Compare rendered"]
     primary = view._buttons.itemAt(0).widget()
     assert primary.property("kind") == "primary" and view._buttons.itemAt(1).widget().property("kind") == "secondary"
     (diff,) = view.findChildren(DiffCard)
@@ -145,7 +145,7 @@ def test_review_apply_check_preview_done(asked, monkeypatch):
     gate.set()
     wait_until(phase_is(env, model.DONE))
     assert state(env) == f"Changed 1 line in {FILE}. The preview is current."
-    assert shown_buttons(env) == ["View change", "Undo", "Close"] and env.window.running_ai_work() == []
+    assert shown_buttons(env) == ["View change", "Undo", "Compare rendered", "Close"] and env.window.running_ai_work() == []
     view.steps_toggle.click()
     assert view.steps_toggle.text() == "▾ Steps · all done"
     assert step_rows(env) == [("Generate", ""), ("Review", ""), ("Apply", ""), ("Check preview", "")]
@@ -179,7 +179,7 @@ def test_edit_automatically_skips_review(fake):  # noqa: F811
     assert slide_file(env).editor.text() == LF and len(fake.renders) == 1
     area(env).task_card.steps_toggle.click()
     assert step_rows(env) == [("Generate", ""), ("Review", "skipped · Edit automatically"), ("Apply", ""), ("Check preview", "")]
-    assert shown_buttons(env) == ["View change", "Undo", "Close"]
+    assert shown_buttons(env) == ["View change", "Undo", "Compare rendered", "Close"]
 
 
 def test_a_task_with_nothing_to_change_ends_without_review_or_undo(asked):
@@ -214,7 +214,7 @@ def test_a_conflict_keeps_the_proposal_compares_and_runs_again(asked):
     editor.replace_all_text(typed)
     wait_until(phase_is(env, model.CONFLICT))
     view = area(env).task_card
-    assert state(env) == CONFLICT_TEXT and shown_buttons(env) == ["Compare with current", "Run again", "Dismiss"]
+    assert state(env) == CONFLICT_TEXT and shown_buttons(env) == ["Compare with current", "Compare rendered", "Run again", "Dismiss"]
     assert view.findChildren(DiffCard) and editor.text() == typed and asked.renders == []   # kept, not applied
     assert not area(env).tasks.busy
     view.steps_toggle.click()
@@ -337,7 +337,7 @@ def test_undo_of_a_closed_translation_goes_back_to_the_backup(outdated):  # noqa
     outdated.reply({"answer": {"body": outdated.german.replace("Erster Punkt", "Erster Punkt!")}})
     click(env, "Update German translation")
     settled(env)
-    assert outdated.partner.read_bytes() != before and shown_buttons(env) == ["View change", "Undo", "Close"]
+    assert outdated.partner.read_bytes() != before and shown_buttons(env) == ["View change", "Undo", "Compare rendered", "Close"]
     press(env, "Undo")
     assert outdated.partner.read_bytes() == before and card(env) is None
 

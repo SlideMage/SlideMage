@@ -112,7 +112,14 @@ screenshots.
   rendered again); it ends done (with **Undo** where the change can be taken back),
   as a conflict (the slide changed meanwhile: the proposal is kept, not applied),
   with a failed preview, stopped, or asking for setup (the route cannot run it: nothing
-  is sent). *Back to conversation* leaves a pill in the header while it runs. On Local and Cloud · API the body is the chat: the
+  is sent). In Review, Conflict and Done the card, and every edit card of the chat, has
+  **Compare rendered**: the slide typeset before and after the change, side by side, in the
+  view and language of the top bar (‹ › or the arrow keys step through the reveal steps of
+  both, *Text diff* shows the source diff, Esc closes it; nothing is written). A slide
+  Claude Code changed in the terminal is marked *Not reviewed*; Ctrl+K → **Compare rendered
+  with last AI edit** (and the button in the slide's Details) shows it against the text it
+  had before, which SlideMage keeps for every slide's last AI edit in `.slidemage/ai-before/`.
+  *Back to conversation* leaves a pill in the header while it runs. On Local and Cloud · API the body is the chat: the
   chat is an agent that works on the focused
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a
   slide or a bibliography entry, compile, refresh cached previews). Edits wait for **Apply** / **Reject** in

@@ -33,11 +33,12 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning
+from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
 from ...preview_target import PreviewTarget
 from ...preview_requests import RenderRequest, RenderService
 from ...preview_metrics import PreviewMetrics
-from ...slide_language import TranslationLink, translation_link
+from ...slide_language import TRANSLATION_LANGUAGES, TranslationLink, own_language, translation_link
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
@@ -86,6 +87,16 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
     if badge:
         chips.append(("language", badge, "neutral", "The slide's language, and its translation if it has one."))
     return chips
+
+
+def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str, bool]]:
+    """(target, view, language, footer timestamp) for rendering the slide file `path` as the top bar says: in its own
+    language when that is one of EN and DE, as the open deck calls it. None when `path` is no slide file."""
+    state = window.state
+    language = own_language(path.name)
+    language = language if language in TRANSLATION_LANGUAGES else state.language
+    target = slide_target(window.project, state.deck, path, state.view, language)
+    return None if target is None else (target, state.view, language, state.footer_timestamp)
 
 
 @dataclass
@@ -139,7 +150,7 @@ class _Lifetime:
             _discard_job(self.job)
 
 
-class _Page(QWidget):
+class PageView(QWidget):
     """The page: a white 16:9 rectangle with a soft shadow, holding the slide's image,
     or, when there is none, a surface-colored one with a message. `tokens()` gives the
     theme's colors."""
@@ -251,7 +262,7 @@ class PreviewPane(Surface):
         self._chips = QHBoxLayout()
         self._chips.setSpacing(6)
         layout.addLayout(self._chips)
-        self._page = _Page(lambda: self.app.theme.tokens)
+        self._page = PageView(lambda: self.app.theme.tokens)
         self._page.render_button.clicked.connect(self.render_now)
         layout.addWidget(self._page, 1)
 

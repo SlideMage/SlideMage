@@ -22,7 +22,7 @@ from ...deck_scan import TAG_COURSE, TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
 from ..text import plural
-from . import compile_actions, deck_actions, maintenance
+from . import compare_rendered, compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile
@@ -81,6 +81,12 @@ def _review_paths(w) -> list:
         return [w.project.slides_dir / row.call.source_filename for row in rows]
     path = w.centre.path
     return [path] if path is not None else []
+
+
+def _last_edit_path(w):
+    """The slide "Compare rendered with last AI edit" acts on: the focused one, when an earlier text is kept for it."""
+    paths = _review_paths(w)
+    return paths[0] if len(paths) == 1 and ai_review.last_before(w.project, paths[0]) is not None else None
 
 
 def _one_slide(w) -> bool:
@@ -183,6 +189,9 @@ def build_registry() -> CommandRegistry:
     add("slide:reviewed", "Mark reviewed", SLIDE, lambda w: w.slide_list.mark_reviewed(_review_paths(w)),
         visible=lambda w: bool(_review_paths(w)),
         enabled=lambda w: any(ai_review.is_unreviewed(w.project, p) for p in _review_paths(w)))
+    add("slide:compare", "Compare rendered with last AI edit", SLIDE,
+        lambda w: compare_rendered.compare_with_last_edit(w, _last_edit_path(w)),
+        visible=lambda w: _last_edit_path(w) is not None)
     add("slides:unreviewed", "List not reviewed slides", SLIDE,
         lambda w: w.slide_list.review_filter.setChecked(True), enabled=_has_deck)
     for view in VIEWS:

@@ -383,6 +383,9 @@ alt-text-bakeoff.md
 # How many passes each deck's compile needed last time (compile_passes.py):
 # rewritten by compiles, only a progress estimate.
 **/.slidemage/compile_passes.json
+# A slide's text before its last AI edit (ai_review.last_before), for Compare rendered: a local cache,
+# one file per slide, overwritten by the next AI edit.
+**/.slidemage/ai-before/
 
 ## Scratch folder for source PDFs/pptx used while converting slides (large,
 ## machine-local, never meant to be committed).

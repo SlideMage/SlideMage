@@ -54,7 +54,6 @@ from ....ai import ai_profile, claude_images, claude_launch, claude_runner, clau
 from ....ai.agent_types import EditApplied
 from ....ai.tools.base import ToolError
 from ....ai.tools.edits import write_text
-from ....ai.tools.slidemage import slide_target
 from ....ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING, Outcome
 from ....batch_result import DRAFT, TRANSLATE, BatchResult
 from ... import background
@@ -63,6 +62,7 @@ from ...pages.image_results import confirm as confirm_batch
 from .. import task_card_model as card_model
 from ..ai_work import RunningWork
 from ..menus import VIEW_LABELS
+from ..preview_view import render_context
 from ..task_card_model import TaskCard
 
 CONFLICT = "The slide changed while Claude worked."
@@ -889,13 +889,10 @@ class TaskRunner(QObject):
         """Render the slide that was written, in the view and language being edited, through the preview's shared
         render service (the chat's render tool takes the same way); the card ends when it has compiled or not."""
         window, path = self._window, card.result_path
-        state = window.state
-        language = slide_language.own_language(path.name)
-        language = language if language in slide_language.TRANSLATION_LANGUAGES else state.language
-        target = slide_target(window.project, state.deck, path, state.view, language)
-        if target is None:                                  # not a slide file: nothing to render
+        if (context := render_context(window, path)) is None:   # not a slide file: nothing to render
             return self._phase(card, card_model.DONE, preview_skipped=True)
-        text, view, timestamp = window.centre.slide_text(path), state.view, state.footer_timestamp
+        target, view, language, timestamp = context
+        text = window.centre.slide_text(path)
         self._preview_cancel = cancel = threading.Event()
         self._preview = worker = _PreviewWorker(lambda: self._workspace.render_preview(target, text, view, language, timestamp, cancel))
         worker.done.connect(self._on_preview)
@@ -932,6 +929,14 @@ class TaskRunner(QObject):
         capture, _text = self._proposal
         text = self._window.centre.slide_text(capture.path)
         return slide_versioning.strip_marker(slide_ids.body_of(text)) if capture.language else text
+
+    def compare_texts(self) -> tuple[Path, str, str] | None:
+        """What Compare rendered shows for the card: (the slide file, the text before, the text after), or None when
+        the card has nothing to compare. In Conflict it is the slide as it is now against the proposal."""
+        card = self.card
+        if card is None or not card.can_compare:
+            return None
+        return self._proposal[0].path, self.current_text() if card.phase == card_model.CONFLICT else card.before, card.after
 
     def undo(self) -> str:
         """Take the written change back. "" when done, else why not (the file changed since)."""
