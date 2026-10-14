@@ -36,6 +36,10 @@ SLIDE = "slides/abc-EN-Hello-current.tex"
 LF = SLIDE_TEXT.replace("\r\n", "\n")
 
 
+def plus(text):
+    return text.replace("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")
+
+
 class Box:
     """A toolbox on the throwaway project with the events it emitted."""
 
@@ -180,7 +184,9 @@ def test_edit_on_disk_saves_with_backup_keeps_crlf_and_reports(box, root, old, n
     out = box.ok("edit_file", path=SLIDE, old_text=old, new_text=new)
     assert "saved it" in out
     raw = (root / SLIDE).read_bytes().decode()
-    assert raw == SLIDE_TEXT.replace(old, new) and "\r\n" in raw
+    # A slide's current file gets the "+": changed since v1.0.0, which is frozen first.
+    assert raw == plus(SLIDE_TEXT.replace(old, new)) and "\r\n" in raw
+    assert (root / "slides" / "abc-EN-Hello-v1-0-0.tex").read_bytes().decode() == SLIDE_TEXT
     backups = list((root / "slides" / ".backups" / "abc-EN-Hello-current.tex").glob("*.tex"))
     assert len(backups) == 1 and backups[0].read_bytes().decode() == SLIDE_TEXT
     assert box.ws.changed == [(root / SLIDE, LF)]
@@ -286,7 +292,7 @@ def test_undo_puts_the_old_text_back_unless_the_file_moved_on(box, root):
     box.ok("edit_file", path=SLIDE, old_text="First", new_text="1st")
     applied = box.of_type(EditApplied)[0]
     assert undo_edit(box.ws, applied) == ""
-    assert (root / SLIDE).read_bytes().decode() == SLIDE_TEXT
+    assert (root / SLIDE).read_bytes().decode() == SLIDE_TEXT       # exactly: 1.0.0, frozen by the edit
 
     box.ok("edit_file", path=SLIDE, old_text="First", new_text="1st")
     applied = box.of_type(EditApplied)[1]

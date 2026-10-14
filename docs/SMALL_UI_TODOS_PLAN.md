@@ -75,3 +75,78 @@ No step waits for approval.
 - Runs on every route through the resolver (Claude Code task, Local and API providers), with no fallback.
 - Offered as a task button when S4a finds problems on the slide; for a deck, the S4a findings list offers
   Make readable per slide.
+
+---
+
+# Small UI todos, batch 2: continuous saving (14 October 2026)
+
+Source: `docs/small_ui_todos.md`, "Continuous saving, like Overleaf". Each step is one agent run, reviewed,
+tested in full and committed with a version bump; after each commit, stop and wait for the go.
+
+| Step | What | Version |
+|---|---|---|
+| C1 | Autosave in the Source view, and "Update Version" in place of "Save" (one step: autosave breaks the old Save) | v8.18.0 |
+| C3 | Retire the unsaved-state plumbing (close prompt, chips, "save first" checks) | v8.19.0 |
+| C4 | Manual, screenshots, release notes | v8.19.1 |
+
+What exists today: `SourceFile.save()` (`ui/workspace/source_file.py`) asks the bump level
+(`prompt_version_choice`), freezes the *outgoing* on-disk text (`slide_versioning.freeze_slide`), asks what each
+deck uses (`ask_deck_versions`), and writes with `save_slide_source(..., expected_text=...)`, which keeps a
+backup and refuses stale files. The Versions panel has "Freeze as" (`CentreColumn.freeze_version` →
+`slide_versioning.freeze_current`).
+
+## The version line: "+" for edits since the last version
+`\setSlideVersion{1-2-0+}` (footer "v1.2.0+") means "changed since 1.2.0". Without "+", the content is
+version 1.2.0 itself. The preamble's `\setSlideVersion` already prints the "+" (it ends up in its third part).
+- First autosave of a slide whose line has no "+": if that version is not frozen yet (every slide saved the
+  old way, and slides with no version line, as 1.0.0), the file on disk is frozen as it first (what the old
+  Save did, done lazily, so no migration). The written text gets the "+".
+- **Update Version** (Source view button, and the Versions panel's "Freeze as"): asks major / minor / patch
+  for the change since the last version, writes the line as the new version without "+", freezes the file as
+  that version, asks what each deck uses; decks that keep the old content are pinned to the last version,
+  which is frozen already. A slide without "+" whose version is not frozen yet is frozen as it is, no bump.
+- Restore of a slide with "+": its content is first frozen as the next patch version, then restored.
+- A version number is never reused: Update Version refuses when the new number is frozen already.
+- Decks that call the current version see the edits as they are autosaved; a deck that must stay fixed pins a
+  version. (Snapshot / export may warn about "+" slides: later.)
+
+## C1: Autosave and Update Version
+- `SourceFile.write_now()` replaces `save()`: no prompt; the "+" handling above for a slide's current file;
+  same `expected_text` stale check and `on_saved(previous_text)`.
+- A debounce timer per file (1.5 s after the last keystroke) calls it. Also written at once when: another
+  file is shown, the window closes, a compile / snapshot / preview run starts, and on Ctrl+S (which also
+  renders, as Save did). An autosave does not start a render.
+- Autosave pauses while: the conflict bar is up (file changed on disk with edits here; Claude Code in the
+  terminal), the editor is read-only, or an AI fix is running on the file. It never overwrites a stale file: a
+  `StaleFileError` shows the conflict bar instead of a message box.
+- Backups: one per file per editing session (first write after load / reload), not one per pause.
+- Status chip: "Saving…" while a write is pending, "Not saved: changed on disk" during a conflict.
+- Frozen `-vX-Y-Z.tex` files stay read-only, with unlock still possible; once unlocked they autosave plainly.
+- The "Save" button becomes **Update Version**, shown for a slide's current file only.
+- Tests: debounce writes after idle; write on switch; no write in conflict or read-only; stale file not
+  overwritten; lazy freeze and "+"; Update Version numbering, refusal and deck pin target; restore of a "+"
+  slide; one backup per session.
+
+Done in v8.18.0. Follow-ups found on the way:
+- Claude Code's own edits in the terminal do not get the "+" (they bypass `save_slide`). Update Version still
+  sees them, by comparing with the frozen version; the footer shows no "+" until the next in-app write.
+- An autosave does not start a render (Ctrl+S / Ctrl+R do). Live re-render on autosave could be an option.
+- Snapshot and export could warn about slides with "+".
+
+## C3: Retire unsaved state
+- Remove or reduce to a flush call: the close prompt (`window._resolve_dirty_edits`) for source files, the
+  "Save or revert them first" check in `freeze_version`, the .bib "save first" question in `source_view`, the
+  maintenance check (`maintenance.py`), the "N more unsaved" chip, the topbar dirty indicator for source files.
+- "Revert" goes: with autosave there is nothing unsaved to discard. Going back is the Versions panel's restore
+  (and the editor's undo).
+- Side panels (speaker notes) and the Images page keep their own dirty state in this batch; they already flush
+  into buffers that now autosave.
+- Tests: closing with recent edits loses nothing and asks nothing; the existing dirty-state tests updated.
+
+## C4: Docs
+- Manual sections on saving and versions, screenshots (`tools/manual/make_screenshots.py`: the Source view
+  toolbar), release notes in `version.py`.
+
+## Decisions (14 October 2026)
+- C2: frozen `-vX-Y-Z.tex` files stay read-only, with unlock still possible.
+- C1: debounce delay 1.5 s; no setting to switch autosave off.

@@ -131,7 +131,8 @@ def test_stop_cancels_and_a_late_result_is_dropped(claude, tmp_path):
 def test_a_result_is_applied_if_the_file_is_as_captured(root):
     path = root / SLIDE
     write_text(Workspace(ProjectContext.at(root)), path, LF, GOOD["body"])
-    assert path.read_bytes().decode() == SLIDE_TEXT.replace("Hello", "Hallo")        # its CRLF kept
+    assert path.read_bytes().decode() == SLIDE_TEXT.replace("Hello", "Hallo").replace(
+        "\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")       # its CRLF kept; the slide's "+"
 
 
 def test_a_result_is_refused_if_the_file_changed(root):

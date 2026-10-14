@@ -1,5 +1,13 @@
-"""Automatic per-slide version tracking on save (SlideMage's own
-freeze-then-bump workflow, 2026-08-20 direct instruction).
+"""Per-slide version tracking (SlideMage's own freeze-then-bump workflow,
+2026-08-20 direct instruction; since v8.18.0 with continuous saving).
+
+Since v8.18.0 the Source view saves a slide as you type, and versions are
+made on purpose, with "Update Version" (update_version()). The version line
+then says what the content is: \\setSlideVersion{1-2-0} is version 1.2.0
+itself, \\setSlideVersion{1-2-0+} (footer "v1.2.0+") has changed since
+1.2.0. The first autosave after a version freezes it, if it is not frozen
+yet (prepare_autosave()), so a version's content is always kept. What
+follows describes the earlier Save-time workflow this grew from.
 
 Before this, freezing a slide's outgoing content as a numbered version was
 a manual step (R_Slidemaster's slide.archive() / slide.new()'s "before
@@ -43,22 +51,37 @@ BumpLevel = Literal["major", "minor", "patch"]
 # always informally been "version 1" even when nothing wrote that down.
 DEFAULT_BASELINE: Version = (1, 0, 0)
 
-_EMBEDDED_VERSION_RE = re.compile(r"\\setSlideVersion\{(\d+)-(\d+)-(\d+)\}")
+_EMBEDDED_VERSION_RE = re.compile(r"\\setSlideVersion\{(\d+)-(\d+)-(\d+)(\+?)\}")
 # Matches the whole tool-managed line, trailing newline included, so
 # strip_marker() removes it cleanly rather than leaving a blank line
 # behind. `%?` tolerates a trailing comment-continuation `%` some other
 # tool-managed lines in this project use, even though set_marker() itself
 # never writes one.
-_MARKER_LINE_RE = re.compile(r"^\\setSlideVersion\{\d+-\d+-\d+\}%?[ \t]*\r?\n?", re.MULTILINE)
+_MARKER_LINE_RE = re.compile(r"^\\setSlideVersion\{\d+-\d+-\d+\+?\}%?[ \t]*\r?\n?", re.MULTILINE)
+
+
+def parse_marker(text: str) -> Optional[tuple[Version, bool]]:
+    """(the version on the slide's version line, whether the content has
+    changed since: a "+"), or None if it was never tracked (no
+    \\setSlideVersion{} line yet)."""
+    for match in _EMBEDDED_VERSION_RE.finditer(text):
+        if not is_commented(text, match.start()):
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3))), bool(match.group(4))
+    return None
 
 
 def parse_version(text: str) -> Optional[Version]:
     """The version embedded in a slide's own current text, or None if it
     was never tracked (no \\setSlideVersion{} line yet)."""
-    for match in _EMBEDDED_VERSION_RE.finditer(text):
-        if not is_commented(text, match.start()):
-            return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    return None
+    marker = parse_marker(text)
+    return marker[0] if marker is not None else None
+
+
+def version_text(text: str) -> Optional[str]:
+    """The slide's version for display: "1.2.0", "1.2.0+" when it has changed
+    since, None when untracked."""
+    marker = parse_marker(text)
+    return format_dot(marker[0]) + ("+" if marker[1] else "") if marker is not None else None
 
 
 def format_hyphen(version: Version) -> str:
@@ -99,13 +122,14 @@ def strip_marker(text: str) -> str:
     return _MARKER_LINE_RE.sub("", text)
 
 
-def set_marker(text: str, version: Version) -> str:
+def set_marker(text: str, version: Version, changed: bool = False) -> str:
     """Insert \\setSlideVersion{X-Y-Z} as its own line, right after
     whatever leading header-comment block the slide has (if any) and
     right before its first real content line -- the same "top of file"
     placement the "%% Included in decks: ..." header already uses.
     Always strips any existing marker first, so a re-save never
     accumulates duplicates regardless of where a previous one landed.
+    `changed` writes the "+" (changed since `version`).
     """
     text = strip_marker(text)
     lines = text.splitlines(keepends=True)
@@ -115,30 +139,8 @@ def set_marker(text: str, version: Version) -> str:
             insert_at += 1
         else:
             break
-    lines.insert(insert_at, f"\\setSlideVersion{{{format_hyphen(version)}}}\n")
+    lines.insert(insert_at, f"\\setSlideVersion{{{format_hyphen(version)}{'+' if changed else ''}}}\n")
     return "".join(lines)
-
-
-def plan_save(
-    old_version: Optional[Version], choice: Literal["major", "minor", "patch", "overwrite"]
-) -> tuple[Optional[Version], Optional[Version]]:
-    """Decide what this save should do, given the version current.tex was
-    already tracking (None if it never was) and the user's own dialog
-    choice. Returns (final_version, freeze_as):
-
-    - final_version: the version the *new* content should be marked with
-      (None means "leave it untracked" -- either it always was, or...
-      this module never un-tracks an already-tracked slide, so that only
-      happens when old_version was already None and the choice was
-      "overwrite").
-    - freeze_as: the version the *old* on-disk content should be frozen
-      as before it's overwritten (None means "don't freeze anything" --
-      "overwrite" never freezes, by definition).
-    """
-    if choice == "overwrite":
-        return old_version, None
-    baseline = old_version if old_version is not None else DEFAULT_BASELINE
-    return bump(baseline, choice), baseline
 
 
 def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional[Path]:
@@ -161,20 +163,118 @@ def freeze_slide(current_path: Path, id_slug: str, version: Version) -> Optional
     return dest
 
 
-def freeze_current(ctx: ProjectContext, current_path: Path, id_slug: str, level: BumpLevel) -> tuple[Path, Version]:
-    """Freeze the slide's current content under its own tracked version and move
-    the slide on to the next one (`level`), as a Save does -- but with no change
-    to the content. Returns (the frozen file, the new version). Raises ValueError
-    when that version is frozen already."""
+def frozen_path(current_path: Path, id_slug: str, version: Version) -> Path:
+    return current_path.parent / frozen_name(id_slug, format_hyphen(version))
+
+
+def prepare_autosave(current_path: Path, id_slug: str, disk_text: str, new_text: str) -> tuple[str, Optional[Version]]:
+    """What an autosave of a slide's current file writes (`new_text` with the
+    version line marked "+": changed since), and the version the file on disk
+    must be frozen as first, or None. That is the version on its line when it
+    has no "+" and is not frozen yet: a slide saved before continuous saving,
+    a restored one, or one never tracked (as 1.0.0)."""
+    marker = parse_marker(disk_text)
+    version = marker[0] if marker is not None else DEFAULT_BASELINE
+    changed = marker is not None and marker[1]
+    freeze_as = None if changed or frozen_path(current_path, id_slug, version).exists() else version
+    return set_marker(new_text, version, changed=True), freeze_as
+
+
+def without_plus(text: str) -> str:
+    """`text` with its version line's "+" taken off: for comparing a text an edit expects with
+    the slide's, which may have got the "+" since (an autosave, an earlier edit)."""
+    marker = parse_marker(text)
+    return set_marker(text, marker[0]) if marker is not None and marker[1] else text
+
+
+def carry_plus(current: str, new_text: str) -> str:
+    """`new_text` with the "+" of `current`'s version line, if it has one and `new_text` names the
+    same version: a write never takes the "+" off; only Update Version does."""
+    marker, new_marker = parse_marker(current), parse_marker(new_text)
+    if marker is not None and marker[1] and new_marker is not None and new_marker[0] == marker[0]:
+        return set_marker(new_text, marker[0], changed=True)
+    return new_text
+
+
+def is_current_slide(path: Path) -> bool:
+    from .slide_language import call_for_slide_path
+    try:
+        return call_for_slide_path(path)[0] == "slide"
+    except ValueError:
+        return False
+
+
+def save_slide(ctx: ProjectContext, path: Path, new_text: str, eol: str, expected_text: str, *,
+               backup: bool = True, mark: bool = True) -> tuple[str, Optional[Path], Optional[Path]]:
+    """Write `new_text` to `path` through slide_source.save_slide_source(), refusing a stale file
+    (`expected_text`, compared without the "+"). A slide's current file gets the "+" and, first,
+    the freeze prepare_autosave() asks for. Every in-app write of a slide's text goes this way;
+    update_version() and restore_version() set the version line themselves; `mark=False` (an undo,
+    a rollback: an earlier text put back exactly) writes `new_text` as it is. Returns (the text
+    written, the backup or None, the file frozen first or None). Raises StaleFileError."""
+    from . import slide_source
+
+    disk_text = slide_source.read_slide_source(path)[0] if path.exists() else expected_text
+    if without_plus(disk_text) != without_plus(expected_text):
+        slide_source.check_fresh(path, expected_text)     # raises StaleFileError, with its message
+    frozen = None
+    if mark and is_current_slide(path):
+        from .slide_language import call_for_slide_path
+        id_slug = call_for_slide_path(path)[1]
+        new_text, freeze_as = prepare_autosave(path, id_slug, disk_text, new_text)
+        if freeze_as is not None:
+            frozen = freeze_slide(path, id_slug, freeze_as)
+    backup_path = slide_source.save_slide_source(ctx, path, new_text, eol, expected_text=disk_text, backup=backup)
+    return new_text, backup_path, frozen
+
+
+def _content(text: str) -> str:
+    """What a version is: the text without its header comments and version line."""
+    from .slide_ids import body_of
+    return strip_marker(body_of(text.replace("\r\n", "\n"))).strip()
+
+
+def plan_update(current_path: Path, id_slug: str, text: str, level: BumpLevel) -> tuple[Version, Version]:
+    """(the version Update Version makes of `text`, the version it moves on
+    from). With no "+" and that version not frozen yet, it is frozen as it
+    is: both are the same. A text without "+" that differs from its frozen
+    version (an edit made outside the app: Claude Code in the terminal) has
+    changed too. Raises ValueError when there is nothing to make a version
+    of, or the new version is frozen already (a number is never reused)."""
+    from . import slide_source
+
+    marker = parse_marker(text)
+    base = marker[0] if marker is not None else DEFAULT_BASELINE
+    base_path = frozen_path(current_path, id_slug, base)
+    changed = marker is not None and marker[1] or (
+        base_path.exists() and _content(slide_source.read_slide_source(base_path)[0]) != _content(text))
+    if changed:
+        new = bump(base, level)
+    elif not base_path.exists():
+        new = base
+    else:
+        raise ValueError(f"{id_slug} has not changed since v{format_dot(base)}.")
+    if frozen_path(current_path, id_slug, new).exists():
+        raise ValueError(f"v{format_dot(new)} of {id_slug} is frozen already, so the current content cannot be.")
+    return new, base
+
+
+def update_version(ctx: ProjectContext, current_path: Path, id_slug: str, level: BumpLevel) -> tuple[Path, Version, Version]:
+    """"Update Version": the slide's current content becomes version
+    plan_update() says, written without "+" and frozen as that version.
+    Returns (the frozen file, the new version, the version moved on from:
+    what decks that keep the old content pin)."""
     from . import slide_source
 
     text, eol = slide_source.read_slide_source(current_path)
-    final, freeze_as = plan_save(parse_version(text), level)
-    frozen = freeze_slide(current_path, id_slug, freeze_as)
+    new, base = plan_update(current_path, id_slug, text, level)
+    new_text = set_marker(text, new)
+    if new_text != text:
+        slide_source.save_slide_source(ctx, current_path, new_text, eol, expected_text=text)
+    frozen = freeze_slide(current_path, id_slug, new)
     if frozen is None:
-        raise ValueError(f"v{format_dot(freeze_as)} of {id_slug} is already frozen, so the current content cannot be.")
-    slide_source.save_slide_source(ctx, current_path, set_marker(text, final), eol, expected_text=text)
-    return frozen, final
+        raise ValueError(f"v{format_dot(new)} of {id_slug} could not be frozen.")
+    return frozen, new, base
 
 
 class RestoreError(ValueError):
@@ -188,7 +288,9 @@ def restore_version(ctx: ProjectContext, current_path: Path, id_slug: str, versi
     1. The outgoing current.tex is frozen under its own tracked version
        (1.0.0 if it was never tracked), exactly as a Save would -- nothing is
        lost, and a deck can still pin it. Skipped (returns None) when that
-       version file already holds the same content.
+       version file already holds the same content. Content that has
+       changed since its version (a "+") is archived as the next patch
+       version above every known one.
     2. current.tex gets the frozen file's content, keeping its own
        "%% Included in decks" header, and a new version: the highest version
        known (current or frozen) with the minor number bumped -- a version
@@ -204,12 +306,20 @@ def restore_version(ctx: ProjectContext, current_path: Path, id_slug: str, versi
     old_text, _ = slide_source.read_slide_source(version_path)
     if strip_marker(cur_text).strip() == strip_marker(old_text).strip():
         raise RestoreError(f"{current_path.name} already has the content of {version_path.name}.")
-    cur_version = parse_version(cur_text) or DEFAULT_BASELINE
+    marker = parse_marker(cur_text)
+    cur_version = marker[0] if marker is not None else DEFAULT_BASELINE
     known = [cur_version]
     for path in current_path.parent.glob(f"{id_slug}-v*.tex"):
         m = FROZEN_RE.search(path.name)
         if m:
             known.append(tuple(int(part) for part in m.group(1).split("-")))
+    if marker is not None and marker[1]:
+        # Changed since its version: archived as a version of its own, the next patch above every known one.
+        cur_version = bump(max(known), "patch")
+        marked = set_marker(cur_text, cur_version)
+        slide_source.save_slide_source(ctx, current_path, marked, eol, expected_text=cur_text)
+        cur_text = marked
+        known.append(cur_version)
     new_version = bump(max(known), "minor")
 
     archive = current_path.parent / frozen_name(id_slug, format_hyphen(cur_version))

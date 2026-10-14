@@ -5,9 +5,8 @@ and the actions on them.
 * Make current: slide_versioning.restore_version() through CentreColumn.restore_version().
 * "<deck> uses": pin the open deck's calls of the slide to a version, or let them follow the
   current one again (slide_usage.set_pin(); an edit of the deck, so it can be undone).
-* Freeze as: keep the current content as a frozen version and move the slide on to the next
-  (slide_versioning.freeze_current(), through CentreColumn.freeze_version()). Saving in the Source
-  view does the same together with the edit.
+* Update Version: make the current content a frozen version (slide_versioning.update_version(),
+  through CentreColumn.freeze_version()), as the Source view's Update Version button does.
 """
 from __future__ import annotations
 
@@ -47,11 +46,11 @@ class SlideVersions(SidePanel):
         frozen = list(reversed(deck_editor.available_versions(self.app.project, id_slug)))
         users = self._users(id_slug)
         source = slide_source.read_slide_source(current)[0]
-        number = slide_versioning.parse_version(source)
+        number = slide_versioning.version_text(source)
 
         frame, layout = box()
         self._add_version(
-            layout, "v" + slide_versioning.format_dot(number) if number else "untracked", current,
+            layout, "v" + number if number else "untracked", current,
             "current, the live text" + self._used_by(users.get(None)))
         for version in frozen:
             path = current.parent / slide_language.frozen_name(id_slug, version)
@@ -60,7 +59,7 @@ class SlideVersions(SidePanel):
         self.body.addWidget(frame)
         frame, layout = box()
         self._add_pin(layout, id_slug, frozen)
-        self._add_freeze(layout, id_slug, source)
+        self._add_freeze(layout, id_slug, source, current)
         self.place(frame, "Edits are saved to the current version.")
 
     # -- the version list --------------------------------------------------------------
@@ -146,22 +145,33 @@ class SlideVersions(SidePanel):
 
     # -- freezing ------------------------------------------------------------------------
 
-    def _next(self, source: str, level: str) -> str:
-        return slide_versioning.format_dot(slide_versioning.plan_save(slide_versioning.parse_version(source), level)[0])
+    @staticmethod
+    def _show_next(freeze: Button, id_slug: str, source: str, current: Path, level: str) -> None:
+        """The button names the version it makes, or is off when there is no change to make one of."""
+        try:
+            new, _base = slide_versioning.plan_update(current, id_slug, source, level)
+        except ValueError as exc:
+            freeze.setText("Update Version")
+            freeze.setEnabled(False)
+            freeze.setToolTip(str(exc))
+            return
+        freeze.setText(f"Update Version to v{slide_versioning.format_dot(new)}")
+        freeze.setEnabled(True)
+        freeze.setToolTip("Make the current content a frozen version, which decks can keep using.")
 
-    def _add_freeze(self, layout, id_slug: str, source: str) -> None:
+    def _add_freeze(self, layout, id_slug: str, source: str, current: Path) -> None:
         row = Row(layout)
         line = QHBoxLayout()
-        freeze = Button(f"Freeze as v{self._next(source, self._level)}", "primary", compact=True)
-        freeze.setToolTip("Keep the current content as a frozen version and move the slide on to the next version.")
+        freeze = Button("", "primary", compact=True)
+        self._show_next(freeze, id_slug, source, current, self._level)
         freeze.clicked.connect(lambda: self.actions.freeze_version(id_slug, self._level))
         levels = SegmentedControl(LEVELS, current=self._level)
-        levels.changed.connect(lambda level: self._on_level(level, freeze, source))
+        levels.changed.connect(lambda level: self._on_level(level, freeze, id_slug, source, current))
         line.addWidget(freeze)
         line.addWidget(levels)
         line.addStretch(1)
         row.body.addLayout(line)
 
-    def _on_level(self, level: str, freeze: Button, source: str) -> None:
+    def _on_level(self, level: str, freeze: Button, id_slug: str, source: str, current: Path) -> None:
         self._level = level
-        freeze.setText(f"Freeze as v{self._next(source, level)}")
+        self._show_next(freeze, id_slug, source, current, level)

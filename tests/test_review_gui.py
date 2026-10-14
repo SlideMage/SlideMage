@@ -42,33 +42,40 @@ def _open_dirty_source(window, path: Path, monkeypatch):
     return file
 
 
-@pytest.mark.parametrize("answer, save_succeeds, closes", [
-    (QMessageBox.StandardButton.Cancel, True, False),
-    (QMessageBox.StandardButton.Yes, True, True),
-    (QMessageBox.StandardButton.Yes, False, False),
-], ids=["cancel-close", "save-and-close", "cancel-save"])
-def test_main_window_resolves_dirty_source_before_close(monkeypatch, qapp, tmp_path, answer, save_succeeds, closes):
+def test_closing_the_window_saves_the_edits_without_asking(monkeypatch, qapp, tmp_path):
+    window = _make_window(monkeypatch, qapp)
+    path = _write_slide(tmp_path / "abc-EN-Test-current.tex")
+    file = _open_dirty_source(window, path, monkeypatch)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: pytest.fail("saved as you type: nothing to ask"))
+    assert window.close() is True
+    assert not file.dirty and "% unsaved edit" in path.read_text(encoding="utf-8")
+
+
+def _open_conflicting_source(window, path: Path, monkeypatch):
+    """A buffer with edits whose file changed on disk meanwhile: they cannot be saved."""
+    file = _open_dirty_source(window, path, monkeypatch)
+    path.write_text("someone else's\n", encoding="utf-8")
+    return file
+
+
+@pytest.mark.parametrize("answer, closes", [
+    (QMessageBox.StandardButton.Cancel, False),
+    (QMessageBox.StandardButton.Yes, False),
+    (QMessageBox.StandardButton.No, True),
+], ids=["cancel-close", "save-fails", "discard"])
+def test_main_window_asks_about_edits_that_could_not_be_saved(monkeypatch, qapp, tmp_path, answer, closes):
     """2026-09 regression: Cancel or a failed save must keep the dirty source open."""
     window = _make_window(monkeypatch, qapp)
-    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
-    saved = []
-
-    def save():
-        saved.append(file.path)
-        if save_succeeds:
-            file.editor.mark_saved()
-        return save_succeeds
-
-    file.save = save
+    path = tmp_path / "abc-EN-Test-current.tex"
+    file = _open_conflicting_source(window, _write_slide(path), monkeypatch)
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: answer)
     assert window.close() is closes
-    assert file.dirty is not closes
-    assert saved == ([] if answer == QMessageBox.StandardButton.Cancel else [file.path])
+    assert file.dirty and path.read_text(encoding="utf-8") == "someone else's\n"
 
 
 def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, tmp_path):
     window = _make_window(monkeypatch, qapp)
-    file = _open_dirty_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
+    file = _open_conflicting_source(window, _write_slide(tmp_path / "abc-EN-Test-current.tex"), monkeypatch)
     chosen = tmp_path / "another-project"
     monkeypatch.setattr(OpenProjectSheet, "exec", lambda sheet: sheet.choose(chosen))
     relaunched = []

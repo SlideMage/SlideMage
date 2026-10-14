@@ -219,7 +219,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
-        # Ctrl+S saves the file open in the Source view whichever view has the focus.
+        # Ctrl+S writes the file open in the Source view now and renders it, whichever view has the focus.
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.source.save)
         # Ctrl+Enter renders the editor's buffer, saved or not, and shows the page (Ctrl+R in the Source view too).
         for sequence in ("Ctrl+Return", "Ctrl+Enter"):
@@ -455,6 +455,7 @@ class WorkspaceWindow(QMainWindow):
 
     def _resolve_dirty_edits(self) -> bool:
         """Return False when the user cancels or any requested save fails."""
+        self.centre.source.flush_all()      # saved as you type: only what could not be written is left to ask about
         dirty_files = self.centre.source.dirty_files()
         panels = self.side_panels.dirty_panels() + ([self.images_page] if self.images_page.dirty else [])
         if dirty_files or panels:
@@ -481,15 +482,15 @@ class WorkspaceWindow(QMainWindow):
                     return False
                 for file in self.centre.source.dirty_files():
                     try:
-                        saved = file.save()
+                        saved = file.write_now(explicit=True)
                     except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
                         QMessageBox.critical(
                             self, "Save failed",
                             f"Could not save {file.path.name}: {exc}",
                         )
                         return False
-                    # save() returns False on a cancelled version dialog,
-                    # stale disk content, or any other handled save failure.
+                    # write_now() returns False on stale disk content (the conflict
+                    # bar), a read-only buffer, or any other handled save failure.
                     if not saved or file.dirty:
                         return False
         return True

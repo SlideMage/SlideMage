@@ -17,6 +17,7 @@ from conftest import SLIDE_TEXT
 from test_claude_code_gui import env as claude_env, pump, start_view, wait_until  # noqa: F401 -- a fixture
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE, add_pictures
 
+from slidemage.slide_source import read_slide_source
 from slidemage import alt_draft, alt_images, app_settings, slide_ids, slide_language, slide_versioning
 from slidemage.ai import ai_profile, claude_launch, claude_runner, credentials, resolver, translation_style
 from slidemage.ai.agent_types import EDIT_AUTO
@@ -213,7 +214,8 @@ def test_a_focus_change_during_a_task_does_not_change_its_target(fake):
     env.window.state.set_focused_slide("abd")
     wait_until(lambda: env.window.centre.path.name.startswith("abd"))
     assert "Changed 1 line in abc-EN-Hello-current.tex. The preview is current." in settled(env)
-    assert slide_file(env).editor.text() == LF                       # abc, which was the target
+    # abc, which was the target, was saved (and dropped) when abd was shown; the task wrote it there.
+    assert slide_versioning.without_plus(read_slide_source(env.path)[0]) == LF
     assert env.window.centre.source.file_for(env.window.centre.path).editor.text() == LF.replace("Hello", "Second")
 
 
@@ -565,7 +567,7 @@ def test_an_update_of_a_closed_translation_is_saved_to_its_file(outdated):
     click(env, "Update German translation")
     assert f"Updated {GERMAN_ID}-current.tex. It stays linked to the English slide." in settled(env)
     text = outdated.partner.read_bytes().decode()                       # its CRLF line ends are kept
-    assert text.startswith(GERMAN_HEADER) and "Erster Punkt!" in text and "\\setSlideVersion{1-0-0}" in text
+    assert text.startswith(GERMAN_HEADER) and "Erster Punkt!" in text and "\\setSlideVersion{1-0-0+}" in text
     assert env.window.centre.path == env.path
 
 

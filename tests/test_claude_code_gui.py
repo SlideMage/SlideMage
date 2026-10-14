@@ -24,7 +24,6 @@ from PySide6.QtWidgets import QApplication, QLabel
 
 from slidemage.ai import ai_profile, claude_launch
 from slidemage.deck_scan import scan_decks
-from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_file import SAME
 from slidemage.ui.workspace.terminal import session as session_module
 from slidemage.ui.workspace.terminal import view as view_module
@@ -323,9 +322,8 @@ def test_a_clean_buffer_is_reloaded_and_our_own_save_is_not_a_change(watch, monk
     rewrite(watch.path, LF.replace("First point", "Claude's point"))
     watch.sync.poll()
     assert "Claude's point" in file.editor.text() and not file.dirty and not file.conflict_bar.isVisibleTo(file)
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda *a: "overwrite")
     file.editor.replace_selection("% mine\n")
-    assert file.save()
+    assert file.write_now()
     reloaded = []
     file.reload = lambda: reloaded.append(1)
     watch.sync.poll()                                   # the save changed the file on disk
@@ -334,7 +332,6 @@ def test_a_clean_buffer_is_reloaded_and_our_own_save_is_not_a_change(watch, monk
 
 def test_ctrl_s_saves_the_open_file_from_the_window_whichever_view_has_the_focus(watch, monkeypatch):
     file = open_slide(watch)
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda *a: "overwrite")
     file.editor.replace_selection("% saved from afar\n")
     assert file.dirty
     watch.window.centre.preview.setFocus()                     # not the editor
@@ -371,7 +368,7 @@ def test_keep_my_edits_lets_the_next_save_replace_the_file_on_disk(watch, monkey
     assert file.conflict_bar.isVisibleTo(file)
     file.keep_edits()
     assert not file.conflict_bar.isVisibleTo(file) and file.dirty and file.disk_changed() == SAME
-    assert file.save()                                                    # no "changed on disk" refusal
+    assert file.write_now()                                               # no "changed on disk" refusal
     assert "% my note" in bib.read_text() and "claude's note" not in bib.read_text()
     assert file.disk_changed() == SAME
 

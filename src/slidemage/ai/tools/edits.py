@@ -5,8 +5,8 @@
   until the user saves it, with the version prompt and the deck questions of the normal save).
   Any other file is written straight away through slide_source.save_slide_source(): a backup
   in slides/.backups/ first, the file's own line ends kept, nothing written if the file
-  changed since it was read. A slide saved that way keeps its tracked version (it is an
-  "overwrite"); freezing a version stays the user's decision.
+  changed since it was read. A slide's current file written that way gets the "+" on its
+  version line (slide_versioning.save_slide()); making a version stays the user's decision.
 * A slide's protected parts are never edited: the leading header comment, the
   \\setSlideVersion line and \\vbox to 0pt{...} blocks -- the parts protected_regions masks
   from a rewrite -- and a frozen version (-vX-Y-Z.tex) is a historical record and read-only.
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ... import ai_review, alt_images, slide_source
+from ... import ai_review, alt_images, slide_source, slide_versioning
 from ...project import ProjectContext
 from ...slide_protection import protected_problem, slide_kind
 from ..agent_types import EDIT_ASK, EditApplied, EditProposed, EditRejected
@@ -65,7 +65,9 @@ def write_text(workspace: Workspace, path: Path, before: str, after: str, *,
             raise ToolError(f"{path.name} was not changed: {problem}")
     else:
         try:
-            slide_source.save_slide_source(workspace.project, path, after, slide_source.read_slide_source(path)[1], expected_text=before)
+            # An undo or rollback (review=False) puts the earlier text back exactly; an edit gets the "+".
+            after = slide_versioning.save_slide(workspace.project, path, after, slide_source.read_slide_source(path)[1],
+                                                before, mark=review)[0]
         except slide_source.StaleFileError as exc:
             raise ToolError(f"{path.name} was not changed: {exc}") from None
         if review:
@@ -86,7 +88,7 @@ def undo_edit(workspace: Workspace, applied: EditApplied) -> str:
         now = current_text(workspace, applied.path)
     except (OSError, ToolError) as exc:
         return str(exc)
-    if now != applied.after:
+    if slide_versioning.without_plus(now) != slide_versioning.without_plus(applied.after):   # the "+" is no change
         return f"{applied.path.name} has changed since, so the edit cannot be undone automatically."
     try:
         write_text(workspace, applied.path, applied.after, applied.before, review=False)

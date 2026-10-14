@@ -1102,9 +1102,11 @@ class TaskRunner(QObject):
             window.centre.preview.render_buffer()
 
     def _fresh(self, capture: _Capture) -> bool:
-        """Whether the slide still has the text the task was started on (and a translation still has no partner)."""
+        """Whether the slide still has the text the task was started on (and a translation still has no partner). The
+        "+" an autosave put on the version line meanwhile is no change."""
         window = self._window
-        return window.centre.slide_text(capture.path) == capture.text and not (
+        now = window.centre.slide_text(capture.path)
+        return slide_versioning.without_plus(now) == slide_versioning.without_plus(capture.text) and not (
             capture.language and slide_language.translation_link(window.project, capture.id_slug))
 
     def _write(self, capture: _Capture, result: str) -> EditApplied | None:

@@ -142,7 +142,9 @@ def test_language_switch_changes_editor_preview_details_and_keeps_both_buffers(c
     assert "% English draft" in centre.source.current.editor.text()
     state.set_language("DE")
     assert "% Deutscher Entwurf" in centre.source.current.editor.text()
-    assert centre.is_dirty(english) and centre.is_dirty(german)
+    # Each was saved when the other language was shown.
+    assert "% English draft" in english.read_text() and "% Deutscher Entwurf" in german.read_text()
+    assert not centre.is_dirty(english) and not centre.is_dirty(german)
 
 
 @pytest.mark.parametrize("language, id_slug, edit", [
@@ -150,13 +152,10 @@ def test_language_switch_changes_editor_preview_details_and_keeps_both_buffers(c
     ("DE", "ddd-DE-Eins", "% German saved edit\n"),
 ])
 def test_saving_renders_only_the_active_language_when_the_page_is_visible(centre, project, renders, monkeypatch, language, id_slug, edit):
-    from slidemage.ui.workspace import source_file
-
     english, german = link_german(project) if language == "DE" else (
         project / "aaa-EN-One-current.tex", project / "ccc-DE-Drei-current.tex")
     active, other = (english, german) if language == "EN" else (german, english)
     before = other.read_bytes()
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda *_args: "overwrite")
     centre.state.set_focused_slide("aaa")
     centre.state.set_mode("split")
     centre.state.set_language(language)
@@ -220,20 +219,19 @@ def test_focusing_a_slide_shows_its_file_as_the_deck_calls_it(centre, project):
     assert centre.source.current is None
 
 
-def test_unsaved_edits_survive_focusing_other_slides_and_count_as_dirty(centre, project):
+def test_edits_are_saved_when_another_slide_is_focused(centre, project):
     state = centre.state
     dirty = []
     state.dirty_changed.connect(dirty.append)
     state.set_mode("source")
     state.set_focused_slide("aaa")
     centre.source.current.editor.insertPlainText("edit ")
-    state.set_focused_slide("ccc")
     assert dirty == [True] and state.dirty
-    assert centre.is_dirty(project / "aaa-EN-One-current.tex") and not centre.is_dirty(project / "ccc-DE-Drei-current.tex")
+    state.set_focused_slide("ccc")
+    assert dirty == [True, False] and not state.dirty
+    assert "edit " in (project / "aaa-EN-One-current.tex").read_text()
     state.set_focused_slide("aaa")
-    assert centre.source.current.editor.text().startswith("edit ")
-    centre.source.current.reload()
-    assert dirty == [True, False]
+    assert "edit " in centre.source.current.editor.text() and not centre.source.current.dirty
 
 
 def test_opening_a_file_switches_to_source_and_a_slide_of_the_project_is_focused(centre, project):
@@ -476,9 +474,6 @@ def test_the_preview_never_renders_the_buffer_of_another_slide(centre, renders):
 
 
 def test_a_source_with_errors_is_not_rendered_after_a_save(centre, renders, monkeypatch, project):
-    from slidemage.ui.workspace import source_file
-
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
     centre.state.set_mode("split")
     centre.state.set_focused_slide("aaa")
     centre.source.current.editor.insertPlainText("\\begin{standardframe}{x}{oops")

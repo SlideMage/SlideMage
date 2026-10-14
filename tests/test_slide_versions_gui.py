@@ -1,8 +1,9 @@
-"""A slide's frozen versions in the centre column: making one the current version, and freezing
-the current one (the Slide versions panel is in test_side_panels_gui.py)."""
+"""A slide's frozen versions in the centre column: making one the current version, and Update
+Version of the current one (the Slide versions panel is in test_side_panels_gui.py)."""
 from __future__ import annotations
 
 import pytest
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QLabel, QMessageBox
 
 from slidemage import alt_images
@@ -55,64 +56,93 @@ def test_making_a_version_current_archives_the_current_one_and_reopens_it(ctx, q
     assert centre.source.current.path == versioned_slide / "abc-EN-Demo-current.tex"
 
 
-def test_making_a_version_current_is_refused_while_the_current_slide_has_unsaved_edits(ctx, 
-        qapp, versioned_slide, monkeypatch):
+def test_making_a_version_current_saves_the_edits_first_and_archives_them(ctx, qapp, versioned_slide, monkeypatch):
+    centre = CentreColumn(FakeApp(ctx), WorkspaceState(ctx))
+    current = versioned_slide / "abc-EN-Demo-current.tex"
+    centre.open_file(current)
+    centre.source.current.editor.moveCursor(QTextCursor.MoveOperation.End)
+    centre.source.current.editor.insertPlainText("x")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    centre.restore_version(versioned_slide / "abc-EN-Demo-v1-0-0.tex")
+    # The edit was saved (1.2.0 frozen first), then archived as 1.2.1; the restored content is 1.3.0.
+    assert (versioned_slide / "abc-EN-Demo-v1-2-0.tex").read_text(encoding="utf-8") == "\\setSlideVersion{1-2-0}\n" + BODY
+    assert "standardframe}\nx" in (versioned_slide / "abc-EN-Demo-v1-2-1.tex").read_text(encoding="utf-8")
+    text = current.read_text(encoding="utf-8")
+    assert "\\setSlideVersion{1-3-0}" in text and "Text of 1-0-0" in text
+
+
+def test_making_a_version_current_is_refused_while_the_edits_cannot_be_saved(ctx, qapp, versioned_slide, monkeypatch):
     centre = CentreColumn(FakeApp(ctx), WorkspaceState(ctx))
     current = versioned_slide / "abc-EN-Demo-current.tex"
     centre.open_file(current)
     centre.source.current.editor.insertPlainText("x")
+    current.write_text("\\setSlideVersion{1-2-0}\nsomeone else's\n", encoding="utf-8")
     told = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))
     monkeypatch.setattr(QMessageBox, "question", lambda *a: pytest.fail("must not ask"))
     centre.restore_version(versioned_slide / "abc-EN-Demo-v1-0-0.tex")
-    assert len(told) == 1 and "has unsaved changes" in told[0]
-    assert "x" in centre.source.current.editor.text() and "Text of 1-0-0" not in current.read_text(encoding="utf-8")
+    assert len(told) == 1 and "could not be saved (it changed on disk)" in told[0]
+    assert "x" in centre.source.current.editor.text() and "someone else's" in current.read_text(encoding="utf-8")
 
 
-def test_freezing_keeps_the_current_content_as_a_version_and_moves_the_slide_on(ctx, qapp, versioned_slide, monkeypatch):
+def test_update_version_makes_the_current_content_a_version(ctx, qapp, versioned_slide, monkeypatch):
     app = FakeApp(ctx)
     centre = CentreColumn(app, WorkspaceState(ctx))
     changed = []
     centre.versions_changed.connect(lambda: changed.append(True))
-    centre.freeze_version("abc-EN-Demo", "minor")
-    current = (versioned_slide / "abc-EN-Demo-current.tex").read_text(encoding="utf-8")
-    assert "\\setSlideVersion{1-3-0}" in current and "Text" in current       # the content is as it was
-    assert "\\setSlideVersion{1-2-0}" in (versioned_slide / "abc-EN-Demo-v1-2-0.tex").read_text(encoding="utf-8")
-    assert app.logged == ["Froze abc-EN-Demo as abc-EN-Demo-v1-2-0.tex: now v1.3.0"] and changed == [True]
+    current = versioned_slide / "abc-EN-Demo-current.tex"
+    centre.freeze_version("abc-EN-Demo", "minor")     # 1.2.0, saved the old way, is not frozen yet: as it is
+    assert current.read_text(encoding="utf-8") == "\\setSlideVersion{1-2-0}\n" + BODY
+    assert (versioned_slide / "abc-EN-Demo-v1-2-0.tex").read_text(encoding="utf-8") == "\\setSlideVersion{1-2-0}\n" + BODY
+    assert app.logged == ["abc-EN-Demo is now v1.2.0, frozen as abc-EN-Demo-v1-2-0.tex"] and changed == [True]
+
+    centre.open_file(current)
+    editor = centre.source.current.editor
+    editor.moveCursor(QTextCursor.MoveOperation.End)
+    editor.insertPlainText("% more\n")
+    centre.freeze_version("abc-EN-Demo", "minor")     # the edit is saved ("+"), then made 1.3.0
+    text = current.read_text(encoding="utf-8")
+    assert text == "\\setSlideVersion{1-3-0}\n" + BODY + "% more\n"
+    assert (versioned_slide / "abc-EN-Demo-v1-3-0.tex").read_text(encoding="utf-8") == text
+    assert editor.text() == text and not editor.is_modified()
+    editor.undo()                                       # the buffer kept its undo history
+    assert "1-3-0" not in editor.text()
 
 
-def test_freezing_asks_what_the_decks_do_and_cancelling_changes_nothing(ctx, qapp, versioned_slide, monkeypatch):
+def test_update_version_asks_what_the_decks_do_and_cancelling_changes_nothing(ctx, qapp, versioned_slide, monkeypatch):
     from slidemage.ui.dialogs.slide_usage_dialog import DeckVersions
     from slidemage.ui.workspace import centre as centre_module
 
     app = FakeApp(ctx)
     centre = CentreColumn(app, WorkspaceState(ctx))
-    before = (versioned_slide / "abc-EN-Demo-current.tex").read_bytes()
+    current = versioned_slide / "abc-EN-Demo-current.tex"
+    (versioned_slide / "abc-EN-Demo-v1-2-0.tex").write_text("\\setSlideVersion{1-2-0}\n" + BODY, encoding="utf-8")
+    current.write_text("\\setSlideVersion{1-2-0+}\n" + BODY + "% changed\n", encoding="utf-8")
+    before = current.read_bytes()
     monkeypatch.setattr(centre_module, "ask_deck_versions", lambda *args: None)
     centre.freeze_version("abc-EN-Demo", "patch")
-    assert (versioned_slide / "abc-EN-Demo-current.tex").read_bytes() == before and app.logged == []
+    assert current.read_bytes() == before and app.logged == []
 
     applied = []
     monkeypatch.setattr(centre_module, "ask_deck_versions", lambda *args: DeckVersions({"course": "keep"}, None))
     monkeypatch.setattr(centre_module, "apply_deck_versions", lambda *args: applied.append(args[1:]))
     centre.freeze_version("abc-EN-Demo", "patch")
-    assert applied == [("abc-EN-Demo", {"course": "keep"}, (1, 2, 0))]   # "keep" pins the version just frozen
+    assert applied == [("abc-EN-Demo", {"course": "keep"}, (1, 2, 0))]   # "keep" pins the version moved on from
+    assert (versioned_slide / "abc-EN-Demo-v1-2-1.tex").exists()
 
 
-def test_freezing_is_refused_while_the_slide_has_unsaved_edits_or_the_version_exists(ctx, qapp, versioned_slide, monkeypatch):
+def test_update_version_is_refused_without_a_change_or_when_the_version_exists(ctx, qapp, versioned_slide, monkeypatch):
     centre = CentreColumn(FakeApp(ctx), WorkspaceState(ctx))
     told = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))
     current = versioned_slide / "abc-EN-Demo-current.tex"
-    centre.open_file(current)
-    centre.source.current.editor.insertPlainText("x")
     centre.freeze_version("abc-EN-Demo", "minor")
-    assert "has unsaved changes" in told[-1]
-    centre.source.current.editor.undo()
-    centre.source.current.reload()
-    (versioned_slide / "abc-EN-Demo-v1-2-0.tex").write_text("taken", encoding="utf-8")
     centre.freeze_version("abc-EN-Demo", "minor")
-    assert "already frozen" in told[-1] and "1-3-0" not in current.read_text(encoding="utf-8")
+    assert "has not changed since v1.2.0" in told[-1]
+    current.write_text("\\setSlideVersion{1-2-0+}\nchanged\n", encoding="utf-8")
+    (versioned_slide / "abc-EN-Demo-v1-3-0.tex").write_text("taken", encoding="utf-8")
+    centre.freeze_version("abc-EN-Demo", "minor")
+    assert "frozen already" in told[-1] and "1-3-0" not in current.read_text(encoding="utf-8")
 
 
 def test_details_survive_a_slide_without_a_file_and_show_a_message_without_a_slide(ctx, qapp, versioned_slide):

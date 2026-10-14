@@ -51,13 +51,14 @@ def test_ordered_edits_mark_render_show_and_support_undo(env, slide, buffer):
     result = modify(env, slide=slide, expected=before, edits=EDITS + [{"old": "Edited point", "new": "Final point"}])
     assert not result.is_error, result.text
     after = before.replace("First point", "Final point")
-    assert (env.ws.buffer_text(env.path) if buffer else env.path.read_text()) == after
+    written = after if buffer else after.replace("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")
+    assert (env.ws.buffer_text(env.path) if buffer else env.path.read_text()) == written
     assert result.images == [PNG] and "Lint:" in result.text and "Not reviewed" in result.text
     assert env.shown == [env.path] and len(env.renders) == 1
     entry = ai_review.unreviewed(env.project)[SLIDE]
     assert entry["kind"] == "edit" and entry["source"] == "modify_slide"
     applied, = [e for e in env.events if isinstance(e, EditApplied)]
-    assert applied.before == before and applied.after == after and applied.via_buffer == buffer and applied.undoable
+    assert applied.before == before and applied.after == written and applied.via_buffer == buffer and applied.undoable
     assert bool(list((env.project.slide_backups_dir / env.path.name).glob("*.tex"))) != buffer
     if not buffer:
         assert b"\r\n" in env.path.read_bytes()

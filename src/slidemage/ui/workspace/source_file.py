@@ -2,12 +2,16 @@
 button, and what saving, reverting and reloading it mean.
 
 The Source view edits slides (slides/*.tex), a deck's own .tex file and
-Slidemaster.bib alike. Only a slide's `-current.tex` gets the version prompt
-on save: a frozen `-vX-Y-Z.tex` snapshot has no current version to bump and
-saves plainly, like any other file. The saved text is kept (`text`) so that a
-save can tell, through slide_source.StaleFileError, when something else in the
-app wrote the file meanwhile (an "Add reference" write to the .bib, the header
-sync that runs after every deck edit, a rename that rewrites references).
+Slidemaster.bib alike, and saves as you type (AUTOSAVE_DELAY_MS after the last
+keystroke; write_now()). A slide's `-current.tex` gets the "+" on its version
+line as it is written (slide_versioning.prepare_autosave()); a version is made
+on purpose, with Update Version. A frozen `-vX-Y-Z.tex` snapshot is read-only
+until unlocked, then saves plainly, like any other file. The saved text is
+kept (`text`) so that a save can tell, through slide_source.StaleFileError,
+when something else wrote the file meanwhile (Claude Code in the terminal, an
+"Add reference" write to the .bib, the header sync that runs after every deck
+edit, a rename that rewrites references): autosave then stops, and the
+conflict bar asks.
 """
 from __future__ import annotations
 
@@ -27,7 +31,6 @@ from ... import (
     slide_versioning,
 )
 from ...slide_language import bare_id
-from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from ..text import plural
@@ -35,48 +38,40 @@ from .ai_fix import AiFixPanel
 from .source_editor import FindBar, LatexPlainTextEdit
 
 LINT_DELAY_MS = 300     # after the last keystroke
+AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
 LINT_LIST_LIMIT = 25    # issues shown in the status line's list
 SAME, RELOADED, CONFLICT = "same", "reloaded", "conflict"    # what disk_changed() found
 
 
-def prompt_version_choice(parent, old_version: Optional[slide_versioning.Version]) -> Optional[str]:
-    """The save-time "how significant is this change?" prompt for a slide's
-    current.tex: major/minor/patch freeze the outgoing on-disk content under its
-    own tracked version and bump the new content's version accordingly;
-    "Overwrite" just saves (a never-tracked slide stays untracked). Returns the
-    chosen level, "overwrite", or None if the user cancelled the save."""
-    baseline = old_version if old_version is not None else slide_versioning.DEFAULT_BASELINE
-    current_label = slide_versioning.format_dot(old_version) if old_version is not None else "untracked"
+def prompt_version_level(parent, base: slide_versioning.Version) -> Optional[str]:
+    """Update Version's "how significant is the change since `base`?" prompt.
+    Returns "major", "minor", "patch", or None if the user cancelled."""
     box = QMessageBox(parent)
-    box.setWindowTitle("Save slide")
-    box.setText(f"Current version: {current_label}\n\nHow significant is this change?")
+    box.setWindowTitle("Update Version")
+    box.setText(f"Changed since v{slide_versioning.format_dot(base)}.\n\nHow significant is the change?")
     level_buttons: dict[str, QPushButton] = {}
     for level in ("major", "minor", "patch"):
-        target = slide_versioning.format_dot(slide_versioning.bump(baseline, level))
+        target = slide_versioning.format_dot(slide_versioning.bump(base, level))
         level_buttons[level] = box.addButton(f"{level.capitalize()} (→ {target})", QMessageBox.ButtonRole.AcceptRole)
-    overwrite_label = (
-        f"Overwrite (stays {current_label})" if old_version is not None else "Overwrite (no version tracked)")
-    overwrite_button = box.addButton(overwrite_label, QMessageBox.ButtonRole.DestructiveRole)
     box.addButton(QMessageBox.StandardButton.Cancel)
-    box.setDefaultButton(overwrite_button)
+    box.setDefaultButton(level_buttons["minor"])
     box.exec()
     clicked = box.clickedButton()
-    for level, button in level_buttons.items():
-        if clicked is button:
-            return level
-    return "overwrite" if clicked is overwrite_button else None
+    return next((level for level, button in level_buttons.items() if clicked is button), None)
 
 
 class SourceFile(Surface):
-    saved = Signal()                  # after a successful save
+    saved = Signal()                  # after Ctrl+S (the Preview renders it again), not after an autosave
+    written = Signal()                # after every write, autosave included
     modified_changed = Signal(bool)
+    conflict_changed = Signal()       # the conflict bar was shown or hidden
     lint_changed = Signal()
 
     def __init__(
         self, app, path: Path, on_saved: Optional[Callable[[str], None]] = None,
         on_open: Optional[Callable[[Path], None]] = None,
     ) -> None:
-        """`on_saved(previous_text)` runs after a save (a deck's own source goes
+        """`on_saved(previous_text)` runs after each write (a deck's own source goes
         through the window's after_deck_edit this way); `on_open(path)` opens
         another file (the translation the usage dialog offers)."""
         super().__init__()
@@ -110,7 +105,7 @@ class SourceFile(Surface):
         self.fold_button = Button("", "ghost", compact=True)
         self.fold_button.clicked.connect(self.toggle_header_fold)
         self.fix_panel = AiFixPanel(app, self.editor, path)
-        self.fix_panel.running_changed.connect(lambda _running: self._update_status())
+        self.fix_panel.running_changed.connect(self._on_fix_running)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -128,6 +123,13 @@ class SourceFile(Surface):
         self._lint_timer.timeout.connect(self.run_lint)
         self.editor.text_changed.connect(self._lint_timer.start)
         self.run_lint()
+        # Saved a moment after the last keystroke; backed up once per editing session.
+        self._backed_up = False
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.setInterval(AUTOSAVE_DELAY_MS)
+        self._autosave_timer.timeout.connect(self.write_now)
+        self.editor.text_changed.connect(self._schedule_autosave)
 
         # Scoped to this file's widgets, so the shortcuts of the files in the
         # same window never clash.
@@ -140,6 +142,11 @@ class SourceFile(Surface):
     @property
     def dirty(self) -> bool:
         return self.editor.is_modified()
+
+    @property
+    def conflicted(self) -> bool:
+        """The file changed on disk while the buffer has edits: nothing is written until the user chooses."""
+        return not self.conflict_bar.isHidden()
 
     @property
     def keep_open(self) -> bool:
@@ -180,7 +187,7 @@ class SourceFile(Surface):
         reload_button.setToolTip("Drop your unsaved edits and show the file as it is on disk now.")
         reload_button.clicked.connect(self._reload_conflicting)
         keep_button = Button("Keep my edits", "ghost", compact=True)
-        keep_button.setToolTip("Keep what you have in the editor. Saving it replaces the file on disk "
+        keep_button.setToolTip("Keep what you have in the editor. It is saved over the file on disk "
                                "(a backup of that version is kept).")
         keep_button.clicked.connect(self.keep_edits)
         row.addWidget(reload_button)
@@ -247,7 +254,16 @@ class SourceFile(Surface):
         self.text, self.eol = slide_source.read_slide_source(self.path)
         self.editor.set_text(self.text)
         self._update_fold_button()
-        self.conflict_bar.hide()
+        self._autosave_timer.stop()
+        self._backed_up = False
+        self._set_conflict(None)
+
+    def adopt_disk(self) -> None:
+        """Take the file on disk into the clean buffer as one edit, keeping cursor, scroll position and
+        undo history: Update Version rewrote its version line."""
+        self.text, self.eol = slide_source.read_slide_source(self.path)
+        self.editor.patch_text(self.text)
+        self.editor.mark_saved()
 
     def sync(self) -> None:
         """Pick up a change of the file on disk made elsewhere in the app (a deck
@@ -264,15 +280,23 @@ class SourceFile(Surface):
             return SAME
         on_disk = slide_source.read_slide_source(self.path)
         if on_disk[0] == self.text:
-            self.conflict_bar.hide()
+            self._set_conflict(None)
             return SAME
         if not self.dirty:
             self.reload()
             return RELOADED
-        self.conflict_label.setText(f"{self.path.name} was changed on disk (by Claude Code or another program) "
-                                    "while you have unsaved edits here.")
-        self.conflict_bar.show()
+        self._autosave_timer.stop()
+        self._set_conflict(f"{self.path.name} was changed on disk (by Claude Code or another program) "
+                           "while you have edits here that are not saved yet.")
         return CONFLICT
+
+    def _set_conflict(self, message: Optional[str]) -> None:
+        """Show the conflict bar with `message`, or hide it (None)."""
+        if message is not None:
+            self.conflict_label.setText(message)
+        if (message is None) != self.conflict_bar.isHidden():
+            self.conflict_bar.setVisible(message is not None)
+            self.conflict_changed.emit()
 
     def _reload_conflicting(self) -> None:
         self.reload()
@@ -282,7 +306,9 @@ class SourceFile(Surface):
         """Take the file on disk as what the buffer was loaded from, so that saving the edits replaces
         it (save_slide_source keeps a backup of that version) instead of failing as stale."""
         self.text, self.eol = slide_source.read_slide_source(self.path)
-        self.conflict_bar.hide()
+        self._backed_up = False     # the file on disk is someone else's: back it up before it is replaced
+        self._set_conflict(None)
+        self._schedule_autosave()
 
     def revert(self) -> None:
         if not self.dirty:
@@ -293,76 +319,57 @@ class SourceFile(Surface):
             self.reload()
             self.app.log(f"Reverted {self.path.name} to the saved version")
 
-    def _fresh(self, previous_text: str) -> bool:
-        """Whether the file on disk is still the text the buffer was loaded from; if not, say so and show
-        the conflict bar (or reload a clean buffer)."""
-        try:
-            slide_source.check_fresh(self.path, previous_text)
-        except slide_source.StaleFileError as exc:
-            QMessageBox.critical(self.app, "Save failed", str(exc))
-            self.disk_changed()
-            return False
-        return True
+    def _schedule_autosave(self) -> None:
+        if self.dirty and not self.editor.is_read_only():
+            self._autosave_timer.start()
 
-    def save(self) -> bool:
-        """Returns whether the file was saved: False when the version prompt or the
-        usage dialog was cancelled, or the file changed on disk meanwhile."""
+    def _on_fix_running(self, running: bool) -> None:
+        self._update_status()
+        if not running:
+            self._schedule_autosave()   # what the fix applied meanwhile
+
+    def write_now(self, explicit: bool = False) -> bool:
+        """Write the buffer's edits to the file now: the autosave, a flush before another file is
+        shown or a run starts, and Ctrl+S (`explicit`, which also emits `saved`, so the Preview
+        renders it). Returns whether the file holds the buffer: False while saving is paused (a
+        read-only buffer, the conflict bar up, an AI fix running), when the file changed on disk
+        meanwhile (the conflict bar then shows) or the write failed."""
+        self._autosave_timer.stop()
+        if not self.dirty:
+            if explicit:
+                self.saved.emit()
+            return True
+        if self.editor.is_read_only() or self.conflicted or self.fix_panel.running:
+            return False
         raw_text = self.editor.text()
-        new_text = raw_text
         previous_text = self.text
-        if not self._fresh(previous_text):      # before anything is frozen or asked: a stale file loses neither
-            return False
-        versions = DeckVersions({}, None)
-        frozen_version = None
-        if self.is_current_slide:
-            old_version = slide_versioning.parse_version(self.text)
-            choice = prompt_version_choice(self.app, old_version)
-            if choice is None:
-                return False
-            final_version, freeze_as = slide_versioning.plan_save(old_version, choice)
-            if freeze_as is not None:
-                # A slide in several decks (or pinned, or translated) asks which
-                # version each deck uses from now on.
-                frozen_version = freeze_as
-                asked = ask_deck_versions(self.app, self.app.project, self.id_slug, self.text, final_version, freeze_as)
-                if asked is None:
-                    return False
-                versions = asked
-                if not self._fresh(previous_text):      # the dialogs took time: freeze only what is still there
-                    return False
-                frozen = slide_versioning.freeze_slide(self.path, self.id_slug, freeze_as)
-                if frozen is not None:
-                    self.app.log(f"    (froze outgoing v{slide_versioning.format_dot(freeze_as)} -> {frozen.name})")
-                else:
-                    self.app.log(f"    (v{slide_versioning.format_dot(freeze_as)} was already frozen -- left it alone)")
-            new_text = (slide_versioning.set_marker(new_text, final_version) if final_version is not None
-                        else slide_versioning.strip_marker(new_text))
-
         try:
-            # expected_text: without it a save would silently overwrite (backup
-            # aside) whatever else in the app wrote this file since it was loaded.
-            backup_path = slide_source.save_slide_source(self.app.project, self.path, new_text, self.eol, expected_text=previous_text)
-        except slide_source.StaleFileError as exc:
-            QMessageBox.critical(self.app, "Save failed", str(exc))
+            # A slide's current file gets the "+", after its version is frozen if it is not yet.
+            new_text, backup_path, frozen = slide_versioning.save_slide(
+                self.app.project, self.path, raw_text, self.eol, previous_text, backup=not self._backed_up)
+        except slide_source.StaleFileError:
             self.disk_changed()
             return False
+        except OSError as exc:
+            self.app.log(f"*** Could not save {self.path.name}: {exc} ***")
+            if explicit:
+                QMessageBox.critical(self.app, "Save failed", f"Could not save {self.path.name}: {exc}")
+            return False
+        self._backed_up = True
+        if frozen is not None:
+            self.app.log(f"Froze {frozen.name}: the version {self.path.name} had before this change")
         self.text = new_text
         if new_text != raw_text:
-            # The version bump rewrote the \setSlideVersion{} line in what went to
-            # disk but not in the buffer, which would keep showing the old one.
+            # The "+" went onto the version line in what went to disk, not yet in the buffer.
             self.editor.patch_text(new_text)
         self.editor.mark_saved()
-        if frozen_version is not None:
-            apply_deck_versions(self.app, self.id_slug, versions.choices, frozen_version)
-        if versions.open_translation is not None and self.on_open is not None:
-            self.on_open(versions.open_translation)
         if backup_path is not None:
-            self.app.log(f"Saved {self.path.name} (backup: {backup_path.relative_to(self.app.project.root)})")
-        else:
-            self.app.log(f"Saved {self.path.name} (new file, no prior content to back up)")
+            self.app.log(f"Saving {self.path.name} as you type (backup: {backup_path.relative_to(self.app.project.root)})")
         if self.on_saved is not None:
             self.on_saved(previous_text)
-        self.saved.emit()
+        self.written.emit()
+        if explicit:
+            self.saved.emit()
         return True
 
     # -- helpers the toolbar calls ------------------------------------------------------
@@ -370,6 +377,7 @@ class SourceFile(Surface):
     def unlock(self) -> None:
         self.editor.set_read_only(False)
         self._update_status()
+        self._schedule_autosave()
 
     def show_bib_key(self, key: str) -> None:
         """Put the cursor on the entry `key` (`@type{key,`), after one was added."""

@@ -1,12 +1,13 @@
 """The Source view: a compact toolbar over the editor of the file being edited.
 
 It edits slides, a deck's own .tex file and Slidemaster.bib alike, one
-`SourceFile` (source_file.py) per file. A file with unsaved edits stays open
-when another is shown, so that switching slides never loses an edit; a clean
-one is dropped and read from disk again when it comes back, so it is never
-stale. The view reports "dirty" and "saved" and asks the window, through the
+`SourceFile` (source_file.py) per file, saved as you type. A file is written
+before another is shown; one that cannot be (a conflict with a change on disk)
+stays open, so that switching slides never loses an edit; a clean one is
+dropped and read from disk again when it comes back, so it is never stale.
+The view reports "dirty" and "saved" and asks the window, through the
 signals, for what is not its own: rendering the buffer, restoring a frozen
-version, showing another file.
+version, making a version (Update Version), showing another file.
 """
 from __future__ import annotations
 
@@ -46,6 +47,7 @@ class SourcePane(Surface):
     saved = Signal(object)               # the Path that was saved
     render_requested = Signal()          # Ctrl+R: render the buffer
     restore_requested = Signal(object)   # Path of a frozen version to make current
+    version_requested = Signal(str)      # id_slug: Update Version of that slide
     file_requested = Signal(object)      # Path of another file to show
     reference_added = Signal()           # an entry was added to Slidemaster.bib
 
@@ -74,8 +76,8 @@ class SourcePane(Surface):
         self._stack.addWidget(self._empty)
         layout.addWidget(self._stack, 1)
 
-        # Scoped to this view's widgets. Ctrl+S is the window's (window.py): it saves the file shown here
-        # from every view.
+        # Scoped to this view's widgets. Ctrl+S is the window's (window.py): it writes the file shown here
+        # now and renders it, from every view.
         shortcuts = [
             ("Ctrl+/", lambda: self._edit(lambda e: e.toggle_comment())),
             ("Ctrl+I", lambda: self._wrap("textit")), ("Ctrl+B", lambda: self._wrap("textbf")),
@@ -101,7 +103,7 @@ class SourcePane(Surface):
         self._name = QLabel()
         self._name.setObjectName(q.SOURCE_FILE_NAME)
         top.addWidget(self._name)
-        self._unsaved_chip = Chip("Unsaved changes", "warning")
+        self._unsaved_chip = Chip("", "muted")
         top.addWidget(self._unsaved_chip)
         top.addStretch(1)
         self._elsewhere_chip = Chip("", "warning")
@@ -114,10 +116,12 @@ class SourcePane(Surface):
         self._revert_button.setToolTip("Discard the unsaved changes and reload the saved file.")
         self._revert_button.clicked.connect(lambda: self._with_file(SourceFile.revert))
         top.addWidget(self._revert_button)
-        self._save_button = Button("Save", "primary", compact=True)
-        self._save_button.setToolTip("Save (Ctrl+S). A slide asks how significant the change is.")
-        self._save_button.clicked.connect(self.save)
-        top.addWidget(self._save_button)
+        self._version_button = Button("Update Version", "primary", compact=True)
+        self._version_button.setToolTip(
+            "Make the slide as it is now a version: it is frozen, and decks can keep using it. "
+            "Asks how significant the change is. (Edits are saved as you type.)")
+        self._version_button.clicked.connect(self.update_version)
+        top.addWidget(self._version_button)
         outer.addLayout(top)
 
         self._format_row = Surface()
@@ -216,6 +220,7 @@ class SourcePane(Surface):
             if file is None:
                 file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
                 file.modified_changed.connect(self._on_modified)
+                file.conflict_changed.connect(self._update_toolbar)
                 file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
                 file.lint_changed.connect(self._emit_lint_errors)
                 file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -231,6 +236,9 @@ class SourcePane(Surface):
             self._stack.setCurrentWidget(file)
         if self._current is None:
             self._stack.setCurrentWidget(self._empty)
+        for other in self._files.values():
+            if other is not self._current:
+                other.write_now()       # written before it goes out of view
         for stale in [f for f in self._files.values() if f is not self._current and not f.keep_open]:
             self._drop(stale)
         self._update_toolbar()
@@ -306,13 +314,23 @@ class SourcePane(Surface):
         read_only = has and file.editor.is_read_only()
         self._name.setText(file.path.name if has else "")
         self._unsaved_chip.setVisible(has and file.dirty)
+        if has and file.conflicted:
+            self._unsaved_chip.set_text("Not saved: changed on disk")
+            self._unsaved_chip.set_tone("warning")
+        elif has and (file.editor.is_read_only() or file.fix_panel.running):
+            self._unsaved_chip.set_text("Not saved")
+            self._unsaved_chip.set_tone("warning")
+        else:
+            self._unsaved_chip.set_text("Saving…")
+            self._unsaved_chip.set_tone("muted")
         others = [f for f in self.dirty_files() if f is not file]
         self._elsewhere_chip.setVisible(bool(others))
-        self._elsewhere_chip.set_text(f"{len(others)} more unsaved" if len(others) > 1 else "1 more unsaved")
-        self._elsewhere_chip.setToolTip("Click to show the next file with unsaved changes.")
+        self._elsewhere_chip.set_text(f"{len(others)} more not saved" if len(others) > 1 else "1 more not saved")
+        self._elsewhere_chip.setToolTip("Click to show the next file whose edits could not be saved.")
         self._find_button.setEnabled(has)
         self._revert_button.setEnabled(has and file.dirty)
-        self._save_button.setEnabled(has and not read_only)
+        self._version_button.setVisible(has and file.is_current_slide)
+        self._version_button.setEnabled(has and not read_only)
         self._format_row.setEnabled(has and not read_only)
         self._tools_button.setEnabled(has)
         frozen = has and file.is_slide and not file.is_current_slide
@@ -345,8 +363,19 @@ class SourcePane(Surface):
             self.app.log(f"No .bib entry with a citation key starting with '{letter}'")
 
     def save(self) -> bool:
+        """Ctrl+S: write the file shown now and render it. Whether it is saved."""
         file = self._current
-        return file is not None and not file.editor.is_read_only() and file.save()
+        return file is not None and file.write_now(explicit=True)
+
+    def flush_all(self) -> bool:
+        """Write every file's edits now (before a run reads the files, or the window closes).
+        Whether all are saved; one in conflict with a change on disk is not."""
+        return all([file.write_now() for file in list(self._files.values())])
+
+    def update_version(self) -> None:
+        file = self._current
+        if file is not None and file.is_current_slide:
+            self.version_requested.emit(file.id_slug)
 
     # -- menus -------------------------------------------------------------------------
 
@@ -474,16 +503,14 @@ class SourcePane(Surface):
 
     def add_reference(self, key: str = "") -> None:
         """Add an entry to Slidemaster.bib (with the citation key `key`, if one is missing).
-        The dialog writes the file on disk, not a buffer: unsaved edits of the .bib are saved
-        first, or the two would overwrite each other, and an open buffer is reloaded afterwards."""
+        The dialog writes the file on disk, not a buffer: edits of the .bib are written first,
+        or the two would overwrite each other, and an open buffer is reloaded afterwards."""
         bib = self._files.get(self.app.project.bibliography_path)
-        if bib is not None and bib.dirty:
-            reply = QMessageBox.question(
-                self, "Add reference",
-                "Slidemaster.bib has unsaved changes. Save them first, so the new reference "
-                "and your edits can't overwrite each other?")
-            if reply != QMessageBox.StandardButton.Yes or not bib.save():
-                return
+        if bib is not None and not bib.write_now():
+            QMessageBox.warning(self, "Add reference",
+                                "Slidemaster.bib has edits that could not be saved (it changed on disk). "
+                                "Resolve that first, so the new reference and your edits can't overwrite each other.")
+            return
         dialog = CitationDialog(self.app, key)
         if dialog.exec() != CitationDialog.DialogCode.Accepted:
             return

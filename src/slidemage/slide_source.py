@@ -52,7 +52,8 @@ def check_fresh(path: Path, expected_text: str) -> None:
 
 
 def save_slide_source(
-    ctx: ProjectContext, path: Path, new_text: str, eol: str, expected_text: str | None = None
+    ctx: ProjectContext, path: Path, new_text: str, eol: str, expected_text: str | None = None,
+    backup: bool = True,
 ) -> Path:
     """Back up the file's current on-disk bytes verbatim, then write
     new_text back with every line re-terminated with `eol`. Returns the
@@ -85,15 +86,23 @@ def save_slide_source(
     StaleFileError without touching the file or writing a backup at all.
     Left as None (the default) for a caller that hasn't been ported to the
     stale-check yet, which always saves last-write-wins as before.
+
+    `backup=False` skips the backup: the Source view's autosave keeps one per
+    editing session, not one per pause in typing. It touches the folder's
+    SAVED_STAMP instead, so last_saved() still sees the save.
     """
     if expected_text is not None:
         check_fresh(path, expected_text)
     backup_path = None
-    if path.exists():
+    if backup and path.exists():
         backup_dir = ctx.slide_backups_dir / path.name
         backup_dir.mkdir(parents=True, exist_ok=True)
         backup_path = _unique_backup_path(backup_dir)
         shutil.copy2(path, backup_path)
+    elif path.exists():
+        backup_dir = ctx.slide_backups_dir / path.name
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        (backup_dir / SAVED_STAMP).touch()
 
     normalized = new_text.replace("\r\n", "\n").replace("\n", eol)
     write_text_exact(path, normalized)
@@ -101,11 +110,18 @@ def save_slide_source(
     return backup_path
 
 
+SAVED_STAMP = ".last-save"     # in a file's backup folder: touched by a save that keeps no backup
+
+
 def last_saved(ctx: ProjectContext, path: Path) -> datetime | None:
     """When the slide was last saved through save_slide_source(): the newest backup of
-    slides/.backups/<filename>/, whose name is the time of the save. None for a file never saved
-    that way. (A file's mtime would also move when the header sync or a rename rewrites it.)"""
+    slides/.backups/<filename>/, whose name is the time of the save, or the time of its SAVED_STAMP
+    (a save without a backup), whichever is later. None for a file never saved that way. (A file's
+    mtime would also move when the header sync or a rename rewrites it.)"""
     stamps = []
+    stamp = ctx.slide_backups_dir / path.name / SAVED_STAMP
+    if stamp.is_file():
+        stamps.append(datetime.fromtimestamp(stamp.stat().st_mtime).replace(microsecond=0))
     for backup in (ctx.slide_backups_dir / path.name).glob("*.tex"):
         try:
             stamps.append(datetime.strptime(backup.stem[:15], "%Y%m%d-%H%M%S"))

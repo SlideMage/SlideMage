@@ -99,7 +99,10 @@ def test_chat_edits_mark_the_written_text_on_disk_or_in_buffer(project, buffer):
         box.ws.open(path, LF)
     box.ok("edit_file", path=SLIDE, old_text="First point", new_text="New point")
     entry = ai_review.unreviewed(project)[SLIDE]
-    assert entry["text_hash"] == sha256(LF.replace("First point", "New point").encode()).hexdigest()
+    written = LF.replace("First point", "New point")
+    if not buffer:     # written on disk: the slide's version line got its "+"
+        written = written.replace("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")
+    assert entry["text_hash"] == sha256(written.encode()).hexdigest()
     if buffer:
         assert "New point" not in path.read_text()
 
@@ -246,7 +249,10 @@ def test_a_chat_edit_keeps_the_text_it_replaced(project, buffer):
     box.ok("edit_file", path=SLIDE, old_text="First point", new_text="New point")
     assert ai_review.last_before(project, path) == LF
     box.ok("edit_file", path=SLIDE, old_text="New point", new_text="Newer point")        # the last edit only
-    assert ai_review.last_before(project, path) == LF.replace("First point", "New point")
+    expected = LF.replace("First point", "New point")
+    if not buffer:     # what the second edit replaced was the written text, "+" included
+        expected = expected.replace("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")
+    assert ai_review.last_before(project, path) == expected
     ai_review.mark_reviewed(project, [SLIDE])
     assert ai_review.last_before(project, path) is not None                              # kept after the review
 

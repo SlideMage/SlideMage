@@ -1,5 +1,5 @@
-"""The Source view: the editor's commands, files with unsaved edits that survive
-switching, saving with the version prompt, frozen versions, the .bib."""
+"""The Source view: the editor's commands, saving as you type (and edits that survive
+switching when they cannot be saved), Update Version, frozen versions, the .bib."""
 from __future__ import annotations
 
 
@@ -177,7 +177,7 @@ def test_the_cursor_next_to_a_brace_marks_both_ends(qapp):
 
 # -- files: switching, unsaved edits, frozen versions -------------------------------
 
-def test_a_clean_file_is_dropped_when_another_is_shown_and_a_dirty_one_is_kept(pane, slides):
+def test_a_file_is_written_and_dropped_when_another_is_shown_unless_it_cannot_be(pane, slides):
     states, closed = [], []
     pane.dirty_changed.connect(states.append)
     pane.file_closed.connect(closed.append)
@@ -190,19 +190,22 @@ def test_a_clean_file_is_dropped_when_another_is_shown_and_a_dirty_one_is_kept(p
     pane.current.editor.insertPlainText("edit ")
     assert pane.current.dirty and states == [True]
     pane.show_path(first)
-    assert set(pane._files) == {first, second}                      # the edited one stays
-    assert [f.path for f in pane.dirty_files()] == [second]
+    assert list(pane._files) == [first] and states == [True, False]  # written, then dropped
+    assert second.read_text(encoding="utf-8").startswith("\\setSlideVersion{1-0-0+}\nedit ")
+
+    pane.current.editor.insertPlainText("mine ")
+    first.write_text("someone else's\n", encoding="utf-8")         # Claude Code in the terminal
+    pane.show_path(second)
+    assert set(pane._files) == {first, second}                      # the one in conflict stays
+    assert [f.path for f in pane.dirty_files()] == [first] and pane.file_for(first).conflicted
     assert pane._elsewhere_chip.isVisibleTo(pane)
-    pane._show_other_dirty()                                        # the chip asks for it back
     shown = []
     pane.file_requested.connect(shown.append)
-    pane._show_other_dirty()
-    assert shown == [second]
-
-    pane.show_path(second)
-    assert pane.current.editor.text().startswith("edit ")
-    pane.current.reload()
-    assert states == [True, False]
+    pane._show_other_dirty()                                        # the chip asks for it back
+    assert shown == [first]
+    pane.show_path(first)
+    assert pane.current.editor.text().startswith("mine ")
+    assert pane._unsaved_chip.isVisibleTo(pane) and pane._unsaved_chip.text() == "Not saved: changed on disk"
 
 
 def test_a_clean_file_picks_up_a_change_made_elsewhere_but_a_dirty_one_does_not(pane, slides):
@@ -224,7 +227,7 @@ def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pa
     QTest.keyClick(pane.current.editor, Qt.Key.Key_Return)
     assert pane.current.editor.text() == before
     assert pane._frozen_bar.isVisibleTo(pane) and pane._unlock_button.isEnabled()
-    assert not pane._format_row.isEnabled() and not pane._save_button.isEnabled()
+    assert not pane._format_row.isEnabled() and not pane._version_button.isVisibleTo(pane)
     pane.insert(latex_edit.INSERT_LIST_COMMANDS[0])                  # a format command is refused too
     assert pane.current.editor.text().startswith("\\setSlideVersion{1-0-0}")
     restored = []
@@ -233,17 +236,23 @@ def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pa
     assert restored == [slides / "abc-EN-Demo-v1-0-0.tex"]
     pane._unlock_button.click()
     assert not pane.current.editor.is_read_only() and not pane._unlock_button.isEnabled()
-    assert pane._format_row.isEnabled() and pane._save_button.isEnabled()
+    assert pane._format_row.isEnabled() and not pane._version_button.isVisibleTo(pane)
     pane.show_path(slides / "abc-EN-Demo-current.tex")
     assert not pane._frozen_bar.isVisibleTo(pane)
+    assert pane._version_button.isVisibleTo(pane) and pane._version_button.isEnabled()
+    asked = []
+    pane.version_requested.connect(asked.append)
+    pane._version_button.click()
+    assert asked == ["abc-EN-Demo"]
 
 
 def test_the_toolbar_follows_the_kind_of_file(pane, slides, tmp_path, monkeypatch):
     bib = tmp_path / "Slidemaster.bib"
     bib.write_text("@book{alpha, title={A}}\n\n@book{beta, title={B}}\n", encoding="utf-8")
     pane.show_path(None)
-    assert not pane._save_button.isEnabled() and not pane._find_button.isEnabled()
+    assert not pane._version_button.isVisibleTo(pane) and not pane._find_button.isEnabled()
     pane.show_path(bib)
+    assert not pane._version_button.isVisibleTo(pane)
     assert pane._jump_bar.isVisibleTo(pane) and not pane._frozen_bar.isVisibleTo(pane)
     assert pane.current.is_bib and not pane.current.is_slide
     assert pane.current.jump_to_bib_letter("B")
@@ -294,63 +303,86 @@ def test_a_bad_hyperlink_stays_in_the_popover_with_the_reason(pane, slides):
 
 # -- saving ----------------------------------------------------------------------------
 
-def test_saving_a_slide_with_a_minor_bump_freezes_the_old_text_and_patches_the_buffer(pane, slides, monkeypatch):
+@pytest.fixture
+def quick(monkeypatch):
+    """Autosave a moment after the last keystroke, not 1.5 s."""
+    monkeypatch.setattr(source_file, "AUTOSAVE_DELAY_MS", 20)
+
+
+def test_a_slide_is_saved_as_you_type_with_its_version_frozen_first_and_the_plus(pane, slides, quick):
     path = slides / "abc-EN-Demo-current.tex"
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "minor")
-    saved, on_saved = [], []
+    saved, written, on_saved = [], [], []
     pane.saved.connect(saved.append)
     pane.show_path(path, on_saved.append)
+    pane.current.written.connect(lambda: written.append(1))
     editor = pane.current.editor
     place(editor, len(editor.text()))
     editor.insertPlainText("% note\n")
     place(editor, editor.text().index("Text"))
+    assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0}\n" + BODY      # not yet
 
-    assert pane.save()
+    QTest.qWait(150)
 
-    assert saved == [path] and on_saved == ["\\setSlideVersion{1-1-0}\n" + BODY]
-    assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-2-0}\n" + BODY + "% note\n"
-    assert (slides / "abc-EN-Demo-v1-1-0.tex").read_text(encoding="utf-8").startswith("\\setSlideVersion{1-1-0}")
-    assert editor.text() == path.read_text(encoding="utf-8")      # the buffer shows the bumped version
+    assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0+}\n" + BODY + "% note\n"
+    assert (slides / "abc-EN-Demo-v1-1-0.tex").read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0}\n" + BODY
+    assert editor.text() == path.read_text(encoding="utf-8")                  # the buffer shows the "+"
     assert not editor.is_modified() and editor.textCursor().position() == editor.text().index("Text")
+    assert written == [1] and saved == [] and on_saved == ["\\setSlideVersion{1-1-0}\n" + BODY]
+
+    editor.insertPlainText("x")
+    assert pane.save()                                                        # Ctrl+S: now, and rendered
+    assert saved == [path] and "\\setSlideVersion{1-1-0+}\nx" not in path.read_text(encoding="utf-8")
+    assert path.read_text(encoding="utf-8").startswith("\\setSlideVersion{1-1-0+}\n")
+    assert len(list((pane.app.project.slide_backups_dir / path.name).glob("*.tex"))) == 1   # one per session
 
 
-def test_overwrite_saves_without_a_new_version(pane, slides, monkeypatch):
-    path = slides / "abc-EN-Demo-current.tex"
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "overwrite")
-    pane.show_path(path)
-    place(pane.current.editor, len(pane.current.editor.text()))
-    pane.current.editor.insertPlainText("x")
-    assert pane.save()
-    assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0}\n" + BODY + "x"
-    assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists()
-
-
-def test_cancelling_the_version_prompt_saves_nothing(pane, slides, monkeypatch):
-    path = slides / "abc-EN-Demo-current.tex"
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: None)
-    pane.show_path(path)
-    pane.current.editor.insertPlainText("x")
-    assert not pane.save()
-    assert path.read_text(encoding="utf-8").startswith("\\setSlideVersion{1-1-0}") and pane.current.dirty
-
-
-def test_other_files_save_plainly_and_a_file_that_changed_on_disk_is_refused(pane, slides, tmp_path, monkeypatch):
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda *_a: pytest.fail("a deck has no version prompt"))
+def test_other_files_save_plainly_and_a_file_that_changed_on_disk_gets_the_conflict_bar(pane, slides, tmp_path,
+                                                                                         monkeypatch, quick):
+    monkeypatch.setattr(QMessageBox, "critical", lambda *_a: pytest.fail("an autosave asks nothing"))
     deck = tmp_path / "decks.tex"
     deck.write_text("deck text\r\n", encoding="utf-8", newline="")
     previous = []
     pane.show_path(deck, previous.append)
     pane.current.editor.insertPlainText("new ")
-    assert pane.save()
+    QTest.qWait(150)
     assert deck.read_bytes() == b"new deck text\r\n" and previous == ["deck text\n"]      # the line ending stays
 
     pane.current.editor.insertPlainText("more ")
     deck.write_text("someone else's text", encoding="utf-8")
-    told = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *args: told.append(args[2]))
-    assert not pane.save()
-    assert "changed on disk" in told[0] and pane.current.dirty
+    QTest.qWait(150)
+    assert pane.current.dirty and pane.current.conflicted
     assert deck.read_text(encoding="utf-8") == "someone else's text"
+    pane.current.editor.insertPlainText("still ")
+    QTest.qWait(150)
+    assert deck.read_text(encoding="utf-8") == "someone else's text"           # paused while in conflict
+
+    pane.current.keep_edits()                                                 # "Keep my edits"
+    QTest.qWait(150)
+    assert deck.read_text(encoding="utf-8").startswith("new more still deck text") and not pane.current.dirty
+
+
+def test_a_stale_slide_is_not_frozen_or_overwritten(pane, slides, quick):
+    path = slides / "abc-EN-Demo-current.tex"
+    pane.show_path(path)
+    pane.current.editor.insertPlainText("x")
+    path.write_text("\\setSlideVersion{1-1-0}\nsomeone else's text", encoding="utf-8")
+    assert not pane.current.write_now()
+    assert pane.current.dirty and pane.current.conflicted
+    assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists()
+    assert "someone else's text" in path.read_text(encoding="utf-8")
+
+
+def test_an_unlocked_frozen_version_saves_plainly(pane, slides, quick):
+    path = slides / "abc-EN-Demo-v1-0-0.tex"
+    pane.show_path(path)
+    QTest.keyClick(pane.current.editor, Qt.Key.Key_X)      # read-only: refused
+    QTest.qWait(80)
+    assert not pane.current.dirty
+    pane._unlock_button.click()
+    place(pane.current.editor, len(pane.current.editor.text()))
+    pane.current.editor.insertPlainText("% fixed\n")
+    QTest.qWait(150)
+    assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-0-0}\n" + BODY + "% fixed\n"
 
 
 def test_revert_asks_and_reloads_the_saved_file(pane, slides, monkeypatch):
@@ -373,36 +405,3 @@ def test_buffer_gives_the_text_and_selection_of_a_slide_only(pane, slides, tmp_p
     deck.write_text("x", encoding="utf-8")
     pane.show_path(deck)
     assert pane.buffer() is None
-
-
-def test_a_stale_slide_is_refused_before_anything_is_frozen_or_asked(pane, slides, monkeypatch):
-    path = slides / "abc-EN-Demo-current.tex"
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "minor")
-    monkeypatch.setattr(source_file, "ask_deck_versions", lambda *_a: pytest.fail("nothing to ask for a stale file"))
-    pane.show_path(path)
-    pane.current.editor.insertPlainText("x")
-    path.write_text("\\setSlideVersion{1-1-0}\nsomeone else's text", encoding="utf-8")
-    told = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *args: told.append(args[2]))
-    assert not pane.save()
-    assert "changed on disk" in told[0] and pane.current.dirty
-    assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists()             # no outgoing version frozen
-    assert pane.current.conflict_bar.isVisibleTo(pane.current)         # the buffer's own edits get the choice
-
-
-def test_a_file_changed_while_the_deck_questions_were_open_is_not_frozen(pane, slides, monkeypatch):
-    path = slides / "abc-EN-Demo-current.tex"
-    monkeypatch.setattr(source_file, "prompt_version_choice", lambda _parent, old: "minor")
-
-    def ask(*_args):
-        path.write_text("\\setSlideVersion{1-1-0}\nchanged while asking", encoding="utf-8")
-        return source_file.DeckVersions({}, None)
-
-    monkeypatch.setattr(source_file, "ask_deck_versions", ask)
-    pane.show_path(path)
-    pane.current.editor.insertPlainText("x")
-    told = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *args: told.append(args[2]))
-    assert not pane.save()
-    assert "changed on disk" in told[0] and pane.current.dirty and pane.current.conflict_bar.isVisibleTo(pane.current)
-    assert not (slides / "abc-EN-Demo-v1-1-0.tex").exists() and "changed while asking" in path.read_text(encoding="utf-8")

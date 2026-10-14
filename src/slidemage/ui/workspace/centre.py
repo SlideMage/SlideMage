@@ -32,12 +32,12 @@ from ... import deck_outline, slide_language, slide_source, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
-from ..dialogs.slide_usage_dialog import apply_deck_versions, ask_deck_versions
+from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from .. import layout_settings
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
-from .source_file import RELOADED
+from .source_file import RELOADED, prompt_version_level
 from .source_view import SourcePane
 from .state import WorkspaceState
 
@@ -105,6 +105,7 @@ class CentreColumn(QFrame):
         self.source.saved.connect(self._on_saved)
         self.source.render_requested.connect(self.render_buffer)
         self.source.restore_requested.connect(self.restore_version)
+        self.source.version_requested.connect(self.update_version)
         self.source.file_requested.connect(self.open_file)
         self.preview.partner_requested.connect(lambda path: self.open_file(path, keep_mode=True))
         state.deck_changed.connect(self._on_deck_changed)
@@ -181,8 +182,8 @@ class CentreColumn(QFrame):
 
     def edit_slide_text(self, path: Path, change: Callable[[str], str]) -> bool:
         """Apply `change(text) -> text` to the Source view's buffer of `path`, as one undo step, and
-        leave it there unsaved: a save is the Source view's, with its version prompt, backup and
-        deck questions, so that an edit made from a panel is never saved by another route. False
+        leave it to the Source view's autosave, so that an edit made from a panel is never saved by
+        another route. False
         when the file is not editable (a frozen version, until it is unlocked)."""
         self.source.show_path(path)
         file = self.source.current
@@ -200,9 +201,7 @@ class CentreColumn(QFrame):
             QMessageBox.warning(self.app, "Cannot restore", "The slide's current file was not found.")
             return
         open_current = self.source.file_for(current)
-        if open_current is not None and open_current.dirty:
-            QMessageBox.warning(self.app, "Unsaved changes",
-                                f"{current.name} has unsaved changes. Save or revert them first.")
+        if not self._written(open_current):
             return
         reply = QMessageBox.question(
             self.app, "Make this the current version",
@@ -225,32 +224,62 @@ class CentreColumn(QFrame):
         self.open_file(current)
         self.versions_changed.emit()
 
+    def _written(self, file) -> bool:
+        """Write an open file's edits first; False (and say why) when they cannot be."""
+        if file is None or file.write_now():
+            return True
+        QMessageBox.warning(self.app, "Edits not saved",
+                            f"{file.path.name} has edits that could not be saved"
+                            + (" (it changed on disk)." if file.conflicted else ".") + " Resolve that first.")
+        return False
+
+    def update_version(self, id_slug: str) -> None:
+        """The Source view's Update Version: ask how significant the change is, unless the slide is
+        made the version it already names (not frozen yet), then freeze_version()."""
+        current = self.state.project.slides_dir / slide_language.current_name(id_slug)
+        if not current.is_file() or not self._written(self.source.file_for(current)):
+            return
+        text = slide_source.read_slide_source(current)[0]
+        try:
+            new, base = slide_versioning.plan_update(current, id_slug, text, "patch")
+        except ValueError as exc:
+            QMessageBox.information(self.app, "Update Version", str(exc))
+            return
+        level = prompt_version_level(self.app, base) if new != base else "patch"
+        if level is not None:
+            self.freeze_version(id_slug, level)
+
     def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
-        """"Freeze as": the slide's current content becomes a frozen version and the slide moves on
-        to the next one (slide_versioning.freeze_current()), after asking what each deck does."""
+        """Update Version (also the Versions panel's): the slide's current content becomes a frozen
+        version (slide_versioning.update_version()), after asking what each deck does; decks that
+        keep the old content are pinned to the version it moves on from."""
         current = self.state.project.slides_dir / slide_language.current_name(id_slug)
         if not current.is_file():
-            QMessageBox.warning(self.app, "Cannot freeze", "The slide's current file was not found.")
+            QMessageBox.warning(self.app, "Cannot update the version", "The slide's current file was not found.")
             return
         open_current = self.source.file_for(current)
-        if open_current is not None and open_current.dirty:
-            QMessageBox.warning(self.app, "Unsaved changes",
-                                f"{current.name} has unsaved changes. Save or revert them first.")
+        if not self._written(open_current):
             return
         text, _eol = slide_source.read_slide_source(current)
-        final, frozen_as = slide_versioning.plan_save(slide_versioning.parse_version(text), level)
-        asked = ask_deck_versions(self.app, self.state.project, id_slug, text, final, frozen_as)
+        try:
+            new, base = slide_versioning.plan_update(current, id_slug, text, level)
+        except ValueError as exc:
+            QMessageBox.warning(self.app, "Cannot update the version", str(exc))
+            return
+        asked = ask_deck_versions(self.app, self.state.project, id_slug, text, new, base) if new != base \
+            else DeckVersions({}, None)
         if asked is None:
             return
         try:
-            frozen, version = slide_versioning.freeze_current(self.state.project, current, id_slug, level)
+            frozen, version, base = slide_versioning.update_version(self.state.project, current, id_slug, level)
         except (ValueError, slide_source.StaleFileError) as exc:
-            QMessageBox.warning(self.app, "Cannot freeze", str(exc))
+            QMessageBox.warning(self.app, "Cannot update the version", str(exc))
             return
-        self.app.log(f"Froze {id_slug} as {frozen.name}: now v{slide_versioning.format_dot(version)}")
-        apply_deck_versions(self.app, id_slug, asked.choices, frozen_as)
+        self.app.log(f"{id_slug} is now v{slide_versioning.format_dot(version)}, frozen as {frozen.name}")
+        if version != base:
+            apply_deck_versions(self.app, id_slug, asked.choices, base)
         if open_current is not None:
-            open_current.reload()
+            open_current.adopt_disk()
         self.refresh()
         self.versions_changed.emit()
         if asked.open_translation is not None:

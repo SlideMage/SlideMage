@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import alt_blocks, alt_draft, alt_images, media_render, slide_source, tikz_render
+from . import alt_blocks, alt_draft, alt_images, media_render, slide_source, slide_versioning, tikz_render
 from .deck_editor import parse_slide_calls
 from .deck_scan import Deck
 from .project import ProjectContext
@@ -332,7 +332,7 @@ def repoint_slides(ctx: ProjectContext, entry: alt_images.ImageEntry, entries: d
             if count == 0:
                 failures.append(f"{slide_id}: reference not found in {path.name} as written")
                 continue
-            slide_source.save_slide_source(ctx, path, new_text, eol, expected_text=text)    # line ends kept, backup made
+            slide_versioning.save_slide(ctx, path, new_text, eol, text)    # line ends kept, backup made, "+" on a slide
         except (OSError, UnicodeDecodeError, slide_source.StaleFileError) as exc:
             failures.append(f"{slide_id}: {exc}")
             continue

@@ -18,7 +18,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
-from .... import compiler, deck_editor, timing
+from .... import compiler, deck_editor, slide_versioning, timing
 from ....ai.agent_types import EditApplied
 from ....ai.providers import ChatProvider
 from ....ai.tools import undo_edit
@@ -192,9 +192,11 @@ class GuiWorkspace(Workspace):
                 return "it is not open for editing"
             if file.editor.is_read_only():
                 return "it is read-only (a frozen version)"
-            if file.editor.text() != expected_text:
+            text = file.editor.text()
+            # The version line may have got its "+" since (an autosave): that is no change of the text.
+            if slide_versioning.without_plus(text) != slide_versioning.without_plus(expected_text):
                 return "it changed while the edit waited for your answer"
-            file.editor.patch_text(new_text)     # one undo step; cursor and scroll position stay
+            file.editor.patch_text(slide_versioning.carry_plus(text, new_text))   # one undo step; cursor and scroll stay
             return None
 
         return self.on_gui(apply, "the window is closing")

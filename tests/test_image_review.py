@@ -212,7 +212,8 @@ def test_repoint_keeps_the_line_ends_and_makes_a_backup(ctx, store):
     row.path.write_bytes(f"a\r\n\\includegraphics{{{IMG}}}\r\n".encode())
     changed, failures = image_review.repoint_slides(ctx, entry, {IMG: entry}, {"1aaa": row.path}, {}, IMG, "media/n.png")
     assert (changed, failures) == (["1aaa"], [])
-    assert row.path.read_bytes() == b"a\r\n\\includegraphics{media/n.png}\r\n"
+    # An untracked slide's current file: 1.0.0 frozen first, then written with the "+".
+    assert row.path.read_bytes() == b"\\setSlideVersion{1-0-0+}\r\na\r\n\\includegraphics{media/n.png}\r\n"
     assert len(list((store / "slides" / ".backups" / row.path.name).glob("*.tex"))) == 1
 
 

@@ -121,7 +121,7 @@ class DetailsPane(Surface):
     def _build_facts(self) -> QWidget:
         path = self.current_path
         text = slide_source.read_slide_source(path)[0] if path.is_file() else ""
-        version = slide_versioning.parse_version(text)
+        version = slide_versioning.version_text(text)
         badge = slide_language.badge_for(self.app.project, self._id_slug)
         _language, _, slug = slide_rename.parse_id_slug(self._id_slug)
         panel, layout = self._panel("Slide")
@@ -129,7 +129,7 @@ class DetailsPane(Surface):
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(6)
         rows = [("File", path.name), ("Frame", alt_blocks.frame_type(text) or "none found"),
-                ("Version", f"v{slide_versioning.format_dot(version)}" if version else "untracked"),
+                ("Version", f"v{version}" if version else "untracked"),
                 ("Language", badge.text().strip("[]") or "untagged"), ("Slug", slug)]
         for i, (name, value) in enumerate(rows):
             grid.addWidget(_label(name, q.DETAILS_LABEL), i, 0, Qt.AlignmentFlag.AlignTop)

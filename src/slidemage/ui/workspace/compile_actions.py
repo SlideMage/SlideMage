@@ -28,10 +28,16 @@ from .multi_compile import MultiCompileSheet
 
 
 def _busy(window, message: str = "A compile run is already in progress.") -> bool:
-    """Whether a run holds the compile slot (then the user is told)."""
+    """Whether a run holds the compile slot (then the user is told). Every run starts with this
+    check: when the slot is free, the Source view's edits are written first, as a run reads the
+    files on disk."""
     if window.compile.running:
         QMessageBox.information(window, "Busy", message)
-    return window.compile.running
+        return True
+    centre = getattr(window, "centre", None)
+    if centre is not None:
+        centre.source.flush_all()
+    return False
 
 
 # -- stopping --------------------------------------------------------------------------

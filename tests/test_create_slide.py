@@ -281,7 +281,8 @@ def test_shared_tail_uses_the_existing_edit_write_and_undo_path(env, buffer):
         env.workspace.open(path, before)
     text, images = apply_slide(env.box.ctx, path, before, after)
     assert "Not reviewed" in text and images == [PNG]
-    assert (env.workspace.buffer_text(path) if buffer else path.read_text()) == after
+    written = after if buffer else after.replace("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")
+    assert (env.workspace.buffer_text(path) if buffer else path.read_text()) == written
     assert ai_review.unreviewed(env.project)[path.relative_to(env.root).as_posix()]["kind"] == "edit"
     applied = next(e for e in env.events if isinstance(e, EditApplied))
     assert applied.undoable and applied.via_buffer == buffer
