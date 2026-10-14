@@ -135,6 +135,12 @@ DROP = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE", "CLAUDE_AGENT
         "CLAUDE_EFFORT")
 
 
+# How long Claude Code waits for one tool call of this server, in ms. Its default ends a call after about a
+# minute, which is far shorter than refresh_deck_previews (one long compile, up to DECK_TIMEOUT_S = 1 h): the
+# agent saw "timed out" while the rerender went on and retried it. The user's own setting wins.
+MCP_TOOL_TIMEOUT_ENV, MCP_TOOL_TIMEOUT_MS = "MCP_TOOL_TIMEOUT", "3660000"
+
+
 def _inherited(name: str) -> bool:
     if name in KEEP_CLAUDE_CODE:
         return True
@@ -147,6 +153,7 @@ def clean_environment(claude: Path, base: dict[str, str] | None = None) -> dict[
     own folder on PATH (an npm install runs through `node` found there)."""
     env = {name: value for name, value in (os.environ if base is None else base).items() if _inherited(name)}
     env["PATH"] = os.pathsep.join([str(claude.parent), env.get("PATH", "")]) if env.get("PATH") else str(claude.parent)
+    env.setdefault(MCP_TOOL_TIMEOUT_ENV, MCP_TOOL_TIMEOUT_MS)
     return env
 
 
