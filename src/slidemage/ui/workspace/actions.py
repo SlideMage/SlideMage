@@ -192,6 +192,9 @@ def build_registry() -> CommandRegistry:
     add("slide:compare", "Compare rendered with last AI edit", SLIDE,
         lambda w: compare_rendered.compare_with_last_edit(w, _last_edit_path(w)),
         visible=lambda w: _last_edit_path(w) is not None)
+    add("slide:readability", "Check readability of this slide", SLIDE,
+        lambda w: w.assistant.check_readability(SLIDE_SCOPE), icon="visibility", meta="no AI",
+        enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
     add("slides:unreviewed", "List not reviewed slides", SLIDE,
         lambda w: w.slide_list.review_filter.setChecked(True), enabled=_has_deck)
     for view in VIEWS:
@@ -235,6 +238,8 @@ def build_registry() -> CommandRegistry:
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,
         enabled=_has_deck)
+    add("deck:readability", "Check readability of this deck", DECK,
+        lambda w: w.assistant.check_readability(DECK_SCOPE), icon="visibility", meta="no AI", enabled=_has_deck)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
     add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))

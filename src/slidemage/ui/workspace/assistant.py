@@ -6,8 +6,9 @@ the status of batches, image tasks and the summary) and a body that follows the 
 (chat/view.py) on Local and Cloud · API, the real terminal (terminal/view.py) on Cloud · Claude Code. A task on one
 slide takes the body's place with its task card (task_card.py) until Back to conversation (the header's pill brings it
 back) or until it is closed; an image task, when it ends, takes it with the results panel (pages/image_results.py:
-what became of each image, Retry failed) until Back to conversation. The scope and the TaskRunner (terminal/tasks.py) are the card's, so both bodies and the
-header share them; "New conversation" clears the route on show and no other.
+what became of each image, Retry failed) until Back to conversation. The readability check (readability_panel.py: the
+header's "Check readability", the palette) takes it with its findings, on every route. The scope and the TaskRunner
+(terminal/tasks.py) are the card's, so both bodies and the header share them; "New conversation" clears the route on show and no other.
 Focus hides the side panels (side_panels.py listens); it is not remembered.
 
 The keyboard follows the body: a task card that opens takes the focus on its first action, and a card or a results panel
@@ -17,7 +18,7 @@ itself when it is shown).
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget
+from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget, QWidget
 
 from ...ai import ai_profile
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
@@ -29,6 +30,7 @@ from ..pages.image_results import BatchResultView
 from .assistant_header import AssistantHeader
 from .chat.gui_workspace import GuiWorkspace
 from .chat.view import ChatView
+from .readability_panel import ReadabilityCheck, ReadabilityPanel
 from .state import WorkspaceState
 from .task_card import TaskCardView
 from .task_row import TaskRow
@@ -56,10 +58,13 @@ class AssistantArea(Card):
         self.task_row = TaskRow(app, self.tasks)
         self.task_card = TaskCardView(app, self.tasks)
         self.image_results = BatchResultView(back=True)
+        self.readability_panel = ReadabilityPanel()
+        self.readability = ReadabilityCheck(app, self.readability_panel, self.workspace)
         self._stack = QStackedWidget()
         self._stack.setObjectName(q.SURFACE)
         self._results_page = self._scrolled(self.image_results)
-        for body in (self.chat, self.claude_code, self.task_card, self._results_page):
+        self._readability_page = self._scrolled(self.readability_panel)
+        for body in (self.chat, self.claude_code, self.task_card, self._results_page, self._readability_page):
             self._stack.addWidget(body)
         for widget, stretch in ((self.header, 0), (self.task_row, 0), (self._stack, 1)):
             self.layout().addWidget(widget, stretch)
@@ -67,11 +72,13 @@ class AssistantArea(Card):
         self.header.focus_toggled.connect(self.focus_toggled)
         self.header.new_conversation.connect(self.new_conversation)
         self.header.task_chosen.connect(self.run_task)
+        self.header.check_chosen.connect(self.check_readability)
         self.header.task_opened.connect(self._open_task)
         self.task_card.back_clicked.connect(self.tasks.hide_card)
         self.task_card.sign_in_clicked.connect(self._sign_in)
         self.tasks.card_changed.connect(self._show_body)
         self.tasks.result_changed.connect(self._show_body)
+        self.readability.changed.connect(self._show_body)
         self.image_results.retry_clicked.connect(self.tasks.retry_failed)
         self.image_results.closed.connect(self.tasks.close_result)
         self.chat.route_changed.connect(self._refresh_route)
@@ -85,7 +92,7 @@ class AssistantArea(Card):
         return self.state.ai_route == ai_profile.CLAUDE_CODE and self.claude_code.needs_setup
 
     @staticmethod
-    def _scrolled(body: BatchResultView) -> QScrollArea:
+    def _scrolled(body: QWidget) -> QScrollArea:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -96,13 +103,16 @@ class AssistantArea(Card):
         return scroll
 
     def _show_body(self, _route: str = "") -> None:
-        """The task card while there is one on show, else the image results, else the conversation of the route."""
+        """The task card while there is one on show, else the readability findings, else the image results, else the
+        conversation of the route."""
         card, result = self.tasks.card, self.tasks.result
         before = self._stack.currentWidget()
         focus = QApplication.focusWidget()
         had_focus = focus is not None and before.isAncestorOf(focus)
         if card is not None and not card.hidden:
             self._stack.setCurrentWidget(self.task_card)
+        elif self.readability.active:
+            self._stack.setCurrentWidget(self._readability_page)
         elif result is not None:
             if self.image_results.result is not result:
                 self.image_results.show_result(result)
@@ -151,6 +161,14 @@ class AssistantArea(Card):
         batch, in the task row)."""
         self.tasks.start(bubble.task, bubble.paths, bubble.label)
 
+    def check_readability(self, scope: str) -> None:
+        """Check the readability of the slide in view or of the open deck (the header's button, the palette); the
+        findings take the place of the conversation."""
+        if scope == SCOPE_DECK:
+            self.readability.check_deck()
+        else:
+            self.readability.check_slide()
+
     def translate_slide(self) -> None:
         """The Language panel's Translate: the Translate task of the slide in view, on its card."""
         bubble = next((b for b in self.header.offers(SCOPE_SLIDE) if b.task is TRANSLATE), None)
@@ -167,4 +185,5 @@ class AssistantArea(Card):
         self.chat.shutdown()
         self.claude_code.shutdown()
         self.tasks.shutdown()
+        self.readability.close()
         self.workspace.close()

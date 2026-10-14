@@ -119,6 +119,19 @@ screenshots.
   Claude Code changed in the terminal is marked *Not reviewed*; Ctrl+K → **Compare rendered
   with last AI edit** (and the button in the slide's Details) shows it against the text it
   had before, which SlideMage keeps for every slide's last AI edit in `.slidemage/ai-before/`.
+  **Check readability** (Ctrl+K → *Check readability of this slide* / *of this deck*, and a header
+  button when no AI task is on show) asks whether an audience can read the slides, on every route, with no
+  AI: it measures the rendered pages and lists the findings per slide in the assistant (measured value,
+  threshold, the text or image concerned and a suggestion; a click takes you to the slide; *Check
+  again*). A slide is typeset as a draft; a deck is read from its compiled PDF, only while nothing it was
+  made from has changed (otherwise *Compile the deck first*, and the check runs when the compile ends).
+  Sizes are judged against the slide height, so projected slides count, not LaTeX points: body text
+  ≥ 3.3 % (about 18 pt on a 7.5 in slide; an error below, a warning within 5 %), headings not smaller than
+  that or than the slide's body, sources and footnotes ≥ 2.2 %, text in figures ≥ 2.6 %; an image under 25 %
+  of the slide area (or 35 % of its width) "may be too small to read"; contrast under 4.5:1 (3:1 for
+  headings); text cut off by the page or running into the footer, overlapping lines; more than 90 words or
+  14 lines of body text, or lines set closer than the font size (warnings). The assistant has the same check
+  as the tool `check_readability`.
   *Back to conversation* leaves a pill in the header while it runs. On Local and Cloud · API the body is the chat: the
   chat is an agent that works on the focused
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a

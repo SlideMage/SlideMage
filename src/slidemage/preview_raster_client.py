@@ -15,6 +15,7 @@ from .processes import no_console_kwargs
 _lock = threading.RLock()
 _process = None
 REQUEST_TIMEOUT = 15.0
+LAYOUT_TIMEOUT = 300.0      # reading the text and drawings of every page of a deck
 
 
 def close():
@@ -44,7 +45,13 @@ def read_document(path, op, start=1, count=1, dpi=110):
     return _ask(dict(op=op, path=str(path), start=start, count=count, dpi=dpi), "Cannot read the file")
 
 
-def _ask(request, failure, expected_images=None):
+def read_layout(path) -> list[dict]:
+    """Ask the child for the text lines, images, fills and figures of every page of a PDF
+    (readability_pdf.read_pages): the data of readability.Page.from_dict. RuntimeError when it cannot."""
+    return _ask(dict(op="layout", path=str(path)), "Cannot read the PDF", timeout=LAYOUT_TIMEOUT)["pages"]
+
+
+def _ask(request, failure, expected_images=None, timeout=REQUEST_TIMEOUT):
     """Send one JSON request to the child (started or restarted as needed) and return its checked response."""
     global _process
     with _lock:
@@ -82,7 +89,7 @@ def _ask(request, failure, expected_images=None):
 
         # Killing the child unblocks both a full stdin pipe and a stalled read.
         # The timer captures this process, never a later replacement.
-        deadline = threading.Timer(REQUEST_TIMEOUT, expire)
+        deadline = threading.Timer(timeout, expire)
         deadline.daemon = True
         deadline.start()
         try:

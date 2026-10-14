@@ -333,16 +333,19 @@ def read_record(build_dir: Path, jobname: str) -> Optional[dict]:
     return data
 
 
-def check_record(record: dict, wrapper_text: str, aux: Optional[Path] = None) -> Staleness:
+def check_record(record: dict, wrapper_text: Optional[str], aux: Optional[Path] = None) -> Staleness:
     """Why `record` no longer describes what a compile with `wrapper_text`
     would produce now (empty when it still does). `aux`: the record's folder,
-    holding the copies of derived inputs."""
+    holding the copies of derived inputs. `wrapper_text` None: only the PDF
+    and the files the compile read are compared, not the wrapper and the
+    engine (the readability check asks whether the PDF is still current)."""
     stale = Staleness()
-    if record.get("wrapper_sha256") != wrapper_sha256(wrapper_text):
-        stale.reasons.append("the deck's version settings changed")
-    current_engine = engine_version()
-    if current_engine and record.get("engine") != current_engine:
-        stale.reasons.append("the TeX engine changed")
+    if wrapper_text is not None:
+        if record.get("wrapper_sha256") != wrapper_sha256(wrapper_text):
+            stale.reasons.append("the deck's version settings changed")
+        current_engine = engine_version()
+        if current_engine and record.get("engine") != current_engine:
+            stale.reasons.append("the TeX engine changed")
     pdf = Path(record.get("pdf", ""))
     if not pdf.is_file():
         stale.reasons.append(f"{pdf.name} is gone")

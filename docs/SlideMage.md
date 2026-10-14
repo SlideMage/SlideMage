@@ -94,6 +94,31 @@ deck switcher offers the rest). From top to bottom and left to right:
   slide in `.slidemage/ai-before/` (`ai_review.last_before`; the hook's PostToolUse takes it from its PreToolUse
   snapshot), offered by the command `slide:compare` "Compare rendered with last AI edit" (palette, slide list menu) and by
   the Details view's *Not reviewed* row.
+- **Readability check** (v8.14.0; `readability.py`, `readability_pdf.py`, `readability_check.py`,
+  `ui/workspace/readability_panel.py`, the tool `ai/tools/readability.py`): "can an audience read this?", measured
+  on the rendered pages, with no AI. `readability_pdf.read_pages` runs in the raster child (op `layout`; the GUI
+  never opens the PDF): per page the visible text as lines (dominant size, colour, box; invisible text such as the
+  slide-id stamp and alt text is dropped), the placed raster images, the opaque fills (the background under the
+  text, the footer bar) and the vector figures (clusters of at least 12 paths). `readability.analyse` classifies
+  each line (the footer and the id stamp are not content): **figure text** (centre inside an image or figure),
+  **citation** (starts like a source or a footnote symbol of the template, or small print low on the slide or
+  sideways, as `\source` sets it), **heading** (the title bar at the top, larger text in the upper third), else
+  **body**; then applies the rules with the thresholds of the frozen `Thresholds` (all sizes are % of the slide
+  height, quoted as pt for a 7.5 in slide): body ≥ 3.3 %, heading ≥ 3.3 % and not below the slide's body, citation ≥ 2.2 %,
+  figure text ≥ 2.6 % (error below, warning within 5 % above); the largest image of a slide under 25 % of its area,
+  or under 35 % of its width unless it fills 75 % of the height, is a warning (images under 3 % and backgrounds
+  over 80 % are not judged); contrast under WCAG 4.5:1 (3:1 for headings and text from 5 %); clipped text and
+  overlapping lines are errors; more than 90 words or 14 lines of body text and lines closer than 1.0 × the font
+  size are warnings. A slide's last page of a run of pages with one footer slide id is judged (the rule of the slide
+  snapshots, `slide_snapshot.slide_runs`), earlier pages only for clipped text. A `Finding` carries the page, slide,
+  file, rule, class, severity, measured value and threshold, the box (fractions of the page), an excerpt or the image
+  file (matched by pixel size to the `\includegraphics` of the slide) and a suggestion; `Report.to_text()` is what the
+  tool returns and `Report.to_dict()` the JSON for the "Make readable" step. "This slide" renders a draft through a
+  `RenderService` (view and language of the top bar); "this deck" reads the PDF of the compile record
+  (`compile_records.check_record(record, None)`: the PDF and every file the compile read must be unchanged) and never
+  compiles by itself: the panel offers *Compile the deck first*, which runs the normal compile and the check when it
+  ends. The panel (`ReadabilityPanel`) takes the conversation's place until *Back to conversation*; the header offers
+  *Check readability* when no AI task is on show, and Ctrl+K has `slide:readability` and `deck:readability`.
 - **Keyboard and screen readers** (workspace v6 step 7): the AI switch is a radio group with a single tab stop
   (the selected segment; **←/→** flip Local and Cloud, **Enter**/**Space** activate, then Tab reaches ▾); its popups
   open on their safe button, **Tab** goes secondary, primary, link and round again, **Esc** is the secondary button

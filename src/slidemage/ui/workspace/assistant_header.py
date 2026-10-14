@@ -4,7 +4,9 @@
 2. the scope (This slide | Whole deck) and its target: "1y8 · Title", " · unsaved" with unsaved edits in the Source
    view; for the deck "name · 80 slides";
 3. at most two task buttons that fit the scope, the slide and what the route can run (terminal/tasks.py
-   `contextual`), and "All actions…" (⌘K);
+   `contextual`), and "All actions…" (⌘K). When no task is on show the row offers "Check readability" (the slide or
+   the deck; no AI, so on every route) instead: with a task the row would no longer fit one line of the column, and the
+   command is always in ⌘K;
 4. a pill with what a task is doing and Open: the task card that was left with Back to conversation ("Update DE
    translation · generating"), or a running batch or image task, which have no card.
 
@@ -22,7 +24,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ... import app_settings, deck_outline, slide_language
 from ...ai import ai_profile
-from ...ai.claude_scope import DECK
+from ...ai.claude_scope import DECK, SLIDE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface, set_property
@@ -63,6 +65,7 @@ class AssistantHeader(Surface):
     focus_toggled = Signal(bool)        # Focus was pressed: the side panels give way (True) or come back
     new_conversation = Signal()
     task_chosen = Signal(object)        # a Bubble
+    check_chosen = Signal(str)          # Check readability: the scope it was offered for
     task_opened = Signal()              # the pill's Open
 
     def __init__(self, app, state: WorkspaceState, scope: SegmentedControl, tasks: TaskRunner, blocked) -> None:
@@ -73,6 +76,7 @@ class AssistantHeader(Surface):
         self.focused = False
         self._offers: dict[str, list[Bubble]] = {}
         self.shown: list[Bubble] = []      # the task buttons on show
+        self.check_shown = ""              # the scope of the Check readability button on show, else ""
         self._seen: tuple = ()
         self._soon = QTimer(self)               # the content follows what changed in the same event loop turn
         self._soon.setSingleShot(True)
@@ -197,9 +201,11 @@ class AssistantHeader(Surface):
     def refresh_actions(self) -> None:
         """Row 3: the two most relevant tasks the route can run, then All actions…; row 4: the running pill."""
         tasks = self.tasks
-        found = [] if tasks.occupied or self._blocked() else contextual(self.offers(self.scope.current()), tasks)
-        if found != self.shown:
-            self.shown = found
+        scope = self.scope.current()
+        found = [] if tasks.occupied or self._blocked() else contextual(self.offers(scope), tasks)
+        check = scope if not found and self.can_check(scope) else ""
+        if (found, check) != (self.shown, self.check_shown):
+            self.shown, self.check_shown = found, check
             while self._actions.count():
                 widget = self._actions.takeAt(0).widget()
                 if widget is not self.all_actions:
@@ -208,6 +214,12 @@ class AssistantHeader(Surface):
             for bubble in found:
                 button = Button(bubble.label, "secondary", compact=True)
                 button.clicked.connect(partial(self.task_chosen.emit, bubble))
+                self._actions.addWidget(button)
+            if check:
+                button = Button("Check readability" if check == SLIDE else "Check deck readability", "secondary",
+                                compact=True)
+                button.setToolTip("Measure whether the text and images can be read by an audience (no AI)")
+                button.clicked.connect(partial(self.check_chosen.emit, check))
                 self._actions.addWidget(button)
         if self._actions.indexOf(self.all_actions) < 0:
             self._actions.addWidget(self.all_actions)
@@ -224,6 +236,13 @@ class AssistantHeader(Surface):
             self.pill.set_text(f"{card.title} · {PILL_WORDS[card.phase]}")
         elif card is None and tasks.busy:
             self.pill.set_text(tasks.describe())
+
+    def can_check(self, scope: str) -> bool:
+        """Whether the readability check has something to read: the deck open, or a slide in the Source view."""
+        if scope == DECK:
+            return self.state.deck is not None
+        path = self.app.centre.path
+        return path is not None and path.parent == self.state.project.slides_dir and slide_language.is_current_file(path)
 
     def target_text(self) -> str:
         """What the scope points at: the slide in the Source view (and whether it has unsaved edits), or the deck."""

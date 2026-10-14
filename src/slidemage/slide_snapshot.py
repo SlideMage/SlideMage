@@ -310,6 +310,20 @@ def capture_single_slide(ctx: project.ProjectContext, pdf_path: Path, slide_id: 
     return True
 
 
+def slide_runs(slide_ids) -> list[tuple[str, list[int]]]:
+    """The slides of a deck PDF from the slide id of each page (None: a page that names none, skipped): each
+    run of consecutive pages with one id is a slide, with its page indexes -- the last is its final build step."""
+    runs: list[tuple[str, list[int]]] = []
+    for index, slide_id in enumerate(slide_ids):
+        if slide_id is None:
+            continue
+        if runs and runs[-1][0] == slide_id:
+            runs[-1][1].append(index)
+        else:
+            runs.append((slide_id, [index]))
+    return runs
+
+
 def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
                  sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                  ) -> int:
@@ -324,24 +338,10 @@ def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
     except Exception:
         return 0
     try:
-        written = 0
-        current_id: str | None = None
-        current_page: "fitz.Page | None" = None
-        for page in doc:
-            slide_id = slide_id_of(page)
-            if slide_id is None:
-                continue
-            if slide_id != current_id:
-                if current_id is not None:
-                    _save_page(ctx, current_page, current_id, template, sizes)
-                    written += 1
-                current_id, current_page = slide_id, page
-            else:
-                current_page = page
-        if current_id is not None:
-            _save_page(ctx, current_page, current_id, template, sizes)
-            written += 1
-        return written
+        runs = slide_runs([slide_id_of(page) for page in doc])
+        for slide_id, pages in runs:
+            _save_page(ctx, doc[pages[-1]], slide_id, template, sizes)
+        return len(runs)
     finally:
         doc.close()
 

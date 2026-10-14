@@ -203,7 +203,7 @@ def test_only_the_tasks_the_route_can_run_are_offered(env):
     wait_until(lambda: shown(env) == ["Translate to German", "All actions…"])         # Local cannot fix LaTeX
     ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.TRANSLATION, "")
     env.window.refresh_ai_models()
-    wait_until(lambda: shown(env) == ["All actions…"])                                  # no translation model chosen
+    wait_until(lambda: shown(env) == ["Check readability", "All actions…"])             # no translation model chosen: only the check
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: shown(env) == ["Translate to German", "Fix LaTeX errors", "All actions…"])
 
@@ -285,7 +285,7 @@ def test_when_not_signed_in_an_amber_card_replaces_the_terminal_until_sign_in(en
                                           "you sign in.")
     assert env.view.setup_button.text() == "Sign in…" and env.window.state.ai_route == CLAUDE_CODE
     refreshed(env)
-    assert shown(env) == ["All actions…"]                              # no task can run meanwhile
+    assert shown(env) == ["Check readability", "All actions…"]         # no task can run meanwhile (the check needs no AI)
     env.view.setup_button.click()                                      # Claude Code asks for its login in the terminal
     wait_until(lambda: env.view.session is not None and env.view.session.running)
     assert env.view._stack.currentIndex() == view_module.TERMINAL and not env.view.needs_setup

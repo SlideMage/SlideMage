@@ -47,9 +47,13 @@ def raster(data, sizes, full_size):
 
 def document(path, op, start=1, count=1, dpi=110):
     """The chat's file reads: op "pdf" gives the page count and the text of `count` pages from page
-    `start`; "pdf_images" the same pages as PNGs; "drawing" an SVG or EPS file as one PNG."""
+    `start`; "pdf_images" the same pages as PNGs; "drawing" an SVG or EPS file as one PNG; "layout" what the
+    readability check reads of every page (readability_pdf.read_pages)."""
     import pymupdf
 
+    if op == "layout":
+        from .readability_pdf import read_pages
+        return dict(pages=read_pages(path))
     if op == "drawing":
         with open(path, "rb") as file:
             data = file.read()
