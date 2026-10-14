@@ -44,6 +44,7 @@ def deck_key(deck: Deck) -> str:
 def build_deck_menu(parent: QWidget, decks: list[Deck], current: Optional[Deck]) -> PopoverMenu:
     """Active decks by group, then the archived decks in a footer section."""
     menu = PopoverMenu(parent, min_width=300)
+    menu.current_key = deck_key(current) if current is not None else ""
     active = [d for d in decks if not d.archived]
     for tag in GROUP_ORDER:
         group = [d for d in active if d.group == tag]

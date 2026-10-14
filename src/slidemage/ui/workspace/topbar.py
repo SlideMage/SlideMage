@@ -98,11 +98,11 @@ class TopBar(QWidget):
         self._view_as.setObjectName(q.TOPBAR_LABEL)
         add(self._view_as)
         self._views = SegmentedControl(
-            [(view, VIEW_LABELS[view]) for view in VIEWS], current=state.view, tones=VIEW_TONES)
+            [(view, VIEW_LABELS[view]) for view in VIEWS], current=state.view, tones=VIEW_TONES, roving=True)
         self._views.changed.connect(state.set_view)
         add(self._views)
         self._languages = SegmentedControl(
-            [(lang, lang) for lang in UI_LANGUAGES], current=state.language, mono=True)
+            [(lang, lang) for lang in UI_LANGUAGES], current=state.language, mono=True, roving=True)
         self._languages.changed.connect(state.set_language)
         add(self._languages)
 
@@ -111,7 +111,7 @@ class TopBar(QWidget):
         self._save.setObjectName(q.TOPBAR_SAVE)
         add(self._save)
 
-        self._modes = SegmentedControl([(mode, mode.capitalize()) for mode in MODES], current=state.mode)
+        self._modes = SegmentedControl([(mode, mode.capitalize()) for mode in MODES], current=state.mode, roving=True)
         self._modes.changed.connect(state.set_mode)
         self._modes.changed.connect(lambda _mode: self.mode_clicked.emit())
         add(self._modes)
@@ -131,6 +131,7 @@ class TopBar(QWidget):
         self._right_column.clicked.connect(lambda: self.command.emit("column:right"))
         add(self._right_column)
         self.refresh_column_toggles()
+        self._set_tab_order()
 
         state.deck_changed.connect(self._on_deck_changed)
         state.view_changed.connect(self._on_view_changed)
@@ -147,6 +148,18 @@ class TopBar(QWidget):
         super().resizeEvent(event)
         self._available_width = event.size().width()
         self._update_density()
+
+    def _set_tab_order(self) -> None:
+        """Tab and Shift+Tab follow the bar left to right, then go on into the slide list, the centre and the side
+        panels (the window adds them to its splitter in that order). The widgets are chained once, all of them: a
+        hidden one ("Close images") and a segment that is not selected (roving) are skipped by visibility and focus
+        policy, whatever the density."""
+        switch = self.ai_switch
+        stops = [self._left_column, self._deck_button, *switch.segments.buttons(), switch.caret,
+                 *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
+                 self._images, self._more, self._right_column]
+        for before, after in zip(stops, stops[1:]):
+            QWidget.setTabOrder(before, after)
 
     def _update_density(self) -> None:
         if self._available_width is None or self._updating_density:

@@ -155,6 +155,11 @@ deck switcher offers the rest). From top to bottom and left to right:
   ring for the keyboard only. `kit.widgets.announce(widget, text)` is the one live-region helper (the switch commit
   and "stopping…", the task card's phase text, the end of an image batch, AI setup's confirmations); the dialogs
   that run or configure AI show the route as a `ModeBadge` under their title (`ai_models.add_route_badge`).
+- **Top bar Tab order** (v8.15.1): Tab (Shift+Tab) follows the bar from left to right -- ⇤ slide list, deck switcher,
+  the AI switch, View as, EN | DE, Preview | Split | Source | Details, Compile PDF and its ▾, Close images (when the
+  Images page is open), ⋮, ⇥ -- and goes on into the slide list, the centre and the assistant (`TopBar._set_tab_order`).
+  A segmented control is one stop (**←/→** change it); the deck switcher opens on the current deck with **Enter**,
+  **Space** or **↓**, and **Esc** returns to it.
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
   entry is a registered command.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck

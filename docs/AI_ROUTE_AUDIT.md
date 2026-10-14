@@ -162,7 +162,6 @@ Deliberately left for later steps:
   task card takes the focus on its first action and keeps it across its phases. Live region: one `kit.announce(widget,
   text)` (polite `QAccessibleAnnouncementEvent`, nothing before Qt 6.8) for the switch's commit and "stopping", the task
   card's phase changes, the end of an image batch and AI setup's confirmations; icon buttons are named by their tooltip.
-  What remains, none of it a route gap: the top bar's own Tab order (the ⇤ column toggle is last in the window and the
-  deck switcher is not a tab stop), the counts on "Draft all (8) · cloud" (step 5) and the Language panel's "Update DE"
+  What remains, none of it a route gap: the counts on "Draft all (8) · cloud" (step 5) and the Language panel's "Update DE"
   button, and the platform's own focus return for popup-window menus (⋮, deck switcher), which Qt does but the offscreen
   test platform does not.

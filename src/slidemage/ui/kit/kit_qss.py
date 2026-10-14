@@ -664,6 +664,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             font-weight: 400;
             padding: 5px 7px;
         }}
+        QFrame#{SPLIT} QPushButton:focus {{ border: 2px solid {t.focus}; padding: 5px 10px; }}
+        QFrame#{SPLIT} QPushButton#{SPLIT_CARET}:focus {{ padding: 3px 5px; }}
         QFrame#{SPLIT} QFrame#{SPLIT_DIVIDER} {{
             background-color: {with_alpha(t.on_inverse, 0.25)};
         }}
@@ -906,8 +908,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             {font}
             font-size: 14px;
             font-weight: 600;
+            border: 2px solid transparent;
             border-radius: {RADIUS_SM}px;
         }}
+        QFrame#{TOPBAR_DECK}:focus {{ border-color: {t.focus}; }}
         QFrame#{TOPBAR_DECK}:hover, QFrame#{TOPBAR_DECK}[active="true"] {{
             background-color: {t.hover};
         }}
@@ -1082,8 +1086,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             {font}
             font-size: 12.5px;
             font-weight: 500;
+            border: 2px solid transparent;
             border-radius: {RADIUS_SM}px;
         }}
+        QFrame#{PANEL_PICKER}:focus {{ border-color: {t.focus}; }}
         QFrame#{PANEL_PICKER}:hover, QFrame#{PANEL_PICKER}[active="true"] {{
             background-color: {t.line};
         }}

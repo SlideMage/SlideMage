@@ -194,14 +194,18 @@ class IconButton(_EnterPresses, QToolButton):
 class DropdownButton(ClickFrame):
     """A label with a chevron that opens a menu: the deck switcher, the side panel picker.
     `name` is the object name its QSS rules are written for; `clicked` is emitted on
-    release, `set_active` shows the menu is open."""
+    release, `set_active` shows the menu is open. It is a Tab stop (not a click target of the focus, so the 2px
+    ring is a keyboard ring) and Enter, Space and ↓ open the menu like a click."""
+
+    RING = 2    # the width of the focus ring, a transparent border until it has the focus (see kit_qss.py)
 
     def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName(name)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 5, 4, 5)
+        layout.setContentsMargins(8 - self.RING, 5 - self.RING, 4 - self.RING, 5 - self.RING)
         layout.setSpacing(6)
         self._label = QLabel()
         layout.addWidget(self._label)
@@ -216,13 +220,20 @@ class DropdownButton(ClickFrame):
             self._label.ensurePolished()
             layout = self.layout()
             margins = layout.contentsMargins()
-            overhead = margins.left() + margins.right() + layout.spacing() + layout.itemAt(1).sizeHint().width()
+            overhead = (margins.left() + margins.right() + 2 * self.RING + layout.spacing()
+                        + layout.itemAt(1).sizeHint().width())
             text = self._label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight,
                                                        max(0, max_width - overhead))
         self._label.setText(text)
 
     def set_active(self, active: bool) -> None:
         set_property(self, "active", active)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space, Qt.Key.Key_Down):
+            self.clicked.emit()
+        else:
+            super().keyPressEvent(event)
 
     def event(self, event: QEvent) -> bool:
         # The :hover rule needs a repolish of this frame, not just of the label under the pointer.
@@ -322,8 +333,9 @@ class SegmentedControl(QFrame):
     emitted with the key only for user clicks, not for set_current().
 
     `icons` maps a key to a Material icon shown before its label. `roving` makes it a radio group for the
-    keyboard (the AI switch): only the current segment is in the tab order, ←/→ ask for the neighbouring
-    segment (`changed`, like a click) and Enter clicks. Any segment that has the focus shows the ring. Whoever owns
+    keyboard (the AI switch, the top bar's): only the current segment is in the tab order (else Qt lets Tab land on
+    the first segment, selected or not), ←/→ ask for the neighbouring segment (`changed`, like a click) and Enter
+    clicks. Any segment that has the focus shows the ring. Whoever owns
     the control decides what a request means and calls set_current() to settle it."""
 
     changed = Signal(str)
@@ -401,6 +413,9 @@ class SegmentedControl(QFrame):
                 set_property(self._icons[key], "segment", "off" if key != current else button.property("tone") or "on")
             if self._roving:
                 button.setFocusPolicy(Qt.FocusPolicy.TabFocus if key == current else Qt.FocusPolicy.NoFocus)
+
+    def buttons(self) -> list[QPushButton]:
+        return list(self._buttons.values())
 
     def current_button(self) -> QPushButton | None:
         key = self.current()
@@ -809,6 +824,7 @@ class PopoverMenu(Popover):
         self._row_group: list[int] = []   # the column (the footer last) of each row
         self._current = -1
         self._focus_first = focus_first
+        self.current_key = ""             # the item the menu opens on (the deck switcher's current deck)
         self._entries: list[tuple] = []  # queued by add_*, built on popup
 
     def add_item(self, key: str, text: str, *, meta: str = "", icon: str = "",
@@ -958,6 +974,17 @@ class PopoverMenu(Popover):
         self._build()
         if self._focus_first:
             self._step(1)
+        elif self.current_key:
+            self._set_current(next((i for i, row in enumerate(self._rows) if row.key == self.current_key), -1))
+
+
+class _SplitPart(_EnterPresses, QPushButton):
+    """The main button or the caret of a SplitButton: a Tab stop (not a click target of the focus), Enter presses."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
 
 class SplitButton(QFrame):
@@ -973,16 +1000,14 @@ class SplitButton(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._main = QPushButton(text)
-        self._main.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._main = _SplitPart(text)
         self._main.clicked.connect(self.clicked)
         divider = QFrame()
         divider.setObjectName(q.SPLIT_DIVIDER)
         divider.setFixedWidth(1)
-        self._caret = QPushButton("expand_more")
+        self._caret = _SplitPart("expand_more")
         self._caret.setObjectName(q.SPLIT_CARET)
         self._caret.setFont(icon_font(18))
-        self._caret.setCursor(Qt.CursorShape.PointingHandCursor)
         self._caret.clicked.connect(self._open_menu)
         layout.addWidget(self._main)
         layout.addWidget(divider)
@@ -994,6 +1019,10 @@ class SplitButton(QFrame):
 
     def set_text(self, text: str) -> None:
         self._main.setText(text)
+
+    def buttons(self) -> list[QPushButton]:
+        """The main button, then the caret."""
+        return [self._main, self._caret]
 
     def set_menu(self, menu: PopoverMenu) -> None:
         if self._menu is not None and shiboken6.isValid(self._menu):
