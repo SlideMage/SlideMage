@@ -91,9 +91,28 @@ How each step runs (from C3 on; C1 was done directly):
 
 | Step | What | Version |
 |---|---|---|
-| C1 | Autosave in the Source view, and "Update Version" in place of "Save" (one step: autosave breaks the old Save) | v8.18.0 |
+| C1 | Autosave in the Source view, and "Update Version" in place of "Save" (one step: autosave breaks the old Save) | v8.18.0 (done) |
 | C3 | Retire the unsaved-state plumbing (close prompt, chips, "save first" checks) | v8.19.0 |
 | C4 | Manual, screenshots, release notes | v8.19.1 |
+
+## Where we stand (14 October 2026, evening)
+- C1 is done and committed: `1e06046` (v8.18.0), on branch `ui-redesign`. The process note above is `f8ce397`.
+- Full suite after C1: 2561 passed, 9 skipped, 2 failed. The two failures also fail without C1 and are not
+  part of this work: `test_ai_switch_gui.py::test_ai_setup_closes_on_escape_and_on_a_click_outside_but_not_on_its_anchor`
+  and `test_chat_gui.py::test_a_six_line_input_and_send_row_fit_at_640px`.
+- `ruff check` is clean apart from an unused import in `tests/test_deck_new.py` that was there before.
+- The working tree has other uncommitted changes that are not part of this batch (deck settings, slide list,
+  preamble, screenshots, docs). Commit only the step's own files.
+- Next: C3, waiting for the user's go.
+
+## How to continue
+1. On the go, hand C3 to one Sonnet 5.5 subagent at medium effort. Give it the C3 section below, the "+" rules
+   section, and the list of what C1 already changed (in the C3 section).
+2. Review its diff against this plan. Run `.venv/bin/ruff check src tests` and the full suite
+   (`.venv/bin/python -m pytest -q tests`, about 5 minutes).
+3. Bump `VERSION_NUMBER` in `src/slidemage/version.py`, add a `CHANGELOG.md` entry in the existing format
+   (technical paragraph, then a "NEW:" summary for users), commit the step's files only, stop and wait.
+4. Same for C4.
 
 What exists today: `SourceFile.save()` (`ui/workspace/source_file.py`) asks the bump level
 (`prompt_version_choice`), freezes the *outgoing* on-disk text (`slide_versioning.freeze_slide`), asks what each
@@ -140,9 +159,20 @@ Done in v8.18.0. Follow-ups found on the way:
 - Snapshot and export could warn about slides with "+".
 
 ## C3: Retire unsaved state
-- Remove or reduce to a flush call: the close prompt (`window._resolve_dirty_edits`) for source files, the
-  "Save or revert them first" check in `freeze_version`, the .bib "save first" question in `source_view`, the
-  maintenance check (`maintenance.py`), the "N more unsaved" chip, the topbar dirty indicator for source files.
+Already done in C1 (do not redo): the close prompt saves everything first and asks only about edits that could
+not be saved (`window._resolve_dirty_edits` calls `flush_all`); `freeze_version` / `restore_version` /
+`update_version` write the edits first (`CentreColumn._written`); the .bib "save first" question is a write; the
+"N more unsaved" chip now means "could not be saved"; compile, snapshot and preview runs flush first
+(`compile_actions._busy`).
+
+Left for C3:
+- The maintenance check (`ui/workspace/maintenance.py`, `dirty_files()`): flush instead of refusing.
+- The topbar dirty indicator (`topbar._on_dirty_changed`) for source files: it now flickers with every autosave.
+- `window._on_dirty_changed` rebuilds the slide list and refreshes the side panels each time the state turns
+  clean, which is now after every autosave: check the cost while typing, and refresh only what the write
+  changed (or only on Ctrl+S / file switch).
+- Wording that still says "unsaved" / "Save" for source files (docstrings, tooltips, `centre.is_dirty` callers in
+  the side panels, `edit_slide_text`).
 - "Revert" goes: with autosave there is nothing unsaved to discard. Going back is the Versions panel's restore
   (and the editor's undo).
 - Side panels (speaker notes) and the Images page keep their own dirty state in this batch; they already flush
@@ -150,9 +180,12 @@ Done in v8.18.0. Follow-ups found on the way:
 - Tests: closing with recent edits loses nothing and asks nothing; the existing dirty-state tests updated.
 
 ## C4: Docs
-- Manual sections on saving and versions, screenshots (`tools/manual/make_screenshots.py`: the Source view
-  toolbar), release notes in `version.py`.
+- Manual sections on saving and versions (`docs/SlideMage.md`, README), screenshots
+  (`tools/manual/make_screenshots.py`: the Source view toolbar with Update Version, a "v1.2.0+" footer),
+  CHANGELOG entry.
 
 ## Decisions (14 October 2026)
-- C2: frozen `-vX-Y-Z.tex` files stay read-only, with unlock still possible.
+- The "+" model for the version line (above), with C1 and C2 merged into one step.
+- Steps from C3 on run on Sonnet 5.5 medium subagents, reviewed by the orchestrator.
+- Frozen `-vX-Y-Z.tex` files stay read-only, with unlock still possible.
 - C1: debounce delay 1.5 s; no setting to switch autosave off.
