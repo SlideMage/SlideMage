@@ -80,8 +80,14 @@ No step waits for approval.
 
 # Small UI todos, batch 2: continuous saving (14 October 2026)
 
-Source: `docs/small_ui_todos.md`, "Continuous saving, like Overleaf". Each step is one agent run, reviewed,
-tested in full and committed with a version bump; after each commit, stop and wait for the go.
+Source: `docs/small_ui_todos.md`, "Continuous saving, like Overleaf".
+
+How each step runs (from C3 on; C1 was done directly):
+- Execution goes to one Sonnet 5.5 subagent at medium effort per step, given this plan's section for the step
+  and the relevant files.
+- The orchestrator (Opus) reviews the result: reads the diff, checks it against the plan and the "+" rules,
+  fixes or sends back what is wrong, and runs the full test suite.
+- The orchestrator commits with a version bump and a CHANGELOG.md entry, then stops and waits for the go.
 
 | Step | What | Version |
 |---|---|---|
