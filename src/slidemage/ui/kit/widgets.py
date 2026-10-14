@@ -755,7 +755,6 @@ class Popover(QFrame):
             self.raise_()
             if not self.isVisible():
                 self._came_from = QApplication.focusWidget()
-            QApplication.instance().installEventFilter(self)
         else:
             screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
             if screen is not None:
@@ -766,6 +765,10 @@ class Popover(QFrame):
             self.move(global_pos)
         self.show()
         (self.focus_target or self).setFocus()
+        if self._inline:
+            # after the focus change: an application-wide Python filter is handed every QObject of the focus
+            # change, including a web view's half-torn-down Quick items, and wrapping those crashes (segfault)
+            QApplication.instance().installEventFilter(self)
 
     def popup_below(self, anchor: QWidget, *, align_right: bool = False) -> None:
         self._anchor = anchor
