@@ -1,16 +1,17 @@
 %% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
-% SlideMage manual, chapter "Slides": versions, with SlideMage's save dialog
-% (media/screenshot-slidemage-save-dialog.png, a hand-made shot of the Save prompt).
-\setSlideVersion{1-0-1}
+% SlideMage manual, chapter "Slides": versions, with SlideMage's Update Version dialog
+% (media/screenshot-slidemage-save-dialog.png, made by tools/manual/make_screenshots.py).
+\setSlideVersion{1-0-1+}
 \begin{standardframe}{Slide versions}
 	\small
 	A slide used in several courses changes over the years, but last year's deck
 	should still compile as it was. So SlideMage keeps old versions: the file
 	\SMCode{...-current.tex} is the live slide, and every \SMCode{...-v1-2-0.tex}
-	beside it is a frozen copy that is never edited again. Each \emph{Save} in the
-	Source view asks how big the change is:
+	beside it is a frozen copy that is never edited again. Edits are saved as you type,
+	and the footer shows a ``+'' after the number (v1.2.0+) until you press \emph{Update Version}
+	in the Source view, which asks how big the change is:
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.5\linewidth}
@@ -19,8 +20,8 @@
 		\begin{column}{0.46\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item \emph{Major}, \emph{Minor}, \emph{Patch}: the old content is frozen first, then the new one gets the higher number
-				\item \emph{Overwrite}: just save, for a typo
+				\item \emph{Major}, \emph{Minor}, \emph{Patch}: the slide as it is now is frozen under the higher number
+				\item Typo fixes need no version: just keep typing, the \emph{+} stays
 				\item A change to reveal steps only is a \emph{Patch}
 				\item A deck can keep using an old version with \SMCmd{slideversion} (see \emph{Six ways to put a slide into a deck})
 			\end{itemize}

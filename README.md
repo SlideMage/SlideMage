@@ -1059,12 +1059,12 @@ the revision itself. A version file is a point-in-time snapshot, never
 touched again once written; `current.tex` is the only file that changes day
 to day. This means old versions stay usable: you can pin a specific version
 in one deck (e.g. an older lecture you don't want to silently change) while
-another deck follows whatever is current. SlideMage's own Save (in the Source view)
+another deck follows whatever is current. SlideMage's own **Update Version** (in the Source view)
 does this freeze-then-bump step automatically (see "Creating and revising a
 slide" below) -- R's `slide.archive()` is still there for anyone editing
 outside SlideMage.
 
-When a save creates a new version of a slide that is used in more than one
+When Update Version creates a new version of a slide that is used in more than one
 deck, is pinned somewhere, or has a translation, SlideMage first shows
 "Where this slide is used": per deck, *Move to current* (the default: a pinned
 `\slideversion` / `\omitslideversion` becomes `\slide` / `\omitslide`; a call
@@ -1072,7 +1072,7 @@ that follows `current.tex` already moves on) or *Keep vX-Y-Z* (the call is
 pinned to the version just frozen). Decks that only use `\slidefinal`,
 `\conditionalslide` or `\slidestep` always follow `current.tex` and have
 nothing to choose. A translation is named, with its decks, as a reminder to
-update it too (it can be opened right after the save). A frozen version opened
+update it too (it can be opened right after the update). A frozen version opened
 from *Previous versions* has *Make this the current version*: the current
 content is archived as a version first, and the old content comes back under a
 new, higher version number.
@@ -1176,23 +1176,32 @@ registry from whatever's actually in `slides/`:
 SPslide(refresh = TRUE)
 ```
 
-From SlideMage (the normal day-to-day path, 2026-08-20): every **Save**
-of a slide's own `current.tex` asks how significant the change is --
-**Major**, **Minor**, or **Patch** (each shown with the version number it
-would bump to), or **Overwrite** for a change not worth recording at all
-(a typo fix, tightening a sentence). Picking a bump level freezes whatever
-was on disk immediately before the save as `<id>-<slug>-v<old-version>.tex`
-(byte-for-byte, same as the manual R workflow above) and moves
-`current.tex`'s own tracked version forward; **Overwrite** just saves, with
-no freeze and no version change. A slide that has never been through this
-prompt with a real bump choice has no tracked version at all -- its footer
-shows no `v...` segment, and its first bump treats the untracked content as
-if it were already `1.0.0` (so a first-ever Minor save freezes `v1-0-0` and
-leaves `current.tex` at `1.1.0`). `current.tex` itself is never renamed --
-only the frozen snapshot gets the `-v<version>.tex` suffix, exactly as in
-the manual workflow. The **Slide versions** panel adds **Freeze as vX.Y.Z** (Major,
-Minor or Patch): it freezes the current content under its own version and moves the slide
-on, without a change to the text.
+From SlideMage (the normal day-to-day path): edits in the Source view are
+**saved as you type** (a moment after you stop, and before you switch slides,
+compile or close the window; **Ctrl+S** writes at once and renders). There is
+no Save button and no unsaved state to lose. A slide changed since its last
+version shows a **+** after its version number (`\setSlideVersion{1-2-0+}`,
+footer `v1.2.0+`): the content is no longer exactly that version. The first
+time a slide is edited, the content as it was is frozen as its version (a slide
+with no version line counts as `1.0.0`), so no history is lost.
+
+When the changes are worth a version, press **Update Version**: it asks how
+significant the change since the last version is -- **Major**, **Minor** or
+**Patch**, each shown with the number it would bump to -- writes the line as
+that version without the **+**, freezes the slide as it is now as
+`<id>-<slug>-v<version>.tex` (byte-for-byte, same as the manual R workflow
+above) and asks what each deck uses. Decks that follow `current.tex` see the
+edits as they are saved; a deck that must stay fixed pins a version. A version
+number is never reused. A typo fix needs no version at all: keep typing, the
+**+** stays. `current.tex` itself is never renamed -- only the frozen snapshot
+gets the `-v<version>.tex` suffix, exactly as in the manual workflow. The
+**Slide versions** panel adds **Freeze as vX.Y.Z** (Major, Minor or Patch),
+which does the same as Update Version from there.
+
+If the file changes on disk while you have edits (Claude Code in the
+terminal), saving pauses and the bar above the editor lets you choose; the top
+bar says **Unsaved changes** only while edits cannot be saved. Going back is
+the editor's undo, or restoring a version in the Versions panel.
 
 ## Multi-language (EN/DE) slides
 
@@ -1222,7 +1231,7 @@ In SlideMage, the top bar's **EN / DE** switch overrides this default for
 the open deck. The slide list, preview, source editor, Details, side panels
 and Compile PDF follow the linked slide in that language. A missing partner
 keeps the called file and shows **No DE version** (or **No EN version**).
-Unsaved edits are retained separately for each file when switching languages.
+Edits are kept separately for each file when switching languages.
 
 A linked translation occupies its original's place in the deck; an older
 deck that also lists the translation elsewhere shows and compiles one slot.

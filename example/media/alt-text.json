@@ -370,7 +370,7 @@
     "media/screenshot-slidemage-save-dialog.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The Save slide dialog asking how significant the change is.",
+      "short": "The Update Version dialog asking how significant the change is since the last version.",
       "long": "A dialog reading \"Current version: untracked -- How significant is this change?\" with the buttons Major (to 2.0.0), Minor (to 1.1.0), Patch (to 1.0.1), Overwrite (no version tracked) and Cancel.",
       "source": "Screenshot of SlideMage 5.26.",
       "takeaway_default": "Saving a slide asks for the size of the change and versions it.",

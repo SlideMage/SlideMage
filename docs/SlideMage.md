@@ -67,8 +67,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   Every edit goes through `deck_editor` and rescans the decks.
 - **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
-  line, Insert, Cite, Tools and the conflict bar when a file changes on disk under unsaved
-  edits), **Split**, **Details** (`details_view.py`), and the **Images page**
+  line, Insert, Cite, Tools and the conflict bar when a file changes on disk under edits
+  that are not yet written; edits are autosaved, 1.5 s after the last keystroke), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.
 - **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
   versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker
@@ -301,7 +301,7 @@ What matters when touching *this code*:
   page (`images.py`, with `image_nav.py` for the left column, `image_form.py`,
   `image_preview.py`, `image_dialogs.py` for *Replace image* and *Tune prompt*) only
   draws it. The page is slide-centric (the left column lists the slides that show
-  images, with their review state); `repoint_slides` refuses slides with unsaved Source
+  images, with their review state); `repoint_slides` refuses slides with Source
   edits.
 - **Drafting and batch runs happen on a worker thread** (`image_runs.py`'s
   `ImageRunsMixin`, `image_jobs.py`'s `Job`/`JobCard`; one job at a time, Stop works at
@@ -804,26 +804,21 @@ What matters when touching *this code*:
   in the UI before attempting anything, rather than parsing an exception
   message; `duplicate_deck()` re-checks it anyway rather than trusting the
   caller blindly.
-- [`slide_versioning.py`](../src/slidemage/slide_versioning.py) -- the automatic freeze-then-
-  bump workflow behind the Source view's own Save button for a
-  slide's `current.tex` (2026-08-20, direct instruction), replacing manual
-  `slide.archive()` as the everyday path. Pure logic, no Qt/file-path
-  assumptions beyond a `Path` -- `ui/workspace/source_file.py`'s own
-  `prompt_version_choice()` is the only place that shows a prompt (the Slide versions
-  panel's *Freeze as vX.Y.Z* calls `freeze_current()` directly).
-  `parse_version()` reads a `\setSlideVersion{X-Y-Z}` line embedded near
-  the top of `current.tex` (mirrors the `%% Included in decks: ...` header
-  `add_deck_headers.py` maintains -- another tool-managed line nobody
-  hand-edits); `plan_save()` maps the dialog's own major/minor/patch/
-  overwrite choice plus that parsed version to `(final_version, freeze_as)`
-  -- `freeze_as` is `None` for "Overwrite" (never freezes), otherwise the
-  version being retired (the parsed one, or `DEFAULT_BASELINE` `1.0.0` if
-  this is the slide's first-ever tracked save). `freeze_slide()` is a
-  plain `shutil.copy2` of whatever's on disk *before* the save lands, same
-  raw-copy convention `deck_duplicate.py` and `slide.archive.R` both
-  already use -- returns `None` (not an error) if that exact version was
-  somehow already frozen, so a `_on_save()` that hits this doesn't
-  silently clobber real history, just logs and moves on.
+- [`slide_versioning.py`](../src/slidemage/slide_versioning.py) -- the freeze-then-bump
+  workflow behind saving a slide's `current.tex` and the Source view's **Update Version**
+  button (2026-08-20, reworked 2026-10-15 for autosave). Pure logic, no Qt. The version line
+  is `\setSlideVersion{X-Y-Z}`, or `{X-Y-Z+}` for "changed since X.Y.Z" (`parse_marker()`,
+  `set_marker()`). `save_slide()` is every write of a current file (autosave, Ctrl+S):
+  `prepare_autosave()` first freezes the file on disk as its version when that version is not
+  frozen yet (`freeze_slide()`, a plain `shutil.copy2`, `None` if already frozen, so history is
+  never clobbered), and the written text gets the "+". `update_version()` / `plan_update()`
+  turn a major / minor / patch choice into the new number (never one that is frozen already),
+  write it without "+" and freeze it; `restore_version()` freezes a "+" slide's content as the
+  next patch before restoring. `ui/workspace/source_file.py`'s `prompt_version_level()` is the
+  only place that shows a prompt (the Slide versions panel's *Freeze as vX.Y.Z* calls
+  `freeze_current()` directly). `SourceFile.write_now()` is the autosave (1.5 s debounce, also on
+  file switch, compile and close), paused while the buffer is read-only, in conflict with a
+  change on disk or under an AI fix (`SourceFile.blocked`).
   `\slideversion{ID-slug}{X-Y-Z}` reads the version from its own second
   argument, never from a frozen file's content -- so frozen files
   themselves never need a `\setSlideVersion{}` of their own, and this

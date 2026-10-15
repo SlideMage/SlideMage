@@ -30,6 +30,7 @@ REPO = Path(__file__).resolve().parents[2]
 PREFIX = "screenshot-slidemage-"
 MANUAL = "slidemage-manual"   # the deck every shot is taken in
 WINDOW = (1700, 950)
+SLIDE_LIST_WIDTH = 340   # wider than the default column: the bulk bar's "3 slides selected" and its button fit
 # Slides of the example project the shots are taken on: a plain frame, one that cites, one with
 # a picture (a chart that does not change with the UI), the slide whose transcript is shown.
 SLIDE = "1y8"
@@ -44,18 +45,19 @@ PLACEHOLDER_DECKS = {"#workdeck": "work", "course-example-2027s": "course", "tal
 # is (left, top, right, bottom) as fractions of the shot, None for all of it.
 MANUAL_IMAGES = {
     "main-window": ("workspace-preview", None),
-    "slide-list": ("slide-list", (0.004, 0.128, 0.172, 1.0)),
+    "slide-list": ("slide-list", (0.004, 0.118, 0.209, 1.0)),
     "slide-editor": ("workspace-source", None),
-    "slide-details": ("workspace-details", (0.19, 0.09, 0.78, 0.4)),
-    "slide-preview": ("workspace-preview", (0.185, 0.085, 0.79, 0.99)),
-    "side-panel": ("panel-visibility", (0.795, 0.08, 0.995, 0.22)),
-    "deck-switcher": ("menu-deck", (0.0, 0.0, 0.235, 0.268)),
+    "slide-details": ("workspace-details", (0.1525, 0.105, 0.6725, 0.405)),
+    "slide-preview": ("workspace-preview", (0.139, 0.08, 0.685, 0.99)),
+    "side-panel": ("panel-visibility", (0.6875, 0.08, 0.9925, 0.265)),
+    "deck-switcher": ("menu-deck", (0.0, 0.0, 0.245, 0.27)),
     "tags-dialog": ("deck-group", None),
     "images-page": ("images-page", None),
-    "images-toolbar": ("images-page", (0.0, 0.815, 0.235, 0.99)),
+    "images-toolbar": ("images-page", (0.0, 0.745, 0.2, 0.985)),
+    "save-dialog": ("save-prompt", None),
     "transcript": ("transcript", None),
-    "chat": ("chat", (0.793, 0.425, 0.995, 0.78)),
-    "palette": ("palette-search", (0.3175, 0.116, 0.6825, 0.509)),
+    "chat": ("chat", (0.6875, 0.434, 0.995, 0.99)),
+    "palette": ("palette-search", (0.3175, 0.1154, 0.6825, 0.503)),
 }
 
 
@@ -75,6 +77,7 @@ def prepare_project(parent: Path) -> Path:
     project = parent / "example"
     shutil.copytree(REPO / "example", project, ignore=ignore)
     shutil.copytree(REPO / "latex", parent / "latex", ignore=ignore)
+    (project / "decks" / "slidemage-manual-copy.tex").unlink(missing_ok=True)   # the project's copy: not part of the picture
     manual = (project / "decks" / "slidemage-manual.tex").read_text(encoding="utf-8")
     preamble = manual.split("\\begin{document}")[0]
     for name, tag in PLACEHOLDER_DECKS.items():
@@ -99,6 +102,19 @@ class Shooter:
         path = self.out_dir / f"{PREFIX}{name}.png"
         image.save(str(path))
         print(f"{path.name}  {image.width()} x {image.height()}")
+
+    def show_cached_preview(self) -> None:
+        from slidemage.ui.workspace.preview_view import _mtime
+
+        """Show the focused slide's cached snapshot as a finished render, without the "Cached preview" note
+        (a real render needs a full LaTeX build, which a throwaway copy has not got)."""
+        preview = self.window.centre.preview
+        target = preview._target
+        image = preview._image(target)
+        key = (target.key, self.window.state.view, preview.language, preview._footer_timestamp())
+        preview._pixmaps[key] = (image[0], _mtime(target.source_path))
+        preview._refresh()
+        self.settle(10)
 
     def window_shot(self, name: str) -> None:
         self.settle()
@@ -137,6 +153,8 @@ class Shooter:
 # -- the shots --------------------------------------------------------------------------------------
 
 def shot_workspace(shooter: Shooter) -> None:
+    shooter.focus(SLIDE)
+    shooter.show_cached_preview()
     for mode in ("preview", "source", "split", "details"):
         shooter.focus(SLIDE, mode)
         shooter.window_shot(f"workspace-{mode}")
@@ -160,7 +178,6 @@ def shot_chat(shooter: Shooter) -> None:
 
     shooter.focus(SLIDE)
     chat = shooter.window.assistant.chat
-    shooter.window.assistant.show_view("chat")
     shooter.window_shot("chat-empty")
     chat.new_chat()
     chat._begin_conversation()
@@ -180,9 +197,12 @@ def shot_slide_list(shooter: Shooter) -> None:
     """The slide list in a short window, with three slides selected (the bulk bar shows)."""
     from PySide6.QtWidgets import QAbstractItemView
 
+    from slidemage.ui.workspace import slide_list
+
     window = shooter.window
     shooter.focus("1gu")
     window.resize(WINDOW[0], 530)
+    window.set_column_widths(left=SLIDE_LIST_WIDTH)
     shooter.settle(10)
     tree = window.slide_list.tree
     wanted = [item for item in tree.slide_items() if tree.data_of(item).call.id in ("1gu", "1kg", "1tb")]
@@ -192,6 +212,7 @@ def shot_slide_list(shooter: Shooter) -> None:
     shooter.window_shot("slide-list")
     tree.clearSelection()
     window.resize(*WINDOW)
+    window.set_column_widths(left=slide_list.WIDTH)
     shooter.settle(10)
 
 
@@ -203,6 +224,24 @@ def shot_palette(shooter: Shooter) -> None:
     palette.input.setText("source")
     shooter.window_shot("palette-search")
     palette.hide()
+
+
+def shot_save_prompt(shooter: Shooter) -> None:
+    """The Update Version prompt of a slide's source: a modal message box, grabbed by a timer while it is open."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
+
+    from slidemage.ui.workspace.source_file import prompt_version_level
+
+    def grab() -> None:
+        box = QApplication.activeModalWidget()
+        box.setFixedWidth(700)            # offscreen the box is sized for the text, and clips its buttons
+        shooter.settle()
+        shooter.save(box.grab(), "save-prompt")
+        box.reject()
+
+    QTimer.singleShot(500, grab)
+    prompt_version_level(shooter.window, (1, 2, 0))
 
 
 def shot_menus(shooter: Shooter) -> None:
@@ -232,7 +271,7 @@ def shot_compile_job(shooter: Shooter) -> None:
     names = {"manual-instructor": "manual · Instructor", "manual-during-course": "manual · During course",
              "manual-after-course": "manual · After course"}
     run = RunStatus(names, root=root, verb="Compiling", pdfs={n: root / "decks" / "pdf" / f"{n}.pdf" for n in names})
-    panel = window.job_panel
+    panel = window.compile_display.panel
     panel.start(run, per_job_stop=True, can_retry=True)
     for line in ("==== Compiling manual -> manual-instructor ====", "==== PASS: manual-instructor -> x ====",
                  "==== Compiling manual -> manual-during-course ===="):
@@ -305,6 +344,7 @@ SHOTS = {
     "chat": shot_chat,                 # chat-empty, chat
     "slide-list": shot_slide_list,     # slide-list
     "palette": shot_palette,           # palette, palette-search
+    "save-prompt": shot_save_prompt,   # save-prompt
     "menus": shot_menus,               # menu-deck, menu-compile
     "compile-job": shot_compile_job,   # compile-job, compile-job-done
     "images-page": shot_images_page,   # images-page

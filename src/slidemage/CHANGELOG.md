@@ -2329,3 +2329,7 @@ NEW: Nothing is left "unsaved" while you type.
 - The top bar says "Unsaved changes" only when edits really could not be saved, for example while a file is in conflict with a change on disk.
 - The Revert button is gone: go back with Undo or restore a version in the Versions panel.
 - Messages that asked you to "save first" now appear only when saving was not possible, and say why.
+
+v8.19.1 (2026-10-15, docs for autosave): The manual describes saving as you type, the "+" on the version line and Update Version in README.md and docs/SlideMage.md (slide_versioning, SourceFile.write_now). The example manual's slides 1an (Slide versions), 1b6 (Slide editor) and 1wk (AI assistant) say Update Version instead of Save and Overwrite, and carry the "+" themselves; screenshot-slidemage-save-dialog.png is now the Update Version prompt, made by tools/manual/make_screenshots.py (shot_save_prompt, using prompt_version_level), with its alt text.
+
+NEW: The manual and the example slides explain automatic saving and Update Version.
