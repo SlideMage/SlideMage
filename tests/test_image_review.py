@@ -233,7 +233,7 @@ def test_repoint_leaves_a_slide_with_unsaved_source_edits_alone(ctx, store):
     changed, failures = image_review.repoint_slides(ctx, 
         entry, {IMG: entry}, targets, {}, IMG, "media/n.png", unsaved=lambda path: path == open_slide.path)
     assert changed == ["2bbb"]
-    assert len(failures) == 1 and failures[0].startswith("1aaa:") and "unsaved edits" in failures[0]
+    assert len(failures) == 1 and failures[0].startswith("1aaa:") and "could not be saved" in failures[0]
     assert IMG in open_slide.path.read_text(encoding="utf-8")            # untouched
     assert "media/n.png" in other.path.read_text(encoding="utf-8")
 

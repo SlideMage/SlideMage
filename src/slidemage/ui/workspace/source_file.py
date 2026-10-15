@@ -149,6 +149,13 @@ class SourceFile(Surface):
         return not self.conflict_bar.isHidden()
 
     @property
+    def blocked(self) -> bool:
+        """The buffer has edits that are not written and will not be until something changes: a read-only
+        buffer, the conflict bar up, or an AI fix running. (Plain `dirty` is also true between a keystroke
+        and its autosave.)"""
+        return self.dirty and (self.editor.is_read_only() or self.conflicted or self.fix_panel.running)
+
+    @property
     def keep_open(self) -> bool:
         """Whether the view must not drop this file when it is shown no more: unsaved
         edits or a running "Ask AI to fix"."""
@@ -310,15 +317,6 @@ class SourceFile(Surface):
         self._set_conflict(None)
         self._schedule_autosave()
 
-    def revert(self) -> None:
-        if not self.dirty:
-            return
-        reply = QMessageBox.question(
-            self.app, "Revert", f"Discard unsaved changes to {self.path.name} and reload the saved version?")
-        if reply == QMessageBox.StandardButton.Yes:
-            self.reload()
-            self.app.log(f"Reverted {self.path.name} to the saved version")
-
     def _schedule_autosave(self) -> None:
         if self.dirty and not self.editor.is_read_only():
             self._autosave_timer.start()
@@ -339,7 +337,7 @@ class SourceFile(Surface):
             if explicit:
                 self.saved.emit()
             return True
-        if self.editor.is_read_only() or self.conflicted or self.fix_panel.running:
+        if self.blocked:
             return False
         raw_text = self.editor.text()
         previous_text = self.text

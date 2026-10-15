@@ -89,7 +89,7 @@ def test_open_project_resolves_dirty_source_before_relaunch(monkeypatch, qapp, t
     monkeypatch.setattr(QMessageBox, "question", answer)
     window._on_open_project()
 
-    assert titles == ["Unsaved source edits"]
+    assert titles == ["Edits that could not be saved"]
     assert relaunched == [chosen]
     assert file.dirty  # the explicit Discard choice applies to this relaunch
     assert window.isHidden()

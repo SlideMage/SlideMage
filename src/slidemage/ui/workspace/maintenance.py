@@ -107,10 +107,11 @@ def show_compat(window, evaluation, *, review: bool) -> None:
 
 def compat_update(window, evaluation) -> None:
     app_version = version_mod.VERSION_NUMBER
+    window.centre.source.flush_all()      # saved as you type: only what could not be written is left
     if window.centre.source.dirty_files():
         QMessageBox.information(
             window, "Update project",
-            "Save or revert the unsaved edits in the Source view first, so the update and "
+            "Some edits in the Source view could not be saved. Resolve that first, so the update and "
             "an editor can't overwrite each other.")
         return
     result = compat.run_update(window.project.root, evaluation.loud)

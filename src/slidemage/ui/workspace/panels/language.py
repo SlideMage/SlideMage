@@ -98,7 +98,7 @@ class Language(SidePanel):
 
     def _saved(self, title: str) -> bool:
         """Whether the slide's file may be moved: not while the Source view holds
-        unsaved edits of it."""
+        edits of it that could not be saved."""
         path = self.slide_path()
         if path is not None and self.actions.is_dirty(path):
             QMessageBox.warning(self, title, SAVE_FIRST)

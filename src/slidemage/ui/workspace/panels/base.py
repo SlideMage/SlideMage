@@ -33,10 +33,10 @@ from ..state import WorkspaceState
 class PanelActions(NamedTuple):
     """What the side panels ask of the rest of the window: the Source view's buffers and the deck
     edits of the slide list. Passed in, so that no panel reaches through the window to its siblings."""
-    slide_text: Callable[[Path], str]                     # the text of a slide file, unsaved edits included
-    is_dirty: Callable[[Path], bool]                      # the Source view holds unsaved edits of this file
+    slide_text: Callable[[Path], str]                     # the text of a slide file, edits not yet written included
+    is_dirty: Callable[[Path], bool]                      # the Source view holds edits of this file that could not be saved
     edit_slide_text: Callable[..., bool]                  # change a slide's text through the Source view
-    save_source: Callable[[], object]
+    save_source: Callable[[], object]                     # Ctrl+S: write the Source view's file now and render it
     restore_version: Callable[[Path], object]
     freeze_version: Callable[[str, str], object]
     edit_deck: Callable[..., bool]                        # an edit of the open deck (SlideList.edit)
@@ -184,6 +184,6 @@ class SidePanel(Surface):
         return path if path is not None and path.is_file() else None
 
     def slide_text(self) -> str:
-        """The text of that file, with unsaved edits of the Source view (`CentreColumn.slide_text`)."""
+        """The text of that file, with the edits of the Source view not yet written (`CentreColumn.slide_text`)."""
         path = self.slide_path()
         return self.actions.slide_text(path) if path is not None else ""

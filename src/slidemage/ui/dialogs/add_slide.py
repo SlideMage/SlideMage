@@ -83,7 +83,7 @@ class AddSlideSheet(ModalSheet):
     def __init__(self, app, deck: Deck, insert_at: int, indent: str, *, where: str = "", source: str = "new",
                  slide: Optional[str] = None, target: Optional[str] = None,
                  is_dirty: Callable[[Path], bool]) -> None:
-        """`app` is the window and `is_dirty(path)` says whether the Source view holds unsaved edits of a file; the slide goes into `deck` at the offset `insert_at` (indented by
+        """`app` is the window and `is_dirty(path)` says whether the Source view holds edits of a file that could not be saved; the slide goes into `deck` at the offset `insert_at` (indented by
         `indent`), described by `where` ("after 1y8"). `source` is the one to start on, `slide` the
         id-slug Duplicate and Translate start from, `target` the language a translation starts on. A
         translation of another slide than `slide` goes directly after that one's call instead."""
@@ -315,7 +315,7 @@ class AddSlideSheet(ModalSheet):
                 return "This slide has no frozen version."
         else:
             if self._is_dirty(slide_add.slide_path(self.app.project, self.picked())):
-                return "Save this slide's unsaved changes first: the copy is made from the saved file."
+                return "This slide's edits in the Source view could not be saved (see the notice there): the copy is made from the saved file."
             if not slide_add.SLUG_RE.match(self.slug()):
                 return SLUG_HINT
         try:

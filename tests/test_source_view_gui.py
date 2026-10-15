@@ -188,9 +188,9 @@ def test_a_file_is_written_and_dropped_when_another_is_shown_unless_it_cannot_be
     assert list(pane._files) == [second] and closed == [first]      # the clean one is gone
 
     pane.current.editor.insertPlainText("edit ")
-    assert pane.current.dirty and states == [True]
+    assert pane.current.dirty and states == []                      # a pending autosave is not an unsaved edit
     pane.show_path(first)
-    assert list(pane._files) == [first] and states == [True, False]  # written, then dropped
+    assert list(pane._files) == [first] and states == []            # written, then dropped
     assert second.read_text(encoding="utf-8").startswith("\\setSlideVersion{1-0-0+}\nedit ")
 
     pane.current.editor.insertPlainText("mine ")
@@ -198,6 +198,7 @@ def test_a_file_is_written_and_dropped_when_another_is_shown_unless_it_cannot_be
     pane.show_path(second)
     assert set(pane._files) == {first, second}                      # the one in conflict stays
     assert [f.path for f in pane.dirty_files()] == [first] and pane.file_for(first).conflicted
+    assert [f.path for f in pane.blocked_files()] == [first] and states == [True]   # only this is reported
     assert pane._elsewhere_chip.isVisibleTo(pane)
     shown = []
     pane.file_requested.connect(shown.append)
@@ -385,16 +386,8 @@ def test_an_unlocked_frozen_version_saves_plainly(pane, slides, quick):
     assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-0-0}\n" + BODY + "% fixed\n"
 
 
-def test_revert_asks_and_reloads_the_saved_file(pane, slides, monkeypatch):
-    path = slides / "def-EN-Other-current.tex"
-    pane.show_path(path)
-    pane.current.editor.insertPlainText("x")
-    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.No)
-    pane._revert_button.click()
-    assert pane.current.dirty
-    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
-    pane._revert_button.click()
-    assert not pane.current.dirty and pane.current.editor.text() == BODY
+def test_the_toolbar_has_no_revert_button(pane):
+    assert not hasattr(pane, "_revert_button")
 
 
 def test_buffer_gives_the_text_and_selection_of_a_slide_only(pane, slides, tmp_path):

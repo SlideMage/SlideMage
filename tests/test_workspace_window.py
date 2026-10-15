@@ -438,7 +438,8 @@ def test_images_button_toggles_the_images_page(window, monkeypatch):
     assert window.stack.currentWidget() is window.centre
 
 
-def test_a_slide_editor_opens_in_the_centre_and_unsaved_edits_show_in_the_top_bar(window, tmp_path, monkeypatch):
+def test_a_slide_editor_opens_in_the_centre_and_only_edits_that_cannot_be_saved_show_in_the_top_bar(
+        window, tmp_path, monkeypatch):
     redraws = []
     monkeypatch.setattr(window.slide_list, "rebuild", lambda: redraws.append(True))
     path = tmp_path / "abc-EN-Test-current.tex"
@@ -447,12 +448,16 @@ def test_a_slide_editor_opens_in_the_centre_and_unsaved_edits_show_in_the_top_ba
     file = window.centre.source.current
     assert window.stack.currentWidget() is window.centre and window.state.mode == "source"
     assert file.path == path and window.topbar._save.text() == "Saved"
+    window._after_write.setInterval(20)
     file.editor.insertPlainText("x")
+    assert window.topbar._save.text() == "Saved" and not window.state.dirty    # an autosave is pending
+    assert file.write_now() and redraws == []                     # no rebuild per write while typing
+    QTest.qWait(200)
+    assert len(redraws) == 1                                      # one, after a pause
+    path.write_text("someone else's\n", encoding="utf-8")
+    file.editor.insertPlainText("y")
+    assert not file.write_now()                                   # in conflict: cannot be saved
     assert window.topbar._save.text() == "Unsaved changes" and window.state.dirty
-    assert redraws == []                                          # still being edited
-    file.editor.mark_saved()
-    assert window.topbar._save.text() == "Saved" and not window.state.dirty
-    assert redraws
 
 
 def test_opening_a_slide_focuses_it(window):

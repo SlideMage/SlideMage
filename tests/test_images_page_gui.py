@@ -36,7 +36,7 @@ class FakeApp:
         self.unsaved: set[Path] = set()     # slide files with unsaved edits in the Source view
         self.synced: list[Path] = []
         self.opened: list[Path] = []
-        self.centre = SimpleNamespace(is_dirty=lambda path: path in self.unsaved, sync_source=self.synced.append,
+        self.centre = SimpleNamespace(unsaved=lambda path: path in self.unsaved, sync_source=self.synced.append,
                                       slide_text=lambda path: path.read_text(encoding="utf-8"))
 
     def log(self, line):
@@ -761,7 +761,7 @@ def test_replace_image_repoints_clean_slides_and_refuses_one_with_unsaved_edits(
     assert (tmp_path / "media" / "chart-new.png").read_bytes() == b"png"
     assert "media/chart-new.png" in page.first.path.read_text(encoding="utf-8")
     assert CHART in page.second.path.read_text(encoding="utf-8")                  # unsaved buffer: left alone
-    assert "unsaved edits" in warned[0] and "two" in warned[0]
+    assert "could not be saved" in warned[0] and "two" in warned[0]
     assert page.app.synced == [page.first.path]                                   # a clean buffer is re-read
     assert asked == [] and CHART in page.store                                    # still used on slide two: kept
 

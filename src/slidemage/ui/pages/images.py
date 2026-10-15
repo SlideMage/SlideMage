@@ -64,7 +64,7 @@ class ImagesPage(ImageRunsMixin, Surface):
 
     def __init__(self, app, state, source) -> None:
         """`app` is the window: it logs, opens a slide in the Source view and holds the Ollama slot; `state` says
-        which deck is open; `source` (the centre column) gives the Source view's buffers: slide_text, is_dirty, sync_source."""
+        which deck is open; `source` (the centre column) gives the Source view's buffers: slide_text, unsaved, sync_source."""
         super().__init__()
         self.app, self.state, self.source = app, state, source
         self.dirty = False
@@ -462,7 +462,7 @@ class ImagesPage(ImageRunsMixin, Surface):
             targets.update({slide_id: rows[slide_id].path for slide_id in others if slide_id in rows})
         changed, failures = image_review.repoint_slides(
             self.app.project, form.entry, self._entries, targets, rows, form.reference, f"media/{sheet.new_name}",
-            unsaved=self.source.is_dirty)
+            unsaved=self.source.unsaved)
         for slide_id in changed:
             self.source.sync_source(targets[slide_id])   # a clean buffer of the slide shows the new reference
         if changed:

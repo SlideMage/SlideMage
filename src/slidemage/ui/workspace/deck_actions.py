@@ -136,11 +136,11 @@ def on_open_latest_pdf(window, deck: Deck) -> None:
 def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
     """⋮ -> "Deck settings…": the deck-wide settings that live in the deck's own file
     (deck_settings.py), all written in one go, and the admin slides of its course page."""
-    if window.centre.is_dirty(deck.path):
+    if window.centre.unsaved(deck.path):
         QMessageBox.information(
             window, "Deck settings",
-            f"{deck.name}.tex has unsaved edits in the Source view -- save or "
-            "revert them first, so this change and that editor can't overwrite each other.",
+            f"{deck.name}.tex has edits in the Source view that could not be saved -- resolve "
+            "that first, so this change and that editor can't overwrite each other.",
         )
         return
     sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab)
@@ -184,12 +184,11 @@ def insert_admin_slides(window, deck: Deck, admin: AdminSlidesTab) -> None:
 def on_edit_deck_tags(window, deck: Deck) -> None:
     """⋮ -> "Tags…": choose the group the deck appears
     in. Written into the deck's own file as \\decktags{...}."""
-    if window.centre.is_dirty(deck.path):
+    if window.centre.unsaved(deck.path):
         QMessageBox.information(
             window, "Tags",
-            f"{deck.name}.tex has unsaved edits in the Source view -- save or "
-            "revert them first, so this change and that editor can't overwrite each "
-            "other.",
+            f"{deck.name}.tex has edits in the Source view that could not be saved -- resolve "
+            "that first, so this change and that editor can't overwrite each other.",
         )
         return
     if deck.group == TAG_MANUAL:

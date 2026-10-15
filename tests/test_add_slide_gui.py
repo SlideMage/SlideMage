@@ -34,7 +34,7 @@ class FakeWindow(QWidget):
         self.project = project
         self.dirty: set = set()
         self.edits, self.opened, self.slots = [], [], []
-        self.centre = SimpleNamespace(is_dirty=lambda path: path in self.dirty)
+        self.centre = SimpleNamespace(unsaved=lambda path: path in self.dirty)
 
     def after_deck_edit(self, path, summary, previous_text=None):
         self.edits.append((path, summary, previous_text))
@@ -99,7 +99,7 @@ def make(project, qapp):
         window = FakeWindow(ProjectContext.at(project.slides.parent))
         deck = next(d for d in deck_scan.scan_decks(window.project) if d.name == "course")
         insert_at, indent = deck_editor.append_position(deck)
-        sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", is_dirty=window.centre.is_dirty, **start)
+        sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", is_dirty=window.centre.unsaved, **start)
         keep.append((window, sheet))
         sheet.show()
         return sheet, window
@@ -262,7 +262,7 @@ def test_a_copy_needs_the_saved_file_and_a_good_slug(make, project):
     sheet, window = make(source="duplicate", slide="abc-EN-Demo")
     window.dirty.add(project.slides / "abc-EN-Demo-current.tex")
     sheet._sync()
-    assert "unsaved changes" in sheet.status.text() and not sheet.ok.isEnabled()
+    assert "could not be saved" in sheet.status.text() and not sheet.ok.isEnabled()
     window.dirty.clear()
     sheet.copy_slug.setText("two words")
     sheet._sync()

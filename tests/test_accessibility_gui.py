@@ -58,7 +58,7 @@ def add_slide_sheet(window, tmp_path, monkeypatch):
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
     deck = next(d for d in deck_scan.scan_decks(window.project) if not d.archived)
     insert_at, indent = deck_editor.append_position(deck)
-    return AddSlideSheet(window, deck, insert_at, indent, is_dirty=window.centre.is_dirty)
+    return AddSlideSheet(window, deck, insert_at, indent, is_dirty=window.centre.unsaved)
 
 
 def tuning_sheet(window, tmp_path, monkeypatch):

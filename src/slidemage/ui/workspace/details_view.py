@@ -34,8 +34,8 @@ from ..kit.widgets import Button, Chip, Surface
 from . import compare_rendered
 from .state import WorkspaceState
 
-SAVE_FIRST = ("Save or revert this slide's unsaved changes first: the file is moved on disk, "
-              "and an unsaved buffer would be saved under (or lost relative to) the wrong name.")
+SAVE_FIRST = ("This slide's edits in the Source view could not be saved (see the notice there). Resolve that first: "
+              "the file is moved on disk, and the buffer would be saved under (or lost relative to) the wrong name.")
 
 
 def _label(text: str, name: str) -> QLabel:
@@ -49,7 +49,7 @@ class DetailsPane(Surface):
     duplicate_requested = Signal(str)   # the id-slug of the slide to duplicate into a deck
 
     def __init__(self, app, state: WorkspaceState, is_dirty: Callable[[Path], bool]) -> None:
-        """`is_dirty(path)`: whether the Source view holds unsaved edits of that file."""
+        """`is_dirty(path)`: whether the Source view holds edits of that file that could not be saved (writing the others first)."""
         super().__init__()
         self.app = app
         self.state = state
@@ -161,7 +161,7 @@ class DetailsPane(Surface):
 
     def _guard(self, title: str) -> bool:
         """Whether the slide's file may be moved: not while the Source view
-        holds unsaved edits of it."""
+        holds edits of it that could not be saved."""
         if self._is_dirty(self.current_path):
             QMessageBox.warning(self, title, SAVE_FIRST)
             return False

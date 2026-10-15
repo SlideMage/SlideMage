@@ -77,7 +77,7 @@ class CentreColumn(QFrame):
 
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
-        self.details = DetailsPane(app, state, self.is_dirty)
+        self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
         ratio = layout_settings.get(SPLIT_SETTING)
         self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
@@ -143,8 +143,16 @@ class CentreColumn(QFrame):
         return self._path
 
     def is_dirty(self, path: Path) -> bool:
+        """The Source view's buffer of `path` differs from the file: briefly between a keystroke and its
+        autosave, for good when it cannot be saved. For a display; `unsaved` is the question before a change."""
         file = self.source.file_for(path)
         return file is not None and file.dirty
+
+    def unsaved(self, path: Path) -> bool:
+        """Whether the Source view holds edits of `path` that could not be saved (a conflict with a change
+        on disk, a read-only buffer, an AI fix running). The edits that can be are written first."""
+        file = self.source.file_for(path)
+        return file is not None and not file.write_now() and file.dirty
 
     def sync_source(self, path: Path) -> None:
         """Show the file again if it changed on disk elsewhere in the app, unless it has unsaved edits."""
@@ -176,15 +184,14 @@ class CentreColumn(QFrame):
         return self.source.buffer(path) if path is not None else None
 
     def slide_text(self, path: Path) -> str:
-        """The text of a slide file as the Source view has it, unsaved edits included, else the saved file."""
+        """The text of a slide file as the Source view has it, edits not yet written included, else the saved file."""
         file = self.source.file_for(path)
         return file.editor.text() if file is not None else slide_source.read_slide_source(path)[0]
 
     def edit_slide_text(self, path: Path, change: Callable[[str], str]) -> bool:
         """Apply `change(text) -> text` to the Source view's buffer of `path`, as one undo step, and
-        leave it to the Source view's autosave, so that an edit made from a panel is never saved by
-        another route. False
-        when the file is not editable (a frozen version, until it is unlocked)."""
+        leave it to the Source view's autosave, so that an edit made from a panel is never written by
+        another route. False when the file is not editable (a frozen version, until it is unlocked)."""
         self.source.show_path(path)
         file = self.source.current
         if file is None or file.editor.is_read_only():
@@ -288,7 +295,7 @@ class CentreColumn(QFrame):
     # -- keeping the views in step -----------------------------------------------------
 
     def _update_dirty(self, _dirty: bool = False) -> None:
-        self.state.set_dirty(bool(self.source.dirty_files()))
+        self.state.set_dirty(bool(self.source.blocked_files()))   # saved as you type: only edits that cannot be saved
 
     def _on_deck_changed(self, _deck) -> None:
         self._path = None

@@ -226,9 +226,9 @@ def test_edits_are_saved_when_another_slide_is_focused(centre, project):
     state.set_mode("source")
     state.set_focused_slide("aaa")
     centre.source.current.editor.insertPlainText("edit ")
-    assert dirty == [True] and state.dirty
+    assert dirty == [] and not state.dirty            # saved as you type: a pending autosave is not an unsaved edit
     state.set_focused_slide("ccc")
-    assert dirty == [True, False] and not state.dirty
+    assert dirty == [] and not state.dirty
     assert "edit " in (project / "aaa-EN-One-current.tex").read_text()
     state.set_focused_slide("aaa")
     assert "edit " in centre.source.current.editor.text() and not centre.source.current.dirty
@@ -528,11 +528,13 @@ def test_details_follow_the_focused_slide(centre):
     assert "not a slide" in centre.details.findChildren(QLabel)[0].text()
 
 
-def test_moving_a_slide_with_unsaved_edits_is_refused(centre, project, monkeypatch):
+def test_moving_a_slide_with_edits_that_cannot_be_saved_is_refused(centre, project, monkeypatch):
     state = centre.state
     state.set_mode("source")
     state.set_focused_slide("ccc")
     centre.source.current.editor.insertPlainText("edit ")
+    path = project / "ccc-DE-Drei-current.tex"
+    path.write_text(path.read_text(encoding="utf-8") + "% elsewhere\n", encoding="utf-8")   # so the edit is in conflict
     state.set_mode("details")
     told = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))

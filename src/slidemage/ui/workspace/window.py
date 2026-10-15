@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QByteArray, QSize, Qt, Signal
+from PySide6.QtCore import QByteArray, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -72,6 +72,7 @@ from .topbar import TopBar
 
 # Settings key of the deck that was open when the app was last closed.
 LAST_DECK_KEY = "last_deck"
+AFTER_WRITE_REFRESH_MS = 3000   # quiet time after an autosave before the slide list and side panels are refreshed
 
 
 class _ColumnHandle(QSplitterHandle):
@@ -160,7 +161,7 @@ class WorkspaceWindow(QMainWindow):
         self.toast = Toast(central)
         self.slide_list = SlideList(self, self.state, theme, self.toast)
         self.side_panels = SidePanels(self, self.state, PanelActions(
-            slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.is_dirty(path),
+            slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
             edit_slide_text=lambda path, change: self.centre.edit_slide_text(path, change),
             save_source=lambda: self.centre.source.save(),
             restore_version=lambda path: self.centre.restore_version(path),
@@ -214,6 +215,14 @@ class WorkspaceWindow(QMainWindow):
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         self.state.deck_changed.connect(self._remember_deck)
         self.state.dirty_changed.connect(self._on_dirty_changed)
+        # An autosave changes lint errors, stale previews and versions, but a rebuild per write while
+        # typing is wasted work: the refresh waits for a pause (Ctrl+S and a file switch are writes too).
+        self._after_write = QTimer(self)
+        self._after_write.setSingleShot(True)
+        self._after_write.setInterval(AFTER_WRITE_REFRESH_MS)
+        self._after_write.timeout.connect(self._refresh_after_write)
+        self.centre.source.written.connect(lambda _path: self._after_write.start())
+        self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
@@ -415,8 +424,12 @@ class WorkspaceWindow(QMainWindow):
 
     def _on_dirty_changed(self, dirty: bool) -> None:
         if not dirty:
-            self.slide_list.rebuild()   # a save changes lint errors and stale previews
-            self.side_panels.refresh()  # and the slide's versions
+            self._refresh_after_write()
+
+    def _refresh_after_write(self) -> None:
+        self._after_write.stop()
+        self.slide_list.rebuild()   # a save changes lint errors and stale previews
+        self.side_panels.refresh()  # and the slide's versions
 
     # -- deck resync after edits -----------------------------------------------
 
@@ -459,13 +472,13 @@ class WorkspaceWindow(QMainWindow):
         dirty_files = self.centre.source.dirty_files()
         panels = self.side_panels.dirty_panels() + ([self.images_page] if self.images_page.dirty else [])
         if dirty_files or panels:
-            unsaved = [plural(len(dirty_files), "unsaved file")] if dirty_files else []
+            unsaved = [plural(len(dirty_files), "file that could not be saved")] if dirty_files else []
             if panels:
                 unsaved.append("edits in the " + " and ".join(p.title for p in panels) + " panel"
                                + ("s" if len(panels) > 1 else ""))
             choice = QMessageBox.question(
                 self,
-                "Unsaved source edits",
+                "Edits that could not be saved",
                 f"Save changes in {' and '.join(unsaved)} before closing?",
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.No
@@ -697,7 +710,7 @@ class WorkspaceWindow(QMainWindow):
     def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str, **start) -> None:
         """The Add slide sheet for a place in `deck`; `start`: where, source, slide, target
         (AddSlideSheet)."""
-        AddSlideSheet(self, deck, insert_at, indent, is_dirty=self.centre.is_dirty, **start).exec()
+        AddSlideSheet(self, deck, insert_at, indent, is_dirty=self.centre.unsaved, **start).exec()
 
     def _build_snapshot_banner(self) -> Optional[QLabel]:
         """A line above the tabs when the open project is a deck snapshot:

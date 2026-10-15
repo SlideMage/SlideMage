@@ -66,7 +66,7 @@ def window(root, monkeypatch, changes, choice, logged):
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     return SimpleNamespace(
-        project=ProjectContext.at(root), log=logged.append, centre=SimpleNamespace(source=SimpleNamespace(dirty_files=lambda: [])),
+        project=ProjectContext.at(root), log=logged.append, centre=SimpleNamespace(source=SimpleNamespace(dirty_files=lambda: [], flush_all=lambda: None)),
         refresh_open_deck_editors=lambda: None)
 
 
@@ -98,7 +98,7 @@ def test_update_project_only_acknowledges_when_all_is_fixed(tmp_path, monkeypatc
         assert compat.checked_version(root) == "v5.30.0"
 
 
-def test_update_is_refused_while_a_source_has_unsaved_edits(tmp_path, monkeypatch, qapp):
+def test_update_is_refused_while_a_source_has_edits_that_could_not_be_saved(tmp_path, monkeypatch, qapp):
     root = make_project(tmp_path)
     win = window(root, monkeypatch, [BREAKING], project_compat.UPDATE, [])
     win.centre.source.dirty_files = lambda: [object()]

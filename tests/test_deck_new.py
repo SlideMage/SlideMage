@@ -1,7 +1,7 @@
 """New deck: an empty, valid deck file in a template, tagged with its group."""
 import pytest
 
-from slidemage import deck_editor, deck_new, deck_scan
+from slidemage import deck_new, deck_scan
 
 
 def test_new_deck_is_written_scanned_and_tagged(tmp_path):

@@ -5,7 +5,7 @@ It edits slides, a deck's own .tex file and Slidemaster.bib alike, one
 before another is shown; one that cannot be (a conflict with a change on disk)
 stays open, so that switching slides never loses an edit; a clean one is
 dropped and read from disk again when it comes back, so it is never stale.
-The view reports "dirty" and "saved" and asks the window, through the
+The view reports edits that could not be saved ("dirty") and Ctrl+S ("saved"), and asks the window, through the
 signals, for what is not its own: rendering the buffer, restoring a frozen
 version, making a version (Update Version), showing another file.
 """
@@ -40,7 +40,8 @@ LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 class SourcePane(Surface):
-    dirty_changed = Signal(bool)         # some file has unsaved edits
+    dirty_changed = Signal(bool)         # some file has edits that cannot be saved (a conflict, read-only, an AI fix running)
+    written = Signal(object)             # Path; after every write, autosave included
     buffer_changed = Signal(object)      # Path; every text edit, even while already dirty
     file_closed = Signal(object)         # the Path of a file the view no longer holds
     lint_errors_changed = Signal(int)    # errors the static check finds in the file shown
@@ -112,10 +113,6 @@ class SourcePane(Surface):
         self._find_button = IconButton("search", "Find and replace (Ctrl+F, Ctrl+H)")
         self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
         top.addWidget(self._find_button)
-        self._revert_button = Button("Revert", "ghost", compact=True)
-        self._revert_button.setToolTip("Discard the unsaved changes and reload the saved file.")
-        self._revert_button.clicked.connect(lambda: self._with_file(SourceFile.revert))
-        top.addWidget(self._revert_button)
         self._version_button = Button("Update Version", "primary", compact=True)
         self._version_button.setToolTip(
             "Make the slide as it is now a version: it is frozen, and decks can keep using it. "
@@ -208,7 +205,12 @@ class SourcePane(Surface):
         return self._files.get(path)
 
     def dirty_files(self) -> list[SourceFile]:
+        """Files whose buffer differs from the file: between a keystroke and its autosave, or for good
+        when it cannot be written (see `blocked_files`). Flush first to be left with the latter."""
         return sorted((f for f in self._files.values() if f.dirty), key=lambda f: str(f.path))
+
+    def blocked_files(self) -> list[SourceFile]:
+        return [f for f in self.dirty_files() if f.blocked]
 
     def show_path(self, path: Optional[Path], on_saved: Optional[Callable[[str], None]] = None) -> None:
         """Show `path` (None: nothing). An `on_saved` given for a file that is open
@@ -220,12 +222,14 @@ class SourcePane(Surface):
             if file is None:
                 file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
                 file.modified_changed.connect(self._on_modified)
-                file.conflict_changed.connect(self._update_toolbar)
+                file.conflict_changed.connect(self._on_modified)
                 file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
                 file.lint_changed.connect(self._emit_lint_errors)
                 file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 file.editor.customContextMenuRequested.connect(self._on_context_menu)
+                file.fix_panel.running_changed.connect(self._on_modified)
                 file.saved.connect(lambda p=path: self.saved.emit(p))
+                file.written.connect(lambda p=path: self.written.emit(p))
                 self._files[path] = file
                 self._stack.addWidget(file)
             else:
@@ -262,7 +266,7 @@ class SourcePane(Surface):
         self.file_closed.emit(file.path)
 
     def _on_modified(self, _modified: bool = False) -> None:
-        dirty = any(f.dirty for f in self._files.values())
+        dirty = any(f.blocked for f in self._files.values())
         self._update_toolbar()
         if dirty != self._dirty:
             self._dirty = dirty
@@ -323,12 +327,11 @@ class SourcePane(Surface):
         else:
             self._unsaved_chip.set_text("Saving…")
             self._unsaved_chip.set_tone("muted")
-        others = [f for f in self.dirty_files() if f is not file]
+        others = [f for f in self.dirty_files() if f is not file and f.blocked]
         self._elsewhere_chip.setVisible(bool(others))
         self._elsewhere_chip.set_text(f"{len(others)} more not saved" if len(others) > 1 else "1 more not saved")
         self._elsewhere_chip.setToolTip("Click to show the next file whose edits could not be saved.")
         self._find_button.setEnabled(has)
-        self._revert_button.setEnabled(has and file.dirty)
         self._version_button.setVisible(has and file.is_current_slide)
         self._version_button.setEnabled(has and not read_only)
         self._format_row.setEnabled(has and not read_only)
@@ -354,7 +357,7 @@ class SourcePane(Surface):
         self._update_toolbar()
 
     def _show_other_dirty(self) -> None:
-        others = [f for f in self.dirty_files() if f is not self._current]
+        others = [f for f in self.blocked_files() if f is not self._current]
         if others:
             self.file_requested.emit(others[0].path)
 

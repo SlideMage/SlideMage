@@ -2322,3 +2322,10 @@ NEW: Slides are saved as you type, and "Update Version" makes a version when you
 - The "Save" button is now "Update Version": it keeps the slide as it is now as a numbered version (major, minor or patch), which decks can keep using.
 - A slide changed since its last version shows a "+" after its version number, e.g. v1.2.0+, in the footer, the Details view and the Versions panel.
 - If the file changes on disk while you have edits that are not saved yet (Claude Code in the terminal), saving pauses and the bar above the editor lets you choose.
+
+v8.19.0 (2026-10-15, retire the unsaved state): With autosave there is nothing "unsaved" to ask about, so the checks that refused or asked now write first and only meet what could not be written (SourceFile.blocked: read-only buffer, conflict bar up, AI fix running). SourcePane.dirty_changed and WorkspaceState.dirty now mean exactly that, and SourcePane gains written and blocked_files(); the Revert button is gone (the Versions panel restores, the editor undoes). CentreColumn.unsaved(path) writes the file and answers whether edits remain (deck edits, Add slide copy, slide rename and move, image replacement, project update); is_dirty is for displays. The window refreshes the slide list and side panels once after a pause in writing, and at once on Ctrl+S or a file switch, not after every autosave. Tests: test_workspace_window.py, test_source_view_gui.py, test_centre_gui.py, test_compat_gui.py, test_image_review.py and the sheets that took the old wording.
+
+NEW: Nothing is left "unsaved" while you type.
+- The top bar says "Unsaved changes" only when edits really could not be saved, for example while a file is in conflict with a change on disk.
+- The Revert button is gone: go back with Undo or restore a version in the Versions panel.
+- Messages that asked you to "save first" now appear only when saving was not possible, and say why.

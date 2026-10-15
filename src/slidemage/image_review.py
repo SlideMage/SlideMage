@@ -317,8 +317,8 @@ def repoint_slides(ctx: ProjectContext, entry: alt_images.ImageEntry, entries: d
     changed, failures = [], []
     for slide_id, path in targets.items():
         if unsaved(path):
-            failures.append(f"{slide_id}: {path.name} has unsaved edits in the Source view; "
-                            "save or revert them, then replace the image again")
+            failures.append(f"{slide_id}: {path.name} has edits in the Source view that could not be saved; "
+                            "resolve that, then replace the image again")
             continue
         raw = old_reference
         row = rows.get(slide_id)
