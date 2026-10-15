@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
 from ... import compile_log, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
-from ... import pptx_export, slide_language, slide_snapshot, update_all_previews
+from ... import pptx_export, slide_language, slide_snapshot, slide_versioning, update_all_previews
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
 from ...deck_scan import Deck
@@ -208,6 +208,32 @@ def _confirm_build(window, result: latex_lint.CheckResult, what: str) -> bool:
         show_in_editor=lambda issue: render_check.open_issue_in_editor(window, issue))
 
 
+def _confirm_changed_slides(window, decks: list[Deck], what: str) -> bool:
+    """A snapshot or an export is a record: warn when a slide a deck calls has changes since its last
+    version (a "+" on its version line), so no version stands for what is being recorded. False when the
+    user cancelled; "Update Version of all changed slides" in the ⋮ menu makes them versions first."""
+    lines = []
+    for deck in decks:
+        changed = slide_versioning.changed_slides(window.project, deck, window.state.language)
+        if changed:
+            shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:8]) + (", …" if len(changed) > 8 else "")
+            lines.append(f"  • {deck.name}: {len(changed)} slide(s) ({shown})")
+    if not lines:
+        return True
+    box = QMessageBox(window)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Slides changed since their last version")
+    box.setText(f"Some slides have edits that are not a version yet (the \"+\" after the version number):\n\n"
+                + "\n".join(lines)
+                + f"\n\n{what} records them as they are now. To have a version for each first, cancel and use "
+                "⋮ → This deck → Update Version of all changed slides.")
+    go = box.addButton(f"{what} anyway", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(go)
+    box.exec()
+    return box.clickedButton() is go
+
+
 def _confirm_unchanged_jobs(window, jobs: list[CompileJob], outputs: dict[str, Path]) -> list[CompileJob]:
     """Versions that haven't changed since their last compile
     (compiler.unchanged_jobs) are only compiled again after asking
@@ -293,6 +319,8 @@ def start_snapshots(
     archive flow). False when nothing was started."""
     if _busy(window):
         return False
+    if not _confirm_changed_slides(window, decks, "The snapshot"):
+        return False
     existing = deck_snapshot.find_snapshots([d.name for d in decks], root=window.project.root)
     delete_old: list = []
     if existing:
@@ -351,6 +379,8 @@ def export_pptx(window, deck: Deck) -> None:
         return
     if compile_progress.count_job_slides(window.project, deck, "instructor", None) == 0:
         QMessageBox.critical(window, "Nothing to export", f"{deck.name} has no slides to typeset.")
+        return
+    if not _confirm_changed_slides(window, [deck], "The export"):
         return
     job = CompileJob(deck, version="instructor", chapter=None)
     if not _confirm_build(window, latex_lint.check_jobs(window.project, [job]), deck.name):

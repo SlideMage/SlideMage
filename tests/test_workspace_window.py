@@ -460,6 +460,25 @@ def test_a_slide_editor_opens_in_the_centre_and_only_edits_that_cannot_be_saved_
     assert window.topbar._save.text() == "Unsaved changes" and window.state.dirty
 
 
+def test_an_autosave_renders_the_preview_only_with_the_live_render_setting(window, monkeypatch):
+    from slidemage import app_settings
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+
+    slide = next(iter(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex")))
+    renders = []
+    monkeypatch.setattr(window.centre.preview, "render_after_save", lambda: renders.append(True))
+    window.state.set_mode("split")
+    monkeypatch.setattr(window.centre.preview, "_target", type("T", (), {"source_path": slide})())
+    window._live_render(slide)
+    assert renders == []                                          # off by default
+    monkeypatch.setattr(app_settings, "get", lambda ctx, key, default=None: key == LIVE_RENDER_SETTING_KEY or default)
+    window._live_render(slide)
+    assert renders == [True]
+    window.state.set_mode("source")
+    window._live_render(slide)
+    assert renders == [True]                                      # the Source view alone has no page to render
+
+
 def test_opening_a_slide_focuses_it(window):
 
     slide = next(iter(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex")))

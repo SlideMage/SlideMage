@@ -1198,6 +1198,14 @@ gets the `-v<version>.tex` suffix, exactly as in the manual workflow. The
 **Slide versions** panel adds **Freeze as vX.Y.Z** (Major, Minor or Patch),
 which does the same as Update Version from there.
 
+**Settings → General → Render the Preview after each autosave** (off by
+default) renders the slide again a moment after each autosave while the
+Preview or Split view shows it. **⋮ → This deck → Update Version of all changed
+slides** asks major / minor / patch once and makes a version of every slide of
+the deck that has a **+**; a snapshot or PowerPoint export warns when a deck
+has such slides. An edit made outside the app (Claude Code in the terminal)
+gets the **+** too, the next time the slide is shown.
+
 If the file changes on disk while you have edits (Claude Code in the
 terminal), saving pauses and the bar above the editor lets you choose; the top
 bar says **Unsaved changes** only while edits cannot be saved. Going back is

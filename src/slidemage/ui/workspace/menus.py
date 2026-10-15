@@ -102,7 +102,7 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 # Housekeeping dialog) are ⌘K commands only.
 MORE_COLUMNS = (
     (("This deck", ("deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
-                    "export_pptx", "create_snapshot", "rerender_deck_previews")),
+                    "export_pptx", "create_snapshot", "rerender_deck_previews", "update_deck_versions")),
      ("", ("archive_deck",))),
     (("Project", ("palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck")),
      ("Housekeeping", ("housekeeping", "archive_unused")),

@@ -222,6 +222,7 @@ class WorkspaceWindow(QMainWindow):
         self._after_write.setInterval(AFTER_WRITE_REFRESH_MS)
         self._after_write.timeout.connect(self._refresh_after_write)
         self.centre.source.written.connect(lambda _path: self._after_write.start())
+        self.centre.source.written.connect(self._live_render)
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
         self.centre.source.file_closed.connect(self._on_source_closed)
@@ -425,6 +426,16 @@ class WorkspaceWindow(QMainWindow):
     def _on_dirty_changed(self, dirty: bool) -> None:
         if not dirty:
             self._refresh_after_write()
+
+    def _live_render(self, path: Path) -> None:
+        """The Settings switch "Render the Preview after each autosave": render the slide that was just written
+        (Ctrl+S renders on its own, so this is only for the autosave) when the Preview shows it."""
+        from ..dialogs.settings import LIVE_RENDER_SETTING_KEY
+        if self.state.mode not in ("preview", "split") or not app_settings.get(self.project, LIVE_RENDER_SETTING_KEY, False):
+            return
+        target = self.centre.preview._target
+        if target is not None and target.source_path == path and not self.compiling:
+            self.centre.preview.render_after_save()
 
     def _refresh_after_write(self) -> None:
         self._after_write.stop()

@@ -9,6 +9,8 @@ import time
 from functools import partial
 
 import pytest
+
+from slidemage import slide_versioning
 from agent_fakes import ScriptedProvider, call, reply
 from conftest import build_window, make_project, wait_until as _wait_until
 from PySide6.QtCore import QPoint, QRect
@@ -666,14 +668,15 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
     assert not result.get("isError"), result
     text = result["content"][0]["text"]
     expected = before if dirty else disk_text
-    assert file.editor.text() == expected and file.dirty == dirty
-    assert env.path.read_bytes() == disk_text.replace("\n", "\r\n").encode()
+    plusless = slide_versioning.without_plus
+    assert plusless(file.editor.text()) == expected and file.dirty == dirty   # an outside edit gets the "+"
+    assert plusless(env.path.read_text(encoding="utf-8")).replace("\r\n", "\n") == disk_text.replace("\r\n", "\n")
     assert reloaded == ([] if dirty else [env.path])
     assert "editor (unsaved)" in text if dirty else "file" in text and "unsaved" not in text
     if tool == "read_buffer":
         assert "% typed" in text if dirty else "Claude's new point" in text
     else:
-        assert expected in checked
+        assert expected in [slide_versioning.without_plus(t) for t in checked]
     if tool in ("lint", "get_focus"):
         assert "never closed" in text if not dirty else "never closed" not in text
 
@@ -879,12 +882,12 @@ def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
     after = expected.replace("Hello", "Changed title")
     assert not result.is_error, result.text
     assert ("base: editor (unsaved)" if dirty else "base: file") in result.text
-    assert file.editor.text() == after and file.dirty
-    assert env.path.read_text() == disk_text
-    assert rendered == [after] and result.images == [b"PNG"]
+    assert slide_versioning.without_plus(file.editor.text()) == after and file.dirty
+    assert slide_versioning.without_plus(env.path.read_text()) == disk_text
+    assert [slide_versioning.without_plus(t) for t in rendered] == [after] and result.images == [b"PNG"]
     assert ai_review.is_unreviewed(env.window.project, env.path)
     file.editor.undo()
-    assert file.editor.text() == expected
+    assert slide_versioning.without_plus(file.editor.text()) == expected
 
 
 # -- attachments ------------------------------------------------------------------------------------------

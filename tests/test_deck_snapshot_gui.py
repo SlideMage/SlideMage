@@ -170,6 +170,7 @@ def run_window(monkeypatch, settings, running=False, ctx=EXAMPLE_PROJECT):
             footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
         compile=SimpleNamespace(running=running, start=lambda *args, **kwargs: started.append((args, kwargs))))
+    monkeypatch.setattr(compile_actions, "_confirm_changed_slides", lambda *_a: True)   # fake decks
     monkeypatch.setattr(compile_progress, "spec_for_job", lambda ctx, job: compile_progress.JobSpec(3, 1))
     return win, started
 

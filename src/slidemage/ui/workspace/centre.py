@@ -148,6 +148,12 @@ class CentreColumn(QFrame):
         file = self.source.file_for(path)
         return file is not None and file.dirty
 
+    def is_blocked(self, path: Path) -> bool:
+        """The Source view holds edits of `path` that cannot be saved (a conflict, read-only, an AI fix
+        running), not just the ones an autosave is about to write."""
+        file = self.source.file_for(path)
+        return file is not None and file.blocked
+
     def unsaved(self, path: Path) -> bool:
         """Whether the Source view holds edits of `path` that could not be saved (a conflict with a change
         on disk, a read-only buffer, an AI fix running). The edits that can be are written first."""
@@ -255,6 +261,59 @@ class CentreColumn(QFrame):
         level = prompt_version_level(self.app, base) if new != base else "patch"
         if level is not None:
             self.freeze_version(id_slug, level)
+
+    def update_deck_versions(self) -> None:
+        """⋮ → This deck → Update Version of all changed slides: every slide the open deck calls from its
+        current file that carries a "+" becomes a version, all at the one level asked here. Decks are not
+        rewritten (one that follows current.tex moves on, one that pins a version stays pinned); the
+        slide's own Update Version asks per deck."""
+        deck = self.state.deck
+        if deck is None:
+            return
+        self.source.flush_all()
+        changed = slide_versioning.changed_slides(self.state.project, deck, self.state.language)
+        if not changed:
+            QMessageBox.information(self.app, "Update Version", f"No slide of {deck.name} has changes since its last version.")
+            return
+        blocked = [slug for slug in changed
+                   if self.is_blocked(self.state.project.slides_dir / slide_language.current_name(slug))]
+        if blocked:
+            QMessageBox.warning(self.app, "Edits not saved",
+                                "These slides have edits that could not be saved (see the notice in the Source view); "
+                                "resolve that first: " + ", ".join(slide_language.bare_id(slug) for slug in blocked))
+            return
+        shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:12]) + (", …" if len(changed) > 12 else "")
+        box = QMessageBox(self.app)
+        box.setWindowTitle("Update Version of all changed slides")
+        box.setText(f"{len(changed)} slide(s) of {deck.name} have changes since their last version:\n{shown}\n\n"
+                    "How significant are the changes? Each slide is frozen as the next version of that size.")
+        levels: dict[str, object] = {}
+        for level in ("major", "minor", "patch"):
+            levels[level] = box.addButton(level.capitalize(), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(levels["patch"])
+        box.exec()
+        level = next((name for name, button in levels.items() if box.clickedButton() is button), None)
+        if level is None:
+            return
+        done, failed = 0, []
+        for slug in changed:
+            current = self.state.project.slides_dir / slide_language.current_name(slug)
+            open_current = self.source.file_for(current)
+            try:
+                _frozen, version, _base = slide_versioning.update_version(self.state.project, current, slug, level)
+            except (ValueError, slide_source.StaleFileError) as exc:
+                failed.append(f"{slide_language.bare_id(slug)}: {exc}")
+                continue
+            done += 1
+            self.app.log(f"{slug} is now v{slide_versioning.format_dot(version)}")
+            if open_current is not None:
+                open_current.adopt_disk()
+        self.refresh()
+        self.versions_changed.emit()
+        if failed:
+            QMessageBox.warning(self.app, "Update Version",
+                                f"{done} slide(s) updated; not these:\n" + "\n".join(failed))
 
     def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
         """Update Version (also the Versions panel's): the slide's current content becomes a frozen

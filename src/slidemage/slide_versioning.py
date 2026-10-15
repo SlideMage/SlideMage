@@ -228,6 +228,51 @@ def save_slide(ctx: ProjectContext, path: Path, new_text: str, eol: str, expecte
     return new_text, backup_path, frozen
 
 
+def mark_external_edit(ctx: ProjectContext, path: Path) -> bool:
+    """A slide's current file that was changed outside the app (Claude Code in the terminal, another
+    editor) has no "+": its content differs from its frozen version, and nothing here wrote it. Put the
+    "+" on its version line now, so the footer and Update Version see it like an in-app edit. False when
+    nothing was done (not a current slide, already marked, never frozen so nothing to compare with, or
+    unchanged since its frozen version)."""
+    from . import slide_source
+    from .slide_language import call_for_slide_path
+
+    if not is_current_slide(path) or not path.is_file():
+        return False
+    text, eol = slide_source.read_slide_source(path)
+    marker = parse_marker(text)
+    if marker is not None and marker[1]:
+        return False
+    version = marker[0] if marker is not None else DEFAULT_BASELINE
+    id_slug = call_for_slide_path(path)[1]
+    frozen = frozen_path(path, id_slug, version)
+    if not frozen.exists() or _content(slide_source.read_slide_source(frozen)[0]) == _content(text):
+        return False
+    slide_source.save_slide_source(ctx, path, set_marker(text, version, changed=True), eol,
+                                   expected_text=text, backup=False)
+    return True
+
+
+def changed_slides(ctx: ProjectContext, deck, language: str) -> list[str]:
+    """The id-slugs of the slides `deck` calls from their current file (not a pinned version) that
+    carry a "+": changed since their last version, so what the deck compiles to is not a version
+    any frozen file records. In the deck's order, each once."""
+    from . import deck_language, slide_language, slide_source
+
+    found: dict[str, None] = {}
+    for slot in deck_language.deck_slots(ctx, deck, language):
+        call = slot.call
+        if call.version is not None or call.id_slug in found:
+            continue
+        path = ctx.slides_dir / slide_language.current_name(call.id_slug)
+        if not path.is_file():
+            continue
+        marker = parse_marker(slide_source.read_slide_source(path)[0])
+        if marker is not None and marker[1]:
+            found[call.id_slug] = None
+    return list(found)
+
+
 def _content(text: str) -> str:
     """What a version is: the text without its header comments and version line."""
     from .slide_ids import body_of

@@ -251,6 +251,8 @@ def build_registry() -> CommandRegistry:
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,
         enabled=_has_deck)
+    add("update_deck_versions", "Update Version of all changed slides…", DECK,
+        lambda w: w.centre.update_deck_versions(), enabled=_has_deck)
     add("deck:readability", "Check readability of this deck", DECK,
         lambda w: w.assistant.check_readability(DECK_SCOPE), icon="visibility", meta="no AI", enabled=_has_deck)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)

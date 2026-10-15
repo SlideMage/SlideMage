@@ -152,15 +152,17 @@ def test_new_conversation_on_claude_code_starts_a_new_session(env):
 
 # -- row 2: the scope and its target ------------------------------------------------------------------------------
 
-def test_the_scope_names_the_slide_with_its_title_and_the_unsaved_state_or_the_deck(env):
+def test_the_scope_names_the_slide_with_its_title_and_the_not_saved_state_or_the_deck(env):
     head = refreshed(env)
     assert head.target.full_text() == "abc · Hello"
     area(env).scope._buttons["deck"].click()
     assert head.target.full_text() == "test · 2 slides"
     area(env).scope._buttons["slide"].click()
+    slide_file(env).editor.set_read_only(True)                       # edits that cannot be written
     slide_file(env).editor.replace_all_text(LF + "% typed\n")
-    wait_until(lambda: head.target.full_text() == "abc · Hello · unsaved")
+    wait_until(lambda: head.target.full_text() == "abc · Hello · not saved")
     slide_file(env).editor.undo()                                    # back to what is saved
+    slide_file(env).editor.set_read_only(False)
     wait_until(lambda: head.target.full_text() == "abc · Hello")
     env.window.centre.open_file(env.root / "decks" / "test.tex")      # not a slide: the file's name
     wait_until(lambda: head.target.full_text() == "test.tex")

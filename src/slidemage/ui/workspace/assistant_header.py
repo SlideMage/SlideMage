@@ -1,7 +1,7 @@
 """The header of the assistant card (workspace v6 handoff, section 3), four rows:
 
 1. the route (icon, name in amber on Cloud, what the conversation runs on), Focus and New conversation;
-2. the scope (This slide | Whole deck) and its target: "1y8 · Title", " · unsaved" with unsaved edits in the Source
+2. the scope (This slide | Whole deck) and its target: "1y8 · Title", " · not saved" with edits that could not be saved in the Source
    view; for the deck "name · 80 slides";
 3. at most two task buttons that fit the scope, the slide (with a selection in the Source view: Rewrite selection and
    Proofread selection, which then come first) and what the route can run (terminal/tasks.py
@@ -246,7 +246,7 @@ class AssistantHeader(Surface):
         return path is not None and path.parent == self.state.project.slides_dir and slide_language.is_current_file(path)
 
     def target_text(self) -> str:
-        """What the scope points at: the slide in the Source view (and whether it has unsaved edits), or the deck."""
+        """What the scope points at: the slide in the Source view (and whether it has edits that could not be saved), or the deck."""
         if self.scope.current() == DECK:
             deck = self.state.deck
             return "No deck is open" if deck is None else f"{deck.name} · {plural(len(deck_slides(self.app)), 'slide')}"
@@ -259,15 +259,15 @@ class AssistantHeader(Surface):
             id_slug = path.name.removesuffix(slide_language.CURRENT_SUFFIX)
             title = deck_outline.slide_file_title(path, id_slug)
             text = f"{slide_language.bare_id(id_slug)} · {title}" if title else slide_language.bare_id(id_slug)
-        return text + (" · unsaved" if centre.is_dirty(path) else "")
+        return text + (" · not saved" if centre.is_blocked(path) else "")
 
     def _now(self) -> tuple:
         centre = self.app.centre
         path = centre.path
-        return path, path is not None and centre.is_dirty(path), selection_of(self.app) is not None
+        return path, path is not None and centre.is_blocked(path), selection_of(self.app) is not None
 
     def _look(self) -> None:
-        """The file shown and its unsaved state have no signal: compare them now and then."""
+        """The file shown and whether it could not be saved have no signal: compare them now and then."""
         if self._now() != self._seen:
             self.schedule()
 

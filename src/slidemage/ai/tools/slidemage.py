@@ -281,7 +281,8 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
     if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), ctx.workspace.context().language):
         path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
     before, revision = current_revision(ctx.workspace, path)
-    if "expected" in args and args["expected"] != before:
+    if "expected" in args and (slide_versioning.without_plus(args["expected"])
+                               != slide_versioning.without_plus(before)):      # the "+" is no change
         raise ToolError(f"{relative(ctx.root, path)} changed since you read it; nothing written. "
                         f"Read it again and retry. Current text ({revision}, first 1500 characters):\n{before[:1500]}")
     after = args.get("body", before)

@@ -1,6 +1,6 @@
 """The Settings sheet (UI_REDESIGN_PLAN.md, step 9): the preferences that are not about one deck.
 
-* General: dark mode, the Source editor's tab width, the template single slides render with, how
+* General: dark mode, the Source editor's tab width, live rendering after an autosave, the template single slides render with, how
   updates are handled and the GitHub token for them.
 * AI: how Claude Code translations address the audience in German (this project's `de_address`;
   ai/translation_style.py) and the glossary. The model of each AI task on each side, what Cloud means and the
@@ -35,6 +35,7 @@ from .settings_ollama import OllamaTab
 from .settings_prompts import PromptsTab
 
 GENERAL, AI, CLOUD, OLLAMA, PROMPTS = range(5)
+LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
 UPDATE_NOTES = {
@@ -74,6 +75,16 @@ class GeneralTab(Page):
         self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
         self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
+
+        self.live_render_check = QCheckBox("Render the Preview after each autosave")
+        self.live_render_check.setChecked(bool(app_settings.get(app.project, LIVE_RENDER_SETTING_KEY, False)))
+        self.live_render_check.toggled.connect(
+            lambda on: app_settings.set(app.project, LIVE_RENDER_SETTING_KEY, bool(on)))
+        layout.addWidget(Field("Live preview", self.live_render_check))
+        layout.addWidget(caption(
+            "While you type in the Source view, the slide is rendered again a moment after each autosave, "
+            "when the Preview or Split view is showing it and its source has no errors. Off by default: "
+            "each render is a LaTeX run."))
 
         self.template_combo = QComboBox()
         current = slide_snapshot.render_template(self.app.project)

@@ -290,6 +290,10 @@ class SourceFile(Surface):
             self._set_conflict(None)
             return SAME
         if not self.dirty:
+            try:        # an edit made outside the app gets the "+" an in-app edit would have
+                slide_versioning.mark_external_edit(self.app.project, self.path)
+            except (OSError, ValueError, slide_source.StaleFileError):
+                pass
             self.reload()
             return RELOADED
         self._autosave_timer.stop()
