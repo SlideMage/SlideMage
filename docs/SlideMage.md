@@ -805,7 +805,7 @@ What matters when touching *this code*:
   message; `duplicate_deck()` re-checks it anyway rather than trusting the
   caller blindly.
 - [`slide_versioning.py`](../src/slidemage/slide_versioning.py) -- the freeze-then-bump
-  workflow behind saving a slide's `current.tex` and the Source view's **Update Version**
+  workflow behind saving a slide's `current.tex` and the Source view's **Update version**
   button (2026-08-20, reworked 2026-10-15 for autosave). Pure logic, no Qt. The version line
   is `\setSlideVersion{X-Y-Z}`, or `{X-Y-Z+}` for "changed since X.Y.Z" (`parse_marker()`,
   `set_marker()`). `save_slide()` is every write of a current file (autosave, Ctrl+S):

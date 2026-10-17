@@ -47,7 +47,7 @@ def prompt_version_level(parent, base: slide_versioning.Version) -> Optional[str
     """Update Version's "how significant is the change since `base`?" prompt.
     Returns "major", "minor", "patch", or None if the user cancelled."""
     box = QMessageBox(parent)
-    box.setWindowTitle("Update Version")
+    box.setWindowTitle("Update version")
     box.setText(f"Changed since v{slide_versioning.format_dot(base)}.\n\nHow significant is the change?")
     level_buttons: dict[str, QPushButton] = {}
     for level in ("major", "minor", "patch"):

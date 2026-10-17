@@ -87,7 +87,7 @@ class GeneralTab(Page):
             "when the Preview or Split view is showing it and its source has no errors. Off by default: "
             "each render is a LaTeX run."))
 
-        self.ask_version_check = QCheckBox("Ask about Update Version when leaving a changed slide")
+        self.ask_version_check = QCheckBox("Ask about Update version when leaving a changed slide")
         self.ask_version_check.setChecked(
             bool(app_settings.get(app.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False)))
         self.ask_version_check.toggled.connect(

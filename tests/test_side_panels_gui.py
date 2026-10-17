@@ -416,10 +416,10 @@ def test_freezing_asks_the_centre_with_the_chosen_level(column):
     panels.set_panel("versions")
     state.set_focused_slide("abc")
     panel = panels.panels["versions"]
-    assert buttons(panel, "Update Version to v1.1.0")    # untracked, and changed since v1.0.0: a minor bump
+    assert buttons(panel, "Update version to v1.1.0")    # untracked, and changed since v1.0.0: a minor bump
     levels = panel.findChildren(SegmentedControl)[0]
     levels._buttons["patch"].click()
-    buttons(panel, "Update Version to v1.0.1")[0].click()
+    buttons(panel, "Update version to v1.0.1")[0].click()
     assert window.centre.frozen == [("abc-EN-Demo", "patch")]
 
 

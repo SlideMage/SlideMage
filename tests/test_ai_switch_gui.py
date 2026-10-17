@@ -294,6 +294,24 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert ai_profile.model_choice(window.project, LOCAL, ai_profile.TRANSLATION) == ""      # each side its own
 
 
+def test_ai_setup_lists_show_full_model_names_when_opened(window, qapp):
+    # v8.23.0: the cells are a fixed share of the popover; the open list is as wide as its longest name
+    long_name = "hf.co/unsloth/translategemma-12b-it-GGUF:Q8_0"
+    window.local_models.fill([*INSTALLED, InstalledModel(long_name, 1, "")])
+    setup = open_setup(window)
+    combo = setup.cells[(LOCAL, ai_profile.TRANSLATION)]
+    index = combo.findData(long_name)
+    assert index > 0
+    combo.setCurrentIndex(index)
+    combo.activated.emit(index)
+    assert combo.toolTip() == long_name                                          # the closed box
+    assert combo.width() < combo.view().fontMetrics().horizontalAdvance(long_name)
+    combo.showPopup()
+    qapp.processEvents()
+    assert combo.view().width() >= combo.view().fontMetrics().horizontalAdvance(long_name)   # the open list
+    combo.hidePopup()
+
+
 def test_the_side_not_in_use_is_greyed_but_editable(window):
     setup = open_setup(window)
     assert setup.cells[(CLOUD, ai_profile.FIXES)].property("active") is False

@@ -33,6 +33,16 @@ SET_IN_CLAUDE_CODE = "set in Claude Code"
 SET_IN_CLAUDE_CODE_TIP = "The terminal's conversation model is set in Claude Code"
 
 
+def fit_list_to_items(combo: QComboBox) -> None:
+    """Make the open list of `combo` as wide as its longest entry, so full model names show there even
+    when the closed box (a fixed share of a narrow popover) cuts them off."""
+    view = combo.view()
+    metrics = view.fontMetrics()
+    longest = max((metrics.horizontalAdvance(combo.itemText(i)) for i in range(combo.count())), default=0)
+    scrollbar = view.verticalScrollBar().sizeHint().width()
+    view.setMinimumWidth(longest + scrollbar + 32)    # item padding and the frame
+
+
 class AiSetup(Popover):
     def __init__(self, window, route) -> None:
         """`window` is the main window, `route` its AiRoute (a change of the cloud connection is a request)."""
@@ -164,8 +174,14 @@ class AiSetup(Popover):
             combo.addItem(f"{ai_profile.choice_label(route, saved)} (not available)", saved)
         combo.setCurrentIndex(max(0, combo.findData(saved)))
         combo.blockSignals(False)
+        fit_list_to_items(combo)
+        combo.setToolTip(combo.currentText())
 
     def _on_cell(self, side: str, task: str, index: int) -> None:
+        self.cells[(side, task)].setToolTip(self.cells[(side, task)].itemText(index))
+        self._save_cell(side, task, index)
+
+    def _save_cell(self, side: str, task: str, index: int) -> None:
         route = LOCAL if side == LOCAL else ai_profile.cloud_conn(self._project)
         combo = self.cells[(side, task)]
         choice = combo.itemData(index) or ""

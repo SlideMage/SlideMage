@@ -240,7 +240,13 @@ def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pa
     assert pane._format_row.isEnabled() and not pane._version_button.isVisibleTo(pane)
     pane.show_path(slides / "abc-EN-Demo-current.tex")
     assert not pane._frozen_bar.isVisibleTo(pane)
-    assert pane._version_button.isVisibleTo(pane) and pane._version_button.isEnabled()
+    # v8.23.0: Update version is off until there is something to make a version of
+    assert pane._version_button.isVisibleTo(pane) and not pane._version_button.isEnabled()
+    assert pane._version_button.toolTip() == "No changes since v1.1.0."
+    pane.current.editor.insertPlainText("edit ")
+    assert pane._version_button.isEnabled()                          # an edit waiting for its autosave
+    assert pane.current.write_now() and "1-1-0+" in (slides / "abc-EN-Demo-current.tex").read_text()
+    assert pane._version_button.isEnabled()                          # the "+" once written
     asked = []
     pane.version_requested.connect(asked.append)
     pane._version_button.click()

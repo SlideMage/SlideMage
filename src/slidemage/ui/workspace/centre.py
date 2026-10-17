@@ -67,10 +67,10 @@ class _SourcePreviewSplitter(QSplitter):
 def ask_update_on_leave(parent, slide_id: str, version: slide_versioning.Version) -> tuple[bool, bool]:
     """The question when leaving a changed slide: (Update Version chosen, "Don't ask again" ticked)."""
     box = QMessageBox(parent)
-    box.setWindowTitle("Update Version")
+    box.setWindowTitle("Update version")
     box.setText(f"{slide_id} has changed since v{slide_versioning.format_dot(version)}.\n\n"
                 "Make the changes a version of their own now?")
-    update = box.addButton("Update Version…", QMessageBox.ButtonRole.AcceptRole)
+    update = box.addButton("Update version…", QMessageBox.ButtonRole.AcceptRole)
     later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(later)
     stop = QCheckBox("Don't ask again (Settings → General)")
@@ -273,7 +273,7 @@ class CentreColumn(QFrame):
         try:
             new, base = slide_versioning.plan_update(current, id_slug, text, "patch")
         except ValueError as exc:
-            QMessageBox.information(self.app, "Update Version", str(exc))
+            QMessageBox.information(self.app, "Update version", str(exc))
             return
         level = prompt_version_level(self.app, base) if new != base else "patch"
         if level is not None:
@@ -290,7 +290,7 @@ class CentreColumn(QFrame):
         self.source.flush_all()
         changed = slide_versioning.changed_slides(self.state.project, deck, self.state.language)
         if not changed:
-            QMessageBox.information(self.app, "Update Version", f"No slide of {deck.name} has changes since its last version.")
+            QMessageBox.information(self.app, "Update version", f"No slide of {deck.name} has changes since its last version.")
             return
         blocked = [slug for slug in changed
                    if self.is_blocked(self.state.project.slides_dir / slide_language.current_name(slug))]
@@ -301,7 +301,7 @@ class CentreColumn(QFrame):
             return
         shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:12]) + (", …" if len(changed) > 12 else "")
         box = QMessageBox(self.app)
-        box.setWindowTitle("Update Version of all changed slides")
+        box.setWindowTitle("Update version of all changed slides")
         box.setText(f"{len(changed)} slide(s) of {deck.name} have changes since their last version:\n{shown}\n\n"
                     "How significant are the changes? Each slide is frozen as the next version of that size.")
         levels: dict[str, object] = {}
@@ -329,7 +329,7 @@ class CentreColumn(QFrame):
         self.refresh()
         self.versions_changed.emit()
         if failed:
-            QMessageBox.warning(self.app, "Update Version",
+            QMessageBox.warning(self.app, "Update version",
                                 f"{done} slide(s) updated; not these:\n" + "\n".join(failed))
 
     def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
