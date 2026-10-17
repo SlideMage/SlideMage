@@ -576,3 +576,13 @@ def test_a_cleanup_age_set_by_hand_is_shown(tmp_path, qapp):
     app_settings.set(context, slide_preview.RENDER_CLEANUP_SETTING_KEY, 5)
     combo = open_sheet(qapp, FakeApp(context)).general.cleanup_combo
     assert combo.currentData() == 5 and combo.currentText() == "After 5 hours"
+
+
+def test_asking_about_update_version_on_leaving_is_off_by_default_and_saved(tmp_path, qapp):
+    from slidemage import slide_versioning
+
+    context = ProjectContext.at(tmp_path / "project")
+    check = open_sheet(qapp, FakeApp(context)).general.ask_version_check
+    assert not check.isChecked()
+    check.setChecked(True)
+    assert app_settings.get(context, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is True

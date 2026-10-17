@@ -51,6 +51,10 @@ BumpLevel = Literal["major", "minor", "patch"]
 # always informally been "version 1" even when nothing wrote that down.
 DEFAULT_BASELINE: Version = (1, 0, 0)
 
+# app_settings key (Settings -> General, off by default): leaving a slide that was edited and carries a
+# "+" asks whether to make it a version now (CentreColumn._offer_version).
+ASK_ON_LEAVE_SETTING_KEY = "ask_update_version_on_leave"
+
 _EMBEDDED_VERSION_RE = re.compile(r"\\setSlideVersion\{(\d+)-(\d+)-(\d+)(\+?)\}")
 # Matches the whole tool-managed line, trailing newline included, so
 # strip_marker() removes it cleanly rather than leaving a blank line

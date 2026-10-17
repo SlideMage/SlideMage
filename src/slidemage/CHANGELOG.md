@@ -2357,3 +2357,9 @@ v8.21.1 (2026-10-18, direct instruction: fix the test failures on Windows): ai/c
 
 NEW: Claude Code tasks on Windows no longer fail after their answer arrived.
 - A translation or other Claude Code task could end as failed on Windows although Claude had answered, when its temporary folder was still in use for a moment; that no longer happens.
+
+v8.22.0 (2026-10-18, direct instruction: "I want a settings option that makes SlideMage ask, when switching away from a "+" slide, whether the version should be updated"): Settings -> General -> Versions: "Ask about Update Version when leaving a changed slide" (app_settings key slide_versioning.ASK_ON_LEAVE_SETTING_KEY, ask_update_version_on_leave; off by default). CentreColumn records the files the Source view wrote (SourcePane.written) and, whenever the file it shows changes (_set_path: another slide focused, another file opened, the language or the deck switched), checks the file it left once the switch is done (QTimer.singleShot(0), after the switch has written the pending edits): a slide's current file that was written on this visit and carries a "+" gets centre.ask_update_on_leave() -- "Update Version…" runs the slide's own Update Version (CentreColumn.update_version: the level, then what each deck does), "Not now" leaves the "+", "Don't ask again" turns the setting off. A slide only looked at, or edited and left once already, is not asked about; closing the window does not ask. Tests in tests/test_centre_gui.py and tests/test_settings_gui.py.
+
+NEW: SlideMage can ask about Update Version when you leave a changed slide.
+- Settings → General → Versions: "Ask about Update Version when leaving a changed slide" (off by default).
+- When you switch away from a slide you edited and it shows a "+", SlideMage offers to make the changes a version now; "Not now" keeps the "+", and "Don't ask again" turns the question off.

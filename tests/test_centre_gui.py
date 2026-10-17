@@ -718,3 +718,70 @@ def test_a_partner_that_is_gone_is_said_so(centre, project):
     centre.preview._show_partner(german)
     assert len(messages) == 1 and "ddd-DE-Eins-current.tex is missing" in messages[0]
     assert centre.path == english
+
+
+# -- leaving a changed slide (v8.22.0) -------------------------------------------------------------
+
+@pytest.fixture
+def asked(centre, monkeypatch):
+    """The questions asked when leaving a changed slide; `answer` is what each one returns."""
+    from slidemage.ui.workspace import centre as centre_module
+
+    calls, updated = [], []
+    answer = {"update": False, "stop": False}
+
+    def ask(_parent, slide_id, version):
+        calls.append((slide_id, version))
+        return answer["update"], answer["stop"]
+
+    monkeypatch.setattr(centre_module, "ask_update_on_leave", ask)
+    monkeypatch.setattr(centre, "update_version", updated.append)
+    return SimpleNamespace(calls=calls, updated=updated, answer=answer)
+
+
+def leave_after_editing(centre, slide="aaa", to="ccc", edit=True):
+    state = centre.state
+    state.set_mode("source")
+    state.set_focused_slide(slide)
+    if edit:
+        centre.source.current.editor.insertPlainText("edit ")
+    state.set_focused_slide(to)
+    QApplication.processEvents()
+
+
+def ask_on_leave(centre, on=True):
+    from slidemage import app_settings, slide_versioning
+    app_settings.set(centre.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, on)
+
+
+def test_leaving_an_edited_slide_asks_about_update_version_when_the_setting_is_on(centre, project, asked):
+    ask_on_leave(centre)
+    asked.answer["update"] = True
+    leave_after_editing(centre)
+    assert "1-1-0+" in (project / "aaa-EN-One-current.tex").read_text()
+    assert asked.calls == [("aaa", (1, 1, 0))]
+    assert asked.updated == ["aaa-EN-One"]                 # the slide's own Update Version
+    assert centre.state.focused_slide == "ccc"            # the switch itself happened
+
+
+def test_leaving_asks_nothing_when_off_without_edits_or_once_not_now_was_answered(centre, asked):
+    leave_after_editing(centre)                            # off by default
+    assert asked.calls == []
+    ask_on_leave(centre)
+    leave_after_editing(centre, edit=False)                # only looked at: its "+" is from before
+    assert asked.calls == []
+    leave_after_editing(centre)                            # edited: asked, "Not now"
+    leave_after_editing(centre, edit=False)                # not asked again for that visit's edits
+    assert len(asked.calls) == 1 and asked.updated == []
+
+
+def test_dont_ask_again_turns_the_setting_off(centre, asked):
+    from slidemage import app_settings, slide_versioning
+
+    ask_on_leave(centre)
+    asked.answer["stop"] = True
+    leave_after_editing(centre)
+    assert len(asked.calls) == 1
+    assert app_settings.get(centre.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is False
+    leave_after_editing(centre)
+    assert len(asked.calls) == 1

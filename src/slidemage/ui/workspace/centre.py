@@ -24,11 +24,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
+    QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
 
-from ... import deck_outline, slide_language, slide_source, slide_versioning
+from ... import app_settings, deck_outline, slide_language, slide_source, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
@@ -64,6 +64,21 @@ class _SourcePreviewSplitter(QSplitter):
         return _ResetHandle(self.orientation(), self)
 
 
+def ask_update_on_leave(parent, slide_id: str, version: slide_versioning.Version) -> tuple[bool, bool]:
+    """The question when leaving a changed slide: (Update Version chosen, "Don't ask again" ticked)."""
+    box = QMessageBox(parent)
+    box.setWindowTitle("Update Version")
+    box.setText(f"{slide_id} has changed since v{slide_versioning.format_dot(version)}.\n\n"
+                "Make the changes a version of their own now?")
+    update = box.addButton("Update Version…", QMessageBox.ButtonRole.AcceptRole)
+    later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(later)
+    stop = QCheckBox("Don't ask again (Settings → General)")
+    box.setCheckBox(stop)
+    box.exec()
+    return box.clickedButton() is update, stop.isChecked()
+
+
 class CentreColumn(QFrame):
     versions_changed = Signal()   # a slide was restored or frozen as a version
     duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
@@ -74,6 +89,7 @@ class CentreColumn(QFrame):
         self.state = state
         self._path: Optional[Path] = None   # the file the Source view shows
         self._opening = False               # open_file() is changing the focus itself
+        self._edited: set[Path] = set()     # files written from the Source view since they were last left
 
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
@@ -100,6 +116,7 @@ class CentreColumn(QFrame):
         self.setObjectName(q.CARD)   # the white card on the grey page
 
         self.source.dirty_changed.connect(self._update_dirty)
+        self.source.written.connect(self._edited.add)
         self.source.buffer_changed.connect(self.preview.buffer_changed)
         self.source.lint_errors_changed.connect(state.set_lint_errors)
         self.source.saved.connect(self._on_saved)
@@ -126,7 +143,7 @@ class CentreColumn(QFrame):
         try:
             if path.parent == self.state.project.slides_dir:
                 self.state.set_focused_slide(bare_id(path.name))
-            self._path = path
+            self._set_path(path)
             if self.state.mode not in ("source", "split") and not keep_mode:
                 self.state.set_mode("source")
         finally:
@@ -351,25 +368,60 @@ class CentreColumn(QFrame):
         if asked.open_translation is not None:
             self.open_file(asked.open_translation)
 
+    # -- leaving a changed slide -------------------------------------------------------
+
+    def _set_path(self, path: Optional[Path]) -> None:
+        """Make `path` the file the Source view shows; leaving another file that was edited may offer
+        Update Version for it (once the switch is done)."""
+        left = self._path
+        self._path = path
+        if left is not None and left != path:
+            # after the switch, which also writes the edits still waiting for their autosave
+            QTimer.singleShot(0, lambda: self._offer_version(left))
+
+    def _offer_version(self, path: Path) -> None:
+        """Settings -> General, "Ask about Update Version when leaving a changed slide": the slide's current
+        file `path` was edited in the Source view and now carries a "+" -- ask whether to make it a version
+        (Update Version, as its button does). Asked once per visit with edits; "Not now" leaves the "+"."""
+        if path not in self._edited or path == self._path:
+            return                         # not edited on this visit, or shown again already
+        self._edited.discard(path)
+        if not app_settings.get(self.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False):
+            return
+        if not path.is_file() or not path.name.endswith(slide_language.CURRENT_SUFFIX)                 or not slide_versioning.is_current_slide(path):
+            return
+        file = self.source.file_for(path)
+        if file is not None and not file.write_now():
+            return                         # edits that cannot be saved: the notice in the Source view says so
+        marker = slide_versioning.parse_marker(slide_source.read_slide_source(path)[0])
+        if marker is None or not marker[1]:
+            return                         # no "+": nothing changed since the last version
+        id_slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
+        update, stop = ask_update_on_leave(self.app, bare_id(id_slug), marker[0])
+        if stop:
+            app_settings.set(self.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False)
+        if update:
+            self.update_version(id_slug)
+
     # -- keeping the views in step -----------------------------------------------------
 
     def _update_dirty(self, _dirty: bool = False) -> None:
         self.state.set_dirty(bool(self.source.blocked_files()))   # saved as you type: only edits that cannot be saved
 
     def _on_deck_changed(self, _deck) -> None:
-        self._path = None
+        self._set_path(None)
         self.refresh()
 
     def _on_focus(self, _slide_id: Optional[str]) -> None:
         if not self._opening:
-            self._path = self._focused_path()
+            self._set_path(self._focused_path())
             self.refresh()
 
     def _on_language(self, _language: str) -> None:
         # SourcePane retains each file's buffer, including pending edits.
         # A non-slide opened explicitly (deck source, bibliography) stays open.
         if self._focused_row() is not None and (self._path is None or self._file_slide()[0]):
-            self._path = self._focused_path()
+            self._set_path(self._focused_path())
         self.refresh()
 
     def _on_saved(self, _path: Path) -> None:
