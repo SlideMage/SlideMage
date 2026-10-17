@@ -49,6 +49,8 @@ def test_claude_discovery(tmp_path, monkeypatch, location):
     assert claude_launch.find_claude() is None
     candidate = tmp_path / "bin" / "claude" if location == "path" else home / ".local" / "bin" / "claude"
     if location == "not-executable":
+        if os.name == "nt":
+            pytest.skip("Windows has no executable bit: os.access(X_OK) is true for every file")
         candidate.parent.mkdir(parents=True)
         candidate.write_text("not a program")
         assert claude_launch.find_claude() is None

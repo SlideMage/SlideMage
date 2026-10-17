@@ -10,9 +10,11 @@ import argparse
 from contextlib import nullcontext
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
+import tempfile
 import time
 import uuid
 
@@ -131,8 +133,11 @@ def main():
         parser.error("Unknown preview scope")
     ctx = project.from_environment()
     root = ctx.root
-    assert root.is_relative_to(Path("/tmp")), (
-        "Use a scratch project under /tmp; this benchmark makes temporary source edits"
+    # /tmp, or the temp folder (Windows and macOS have their own)
+    scratch = [Path("/tmp"), Path(tempfile.gettempdir())] + [
+        Path(os.environ[name]) for name in ("TMPDIR", "TEMP", "TMP") if os.environ.get(name)]
+    assert any(root.is_relative_to(folder) for folder in scratch), (
+        "Use a scratch project under /tmp (or the temp folder); this benchmark makes temporary source edits"
     )
     args.output.mkdir(parents=True, exist_ok=True)
     deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "slidemage-manual")

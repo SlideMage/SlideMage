@@ -2352,3 +2352,8 @@ v8.21.0 (2026-10-18, direct instruction: "Make the 24-hour cleanup a settings op
 NEW: You choose when single-slide renders are deleted.
 - Settings → General → "Delete single-slide renders": after 1 hour, 24 hours (as before), 3 days, 1 week or 30 days, or Never.
 - The presenter deck prints a footnote in a slide title once (from v5.36.1).
+
+v8.21.1 (2026-10-18, direct instruction: fix the test failures on Windows): ai/claude_runner.run_json() no longer fails a Claude Code task whose answer has arrived because its empty working folder is still in use on Windows (a child of the process ends a moment after it; tempfile.TemporaryDirectory raised PermissionError): _remove_folder() retries for up to two seconds and then leaves the folder. The test suite runs on Windows: tests/fake_claude.py makes the fake `claude` a claude.exe there (pip's distlib launcher + the script as a zip), as Windows runs no shebang script; the "not executable" case of test_claude_discovery is skipped there (no executable bit); test_preview_build's fake `lualatex` is an existing file; tools/preview_benchmark/compare.py accepts a scratch project in the temp folder, not only under /tmp; the deck-settings tests' fake window has CentreColumn.unsaved (v8.19.0) instead of is_dirty. The layout tests that measure widths with the fonts of macOS still fail on Windows (15).
+
+NEW: Claude Code tasks on Windows no longer fail after their answer arrived.
+- A translation or other Claude Code task could end as failed on Windows although Claude had answered, when its temporary folder was still in use for a moment; that no longer happens.
