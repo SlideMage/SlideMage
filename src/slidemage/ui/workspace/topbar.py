@@ -23,7 +23,12 @@ from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
 LOGO_SIZE = 32
-DECK_MAX_WIDTH = 170
+# The widest the deck switcher gets in each density, its name elided beyond (the full name is its tooltip):
+# wide enough in the full bar for names like "t-Uni-Masterdeck-Publishing" (1920 x 1080 shows the full bar;
+# at 125 % scaling, 1536 px, the narrow one), and for "slidemage-manual" down to the tight bar; the tiny one
+# (1024 px) keeps the room for the other controls.
+DECK_MAX_WIDTHS = {"full": 280, "narrow": 220, "tight": 200, "tiny": 170}
+DECK_MAX_WIDTH = max(DECK_MAX_WIDTHS.values())
 # The narrowest bar each density is for, when its content fits: below 1500 px the labels shorten, below 1320 px
 # the AI switch gives up the name of its connection too, and in the narrowest window (1024 px) it is only icons:
 # it is the last to shrink.
@@ -233,7 +238,7 @@ class TopBar(QWidget):
     def _update_deck_label(self) -> None:
         deck = self._state.deck
         name = deck.name if deck is not None else "No deck"
-        self._deck_button.set_text(name, max_width=DECK_MAX_WIDTH)
+        self._deck_button.set_text(name, max_width=DECK_MAX_WIDTHS[self._density])
         self._deck_button.setToolTip(name)
 
     def _on_dirty_changed(self, dirty: bool) -> None:

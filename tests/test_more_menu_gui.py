@@ -77,7 +77,9 @@ def test_the_popover_is_520_wide_with_the_right_column_divided_and_the_footer_be
     menu = build_more_menu(None, command_context(COURSE))
     menu.popup_at(QPoint(10, 10))
     try:
-        assert menu.width() == 520 and menu.property("columns")
+        # 520 wide, wider only as far as its longest entry needs (Windows' text is a few px wider: 533)
+        assert 520 <= menu.width() <= 560
+        assert menu.property("columns")
         columns = menu.findChildren(QFrame, q.MENU_COLUMN)
         assert [c.property("divided") for c in columns] == [False, True]
         assert columns[0].width() == pytest.approx(columns[1].width(), abs=6)

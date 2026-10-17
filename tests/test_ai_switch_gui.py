@@ -352,7 +352,11 @@ def test_ai_setup_closes_on_escape_and_on_a_click_outside_but_not_on_its_anchor(
     QTest.keyClick(setup, Qt.Key.Key_Escape)
     assert not setup.isVisible()
     setup = open_setup(window)
-    QTest.mouseClick(window.slide_list, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
+    # a click where the slide list is, through the window as a mouse's arrives: the popover's catcher is on
+    # top there (QTest.mouseClick on the slide list widget itself bypasses it on Windows)
+    QTest.mouseClick(window.windowHandle(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                     window.slide_list.mapTo(window, QPoint(5, 5)))
+    qapp.processEvents()
     assert not setup.isVisible()
     open_setup(window)
     window.topbar.ai_switch.caret.click()                                  # the ▾ again closes it

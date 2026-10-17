@@ -20,7 +20,8 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, QMimeData, QSize, Qt, Signal
 from PySide6.QtGui import QImage, QKeyEvent
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog, QHBoxLayout, QPlainTextEdit, QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from .... import app_settings
 from ....ai import ai_profile, resolver
@@ -73,13 +74,22 @@ class Composer(QPlainTextEdit):
 
     def __init__(self) -> None:
         super().__init__()
+        # As tall as its text (up to COMPOSER_LINES[1] lines) when there is room; in a short assistant panel
+        # (a low window) the layout may take it down to COMPOSER_LINES[0] lines and it scrolls, rather than a
+        # fixed height pushing it over the pickers and the send button below it.
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.document().documentLayout().documentSizeChanged.connect(lambda _size: self._fit())
         self._fit()
 
     def _fit(self) -> None:
         line = self.fontMetrics().lineSpacing()
         lines = min(max(round(self.document().size().height()), COMPOSER_LINES[0]), COMPOSER_LINES[1])
-        self.setFixedHeight(lines * line + 18)
+        self.setMinimumHeight(COMPOSER_LINES[0] * line + 18)
+        self.setMaximumHeight(lines * line + 18)
+        self.updateGeometry()
+
+    def sizeHint(self) -> QSize:
+        return QSize(super().sizeHint().width(), self.maximumHeight())
 
     def canInsertFromMimeData(self, source: QMimeData) -> bool:
         return source.hasImage() or source.hasUrls() or super().canInsertFromMimeData(source)
