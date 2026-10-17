@@ -925,6 +925,24 @@ def test_a_show_filter_that_drops_the_slide_asks_during_a_translation_and_no_res
     assert len(asked) == 2 and page.nav.filter_index == reviewed and page.nav.shown == []
 
 
+def test_another_order_keeps_the_slide_on_show_and_its_translation(make_page, monkeypatch):
+    # carried over from v5.35.6 (the old Images tab's "Sort:" jumped to another slide)
+    page = make_page()
+    page.state.deck = SimpleNamespace(is_test_deck=False)
+    monkeypatch.setattr(image_review, "sort_order", lambda deck: {"two": 0, "one": 1})
+    page.nav.orders.set_current("files")
+    page._populate(None)
+    page.nav.slide_list.setCurrentRow(1)                 # "two", last in file order
+    shown, form = page._current, page._forms[0]
+    page._translating = form
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: pytest.fail("asked although the slide stays"))
+    page.nav.orders.set_current("deck")
+    page.nav.orders.changed.emit("deck")                 # what choosing it does
+    assert [view.row.slide_id for view in page.nav.shown] == ["two", "one"]
+    assert page._current is shown and page._forms[0] is form
+    assert page.nav.slide_list.currentRow() == 0        # the same slide, at its new place
+
+
 def test_a_show_filter_that_keeps_the_slide_does_not_ask_and_keeps_the_translation(make_page, monkeypatch):
     page = make_page()
     page.nav.slide_list.setCurrentRow(1)
