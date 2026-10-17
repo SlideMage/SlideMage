@@ -1,20 +1,20 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
-% SlideMage manual, chapter "Accessibility": transcripts, with the transcript
-% of this manual as SlideMage shows it (tools/manual/make_screenshots.py).
+% SlideMage manual, chapter "Accessibility": transcripts, with a slide's transcript entry
+% as SlideMage previews it (tools/manual/make_screenshots.py).
 \setSlideVersion{1-0-0}
 \begin{standardframe}{Accessible transcripts}
 	\small
 	Slides are hard to read with a screen reader even with described images:
 	text sits in boxes and columns, in an order only the eye can follow. A
 	transcript gives every slide's text and image descriptions in plain reading
-	order, as an HTML page and a Markdown file -- a second, accessible handout.
+	order, as an HTML page and a Markdown file.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.52\linewidth}
-			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-transcript.png}}}\par
-			{\scriptsize this manual's transcript, during-course\par}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.62\linewidth-0.8pt\relax]{media/screenshot-slidemage-transcript.png}}}\par
+			{\scriptsize a slide's transcript entry\par}
 		\end{column}
 		\begin{column}{0.45\linewidth}
 			\shrinklists{1}
@@ -22,7 +22,7 @@
 				\item For the student versions, with the same slides and numbers as the PDF
 				\item A German deck gets a German transcript
 				\item An image without a description is flagged where it appears
-				\item \emph{Create Transcript} under the deck table saves the transcript for a whole deck; the slide editor previews one slide
+				\item \emph{Compile PDF}'s arrow $\rightarrow$ \emph{Write transcript} saves the transcript for a whole deck; \emph{Render} $\rightarrow$ \emph{Render transcript} previews one slide
 			\end{itemize}
 		\end{column}
 	\end{columns}

@@ -49,11 +49,12 @@ import time
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Iterable, Optional
 
 from . import bibliography, deck_editor
-from .deck_scan import DECKS_DIR, PROJECT_ROOT, Chapter, Deck
+from .deck_scan import Chapter, Deck
+from .project import ProjectContext
+from .tex_source import INPUT_RE, blanked_verbatim, comment_start, masked_same_length
 
 ERROR = "error"
 WARNING = "warning"
@@ -103,11 +104,6 @@ class LintIssue:
 # Lexical layer
 # --------------------------------------------------------------------------
 
-_VERBATIM_ENV_RE = re.compile(
-    r"\\begin\{(verbatim\*?|Verbatim|lstlisting|minted)\}.*?\\end\{\1\}", re.DOTALL)
-_IFFALSE_RE = re.compile(r"\\iffalse\b.*?\\fi\b", re.DOTALL)
-_VERB_RE = re.compile(r"\\verb\*?([^a-zA-Z\s*])(.*?)\1")
-
 # Environments in which & is a column separator.
 _COLUMN_ENVS = {
     "tabular", "tabular*", "tabularx", "tabulary", "longtable", "array", "tabu",
@@ -128,8 +124,7 @@ _MATH_ENVS = {"equation", "equation*", "align", "align*", "alignat", "alignat*",
 _NON_TYPESET_OWNERS = {
     "textcolor", "color", "colorbox", "fcolorbox", "definecolor", "colorlet", "pagecolor",
     "includegraphics", "input", "include", "InputIfFileExists", "graphicspath",
-    "slide", "slidefinal", "slideversion", "omitslide", "omitslideversion",
-    "conditionalslide", "slidestep", "setSlideID", "setSlideVersion", "chapterlogo",
+    *deck_editor.ALL_MACROS, "setSlideID", "setSlideVersion", "chapterlogo",
     "fullbleedframe", "label", "ref", "pageref", "eqref", "hyperlink", "hypertarget",
     "href", "url", "nolinkurl", "begin", "end", "cite", "fullcite", "parencite", "textcite",
     "autocite", "footcite", "citeauthor", "citeyear", "citetitle", "smartcite",
@@ -177,26 +172,11 @@ def _mask_comments_and_verbatim(text: str) -> tuple[str, list[tuple[int, str]]]:
     """Text with comments, verbatim bodies, \\verb and \\iffalse blocks blanked
     out (line structure preserved) plus [(line, message)] for % that looks
     like an unescaped percent sign."""
-    def blank(m: re.Match) -> str:
-        return re.sub(r"[^\n]", " ", m.group(0))
-
-    text = _VERBATIM_ENV_RE.sub(blank, text)
-    text = _IFFALSE_RE.sub(blank, text)
-    text = _VERB_RE.sub(blank, text)
+    text = blanked_verbatim(text)
     percent_hits: list[tuple[int, str]] = []
     out_lines: list[str] = []
     for number, line in enumerate(text.split("\n"), 1):
-        i, n = 0, len(line)
-        cut = -1
-        while i < n:
-            c = line[i]
-            if c == "\\":
-                i += 2
-                continue
-            if c == "%":
-                cut = i
-                break
-            i += 1
+        cut = comment_start(line)
         if cut >= 0:
             after = line[cut + 1:]
             if cut > 0 and line[cut - 1].isdigit() and re.match(r"\s+[A-Za-z]", after):
@@ -468,47 +448,60 @@ _HEADING_TEXT_RE = re.compile(
     r"\s*(?P<head>\\textbf\{[^{}\n]*\})[ \t]*(?:\\\\|\\par)?[ \t]*\n"
     r"\s*\\begin\{(?:itemize|enumerate)\}")
 
-_bib_cache: tuple[tuple[float, int], frozenset[str]] | None = None
+_bib_cache: tuple[tuple[Path, float, int], frozenset[str]] | None = None
 
 
-def bib_keys() -> frozenset[str]:
+def bib_keys(ctx: ProjectContext) -> frozenset[str]:
     """Every citation key in Slidemaster.bib, cached until the file changes."""
     global _bib_cache
     try:
-        st = bibliography.DEFAULT_BIB.stat()
-        stamp = (st.st_mtime, st.st_size)
+        st = ctx.bibliography_path.stat()
+        stamp = (ctx.root, st.st_mtime, st.st_size)
     except OSError:
         return frozenset()
     if _bib_cache is None or _bib_cache[0] != stamp:
-        _bib_cache = (stamp, frozenset(bibliography.load()))
+        _bib_cache = (stamp, frozenset(bibliography.load(ctx.bibliography_path)))
     return _bib_cache[1]
 
 
-def _external(text: str) -> list[LintIssue]:
+def _citations(masked: str):
+    """(key, offset) of every key a citation command of the (comment-masked) text names."""
+    for m in _CITE_RE.finditer(masked):
+        for key in (k.strip() for k in m.group(1).split(",")):
+            if key:
+                yield key, m.start(1)
+
+
+def cited_keys(text: str) -> list[str]:
+    """The citation keys a slide's text cites (comments and verbatim text left out), in order of
+    first use, each once; keys built from macros or arguments are left out."""
+    masked, _ = _mask_comments_and_verbatim(text)
+    return list(dict.fromkeys(k for k, _ in _citations(masked) if "\\" not in k and "#" not in k))
+
+
+def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
     masked, _ = _mask_comments_and_verbatim(text)
     issues: list[LintIssue] = []
-    keys = bib_keys()
+    keys = bib_keys(ctx)
 
     def line_of(pos: int) -> int:
         return masked.count("\n", 0, pos) + 1
 
     if keys:
-        for m in _CITE_RE.finditer(masked):
-            for key in (k.strip() for k in m.group(1).split(",")):
-                if key and key not in keys and "\\" not in key and "#" not in key:
-                    issues.append(LintIssue(
-                        "citation", f"citation key '{key}' is not in Slidemaster.bib", line_of(m.start(1))))
+        for key, position in _citations(masked):
+            if key not in keys and "\\" not in key and "#" not in key:
+                issues.append(LintIssue("citation", f"citation key '{key}' is not in Slidemaster.bib", line_of(position)))
     for regex in _IMAGE_RES:
         for m in regex.finditer(masked):
             # \fullbleedframe takes a comma-separated list (one image per reveal step)
             for ref in (r.strip() for r in m.group(1).split(",")):
                 if not ref or "\\" in ref or "#" in ref or "{" in ref:
                     continue
-                if not any((PROJECT_ROOT / (ref + s)).is_file() for s in _IMAGE_SUFFIXES):
+                if not any((ctx.root / (ref + s)).is_file() for s in _IMAGE_SUFFIXES):
                     issues.append(LintIssue("image", f"image file '{ref}' does not exist", line_of(m.start(1))))
     for m in _CODE_FILE_RE.finditer(masked):
         ref = m.group(1).strip()
-        if ref and "\\" not in ref and "#" not in ref and not (PROJECT_ROOT / ref).is_file():
+        if ref and "\\" not in ref and "#" not in ref and not (ctx.root / ref).is_file():
             issues.append(LintIssue("code-file", f"code file '{ref}' does not exist", line_of(m.start(1))))
     for m in _GOTHAMTABLE_RE.finditer(masked):
         if not masked[m.end():].lstrip().startswith("@{}"):
@@ -526,10 +519,10 @@ def _external(text: str) -> list[LintIssue]:
 # Public API
 # --------------------------------------------------------------------------
 
-def lint_text(text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
+def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
     """All issues in one piece of LaTeX source (the editor buffer, a file...)."""
     found = [i.with_source(source, path) for i in _lex(text)]
-    found += [i.with_source(source, path) for i in _external(text)]
+    found += [i.with_source(source, path) for i in _external(ctx, text)]
     found.sort(key=lambda x: (x.line, x.code))
     return found
 
@@ -541,55 +534,11 @@ def read_source(path: Path) -> Optional[str]:
         return None
 
 
-def lint_file(path: Path) -> list[LintIssue]:
+def lint_file(ctx: ProjectContext, path: Path) -> list[LintIssue]:
     text = read_source(path)
     if text is None:
         return [LintIssue("slide-file", f"file does not exist or cannot be read: {path.name}", 1, path.name, path)]
-    return lint_text(text, path.name, path)
-
-
-def _display(path: Path) -> str:
-    try:
-        return path.relative_to(PROJECT_ROOT).as_posix()
-    except ValueError:
-        return path.name
-
-
-def _slide_path(call) -> Path:
-    if call.macro in deck_editor.VERSIONED_MACROS:
-        return deck_editor.SLIDES_DIR / f"{call.id_slug}-v{call.version}.tex"
-    return deck_editor.SLIDES_DIR / f"{call.id_slug}-current.tex"
-
-
-def _slide_included(call, version: Optional[str]) -> bool:
-    if call.macro in deck_editor.CONDITIONAL_MACROS and call.conditions is not None:
-        return (version or "instructor") in call.conditions
-    return True
-
-
-_INPUT_RE = re.compile(r"\\input\s*\{([^{}]+)\}")
-
-
-def _masked_same_length(text: str) -> str:
-    """`text` with comments replaced by spaces (offsets preserved)."""
-    out = []
-    for line in text.split("\n"):
-        i, n, cut = 0, len(line), -1
-        while i < n:
-            if line[i] == "\\":
-                i += 2
-                continue
-            if line[i] == "%":
-                cut = i
-                break
-            i += 1
-        out.append(line if cut < 0 else line[:cut] + " " * (n - cut))
-    return "\n".join(out)
-
-
-def _calls_in(text: str, chapters: list[Chapter]) -> list:
-    shim = SimpleNamespace(text=_masked_same_length(text), chapters=chapters)
-    return deck_editor.parse_slide_calls(shim)  # type: ignore[arg-type]
+    return lint_text(ctx, text, path.name, path)
 
 
 @dataclass
@@ -611,8 +560,9 @@ class CheckResult:
                 f"{len(self.errors)} error(s), {len(self.warnings)} warning(s)")
 
 
-def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[Chapter] = None,
-                   result: Optional[CheckResult] = None, seen: Optional[set] = None) -> CheckResult:
+def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = None, chapter: Optional[Chapter] = None,
+                   result: Optional[CheckResult] = None, seen: Optional[set] = None,
+                   language: Optional[str] = None) -> CheckResult:
     """Everything a compile of `deck` (in `version`, whole or one `chapter`)
     reads: the deck file itself (preamble, plus only the chosen chapter for a
     per-chapter job), every slide file its included calls load, and any
@@ -626,7 +576,7 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
             return
         seen.add(path)
         result.files_checked += 1
-        for issue in lint_file(path):
+        for issue in lint_file(ctx, path):
             if keep is None or keep(issue.line):
                 result.issues.append(issue)
 
@@ -639,17 +589,24 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
         keep = lambda ln: ln <= pre_lines or ch_first <= ln <= ch_last  # noqa: E731
     seen.add(deck.path)
     result.files_checked += 1
-    for issue in lint_text(text, deck.path.name, deck.path):
+    for issue in lint_text(ctx, text, deck.path.name, deck.path):
         if keep is None or keep(issue.line):
             result.issues.append(issue)
 
-    calls = _calls_in(text, deck.chapters)
+    from . import deck_language
+    from .deck_settings import read_settings
+    language = (language or read_settings(deck.text).language).upper()
+    resolved_deck, inline_inputs = deck_language.compile_deck(ctx, deck, language)
+    calls = [s.call for s in deck_language.deck_slots(ctx, resolved_deck, language)]
+    for path in inline_inputs:
+        if path.parent != ctx.slides_dir:
+            check_file(path)
     for call in calls:
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
-        if not _slide_included(call, version):
+        if not call.included_in(version):
             continue
-        path = _slide_path(call)
+        path = ctx.slides_dir / call.source_filename
         if not path.is_file():
             line = text.count("\n", 0, call.call_start) + 1
             result.issues.append(LintIssue(
@@ -659,20 +616,21 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
         check_file(path)
 
     # \input{fragment} decks (test-slides.tex): their slide calls count too
-    if deck.preamble_end is not None:
-        body = _masked_same_length(text)[deck.preamble_end:]
-        for m in _INPUT_RE.finditer(body):
+    if deck.preamble_end is not None and resolved_deck.text == text:
+        body = masked_same_length(text)[deck.preamble_end:]
+        for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
-            frag = DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
+            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file() and frag not in seen:
                 frag_text = read_source(frag) or ""
                 seen.add(frag)
                 result.files_checked += 1
-                result.issues.extend(lint_text(frag_text, frag.name, frag))
-                for call in _calls_in(frag_text, []):
-                    if not _slide_included(call, version):
+                result.issues.extend(lint_text(ctx, frag_text, frag.name, frag))
+                for slot in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language):
+                    call = slot.call
+                    if not call.included_in(version):
                         continue
-                    path = _slide_path(call)
+                    path = ctx.slides_dir / call.source_filename
                     if not path.is_file():
                         result.issues.append(LintIssue(
                             "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
@@ -683,31 +641,31 @@ def check_deck_job(deck: Deck, version: Optional[str] = None, chapter: Optional[
     return result
 
 
-def check_jobs(jobs: Iterable) -> CheckResult:
+def check_jobs(ctx: ProjectContext, jobs: Iterable) -> CheckResult:
     """Union over compile jobs (objects with .deck/.version/.chapter): each
     file is checked once, however many jobs read it."""
     result, seen = CheckResult(), set()
     started = time.perf_counter()
     for job in jobs:
-        check_deck_job(job.deck, job.version, job.chapter, result, seen)
+        check_deck_job(ctx, job.deck, job.version, job.chapter, result, seen, getattr(job, "language", None))
     result.seconds = time.perf_counter() - started
     return _dedupe(result)
 
 
-def check_slide_files(paths: Iterable[Path]) -> CheckResult:
+def check_slide_files(ctx: ProjectContext, paths: Iterable[Path]) -> CheckResult:
     result = CheckResult()
     started = time.perf_counter()
     for path in dict.fromkeys(paths):
         result.files_checked += 1
-        result.issues.extend(lint_file(path))
+        result.issues.extend(lint_file(ctx, path))
     result.seconds = time.perf_counter() - started
     return _dedupe(result)
 
 
-def check_buffer(text: str, name: str, path: Optional[Path] = None) -> CheckResult:
+def check_buffer(ctx: ProjectContext, text: str, name: str, path: Optional[Path] = None) -> CheckResult:
     started = time.perf_counter()
     result = CheckResult(files_checked=1)
-    result.issues.extend(lint_text(text, name, path))
+    result.issues.extend(lint_text(ctx, text, name, path))
     result.seconds = time.perf_counter() - started
     return result
 

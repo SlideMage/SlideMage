@@ -1,0 +1,19 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+%% Translation of: 1y9-EN-Chapter-The-Big-Picture
+%%
+
+% SlideMage manual: chapter divider; its body is the chapter agenda, next to
+% a \sectionfigure (the demo for both; source on slide 1y3).
+% The figure call comes last: it starts a paragraph line of its own, which above the
+% text would push the text down by one line.
+%% layout-check: skip right, bottom -- the \sectionfigure fills the strip beside the agenda by design
+\begin{sectionframe}{Das große Ganze}
+	\begin{minipage}[t]{0.72\linewidth}\small
+		Woraus SlideMage besteht, was ein Projekt enthält und wie ein Foliensatz
+		mehrere Institutionen bedient.
+	\end{minipage}\par\medskip
+	\SMChapterAgenda[0.72\linewidth]
+	\sectionfigure{media/illustration-slide-stack-portrait.pdf}
+\end{sectionframe}

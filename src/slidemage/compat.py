@@ -37,14 +37,16 @@ Free of Qt. Command line::
 from __future__ import annotations
 
 import json
-import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from . import compat_bibliography, project
+from .fileio import atomic_write
+from .tex_source import is_commented
 from .updater import parse_version
 
 from .compat_types import APPEARANCE, BREAKS, LAYOUT, Change, Finding  # noqa: F401  (re-exported)
@@ -60,11 +62,64 @@ REPORT_JSON = Path(".slidemage") / "compat-report.json"
 BACKUP_DIR = Path(".slidemage") / "backups"
 
 
+def _detect_omitslide(root: Path) -> list[Finding]:
+    findings = []
+    for path in compat_bibliography.decks(root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in re.finditer(r"\\omitslide(?:version)?\s*\{", text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.relative_to(root).as_posix(),
+                                        text.count("\n", 0, match.start()) + 1,
+                                        "Instructor-only slide is skipped in student deck versions."))
+    return findings
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
 # work (detect/migrate) live in modules of their own, e.g. compat_bibliography.
-CHANGES: list[Change] = [compat_bibliography.CHANGE]
+CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
+    id="workspace-redesign",
+    since="v6.0.0",
+    severity=APPEARANCE,
+    title="SlideMage's window was rebuilt as one workspace per deck",
+    description=(
+        "Version 6.0 replaced the window of tabs, the deck table and the deck editor by a "
+        "workspace (slide list, Preview / Source / Split / Details, side panels, an AI "
+        "assistant, a command palette). Projects, decks, slides and settings files are "
+        "unchanged and compile as before; what changed is how you work with them."),
+    fix=(
+        "Nothing to do in the project. Compile the other versions from the arrow of Compile PDF "
+        "(they were the deck table's checkboxes), and use the chat instead of AI drafting."),
+), Change(
+    id="language-switch-translations",
+    since="v7.0.0",
+    severity=APPEARANCE,
+    title="EN / DE follows linked translations",
+    description=(
+        "The language switch now selects the linked slide file for editing, previewing and "
+        "compiling the open deck. Linked EN / DE calls are one logical slot, including old "
+        "decks that list both. The original call keeps visibility and reveal steps; a "
+        "translation uses its own current version, independently of an English pin."),
+    fix=(
+        "No project migration is needed. Select EN or DE to edit that language's slide; "
+        "missing partners fall back to the called file. To include both languages as "
+        "separate slides, use independent copies without translation links. Raw LaTeX "
+        "compiles outside SlideMage keep the literal deck calls."),
+), Change(
+    id="omitslide-instructor-only",
+    since="v8.0.0",
+    severity=APPEARANCE,
+    title="Omitted slides are instructor-only",
+    description=(
+        "\\omitslide and \\omitslideversion now skip slides in during-course and after-course "
+        "decks, keeping frame numbers aligned. Instructor and presenter compiles, and decks "
+        "without \\deckversion, still include them unless \\studentversion is set."),
+    fix=(
+        "Use \\slide or \\slideversion for slides students should receive; keep omission "
+        "calls for instructor-only content."),
+    detect=_detect_omitslide,
+)]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
@@ -178,12 +233,6 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
-    tmp = path.with_name(path.name + ".slidemage-tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
-
-
 def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
                now: Optional[datetime] = None) -> UpdateResult:
     """Run the migrations of `pending`. Every file that changes is copied to
@@ -216,9 +265,7 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
                 (backup / rel).write_bytes(path.read_bytes())
                 result.backup = backup
-            else:
-                path.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_write(path, data)
+            atomic_write(path, data)
         except OSError as exc:
             result.errors.append(f"{rel}: {exc}")
     return result

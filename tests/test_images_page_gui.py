@@ -1,0 +1,1006 @@
+"""The Images page (ui/pages/images.py and friends): what its forms save, how a slide is left, and
+how a drafting or translating job runs, stops and gives the Ollama slot back."""
+from __future__ import annotations
+
+import threading
+import time
+from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
+
+from slidemage import alt_blocks, alt_draft, alt_images, image_review
+from slidemage.ai import ai_profile, claude_images, claude_launch, resolver
+from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
+from slidemage.ai.providers import OllamaProvider
+from slidemage.alt_blocks import SlideRow
+from slidemage.ui.kit.theme import ThemeManager
+from slidemage.ui.pages import image_dialogs, image_runs, images
+from slidemage.ui.pages.image_jobs import Job
+from slidemage.ui.workspace.state import WorkspaceState
+from slidemage.project import ProjectContext
+
+CHART = "media/chart.png"
+
+
+class FakeApp:
+    """What the page asks of the window."""
+
+    def __init__(self, project) -> None:
+        self.project = project
+        self.theme = ThemeManager()
+        self.logged: list[str] = []
+        self.slots: list[str] = []          # "took"/"gave" per Ollama slot call
+        self.unsaved: set[Path] = set()     # slide files with unsaved edits in the Source view
+        self.synced: list[Path] = []
+        self.opened: list[Path] = []
+        self.centre = SimpleNamespace(unsaved=lambda path: path in self.unsaved, sync_source=self.synced.append,
+                                      slide_text=lambda path: path.read_text(encoding="utf-8"))
+
+    def log(self, line):
+        self.logged.append(line)
+
+    def try_start_ollama_task(self, _label, provider=None):
+        self.slots.append("took")
+        return True
+
+    def end_ollama_task(self, provider=None):
+        self.slots.append("gave")
+
+    def open_slide_editor(self, path):
+        self.opened.append(path)
+
+
+@pytest.fixture
+def make_page(monkeypatch, qapp, tmp_path, ctx):
+    """The page over two slides ("one": all `image_refs`, "two": the first) and an in-memory store."""
+
+    def make(image_refs=None):
+        image_refs = image_refs or [CHART]
+        first = SlideRow(tmp_path / "one-current.tex", "one", "First", list(image_refs))
+        second = SlideRow(tmp_path / "two-current.tex", "two", "Second", [image_refs[0]])
+        for row in (first, second):
+            row.path.write_text("slide text", encoding="utf-8")
+        store = {reference: alt_images.ImageEntry(image=reference) for reference in image_refs}
+        sync_calls = []
+        monkeypatch.setattr(alt_blocks, "scan_slides_raw", lambda _ctx: [first, second])
+        monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
+        monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, *_args: [])
+        monkeypatch.setattr(alt_images, "sync_store", lambda _ctx: (sync_calls.append(True), alt_images.SyncReport())[1])
+        monkeypatch.setattr(alt_images, "load_store", lambda _ctx: deepcopy(store))
+        monkeypatch.setattr(alt_images, "slide_context_hash", lambda _path: "slide-hash")
+
+        def update_store(_ctx, mutate):
+            latest = deepcopy(store)
+            changed = mutate(latest)
+            if changed:
+                store.clear()
+                store.update(latest)
+            return changed
+
+        monkeypatch.setattr(alt_images, "update_store", update_store)
+        monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
+        app = FakeApp(ctx)
+        page = images.ImagesPage(app, WorkspaceState(ctx), app.centre)
+        page.reload()
+        page.app, page.sync_calls, page.store, page.first, page.second = app, sync_calls, store, first, second
+        return page
+
+    return make
+
+
+def run_jobs_inline(monkeypatch):
+    """Jobs run on the calling thread, so that their result arrives at once."""
+    monkeypatch.setattr(Job, "start", Job.run)
+
+
+def choose_provider(monkeypatch, provider=None):
+    """The picked route is Local, and the provider its backends are built on the given one."""
+    provider = provider or OllamaProvider("offline-test")
+    monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
+    monkeypatch.setattr(image_runs, "provider_from_combo", lambda *_args: provider)
+    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
+
+
+def type_into(page, key, text, index=0):
+    page._forms[index].fields[key].setPlainText(text)
+
+
+# -- the list ------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("themed", [False, True])
+@pytest.mark.parametrize("references", [[CHART], [CHART, "media/second.png"]])
+def test_images_page_minimum_width_fits_with_full_action_labels(make_page, qapp, references, themed):
+    page = make_page(references)
+    if themed:
+        from slidemage.ui.kit.fonts import load_fonts
+
+        load_fonts()
+        page.app.theme.apply()
+    page.show()
+    qapp.processEvents()
+    assert page.minimumSizeHint().width() <= 700
+    page.resize(700, 640)
+    qapp.processEvents()
+    for button in (page.draft_button, page.clear_button, page.save_button, page.review_button):
+        assert button.isVisible()
+        assert button.width() >= button.minimumSizeHint().width()
+    assert page.review_button.text() == images.review_label(len(references))
+    assert page.scroll.horizontalScrollBar().isVisible()
+    assert page.scroll.horizontalScrollBar().maximum() > 0
+    page.hide()
+
+
+@pytest.mark.parametrize(("references", "review_text"), [
+    ([CHART], "Save and mark reviewed"),
+    ([CHART, "media/second.png"], "Save and mark all images reviewed"),
+])
+def test_the_page_lists_the_slides_with_images_and_shows_the_first(make_page, references, review_text):
+    page = make_page(references)
+    assert [view.row.slide_id for view in page.nav.shown] == ["one", "two"]
+    assert page._current.row.slide_id == "one" and [form.reference for form in page._forms] == references
+    assert page.nav.summary.text() == "0 reviewed · 0 need re-check · 0 draft · 2 undescribed"
+    assert page.review_button.text() == review_text
+    page.nav.slide_list.setCurrentRow(1)
+    assert len(page._forms) == 1 and page.review_button.text() == "Save and mark reviewed"
+
+
+def test_the_no_german_filter_lists_slides_whose_image_has_english_but_no_german(make_page):
+    page = make_page()
+    no_german = [label for label, _ in image_review.FILTERS].index("No German")
+    page.nav.set_filter(no_german)
+    page._populate(None)
+    assert page.nav.shown == []
+    assert page.slide_title.text() == "No slide selected"
+    page.store[CHART].short = "English text"
+    page.reload()
+    assert [view.row.slide_id for view in page.nav.shown] == ["one", "two"]
+    page.store[CHART].short_de = "Deutscher Text"
+    page.reload()
+    assert page.nav.shown == []
+
+
+def test_find_slide_jumps_to_it_whatever_the_filter_shows(make_page, monkeypatch):
+    page = make_page()
+    page.store[CHART].short, page.store[CHART].long = "s", "l"       # nothing needs attention any more
+    page.store[CHART].status = alt_images.STATUS_REVIEWED
+    page.nav.set_filter(0)
+    page.reload()
+    page.show_slide("two-second")
+    assert image_review.FILTERS[page.nav.filter_index][0] == "All slides with images"
+    assert page._current.row.slide_id == "two"
+    told = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
+    page.show_slide("zzz")
+    assert "No slide matching" in told[0] and page._current.row.slide_id == "two"
+
+
+def test_the_order_follows_the_open_deck(make_page, monkeypatch):
+    page = make_page()
+    page.state.deck = SimpleNamespace(is_test_deck=False)
+    monkeypatch.setattr(image_review, "sort_order", lambda deck: {"two": 0, "one": 1})
+    page._populate(None)
+    assert [view.row.slide_id for view in page.nav.shown] == ["two", "one"]
+    page.nav.orders.set_current("files")
+    page._populate(None)
+    assert [view.row.slide_id for view in page.nav.shown] == ["one", "two"]
+
+
+# -- unsaved edits --------------------------------------------------------------------------------
+
+
+def test_batch_completion_keeps_a_form_with_unsaved_edits(make_page):
+    for finish, summary in ((lambda page, s: page._drafted(s), alt_draft.BatchSummary()),
+                            (lambda page, s: page._translated(s), alt_draft.TranslationBatchSummary())):
+        page = make_page()
+        form = page._forms[0]
+        type_into(page, "long", "UNSAVED HUMAN EDIT")
+        assert page.dirty and page.state.dirty
+        finish(page, summary)
+        assert page._forms[0] is form and form.fields["long"].toPlainText() == "UNSAVED HUMAN EDIT"
+        assert len(page.sync_calls) == 1                           # the rescan waited for the edit
+
+
+def test_leaving_the_slide_saves_the_edit_as_a_draft(make_page):
+    page = make_page()
+    page.flush()
+    assert page.store[CHART].used_on == {}
+    type_into(page, "long", "typed long text")
+    type_into(page, "short", "typed short")
+    page.nav.slide_list.setCurrentRow(1)
+    assert page._current.row.slide_id == "two" and not page.dirty and not page.state.dirty
+    saved = page.store[CHART]
+    assert (saved.short, saved.long) == ("typed short", "typed long text")
+    assert saved.status != alt_images.STATUS_REVIEWED and saved.used_on["one"].reviewed == ""
+    assert page.nav.shown[0].state == alt_images.STATE_DRAFT        # the list shows the new state
+
+
+def test_a_rescan_and_a_deck_switch_save_a_pending_edit_too(make_page):
+    page = make_page()
+    type_into(page, "short", "first")
+    page.reload()
+    assert page.store[CHART].short == "first" and not page.dirty
+    type_into(page, "short", "second")
+    page.state.set_deck(SimpleNamespace(path=Path("other.tex"), name="other", text="", is_test_deck=True))
+    assert page.store[CHART].short == "second" and not page.dirty
+
+
+def test_save_merges_human_edit_with_worker_updates_across_visible_images(make_page):
+    second_ref = "media/second.png"
+    page = make_page([CHART, second_ref])
+    chart = page.store[CHART]
+    chart.short = "worker's latest English short"
+    chart.takeaway_default = "worker's latest English takeaway"
+    chart.used_on["one"] = alt_images.SlideUse(takeaway="worker's latest slide override",
+                                               takeaway_de="worker's latest German override")
+    chart.short_de, chart.long_de = "worker short DE", "worker long DE"
+    chart.takeaway_default_de = "worker default DE"
+    chart.translated_from_hash = alt_images.en_text_hash(chart)
+    other = page.store[second_ref]
+    other.long, other.drafted_by, other.hint = "worker's latest second-image description", "offline-worker", "latest worker hint"
+    other.short_de, other.long_de = "second short DE", "second long DE"
+    other.takeaway_default, other.takeaway_default_de = "second EN takeaway", "second DE takeaway"
+    other.translated_from_hash = alt_images.en_text_hash(other)
+
+    form = page._forms[0]
+    type_into(page, "long", "HUMAN ENGLISH EDIT")
+    page._translated(alt_draft.TranslationBatchSummary(written=2))
+    assert page._forms[0] is form                                   # the dirty form stayed as it was
+    page._save(reviewed=False)
+
+    saved = page.store[CHART]
+    assert (saved.long, saved.short) == ("HUMAN ENGLISH EDIT", "worker's latest English short")
+    assert saved.takeaway_default == "worker's latest English takeaway"
+    assert saved.takeaway_for("one") == "worker's latest slide override"
+    assert saved.takeaway_default_de == "worker default DE"
+    assert saved.takeaway_for_de("one") == "worker's latest German override"
+    assert (saved.short_de, saved.long_de) == ("worker short DE", "worker long DE")
+    assert saved.translated_from_hash == alt_images.en_text_hash(chart)
+    assert alt_images.translation_state(saved) == alt_images.STATE_STALE
+    untouched = page.store[second_ref]
+    assert untouched.long == "worker's latest second-image description"
+    assert (untouched.drafted_by, untouched.hint) == ("offline-worker", "latest worker hint")
+    assert (untouched.short_de, untouched.long_de) == ("second short DE", "second long DE")
+    assert (untouched.takeaway_default, untouched.takeaway_default_de) == ("second EN takeaway", "second DE takeaway")
+    assert untouched.translated_from_hash == alt_images.en_text_hash(untouched)
+
+
+def test_set_default_keeps_worker_fields_and_invalidates_stale_human_translation(make_page):
+    page = make_page()
+    entry = page.store[CHART]
+    entry.short, entry.long = "worker's new English short", "worker's new English long"
+    entry.short_de, entry.long_de = "worker short DE", "worker long DE"
+    entry.translated_from_hash = alt_images.en_text_hash(entry)
+
+    type_into(page, "takeaway", "human's chosen default")
+    page._forms[0]._set_default()
+    type_into(page, "short_de", "human German edit based on old form")
+    page._save(reviewed=False)
+
+    saved = page.store[CHART]
+    assert (saved.short, saved.long) == ("worker's new English short", "worker's new English long")
+    assert saved.takeaway_default == "human's chosen default" and saved.long_de == "worker long DE"
+    assert saved.short_de == "human German edit based on old form"
+    assert saved.translated_from_hash == "" and alt_images.translation_state(saved) == alt_images.STATE_STALE
+
+
+# -- reviewing --------------------------------------------------------------------------------------
+
+
+def test_review_is_refused_while_an_informative_image_has_no_long_description(make_page, monkeypatch):
+    page = make_page()
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+    type_into(page, "short", "only a short one")
+    assert page._save(reviewed=True) is False
+    assert CHART in warned[0] and page.store[CHART].short == ""
+    page._forms[0].roles.set_current(alt_images.ROLE_DECORATIVE)
+    page._forms[0]._on_role(alt_images.ROLE_DECORATIVE)
+    assert page._save(reviewed=True) is True and page.store[CHART].role == alt_images.ROLE_DECORATIVE
+
+
+def test_marking_reviewed_moves_on_to_the_next_slide_the_filter_lists(make_page):
+    page = make_page()
+    type_into(page, "short", "s")
+    type_into(page, "long", "l")
+    page._save(reviewed=True)
+    # the chart is one shared image: both slides use it, but only slide "one" was stamped
+    assert page.store[CHART].used_on["one"].reviewed
+    assert [view.row.slide_id for view in page.nav.shown] == ["two"] and page._current.row.slide_id == "two"
+    assert not page.dirty
+
+
+def test_decorative_images_keep_only_the_source_editable(make_page):
+    page = make_page()
+    form = page._forms[0]
+    form.roles.set_current(alt_images.ROLE_DECORATIVE)
+    form._on_role(alt_images.ROLE_DECORATIVE)
+    assert {key: edit.isEnabled() for key, edit in form.fields.items()} == {
+        "short": False, "long": False, "takeaway": False, "source": True,
+        "short_de": False, "long_de": False, "takeaway_de": False, "source_de": True}
+    assert form.changed and page.dirty
+
+
+def test_the_state_chip_follows_the_typing_and_goes_back_with_it(make_page):
+    page = make_page()
+    form = page._forms[0]
+    assert form.state_chip.text() == "No description"
+    type_into(page, "short", "typed")
+    assert form.state_chip.text() == "Changed, unsaved"
+    type_into(page, "short", "")
+    assert form.state_chip.text() == "No description"
+
+
+def test_set_as_default_needs_a_takeaway_on_an_informative_image(make_page):
+    page = make_page()
+    form = page._forms[0]
+    assert not form.default_button.isEnabled()
+    type_into(page, "takeaway", "why it is here")
+    assert form.default_button.isEnabled()
+    form.roles.set_current(alt_images.ROLE_DECORATIVE)
+    form._on_role(alt_images.ROLE_DECORATIVE)
+    assert not form.default_button.isEnabled()
+    form.roles.set_current(alt_images.ROLE_INFORMATIVE)
+    form._on_role(alt_images.ROLE_INFORMATIVE)
+    type_into(page, "takeaway", "")
+    form._set_default()                      # also refused when called anyway
+    assert page.store[CHART].takeaway_default == ""
+
+
+def test_the_translate_buttons_of_a_form_follow_the_page_when_no_model_is_there(make_page):
+    page = make_page()
+    form = page._forms[0]
+    page.translate_model.setEnabled(True)
+    page._update_buttons()
+    assert form.translate_button.isEnabled() and form.save_translate_button.isEnabled()
+    page.translate_model.setEnabled(False)          # what fill_model_combo does with no model to offer
+    page._update_buttons()
+    assert not form.translate_button.isEnabled() and not form.save_translate_button.isEnabled()
+
+
+def test_a_worker_writing_the_store_updates_the_entry_of_a_form_with_edits_only(make_page):
+    page = make_page()
+    type_into(page, "short", "my edit")
+    page.store[CHART].long = "written by a worker"
+    page._refresh_states()
+    form = page._forms[0]
+    assert form.fields["short"].toPlainText() == "my edit" and form.fields["long"].toPlainText() == ""
+    assert form.saved_english()[1] == "written by a worker"          # what "Version on disk" translates
+
+
+@pytest.mark.parametrize("typed", [False, True], ids=["saved-draft", "pending-edit"])
+def test_clear_draft_discards_unreviewed_text_only(make_page, monkeypatch, typed):
+    page = make_page()
+    page.store[CHART].short, page.store[CHART].long, page.store[CHART].drafted_by = "s", "l", "model"
+    page.reload()
+    if typed:
+        type_into(page, "short", "typed on top of the draft")
+        assert page.dirty
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page._clear_draft()
+    cleared = page.store[CHART]
+    assert (cleared.short, cleared.long, cleared.drafted_by) == ("", "", "")
+    assert page._forms[0].fields["short"].toPlainText() == "" and not page.dirty
+    page.flush()
+    assert page.store[CHART].short == ""  # pending edits must not recreate the draft
+    told = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
+    page._clear_draft()
+    assert "unreviewed" in told[0]
+
+
+# -- the slide's own actions ---------------------------------------------------------------------------
+
+
+def test_open_in_source_and_transcript_preview_use_the_slide_on_show(make_page, monkeypatch):
+    page = make_page()
+    page._open_source()
+    assert page.app.opened == [page.first.path]
+    shown = []
+    monkeypatch.setattr(images, "show_transcript_preview", lambda *args: shown.append(args))
+    page._preview_transcript()
+    app, text, bare, id_slug, view, language = shown[0]
+    assert (text, bare, id_slug, language) == ("slide text", "one", "one", "en") and view == page.state.view
+
+
+# -- drafting and translating: jobs --------------------------------------------------------------------------
+
+
+class FakeBackend:
+    def __init__(self, _ctx, provider, **_kwargs):
+        self.provider, self.label = provider, "offline-test"
+
+    def draft(self, _path, _context):
+        return alt_draft.DraftResult(short="drafted short", long="drafted long", takeaway="take", model="offline-test")
+
+
+@pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
+def test_draft_slide_runs_one_job_writes_the_draft_and_gives_the_slot_back(make_page, monkeypatch, local):
+    page = make_page()
+    run_jobs_inline(monkeypatch)
+    provider = OllamaProvider("offline-test")
+    provider.is_local = local
+    choose_provider(monkeypatch, provider)
+    given = []
+    release = page.app.end_ollama_task
+    page.app.end_ollama_task = lambda provider=None: (given.append(provider), release(provider))
+    monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
+    monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
+        alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
+    page._draft_slide()
+    assert page.app.slots == ["took", "gave"] and page._job is None and page.job_card.isHidden()
+    assert given == [provider]
+    drafted = page.store[CHART]
+    assert (drafted.short, drafted.long, drafted.drafted_by) == ("drafted short", "drafted long", "offline-test")
+    assert page._forms[0].fields["short"].toPlainText() == "drafted short"      # the untouched form shows it
+    assert page.nav.shown[0].state == alt_images.STATE_DRAFT
+
+
+def test_draft_slide_tells_when_there_is_nothing_to_draft(make_page, monkeypatch):
+    page = make_page()
+    told = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[1]))
+    page._draft_slide()
+    assert told == ["Nothing to draft"] and page.app.slots == []
+
+
+def test_draft_all_confirms_then_runs_the_queue_and_reports_errors(make_page, monkeypatch):
+    page = make_page()
+    run_jobs_inline(monkeypatch)
+    choose_provider(monkeypatch)
+    monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
+    queue = [alt_draft.ImageJob(CHART, Path("chart.png"), "one", page.first.path)]
+    monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda _ctx, **_kwargs: queue)
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: QMessageBox.StandardButton.Cancel)
+    page._draft_all()
+    assert page.app.slots == ["took", "gave"] and page.store[CHART].short == ""    # declined: slot given back
+    page.app.slots.clear()
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: QMessageBox.StandardButton.Ok)
+    page._draft_all()
+    assert page.app.slots == ["took", "gave"] and page.store[CHART].short == "drafted short"
+
+
+class SlowBackend:
+    """Draft one image after another until told to stop, like a long batch."""
+
+    def __init__(self, _ctx, provider, **_kwargs):
+        self.provider, self.label = provider, "offline-test"
+        self.started = threading.Event()
+
+    def draft(self, _path, _context):
+        self.started.set()
+        time.sleep(0.02)
+        return alt_draft.DraftResult(error="no answer")
+
+
+def window_stand_in(project) -> QWidget:
+    widget = QWidget()
+    widget.project = project
+    widget.log = lambda line: None
+    return widget
+
+
+def wait_for(condition, seconds=5.0):
+    deadline = time.monotonic() + seconds
+    while not condition() and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.005)
+    return condition()
+
+
+def test_stop_ends_a_batch_after_the_current_image_and_takes_the_click_back(make_page, monkeypatch, ctx):
+    page = make_page()
+    choose_provider(monkeypatch)
+    backend = SlowBackend(ctx, OllamaProvider("offline-test"))
+    monkeypatch.setattr(alt_draft, "ModelBackend", lambda _ctx, provider, **kw: backend)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
+    queue = [alt_draft.ImageJob(f"media/{i}.png", Path("x.png"), "one", page.first.path) for i in range(500)]
+    monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda _ctx, **_kwargs: queue)
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: QMessageBox.StandardButton.Ok)
+    page._draft_all()
+    job = page._job
+    assert job is not None and not page.draft_all_button.isEnabled() and not page.job_card.isHidden()
+    assert wait_for(backend.started.is_set)
+    page._stop_clicked()
+    assert job.stop_requested and "Stopping" in page.job_card.stop.text()
+    page._stop_clicked()                                            # a second click takes it back
+    assert not job.stop_requested and page.job_card.stop.text() == "Stop"
+    page._stop_clicked()
+    assert wait_for(lambda: page._job is None)
+    assert page.app.slots == ["took", "gave"] and page.draft_all_button.isEnabled()
+
+
+def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_page, monkeypatch):
+    page = make_page()
+    release = threading.Event()
+    provider = OllamaProvider("offline-test")
+    aborted = []
+    provider.abort = lambda: (aborted.append(True), release.set())
+
+    def work(job):
+        release.wait(5)                                              # a request that only abort ends
+        return alt_draft.BatchSummary()
+
+    page.app.try_start_ollama_task("test", provider)
+    job = Job("Drafting", provider, work, Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
+    page._start(job, "one image", 5, lambda outcome: None)
+    assert job.isRunning()
+    job.position = (3, 5)
+    [work] = page.running_work()                       # what the AI switch's busy popover lists
+    assert (work.text, work.route, work.local) == ("Drafting · 2 of 5 done", "offline-test · Ollama", True)
+    assert "cancelled, not moved" in work.line and work.stop == page._abort_job
+    page.shutdown()
+    assert page.running_work() == []
+    assert aborted == [True] and page._job is None
+    assert wait_for(job.isFinished) and wait_for(lambda: page.app.slots == ["took", "gave"])
+
+
+# -- translating one image ----------------------------------------------------------------------------------
+
+
+def translation_for(entry):
+    return alt_draft.TranslationResult(short_de="translated short", long_de="translated long",
+                                       takeaway_de="translated takeaway", source_hash=alt_images.en_text_hash(entry))
+
+
+class FakeTranslator:
+    def __init__(self, _ctx, provider, **_kwargs):
+        self.provider, self.label = provider, "offline-test"
+
+    def translate(self, entry):
+        return translation_for(entry)
+
+
+def unsaved_draft(monkeypatch):
+    monkeypatch.setattr(images.ImagesPage, "_ask_which_english", lambda page: "unsaved")
+
+
+@pytest.mark.parametrize("edited", [False, True], ids=["current", "german-edit-after-completion"])
+def test_unsaved_english_translation_tracks_edits_after_completion(make_page, monkeypatch, edited):
+    page = make_page()
+    type_into(page, "long", "UNSAVED ENGLISH TO TRANSLATE")
+    unsaved_draft(monkeypatch)
+    run_jobs_inline(monkeypatch)
+    choose_provider(monkeypatch)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeTranslator)
+    form = page._forms[0]
+    page._translate_image(form, False)
+    assert "matches the current English text" in form.translation_state.text()
+    assert page.app.slots == ["took", "gave"]
+    translated_hash = form.provenance["source_hash"]
+    if edited:
+        type_into(page, "long_de", "HUMAN GERMAN EDIT AFTER TRANSLATION")
+    page._save(reviewed=False)
+    saved = page.store[CHART]
+    assert saved.long == "UNSAVED ENGLISH TO TRANSLATE"
+    if edited:
+        assert saved.long_de == "HUMAN GERMAN EDIT AFTER TRANSLATION" and saved.translated_from_hash == ""
+        assert alt_images.translation_state(saved) == alt_images.STATE_STALE
+    else:
+        assert saved.translated_from_hash == translated_hash
+        assert alt_images.translation_state(saved) == alt_images.STATE_REVIEWED
+
+
+def test_translation_completion_keeps_newer_english_and_human_german_stale(make_page, monkeypatch):
+    page = make_page()
+    type_into(page, "long", "ENGLISH AT REQUEST TIME")
+    unsaved_draft(monkeypatch)
+    started = []
+    monkeypatch.setattr(Job, "start", lambda job: started.append(job))
+    choose_provider(monkeypatch)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeTranslator)
+    form = page._forms[0]
+    page._translate_image(form, False)
+    asked = alt_images.ImageEntry(image=CHART, long="ENGLISH AT REQUEST TIME")
+    type_into(page, "long", "NEWER ENGLISH AFTER REQUEST")
+    type_into(page, "short_de", "HUMAN GERMAN EDIT DURING REQUEST")
+    page._on_job_result(started[0], translation_for(asked))
+    assert form.fields["short_de"].toPlainText() == "HUMAN GERMAN EDIT DURING REQUEST"
+    page._save(reviewed=False)
+    saved = page.store[CHART]
+    assert saved.long == "NEWER ENGLISH AFTER REQUEST" and saved.short_de == "HUMAN GERMAN EDIT DURING REQUEST"
+    assert saved.translated_from_hash == "" and alt_images.translation_state(saved) == alt_images.STATE_STALE
+
+
+def test_individual_translation_keeps_fields_typed_after_request(make_page):
+    page = make_page()
+    form = page._forms[0]
+    form.begin_translation(form.english())
+    type_into(page, "long_de", "NEW HUMAN GERMAN TEXT")
+    form.end_translation(alt_draft.TranslationResult(short_de="translated short", long_de="translated long",
+                                                     takeaway_de="translated takeaway"))
+    assert form.fields["short_de"].toPlainText() == "translated short"
+    assert form.fields["long_de"].toPlainText() == "NEW HUMAN GERMAN TEXT"
+    assert form.fields["takeaway_de"].toPlainText() == "translated takeaway"
+
+
+def test_save_then_translate_translates_what_was_just_saved(make_page, monkeypatch):
+    page = make_page()
+    type_into(page, "long", "ENGLISH TO SAVE FIRST")
+    run_jobs_inline(monkeypatch)
+    choose_provider(monkeypatch)
+    sent = []
+
+    class Translator(FakeTranslator):
+        def translate(self, entry):
+            sent.append(entry.long)
+            return super().translate(entry)
+
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", Translator)
+    page._translate_image(page._forms[0], True)
+    assert page.store[CHART].long == "ENGLISH TO SAVE FIRST" and sent == ["ENGLISH TO SAVE FIRST"]
+    assert page._forms[0].fields["long_de"].toPlainText() == "translated long"
+
+
+def test_a_failed_translation_says_so_and_frees_the_form(make_page, monkeypatch):
+    page = make_page()
+    run_jobs_inline(monkeypatch)
+    choose_provider(monkeypatch)
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+
+    class Failing(FakeTranslator):
+        def translate(self, entry):
+            raise RuntimeError("model unreachable")
+
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", Failing)
+    form = page._forms[0]
+    page._translate_image(form, False)
+    assert warned == ["model unreachable"] and not form.translating and page._job is None
+    assert form.translate_button.text() == "Translate" and form.translate_button.isEnabled()
+
+
+def test_switching_slides_during_a_translation_asks_first(make_page, monkeypatch):
+    page = make_page()
+    monkeypatch.setattr(Job, "start", lambda job: None)
+    choose_provider(monkeypatch)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeTranslator)
+    page._translate_image(page._forms[0], False)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+    page.nav.slide_list.setCurrentRow(1)
+    assert page._current.row.slide_id == "one" and page.nav.current_row() == 0
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page.nav.slide_list.setCurrentRow(1)
+    assert page._current.row.slide_id == "two"
+
+
+def start_translation(page, monkeypatch):
+    monkeypatch.setattr(Job, "start", lambda job: None)
+    choose_provider(monkeypatch)
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", FakeTranslator)
+    page._translate_image(page._forms[0], False)
+    return page._forms[0]
+
+
+def test_a_reviewed_save_during_a_translation_is_not_undone_by_a_draft_save(make_page, monkeypatch):
+    page = make_page()
+    page.nav.set_filter(image_review.FILTER_ALL)
+    page._populate(page._current_path())
+    form = start_translation(page, monkeypatch)
+    type_into(page, "short", "a short description")
+    type_into(page, "long", "a long description")
+    assert page._save(reviewed=True) and not page.dirty
+    assert page.store[CHART].status == alt_images.STATUS_REVIEWED
+    page.flush()
+    assert page.store[CHART].status == alt_images.STATUS_REVIEWED and form.translating
+
+
+def test_changing_the_filter_or_deck_keeps_the_translation_and_find_asks_first(make_page, monkeypatch):
+    page = make_page()
+    form = start_translation(page, monkeypatch)
+    page.nav.set_filter(image_review.FILTER_ALL)
+    page.nav.view_changed.emit()
+    page._on_deck_changed(None)
+    assert page._forms == [form] and page._translation_in_flight()
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+    page.show_slide("two")
+    page._on_rescan()
+    assert page._current.row.slide_id == "one" and page._forms == [form]
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page.show_slide("two")
+    assert page._current.row.slide_id == "two"
+
+
+def test_stop_on_a_single_translation_aborts_it_at_once(make_page, monkeypatch):
+    page = make_page()
+    release = threading.Event()
+    provider = OllamaProvider("offline-test")
+    provider.abort = release.set
+    choose_provider(monkeypatch, provider)
+
+    class Waiting(FakeTranslator):
+        def translate(self, entry):
+            release.wait(5)
+            return alt_draft.TranslationResult(error="aborted")
+
+    monkeypatch.setattr(alt_draft, "ModelTranslationBackend", Waiting)
+    form = page._forms[0]
+    page._translate_image(form, False)
+    assert form.translating and page.job_card.single
+    page._stop_clicked()
+    assert not form.translating and page._job is None
+    assert wait_for(lambda: page.app.slots == ["took", "gave"])
+
+
+# -- replacing an image -------------------------------------------------------------------------------------
+
+
+class FakeReplaceSheet:
+    others_checked = True
+
+    def __init__(self, parent, project, reference, others):
+        self.source, self.new_name = Path("picked.png"), "chart-new.png"
+        self.on_others = SimpleNamespace(isChecked=lambda: self.others_checked)
+
+    def exec(self):
+        return 1
+
+
+def test_replace_image_repoints_clean_slides_and_refuses_one_with_unsaved_edits(make_page, monkeypatch, tmp_path):
+    page = make_page()
+    page.store[CHART].short = "described"
+    page.store[CHART].used_on = {"one": alt_images.SlideUse(), "two": alt_images.SlideUse()}
+    page.first.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
+    page.second.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
+    page.app.unsaved = {page.second.path}
+    page.reload()
+    (tmp_path / "picked.png").write_bytes(b"png")
+    monkeypatch.setattr(FakeReplaceSheet, "__init__", lambda self, parent, project, reference, others: (
+        setattr(self, "source", tmp_path / "picked.png"), setattr(self, "new_name", "chart-new.png"),
+        setattr(self, "on_others", SimpleNamespace(isChecked=lambda: True)), setattr(self, "others", others)) and None)
+    monkeypatch.setattr(images, "ReplaceImageSheet", FakeReplaceSheet)
+    warned, asked = [], []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args[2]))
+    page._replace_image(page._forms[0])
+    assert (tmp_path / "media" / "chart-new.png").read_bytes() == b"png"
+    assert "media/chart-new.png" in page.first.path.read_text(encoding="utf-8")
+    assert CHART in page.second.path.read_text(encoding="utf-8")                  # unsaved buffer: left alone
+    assert "could not be saved" in warned[0] and "two" in warned[0]
+    assert page.app.synced == [page.first.path]                                   # a clean buffer is re-read
+    assert asked == [] and CHART in page.store                                    # still used on slide two: kept
+
+
+def test_replace_image_offers_to_delete_the_orphaned_description(make_page, monkeypatch, tmp_path):
+    page = make_page()
+    page.store[CHART].short = "described"
+    page.store[CHART].used_on = {"one": alt_images.SlideUse()}
+    page.first.path.write_text(f"\\includegraphics{{{CHART}}}", encoding="utf-8")
+    page.reload()
+    (tmp_path / "picked.png").write_bytes(b"png")
+
+    class Sheet(FakeReplaceSheet):
+        def __init__(self, parent, project, reference, others):
+            self.source, self.new_name = tmp_path / "picked.png", "chart-new.png"
+            self.on_others = SimpleNamespace(isChecked=lambda: False)
+
+    monkeypatch.setattr(images, "ReplaceImageSheet", Sheet)
+    deleted = []
+    monkeypatch.setattr(alt_images, "delete_entry", lambda _ctx, image: deleted.append(image))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page._replace_image(page._forms[0])
+    assert deleted == [CHART]
+
+
+def test_the_replace_sheet_validates_the_name_and_refuses_to_overwrite(qapp, monkeypatch, tmp_path):
+    ctx = ProjectContext.at(tmp_path)
+    (tmp_path / "media").mkdir()
+    (tmp_path / "media" / "taken.png").write_bytes(b"x")
+    sheet = image_dialogs.ReplaceImageSheet(None, ctx, "media/chart-old.png", ["2bb", "3cc"])
+    assert not sheet.replace_button.isEnabled() and not sheet.on_others.isHidden()
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *args: (str(tmp_path / "new.JPG"), ""))
+    sheet._choose()
+    assert sheet.name_edit.text() == "chart-old" and sheet.new_name == "chart-old.jpg" and sheet.replace_button.isEnabled()
+    sheet.name_edit.setText("a/b")
+    sheet._validate()
+    assert "path separators" in sheet.problem.text() and not sheet.replace_button.isEnabled()
+    sheet.name_edit.setText("taken")
+    sheet.extension.setText(".png")
+    sheet._validate()
+    assert "already exists" in sheet.problem.text() and not sheet.replace_button.isEnabled()
+    # the suggestion is a free name even when the old file has the same stem and suffix
+    (tmp_path / "media" / "chart-old.jpg").write_bytes(b"x")
+    (tmp_path / "media" / "chart-old-2.jpg").write_bytes(b"x")
+    sheet.name_edit.setText("")
+    sheet._choose()
+    assert sheet.new_name == "chart-old-3.jpg" and sheet.replace_button.isEnabled()
+
+
+# -- tuning the prompt --------------------------------------------------------------------------------------
+
+
+def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(ctx, qapp, monkeypatch, tmp_path):
+    release = threading.Event()
+    provider = OllamaProvider("offline-test")
+    provider.abort = release.set
+
+    class Backend:
+        def __init__(self, _ctx, provider, **_kwargs):
+            pass
+
+        def draft(self, _path, _context):
+            release.wait(5)
+            return alt_draft.DraftResult(error="aborted")
+
+    monkeypatch.setattr(image_dialogs.alt_draft, "ModelBackend", Backend)
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
+    over = []
+    app = window_stand_in(ctx)
+    context = alt_draft.SlideContext(slide_id="one", title="T", body="", source="", image="chart.png")
+    sheet = image_dialogs.PromptTuningSheet(app, CHART, tmp_path / "chart.png", context, provider, "", lambda: over.append(True))
+    sheet._draft()
+    job = sheet._job
+    assert job.isRunning() and not sheet.draft_button.isEnabled() and not sheet.accept_button.isEnabled()
+    sheet.reject()
+    assert wait_for(job.isFinished) and over == [True]
+
+
+def test_a_tuned_draft_can_be_accepted_with_its_hint(ctx, qapp, monkeypatch, tmp_path):
+    provider = OllamaProvider("offline-test")
+
+    class Backend:
+        def __init__(self, _ctx, provider, **kwargs):
+            self.system_prompt = kwargs["system_prompt"]
+
+        def draft(self, _path, context):
+            return alt_draft.DraftResult(short=f"short with {context.hint}", long="long", takeaway="t", model="m",
+                                         role_suggestion="informative")
+
+    monkeypatch.setattr(image_dialogs.alt_draft, "ModelBackend", Backend)
+    monkeypatch.setattr(Job, "start", Job.run)
+    monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
+    over = []
+    context = alt_draft.SlideContext(slide_id="one", title="T", body="", source="", image="chart.png")
+    window = window_stand_in(ctx)
+    sheet = image_dialogs.PromptTuningSheet(window, CHART, tmp_path / "chart.png",
+                                            context, provider, "old hint", lambda: over.append(True))
+    sheet.hint_edit.setPlainText("the y-axis maximum is 6800")
+    sheet._draft()
+    assert sheet.accept_button.isEnabled() and sheet.result_draft.short == "short with the y-axis maximum is 6800"
+    assert "SHORT" in sheet.output.toPlainText() and sheet.hint == "the y-axis maximum is 6800"
+    sheet.accept()
+    assert over == [True]
+
+
+# -- leaving the slide while a translation is under way (v5.35.5 / v5.35.6 on develop) ------------------
+
+
+def click_row(page, row):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    slide_list = page.nav.slide_list
+    QTest.mouseClick(slide_list.viewport(), Qt.MouseButton.LeftButton,
+                     pos=slide_list.visualItemRect(slide_list.item(row)).center())
+
+
+def test_declining_switch_anyway_after_a_click_keeps_the_list_on_the_slide_on_show(make_page, qapp, monkeypatch):
+    page = make_page()
+    page.resize(1100, 700)
+    page.show()
+    qapp.processEvents()
+    shown, form = page._current, page._forms[0]
+    page._translating = form                          # a translation is under way
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *args: asked.append(args[1]) or QMessageBox.StandardButton.No)
+
+    click_row(page, 1)
+    qapp.processEvents()
+
+    assert asked == ["Translation in progress"]
+    assert page._current is shown and page._forms[0] is form
+    slide_list = page.nav.slide_list
+    assert slide_list.currentRow() == 0
+    assert [slide_list.row(item) for item in slide_list.selectedItems()] == [0]
+    page.hide()
+
+
+def test_a_show_filter_that_drops_the_slide_asks_during_a_translation_and_no_restores_it(make_page, qapp, monkeypatch):
+    page = make_page()
+    shown, form = page._current, page._forms[0]
+    page._translating = form
+    filters = [label for label, _ in image_review.FILTERS]
+    reviewed = filters.index("Reviewed")                # neither slide is reviewed
+    answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+    asked = []
+
+    def answer(*args):
+        asked.append(args[1])
+        return answers.pop(0)
+
+    monkeypatch.setattr(QMessageBox, "question", answer)
+
+    page.nav._on_filter(str(reviewed))                  # what choosing it in the "Show" menu does
+    assert asked == ["Translation in progress"]
+    assert page.nav.filter_index == 0 and len(page.nav.shown) == 2
+    assert page._current is shown and page._forms[0] is form
+
+    page.nav._on_filter(str(reviewed))                  # now confirmed
+    assert len(asked) == 2 and page.nav.filter_index == reviewed and page.nav.shown == []
+
+
+def test_a_show_filter_that_keeps_the_slide_does_not_ask_and_keeps_the_translation(make_page, monkeypatch):
+    page = make_page()
+    page.nav.slide_list.setCurrentRow(1)
+    shown, form = page._current, page._forms[0]
+    page._translating = form
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: pytest.fail("asked although the slide stays"))
+    page.nav._on_filter(str([label for label, _ in image_review.FILTERS].index("All slides with images")))
+    assert page._current is shown and page._forms[0] is form
+    assert page.nav.slide_list.currentRow() == 1
+
+
+# -- the other routes ---------------------------------------------------------------------------------------
+
+def on_claude_code(ctx, monkeypatch, tmp_path):
+    claude = tmp_path / "claude"
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: claude)
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(ctx)
+    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.IMAGE_DESCRIPTION, "haiku:low")
+    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.TRANSLATION, "opus:high")
+    return claude
+
+
+def test_on_claude_code_the_pickers_offer_its_models_and_the_backends_are_claudes(make_page, ctx, monkeypatch, tmp_path):
+    page = make_page()
+    claude = on_claude_code(ctx, monkeypatch, tmp_path)
+    page.refresh_model_preferences()
+    assert page.draft_model.isEnabled() and page.draft_model.currentText() == "Haiku · low"
+    assert page.translate_model.currentData() == "opus:high"
+    (drafting_route, drafting), (translating_route, translating) = page._draft_backend(), page._translation_backend("the text")
+    assert drafting_route.label == "Claude Code · Haiku · effort low" and translating_route.label == "Claude Code · Opus · effort high"
+    assert isinstance(drafting, claude_images.ClaudeDraftBackend) and (drafting.model, drafting.effort) == ("haiku", "low")
+    assert isinstance(translating, claude_images.ClaudeTranslationBackend) and (translating.model, translating.effort) == ("opus", "high")
+    assert drafting.claude == claude and not drafting.provider.is_local
+
+
+def test_a_drafting_run_on_claude_code_takes_no_ollama_slot_and_stop_ends_its_process(make_page, ctx, monkeypatch, tmp_path):
+    page = make_page()
+    on_claude_code(ctx, monkeypatch, tmp_path)
+    page.refresh_model_preferences()
+    started = threading.Event()
+
+    def draft(self, _path, _context):
+        started.set()
+        self.cancel.wait(5)
+        return alt_draft.DraftResult(error="Cancelled")
+
+    monkeypatch.setattr(claude_images.ClaudeDraftBackend, "draft", draft)
+    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
+    monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
+        alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
+    page._draft_slide()
+    assert started.wait(5) and page.app.slots == ["took"]              # asks the window, which gives no slot to a cloud route
+    job = page._job
+    page._abort_job()
+    assert job.provider.cancel.is_set()                                 # Stop ended the process
+    job.wait()
+
+
+def test_tuning_a_prompt_is_not_offered_on_claude_code(make_page, ctx, monkeypatch, tmp_path):
+    page = make_page()
+    on_claude_code(ctx, monkeypatch, tmp_path)
+    page.refresh_model_preferences()
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
+    page._tune(page._forms[0])
+    assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and page.app.slots == []
+
+
+def test_claude_code_that_is_missing_stops_a_run_before_anything_starts(make_page, ctx, monkeypatch):
+    page = make_page()
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(ctx)
+    monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
+    page.refresh_model_preferences()
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
+    page._translate_all()
+    assert len(told) == 1 and "not installed" in told[0] and page.app.slots == [] and page._job is None

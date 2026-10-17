@@ -10,7 +10,7 @@ ever something the user needs to interact with).
 The point is purely to let a review UI show *something current-ish* without
 paying a LaTeX compile to do it -- these are a best-effort cache, refreshed
 opportunistically whenever a compile happens to touch that slide, not a
-guaranteed-fresh source of truth. See ALT_TEXT_NOTES.md.
+guaranteed-fresh source of truth.
 
 Requires PyMuPDF (`fitz`) -- the one addition beyond this project's
 previous "PySide6 only" dependency policy (requirements.txt). Justified by
@@ -43,8 +43,8 @@ directory sort and glob-match by slide first, template second -- e.g.
 `22s-*.png` finds both institutions' renders of one slide, which the old
 order couldn't do without a wildcard *before* the id too.
 
-**Gains an optional `<Lang>` segment right after the bare id (2026-08-24,
-see LANGUAGE_NOTES.md)** for a slide whose own id-slug carries a language
+**Gains an optional `<Lang>` segment right after the bare id (2026-08-24)**
+for a slide whose own id-slug carries a language
 segment (`EN`/`DE`/`mult` -- see slide_language.py): `22s-DE-UniGraz-
 1920-1080.png`. Resolved from disk inside snapshot_path() itself, not
 passed in by any caller, so this needed no changes anywhere else in the
@@ -56,6 +56,9 @@ from __future__ import annotations
 
 import os
 import re
+import hashlib
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 # `import fitz` still works but is deprecated in current PyMuPDF releases
@@ -63,17 +66,22 @@ from pathlib import Path
 # reads the same either way.
 import pymupdf as fitz
 
-from . import slide_language
-from .deck_scan import PROJECT_ROOT
+from . import project, slide_language
+from .preview_metrics import measure
 
-SNAPSHOT_DIR = PROJECT_ROOT / ".previews" / "slide_previews"
+
+# PDF content, dimensions -> PNG. Paths alone are unsafe when a job is rebuilt.
+# Bounded by bytes as well as entries; no permanent extra artifacts on disk.
+_PNG_CACHE: OrderedDict = OrderedDict()
+_PNG_CACHE_BYTES = 32 * 1024 * 1024
+_PNG_LOCK = threading.RLock()
 
 # Every compiled frame carries this footer element unconditionally (theme
 # footer template, Slidemaster_preamble_base.tex) -- not something special
 # to test builds. `\S+` stops at the space before a possible
 # "| omitted from student deck" suffix, so the bare id is always what's
 # captured regardless of that flag.
-_SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
+SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 
 # Every institution template is a one-line \input{} swap on top of an
 # otherwise-shared preamble (confirmed directly, 2026-08-15: all four
@@ -125,13 +133,12 @@ RENDER_TEMPLATE_SETTING_KEY = "default_template"
 OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
 
 
-def framework_dirs(root: Path | None = None) -> list[Path]:
+def framework_dirs(root: Path) -> list[Path]:
     """The LaTeX framework folders a project's decks search (its .latexmkrc
     puts one on TEXINPUTS): $SLIDEMASTER_LATEX, else ../latex (a project
     next to the framework, like example/) or ../SlideMage/latex (a project
     next to a SlideMage checkout). Only folders holding
     Slidemaster_preamble_base.tex count."""
-    root = root or PROJECT_ROOT
     candidates = []
     if os.environ.get("SLIDEMASTER_LATEX"):
         candidates.append(Path(os.environ["SLIDEMASTER_LATEX"]))
@@ -139,12 +146,11 @@ def framework_dirs(root: Path | None = None) -> list[Path]:
     return [d for d in candidates if (d / "Slidemaster_preamble_base.tex").is_file()]
 
 
-def preamble_file(template: str, root: Path | None = None) -> Path:
+def preamble_file(template: str, root: Path) -> Path:
     """The template's preamble file, Slidemaster_preamble_<key>.tex: the
     project's own (institution layers live in the project root), else the
     framework's (the SlideMage template, since v5.9.0). The project-root path
     when neither exists."""
-    root = root or PROJECT_ROOT
     name = f"Slidemaster_preamble_{template}.tex"
     for folder in (root, *framework_dirs(root)):
         if (folder / name).is_file():
@@ -152,22 +158,31 @@ def preamble_file(template: str, root: Path | None = None) -> Path:
     return root / name
 
 
-def available_templates(root: Path | None = None) -> list[str]:
+def available_templates(root: Path) -> list[str]:
     """The TEMPLATES keys whose preamble file a deck of the project can find
     (project root or framework), in TEMPLATES order."""
     return [key for key in TEMPLATES if preamble_file(key, root).is_file()]
 
 
-def render_template(root: Path | None = None) -> str:
+def render_template(ctx: project.ProjectContext) -> str:
     """The template single-slide renders use (see RENDER_TEMPLATE_SETTING_KEY)."""
     from . import app_settings  # app settings live in the project too
 
-    available = available_templates(root)
-    for key in (app_settings.get(RENDER_TEMPLATE_SETTING_KEY),
+    available = available_templates(ctx.root)
+    for key in (app_settings.get(ctx, RENDER_TEMPLATE_SETTING_KEY),
                 OUT_OF_THE_BOX_RENDER_TEMPLATE, DEFAULT_TEMPLATE):
         if key in available:
             return key
     return available[0] if available else DEFAULT_TEMPLATE
+
+
+def set_render_template(ctx: project.ProjectContext, key: str) -> None:
+    """Choose the template single-slide renders use (a TEMPLATES key)."""
+    from . import app_settings
+
+    if key not in TEMPLATES:
+        raise ValueError(f"'{key}' is not a template.")
+    app_settings.set(ctx, RENDER_TEMPLATE_SETTING_KEY, key)
 
 
 # Full HD, requested directly rather than picked via a DPI value: this
@@ -198,41 +213,118 @@ FULL_SIZE = (1920, 1080)
 THUMB_SIZE = (304, 171)
 
 
-def _slide_id_of(page: "fitz.Page") -> str | None:
-    match = _SLIDE_ID_RE.search(page.get_text())
+def slide_id_of(page: "fitz.Page") -> str | None:
+    match = SLIDE_ID_RE.search(page.get_text())
     return match.group(1) if match else None
 
 
-def _save_page(page: "fitz.Page", slide_id: str, template: str,
+def _save_page(ctx: project.ProjectContext, page: "fitz.Page", slide_id: str, template: str,
                sizes: tuple[tuple[int, int], ...]) -> None:
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    ctx.slide_previews_dir.mkdir(parents=True, exist_ok=True)
     for width, height in sizes:
         zoom_x = width / page.rect.width
         zoom_y = height / page.rect.height
         pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom_x, zoom_y))
-        pixmap.save(str(snapshot_path(slide_id, template, (width, height))))
+        pixmap.save(str(snapshot_path(ctx, slide_id, template, (width, height))))
 
 
-def capture_single_slide(pdf_path: Path, slide_id: str, template: str,
+@measure('png')
+def _preview_pngs(pdf_path: Path, sizes) -> tuple[bytes, ...]:
+    data = pdf_path.read_bytes()
+    digest = hashlib.sha256(data).digest()
+    with _PNG_LOCK:
+        keys = [(digest, size) for size in sizes]
+        missing = [key for key in keys if key not in _PNG_CACHE]
+        if missing:
+            from .preview_raster_client import render
+            # Only bytes cross the boundary. MuPDF is unsafe in Python threads,
+            # even with a mutex around calls (another thread can run its GC).
+            images = render(data, tuple(key[1] for key in missing), FULL_SIZE)
+            if not images:
+                return ()
+            _PNG_CACHE.update(zip(missing, images))
+        result = tuple(_PNG_CACHE[key] for key in keys)
+        for key in keys:
+            _PNG_CACHE.move_to_end(key)
+        while len(_PNG_CACHE) > 16 or sum(map(len, _PNG_CACHE.values())) > _PNG_CACHE_BYTES:
+            _PNG_CACHE.popitem(last=False)
+        return result
+
+
+def prepare_preview(pdf_path: Path, snapshots: bool = False):
+    """Prepare the display and optional canonical PNGs without publishing them.
+
+    The GUI accepts the request first, then writes its canonical snapshots.
+    Full-slide display reuses the already rasterized full-size snapshot.
+    """
+    displays, images = prepare_preview_images(pdf_path, snapshots, (FULL_SIZE[0],))
+    return displays[0], images
+
+
+def prepare_preview_images(pdf_path: Path, snapshots: bool, widths):
+    """Pane and tool display sizes in one raster subprocess, with optional snapshots."""
+    displays = tuple((width, None) for width in widths)
+    sizes = (FULL_SIZE, THUMB_SIZE) + displays if snapshots else displays
+    images = _preview_pngs(pdf_path, sizes)
+    if not images:
+        raise RuntimeError('Preview PDF has no pages')
+    return images[-len(displays):], tuple(zip(sizes[:2], images[:2])) if snapshots else ()
+
+
+@measure('snapshot_write')
+def publish_preview(ctx: project.ProjectContext, images, slide_id: str, template: str) -> None:
+    ctx.slide_previews_dir.mkdir(parents=True, exist_ok=True)
+    for size, data in images:
+        # Refresh freshness even when a source edit leaves identical PDF pixels.
+        path = snapshot_path(ctx, slide_id, template, size)
+        if path.exists() and path.read_bytes() == data:
+            path.touch()
+        else:
+            path.write_bytes(data)
+
+
+def page_png(pdf_path: Path, width: int = FULL_SIZE[0]) -> bytes | None:
+    """The last page of a single-slide preview PDF (its final build step) as
+    PNG bytes `width` pixels wide, at the page's own aspect ratio (a cropped
+    element preview is not 16:9). None if the PDF cannot be read."""
+    try:
+        images = _preview_pngs(pdf_path, ((width, None),))
+        return images[0] if images else None
+    except Exception:
+        return None
+
+
+def capture_single_slide(ctx: project.ProjectContext, pdf_path: Path, slide_id: str, template: str,
                          sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                          ) -> bool:
     """A single-slide preview PDF (slide_preview.py) is already just that
     one slide's own build steps -- the last page is its final reveal
     directly, no footer-scanning needed. True if a snapshot was written."""
     try:
-        doc = fitz.open(pdf_path)
+        images = _preview_pngs(pdf_path, sizes)
     except Exception:
         return False
-    try:
-        if doc.page_count == 0:
-            return False
-        _save_page(doc[doc.page_count - 1], slide_id, template, sizes)
-        return True
-    finally:
-        doc.close()
+    if not images:
+        return False
+    publish_preview(ctx, tuple(zip(sizes, images)), slide_id, template)
+    return True
 
 
-def capture_deck(pdf_path: Path, template: str,
+def slide_runs(slide_ids) -> list[tuple[str, list[int]]]:
+    """The slides of a deck PDF from the slide id of each page (None: a page that names none, skipped): each
+    run of consecutive pages with one id is a slide, with its page indexes -- the last is its final build step."""
+    runs: list[tuple[str, list[int]]] = []
+    for index, slide_id in enumerate(slide_ids):
+        if slide_id is None:
+            continue
+        if runs and runs[-1][0] == slide_id:
+            runs[-1][1].append(index)
+        else:
+            runs.append((slide_id, [index]))
+    return runs
+
+
+def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
                  sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                  ) -> int:
     """Scan a fully compiled deck PDF once; refresh every slide id it
@@ -246,29 +338,15 @@ def capture_deck(pdf_path: Path, template: str,
     except Exception:
         return 0
     try:
-        written = 0
-        current_id: str | None = None
-        current_page: "fitz.Page | None" = None
-        for page in doc:
-            slide_id = _slide_id_of(page)
-            if slide_id is None:
-                continue
-            if slide_id != current_id:
-                if current_id is not None:
-                    _save_page(current_page, current_id, template, sizes)
-                    written += 1
-                current_id, current_page = slide_id, page
-            else:
-                current_page = page
-        if current_id is not None:
-            _save_page(current_page, current_id, template, sizes)
-            written += 1
-        return written
+        runs = slide_runs([slide_id_of(page) for page in doc])
+        for slide_id, pages in runs:
+            _save_page(ctx, doc[pages[-1]], slide_id, template, sizes)
+        return len(runs)
     finally:
         doc.close()
 
 
-def _own_language_for_bare_id(bare_id_: str) -> str | None:
+def _own_language_for_bare_id(ctx: project.ProjectContext, bare_id_: str) -> str | None:
     """Resolves a bare id to its current on-disk id-slug and returns that
     slide's own language segment (EN/DE/mult, slide_language.own_language)
     -- None for a legacy, not-yet-migrated slide. Used to key the preview
@@ -278,63 +356,52 @@ def _own_language_for_bare_id(bare_id_: str) -> str | None:
     *own* language never depends on which deck/template compiled it --
     only an "mult" slide's actually-*rendered* language would, and this
     cache deliberately doesn't split on that, see snapshot_path())."""
-    id_slug = slide_language.current_id_slug_for_bare_id(bare_id_)
+    id_slug = slide_language.current_id_slug_for_bare_id(ctx, bare_id_)
     if id_slug is None:
         return None
     return slide_language.own_language(id_slug)
 
 
-def snapshot_path(slide_id: str, template: str = DEFAULT_TEMPLATE,
-                  size: tuple[int, int] = FULL_SIZE) -> Path:
+def snapshot_path(ctx: project.ProjectContext, slide_id: str, template: str = DEFAULT_TEMPLATE,
+                  size: tuple[int, int] = FULL_SIZE, id_slug: str | None = None) -> Path:
     """Filename gains a <Lang> segment (2026-08-24, right after the bare
     id, matching the id-slug's own segment order) when `slide_id` resolves
     to a migrated slide -- omitted entirely for a legacy slide, so the
     already-cached files for the other ~665 slides never need
     mass-regenerating on rollout day. Resolved internally from disk
     (slide_language.current_id_slug_for_bare_id) rather than taken as a
-    parameter, so every existing caller (qt_deck_editor_tab.py,
-    qt_slide_preview_popup.py, ...) gets the right cache key with no
+    parameter, so every existing caller (slide_list.py,
+    preview_target.py, ...) gets the right cache key with no
     call-site changes needed.
 
     For an "mult" (multilingual) slide, the segment is the literal string
     "mult" -- a single shared thumbnail regardless of which language a
     deck last rendered it under, a deliberate simplification (not a full
     per-actually-rendered-language cache dimension) documented in
-    LANGUAGE_NOTES.md/README.md: "mult" slides are meant to be light,
+    README.md: "mult" slides are meant to be light,
     mostly-visual content where a stale-language thumbnail is a minor
     cosmetic gap, already covered by this cache's own "best-effort, never
     guaranteed-fresh" disclaimer above."""
     safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", slide_id)
     width, height = size
-    language = _own_language_for_bare_id(slide_id)
+    # `id_slug` (a deck call's own) saves looking the slide up on disk: a
+    # whole slide list asks for hundreds of these at once.
+    language = (slide_language.own_language(id_slug) if id_slug
+                else _own_language_for_bare_id(ctx, slide_id))
     lang_segment = f"-{language}" if language else ""
-    return SNAPSHOT_DIR / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
+    return ctx.slide_previews_dir / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"
 
 
-def is_fresh(slide_id: str, slide_path: Path, template: str = DEFAULT_TEMPLATE,
+def is_fresh(ctx: project.ProjectContext, slide_id: str, slide_path: Path, template: str = DEFAULT_TEMPLATE,
             size: tuple[int, int] = FULL_SIZE) -> bool:
     """Whether the cached snapshot is at least as new as the slide's own
     source file -- an mtime comparison, not a content hash: this is a
     best-effort "click to refresh" signal for a future preview UI, not a
     correctness guarantee, so it doesn't need to be hash-exact."""
-    png = snapshot_path(slide_id, template, size)
+    png = snapshot_path(ctx, slide_id, template, size)
     if not png.is_file():
         return False
     try:
         return png.stat().st_mtime >= slide_path.stat().st_mtime
     except OSError:
         return False
-
-
-def bare_id(id_slug: str) -> str:
-    """The short id a snapshot is keyed under, from a full `id_slug`
-    ("22s-More-Exotic-Bonds", the `\\slide{}`/`\\slideversion{}` macro
-    argument -- also a slide file's stem minus its `-current`/`-vX-Y-Z`
-    suffix). \\setSlideID (Slidemaster_preamble_base.tex) takes everything
-    up to the first "-" as \\slideID, which is what actually lands in a
-    compiled page's footer and therefore what capture_deck()/
-    capture_single_slide() key every snapshot under -- callers with only
-    the full id_slug (deck/slide-editor rows, which need it whole to
-    \\input{} the right file) need this to look one up.
-    """
-    return id_slug.partition("-")[0]

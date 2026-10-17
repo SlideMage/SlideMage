@@ -113,7 +113,7 @@ def _read(path: Path) -> tuple[str, str]:
     return raw.replace("\r\n", "\n"), ("\r\n" if "\r\n" in raw else "\n")
 
 
-def _decks(root: Path):
+def decks(root: Path):
     for folder in (root / "decks", root / "decks" / "archive"):
         if folder.is_dir():
             yield from sorted(folder.glob("*.tex"))
@@ -122,7 +122,7 @@ def _decks(root: Path):
 def _house_copies(root: Path):
     """(deck path, lines, region) of every deck with an unmodified copy."""
     want = _house_deck_code()
-    for path in _decks(root):
+    for path in decks(root):
         try:
             text, _eol = _read(path)
         except (OSError, UnicodeDecodeError):

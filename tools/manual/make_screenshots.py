@@ -1,370 +1,444 @@
-"""Screenshots of SlideMage's own windows for the SlideMage manual, made
-offscreen against the example project: example/media/screenshot-slidemage-*.png.
+"""Screenshots of SlideMage's workspace window, made offscreen from the real widgets.
 
-    python tools/manual/make_screenshots.py
+    python tools/manual/make_screenshots.py OUT_DIR [--only NAME ...] [--scale N] [--list]
 
-Builds the real widgets (no mock-ups), in the light theme at a fixed window
-size, and saves QWidget.grab(). Modal dialogs are never exec()'d (that would
-block forever offscreen): they are shown, grabbed and closed. The windows keep
-their logical size (SIZE) but are rendered at SCALE times the pixels (a device
-pixel ratio of 2: crisp text instead of a stretched 1340 px picture), so every
-PNG is SCALE times as large; the slides place them by width, so nothing else
-changes. Rerun after UI changes. Before running, compile the manual (instructor version) and refresh
-its previews -- this script does that from the compiled PDF:
-example/decks/slidemage-manual.pdf -> .previews (slide_snapshot.capture_deck).
+Writes OUT_DIR/screenshot-slidemage-<name>.png for the main views: the workspace in Preview, Source,
+Split and Details, each side panel, the chat, the command palette, the deck and compile menus, the
+compile job card, the Images page, the slide list with a selection, and the Settings, Deck settings,
+Add slide, Tags, transcript preview and About sheets. Nothing is written into the repository: the run
+works on a throwaway copy of `example/` (with the sibling `latex/` framework), in the light theme (--dark: the dark one),
+with a fixed Ollama model list and no network.
+
+The manual's own images (MANUAL_IMAGES: crops of these shots, reduced to 256 colours) are written to
+OUT_DIR/manual/ under the names the manual's slides use; copy them into example/media/.
+
+Windows keep their logical size (WINDOW) but are rendered at --scale times the pixels (a device pixel
+ratio of 2: crisp text instead of a stretched picture). Modal sheets are never exec()'d (that would
+block forever offscreen): they are shown, grabbed and closed. Menus are painted onto the window
+shot below the button they hang on.
 """
 from __future__ import annotations
 
+import argparse
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-EXAMPLE = REPO / "example"
-os.environ["SLIDEMASTER_PROJECT"] = str(EXAMPLE)
-SCALE = 2  # device pixel ratio of every screenshot; set before QApplication exists
-os.environ.setdefault("QT_SCALE_FACTOR", str(SCALE))
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-if sys.platform == "win32":
-    os.environ.setdefault("QT_QPA_FONTDIR", str(Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"))
+PREFIX = "screenshot-slidemage-"
+MANUAL = "slidemage-manual"   # the deck every shot is taken in
+WINDOW = (1700, 950)
+SLIDE_LIST_WIDTH = 340   # wider than the default column: the bulk bar's "3 slides selected" and its button fit
+# Slides of the example project the shots are taken on: a plain frame, one that cites, one with
+# a picture (a chart that does not change with the UI), the slide whose transcript is shown.
+SLIDE = "1y8"
+CITING_SLIDE = "1nz"
+PICTURE_SLIDE = "1rb"
+TRANSCRIPT_FILE = "1ub-EN-Main-Window-current.tex"
+# Placeholder decks, one per deck group, so the deck menu shows the grouping.
+PLACEHOLDER_DECKS = {"#workdeck": "work", "course-example-2027s": "course", "talk-example-seminar": "research"}
 
-from PySide6.QtCore import QPoint, QRect, QSize  # noqa: E402
-from PySide6.QtGui import QFont  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget  # noqa: E402
 
-from slidemage import deck_scan, qt_gui, slide_snapshot, transcript  # noqa: E402
-
-MEDIA = EXAMPLE / "media"
-MANUAL = "slidemage-manual"
-# Wide enough for a deck row with all its buttons (at 1100 px the row was cut
-# off and the table scrolled sideways; the deck editor widens the window to
-# about 1320 px anyway).
-SIZE = QSize(1340, 720)
-# The Images tab screenshot (slide 1ih) is taller than the other windows.
-IMAGES_TAB_HEIGHT = 1500
-# The slide editor screenshot (slide 1b6) is cut off just right of the "Close
-# and save" button (SLIDE_EDITOR_RIGHT_MARGIN px beyond it) -- less white space
-# beside the buttons, more pixels per button in the narrow column -- and is
-# taller than the other windows, to fill the column.
-SLIDE_EDITOR_HEIGHT = 1070
-SLIDE_EDITOR_RIGHT_MARGIN = 24
-
-# Placeholder decks, one per deck group, so the deck table shows the grouping
-# (slide 1d8) and full rows with all their buttons (slide 1ub) -- the example
-# project itself has only the manual. Made from the manual's preamble with
-# another \decktags and an empty body; deleted again at the end, also when the
-# script fails.
-PLACEHOLDER_DECKS = {
-    "#workdeck": "work",
-    "course-example-2027s": "course",
-    "talk-example-seminar": "research",
+# The manual's images (example/media/screenshot-slidemage-<name>.png): name -> (shot, crop). The crop
+# is (left, top, right, bottom) as fractions of the shot, None for all of it.
+MANUAL_IMAGES = {
+    "main-window": ("workspace-preview", None),
+    "slide-list": ("slide-list", (0.004, 0.118, 0.209, 1.0)),
+    "slide-editor": ("workspace-source", None),
+    "slide-details": ("workspace-details", (0.1525, 0.105, 0.6725, 0.405)),
+    "slide-preview": ("workspace-preview", (0.139, 0.08, 0.685, 0.99)),
+    "side-panel": ("panel-visibility", (0.6875, 0.08, 0.9925, 0.265)),
+    "deck-switcher": ("menu-deck", (0.0, 0.0, 0.245, 0.27)),
+    "tags-dialog": ("deck-group", None),
+    "images-page": ("images-page", None),
+    "images-toolbar": ("images-page", (0.0, 0.745, 0.2, 0.985)),
+    "save-dialog": ("save-prompt", None),
+    "transcript": ("transcript", None),
+    "chat": ("chat", (0.6875, 0.434, 0.995, 0.99)),
+    "palette": ("palette-search", (0.3175, 0.1154, 0.6825, 0.503)),
 }
 
 
-def write_placeholder_decks() -> list[Path]:
-    manual = (EXAMPLE / "decks" / f"{MANUAL}.tex").read_text(encoding="utf-8")
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("out_dir", type=Path, nargs="?", help="folder the PNG files go to (created)")
+    parser.add_argument("--only", nargs="+", metavar="NAME", help="make only these shots (see --list)")
+    parser.add_argument("--scale", type=int, default=2, help="device pixel ratio of the shots (default 2)")
+    parser.add_argument("--dark", action="store_true", help="the dark theme instead of the light one")
+    parser.add_argument("--list", action="store_true", help="print the names of the shots and exit")
+    return parser.parse_args(argv)
+
+
+def prepare_project(parent: Path) -> Path:
+    """A copy of example/ and latex/ under `parent` with fresh settings and the placeholder decks."""
+    ignore = shutil.ignore_patterns(".build", "*.pdf", "__pycache__", ".backups", "app_settings.json", "project.json")
+    project = parent / "example"
+    shutil.copytree(REPO / "example", project, ignore=ignore)
+    shutil.copytree(REPO / "latex", parent / "latex", ignore=ignore)
+    (project / "decks" / "slidemage-manual-copy.tex").unlink(missing_ok=True)   # the project's copy: not part of the picture
+    manual = (project / "decks" / "slidemage-manual.tex").read_text(encoding="utf-8")
     preamble = manual.split("\\begin{document}")[0]
-    paths = []
     for name, tag in PLACEHOLDER_DECKS.items():
-        path = EXAMPLE / "decks" / f"{name}.tex"
-        if path.exists():
-            raise SystemExit(f"{path} exists -- not overwriting a real deck")
         text = preamble.replace("\\decktags{manual}", f"\\decktags{{{tag}}}")
-        path.write_text("% TEMPORARY placeholder deck (tools/manual/make_screenshots.py)\n"
-                        + text + "\\begin{document}\n\\end{document}\n", encoding="utf-8")
-        paths.append(path)
-    return paths
+        (project / "decks" / f"{name}.tex").write_text(text + "\\begin{document}\n\\end{document}\n", encoding="utf-8")
+    return project
 
 
-def callout_positions(window: QWidget, widgets: dict[str, "QWidget | QPoint"]) -> None:
-    """Print each widget's centre as a fraction of the window -- x from the
-    left, y from the bottom -- the coordinates slide 1ub's \\callout{x,y}{n}
-    takes, since its picture is the whole window. Copy them into 1ub."""
-    w, h = window.width(), window.height()
-    print("callouts for slide 1ub (x,y as fractions, y from the bottom):")
-    for label, widget in widgets.items():
-        if isinstance(widget, QPoint):  # already in the window's coordinates
-            centre = widget
-        else:
-            centre = widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2))
-        print(f"  {label}: {centre.x() / w:.3f},{1 - centre.y() / h:.3f}")
+# -- the grabbing helpers (Qt is imported in run(), after the environment is set) --------------------
+
+class Shooter:
+    def __init__(self, app, window, out_dir: Path) -> None:
+        self.app, self.window, self.out_dir = app, window, out_dir
+
+    def settle(self, rounds: int = 6, ms: int = 50) -> None:
+        from PySide6.QtTest import QTest
+        for _ in range(rounds):
+            self.app.processEvents()
+            QTest.qWait(ms)
+
+    def save(self, image, name: str) -> None:
+        path = self.out_dir / f"{PREFIX}{name}.png"
+        image.save(str(path))
+        print(f"{path.name}  {image.width()} x {image.height()}")
+
+    def show_cached_preview(self) -> None:
+        from slidemage.ui.workspace.preview_view import _mtime
+
+        """Show the focused slide's cached snapshot as a finished render, without the "Cached preview" note
+        (a real render needs a full LaTeX build, which a throwaway copy has not got)."""
+        preview = self.window.centre.preview
+        target = preview._target
+        image = preview._image(target)
+        key = (target.key, self.window.state.view, preview.language, preview._footer_timestamp())
+        preview._pixmaps[key] = (image[0], _mtime(target.source_path))
+        preview._refresh()
+        self.settle(10)
+
+    def window_shot(self, name: str) -> None:
+        self.settle()
+        self.save(self.window.grab(), name)
+
+    def popup_shot(self, name: str, popup, anchor, *, align_right: bool = False) -> None:
+        """The window with `popup` (a menu) painted below `anchor`. The offscreen screen is small and
+        clamps real popups to it, so the place is worked out here instead of read from the popup."""
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QPainter
+        self.settle()
+        image = self.window.grab()
+        picture = popup.grab()
+        left = anchor.mapTo(self.window, QPoint(0, anchor.height() + 4))
+        if align_right:
+            left.setX(anchor.mapTo(self.window, QPoint(anchor.width(), 0)).x() - picture.width() // picture.devicePixelRatio())
+        painter = QPainter(image)
+        painter.drawPixmap(left, picture)
+        painter.end()
+        self.save(image, name)
+
+    def sheet_shot(self, name: str, sheet, tab: int | None = None) -> None:
+        if tab is not None:
+            sheet.set_current_tab(tab)
+        sheet.show()
+        self.settle(10)
+        self.save(sheet.grab(), name)
+
+    def focus(self, slide_id: str, mode: str = "preview") -> None:
+        self.window.stack.setCurrentWidget(self.window.centre)
+        self.window.state.set_mode(mode)
+        self.window.state.set_focused_slide(slide_id)
+        self.settle(10)
 
 
-def checkbox_block_middle(window: QWidget, table, row) -> QPoint:
-    """The middle of the version checkboxes, in window coordinates: halfway
-    between the Instructor and the Presenter checkbox, on the course group's
-    heading line just above the rows (the badge sits in the empty strip there
-    instead of covering a checkbox)."""
-    first, last = row.vars["instructor"], row.presenter_var
-    left = first.mapTo(window, QPoint(0, 0)).x()
-    right = last.mapTo(window, QPoint(last.width(), 0)).x()
-    heading = table._group_headers["course"][0]  # the group heading is a button
-    y = heading.mapTo(window, QPoint(0, heading.height() // 2)).y()
-    return QPoint((left + right) // 2, y)
+# -- the shots --------------------------------------------------------------------------------------
+
+def shot_workspace(shooter: Shooter) -> None:
+    shooter.focus(SLIDE)
+    shooter.show_cached_preview()
+    for mode in ("preview", "source", "split", "details"):
+        shooter.focus(SLIDE, mode)
+        shooter.window_shot(f"workspace-{mode}")
+    shooter.focus(SLIDE, "preview")
 
 
-def deck_editor_callouts(window: QWidget, editor, bottom: int) -> None:
-    """Print the centres of the deck editor elements slide 1ti's numbered
-    callouts point at, as fractions of the screenshot (x from the left, y from
-    the bottom; the picture is the window down to `bottom`)."""
-    from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QPushButton
-
-    w = window.width()
-
-    def centre(widget) -> str:
-        c = widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2))
-        return f"{c.x() / w:.3f},{1 - c.y() / bottom:.3f}"
-
-    link = editor._id_labels["1jh-EN-Title-Slide"]
-    row = editor.grid.getItemPosition(editor.grid.indexOf(link))[0]
-
-    def cell(col):
-        item = editor.grid.itemAtPosition(row, col)
-        return item.widget() if item else None
-
-    number_cell = cell(0)
-    buttons = {b.text(): b for b in editor.findChildren(QPushButton)}
-    section = next(l for l in editor._chapter_headers.values() if l.text().startswith("Section: The big"))
-    srow = editor.grid.getItemPosition(editor.grid.indexOf(section))[0]
-    rename = next(editor.grid.itemAtPosition(srow, c).widget() for c in range(10)
-                  if editor.grid.itemAtPosition(srow, c)
-                  and isinstance(editor.grid.itemAtPosition(srow, c).widget(), QPushButton)
-                  and editor.grid.itemAtPosition(srow, c).widget().text() == "Rename")
-    print("callouts for slide 1ti (x,y as fractions, y from the bottom):")
-    for label, widget in {
-        "1 toolbar (Add section)": buttons["Add section…"],
-        "2 Quick navigation": editor.chapter_combo,
-        "3 views (List)": editor.list_view_radio,
-        "4 row checkbox": number_cell.findChildren(QCheckBox)[0],
-        "5 number": number_cell.findChildren(QLineEdit)[0],
-        "6 slide id": link,
-        "7 dropdown": cell(2) if isinstance(cell(2), QComboBox) else cell(2),
-        "8 + before": cell(5),
-        "9 Remove": next(editor.grid.itemAtPosition(row, c).widget() for c in range(10)
-                         if editor.grid.itemAtPosition(row, c)
-                         and isinstance(editor.grid.itemAtPosition(row, c).widget(), QPushButton)
-                         and editor.grid.itemAtPosition(row, c).widget().text() == "Remove"),
-        "10 section Rename": rename,
-    }.items():
-        print(f"  {label}: {centre(widget)}")
+def shot_panels(shooter: Shooter) -> None:
+    panels = shooter.window.side_panels
+    on_slide = {"citations": CITING_SLIDE, "images": PICTURE_SLIDE, "transcript": PICTURE_SLIDE}
+    for key in panels.panels:
+        shooter.focus(on_slide.get(key, SLIDE))
+        panels.set_panel(key)
+        shooter.window_shot(f"panel-{key}")
+    panels.set_panel("used")
 
 
-def row_button(table, row, text: str) -> QWidget:
-    """The button labelled `text` in deck-table row `row` (rows keep no
-    reference to their buttons; the one on the same line as the row's
-    Instructor checkbox)."""
-    from PySide6.QtWidgets import QPushButton
-    row_y = row.vars["instructor"].mapTo(table, QPoint(0, row.vars["instructor"].height() // 2)).y()
-    for button in table.findChildren(QPushButton):
-        top = button.mapTo(table, QPoint(0, 0)).y()
-        if button.text() == text and top <= row_y <= top + button.height():
-            return button
-    raise LookupError(text)
+def shot_chat(shooter: Shooter) -> None:
+    """A conversation made of events, as the agent would report them (no model is asked)."""
+    from slidemage.ai.agent_types import Done, TextDelta, ToolCall, ToolFinished, ToolResult, ToolStarted
+    from slidemage.ui.workspace.chat.cards import UserBubble
+
+    shooter.focus(SLIDE)
+    chat = shooter.window.assistant.chat
+    shooter.window_shot("chat-empty")
+    chat.new_chat()
+    chat._begin_conversation()
+    chat._add(UserBubble("Make the second bullet shorter and say what the frame is for."))
+    chat._start_turn("Claude Sonnet 5.5")
+    call = ToolCall("t1", "read_file", {"path": "slides/1y8-EN-Standardframe-current.tex"})
+    chat._on_event(TextDelta("I'll read the slide first."))
+    chat._on_event(ToolStarted(call))
+    chat._on_event(ToolFinished(call, ToolResult("t1", "\\begin{standardframe}{Standardframe} ... \\end{standardframe}")))
+    chat._on_event(TextDelta("The second bullet runs over two lines. Shorter: **\"Text, lists and pictures\"**; "
+                             "and a lead-in sentence says what the frame is for."))
+    chat._on_event(Done("end_turn", turns=2))
+    shooter.window_shot("chat")
 
 
-def settle(app: QApplication, rounds: int = 6) -> None:
-    for _ in range(rounds):
-        app.processEvents()
-        QTest.qWait(50)
+def shot_slide_list(shooter: Shooter) -> None:
+    """The slide list in a short window, with three slides selected (the bulk bar shows)."""
+    from PySide6.QtWidgets import QAbstractItemView
+
+    from slidemage.ui.workspace import slide_list
+
+    window = shooter.window
+    shooter.focus("1gu")
+    window.resize(WINDOW[0], 530)
+    window.set_column_widths(left=SLIDE_LIST_WIDTH)
+    shooter.settle(10)
+    tree = window.slide_list.tree
+    wanted = [item for item in tree.slide_items() if tree.data_of(item).call.id in ("1gu", "1kg", "1tb")]
+    for item in wanted:
+        item.setSelected(True)
+    tree.scrollToItem(wanted[0], QAbstractItemView.ScrollHint.PositionAtTop)
+    shooter.window_shot("slide-list")
+    tree.clearSelection()
+    window.resize(*WINDOW)
+    window.set_column_widths(left=slide_list.WIDTH)
+    shooter.settle(10)
 
 
-def save(widget: QWidget, name: str, down_to: QWidget | None = None) -> None:
-    """Grab `widget`; with `down_to`, only the part above that child's
-    bottom edge (the main window without its toolbar row and log pane)."""
-    path = MEDIA / f"screenshot-slidemage-{name}.png"
-    if down_to is None:
-        image = widget.grab()
-    else:
-        bottom = down_to.mapTo(widget, QPoint(0, down_to.height())).y() + 4
-        image = widget.grab(QRect(0, 0, widget.width(), bottom))
-    image.save(str(path))
-    print(path.name, image.width(), "x", image.height())
+def shot_palette(shooter: Shooter) -> None:
+    shooter.focus(SLIDE)
+    palette = shooter.window.palette
+    palette.open()
+    shooter.window_shot("palette")
+    palette.input.setText("source")
+    shooter.window_shot("palette-search")
+    palette.hide()
 
 
-def main() -> int:
-    app = QApplication.instance() or QApplication(sys.argv)
-    # Offscreen Qt knows no system font: the platform's UI font by name
-    # (run with QT_QPA_FONTDIR pointing at the system's font folder on Windows).
-    app.setFont(QFont("Segoe UI" if sys.platform == "win32" else "DejaVu Sans", 9))
-    theme = qt_gui.ThemeManager()
-    theme.dark = False  # light theme, without saving the choice
-    theme.apply()
+def shot_save_prompt(shooter: Shooter) -> None:
+    """The Update Version prompt of a slide's source: a modal message box, grabbed by a timer while it is open."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
 
-    pdf = EXAMPLE / "decks" / f"{MANUAL}.pdf"
-    if pdf.is_file():
-        n = slide_snapshot.capture_deck(pdf, "slidemage")
-        print(f"previews refreshed for {n} slides")
+    from slidemage.ui.workspace.source_file import prompt_version_level
 
-    placeholders = write_placeholder_decks()
-    try:
-        return screenshots(app, theme)
-    finally:
-        for path in placeholders:
-            path.unlink(missing_ok=True)
+    def grab() -> None:
+        box = QApplication.activeModalWidget()
+        box.setFixedWidth(700)            # offscreen the box is sized for the text, and clips its buttons
+        shooter.settle()
+        shooter.save(box.grab(), "save-prompt")
+        box.reject()
+
+    QTimer.singleShot(500, grab)
+    prompt_version_level(shooter.window, (1, 2, 0))
 
 
-def screenshots(app: QApplication, theme) -> int:
-    # Every deck group unfolded, whatever the example project remembers
-    # (collapsed_deck_groups_* in its app_settings.json, left untouched).
+def shot_menus(shooter: Shooter) -> None:
+    from slidemage.ui.workspace.menus import build_deck_menu, build_compile_menu
+
+    shooter.focus(SLIDE)
+    window, topbar = shooter.window, shooter.window.topbar
+    menu = build_deck_menu(topbar, window.decks, window.state.deck)
+    menu.popup_below(topbar._deck_button)
+    shooter.popup_shot("menu-deck", menu, topbar._deck_button)
+    menu.hide()
+    menu.deleteLater()
+    menu = build_compile_menu(topbar, window)
+    menu.popup_below(topbar._compile, align_right=True)
+    shooter.popup_shot("menu-compile", menu, topbar._compile, align_right=True)
+    menu.hide()
+    menu.deleteLater()
+
+
+def shot_compile_job(shooter: Shooter) -> None:
+    """The job card in the middle of a run of three jobs, and at the end of it with one failure."""
+    from slidemage.compile_status import RunStatus
+
+    window = shooter.window
+    shooter.focus(SLIDE)
+    root = Path(os.environ["SLIDEMASTER_PROJECT"])
+    names = {"manual-instructor": "manual · Instructor", "manual-during-course": "manual · During course",
+             "manual-after-course": "manual · After course"}
+    run = RunStatus(names, root=root, verb="Compiling", pdfs={n: root / "decks" / "pdf" / f"{n}.pdf" for n in names})
+    panel = window.compile_display.panel
+    panel.start(run, per_job_stop=True, can_retry=True)
+    for line in ("==== Compiling manual -> manual-instructor ====", "==== PASS: manual-instructor -> x ====",
+                 "==== Compiling manual -> manual-during-course ===="):
+        run.feed(line)
+    panel.refresh(0.46, "pass 2/3, slide 31/75", over=False)
+    shooter.window_shot("compile-job")
+    run.feed("slides/1y8-EN-Standardframe-current.tex:7: Undefined control sequence.")
+    run.feed("*** FAIL: manual-during-course -- exit 12 ***")
+    run.feed("==== Compiling manual -> manual-after-course ====")
+    run.feed("==== PASS: manual-after-course -> x ====")
+    run.finish(stopped=False)
+    panel.refresh(1.0, "", over=True)
+    shooter.window_shot("compile-job-done")
+    panel.hide()
+
+
+def shot_images_page(shooter: Shooter) -> None:
+    window = shooter.window
+    window.stack.setCurrentWidget(window.images_page)
+    shooter.settle(20, 100)
+    window.images_page.show_slide(PICTURE_SLIDE)
+    shooter.window_shot("images-page")
+    window.stack.setCurrentWidget(window.centre)
+
+
+def shot_sheets(shooter: Shooter) -> None:
+    from slidemage import transcript
+    from slidemage.ui.dialogs.about import AboutSheet
+    from slidemage.ui.dialogs.add_slide import AddSlideSheet
+    from slidemage.ui.dialogs.deck_group import DeckGroupSheet
+    from slidemage.ui.dialogs.deck_settings import DeckSettingsSheet
+    from slidemage.ui.dialogs.settings import SettingsSheet
+    from slidemage.ui.dialogs.transcript_preview import TranscriptPreviewSheet
+
+    window = shooter.window
+    shooter.focus(SLIDE)
+    deck = window.state.deck
+    sheet = SettingsSheet(window)
+    for index, name in enumerate(("general", "models", "cloud", "ollama", "prompts")):
+        shooter.sheet_shot(f"settings-{name}", sheet, index)
+    sheet.close()
+    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", is_dirty=window.centre.is_dirty)
+    shooter.sheet_shot("add-slide", sheet)
+    sheet.close()
+    sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", source="existing",
+                         is_dirty=window.centre.is_dirty)
+    shooter.sheet_shot("add-slide-existing", sheet)
+    sheet.close()
+    templates = [(key, key) for key in ("gotham", "uni-graz")]
+    sheet = DeckSettingsSheet(window, deck, templates)
+    for index, name in enumerate(("general", "output")):
+        shooter.sheet_shot(f"deck-settings-{name}", sheet, index)
+    sheet.close()
+    sheet = AboutSheet(window)
+    shooter.sheet_shot("about", sheet)
+    sheet.close()
+    sheet = DeckGroupSheet(window, "Tags", "course")
+    shooter.sheet_shot("deck-group", sheet)
+    sheet.close()
+    path = Path(os.environ["SLIDEMASTER_PROJECT"]) / "slides" / TRANSCRIPT_FILE
+    entry = transcript.generate_single_slide(window.project, path.read_text(encoding="utf-8"), TRANSCRIPT_FILE[:3], "during-course", "en")
+    sheet = TranscriptPreviewSheet(window, f"Transcript: {TRANSCRIPT_FILE[:3]}", transcript.to_html(entry, "Transcript preview"))
+    shooter.sheet_shot("transcript", sheet)
+    sheet.close()
+
+
+SHOTS = {
+    "workspace": shot_workspace,       # workspace-preview / -source / -split / -details
+    "panels": shot_panels,             # panel-<key> for each of the 8 side panels
+    "chat": shot_chat,                 # chat-empty, chat
+    "slide-list": shot_slide_list,     # slide-list
+    "palette": shot_palette,           # palette, palette-search
+    "save-prompt": shot_save_prompt,   # save-prompt
+    "menus": shot_menus,               # menu-deck, menu-compile
+    "compile-job": shot_compile_job,   # compile-job, compile-job-done
+    "images-page": shot_images_page,   # images-page
+    "sheets": shot_sheets,             # settings-*, add-slide, deck-settings-*, about, deck-group, transcript
+}
+
+
+def make_manual_images(out_dir: Path) -> None:
+    """The manual's images, cut from the shots that exist in `out_dir`, into out_dir/manual/."""
+    from PIL import Image
+
+    target = out_dir / "manual"
+    target.mkdir(exist_ok=True)
+    for name, (shot, crop) in MANUAL_IMAGES.items():
+        source = out_dir / f"{PREFIX}{shot}.png"
+        if not source.exists():
+            continue
+        image = Image.open(source).convert("RGB")
+        if crop:
+            width, height = image.size
+            image = image.crop((round(crop[0] * width), round(crop[1] * height),
+                                round(crop[2] * width), round(crop[3] * height)))
+        path = target / f"{PREFIX}{name}.png"
+        image.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE).save(path, optimize=True)
+        print(f"manual/{path.name}  {image.width} x {image.height}")
+
+
+# -- the run ------------------------------------------------------------------------------------
+
+def run(args: argparse.Namespace, work: Path) -> None:
+    project = prepare_project(work)
+    os.environ["SLIDEMASTER_PROJECT"] = str(project)
+    os.environ["QT_SCALE_FACTOR"] = str(args.scale)
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    sys.path.insert(0, str(REPO / "src"))
+
+    from PySide6.QtCore import QCoreApplication, Qt
+    from PySide6.QtWidgets import QApplication
+
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    app = QApplication([sys.argv[0]])
+
     from slidemage import app_settings
-    original_get = app_settings.get
-    app_settings.get = lambda key, default=None: (
-        [] if key.startswith("collapsed_deck_groups") else original_get(key, default))
-    try:
-        window = qt_gui.SlideMageWindow(theme)
-    finally:
-        app_settings.get = original_get
-    window.resize(SIZE)
+    from slidemage.project import ProjectContext
+    from slidemage.ai import credentials
+    from slidemage.ai.providers import AnthropicProvider, InstalledModel, OllamaProvider
+    from slidemage.ui.kit.fonts import load_fonts
+    from slidemage.ui.kit.theme import ThemeManager
+    from slidemage.ui.workspace.window import WorkspaceWindow
+
+    # No network and no keys, so the same model lists come out on every machine.
+    models = [InstalledModel("qwen3:8b", 5_200_000_000, "2026-09-30T10:00:00Z", ("completion", "tools")),
+              InstalledModel("llama3.2-vision:11b", 7_900_000_000, "2026-09-12T10:00:00Z", ("completion", "vision")),
+              InstalledModel("gemma3:12b", 8_100_000_000, "2026-08-21T10:00:00Z", ("completion", "vision"))]
+    OllamaProvider.installed = lambda self, detailed=False: models if detailed else [m.name for m in models]
+    OllamaProvider.list_models = lambda self, vision_only=False: [m.name for m in models]
+    AnthropicProvider.list_models = lambda self: []
+    credentials._keyring = lambda: None
+    os.environ.pop(credentials.ENV_VAR, None)
+    app_settings.set(ProjectContext.at(project), "chat_model", "ollama:qwen3:8b")
+
+    load_fonts()
+    theme = ThemeManager(dark=args.dark)
+    theme.apply()
+    window = WorkspaceWindow(theme, ProjectContext.at(project))
+    window.resize(*WINDOW)
     window.show()
-    settle(app)
-
-    # 1. the main window, Active decks tab, and its deck table alone
-    save(window, "main-window")
-    table = window.active_table
-    course_row = next(row for row in table.rows if row.deck.name == "course-example-2027s")
-    callout_positions(window, {
-        "1 menus": window.menuBar(),
-        "2 tabs": window.tabs.tabBar(),
-        "3 version checkboxes": checkbox_block_middle(window, table, course_row),
-        "4 row buttons (Duplicate)": row_button(table, course_row, "Duplicate"),
-        "5 Create PDF": table.compile_button,
-        "6 footer timestamp": window.footer_timestamp_checkbox,
-        "7 log": window.log_text,
-        "8 Slide name search": window.slide_search_entry,
-        "9 Full-text search": window.slide_text_search_button,
-    })
-    table_rows = table.grab(QRect(0, 0, table.width(), min(table.height(), 330)))
-    table_rows.save(str(MEDIA / "screenshot-slidemage-deck-table.png"))
-    print("screenshot-slidemage-deck-table.png", table_rows.width(), "x", table_rows.height())
-
-    # the Tags dialog of a deck row (ask_deck_details() exec()s it itself)
-    from slidemage import qt_deck_group_dialog
-
-    def grab_dialog(dialog) -> int:
-        dialog.show()
-        settle(app)
-        save(dialog, "tags-dialog")
-        dialog.close()
-        return 0
-    original_dialog_exec = qt_deck_group_dialog.QDialog.exec
-    qt_deck_group_dialog.QDialog.exec = grab_dialog
+    window.state.set_deck(next(deck for deck in window.decks if deck.name == MANUAL))
+    shooter = Shooter(app, window, args.out_dir)
+    shooter.settle(20, 50)
     try:
-        qt_deck_group_dialog.ask_deck_details(window, "Tags — course-example-2027s", "course")
+        for name, shot in SHOTS.items():
+            if args.only is None or name in args.only:
+                shot(shooter)
     finally:
-        qt_deck_group_dialog.QDialog.exec = original_dialog_exec
+        window.hide()
+        window.deleteLater()
+        app.processEvents()
 
-    deck = next(d for d in deck_scan.scan_decks() if d.name == MANUAL)
 
-    # 2-3. the deck editor, List and Grid view
-    window.open_deck_editor(deck)
-    settle(app)
-    editor = window.tabs.currentWidget()
-    # The List view's rows are wider than the main window: widen the window
-    # until the editor's scroll area needs no horizontal scrollbar, so the
-    # rows' right-hand buttons (Remove, Preview, Images) are in the shot.
-    from PySide6.QtWidgets import QScrollArea
-    for area in editor.findChildren(QScrollArea):
-        bar = area.horizontalScrollBar()
-        if area.isVisible() and bar.maximum() > 0:
-            window.resize(window.width() + bar.maximum() + 8, window.height())
-            settle(app)
-    print("window for the deck editor:", window.width(), "x", window.height())
-    # Slide 1ti shows only the top of the list -- the toolbar, two slide rows,
-    # a section row and one more slide row -- so its numbered callouts fit.
-    third = editor._id_labels["1y9-EN-Chapter-The-Big-Picture"]
-    crop_bottom = third.mapTo(window, QPoint(0, third.height())).y() + 3
-    image = window.grab(QRect(0, 0, window.width(), crop_bottom))
-    image.save(str(MEDIA / "screenshot-slidemage-deck-editor-list.png"))
-    print("screenshot-slidemage-deck-editor-list.png", image.width(), "x", image.height())
-    deck_editor_callouts(window, editor, crop_bottom)
-    editor.grid_view_radio.setChecked(True)
-    settle(app, 12)
-    save(window, "deck-editor-grid", down_to=window.tabs)
-    editor.list_view_radio.setChecked(True)
-    settle(app)
-
-    # 4. the slide editor on the standardframe demo slide
-    slide = EXAMPLE / "slides" / "1y8-EN-Standardframe-current.tex"
-    window.open_slide_editor(slide)
-    settle(app)
-    source_tab = window.tabs.currentWidget()
-    from PySide6.QtWidgets import QPushButton
-    buttons = {b.text(): b for b in source_tab.findChildren(QPushButton)}
-    normal_size = window.size()
-    window.resize(window.width(), SLIDE_EDITOR_HEIGHT)
-    settle(app)
-    edge = buttons["Close and save"].mapTo(window, QPoint(buttons["Close and save"].width(), 0)).x()
-    window.resize(edge + SLIDE_EDITOR_RIGHT_MARGIN, SLIDE_EDITOR_HEIGHT)
-    settle(app, 12)
-    print("window for the slide editor:", window.width(), "x", window.height())
-    save(window, "slide-editor", down_to=window.tabs)
-    # ... and just its two button rows, from Save to Delete slide / Render
-    # transcript (slide 1b2 explains those buttons and wants them readable)
-    top_left = buttons["Save"].mapTo(window, QPoint(0, 0))
-    # up to and including the language "Set" button, so the versions list and
-    # the language controls (slide 1b2 explains them) are in the strip too
-    right = buttons["Set"].mapTo(window, QPoint(buttons["Set"].width(), 0)).x()
-    last = buttons["Render transcript"]
-    bottom = last.mapTo(window, QPoint(0, last.height())).y()
-    strip = window.grab(QRect(top_left.x() - 6, top_left.y() - 6,
-                              right - top_left.x() + 12, bottom - top_left.y() + 12))
-    strip.save(str(MEDIA / "screenshot-slidemage-slide-editor-buttons.png"))
-    print("screenshot-slidemage-slide-editor-buttons.png", strip.width(), "x", strip.height())
-    window.resize(normal_size)
-    settle(app)
-
-    # 5. the save dialog (version choice), grabbed instead of exec()'d
-    def grab_instead_of_exec(box: QMessageBox) -> int:
-        box.show()
-        settle(app)
-        # at a device pixel ratio of 2 the box comes out too narrow for its
-        # four buttons (labels cut off); give it the width it has at ratio 1
-        box.setFixedSize(600, box.height())
-        box.layout().activate()
-        settle(app)
-        save(box, "save-dialog")
-        box.close()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.list:
+        print("\n".join(f"{name}: {shot.__doc__ or SHOTS[name].__name__}".split("\n")[0] for name, shot in SHOTS.items()))
         return 0
-    original_exec = QMessageBox.exec
-    QMessageBox.exec = grab_instead_of_exec
-    try:
-        source_tab._prompt_version_choice(None)
-    finally:
-        QMessageBox.exec = original_exec
-
-    # 6. the Images tab, on the figure slide
-    window.open_images_for_slide("1rb-EN-Figureframe")
-    # a taller window for this one: slide 1ih gives the picture room for it
-    normal_height = window.height()
-    window.resize(window.width(), IMAGES_TAB_HEIGHT)
-    settle(app, 12)
-    save(window, "images-tab", down_to=window.tabs)
-    # ... and just the drafting end of its toolbar, from "Model:" to Clear
-    # draft (slide 1be explains those buttons and wants them readable)
-    from PySide6.QtWidgets import QLabel
-    images_tab = window.transcript_tab
-    model_label = next(w for w in images_tab.findChildren(QLabel) if w.text() == "Model:")
-    clear = next(b for b in images_tab.findChildren(QPushButton) if b.text() == "Clear draft")
-    left = model_label.mapTo(window, QPoint(0, 0))
-    right = clear.mapTo(window, QPoint(clear.width(), 0)).x()
-    bottom = clear.mapTo(window, QPoint(0, clear.height())).y()
-    strip = window.grab(QRect(left.x() - 6, left.y() - 6, right - left.x() + 12, bottom - left.y() + 12))
-    strip.save(str(MEDIA / "screenshot-slidemage-images-tab-toolbar.png"))
-    print("screenshot-slidemage-images-tab-toolbar.png", strip.width(), "x", strip.height())
-    window.resize(window.width(), normal_height)
-    settle(app)
-
-    # 7. a transcript of this manual, as SlideMage shows it
-    result = transcript.generate(deck.path, "during-course")
-    tab = window.open_transcript_preview("manual", "Transcript: slidemage-manual (during-course)")
-    tab.set_html(transcript.to_html(result, "slidemage-manual"))
-    settle(app)
-    tab.browser.verticalScrollBar().setValue(0)
-    settle(app)
-    save(window, "transcript", down_to=window.tabs)
-
-    window.close()
+    if args.out_dir is None:
+        raise SystemExit("give the folder for the PNG files")
+    unknown = set(args.only or ()) - set(SHOTS)
+    if unknown:
+        raise SystemExit(f"unknown shot(s): {', '.join(sorted(unknown))}; --list names them")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="slidemage-shots-") as work:
+        run(args, Path(work))
+    make_manual_images(args.out_dir)
     return 0
 
 

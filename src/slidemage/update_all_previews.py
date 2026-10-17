@@ -19,25 +19,35 @@ snapshot logic here at all -- run_job()'s own PDF-move-with-retry and its
 slide_snapshot.capture_deck() hook already do the actual work; this
 module's only job is building, per template, a deck file that hands them
 exactly the slides that template actually needs.
+
+A *deck* run (`deck=` / rerender_deck(), added 2026-10-14 for "Rerender all
+previews for this deck" and the agent's refresh_deck_previews tool) narrows
+the needed set to that one deck's slides and shares everything else. It
+prunes nothing: stale files are those no deck needs, which only a scan of
+every deck can tell, so the project-wide run stays the one place that
+deletes (a slide this deck dropped may still be shown by another deck).
 """
 from __future__ import annotations
 
 import re
+import threading
 import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
-from . import deck_editor, slide_snapshot
-from .compiler import CancelToken, CompileJob, LogCallback, run_job
+from . import deck_editor, project, slide_language, slide_snapshot
+from .compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
-from .slide_preview import DECKS_DIR, template_preamble
+from .slide_preview import template_preamble
 
-# qt_gui.py's own log parser watches every "==== PASS: <jobname> ->" line
+# The window's own log parser (ui/workspace/compile_jobs.py) watches every "==== PASS: <jobname> ->" line
 # globally (it's the only channel this background compile has back to the
 # GUI) to auto-open the resulting PDF when the "Auto-open" checkbox is on
 # -- fine for a real per-deck row, but this job's own PDF is a throwaway
 # megadeck nobody wants popping open, regardless of that checkbox
 # (2026-08-15, direct instruction: "irrespective of the global Auto-open
-# setting"). A recognizable prefix lets qt_gui.py exclude every one of
+# setting"). A recognizable prefix lets the window exclude every one of
 # this module's own PASS lines from that behavior without needing any
 # other channel back from this module.
 JOBNAME_PREFIX = "preview_all_"
@@ -70,39 +80,43 @@ _SNAPSHOT_FILENAME_RE = re.compile(
 # pruning by (bare_id, language) pairs for.
 
 
-def needed_slides_by_template() -> dict[str, set[str]]:
+def needed_slides_by_template(ctx: project.ProjectContext, deck: Optional[Deck] = None) -> dict[str, set[str]]:
     """Every (template, full id_slug) combination actually in use across
     every deck this project knows about -- active *and* archived, since
     an archived deck's own editor tab still shows cached previews, so its
-    slides still need a cache same as any active deck's. Keyed by
+    slides still need a cache same as any active deck's -- or, given
+    `deck`, only that deck's own. Keyed by
     template key (slide_snapshot.TEMPLATES), not display name; values are
     full id_slugs (e.g. "22s-More-Exotic-Bonds", not "22s") since that's
     what a \\slide{} call in the temp deck needs -- _prune_stale_snapshots()
     below converts to bare ids itself, the shape a cached filename encodes.
     """
     needed: dict[str, set[str]] = {}
-    for deck in scan_decks():
-        template = slide_snapshot.detect_template(deck.preamble_text)
+    from . import deck_language
+    for each in [deck] if deck is not None else scan_decks(ctx):
+        template = slide_snapshot.detect_template(each.preamble_text)
         bucket = needed.setdefault(template, set())
-        for call in deck_editor.parse_slide_calls(deck):
+        for call in deck_editor.parse_slide_calls(each):
             bucket.add(call.id_slug)
+        for language in slide_language.TRANSLATION_LANGUAGES:
+            bucket.update(slot.call.id_slug for slot in deck_language.deck_slots(ctx, each, language))
     return needed
 
 
-def _prune_stale_snapshots(needed: dict[str, set[str]], log: LogCallback) -> None:
+def _prune_stale_snapshots(ctx: project.ProjectContext, needed: dict[str, set[str]], log: LogCallback) -> None:
     """Delete every cached preview file whose (template, bare id) isn't in
     `needed` any more -- a slide no deck references under that template
     (removed from every deck, or moved to a different institution) leaves
     an orphaned file otherwise, the same class of dead weight the old
-    flat-naming cleanup (ALT_TEXT_NOTES.md, Phase 8) removed by hand once.
+    flat-naming cleanup removed by hand once.
     """
     valid_bare_ids_by_template_name: dict[str, set[str]] = {
         slide_snapshot.TEMPLATES.get(template, template):
-            {slide_snapshot.bare_id(slug) for slug in full_slugs}
+            {slide_language.bare_id(slug) for slug in full_slugs}
         for template, full_slugs in needed.items()
     }
     removed = 0
-    for path in slide_snapshot.SNAPSHOT_DIR.glob("*.png"):
+    for path in ctx.slide_previews_dir.glob("*.png"):
         match = _SNAPSHOT_FILENAME_RE.match(path.name)
         if match is None:
             continue  # not a recognized snapshot filename -- leave it alone
@@ -119,29 +133,53 @@ def _preamble_for(template: str) -> str:
     return template_preamble(template)
 
 
-def _build_deck_text(template: str, slide_ids: list[str]) -> tuple[str, int]:
+_EXTRA_INPUT = re.compile(r"^[ \t]*\\input\{(?!Slidemaster_preamble)[^}]+\}[ \t]*$", re.MULTILINE)
+
+
+def extra_inputs_by_template(ctx: project.ProjectContext, deck: Optional[Deck] = None) -> dict[str, list[str]]:
+    """The `\\input{...}` lines (other than the framework's own preamble) of the preambles of the decks in each
+    template's group, e.g. a block that defines the colors its slides use. The generic preamble of a throwaway deck
+    has none of them, so every slide using such a color failed ("Undefined color") and the one error ended the
+    whole batch ("Emergency stop")."""
+    found: dict[str, list[str]] = {}
+    for each in [deck] if deck is not None else scan_decks(ctx):
+        lines = found.setdefault(slide_snapshot.detect_template(each.preamble_text), [])
+        for match in _EXTRA_INPUT.finditer(each.preamble_text):
+            line = match.group(0).strip()
+            if line not in lines:
+                lines.append(line)
+    return found
+
+
+def _build_deck_text(template: str, slide_ids: list[str], extra_inputs: Optional[list[str]] = None) -> tuple[str, int]:
     """(full deck text, offset just past `\\begin{document}`) -- the
     latter is `Deck.preamble_end`, needed so `Deck.preamble_text` (used by
     run_job()'s own template-detection call) returns exactly the preamble
     this function built, not something offset by a stray rstrip().
     """
     preamble = _preamble_for(template)  # already ends "\begin{document}\n"
+    if extra_inputs:
+        end = preamble.rindex("\\begin{document}")
+        preamble = preamble[:end] + "\n".join(extra_inputs) + "\n" + preamble[end:]
     body = "\n".join(f"\\slide{{{id_slug}}}" for id_slug in slide_ids)
     text = f"{preamble}{body}\n\\end{{document}}\n"
     return text, len(preamble)
 
 
 def _run_one_template(
-    template: str, slide_ids: list[str], log: LogCallback,
-    cancel: Optional[CancelToken], base_jobname: Optional[str],
+    ctx: project.ProjectContext, template: str, slide_ids: list[str], log: LogCallback,
+    cancel: Optional[CancelToken], base_jobname: Optional[str], relocated: threading.Event,
+    extra_inputs: Optional[list[str]] = None,
 ) -> bool:
     """Compile one throwaway deck for exactly this template's own needed
     slides -- same mechanics run() always used, just scoped to a subset
-    of the project's slides instead of every one of them."""
-    DECKS_DIR.mkdir(parents=True, exist_ok=True)
+    of the project's slides instead of every one of them. `relocated` is
+    set once run_job()'s background publication of the PDF -- and with it
+    the snapshot capture -- is over."""
+    ctx.decks_dir.mkdir(parents=True, exist_ok=True)
     jobname = base_jobname or f"{JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}"
-    temp_path = DECKS_DIR / f"_slidemage_{jobname}.tex"
-    text, preamble_end = _build_deck_text(template, slide_ids)
+    temp_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
+    text, preamble_end = _build_deck_text(template, slide_ids, extra_inputs)
     temp_path.write_text(text, encoding="utf-8")
 
     deck = Deck(
@@ -155,9 +193,9 @@ def _run_one_template(
         chapters=[],
         output_folders={},
     )
-    job = CompileJob(deck=deck, version="instructor", chapter=None)
+    job = CompileJob(deck=deck, version="instructor", chapter=None, resolve_translations=False)
     try:
-        return run_job(job, log, cancel=cancel)
+        return run_job(ctx, job, log, cancel=cancel, on_relocated=lambda _ok, _path: relocated.set())
     finally:
         # Safe as soon as the compile itself is done: nothing downstream
         # (the PDF move, the snapshot capture -- both possibly still
@@ -166,16 +204,21 @@ def _run_one_template(
         temp_path.unlink(missing_ok=True)
 
 
-def run(log: LogCallback, cancel: Optional[CancelToken] = None,
+def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelToken] = None,
        base_jobnames: Optional[dict[str, str]] = None,
-       needed: Optional[dict[str, set[str]]] = None) -> bool:
+       needed: Optional[dict[str, set[str]]] = None, deck: Optional[Deck] = None) -> bool:
     """Scan every deck for which (template, slide) combinations it
     actually needs, compile one throwaway deck per template containing
     just that template's own needed slides, then delete every cached
     preview file that isn't part of that valid set any more. Returns
-    whether every template's compile succeeded.
+    whether every template's compile succeeded. Returns once the
+    snapshots of every successful compile are written (they are captured
+    in the background after the compile itself).
 
-    base_jobnames: {template key: jobname} -- lets the caller (qt_gui.py)
+    deck: only this deck's slides (see the module docstring); nothing is
+    pruned then.
+
+    base_jobnames: {template key: jobname} -- lets the caller (the window)
     pick each template's own job name in advance and register a
     progress-status label for it before that compile's first log line --
     and therefore the status lookup for it -- ever arrives. A template
@@ -187,12 +230,15 @@ def run(log: LogCallback, cancel: Optional[CancelToken] = None,
     call that separately first.
     """
     if needed is None:
-        needed = needed_slides_by_template()
+        needed = needed_slides_by_template(ctx, deck)
     total_slides = sum(len(ids) for ids in needed.values())
     log(f"==== Update previews: {total_slides} slide-template combination(s) "
-       f"across {len(needed)} template(s) ====")
+       f"across {len(needed)} template(s) ====" if deck is None else
+       f"==== Rerender previews of {deck.name}: {total_slides} slide(s) ====")
 
     all_ok = True
+    relocations: list[threading.Event] = []
+    extras = extra_inputs_by_template(ctx, deck)
     for template in sorted(needed):
         slide_ids = sorted(needed[template])
         template_name = slide_snapshot.TEMPLATES.get(template, template)
@@ -209,11 +255,68 @@ def run(log: LogCallback, cancel: Optional[CancelToken] = None,
             continue
         log(f"---- {template_name}: {len(slide_ids)} slide(s) ----")
         base_jobname = (base_jobnames or {}).get(template)
-        ok = _run_one_template(template, slide_ids, log, cancel, base_jobname)
+        relocated = threading.Event()
+        ok = _run_one_template(ctx, template, slide_ids, log, cancel, base_jobname, relocated,
+                               extras.get(template))
+        if ok:
+            relocations.append(relocated)
         all_ok = ok and all_ok
         if cancel is not None and cancel.is_set():
             break
 
-    if cancel is None or not cancel.is_set():
-        _prune_stale_snapshots(needed, log)
+    for relocated in relocations:
+        relocated.wait(PDF_MOVE_RETRY_TOTAL_SECONDS + 60)
+    if deck is None and (cancel is None or not cancel.is_set()):
+        _prune_stale_snapshots(ctx, needed, log)
     return all_ok
+
+
+@dataclass
+class DeckResult:
+    """What rerender_deck() did, slide by slide (id_slugs). Truthy when every slide's preview was
+    written. `error`: the first failure line of the compile log, if any."""
+    refreshed: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
+    error: str = ""
+
+    def __bool__(self) -> bool:
+        return not self.failed
+
+
+def rerender_deck(ctx: project.ProjectContext, deck: Deck, log: LogCallback, cancel: Optional[CancelToken] = None,
+                  base_jobnames: Optional[dict[str, str]] = None,
+                  needed: Optional[dict[str, set[str]]] = None) -> DeckResult:
+    """Rerender the cached previews of exactly this deck's slides (run(deck=deck)) and tell which
+    slides' snapshot files were written by it. The one implementation of the UI's "Rerender all
+    previews for this deck" and the agent's refresh_deck_previews."""
+    if needed is None:
+        needed = needed_slides_by_template(ctx, deck)
+    tex_errors: list[str] = []      # the first "! ..." line of the TeX output
+    failures: list[str] = []        # else the first "*** ..." line of the compile log
+
+    def watch(line: str) -> None:
+        if line.startswith("! ") and not tex_errors:
+            tex_errors.append(line.strip())
+        elif line.startswith("*** ") and not failures:
+            failures.append(line.strip("* \n"))
+        log(line)
+
+    pngs = {(template, slug): slide_snapshot.snapshot_path(ctx, slide_language.bare_id(slug), template, id_slug=slug)
+            for template, slugs in needed.items() for slug in slugs}
+    before = {key: file_stamp(png) for key, png in pngs.items()}
+    run(ctx, watch, cancel, base_jobnames, needed, deck=deck)
+    result = DeckResult(error=(tex_errors or failures or [""])[0])
+    for key in sorted(pngs):
+        stamp = file_stamp(pngs[key])
+        (result.refreshed if stamp is not None and stamp != before[key] else result.failed).append(key[1])
+    return result
+
+
+def file_stamp(path: Path) -> Optional[int]:
+    """The file's modification time in ns, None when it is missing. A file counts as written by a run when its
+    stamp changed: comparing it with the clock before the run is not reliable, because the file system
+    stamps with a coarser clock than time.time()."""
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None

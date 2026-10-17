@@ -1,0 +1,28 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+%% Translation of: 1bb-EN-What-You-Need
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the overview of what to
+% install. The next slides cover each program.
+\begin{standardframe}{Was Sie brauchen}
+	\small
+	SlideMage ist die App, in der Sie arbeiten; sie ruft LaTeX auf, um die PDFs zu setzen. Die ersten drei Programme unten sind notwendig, die übrigen optional. Die folgenden Folien behandeln jedes davon.
+	\par\medskip
+	{\footnotesize
+	\begin{gothamtable}[gap=12pt]{lll}
+		\toprule
+		Programm & Wofür es dient & Bezugsquelle \\
+		\midrule
+		MiKTeX oder TeX Live & Satz: LuaLaTeX, biber, latexmk & \SMCode{miktex.org}, \SMCode{tug.org/texlive} \\
+		Perl (nur mit MiKTeX) & führt latexmk aus & Git for Windows, \SMCode{git-scm.com} \\
+		SlideMage & die App & ihre Releases auf GitHub \\
+		\midrule
+		\emph{Optional:} Ollama und Modelle & Beschreibungen, Übersetzung, Chat & \SMCode{ollama.com} \\
+		\emph{Optional:} Claude Code & zweiter Assistenten-Tab & siehe \emph{Optionale Helfer} \\
+		\emph{Optional:} Viewer, pympress, \ldots & Lesen, Präsentieren & siehe \emph{Optionale Helfer} \\
+		\emph{Optional:} Python 3.11+ & Ausführen aus dem Quellcode & \SMCode{python.org} \\
+		\bottomrule
+	\end{gothamtable}\par}
+\end{standardframe}

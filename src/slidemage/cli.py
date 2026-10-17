@@ -8,29 +8,39 @@ from pathlib import Path
 
 from . import project, splash
 
+CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook instead of the app (ai/claude_launch.py)
 
-def _ask_for_project(parent_hint: Path | None):
-    return project.pick_or_create_project(None, parent_hint or Path.home())
+
+def _prepare_gui(project_root: Path | None) -> None:
+    """The fonts and the kit stylesheet, for the sheets that run before the window (the project
+    picker, the newer-project question). With a project, its settings decide light or dark; the
+    picker has none."""
+    from .ui.kit.fonts import load_fonts
+    from .ui.kit.theme import ThemeManager
+
+    load_fonts()
+    ThemeManager(project=project.ProjectContext.at(project_root) if project_root is not None else None).apply()
+
+
+def _ask_for_project() -> Path | None:
+    from .ui.dialogs.open_project import OpenProjectSheet
+
+    _prepare_gui(None)
+    sheet = OpenProjectSheet(first_run=True)
+    sheet.exec()
+    return sheet.chosen
 
 
 def _confirm_newer_project(root: Path, info: dict) -> bool:
     """Open anyway (True) or Quit, for a project whose format is newer
     than this app's."""
-    from PySide6.QtWidgets import QMessageBox
+    from .ui.dialogs.open_project import NewerProjectSheet
+    from .version import VERSION_NUMBER
 
-    last = info["last_app_version"] or "a newer SlideMage"
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle("Project from a newer SlideMage")
-    box.setText(
-        f"This project was last used with SlideMage {last}, which changed its "
-        "format; this version may not handle it correctly.")
-    box.setInformativeText(f"{root}\n\nUpdate SlideMage (Info → Check for updates…) to be safe.")
-    open_button = box.addButton("Open anyway", QMessageBox.ButtonRole.AcceptRole)
-    quit_button = box.addButton("Quit", QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(quit_button)
-    box.exec()
-    return box.clickedButton() is open_button
+    _prepare_gui(root)
+    sheet = NewerProjectSheet(None, root.name, info["last_app_version"], VERSION_NUMBER, opening=True)
+    sheet.exec()
+    return sheet.choice == NewerProjectSheet.OPEN
 
 
 def check_project_format(root: Path, app_version: str) -> bool:
@@ -51,6 +61,17 @@ def check_project_format(root: Path, app_version: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> None:
+    if (sys.argv[1:] if argv is None else argv)[:1] == ['--preview-raster']:
+        # A frozen executable has no python -m; dispatch before project/GUI setup.
+        from .preview_raster import serve
+        serve()
+        return
+    if (sys.argv[1:] if argv is None else argv)[:1] == [CLAUDE_HOOK_FLAG]:
+        # Claude Code's PreToolUse hook (ai/claude_hook.py), run as this program in a frozen build, which
+        # has no `python -m`: before anything else, no window.
+        from .ai import claude_hook
+
+        sys.exit(claude_hook.main())
     parser = argparse.ArgumentParser(
         prog="slidemage",
         description="Build, compile and manage Slidemaster slide decks.",
@@ -79,9 +100,12 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(2)
         sys.exit(compat.main([str(root)] + (["--fix"] if args.fix else []) + (["--json"] if args.json else [])))
 
+    from PySide6.QtCore import QCoreApplication, Qt
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
+    # Qt WebEngine (the Claude Code terminal) needs this before the QApplication exists.
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])  # noqa: F841 -- keep QApplication alive
 
     if args.project is not None:
         root = args.project.resolve()
@@ -95,21 +119,21 @@ def main(argv: list[str] | None = None) -> None:
         root = project.discover()
         if root is None:
             splash.close()  # the folder picker would open underneath it
-            root = _ask_for_project(project.last_project_hint() or Path.cwd())
+            root = _ask_for_project()
         if root is None:
             sys.exit(1)
 
     from .version import VERSION_NUMBER
 
+    os.environ[project.ENV_VAR] = str(root)   # before the first sheet: its theme reads the project's settings
     if not check_project_format(root, VERSION_NUMBER):
         sys.exit(1)
 
-    os.environ[project.ENV_VAR] = str(root)
     project.save_last_project(root)
 
-    from .qt_gui import main as gui_main
+    from .ui.app import main as gui_main
 
-    gui_main()
+    gui_main(project.ProjectContext.at(root))
 
 
 if __name__ == "__main__":

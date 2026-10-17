@@ -5,7 +5,8 @@ built on the [Gotham beamer theme](https://github.com/) with an
 institution-specific color/logo layer (Uni Graz, in this copy). SlideMage
 is a PySide6 (Qt) desktop app that sits on top of it: compiling decks,
 managing slide IDs and versions, drafting/reviewing image descriptions via
-a local Ollama model, and generating accessible transcripts.
+a local Ollama model (or a Claude model, if you allow cloud use), generating
+accessible transcripts, and an AI assistant that edits slides for you.
 
 This repository holds the framework and the app, not course content:
 real slides and decks live in separate project folders (the original one
@@ -49,9 +50,10 @@ before a real revision, the outgoing content is frozen as
 and `current.tex` keeps changing. A deck can load either the live version
 (`\slide{ID-slug}`) or a pinned one (`\slideversion{ID-slug}{1-2-0}`), so
 one course can keep using an older edition while another moves on. SlideMage's
-own slide-editor **Save** button asks Major/Minor/Patch (or "Overwrite" for
-a change not worth recording) and does the freeze-then-bump automatically;
-the manual's slide `1an` (Slide versions) shows the dialog.
+own **Save** (in the Source view) asks Major/Minor/Patch (or "Overwrite" for
+a change not worth recording) and does the freeze-then-bump automatically
+(the Slide versions panel's **Freeze as vX.Y.Z** does it without a text change);
+the manual's slide `1an` (Slide versions) shows the prompt.
 
 ### Deck versions and `\slidestep`
 
@@ -97,19 +99,19 @@ to the text — skipped by screen readers, no alt text) or **informative**
 description, a source citation, and a per-slide "takeaway" (why *this*
 image is on *this* slide). All of it lives in one place, `media/alt-text.json`
 — an image only needs describing once, however many slides use it — and is
-edited entirely through SlideMage's **Images** tab, never by hand.
+edited entirely through SlideMage's **Images** page, never by hand.
 `media/alt-text.csv` alongside it is a generated projection of the same
 data that the LaTeX/Lua side reads at compile time (LuaTeX has no JSON
 library); never edit it directly, it's overwritten on every save.
 
 Every image of the manual has a description, e.g.
 `media/correlation-matrix-example.png` (on its slides `1rb` and `1c9`), in
-both English and German — open it in SlideMage's Images tab to see the actual
+both English and German — open it on SlideMage's Images page to see the actual
 shape of a finished entry.
 
 A hand-drawn `tikz` diagram gets the same treatment by wrapping it in
 `\tikzillustration{ID}` instead of a bare `tikzpicture` — SlideMage renders
-it to a PNG on demand and it shows up in the Images tab exactly like a real
+it to a PNG on demand and it shows up on the Images page exactly like a real
 image file.
 
 Beyond the PDF itself (which marks decorative images as PDF artifacts and
@@ -117,15 +119,16 @@ types an informative image's alt text invisibly for text extraction — see
 README.md's "Screen-reader accessibility" for the verified detail), a whole
 deck's **accessible transcript** — Markdown + HTML, one entry per slide,
 resolving deck versions/omitted slides exactly like the PDF compile does —
-generates from the Images tab or the deck table's own "Create Transcript"
-button, for the during-course/after-course versions only.
+generates from the arrow menu of **Compile PDF** (*Write transcript*), for the
+during-course/after-course versions only.
 
 ### The Ollama connection
 
-Drafting image descriptions runs against a **local** Ollama server
-(`http://localhost:11434` by default — see `src/slidemage/alt_draft.py`), not
-a cloud API: no API key, no per-image cost, nothing leaves the machine.
-"Draft all…" in the Images tab queues every image still needing a
+Drafting image descriptions runs, by default, against a **local** Ollama server
+(`http://localhost:11434` by default — see `src/slidemage/alt_draft.py`): no API
+key, no per-image cost, nothing leaves the machine. (Since 6.0 any AI task can
+use a Claude model, or Claude Code, instead when the project's setting in Settings →
+Cloud is Cloud; the first cloud request in a project says what will be sent.) "Draft all…" on the Images page queues every image still needing a
 description, runs a vision-capable model over each one, and is resumable —
 stop it, close the app, come back later. The original project uses
 `qwen3-vl:32b` for drafting and `translategemma:12b` (a dedicated
@@ -134,7 +137,7 @@ pass; any vision-capable Ollama model works, but a 32B model needs a real
 GPU with enough VRAM — a smaller model (e.g. `llama3.2-vision` or
 `qwen2.5vl:7b`) is a reasonable starting point on more modest hardware,
 just expect lower-quality drafts on dense charts. **Drafts are never
-trustworthy until reviewed against the actual image** — the tab shows it
+trustworthy until reviewed against the actual image** — the page shows it
 at full size for exactly that reason; two known failure modes (fabricated
 values on faint scanned charts, worst readings on a chart's flat early
 region) are documented in README.md's "Describing images" section.
@@ -146,13 +149,18 @@ VRAM simultaneously.
 
 ### SlideMage itself
 
-Launch with `slidemage` (see below for environment setup). Three tabs: **Active decks** (one row per deck,
-checkboxes for Instructor/During-course/After-course plus
-After-course-per-chapter, each an independent compile via `latexmk`),
-**Archived decks**, and the green **Images** tab covering everything above.
-The **Info** menu action opens a window with two tabs: **Version history**
-(this app's own dated changelog) and **License** (this project's CC BY-SA
-license, read live from the `LICENSE` file).
+Launch with `slidemage` (see below for environment setup). The window is one
+workspace for the open deck: the **slide list** on the left, the focused slide in the
+middle (**Preview**, **Source**, **Split** or **Details**), and on the right a **side
+panel** (used in decks, slide versions, visibility, citations, language, image
+descriptions, transcript entry, speaker notes) above the **AI assistant** (*Chat*, an
+agent that edits with your approval, or *Claude Code*, a terminal running your own
+`claude`). The top bar holds the deck switcher, *View as* Instructor / During course /
+After course, EN / DE, **Compile PDF** (its arrow: every version, chapters, presenter,
+pages, several decks, transcripts), **Images** (the image-description page) and the ⋮
+menu (this deck, decks, project, housekeeping, info). `Ctrl+K` opens the command palette.
+The ⋮ → Info → **Version history** shows this app's own dated changelog.
+See `docs/SlideMage.md` for the details and the manual (`example/`) for screenshots.
 
 ## Getting started / system requirements
 
@@ -180,16 +188,19 @@ license, read live from the `LICENSE` file).
    source .venv/bin/activate   # Windows: .venv\Scripts\activate
    pip install -e .            # add ".[dev]" for pytest/ruff
    ```
-   This installs PySide6 (the GUI), PyMuPDF (PDF-to-PNG rendering for slide
+   This installs PySide6 (the GUI, with QtWebEngine for the Claude Code terminal), the
+   `anthropic` client (cloud models; unused unless you add an API key), PyMuPDF (PDF-to-PNG rendering for slide
    previews and tikz-illustration drafting), python-pptx (the Export-PPTX
    feature), and Pillow, plus the `slidemage` command (on Windows it opens without a console
    window).
 4. **[Ollama](https://ollama.com/)**, running locally, with at least one
    vision-capable model pulled (`ollama pull qwen3-vl:32b`, or a smaller
    vision model — see above) — only needed for drafting image descriptions
-   via SlideMage's Images tab; everything else (compiling, slide IDs,
-   deck versions) works without it, although some capabilities requirements
-   a local model (e.g., syntax check, AI drafting of changes on slides).
+   via SlideMage's Images page; everything else (compiling, slide IDs,
+   deck versions) works without it, although some capabilities need
+   a model (image descriptions, translation, the syntax-check fix, the AI chat;
+   a Claude model can stand in for a local one). The optional **Claude Code**
+   tab needs the `claude` command installed and logged in.
 
 `.gitattributes`/`.gitignore` are already here and set up to normalize
 line endings and exclude generated output (`.build/`, `transcripts/`,
@@ -210,8 +221,8 @@ lualatex test.tex
 lualatex test.tex
 # or, in one line: latexmk -lualatex test.tex
 
-# Or launch SlideMage and use its checkboxes instead (also gives you
-# During-course/After-course compiles, the Images tab, etc.) -- these
+# Or launch SlideMage and use Compile PDF instead (also gives you
+# During-course/After-course compiles, the Images page, etc.) -- these
 # four passes run automatically either way:
 cd ../..
 slidemage --project example

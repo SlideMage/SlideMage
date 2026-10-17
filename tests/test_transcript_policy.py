@@ -8,7 +8,7 @@ from slidemage import transcript
 
 
 @pytest.mark.parametrize("version", transcript.STUDENT_VERSIONS)
-def test_student_transcripts_keep_deckreveal_content(tmp_path: Path, version: str):
+def test_student_transcripts_keep_deckreveal_content(ctx, tmp_path: Path, version: str):
     path = tmp_path / "abc-EN-Question-current.tex"
     path.write_text(
         r"\begin{standardframe}{Question}"
@@ -17,7 +17,7 @@ def test_student_transcripts_keep_deckreveal_content(tmp_path: Path, version: st
         r"\end{standardframe}",
         encoding="utf-8",
     )
-    entry = transcript.render_slide(
+    entry = transcript.render_slide(ctx, 
         transcript.DeckSlide(1, "abc", path, True), version, {}
     )
     assert entry is not None
@@ -25,36 +25,43 @@ def test_student_transcripts_keep_deckreveal_content(tmp_path: Path, version: st
     assert "Instructor-only detail." not in entry.body
 
 
-@pytest.mark.parametrize("note", [
-    r"\note{PRIVATE NOTE \includegraphics{private.png}}",
-    r"\note {PRIVATE NOTE \includegraphics{private.png}}",
-    r"\note<2>{PRIVATE NOTE \includegraphics{private.png}}",
-    r"\note<2>[item]{PRIVATE NOTE \includegraphics{private.png}}",
-])
-def test_instructor_notes_stay_out_of_transcript_and_draft_context(
-    tmp_path: Path, monkeypatch, note: str
+@pytest.mark.parametrize(("title", "note", "expected_title"), [
+    ("Question", note, "Question") for note in (
+        r"\note{PRIVATE NOTE \includegraphics{private.png}}",
+        r"\note {PRIVATE NOTE \includegraphics{private.png}}",
+        r"\note<2>{PRIVATE NOTE \includegraphics{private.png}}",
+        r"\note<2>[item]{PRIVATE NOTE \includegraphics{private.png}}",
+    )
+] + [(
+    r"Clean title \note{PRIVATE TITLE}",
+    r"\note<2>[item]{PRIVATE BODY \includegraphics{private.png}}", "Clean title",
+)])
+def test_instructor_notes_stay_out_of_transcript_and_draft_context(ctx, 
+    tmp_path: Path, monkeypatch, title: str, note: str, expected_title: str
 ):
     from slidemage import alt_draft, alt_images
 
-    monkeypatch.setattr(alt_images, "load_store", lambda: {})
+    monkeypatch.setattr(alt_images, "load_store", lambda _ctx: {})
     path = tmp_path / "abc-EN-Question-current.tex"
     path.write_text(
-        r"\begin{standardframe}{Question}Visible question. "
+        rf"\begin{{standardframe}}{{{title}}}Visible body. "
         + note
         + r"\end{standardframe}",
         encoding="utf-8",
     )
-    entry = transcript.render_slide(
+    entry = transcript.render_slide(ctx, 
         transcript.DeckSlide(1, "abc", path, True), "during-course", {}
     )
     assert entry is not None
-    assert "PRIVATE NOTE" not in entry.body
+    assert entry.title == expected_title
+    assert "Visible body." in entry.body
+    assert "PRIVATE" not in entry.title + entry.body
     assert entry.images == []
-    context = alt_draft.build_context(path, "public.png")
-    assert "PRIVATE NOTE" not in context.body
+    context = alt_draft.build_context(ctx, path, "public.png")
+    assert "PRIVATE" not in context.body
 
 
-def test_transcript_omits_colour_but_keeps_the_coloured_text(tmp_path: Path):
+def test_transcript_omits_colour_but_keeps_the_coloured_text(ctx, tmp_path: Path):
     # Before v4.1.0 the colour name was left glued to the text:
     # "c_primary_highlightdata dredging", "C00000Promotes non-replicable results".
     path = tmp_path / "abc-EN-Colours-current.tex"
@@ -69,7 +76,7 @@ def test_transcript_omits_colour_but_keeps_the_coloured_text(tmp_path: Path):
         r"\end{standardframe}",
         encoding="utf-8",
     )
-    entry = transcript.render_slide(
+    entry = transcript.render_slide(ctx, 
         transcript.DeckSlide(1, "abc", path, True), "during-course", {}
     )
     body = entry.body

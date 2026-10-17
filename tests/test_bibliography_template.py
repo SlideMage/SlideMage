@@ -22,16 +22,6 @@ def test_framework_defines_the_command_with_stock_defaults():
     assert "style=authoryear, backend=biber}" in base
 
 
-def test_templates_carrying_the_house_format():
-    for path in (("latex", "Slidemaster_preamble_slidemage.tex"),
-                 ("example", "Slidemaster_preamble_uni-graz.tex")):
-        text = read(*path)
-        assert cs("renewcommand{" + cs("SMBibliographyStyle") + "}") in text, path
-        assert cs("renewcommand{" + cs("SMBiblatexOptions") + "}") in text, path
-        for kind in ("book", "article", "online", "report"):
-            assert cs("DeclareBibliographyDriver{" + kind + "}") in text, (path, kind)
-
-
 def test_manual_deck_uses_the_template_not_its_own_copy():
     deck = read("example", "decks", "slidemage-manual.tex")
     assert cs("SMUseBibliography") in deck

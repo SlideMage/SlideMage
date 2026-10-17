@@ -3,11 +3,11 @@ ones: detected from a deck's preamble, previews named after it, the
 "Update previews" preamble built from it, and shipped with the framework
 (latex/), so every project next to it can use it."""
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-from slidemage import alt_draft, app_settings, slide_preview, slide_snapshot, update_all_previews
+from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
+from slidemage.project import ProjectContext
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 LATEX = Path(__file__).resolve().parents[1] / "latex"
@@ -65,13 +65,12 @@ def _framework(folder, *templates):
 
 
 def test_every_project_next_to_the_framework_offers_the_slidemage_template(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
     framework = _framework(tmp_path / "latex", "slidemage")
     project = _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci")
     assert slide_snapshot.framework_dirs(project) == [framework]
     assert slide_snapshot.available_templates(project) == ["uni-graz", "uni-ibk", "mci", "slidemage"]
     assert slide_snapshot.preamble_file("slidemage", project) == framework / "Slidemaster_preamble_slidemage.tex"
-    assert slide_snapshot.render_template(project) == "slidemage"
+    assert slide_snapshot.render_template(ProjectContext.at(project)) == "slidemage"
     # A project's own copy wins over the framework's.
     _project(project, "slidemage")
     assert slide_snapshot.preamble_file("slidemage", project) == project / "Slidemaster_preamble_slidemage.tex"
@@ -86,72 +85,36 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
     assert slide_snapshot.framework_dirs(project) == [elsewhere, checkout]
 
 
-def test_render_template_out_of_the_box_is_slidemage(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    root = _project(tmp_path / "project", "uni-graz", "slidemage")
-    assert slide_snapshot.available_templates(root) == ["uni-graz", "slidemage"]
-    assert slide_snapshot.render_template(root) == "slidemage"
-
-
-def test_render_template_follows_the_setting(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
-    root = _project(tmp_path / "project", "uni-graz", "slidemage")
-    app_settings.set(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-graz")
-    assert slide_snapshot.render_template(root) == "uni-graz"
-
-
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
+    ctx = ProjectContext.at(tmp_path / "project")
     # A project with only institution layers and no framework next to it: Graz.
     root = _project(tmp_path / "project", "uni-graz", "mci")
-    assert slide_snapshot.render_template(root) == "uni-graz"
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "uni-graz"
     # A saved choice whose file is gone falls back too.
-    app_settings.set(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-ibk")
-    assert slide_snapshot.render_template(root) == "uni-graz"
+    app_settings.set(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-ibk")
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "uni-graz"
     only_mci = _project(tmp_path / "other", "mci")
-    assert slide_snapshot.render_template(only_mci) == "mci"
+    assert slide_snapshot.render_template(ProjectContext.at(only_mci)) == "mci"
 
 
-def test_default_preamble_uses_the_render_template(monkeypatch):
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "slidemage")
-    preamble = slide_preview.default_preamble()
+def test_default_preamble_uses_the_render_template(ctx, monkeypatch):
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda ctx: "slidemage")
+    preamble = slide_preview.default_preamble(ctx)
     assert "\\input{Slidemaster_preamble_slidemage}" in preamble
     assert "\\input{Slidemaster_preamble_uni-graz}" not in preamble
     assert slide_snapshot.detect_template(preamble) == "slidemage"
 
 
-@pytest.fixture(scope="module")
-def qapp():
-    from PySide6.QtWidgets import QApplication
-    return QApplication.instance() or QApplication([])
-
-
-def test_settings_offers_the_project_templates_and_saves_the_choice(tmp_path, monkeypatch, qapp):
-    from PySide6.QtWidgets import QWidget
-
-    from slidemage.qt_settings_dialog import SettingsDialog
-
-    monkeypatch.setattr(app_settings, "STORE_PATH", tmp_path / "app_settings.json")
+@pytest.mark.parametrize("template", ["uni-graz", "mci"])
+def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, template):
     _framework(tmp_path / "latex", "slidemage")
-    monkeypatch.setattr(slide_snapshot, "PROJECT_ROOT",
-                        _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
-    monkeypatch.setattr(alt_draft, "list_all_models", lambda: [])
-    monkeypatch.setattr(alt_draft, "list_vision_models", lambda: [])
-    monkeypatch.setattr(alt_draft, "list_installed_models_detailed", lambda: [])
-    monkeypatch.setattr(SettingsDialog, "_build_ai_prompts_tab", lambda self: QWidget())
-
-    class App(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.theme = SimpleNamespace(dark=False)
-            self.set_dark_mode = lambda _value: None
-            self.set_tab_width_chars = lambda _value: None
-            self.log = lambda _message: None
-
-    settings = SettingsDialog(App())
-    combo = settings.render_template_combo
-    assert [combo.itemData(i) for i in range(combo.count())] == ["uni-graz", "uni-ibk", "mci", "slidemage"]
-    assert combo.currentData() == "slidemage"  # out of the box
-    combo.setCurrentIndex(combo.findData("mci"))
-    assert app_settings.get(slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
-    assert slide_snapshot.render_template() == "mci"
+    root = _project(tmp_path / "project", "uni-graz", "mci", "slidemage")
+    ctx = ProjectContext.at(root)
+    assert slide_snapshot.available_templates(root) == ["uni-graz", "mci", "slidemage"]
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "slidemage"
+    slide_snapshot.set_render_template(ctx, template)
+    assert app_settings.get(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == template
+    assert slide_snapshot.render_template(ctx) == template
+    with pytest.raises(ValueError, match="not a template"):
+        slide_snapshot.set_render_template(ctx, "nope")
+    assert slide_snapshot.render_template(ctx) == template

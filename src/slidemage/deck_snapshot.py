@@ -43,7 +43,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 import uuid
@@ -54,8 +53,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import compile_records, compiler, project
-from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
+from . import app_settings, compile_log, compile_records, compiler, project
+from .compiler import CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
     LOG_FILE_LINE_RE as _LOG_FILE_LINE_RE,
@@ -66,7 +65,10 @@ from .compile_records import (
     parse_fls,
     sha256 as _sha256,
 )
-from .deck_scan import PROJECT_ROOT, Deck
+from .deck_editor import VIEWS
+from .deck_scan import Deck
+from .fileio import replace_with_retry
+from .processes import command_output
 
 SNAPSHOTS_DIRNAME = "snapshots"
 SNAPSHOT_FORMAT = 1
@@ -187,6 +189,53 @@ def format_size(size: int) -> str:
     return f"{size} B"
 
 
+# Remembered between runs (app_settings), and used as they are by the snapshot the archive
+# question offers.
+OUTPUT_SETTING_KEY = "snapshot_output"        # "folder" / "zip"
+TEXMF_SETTING_KEY = "snapshot_texmf"
+APP_SETTING_KEY = "snapshot_app"
+
+
+def saved_options(ctx: project.ProjectContext) -> SnapshotOptions:
+    """The settings last used in the Snapshots sheet."""
+    return SnapshotOptions(
+        zip=app_settings.get(ctx, OUTPUT_SETTING_KEY, "folder") == "zip",
+        texmf=bool(app_settings.get(ctx, TEXMF_SETTING_KEY, False)),
+        include_app=bool(app_settings.get(ctx, APP_SETTING_KEY, False)),
+    )
+
+
+def save_options(ctx: project.ProjectContext, options: SnapshotOptions) -> None:
+    app_settings.set(ctx, OUTPUT_SETTING_KEY, "zip" if options.zip else "folder")
+    app_settings.set(ctx, TEXMF_SETTING_KEY, options.texmf)
+    app_settings.set(ctx, APP_SETTING_KEY, options.include_app)
+
+
+def describe_options(options: SnapshotOptions) -> str:
+    """"folder, without LaTeX package files" -- for the archive question."""
+    parts = [".zip file" if options.zip else "folder",
+             "with LaTeX package files" if options.texmf else "without LaTeX package files"]
+    if options.include_app:
+        parts.append("with the SlideMage app")
+    return ", ".join(parts)
+
+
+def summary_text(results: list[SnapshotResult]) -> str:
+    lines = []
+    for r in results:
+        if r.ok:
+            line = f"✓  {r.deck_name}: {r.path.name}  ({format_size(r.size)})"
+            if r.deleted:
+                line += f" -- {len(r.deleted)} older snapshot(s) moved to the trash"
+        elif r.skipped:
+            line = f"–  {r.deck_name}: skipped (stopped)"
+        else:
+            line = f"✗  {r.deck_name}: {r.error}"
+        lines.append(line)
+        lines.extend(f"      warning: {w}" for w in r.warnings)
+    return "\n".join(lines)
+
+
 def _rel(path: Path, root: Path) -> str:
     """`path` relative to `root`, with forward slashes."""
     return Path(os.path.relpath(str(path), str(root))).as_posix()
@@ -198,37 +247,7 @@ def _dir_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
-def _popen_kwargs() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-
-
-def _run_text(cmd: list[str], cwd: Optional[Path] = None, any_exit_code: bool = False) -> str:
-    """A command's stdout ("" if it can't run, or exits with an error unless
-    `any_exit_code`) -- for version strings and kpsewhich lookups."""
-    try:
-        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                                errors="replace", timeout=30, **_popen_kwargs())
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout if result.returncode == 0 or any_exit_code else ""
-
-
-def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: float = 0.25) -> None:
-    """os.replace(), retried for a while: on Windows a virus scanner or the
-    search indexer often holds a just-written file open for a moment, and the
-    rename of a freshly written snapshot folder then fails with "access
-    denied" although nothing is wrong."""
-    for attempt in range(attempts):
-        try:
-            os.replace(source, target)
-            return
-        except PermissionError:
-            if attempt == attempts - 1:
-                raise
-            time.sleep(delay)
-
-
-def snapshots_dir(root: Path = PROJECT_ROOT) -> Path:
+def snapshots_dir(root: Path) -> Path:
     return root / SNAPSHOTS_DIRNAME
 
 
@@ -269,8 +288,7 @@ def read_manifest(path: Path) -> Optional[dict]:
     return data if isinstance(data, dict) else None
 
 
-def find_snapshots(deck_names: Optional[Iterable[str]] = None,
-                   root: Path = PROJECT_ROOT) -> list[ExistingSnapshot]:
+def find_snapshots(deck_names: Optional[Iterable[str]] = None, *, root: Path) -> list[ExistingSnapshot]:
     """Every finished snapshot in <project>/snapshots/ (folders and zips),
     optionally only those of `deck_names`. A snapshot belongs to the deck its
     snapshot.json names -- never decided by the name prefix, since one deck's
@@ -316,7 +334,7 @@ def move_to_trash(path: Path) -> bool:
     return bool(ok) and not path.exists()
 
 
-def ensure_gitignored(root: Path = PROJECT_ROOT) -> bool:
+def ensure_gitignored(root: Path) -> bool:
     """Add `snapshots/` to the project's .gitignore unless a line already
     covers it. True when the line was added."""
     gitignore = root / ".gitignore"
@@ -345,7 +363,7 @@ def snapshot_jobs(deck: Deck, options: SnapshotOptions) -> list[CompileJob]:
     """The compiles a snapshot captures: every version of the deck (or the one
     version-less compile) and, by default, the presenter PDF."""
     appendix = deck.appendix_toc if options.appendix_toc is None else options.appendix_toc
-    versions = ["instructor", "during-course", "after-course"] if deck.supports_version else [None]
+    versions = list(VIEWS) if deck.supports_version else [None]
     jobs = [CompileJob(deck, v, None, footer_timestamp=options.footer_timestamp,
                        appendix_toc=appendix) for v in versions]
     if options.presenter:
@@ -382,7 +400,7 @@ def tex_roots() -> list[Path]:
     roots: dict[str, Path] = {}
     for var in ("TEXMF", "TEXMFDIST", "TEXMFLOCAL", "TEXMFSYSVAR", "TEXMFVAR",
                 "TEXMFCACHE", "TEXMFROOT", "TEXMFSYSCONFIG", "TEXMFCONFIG"):
-        value = _run_text(["kpsewhich", f"--var-value={var}"]).strip()
+        value = (command_output(["kpsewhich", f"--var-value={var}"]) or "").strip()
         for part in re.split(r"[,;{}]", value.replace("!!", "")):
             part = part.strip()
             if part and os.path.isabs(part) and os.path.isdir(part):
@@ -396,8 +414,8 @@ def tex_roots() -> list[Path]:
     return list(roots.values())
 
 
-def _isolated_env(epoch: int, framework_dir: Optional[Path] = None) -> dict:
-    env = compiler._build_env()
+def _isolated_env(ctx: project.ProjectContext, epoch: int, framework_dir: Optional[Path] = None) -> dict:
+    env = compiler.build_env(ctx)
     for name in ISOLATING_ENV_VARS:
         env.pop(name, None)
     if framework_dir is not None:
@@ -415,33 +433,17 @@ def run_recorded_compile(
     Raises SnapshotError on a failed compile (same pass/fail rule as
     compiler.run_job: a PDF and no LaTeX error in the log)."""
     build_dir.mkdir(parents=True, exist_ok=True)
-    out = build_dir.resolve().as_posix()
-    cmd = ["latexmk", "-f", "-recorder", f"-jobname={jobname}",
-           f"-auxdir={out}", f"-outdir={out}", _rel(wrapper, cwd)]
+    cmd = compiler.latexmk_command(wrapper, jobname, build_dir.resolve(), "-f", "-recorder", cwd=cwd)
     try:
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, errors="replace",
-                                bufsize=1, **_popen_kwargs())
+        build = compiler.run_latexmk(cmd, jobname=jobname, outdir=build_dir, cwd=cwd, env=env, log=log,
+                                     cancel=cancel)
     except FileNotFoundError as exc:
         raise SnapshotError("latexmk not found on PATH -- is a TeX distribution installed?") from exc
-    if cancel is not None:
-        cancel._set_process(proc)
-    try:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            log(line.rstrip("\n"))
-        proc.wait()
-    finally:
-        if cancel is not None:
-            cancel._set_process(None)
-    if cancel is not None and cancel.is_set():
+    if build.stopped:
         raise SnapshotError("stopped by user")
-    pdf = build_dir / f"{jobname}.pdf"
-    log_path = build_dir / f"{jobname}.log"
+    pdf, log_path, log_text = build.pdf, build.log_path, build.log_text
     fls = build_dir / f"{jobname}.fls"
-    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
-    if not (pdf.is_file() and pdf.stat().st_size > 0) or not log_text \
-            or FATAL_ERROR_RE.search(log_text):
+    if not build.ok:
         raise SnapshotError(f"{jobname} did not compile -- see {log_path}")
     if not fls.is_file():
         raise SnapshotError(f"{jobname}: latexmk wrote no {fls.name} (-recorder)")
@@ -637,7 +639,7 @@ def locate_fonts(names: Iterable[str]) -> dict[str, Path]:
                       for ext in (".otf", ".ttf", ".pfb")]
         # kpsewhich exits 1 as soon as one candidate is missing, but still
         # prints the ones it found -- so its output counts whatever the code.
-        lines = _run_text(["kpsewhich", *candidates], any_exit_code=True).splitlines()
+        lines = (command_output(["kpsewhich", *candidates], any_exit_code=True) or "").splitlines()
         if lines and lines[0].strip():
             # resolve(): the file's real name (MiKTeX echoes the case asked for)
             found[name] = Path(os.path.normpath(lines[0].strip())).resolve()
@@ -646,9 +648,9 @@ def locate_fonts(names: Iterable[str]) -> dict[str, Path]:
 
 def tex_environment(outputs: list[_JobOutput], tex_files: dict[str, Path],
                     roots: list[Path], fonts: Optional[dict[str, Path]] = None) -> dict:
-    engine = _run_text(["lualatex", "--version"]).splitlines()
-    latexmk = [line for line in _run_text(["latexmk", "-v"]).splitlines() if "Version" in line]
-    biber = _run_text(["biber", "-v"]).splitlines()
+    engine = (command_output(["lualatex", "--version"]) or "").splitlines()
+    latexmk = [line for line in (command_output(["latexmk", "-v"]) or "").splitlines() if "Version" in line]
+    biber = (command_output(["biber", "-v"]) or "").splitlines()
     distribution = ""
     if engine:
         m = re.search(r"\((MiKTeX [^)]+|TeX Live [^)]+)\)", engine[0])
@@ -750,12 +752,7 @@ def environment_differences(recorded: dict, current: dict) -> list[str]:
 # Writing the snapshot
 
 def _git(root: Path, *args: str) -> Optional[str]:
-    try:
-        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
-                                text=True, errors="replace", timeout=30, **_popen_kwargs())
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout if result.returncode == 0 else None
+    return command_output(["git", "-C", str(root), *args])
 
 
 def _project_git_state(root: Path, rels: Iterable[str]) -> dict:
@@ -774,8 +771,8 @@ def _project_git_state(root: Path, rels: Iterable[str]) -> dict:
 
 def _app_info() -> dict:
     from . import version
-    commit = version._run_git("rev-parse", "--short", "HEAD") or ""
-    dirty = bool(version._run_git("status", "--porcelain", "--untracked-files=no"))
+    commit = version.run_git("rev-parse", "--short", "HEAD") or ""
+    dirty = bool(version.run_git("status", "--porcelain", "--untracked-files=no"))
     return {"version": version.VERSION_NUMBER, "commit": commit,
             "dirty": dirty if commit else False, "frozen": bool(getattr(sys, "frozen", False))}
 
@@ -938,17 +935,17 @@ def write_zip(source: Path, target: Path, top: str, when: datetime) -> None:
 # Verification
 
 @contextmanager
-def _scratch_dir(kind: str) -> Iterator[Path]:
+def _scratch_dir(ctx: project.ProjectContext, kind: str) -> Iterator[Path]:
     """A temporary folder in the project's .build/ (see verify_folder for why
     not %TEMP%), protected from the GUI's temp-file cleanup while in use."""
-    path = compiler.BUILD_DIR / f"snapshot-{kind}-{uuid.uuid4().hex}"
+    path = ctx.build_dir / f"snapshot-{kind}-{uuid.uuid4().hex}"
     path.mkdir(parents=True)
-    compiler._set_build_dir_active(path, True)
+    compiler.set_build_dir_active(path, True)
     try:
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
-        compiler._set_build_dir_active(path, False)
+        compiler.set_build_dir_active(path, False)
 
 
 def first_difference(reference: str, rendered: str, width: int = 60) -> str:
@@ -985,7 +982,7 @@ def compare_pdfs(reference: Path, rendered: Path) -> list[str]:
     return problems
 
 
-def verify_folder(snapshot_root: Path, log: LogCallback,
+def verify_folder(ctx: project.ProjectContext, snapshot_root: Path, log: LogCallback,
                   cancel: Optional[CancelToken] = None,
                   check_hashes: bool = True) -> VerifyReport:
     """Render a snapshot folder from itself and check that (1) every file the
@@ -1014,7 +1011,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
     # Build output in the project's .build/, not the system temp folder: Git
     # for Windows' perl (which runs latexmk) maps %TEMP% to /tmp, a path the
     # native TeX engine can't resolve.
-    with _scratch_dir("verify") as tmp:
+    with _scratch_dir(ctx, "verify") as tmp:
         for job in manifest["jobs"]:
             if cancel is not None and cancel.is_set():
                 report.ok = False
@@ -1027,9 +1024,9 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
             if seed.is_file():
                 shutil.copy2(seed, build / seed.name)
             key = progress_key(jobname, verify=True)
-            log(f"==== Compiling {manifest.get('deck_name', '?')} -> {key} ====")
+            log(compile_log.compiling(manifest.get('deck_name', '?'), key))
             log("    (verifying: rendering from the snapshot itself)")
-            env = _isolated_env(int(job.get("source_date_epoch", default_epoch)), framework)
+            env = _isolated_env(ctx, int(job.get("source_date_epoch", default_epoch)), framework)
             try:
                 out = run_recorded_compile(project_dir, project_dir / job["wrapper"], jobname,
                                            build, env, log, cancel)
@@ -1038,7 +1035,7 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
                 report.problems.append(str(exc))
                 continue
             finally:
-                log(f"==== Finished: {key} ====")
+                log(compile_log.finished(key))
             outputs.append(out)
             for path in out.inputs + out.bib_sources:
                 if is_within(path, snapshot_root) or is_within(path, build):
@@ -1066,21 +1063,21 @@ def verify_folder(snapshot_root: Path, log: LogCallback,
     return report
 
 
-def verify_snapshot(path: Path, log: LogCallback,
+def verify_snapshot(ctx: project.ProjectContext, path: Path, log: LogCallback,
                     cancel: Optional[CancelToken] = None) -> VerifyReport:
     """verify_folder() for a snapshot folder or zip (extracted to a temporary
     folder first)."""
     if path.is_dir():
-        return verify_folder(path, log, cancel)
+        return verify_folder(ctx, path, log, cancel)
     if not (path.is_file() and path.suffix.lower() == ".zip"):
         return VerifyReport(False, [f"{path}: not a snapshot folder or zip"])
-    with _scratch_dir("extract") as tmp:
+    with _scratch_dir(ctx, "extract") as tmp:
         with zipfile.ZipFile(path) as zf:
             zf.extractall(tmp)
         tops = [p for p in Path(tmp).iterdir() if p.is_dir()]
         if len(tops) != 1:
             return VerifyReport(False, [f"{path.name}: expected one top-level folder"])
-        return verify_folder(tops[0], log, cancel)
+        return verify_folder(ctx, tops[0], log, cancel)
 
 
 # --------------------------------------------------------------------------
@@ -1094,11 +1091,12 @@ def _check_cancel(cancel: Optional[CancelToken]) -> None:
 def create_snapshot(
     deck: Deck, options: SnapshotOptions, log: LogCallback,
     cancel: Optional[CancelToken] = None, progress: Optional[ProgressCallback] = None,
-    when: Optional[datetime] = None, project_root: Path = PROJECT_ROOT,
+    *, ctx: project.ProjectContext, when: Optional[datetime] = None,
 ) -> SnapshotResult:
     """Snapshot one deck into <project>/snapshots/. Never raises for an
     ordinary failure: the result says what went wrong, and nothing half-
     written is left behind."""
+    project_root = ctx.root
     progress = progress or (lambda _text: None)
     when = (when or datetime.now()).replace(microsecond=0)
     epoch = int(when.timestamp())
@@ -1107,8 +1105,8 @@ def create_snapshot(
     directory.mkdir(parents=True, exist_ok=True)
     name = snapshot_name(deck.name, when, directory, options.zip)
     partial = directory / f"{PARTIAL_PREFIX}{name}"
-    build_root = compiler.BUILD_DIR / f"snapshot-{uuid.uuid4().hex}"
-    compiler._set_build_dir_active(build_root, True)
+    build_root = ctx.build_dir / f"snapshot-{uuid.uuid4().hex}"
+    compiler.set_build_dir_active(build_root, True)
     jobs = snapshot_jobs(deck, options)
     wrappers: list[Path] = []
     try:
@@ -1116,24 +1114,24 @@ def create_snapshot(
         # nothing it read has changed since (compile_records.py).
         outputs: list[_JobOutput] = []
         wrapper_texts: list[str] = []
-        env = _isolated_env(epoch)
+        env = _isolated_env(ctx, epoch)
         if os.environ.get("SLIDEMASTER_LATEX"):
             env["SLIDEMASTER_LATEX"] = os.environ["SLIDEMASTER_LATEX"]
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
             key = progress_key(job.jobname)
-            wrapper_text = compiler._wrapper_text(job)
+            wrapper_text = compiler.wrapper_text(ctx, job)
             wrapper_texts.append(wrapper_text)
             if options.reuse:
-                fresh, why = compile_records.fresh_output(compiler.BUILD_DIR, job.jobname,
+                fresh, why = compile_records.fresh_output(ctx.build_dir, job.jobname,
                                                           wrapper_text)
                 if fresh is not None:
                     progress(f"{job.jobname} unchanged ({i} of {len(jobs)})")
-                    log(f"==== Compiling {deck.name} -> {key} ====")
+                    log(compile_log.compiling(deck.name, key))
                     log(f"    ({job.jobname}: nothing it uses changed since its compile of "
                         f"{fresh.created[:16].replace('T', ' ')} -- using "
                         f"{fresh.pdf} instead of compiling it again)")
-                    log(f"==== Finished: {key} ====")
+                    log(compile_log.finished(key))
                     outputs.append(_JobOutput(
                         job_name=job.jobname, pdf=fresh.pdf, inputs=fresh.inputs,
                         log_text=fresh.log_text, bib_sources=fresh.bib_sources,
@@ -1142,7 +1140,7 @@ def create_snapshot(
                     continue
                 log(f"    ({job.jobname} is compiled: {why})")
             progress(f"compiling {job.jobname} ({i} of {len(jobs)})")
-            log(f"==== Compiling {deck.name} -> {key} ====")
+            log(compile_log.compiling(deck.name, key))
             wrapper = deck.path.parent / wrapper_name(job.jobname)
             wrappers.append(wrapper)
             wrapper.write_text(wrapper_text, encoding="utf-8", newline="")
@@ -1151,9 +1149,13 @@ def create_snapshot(
                     project_root, wrapper, job.jobname, build_root / job.jobname, env, log, cancel))
             finally:
                 wrapper.unlink(missing_ok=True)
-                log(f"==== Finished: {key} ====")
+                log(compile_log.finished(key))
 
         # 2. What to copy.
+        from . import deck_language
+        for job, output in zip(jobs, outputs):
+            _resolved, dependencies = deck_language.compile_deck(ctx, deck, deck_language.language_for_job(job))
+            output.inputs = list(dict.fromkeys([*output.inputs, deck.path, *dependencies]))
         _check_cancel(cancel)
         progress("collecting files")
         roots = tex_roots()
@@ -1249,7 +1251,7 @@ def create_snapshot(
         _check_cancel(cancel)
         if options.verify:
             progress("verifying (rendering from the snapshot)")
-            report = verify_folder(partial, log, cancel, check_hashes=False)
+            report = verify_folder(ctx, partial, log, cancel, check_hashes=False)
             for note in report.notes:
                 log(f"    {note}")
             if not report.ok:
@@ -1283,7 +1285,7 @@ def create_snapshot(
         for wrapper in wrappers:
             wrapper.unlink(missing_ok=True)
         shutil.rmtree(build_root, ignore_errors=True)
-        compiler._set_build_dir_active(build_root, False)
+        compiler.set_build_dir_active(build_root, False)
         if not result.ok and partial.exists():
             shutil.rmtree(partial, ignore_errors=True)
     log(f"*** Snapshot of {deck.name} FAILED: {result.error} ***")
@@ -1295,7 +1297,7 @@ def snapshot_decks(
     cancel: Optional[CancelToken] = None,
     progress: Optional[Callable[[int, int, str, str], None]] = None,
     delete_old: Optional[list[ExistingSnapshot]] = None,
-    project_root: Path = PROJECT_ROOT,
+    *, ctx: project.ProjectContext,
 ) -> list[SnapshotResult]:
     """Snapshot `decks` one after the other. One deck's failure doesn't stop
     the others; a cancel stops the current deck and skips the rest. Each of
@@ -1312,7 +1314,7 @@ def snapshot_decks(
             if progress is not None:
                 progress(i, len(decks), deck.name, text)
 
-        result = create_snapshot(deck, options, log, cancel, step, project_root=project_root)
+        result = create_snapshot(deck, options, log, cancel, step, ctx=ctx)
         if result.ok and delete_old:
             for old in delete_old:
                 if old.deck_name != deck.name or not old.path.exists():
@@ -1330,9 +1332,9 @@ def snapshot_decks(
 # --------------------------------------------------------------------------
 # Command line
 
-def _find_decks(names: list[str]) -> list[Deck]:
+def _find_decks(ctx: project.ProjectContext, names: list[str]) -> list[Deck]:
     from .deck_scan import scan_decks
-    decks = scan_decks()
+    decks = scan_decks(ctx)
     chosen = []
     for name in names:
         stem = Path(name).stem if name.lower().endswith(".tex") else name
@@ -1363,30 +1365,31 @@ def main(argv: Optional[list[str]] = None) -> int:
     verify.add_argument("path")
     sub.add_parser("list", help="list the project's snapshots")
     args = parser.parse_args(argv)
+    ctx = project.from_environment()
 
     def log(line: str) -> None:
         print(line, flush=True)
 
     if args.command == "list":
-        for snap in find_snapshots():
+        for snap in find_snapshots(root=ctx.root):
             print(f"{snap.label}  {snap.path.name}")
         return 0
     if args.command == "verify":
-        report = verify_snapshot(Path(args.path), log)
+        report = verify_snapshot(ctx, Path(args.path), log)
         for note in report.notes:
             print(f"note: {note}")
         for problem in report.problems:
             print(f"PROBLEM: {problem}")
         print("OK" if report.ok else "FAILED")
         return 0 if report.ok else 1
-    decks = _find_decks(args.decks)
+    decks = _find_decks(ctx, args.decks)
     options = SnapshotOptions(zip=args.zip, texmf=args.texmf, include_app=args.with_app,
                               reference_pdfs=not args.no_reference_pdfs,
                               verify=not args.no_verify, presenter=not args.no_presenter,
                               reuse=not args.recompile)
-    old = find_snapshots([d.name for d in decks]) if args.delete_old else []
+    old = find_snapshots([d.name for d in decks], root=ctx.root) if args.delete_old else []
     started = time.monotonic()
-    results = snapshot_decks(decks, options, log, delete_old=old)
+    results = snapshot_decks(decks, options, log, delete_old=old, ctx=ctx)
     print()
     for r in results:
         status = "OK  " if r.ok else "FAIL"

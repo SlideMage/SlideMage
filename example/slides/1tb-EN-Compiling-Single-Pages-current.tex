@@ -1,8 +1,8 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
 % SlideMage manual, chapter "Working in SlideMage": page compiles (v5.34.0) --
-% the Pages field of a deck row, partial_compile.py.
+% the Compile menu's page entries, partial_compile.py.
 \setSlideVersion{1-0-0}
 \begin{standardframe}{Compiling single pages}
 	\small
@@ -10,11 +10,11 @@
 	\par\medskip
 	\shrinklists{1}
 	\begin{itemize}
-		\item \textbf{Pages} in the deck's row: the numbers from the slide footers, e.g.\ \SMCode{4, 5, 7-10, 15}; tick the versions, press \emph{Create PDF}. Empty: the whole deck
+		\item \textbf{Select} the slides in the list and choose \emph{Pages of the selected slides} in the arrow of \emph{Compile PDF}; or \emph{Pages by number\ldots} for the numbers from the slide footers, e.g.\ \SMCode{4, 5, 7-10, 15}
 		\item Each version gets the slides with \textbf{its own} reveal steps, always all of them
-		\item \textbf{Pages replace theirs in the full PDF} (toolbar): the new pages go into that version's PDF, links included; unticked, into a PDF of their own
+		\item \textbf{Pages replace theirs in the full PDF} (\emph{Build options}): the new pages go into that version's PDF, links included; unticked, into a PDF of their own
 		\item \textbf{Needs} a whole-deck compile of the version first. Deck changes after these slides are fine; slides added, moved or removed before them need a whole-deck compile
 		\item \textbf{Not updated}: other pages showing the slide (contents, appendix thumbnails). A slide with a new number of reveal steps goes to a PDF of its own
-		\item A version unchanged since its last compile? \emph{Create PDF} asks first
+		\item A version unchanged since its last compile? \emph{Compile PDF} asks first
 	\end{itemize}
 \end{standardframe}

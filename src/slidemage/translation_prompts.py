@@ -1,6 +1,6 @@
 """Per-(model, source language, target language) translation prompt
 configuration -- lets the Settings dialog tune exactly how
-alt_draft.OllamaTranslationBackend talks to a given Ollama model, since
+alt_draft.ModelTranslationBackend talks to a given Ollama model, since
 different models expect very different prompt shapes: a dedicated MT
 model (e.g. sun_leaf/HY-MT) wants a short, plain instruction with an
 exact blank-line count before the text; a general instruction-tuned
@@ -15,7 +15,7 @@ else a last-resort hardcoded fallback for a completely fresh install
 that has never had a default set at all.
 
 Tracked in git (unlike SlideMage's own UI preferences -- see
-qt_theme.py's dark-mode QSettings use, a deliberately different, per-
+ui/kit/theme.py's dark-mode QSettings use, a deliberately different, per-
 machine store) since this is genuinely project config: which models
 translate this project's content, and exactly how, is worth sharing/
 versioning the same way Slidemaster.bib or slide_ids.csv are, not left
@@ -35,15 +35,16 @@ readable, hand-editable in a pinch):
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
-from .deck_scan import PROJECT_ROOT
+from .fileio import read_json, write_json
+from .project import ProjectContext
+
 
 # Lives in the project's .slidemage/ folder, so shared prompts travel with
 # the project (this file is meant to be committed).
-STORE_PATH = PROJECT_ROOT / ".slidemage" / "translation_prompts.json"
 
 # Nested-dict shape for the "models" section: {model: {source_lang:
 # {target_lang: PromptConfig}}}.
@@ -88,21 +89,20 @@ _FALLBACK_DEFAULT = PromptConfig(
 )
 
 
-def _load_raw() -> dict:
-    if not STORE_PATH.is_file():
-        return {}
-    try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.settings_dir / "translation_prompts.json"
+
+
+def _load_raw(ctx: ProjectContext) -> dict:
+    return read_json(_store_path(ctx))
 
 
 def _config_from_dict(cfg: dict) -> PromptConfig:
     return PromptConfig(prompt=cfg.get("prompt", ""), blank_lines=int(cfg.get("blank_lines", 1)))
 
 
-def load_prompts() -> ModelPromptStore:
-    raw = _load_raw().get("models", {})
+def load_prompts(ctx: ProjectContext) -> ModelPromptStore:
+    raw = _load_raw(ctx).get("models", {})
     result: ModelPromptStore = {}
     for model, by_source in raw.items():
         result[model] = {}
@@ -113,7 +113,7 @@ def load_prompts() -> ModelPromptStore:
     return result
 
 
-def _save(default: Optional[PromptConfig], prompts: ModelPromptStore) -> None:
+def _save(ctx: ProjectContext, default: Optional[PromptConfig], prompts: ModelPromptStore) -> None:
     raw: dict = {}
     if default is not None:
         raw["default"] = {"prompt": default.prompt, "blank_lines": default.blank_lines}
@@ -129,33 +129,25 @@ def _save(default: Optional[PromptConfig], prompts: ModelPromptStore) -> None:
         for model, by_source in prompts.items()
         if by_source
     }
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STORE_PATH.write_text(
-        json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json(_store_path(ctx), raw)
 
 
-def save_prompts(prompts: ModelPromptStore) -> None:
-    _save(get_default_prompt(), prompts)
-
-
-def get_prompt(model: str, source_lang: str, target_lang: str) -> Optional[PromptConfig]:
+def get_prompt(ctx: ProjectContext, model: str, source_lang: str, target_lang: str) -> Optional[PromptConfig]:
     """The exact model+pair entry only -- None if nothing is configured
     for it specifically, even if a default prompt exists. Use
     get_effective_prompt() for "what should actually be sent"."""
-    return load_prompts().get(model, {}).get(source_lang, {}).get(target_lang)
+    return load_prompts(ctx).get(model, {}).get(source_lang, {}).get(target_lang)
 
 
-def set_prompt(model: str, source_lang: str, target_lang: str, config: PromptConfig) -> None:
-    prompts = load_prompts()
+def set_prompt(ctx: ProjectContext, model: str, source_lang: str, target_lang: str, config: PromptConfig) -> None:
+    prompts = load_prompts(ctx)
     prompts.setdefault(model, {}).setdefault(source_lang, {})[target_lang] = config
-    _save(get_default_prompt(), prompts)
+    _save(ctx, get_default_prompt(ctx), prompts)
 
 
-def delete_prompt(model: str, source_lang: str, target_lang: str) -> bool:
+def delete_prompt(ctx: ProjectContext, model: str, source_lang: str, target_lang: str) -> bool:
     """True if a config was actually found and removed."""
-    prompts = load_prompts()
+    prompts = load_prompts(ctx)
     by_target = prompts.get(model, {}).get(source_lang, {})
     if target_lang not in by_target:
         return False
@@ -164,43 +156,45 @@ def delete_prompt(model: str, source_lang: str, target_lang: str) -> bool:
         del prompts[model][source_lang]
     if not prompts[model]:
         del prompts[model]
-    _save(get_default_prompt(), prompts)
+    _save(ctx, get_default_prompt(ctx), prompts)
     return True
 
 
-def list_configs() -> list[tuple[str, str, str, PromptConfig]]:
+def list_configs(ctx: ProjectContext) -> list[tuple[str, str, str, PromptConfig]]:
     """Every (model, source_lang, target_lang, config) currently stored,
     for the Settings dialog's own list view -- the default prompt is not
     included here, it has its own dedicated field in that dialog."""
     out: list[tuple[str, str, str, PromptConfig]] = []
-    for model, by_source in sorted(load_prompts().items()):
+    for model, by_source in sorted(load_prompts(ctx).items()):
         for source, by_target in sorted(by_source.items()):
             for target, cfg in sorted(by_target.items()):
                 out.append((model, source, target, cfg))
     return out
 
 
-def get_default_prompt() -> Optional[PromptConfig]:
+def get_default_prompt(ctx: ProjectContext) -> Optional[PromptConfig]:
     """The user-set default prompt, or None if nobody has set one yet
     (get_effective_prompt() falls back further, to _FALLBACK_DEFAULT, in
     that case -- this function itself stays a plain, honest "what's
     actually stored")."""
-    raw = _load_raw().get("default")
+    raw = _load_raw(ctx).get("default")
     return _config_from_dict(raw) if raw else None
 
 
-def set_default_prompt(config: PromptConfig) -> None:
-    _save(config, load_prompts())
+def set_default_prompt(ctx: ProjectContext, config: PromptConfig) -> None:
+    _save(ctx, config, load_prompts(ctx))
 
 
-def get_effective_prompt(model: str, source_lang: str, target_lang: str) -> PromptConfig:
-    """What OllamaTranslationBackend should actually send: the exact
+def effective_default_prompt(ctx: ProjectContext) -> PromptConfig:
+    """The prompt used for a model/language pair with no entry of its own:
+    the user's default, else the hardcoded last-resort one."""
+    return get_default_prompt(ctx) or _FALLBACK_DEFAULT
+
+
+def get_effective_prompt(ctx: ProjectContext, model: str, source_lang: str, target_lang: str) -> PromptConfig:
+    """What ModelTranslationBackend should actually send: the exact
     model+pair entry if one exists, else the user's own default prompt,
     else a hardcoded last-resort default for a fresh install that has
     never configured anything at all. Always returns something usable --
     unlike get_prompt(), never None."""
-    return (
-        get_prompt(model, source_lang, target_lang)
-        or get_default_prompt()
-        or _FALLBACK_DEFAULT
-    )
+    return get_prompt(ctx, model, source_lang, target_lang) or effective_default_prompt(ctx)

@@ -1,4 +1,4 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
 % SlideMage manual, chapter "Working in SlideMage": what the five checkboxes of
@@ -8,18 +8,17 @@
 \setSlideVersion{1-2-0}
 \begin{standardframe}{Getting slides out}
 	\small
-	Each row of the deck table has five checkboxes; each one you tick makes a PDF of its own
-	when you press \emph{Create PDF}: three deck versions and two variants.
-	\par\medskip
+	\emph{Compile PDF} makes the PDF of the view chosen next to it; its arrow offers the other kinds: three deck versions and two variants.
+	\par\smallskip
 	{\footnotesize
 	\begin{gothamtable}[gap=10pt]{ll}
 		\toprule
-		Checkbox & The PDF you get \\
+		Menu entry & The PDF you get \\
 		\midrule
 		Instructor & the whole deck, every reveal step on a page of its own \\
-		During-course & the student version for the course itself, answers left out \\
-		After-course & the student version for afterwards: every slide in its final state \\
-		After-course, per chapter & the after-course version, one PDF per chapter \\
+		During course & the student version for the course itself, answers left out \\
+		After course & the student version for afterwards: every slide in its final state \\
+		After course, one PDF per chapter & the after-course version, one PDF per chapter \\
 		Presenter & Instructor version with each slide beside its speaker notes (\SMCmd{note}),\\
 		& for a presenter app \\
 		\bottomrule
@@ -27,10 +26,10 @@
 	\vspace{6pt}
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.66\linewidth}
-			\shrinklists{2}
+			\shrinklists{3}
 			\begin{itemize}
-				\item The PDFs go to the \SMCode{pdf/} folder, or where the deck's \emph{Settings} say under \emph{Where the PDFs go}
-				\item \emph{Open pdf}: the deck's usual PDF (instructor, or as its \emph{Settings} say); you choose if a later run made others
+				\item \emph{All views of this deck} makes the three versions at once; a run shows as a card with \emph{Stop}, the \emph{Log} and \emph{Open PDFs}
+				\item The PDFs go to \SMCode{pdf/}, or where the deck's settings say; three-dot menu $\rightarrow$ \emph{Open latest PDF} opens the usual one
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.31\linewidth}

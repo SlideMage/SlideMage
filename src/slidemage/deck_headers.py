@@ -48,29 +48,15 @@ from __future__ import annotations
 import re
 import threading
 
-from .deck_scan import ARCHIVE_DIR, DECKS_DIR, PROJECT_ROOT
+from .fileio import StaleFileError, atomic_write, read_text_exact
+from .project import ProjectContext
+from .slide_language import TRANSLATION_LANGUAGES
 
-# regenerate_headers() does a read-modify-write over every slides/*-current
-# .tex file; the GUI runs it on a background thread per edit (see gui.py's
-# after_deck_edit), and two edits close enough together would otherwise run
-# two of these concurrently and unsynchronized -- confirmed directly
-# (2026-07-23) to actually corrupt files this way: thread B can open() a
-# file for read in the gap between thread A's open(path, "w") (which
-# truncates immediately, before any write() call) and A's actual write,
-# reading a near-empty file, then dutifully writing that near-empty
-# content back once its own turn comes, permanently losing everything but
-# the header block. This lock serializes every call (across threads
-# within one process -- SlideMage is single-process/single-instance)
-# so a second call simply waits for the first to finish rather than
-# racing it.
+# Serialize header passes within the app. Atomic expected-text writes below also
+# protect edits from other writers; after three conflicts leave the file untouched
+# for a later pass rather than overwriting a slide that keeps changing.
 _LOCK = threading.Lock()
 
-DECKS_GLOBS = [DECKS_DIR, ARCHIVE_DIR]
-SLIDES_DIR = PROJECT_ROOT / "slides"
-
-SLIDE_CALL_RE = re.compile(
-    r"\\(?:slide|slidefinal|slideversion|omitslide|omitslideversion|conditionalslide|slidestep)"
-    r"(?:\[[^\]]*\])?\{([^-}]+)-[^}]*\}")
 HEADER_RE = re.compile(
     r"%% Included in decks: [^\r\n]*\r?\n%%\r?\n(?:\r?\n)?")
 
@@ -79,7 +65,7 @@ def _deck_display_name(path) -> str:
     return path.stem
 
 
-def regenerate_headers() -> tuple[int, int]:
+def regenerate_headers(ctx: ProjectContext) -> tuple[int, int]:
     """Rescan every decks/*.tex and decks/archive/*.tex file and rewrite
     each slides/*-current.tex file's own header block to match. Returns
     (slide files changed, deck files scanned).
@@ -87,51 +73,60 @@ def regenerate_headers() -> tuple[int, int]:
     Serialized via _LOCK -- see its own comment above; safe to call from
     multiple threads."""
     with _LOCK:
-        return _regenerate_headers_impl()
+        return _regenerate_headers_impl(ctx)
 
 
-def _regenerate_headers_impl() -> tuple[int, int]:
+def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
     deck_paths = [
-        p for directory in DECKS_GLOBS if directory.is_dir()
+        p for directory in ctx.deck_folders if directory.is_dir()
         for p in directory.glob("*.tex")
-        if p.name != "#workdeck.tex" and not p.name.startswith("zzz_")
+        if p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))
     ]
 
     # id -> sorted list of deck display names that include it
     id_to_decks: dict[str, set[str]] = {}
     for deck_path in deck_paths:
         deck_name = _deck_display_name(deck_path)
-        with open(deck_path, encoding="utf-8", newline="") as f:
-            text = f.read()
-        for slide_id in set(SLIDE_CALL_RE.findall(text)):
-            id_to_decks.setdefault(slide_id, set()).add(deck_name)
+        text = read_text_exact(deck_path)
+        from types import SimpleNamespace
+        from . import deck_editor, deck_language
+        calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+        for call in calls:
+            id_to_decks.setdefault(call.id, set()).add(deck_name)
+        for language in TRANSLATION_LANGUAGES:
+            for slot in deck_language.slots(ctx, calls, language):
+                id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
 
     changed = 0
-    if SLIDES_DIR.is_dir():
-        for slide_path in SLIDES_DIR.glob("*-current.tex"):
+    if ctx.slides_dir.is_dir():
+        for slide_path in ctx.slides_dir.glob("*-current.tex"):
             slide_id = slide_path.name.split("-")[0]
             decks = sorted(id_to_decks.get(slide_id, []))
 
-            with open(slide_path, encoding="utf-8", newline="") as f:
-                text = f.read()
-            eol = "\r\n" if "\r\n" in text else "\n"
+            for _attempt in range(3):
+                text = read_text_exact(slide_path)
+                eol = "\r\n" if "\r\n" in text else "\n"
 
-            listed = ", ".join(decks) if decks else "(none)"
-            new_header = f"%% Included in decks: {listed}{eol}%%{eol}{eol}"
+                listed = ", ".join(decks) if decks else "(none)"
+                new_header = f"%% Included in decks: {listed}{eol}%%{eol}{eol}"
 
-            if HEADER_RE.search(text):
-                new_text = HEADER_RE.sub(new_header, text, count=1)
-            else:
-                # No existing header block -- insert after the leading
-                # comment lines (everything up to the first blank line),
-                # matching every hand-written slide file's own convention.
-                m = re.search(r"\r?\n\r?\n", text)
-                insert_at = m.end() if m else 0
-                new_text = text[:insert_at] + new_header + text[insert_at:]
+                if HEADER_RE.search(text):
+                    new_text = HEADER_RE.sub(new_header, text, count=1)
+                else:
+                    # No existing header block -- insert after the leading
+                    # comment lines (everything up to the first blank line),
+                    # matching every hand-written slide file's own convention.
+                    m = re.search(r"\r?\n\r?\n", text)
+                    insert_at = m.end() if m else 0
+                    new_text = text[:insert_at] + new_header + text[insert_at:]
 
-            if new_text != text:
-                with open(slide_path, "w", encoding="utf-8", newline="") as f:
-                    f.write(new_text)
+                if new_text == text:
+                    break
+                try:
+                    atomic_write(slide_path, new_text, expected_text=text)
+                except StaleFileError:
+                    continue                 # re-read the newer body; leave it alone if all retries fail
                 changed += 1
+                break
 
     return changed, len(deck_paths)

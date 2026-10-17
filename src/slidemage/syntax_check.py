@@ -1,6 +1,7 @@
 """Check a slide/deck's raw LaTeX for likely syntax problems via a local
-Ollama model (2026-08-31, direct instruction: a "Check syntax" button in
-the slide/deck edit tabs).
+(Ollama) or cloud (Claude) model (2026-08-31, direct instruction: a "Check
+syntax" button in the slide/deck edit tabs; any ChatProvider since
+2026-10-09).
 
 Heuristic, not a real LaTeX parser: a language model can plausibly catch
 unbalanced braces, mismatched \\begin{}/\\end{} pairs, and unescaped
@@ -10,13 +11,8 @@ genuinely valid syntax -- SYSTEM_PROMPT explicitly tells it not to flag an
 unfamiliar command name on its own. Report every finding to the user as a
 "possible issue" for a human to judge, never as a definitive error.
 
-Reuses the same call/parse shape as alt_draft.py's own OllamaBackend/
-OllamaTranslationBackend (structured JSON via Ollama's `format` option,
-tolerating a wrapping <think> block) rather than importing its private
-helpers -- small enough (one HTTP call, one parse function) that a second,
-self-contained copy here is simpler than threading a new shared-module
-import path through a file that is otherwise entirely about image
-drafting/translation.
+The reply is requested as JSON (RESPONSE_SCHEMA) and parsed with
+ai.providers.parse_json_object, shared with the image-description backend.
 
 Safety of the "offer to fix" half: each SyntaxIssue carries the model's
 own claimed `original` text for the line it is reporting, alongside its
@@ -29,17 +25,11 @@ offer at all despite the checker itself being unreliable.
 """
 from __future__ import annotations
 
-import http.client
-import json
-import re
-import socket
-import sys
 import time
-import urllib.parse
 from dataclasses import dataclass, field
 from typing import Optional
 
-DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+from .ai.providers import Cancelled, ChatProvider, ProviderError, parse_json_object
 
 SYSTEM_PROMPT = """\
 You are a meticulous LaTeX syntax checker. You are given the raw LaTeX \
@@ -131,7 +121,7 @@ class SyntaxCheckResult:
     model: str = ""
     elapsed_s: float = 0.0
     error: Optional[str] = None
-    # True when OllamaSyntaxChecker.abort() ended the request (the user
+    # True when SyntaxChecker.abort() ended the request (the user
     # pressed Escape) -- `error` then only says so, it is not a failure.
     cancelled: bool = False
 
@@ -140,140 +130,47 @@ class SyntaxCheckResult:
         return self.error is None
 
 
-_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
-
-
-def _parse_response_json(text: str) -> Optional[dict]:
-    """Same tolerant parse as alt_draft.py's own _parse_response_json --
-    strips a wrapping <think> block, falls back to the outermost
-    brace-delimited span if a model wraps the JSON in prose despite the
-    `format` constraint."""
-    text = _THINK_TAG_RE.sub("", text or "").strip()
-    if not text:
-        return None
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end <= start:
-            return None
-        try:
-            parsed = json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            return None
-    return parsed if isinstance(parsed, dict) else None
-
-
 @dataclass
-class OllamaSyntaxChecker:
-    model: str
-    host: str = DEFAULT_OLLAMA_HOST
+class SyntaxChecker:
+    provider: ChatProvider
     num_ctx: int = 16384
     think: bool = False
     temperature: float = 0.1
-    num_predict: int = 4096
+    max_tokens: int = 4096
     timeout: float = 300.0
-    # Live request state for abort() (2026-09-26, direct instruction: Escape
-    # aborts a running check). check() runs on a worker thread; abort() is
-    # called from the GUI thread and closes the socket under it, which
-    # makes the blocked read raise -- and Ollama stops generating once the
-    # client has disconnected.
-    _conn: Optional[http.client.HTTPConnection] = field(default=None, init=False, repr=False)
-    _cancelled: bool = field(default=False, init=False, repr=False)
 
     @property
     def label(self) -> str:
-        return f"{self.model}{' +think' if self.think else ''}"
+        return f"{self.provider.label}{' +think' if self.think else ''}"
 
     def abort(self) -> None:
-        self._cancelled = True
-        conn = self._conn
-        sock = conn.sock if conn is not None else None
-        if sock is None:
-            return
-        try:
-            if sys.platform == "win32":
-                # Measured 2026-09-26: on Windows neither socket.shutdown()
-                # nor socket.close() wakes a recv() blocked in another
-                # thread (the read just carries on until Ollama answers);
-                # closing the handle itself with Winsock's closesocket()
-                # does, at once. detach() first so Python's own socket
-                # object no longer owns the handle and never closes it a
-                # second time (by then possibly reused by another socket).
-                import ctypes
-                ctypes.windll.ws2_32.closesocket(ctypes.c_size_t(sock.detach()))
-            else:
-                sock.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
+        """Ends a running check() from another thread (2026-09-26, direct
+        instruction: Escape aborts a running check). check() runs on a
+        worker thread, abort() on the GUI thread."""
+        self.provider.abort()
 
     def check(self, text: str) -> SyntaxCheckResult:
         lines = text.split("\n")
         numbered = "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines))
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "format": RESPONSE_SCHEMA,
-            "options": {
-                "num_ctx": self.num_ctx, "temperature": self.temperature,
-                "num_predict": self.num_predict,
-            },
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": USER_TEMPLATE.format(numbered_text=numbered)},
-            ],
-        }
-        # Same reasoning as alt_draft.py's own backends: never send `think`
-        # as an explicit false, only omit it or send true.
-        if self.think:
-            payload["think"] = True
-
         started = time.monotonic()
-        parsed = urllib.parse.urlparse(self.host)
-        conn = http.client.HTTPConnection(
-            parsed.hostname or "localhost", parsed.port or 80, timeout=self.timeout)
-        self._conn = conn
         try:
-            if self._cancelled:
-                return SyntaxCheckResult(
-                    model=self.label, error="Aborted.", cancelled=True,
-                    elapsed_s=time.monotonic() - started)
-            conn.request(
-                "POST", "/api/chat", body=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"})
-            response = conn.getresponse()
-            raw = response.read()
-            if response.status != 200:
-                detail = raw.decode("utf-8", errors="replace")[:200]
-                try:
-                    detail = str(json.loads(raw.decode("utf-8")).get("error") or detail)
-                except (ValueError, AttributeError):
-                    pass
-                return SyntaxCheckResult(
-                    model=self.label, error=f"Ollama returned HTTP {response.status}: {detail}",
-                    elapsed_s=time.monotonic() - started)
-            body = json.loads(raw.decode("utf-8"))
-        except (OSError, http.client.HTTPException, ValueError) as exc:
-            elapsed_error = time.monotonic() - started
-            if self._cancelled:
-                return SyntaxCheckResult(
-                    model=self.label, error="Aborted.", cancelled=True, elapsed_s=elapsed_error)
-            if isinstance(exc, ConnectionRefusedError):
-                return SyntaxCheckResult(
-                    model=self.label, error=f"Ollama unreachable: {exc}", elapsed_s=elapsed_error)
+            reply = self.provider.chat(
+                [{"role": "user", "content": USER_TEMPLATE.format(numbered_text=numbered)}],
+                system=SYSTEM_PROMPT, schema=RESPONSE_SCHEMA,
+                temperature=self.temperature, max_tokens=self.max_tokens,
+                timeout=self.timeout, think=self.think, num_ctx=self.num_ctx)
+        except Cancelled:
             return SyntaxCheckResult(
-                model=self.label, error=f"Ollama request failed: {exc}", elapsed_s=elapsed_error)
-        finally:
-            self._conn = None
-            conn.close()
+                model=self.label, error="Aborted.", cancelled=True,
+                elapsed_s=time.monotonic() - started)
+        except ProviderError as exc:
+            return SyntaxCheckResult(
+                model=self.label, error=str(exc), elapsed_s=time.monotonic() - started)
 
         elapsed = time.monotonic() - started
-        message = body.get("message") or {}
-        content = message.get("content") or ""
-        thinking = message.get("thinking") or ""
-        fields = _parse_response_json(content) or _parse_response_json(thinking)
+        fields = parse_json_object(reply.text) or parse_json_object(reply.thinking)
         if fields is None:
-            shown = content or thinking
+            shown = reply.text or reply.thinking
             error = (f"Model returned non-JSON output: {shown[:200]!r}" if shown
                     else "Model returned an empty response")
             return SyntaxCheckResult(model=self.label, error=error, elapsed_s=elapsed)

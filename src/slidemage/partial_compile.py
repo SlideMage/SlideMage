@@ -41,18 +41,17 @@ result lists those.
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
-import subprocess
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, compiler, deck_scan, latex_lint
-from .compiler import FATAL_ERROR_RE, CancelToken, CompileJob
+from . import compile_log, compile_records, compiler, deck_scan, project
+from .compiler import CancelToken, CompileJob
 from .deck_editor import SlideCall
+from .fileio import replace_with_retry, write_json
 
 LogCallback = Callable[[str], None]
 
@@ -172,6 +171,7 @@ class KeptSlide:
 
 @dataclass
 class PartialPlan:
+    context: project.ProjectContext
     job: CompileJob
     requested: list[int]
     kept: list[KeptSlide]
@@ -191,23 +191,35 @@ class PartialPlan:
         return [f for f in self.frames if f not in self.requested]
 
 
-def _deck_calls(job: CompileJob) -> list[SlideCall]:
-    return list(latex_lint._calls_in(job.deck.text, job.deck.chapters))
+def _deck_calls(ctx: project.ProjectContext, job: CompileJob) -> list[SlideCall]:
+    from . import deck_language
+    deck, _ = deck_language.expand_fragments(job.deck)
+    return [s.call for s in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job))]
 
 
-def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = None) -> PartialPlan:
-    build_dir = build_dir or compiler.BUILD_DIR
+@dataclass
+class _FullCompile:
+    """What the last whole-deck compile of a job left: its record and PDF, and
+    which of the deck's slide calls produced which frames."""
+    record: dict
+    aux: Path
+    pdf: Path
+    deck_changed_at: Optional[int]   # first changed character, if the deck changed since
+    matched: list[tuple[FrameGroup, SlideCall]]
+    unmatched: list[FrameGroup]      # frames not from a slide call (the generated appendix)
+
+
+def _full_compile(ctx: project.ProjectContext, job: CompileJob) -> _FullCompile:
     if job.chapter is not None:
         raise PartialError("Page compiles work on whole-deck versions, not per-chapter PDFs.")
-    requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
     # The deck as it is on disk now (the deck table's copy may be older).
-    fresh = next((d for d in deck_scan._scan_dir(job.deck.path.parent, job.deck.archived)
+    fresh = next((d for d in deck_scan.scan_dir(job.deck.path.parent, job.deck.archived)
                   if compile_records.norm(d.path) == compile_records.norm(job.deck.path)), None)
     if fresh is None:
         raise PartialError(f"{job.deck.path.name} is no longer a deck file.")
     job.deck = fresh
-    record = compile_records.read_record(build_dir, job.jobname)
-    aux = compile_records.aux_dir(build_dir, job.jobname)
+    record = compile_records.read_record(ctx.build_dir, job.jobname)
+    aux = compile_records.aux_dir(ctx.build_dir, job.jobname)
     if record is None or not (aux / f"{job.jobname}.aux").is_file():
         raise PartialError(f"{job.jobname} has no whole-deck compile on record yet -- compile "
                            "the whole deck once (SlideMage v5.35.0 or later), then pages.")
@@ -218,7 +230,7 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
         raise PartialError(f"{full_pdf.name} was changed since it was compiled -- compile "
                            "the whole deck.")
     deck_key = compile_records.norm(job.deck.path)
-    deck_changed_at: Optional[int] = None   # first changed character, if the deck changed
+    deck_changed_at: Optional[int] = None
     for entry in record.get("inputs", []):
         if compile_records.norm(entry["path"]) == deck_key:
             if compile_records.sha256(job.deck.path) != entry["sha256"]:
@@ -226,9 +238,9 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
             break
 
     groups = frame_groups(page_infos(full_pdf))
-    calls = [c for c in _deck_calls(job) if latex_lint._slide_included(c, job.version)]
+    calls = [c for c in _deck_calls(ctx, job) if c.included_in(job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
-    unmatched: list[FrameGroup] = []   # frames not from a slide call (the generated appendix)
+    unmatched: list[FrameGroup] = []
     ptr = 0
     for group in groups:
         found = next((i for i in range(ptr, len(calls))
@@ -238,6 +250,29 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
             continue
         matched.append((group, calls[found]))
         ptr = found + 1
+    return _FullCompile(record, aux, full_pdf, deck_changed_at, matched, unmatched)
+
+
+def frames_for_slides(ctx: project.ProjectContext, job: CompileJob, slide_ids: list[str]) -> list[int]:
+    """The footer frame numbers that the slides with these ids have in the
+    job's last whole-deck PDF (what plan() takes as pages). Raises PartialError
+    when there is no usable whole-deck compile to read them from. A slide that
+    is not in that PDF (not typeset in the version) has no frames."""
+    wanted = {i.lower() for i in slide_ids}
+    full = _full_compile(ctx, job)
+    from . import deck_language
+    deck, _ = deck_language.expand_fragments(job.deck)
+    for slot in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job)):
+        if any(slot.matches(i) for i in slide_ids):
+            wanted.add(slot.call.id.lower())
+    return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
+
+
+def plan(ctx: project.ProjectContext, job: CompileJob, spec: str | list[int]) -> PartialPlan:
+    requested = parse_page_spec(spec) if isinstance(spec, str) else sorted(set(spec))
+    full = _full_compile(ctx, job)
+    record, aux, full_pdf, deck_changed_at = full.record, full.aux, full.pdf, full.deck_changed_at
+    matched, unmatched = full.matched, full.unmatched
     by_frame = {f: (g, c) for g, c in matched for f in g.frames}
     not_slides = sorted(f for g in unmatched for f in g.frames if f in requested)
     if not_slides:
@@ -266,7 +301,7 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
     if not kept:
         raise PartialError(f"No slide of {job.jobname} has the page number(s) "
                            f"{format_page_spec(requested)}.")
-    result = PartialPlan(job, requested, kept, missing, full_pdf, aux, record)
+    result = PartialPlan(ctx, job, requested, kept, missing, full_pdf, aux, record)
     kept_ids = {k.call.id.lower() for k in kept}
     patched = record.get("patched_inputs", {})
     changed = []
@@ -286,7 +321,7 @@ def plan(job: CompileJob, spec: str | list[int], build_dir: Optional[Path] = Non
 
 def _first_change(aux: Path, job: CompileJob) -> int:
     """Where the deck file first differs from the copy kept with its last
-    whole-deck compile (character offset; 0 when there is no copy -- a
+    whole-deck compile (expanded character offset; 0 when there is no copy -- a
     record from before v5.35.0 -- so any change counts as early)."""
     copy = aux / compile_records.DECK_COPY_NAME
     try:
@@ -294,7 +329,11 @@ def _first_change(aux: Path, job: CompileJob) -> int:
             old = f.read()
     except OSError:
         return 0
-    new = job.deck.text
+    from . import deck_language
+    begin = deck_scan.DOCUMENT_BEGIN_RE.search(old)
+    old_deck = replace(job.deck, text=old, preamble_end=begin.end() if begin else None)
+    old = deck_language.expand_fragments(old_deck)[0].text
+    new = deck_language.expand_fragments(job.deck)[0].text
     limit = min(len(old), len(new))
     i = 0
     while i < limit and old[i] == new[i]:
@@ -310,7 +349,8 @@ def wrapper_text(plan: PartialPlan) -> str:
     and page counters it had in the full deck. Same version settings as a
     whole-deck compile, without the generated appendix."""
     job = plan.job
-    deck = job.deck
+    from . import deck_language
+    deck, _ = deck_language.expand_fragments(job.deck)
     lines: list[str] = []
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
@@ -324,6 +364,8 @@ def wrapper_text(plan: PartialPlan) -> str:
         lines.append("\\def\\SMAppendixTocOverride{1}")
     if job.run_id:
         lines.append(compile_records.run_id_line(job.run_id))
+    if job.language:
+        lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
     text = deck.text
     if deck.preamble_end is None:
         raise PartialError(f"{deck.name}: no \\begin{{document}}")
@@ -331,8 +373,11 @@ def wrapper_text(plan: PartialPlan) -> str:
     body_end = end.start() if end else len(text)
     kept = {k.call.line_start: k for k in plan.kept}
     out: list[str] = [text[:deck.preamble_end]]
+    if job.language:
+        out.append("\n" + deck_language.language_line(deck_language.language_for_job(job)))
     pos = deck.preamble_end
-    for call in sorted(_deck_calls(job), key=lambda c: c.line_start):
+    # Include folded translation calls here so they are removed too.
+    for call in sorted(deck_language.calls_in(text, deck.chapters), key=lambda c: c.line_start):
         if call.line_start < pos or call.line_start >= body_end:
             continue
         out.append(text[pos:call.line_start])
@@ -340,7 +385,9 @@ def wrapper_text(plan: PartialPlan) -> str:
         if keep is not None:
             out.append(f"\\setcounter{{framenumber}}{{{keep.first_frame - 1}}}"
                        f"\\setcounter{{page}}{{{keep.first_page}}}%\n")
-            out.append(text[call.line_start:call.line_end])
+            source = text[call.line_start:call.line_end]
+            a, b = call.call_start - call.line_start, call.call_end - call.line_start
+            out.append(source[:a] + deck_language.call_text(keep.call) + source[b:])
         pos = call.line_end
     out.append(text[pos:body_end])
     out.append("\\end{document}\n")
@@ -380,59 +427,39 @@ def _restore_full_aux(plan: PartialPlan, build: Path, first_pass: Optional[Path]
     (build / f"{jobname}.top").write_text(merged + ("\n" + tops if tops else ""), encoding="utf-8")
 
 
-def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = None,
-        build_root: Optional[Path] = None, project_root: Optional[Path] = None) -> PartialOutput:
+def run(plan: PartialPlan, log: LogCallback, cancel: Optional[CancelToken] = None) -> PartialOutput:
     """Two passes over the page wrapper on top of the full compile's
     auxiliary files (see the module docstring). Raises PartialError."""
-    build_root = build_root or compiler.BUILD_DIR
-    project_root = project_root or compiler.PROJECT_ROOT
+    ctx = plan.context
     job = plan.job
     jobname = job.jobname
     invocation = uuid.uuid4().hex
-    build = build_root / f"pages-{jobname}-{invocation}"
+    build = ctx.build_dir / f"pages-{jobname}-{invocation}"
     build.mkdir(parents=True)
-    compiler._set_build_dir_active(build, True)
+    compiler.set_build_dir_active(build, True)
     wrapper = job.deck.path.parent / f"_slidemage_{jobname}-pages_{invocation}.tex"
-    wrapper.write_text(wrapper_text(plan), encoding="utf-8", newline="")
     try:
-        _restore_full_aux(plan, build, None)
-        out = build.resolve().as_posix()
-        cmd = ["latexmk", "-g", "-f", "-e", "$max_repeat=1", "-e", "$bibtex_use=0",
-               f"-jobname={jobname}", f"-auxdir={out}", f"-outdir={out}",
-               os.path.relpath(wrapper, project_root)]
-        env = compiler._build_env()
-        kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-        for number in (1, 2):
-            if number == 2:
-                _restore_full_aux(plan, build, build)
-            log(f"    (page compile of {jobname}: pass {number} of 2)")
-            try:
-                proc = subprocess.Popen(cmd, cwd=project_root, env=env, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, text=True, errors="replace",
-                                        bufsize=1, **kwargs)
-            except FileNotFoundError as exc:
-                raise PartialError("latexmk not found on PATH") from exc
-            if cancel is not None:
-                cancel._set_process(proc)
-            try:
-                assert proc.stdout is not None
-                for line in proc.stdout:
-                    log(line.rstrip("\n"))
-                proc.wait()
-            finally:
-                if cancel is not None:
-                    cancel._set_process(None)
-            if cancel is not None and cancel.is_set():
-                raise PartialError("stopped by user")
-        pdf = build / f"{jobname}.pdf"
-        log_path = build / f"{jobname}.log"
-        log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
-        if not pdf.is_file() or not log_text or FATAL_ERROR_RE.search(log_text):
-            raise PartialError(f"{jobname} (pages) did not compile -- see {log_path}")
-        return PartialOutput(pdf, build, page_infos(pdf))
+        with compiler.wrapper_file(wrapper, wrapper_text(plan)):
+            _restore_full_aux(plan, build, None)
+            cmd = compiler.latexmk_command(wrapper, jobname, build.resolve(), "-g", "-f", "-e", "$max_repeat=1",
+                                           "-e", "$bibtex_use=0", cwd=ctx.root)
+            env = compiler.build_env(ctx)
+            for number in (1, 2):
+                if number == 2:
+                    _restore_full_aux(plan, build, build)
+                log(f"    (page compile of {jobname}: pass {number} of 2)")
+                try:
+                    result = compiler.run_latexmk(cmd, jobname=jobname, outdir=build, cwd=ctx.root, env=env,
+                                                  log=log, cancel=cancel)
+                except FileNotFoundError as exc:
+                    raise PartialError("latexmk not found on PATH") from exc
+                if result.stopped:
+                    raise PartialError("stopped by user")
+        if not result.ok:
+            raise PartialError(f"{jobname} (pages) did not compile -- see {result.log_path}")
+        return PartialOutput(result.pdf, build, page_infos(result.pdf))
     finally:
-        wrapper.unlink(missing_ok=True)
-        compiler._set_build_dir_active(build, False)
+        compiler.set_build_dir_active(build, False)
 
 
 # --------------------------------------------------------------------------
@@ -529,7 +556,6 @@ def patch(plan: PartialPlan, output: PartialOutput, log: LogCallback) -> PatchRe
                     # the patched PDF now belongs to this compile run ("Open pdf")
                     compile_records.stamp_run_id(full, plan.job.run_id)
                 full.save(tmp, garbage=3, deflate=True)
-            from .deck_snapshot import replace_with_retry
             replace_with_retry(tmp, full_pdf)
         finally:
             tmp.unlink(missing_ok=True)
@@ -549,7 +575,6 @@ def _note_patch(plan: PartialPlan, result: PatchResult) -> None:
     """The record keeps vouching for the full PDF's identity (its new hash),
     so another page compile can follow; its input hashes stay those of the
     whole-deck compile, so the PDF no longer counts as unchanged."""
-    import json
     from datetime import datetime
     record = dict(plan.record)
     record["pdf_sha256"] = compile_records.sha256(plan.full_pdf)
@@ -566,21 +591,22 @@ def _note_patch(plan: PartialPlan, result: PatchResult) -> None:
         path = Path(entry["path"])
         if path.name in swapped and path.is_file():
             patched_inputs[entry["path"]] = compile_records.sha256(path)
-    path = compile_records.record_path(compiler.BUILD_DIR, plan.job.jobname)
-    path.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+    path = compile_records.record_path(plan.context.build_dir, plan.job.jobname)
+    write_json(path, record, indent=1, sort_keys=False, ensure_ascii=True)
 
 
 # --------------------------------------------------------------------------
 # One page job, end to end (compiler.run_job calls this for job.pages)
 
-def run_page_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None) -> bool:
+def run_page_job(ctx: project.ProjectContext, job: CompileJob, log: LogCallback,
+                 cancel: Optional[CancelToken] = None) -> bool:
     """Compile `job.pages` of `job` and put them into the full PDF (or, with
     job.replace_pages False, into <full pdf>-pages-<spec>.pdf). Logs the
     usual "==== Compiling ... ====" / PASS / FAIL lines."""
     jobname = job.jobname
-    log(f"==== Compiling {job.deck.name} -> {jobname} ====")
+    log(compile_log.compiling(job.deck.name, jobname))
     try:
-        the_plan = plan(job, job.pages or [])
+        the_plan = plan(ctx, job, job.pages or [])
         if the_plan.missing:
             log(f"    (no slide of this version has the number(s) "
                 f"{format_page_spec(the_plan.missing)})")
@@ -613,8 +639,8 @@ def run_page_job(job: CompileJob, log: LogCallback, cancel: Optional[CancelToken
         if the_plan.other_changed:
             log(f"    (not recompiled, but changed since the whole-deck compile: "
                 f"{', '.join(the_plan.other_changed)})")
-        log(f"==== PASS: {jobname} -> {compiler._display_path(where)} ====")
+        log(compile_log.passed(jobname, compiler.display_path(ctx, where)))
         return True
     except PartialError as exc:
-        log(f"*** FAIL: {jobname} -- {exc} ***")
+        log(compile_log.failed(jobname, str(exc)))
         return False

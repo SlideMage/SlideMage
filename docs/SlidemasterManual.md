@@ -120,9 +120,10 @@ lualatex test.tex
 ### Multi-Deck Compilation
 
 Use SlideMage (`slidemage`) instead of
-editing a deck's `\deckversion[]` by hand: its checkbox table lets you compile
-any combination of Instructor/During-course/After-course, whole-deck or
-split into one PDF per chapter, in a single run -- see
+editing a deck's `\deckversion[]` by hand: **Compile PDF** makes the version
+chosen in the top bar (Instructor, During course or After course), and its arrow
+menu compiles all views, or the after-course version split into one PDF per
+chapter, or several decks, in a single run -- see
 [SlideMage.md](SlideMage.md).
 
 ---
@@ -154,20 +155,21 @@ first time you write one), and a slide can override it independently via a
 "Set as default" button that pushes new text up without touching any other
 slide's own override.
 
-Everything is driven from SlideMage's **Images** tab:
+Everything is driven from SlideMage's **Images** page (the **Images** button in the top bar):
 
 | Action | What it does |
 |---|---|
-| **Draft all…** | Runs a local vision model over every image still needing a description. Resumable — stop and resume across sessions. |
-| **Draft descriptions** | Same, for the selected slide only. |
+| **Draft all…** | Runs a vision model over every image still needing a description. Resumable — stop and resume across sessions. |
+| **Draft this slide** | Same, for the open slide only. |
 | **Tune prompt…** | Re-draft one image with an editable prompt and a per-image hint, iterating without saving until you accept. |
-| **Mark reviewed** | Records that you checked the description against the image. |
+| **Save and mark reviewed** | Records that you checked the description against the image. |
 | **Clear draft** | Discards an unreviewed draft. Never touches a reviewed one. |
-| **Generate transcript** | Writes a Markdown + HTML transcript of a deck to `transcripts/`. |
+| **Translate / Translate all…** | Drafts the German texts from the English ones. |
+| **Write transcript** (arrow of **Compile PDF**) | Writes a Markdown + HTML transcript of a deck to `transcripts/`. |
 
 **Drafts are never trustworthy until reviewed.** On faint scanned charts the
 model will invent plausible-looking values; on linear-axis charts the flat
-early region reads worst. The tab shows each image at full size for exactly
+early region reads worst. The page shows each image at full size for exactly
 this reason.
 
 Transcripts are generated for **during-course and after-course only**, resolve
@@ -176,10 +178,10 @@ keep PDF slide numbering, and never include `\note{}` content.
 
 A slide can also carry a free-text **transcript summary**, independent of
 any image — it shows up at the top of that slide's transcript entry,
-before its own body text. Set it in the **slide-source editor** (a
-"Transcript summary" field with its own "Save summary" button), not the
-Images tab: a summary should work for any slide, including ones with no
-images, which the Images tab's own list never shows.
+before its own body text. Set it in the **Transcript entry** panel (a
+"Summary" field with its own "Save summary" button), not on the
+Images page: a summary should work for any slide, including ones with no
+images, which the Images page's own list never shows.
 
 Full detail is in README.md's "Screen-reader accessibility"/"Describing
 images"/"Describing tikz illustrations"/"Accessible transcripts" sections.
@@ -194,41 +196,28 @@ ever add one, gets its own separate cache rather than sharing/corrupting
 Uni Graz's). Several ways to
 use the cache, all instant — no LaTeX compile needed:
 
-- **Hover** over a slide's id in the deck editor for a quick preview
-  tooltip.
-- Click **Preview** (the deck editor's per-row button, or the button next
-  to "Render to PDF" in the slide-source editor) for a larger look. If
-  nothing's cached yet, "Render now" inside the popup generates one.
-- Switch **View: List / Thumbnail / Grid** (top right of the deck
-  editor's toolbar). **Thumbnail** shows a rendered thumbnail below each
-  slide's id, alongside its usual row controls — nothing is hidden or
-  replaced, it just adds the image. **Grid** browses the whole deck as
-  visual cards instead, grouped by chapter — click a card to open that
-  slide; no editing controls here, it's for a quick overview.
-- Use the **chapter dropdown** (top toolbar, between Undo and Close) to
-  jump straight to a chapter instead of scrolling for it; its heading
-  lands right at the top of the view, in whichever View mode you're in.
-- In List or Thumbnail view, each `\section{...}` appears as an editable
-  section row, even when it has no slides yet. Use **Add section** to append
-  one, or **+ section** beside a slide to insert one before that slide. A
-  section row can be renamed or removed while keeping its slides. Its
-  arrow buttons move the heading past the adjacent slide, changing which
-  section contains that slide; moving past another section carries the
-  section's slides with it. Use **+ slide here** to add the first slide to
-  an empty section. These changes update the deck's `.tex` source
-  and can be undone with **Undo**.
-- A slide's number in List or Thumbnail view is editable: type a new
-  position and press Enter to move the slide there. The slides between the
-  old and new position shift one place to make room, and the moved slide
-  joins the section of the slide whose number it takes.
+- The **slide list** shows a thumbnail on every row, and a row says "preview old"
+  when the slide's source is newer than its preview.
+- The **Preview** view (and the right half of **Split**) shows the cached page at
+  once, with chips for what it is not showing (a pinned version, another language,
+  a missing translation, a view that does not typeset the slide). If nothing's
+  cached yet, or it is old, **Render** generates a fresh one.
+- The slide list's **sections** are the deck's `\section{...}` rows, even when a
+  section has no slides yet: **+ Section** appends one, a section's right-click menu
+  adds one before it, renames it, moves it up or down (a slide stays in its section;
+  moving a section carries its slides), removes it (its slides stay) or adds a slide
+  to it. Drag a slide to another place or section, or use **Alt+Up** / **Alt+Down**.
+  These changes update the deck's `.tex` source and can be undone with **Ctrl+Z**.
+- **Find slide** (above the list) filters by ID or title, and **Ctrl+K** jumps to any
+  slide of the project.
 
 This is a cache, not a live view — it only updates when something actually
-compiles, so it can lag behind an edit you haven't recompiled yet. "Render
-to PDF" in the slide-source editor is unaffected and always compiles your
-current buffer directly.
+compiles, so it can lag behind an edit you haven't recompiled yet. **Render ▾ →
+Render the buffer** in the Source view is unaffected and always compiles your
+current text directly.
 
 To refresh every slide's preview at once — e.g. after a theme change —
-click **Update previews** in the main toolbar and confirm. No institution
+choose **Update slide previews** (⋮ menu, *Housekeeping*) and confirm. No institution
 to pick: it scans every deck (active and archived) for which slides it
 actually uses under which template, compiles one temporary deck per
 template containing exactly those slides, and deletes any cached preview

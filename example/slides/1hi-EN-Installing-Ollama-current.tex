@@ -1,4 +1,4 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
 % SlideMage manual, chapter "Installing SlideMage": Ollama and the models
@@ -6,10 +6,10 @@
 \setSlideVersion{1-0-1}
 \begin{standardframe}{Local AI models: Ollama}
 	\small
-	Image descriptions, translations, the syntax check and AI drafts come from
-	language models that run on your own computer through Ollama -- nothing is
-	sent to an online service. Without Ollama, everything else in SlideMage
-	works as usual.
+	Image descriptions, translations, syntax fixes and the AI chat can use language models
+	that run on your own computer through Ollama -- by default nothing is sent
+	to an online service. Without Ollama, everything else in SlideMage works
+	as usual.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.49\linewidth}
@@ -18,7 +18,7 @@
 			\begin{itemize}
 				\item The Windows installer from \SMCode{ollama.com/download}; Ollama then runs in the background
 				\item Download models in a terminal, e.g., \SMCode{ollama pull gemma4:12b}
-				\item In SlideMage: System $\rightarrow$ Preferences $\rightarrow$ \emph{AI models} lists the installed models; choose one per task
+				\item In SlideMage: the three-dot menu $\rightarrow$ \emph{Settings} $\rightarrow$ \emph{AI models} lists the installed models; choose one per task
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.47\linewidth}
@@ -27,7 +27,8 @@
 			\begin{itemize}
 				\item \emph{Image descriptions}: a vision model, e.g., \SMCode{gemma4:12b} or \SMCode{qwen3-vl:32b}
 				\item \emph{Translation}: e.g., \SMCode{translategemma:12b}
-				\item \emph{Syntax check}, \emph{AI drafting}: e.g., \SMCode{qwen3-coder}
+				\item \emph{Syntax check}: e.g., \SMCode{qwen3-coder}
+				\item \emph{Chat assistant}: a model that can call tools, e.g., \SMCode{qwen3}; only such models are listed
 				\item Larger models write better but need a graphics card with enough memory; on a processor alone they are slow
 			\end{itemize}
 		\end{column}

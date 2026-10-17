@@ -54,23 +54,35 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import threading
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from . import alt_blocks
-from .deck_scan import PROJECT_ROOT
+from .fileio import read_json, write_json
+from .project import ProjectContext
+from .tex_source import COMMENT_RE
 
-STORE_PATH = PROJECT_ROOT / "media" / "alt-text.json"
 FORMAT_VERSION = 2
+
+
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.media_dir / "alt-text.json"
+
 
 ROLE_DECORATIVE = "decorative"
 ROLE_INFORMATIVE = "informative"
 
 STATUS_AUTO = "auto"
 STATUS_REVIEWED = "reviewed"
+
+# Review state of the citation (`source` and `source_de` together), apart from the description's `status`:
+# any change to either source puts it back to SOURCE_TO_REVIEW (flag_source_change(), the one place that
+# decides it), and only a person marks it reviewed again (mark_source_reviewed()).
+SOURCE_REVIEWED = "reviewed"
+SOURCE_TO_REVIEW = "to_review"
+SOURCE_LABELS = {SOURCE_TO_REVIEW: "To review", SOURCE_REVIEWED: "Reviewed"}
 
 # Same scan targets/guesses as the old alt_manifest.py. The three scheme_*
 # dirs moved under schemes/ 2026-09-18 (were project-root siblings of
@@ -94,11 +106,6 @@ STATE_LABELS = {
     STATE_STALE: "Needs re-check",
     STATE_REVIEWED: "Reviewed",
 }
-
-# Same reasoning as alt_blocks._image_hash: hashing every referenced image
-# on every rescan is expensive, so cache by (path, size, mtime).
-_image_hash_cache: dict[tuple[str, int, int], str] = {}
-
 
 @dataclass
 class SlideUse:
@@ -139,8 +146,11 @@ class ImageEntry:
     # even though it carries no alt text, confirmed directly against a real
     # slide (dh6-Private-Equity-Categorization) that already hand-authors
     # exactly that combination. Auto-pulled into a compiled slide's own
-    # footnote wherever this image is used -- see ALT_TEXT_NOTES.md.
+    # footnote wherever this image is used.
     source: str = ""
+    # Whether the citation (source and source_de) was confirmed since it last changed. A store
+    # written before this field existed loads as reviewed; it is written only when it is to_review.
+    source_status: str = SOURCE_REVIEWED
     # Which vision model produced the current short/long, when one did.
     # Cleared on human review -- once checked, the text is yours.
     drafted_by: str = ""
@@ -153,7 +163,7 @@ class ImageEntry:
     # German counterparts (2026-08-24), produced by translating the
     # already-finalized English text (alt_draft.translate_to_german())
     # rather than an independent vision-model draft, per direct
-    # instruction -- see LANGUAGE_NOTES.md. `source_de` is a genuine
+    # instruction. `source_de` is a genuine
     # default+override, the same shape takeaway_default/SlideUse.takeaway
     # already use: "" means "same citation in both languages" (most
     # citations are proper nouns/publication names that don't translate),
@@ -237,6 +247,8 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
         "source": entry.source,
         "takeaway_default": entry.takeaway_default,
     }
+    if entry.source_status != SOURCE_REVIEWED:
+        d["source_status"] = entry.source_status
     if entry.drafted_by:
         d["drafted_by"] = entry.drafted_by
     if entry.hint:
@@ -271,7 +283,7 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
     return d
 
 
-def _entry_from_dict(image: str, d: dict) -> ImageEntry:
+def entry_from_dict(image: str, d: dict) -> ImageEntry:
     used_on = {
         slide_id: SlideUse(
             takeaway=(u.get("takeaway") or ""),
@@ -288,6 +300,7 @@ def _entry_from_dict(image: str, d: dict) -> ImageEntry:
         short=(d.get("short") or ""),
         long=(d.get("long") or ""),
         source=(d.get("source") or ""),
+        source_status=SOURCE_TO_REVIEW if d.get("source_status") == SOURCE_TO_REVIEW else SOURCE_REVIEWED,
         takeaway_default=(d.get("takeaway_default") or ""),
         drafted_by=(d.get("drafted_by") or ""),
         hint=(d.get("hint") or ""),
@@ -301,13 +314,16 @@ def _entry_from_dict(image: str, d: dict) -> ImageEntry:
     )
 
 
-def load_store() -> dict[str, ImageEntry]:
-    """Read the store, keyed by root-relative image path. {} if absent."""
-    if not STORE_PATH.is_file():
-        return {}
-    raw = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+def _entries_from_raw(raw: dict) -> dict[str, ImageEntry]:
     images = raw.get("images", raw)  # tolerate a bare {image: {...}} shape too
-    return {image: _entry_from_dict(image, d) for image, d in images.items()}
+    return {image: entry_from_dict(image, d) for image, d in images.items()}
+
+
+def load_store(ctx: ProjectContext) -> dict[str, ImageEntry]:
+    """Read the store, keyed by root-relative image path. {} if absent."""
+    if not _store_path(ctx).is_file():
+        return {}
+    return _entries_from_raw(json.loads(_store_path(ctx).read_text(encoding="utf-8")))
 
 
 @dataclass
@@ -317,7 +333,7 @@ class SlideNotes:
     top of that slide's section (before its body text) so a reader gets
     oriented before the bullet points. Keyed by the same bare slide id
     used everywhere else (alt_blocks.scan_slides_raw()'s SlideRow.slide_id,
-    slide_snapshot.bare_id()) -- unlike ImageEntry, this has nothing to do
+    slide_language.bare_id()) -- unlike ImageEntry, this has nothing to do
     with any particular image, so it lives in its own top-level "slides"
     section of the same JSON file rather than inside `used_on`.
     """
@@ -325,17 +341,12 @@ class SlideNotes:
     summary: str = ""
 
 
-def _read_raw() -> dict:
-    if not STORE_PATH.is_file():
-        return {}
-    try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+def _read_raw(ctx: ProjectContext) -> dict:
+    return read_json(_store_path(ctx))
 
 
-def load_slide_notes() -> dict[str, SlideNotes]:
-    raw = _read_raw()
+def load_slide_notes(ctx: ProjectContext) -> dict[str, SlideNotes]:
+    raw = _read_raw(ctx)
     slides = raw.get("slides", {})
     return {
         slide_id: SlideNotes(summary=(d.get("summary") or ""))
@@ -356,19 +367,19 @@ def load_slide_notes() -> dict[str, SlideNotes]:
 _store_lock = threading.Lock()
 
 
-def update_store(mutate) -> bool:
+def update_store(ctx: ProjectContext, mutate) -> bool:
     """Atomically load, let `mutate(entries) -> bool` change it in place,
     and save only if it returned True. Single-entry edits use this path;
     sync_store() takes the same lock around its full scan and bulk update."""
     with _store_lock:
-        entries = load_store()
+        entries = load_store(ctx)
         changed = mutate(entries)
         if changed:
-            save_store(entries)
+            save_store(ctx, entries)
         return changed
 
 
-def delete_entry(image: str) -> bool:
+def delete_entry(ctx: ProjectContext, image: str) -> bool:
     """Drops `image`'s whole entry (role/short/long/takeaway_default/
     used_on -- everything) from the store, atomically. For the Images tab's
     "Replace image…" flow (2026-09-18): once every slide that used to
@@ -378,42 +389,25 @@ def delete_entry(image: str) -> bool:
     `image` wasn't in the store to begin with."""
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         return entries.pop(image, None) is not None
-    return update_store(mutate)
+    return update_store(ctx, mutate)
 
 
-def update_slide_notes(mutate) -> bool:
+def update_slide_notes(ctx: ProjectContext, mutate) -> bool:
     """Same atomic load-mutate-save contract as update_store(), for the
     "slides" section instead of "images" -- same shared file, same lock,
     so a slide-notes save and an image save can never interleave and lose
     each other's change."""
     with _store_lock:
-        notes = load_slide_notes()
+        notes = load_slide_notes(ctx)
         changed = mutate(notes)
         if changed:
-            _save_slide_notes(notes)
+            _save_slide_notes(ctx, notes)
         return changed
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write complete UTF-8 content beside its target, then replace it."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-
-def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    raw = _read_raw()
+def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None:
+    _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
+    raw = _read_raw(ctx)
     raw["version"] = FORMAT_VERSION
     # Empty summaries aren't worth a row -- keeps the file from
     # accumulating dead entries for a slide someone typed into and then
@@ -426,20 +420,17 @@ def _save_slide_notes(notes: dict[str, SlideNotes]) -> None:
     # compile-time CSV mirror only ever holds image role/short_alt columns
     # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
-    _atomic_write_text(
-        STORE_PATH,
-        json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
-    )
+    write_json(_store_path(ctx), raw, sort_keys=False)
 
 
-def save_store(entries: dict[str, ImageEntry]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
+    _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
     # save_store() only ever receives the "images" half (that's the shape
     # every existing caller works with) -- reading the file's current
     # "slides" section first and carrying it forward unchanged is what
     # stops an image save from silently wiping out slide summaries saved
     # through update_slide_notes(), and vice versa.
-    existing_slides = _read_raw().get("slides", {})
+    existing_slides = _read_raw(ctx).get("slides", {})
     payload = {
         "version": FORMAT_VERSION,
         "images": {
@@ -447,11 +438,8 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
         },
         "slides": existing_slides,
     }
-    _atomic_write_text(
-        STORE_PATH,
-        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n",
-    )
-    _write_compile_csv(entries)
+    write_json(_store_path(ctx), payload, sort_keys=False)
+    _write_compile_csv(ctx, entries)
 
 
 # `media/alt-text.csv` used to be the store itself (alt_manifest.py); it is
@@ -462,10 +450,9 @@ def save_store(entries: dict[str, ImageEntry]) -> None:
 # the compile-time side was a much larger change than just keeping the one
 # file format it already reads working. Same header/column shape the old
 # store wrote, so nothing on the Lua side needed to change at all.
-_COMPILE_CSV_PATH = PROJECT_ROOT / "media" / "alt-text.csv"
 
 
-def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
+def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
     import csv as _csv
 
     def _clean(text: str) -> str:
@@ -478,7 +465,7 @@ def _write_compile_csv(entries: dict[str, ImageEntry]) -> None:
         # a pasted newline, so they get the same guard.
         return text.replace("\n", " ").replace("\r", " ")
 
-    with _COMPILE_CSV_PATH.open("w", newline="", encoding="utf-8") as handle:
+    with (ctx.media_dir / "alt-text.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = _csv.writer(handle)
         # Widened 2026-08-24 (was image,role,status,short_alt,source) to
         # carry both languages in one file rather than a second CSV/second
@@ -515,16 +502,16 @@ def _guess_role(image: str) -> str:
     return ROLE_INFORMATIVE
 
 
-def scan_images() -> list[str]:
+def scan_images(ctx: ProjectContext) -> list[str]:
     """Every includable image in the project, as root-relative posix paths."""
     found: list[str] = []
     for dirname in IMAGE_DIRS:
-        directory = PROJECT_ROOT / dirname
+        directory = ctx.root / dirname
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):
             if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES:
-                found.append(path.relative_to(PROJECT_ROOT).as_posix())
+                found.append(path.relative_to(ctx.root).as_posix())
     return found
 
 
@@ -540,27 +527,27 @@ class SyncReport:
         return bool(self.added or self.new_uses)
 
 
-def sync_store() -> SyncReport:
+def sync_store(ctx: ProjectContext) -> SyncReport:
     """Add-only sync, serialized with every other store writer.
 
     Holding the shared lock across scanning prevents an older snapshot from
     replacing image drafts or slide notes saved while the scan runs.
     """
     with _store_lock:
-        return _sync_store_locked()
+        return _sync_store_locked(ctx)
 
 
-def _sync_store_locked() -> SyncReport:
-    entries = load_store()
+def _sync_store_locked(ctx: ProjectContext) -> SyncReport:
+    entries = load_store(ctx)
     report = SyncReport()
 
-    on_disk = scan_images()
+    on_disk = scan_images(ctx)
     for image in on_disk:
         if image not in entries:
             entries[image] = ImageEntry(image=image, role=_guess_role(image))
             report.added.append(image)
 
-    rows = alt_blocks.scan_slides_raw()
+    rows = alt_blocks.scan_slides_raw(ctx)
 
     # Tikz illustrations have no file for scan_images() to find -- their own
     # \begin{tikzillustration}{ID} call, already surfaced in row.images by
@@ -602,7 +589,7 @@ def _sync_store_locked() -> SyncReport:
                 report.stale_uses.append((image, slide_id))
 
     if report.changed:
-        save_store(entries)
+        save_store(ctx, entries)
     return report
 
 
@@ -635,24 +622,6 @@ def lookup(entries: dict[str, ImageEntry], reference: str) -> ImageEntry | None:
 # Staleness
 # --------------------------------------------------------------------------
 
-def _image_hash(path: Path) -> str:
-    stat = path.stat()
-    key = (str(path), stat.st_size, stat.st_mtime_ns)
-    cached = _image_hash_cache.get(key)
-    if cached is not None:
-        return cached
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    _image_hash_cache[key] = digest
-    return digest
-
-
-def content_hash(image_path: Path) -> str:
-    """The image's own bytes only -- what invalidates an ImageEntry's
-    reviewed status. No slide text involved: the description belongs to
-    the picture, not to any one slide that happens to show it."""
-    return _image_hash(image_path)[:12]
-
-
 def tikz_source_hash(source: str) -> str:
     """content_hash()'s counterpart for a tikz illustration, which has no
     file/bytes to hash -- its own tikz source (already comment-stripped by
@@ -684,7 +653,7 @@ def slide_context_hash(slide_path: Path) -> str:
     nothing describing an image lives in the slide file at all now.
     """
     text = slide_path.read_text(encoding="utf-8")
-    stripped = alt_blocks.COMMENT_RE.sub("", text)
+    stripped = COMMENT_RE.sub("", text)
     normalized = "\n".join(
         line.strip() for line in stripped.splitlines() if line.strip()
     )
@@ -744,3 +713,138 @@ def slide_use_state(entry: ImageEntry, slide_id: str, slide_hash: str) -> str:
     if use.stored_hash != slide_hash:
         return STATE_STALE
     return STATE_REVIEWED
+
+
+def stamp_review(entry: ImageEntry, use: SlideUse, reviewed: bool, slide_hash: str) -> None:
+    """Review stamp of one slide's use of an image: `reviewed` confirms the image and this use of
+    it, stamped with today and the slide's current text `slide_hash`; otherwise only this slide's
+    use is un-reviewed, since another slide may have reviewed the same image."""
+    if reviewed:
+        entry.status = STATUS_REVIEWED
+        use.reviewed, use.stored_hash = date.today().isoformat(), slide_hash
+    else:
+        use.reviewed = ""
+
+
+def _update_entry(ctx: ProjectContext, image: str, change) -> ImageEntry | None:
+    """Run `change(entry) -> bool` on the existing entry of `image` as one store update. Returns the
+    updated entry, None if there is no such entry or `change` found nothing to do."""
+    found: list[ImageEntry] = []
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        entry = entries.get(image)
+        if entry is None or not change(entry):
+            return False
+        found.append(entry)
+        return True
+
+    update_store(ctx, mutate)
+    return found[0] if found else None
+
+
+def set_takeaway_default(ctx: ProjectContext, image: str, slide_id: str, text: str) -> ImageEntry | None:
+    """Make `text` the image's takeaway default; this slide then follows it instead of holding an
+    override of its own. Returns the updated entry, None if the image has no entry."""
+    def change(entry: ImageEntry) -> bool:
+        entry.takeaway_default = text
+        use = entry.used_on.get(slide_id)
+        if use is not None:
+            use.takeaway = ""
+        return True
+
+    return _update_entry(ctx, image, change)
+
+
+# -- the source's review state -----------------------------------------------------------------------------
+
+
+def source_state(entry: ImageEntry) -> str:
+    """SOURCE_TO_REVIEW or SOURCE_REVIEWED; "" when the image has no source in either language (nothing
+    to review)."""
+    return entry.source_status if entry.source or entry.source_de else ""
+
+
+def flag_source_change(entry: ImageEntry, before: tuple[str, str]) -> bool:
+    """The one rule: if (source, source_de) differs from `before`, the citation is to review and its
+    reviewed state is gone. Every writer of a source ends here (set_source(), and the writes of a file
+    that cannot go through it). Returns whether it changed."""
+    if (entry.source, entry.source_de) == before:
+        return False
+    entry.source_status = SOURCE_TO_REVIEW
+    return True
+
+
+def set_source(entry: ImageEntry, source: str | None = None, source_de: str | None = None) -> bool:
+    """Set the source and/or source_de (None leaves one as it is) of `entry` in memory, with the
+    consequence of flag_source_change(). Returns whether a source changed."""
+    before = (entry.source, entry.source_de)
+    if source is not None:
+        entry.source = source
+    if source_de is not None:
+        entry.source_de = source_de
+    return flag_source_change(entry, before)
+
+
+def save_source(ctx: ProjectContext, image: str, source: str | None = None, source_de: str | None = None) -> ImageEntry | None:
+    """Store a new source and/or source_de of `image` (None leaves one as it is) as to review. Returns
+    the updated entry, None if the image has no entry or nothing changed."""
+    return _update_entry(ctx, image, lambda entry: set_source(entry, source, source_de))
+
+
+def mark_source_reviewed(ctx: ProjectContext, image: str) -> ImageEntry | None:
+    """Confirm the citation of `image` as it stands. Returns the updated entry, None if there is none."""
+    def change(entry: ImageEntry) -> bool:
+        entry.source_status = SOURCE_REVIEWED
+        return True
+
+    return _update_entry(ctx, image, change)
+
+
+def is_store(ctx: ProjectContext, path: Path) -> bool:
+    """Whether `path` is the store file itself."""
+    return path.resolve() == _store_path(ctx).resolve()
+
+
+def flag_edited_sources(ctx: ProjectContext, path: Path, before: str) -> bool:
+    """A chat tool or the embedded Claude Code wrote `path` as a file. If that is the store, every
+    entry whose source or source_de differs from the file's text `before` the write ("" for a new
+    file) goes to review, whatever status the written file claims. Returns whether any did."""
+    if not is_store(ctx, path):
+        return False
+    try:
+        previous = _entries_from_raw(json.loads(before)) if before.strip() else {}
+    except (ValueError, AttributeError):
+        previous = {}
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        changed = False
+        for image, entry in entries.items():
+            old = previous.get(image)
+            changed |= flag_source_change(entry, (old.source, old.source_de) if old else ("", ""))
+        return changed
+
+    try:
+        return update_store(ctx, mutate)
+    except (ValueError, AttributeError):   # the written file is not a readable store: nothing to flag
+        return False
+
+
+def save_slide_image(
+    ctx: ProjectContext, image: str, slide_id: str, slide_path: Path, *, role: str, short: str, long: str, reviewed: bool,
+    baseline: tuple[str, str, str] | None = None,
+) -> None:
+    """Store what was written for one image on one slide: its role and English short and long
+    description (an entry is made if the image has none yet), reviewed or as a draft as in
+    stamp_review(). With a form baseline, only changed fields are copied, as in image_review.apply_form_edit().
+    Everything else of the entry (takeaway, German text, source) is left as it is."""
+    slide_hash = slide_context_hash(slide_path)
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        entry = entries.setdefault(image, ImageEntry(image=image))
+        for i, (name, value) in enumerate((("role", role), ("short", short), ("long", long))):
+            if baseline is None or value != baseline[i]:
+                setattr(entry, name, value)
+        stamp_review(entry, entry.used_on.setdefault(slide_id, SlideUse()), reviewed, slide_hash)
+        return True
+
+    update_store(ctx, mutate)

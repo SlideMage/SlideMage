@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+
 from slidemage import compat, project, version
 from slidemage.compat import APPEARANCE, BREAKS, Change, Finding
 
@@ -49,10 +50,13 @@ MANUAL_FIX = Change("manual-only", "v5.30.0", compat.LAYOUT, "Layout", "Hand wor
 LOOK = Change("looks", "v5.30.0", APPEARANCE, "Looks different", "Bars are lower.")
 
 
-def test_nothing_pending_for_a_project_that_is_current(tmp_path):
-    root = make_project(tmp_path, "v5.30.0")
-    ev = compat.evaluate(root, "v5.30.0", [BREAKING, LOOK])
-    assert not ev.everything                 # those changes came before this project's version
+@pytest.mark.parametrize("last_version, app_version", [
+    ("v5.30.0", "v5.30.0"),
+    ("v5.28.1", "v5.29.0"),
+])
+def test_no_changes_pending_outside_the_release_range(tmp_path, last_version, app_version):
+    root = make_project(tmp_path, last_version)
+    assert not compat.evaluate(root, app_version, [BREAKING, LOOK]).everything
 
 
 def test_loud_and_quiet_changes_are_told_apart(tmp_path):
@@ -61,18 +65,6 @@ def test_loud_and_quiet_changes_are_told_apart(tmp_path):
     assert [p.change.id for p in ev.loud] == ["old-to-new", "manual-only"]
     assert [p.change.id for p in ev.quiet] == ["looks"]
     assert len(ev.loud[0].findings) == 3 and ev.can_update
-
-
-def test_changes_of_a_later_release_are_not_pending_yet(tmp_path):
-    root = make_project(tmp_path)
-    assert not compat.evaluate(root, "v5.29.0", [BREAKING]).everything
-
-
-def test_a_detector_that_finds_nothing_means_nothing_is_pending(tmp_path):
-    root = make_project(tmp_path)
-    (root / "decks" / "#workdeck.tex").write_bytes(b"\\new{x}\r\n")
-    (root / "decks" / "course.tex").write_bytes(b"\\new{y}\n")
-    assert not compat.evaluate(root, "v5.30.0", [BREAKING]).everything
 
 
 def test_not_now_changes_nothing_so_it_comes_back(tmp_path):
@@ -152,7 +144,7 @@ def test_report_for_people_and_tools(tmp_path):
     assert data["changes"][0]["findings"][0] == {"file": "decks/#workdeck.tex", "line": 1, "message": "uses \\old"}
 
 
-def test_command_line_exit_code(tmp_path, monkeypatch, capsys):
+def test_command_line_exit_code(tmp_path, monkeypatch):
     root = make_project(tmp_path)
     monkeypatch.setattr(compat, "CHANGES", [BREAKING])
     monkeypatch.setattr(version, "VERSION_NUMBER", "v5.30.0")
@@ -173,3 +165,27 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
         if any(p.startswith("BREAKING:") for p in entry.paragraphs):
             assert entry.version in registered, (
                 f"{entry.version} has a BREAKING: paragraph but no slidemage.compat.CHANGES entry")
+
+
+def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
+    root = make_project(tmp_path, "v7.0.2")
+    (root / "decks" / "course.tex").write_text(
+        "\\omitslide{live}\n"
+        "% \\omitslide{commented}\n"
+        "\\slide{regular} % \\omitslideversion{commented}{1-0-0}\n"
+        "\\omitslideversion{pinned}{1-0-0}\\omitslide{same-line}\n"
+        "\\% escaped percent \\omitslide {escaped}\n", encoding="utf-8")
+    archive = root / "decks" / "archive"
+    archive.mkdir()
+    (archive / "old.tex").write_text(
+        "% \\omitslideversion{commented}{1-0-0}\n"
+        "\\omitslideversion{archived}{1-0-0}\n", encoding="utf-8")
+    (root / "slides" / "ignore.tex").write_text("\\omitslide{outside-decks}\n")
+    change = next(c for c in compat.CHANGES if c.id == "omitslide-instructor-only")
+    findings = change.detect(root)
+    assert [(f.file, f.line) for f in findings] == [
+        ("decks/course.tex", 1), ("decks/course.tex", 4), ("decks/course.tex", 4),
+        ("decks/course.tex", 5), ("decks/archive/old.tex", 2)]
+    ev = compat.evaluate(root, "v8.0.0")
+    assert not ev.loud
+    assert [(p.change.id, p.findings) for p in ev.quiet] == [(change.id, findings)]

@@ -1,6 +1,5 @@
-"""Local SlideMage UI preferences -- dark mode, plus (2026-08-25,
-direct instruction) the preferred translation and other AI models.
-Older per-feature model choices remain readable as a migration fallback.
+"""Local SlideMage UI preferences -- dark mode, the Ollama host, and the saved
+settings of the AI routes (ai/ai_profile.py reads and writes those keys).
 A plain JSON file lives inside SlideMage/ itself, not the Windows registry (2026-08-25,
 direct instruction, replacing an earlier QSettings-based design used for
 one day: "I want everything pertaining to SlideMage to be saved in its
@@ -16,112 +15,74 @@ controlling or diffing on every toggle, but it still needs to physically
 sit inside the synced folder tree for the cloud-sync client itself (not
 git) to carry it across machines.
 
-STORE_PATH is resolved from deck_scan.PROJECT_ROOT, i.e. it lives in the
-project's .slidemage/ folder, next to translation_prompts.json.
+The file is the project's .slidemage/app_settings.json (ProjectContext.settings_dir),
+next to translation_prompts.json; every function takes the ProjectContext it belongs to.
 """
 from __future__ import annotations
 
-import json
 import os
+from pathlib import Path
 from typing import Any
 
-from .deck_scan import PROJECT_ROOT
-
-STORE_PATH = PROJECT_ROOT / ".slidemage" / "app_settings.json"
+from .fileio import read_json, write_json
+from .project import ProjectContext
 
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
-OTHER_MODEL_SETTING_KEY = "other_model"
 # Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
 # rather than imported from either -- this module sits below both of them
 # in the import graph (they import get_ollama_host() from here), so it
 # has no business depending back on either just for one shared constant.
-_FALLBACK_OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 
-def load() -> dict[str, Any]:
-    if not STORE_PATH.is_file():
-        return {}
-    try:
-        return json.loads(STORE_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.settings_dir / "app_settings.json"
 
 
-def save(settings: dict[str, Any]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STORE_PATH.write_text(
-        json.dumps(settings, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+def load(ctx: ProjectContext) -> dict[str, Any]:
+    return read_json(_store_path(ctx))
 
 
-def get(key: str, default: Any = None) -> Any:
-    return load().get(key, default)
+def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
+    write_json(_store_path(ctx), settings)
 
 
-def set(key: str, value: Any) -> None:
-    settings = load()
+def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:
+    return load(ctx).get(key, default)
+
+
+def set(ctx: ProjectContext, key: str, value: Any) -> None:
+    settings = load(ctx)
     settings[key] = value
-    save(settings)
+    save(ctx, settings)
 
 
-def get_other_model() -> str | None:
-    """The shared non-translation model, with a legacy preference fallback."""
-    settings = load()
-    for key in (OTHER_MODEL_SETTING_KEY, "drafting_model", "ai_draft_model",
-                "syntax_check_model"):
-        if settings.get(key):
-            return settings[key]
-    return None
-
-
-def get_ollama_host() -> str:
+def get_ollama_host(ctx: ProjectContext) -> str:
     """The Ollama server every drafting/translation/AI-rewrite call should
     use (2026-09-23, review finding: this used to be a hardcoded
     "http://localhost:11434" in two separate modules, with no way to
     point this app at Ollama running elsewhere -- a different machine, a
     non-default port, WSL, ...).
 
-    Resolution order: the Preferences dialog's own saved value if the
+    Resolution order: the Settings sheet's own saved value if the
     user has set one, else $OLLAMA_HOST (Ollama's own conventional
     environment variable, so a script/CI run can point this app at a
     different server without touching its settings file), else the plain
     localhost default."""
-    saved = get(OLLAMA_HOST_SETTING_KEY)
+    saved = get(ctx, OLLAMA_HOST_SETTING_KEY)
     if saved:
         return saved
-    return os.environ.get("OLLAMA_HOST") or _FALLBACK_OLLAMA_HOST
+    return os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_HOST
 
 
-def set_ollama_host(host: str) -> None:
+def set_ollama_host(ctx: ProjectContext, host: str) -> None:
     """Empty/whitespace-only clears the saved override, falling back to
     $OLLAMA_HOST/the plain default again -- same "empty means unset"
     convention draft_prompts.set_custom_prompt() uses."""
-    settings = load()
+    settings = load(ctx)
     host = host.strip()
     if host:
         settings[OLLAMA_HOST_SETTING_KEY] = host
     else:
         settings.pop(OLLAMA_HOST_SETTING_KEY, None)
-    save(settings)
-
-
-# Default Ollama model per AI task (2026-09-26, direct instruction), set in
-# Settings -> "AI models" and read by every place that offers a model
-# picker -- which now only *preselects* this default; picking another
-# model there applies to that dialog/tab only and is no longer remembered
-# as "whatever was used last". The setting keys are the same ones the old
-# remember-last-choice code used, so an existing app_settings.json keeps
-# working as the initial default.
-MODEL_SETTINGS: dict[str, str] = {
-    "syntax_check": "syntax_check_model",
-    "ai_draft": "ai_draft_model",
-    "image_description": "drafting_model",
-    "translation": "translation_model",
-}
-
-
-def default_model(task: str) -> str:
-    """The configured default model name for `task` (a MODEL_SETTINGS
-    key), or "" when none has been chosen yet."""
-    return str(get(MODEL_SETTINGS[task]) or "")
+    save(ctx, settings)

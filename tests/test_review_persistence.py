@@ -4,6 +4,7 @@ import json
 import threading
 
 import pytest
+from slidemage.project import ProjectContext
 
 
 def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
@@ -29,12 +30,9 @@ def test_housekeeping_keeps_accessibility_metadata(tmp_path, monkeypatch):
     unused = media_dir / "unused.bin"
     unused.write_bytes(b"unused")
 
-    monkeypatch.setattr(unused_content, "MEDIA_DIR", media_dir)
-    monkeypatch.setattr(unused_content, "SLIDES_DIR", slides_dir)
-    monkeypatch.setattr(unused_content, "DECKS_DIR", decks_dir)
-    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
+    ctx = ProjectContext.at(tmp_path)
 
-    assert unused_content.find_unused_media() == [unused]
+    assert unused_content.find_unused_media(ctx) == [unused]
     assert authored.is_file()
     assert generated.is_file()
     assert atomic_write.is_file()
@@ -60,22 +58,20 @@ def test_archive_takes_the_images_of_archived_slides_in_one_run(tmp_path, monkey
     for name in ("kept.png", "gone.png", "old.png"):
         (media_dir / name).write_bytes(b"image")
 
-    monkeypatch.setattr(unused_content, "MEDIA_DIR", media_dir)
-    monkeypatch.setattr(unused_content, "MEDIA_ARCHIVE_DIR", media_dir / "archive")
-    monkeypatch.setattr(unused_content, "SLIDES_DIR", slides_dir)
-    monkeypatch.setattr(unused_content, "SLIDES_ARCHIVE_DIR", slides_dir / "archive")
-    monkeypatch.setattr(unused_content, "DECKS_DIR", decks_dir)
-    monkeypatch.setattr(unused_content, "ARCHIVE_DIR", decks_dir / "archive")
+    ctx = ProjectContext.at(tmp_path)
 
-    assert [p.name for p in unused_content.find_unused_media()] == ["gone.png", "old.png"]
-    assert unused_content.archive_unused_content(lambda _line: None) == (2, 2)
+    assert [p.name for p in unused_content.find_unused_media(ctx)] == ["gone.png", "old.png"]
+    assert unused_content.archive_files(ctx, 
+        unused_content.find_unused_media(ctx), unused_content.find_unused_slides(ctx), lambda _line: None) == (2, 2)
     # a second run has nothing left to do
-    assert unused_content.find_unused_media() == []
-    assert unused_content.find_unused_slides() == []
+    assert unused_content.find_unused_media(ctx) == []
+    assert unused_content.find_unused_slides(ctx) == []
     assert (media_dir / "kept.png").is_file()
 
 
-def test_init_project_preflights_template_collisions(tmp_path, monkeypatch):
+@pytest.mark.parametrize("collision", [True, False])
+def test_init_project_preserves_existing_files(tmp_path, monkeypatch, collision):
+    """Code-review regression: preflight collisions and preserve unrelated files/assets."""
     from slidemage import project
 
     template = tmp_path / "template"
@@ -83,118 +79,36 @@ def test_init_project_preflights_template_collisions(tmp_path, monkeypatch):
     (template / "slides").mkdir()
     (template / "decks" / "demo.tex").write_text("template")
     (template / "slides" / "new.tex").write_text("new slide")
+    generated = ("_slidemage_preview-x.tex", "_slidemage_snapshot-x.tex")
+    for name in generated:
+        (template / "decks" / name).write_text("generated wrapper")
+    (template / "decks" / "_kept").mkdir()
+    (template / "decks" / "_kept" / "_nested.tex").write_text("nested asset")
+    (template / "_kept.tex").write_text("root asset")
     latex_template = tmp_path / "latex-template"
     latex_template.mkdir()
     (latex_template / "framework.sty").write_text("framework")
-    monkeypatch.setattr(
-        project, "_template_dir",
-        lambda name: {"example": template, "latex": latex_template}.get(name),
-    )
-
+    monkeypatch.setattr(project, "template_dir",
+                        lambda name: {"example": template, "latex": latex_template}.get(name))
     target = tmp_path / "existing-project"
     (target / "decks").mkdir(parents=True)
-    user_file = target / "decks" / "demo.tex"
-    user_file.write_text("user data")
-
-    with pytest.raises(project.ProjectCreationError) as error:
-        project.init_project(target, copy_example=True)
-
-    assert user_file.read_text() == "user data"
-    assert not (target / "slides" / "new.tex").exists()
-    assert str(user_file) in str(error.value)
-
-
-def test_init_project_preserves_unrelated_existing_files(tmp_path, monkeypatch):
-    from slidemage import project
-
-    template = tmp_path / "template"
-    (template / "decks").mkdir(parents=True)
-    (template / "decks" / "demo.tex").write_text("template")
-    latex_template = tmp_path / "latex-template"
-    latex_template.mkdir()
-    monkeypatch.setattr(
-        project, "_template_dir",
-        lambda name: {"example": template, "latex": latex_template}.get(name),
-    )
-
-    target = tmp_path / "project-with-notes"
-    target.mkdir()
     note = target / "keep.txt"
     note.write_text("my notes")
-
-    project.init_project(target, copy_example=True)
-
+    if collision:
+        user_file = target / "decks" / "demo.tex"
+        user_file.write_text("user data")
+        with pytest.raises(project.ProjectCreationError) as error:
+            project.init_project(target, copy_example=True)
+        assert user_file.read_text() == "user data"
+        assert not (target / "slides" / "new.tex").exists()
+        assert str(user_file) in str(error.value)
+    else:
+        project.init_project(target, copy_example=True)
+        assert (target / "decks" / "demo.tex").read_text() == "template"
+        assert all(not (target / "decks" / name).exists() for name in generated)
+        assert (target / "decks" / "_kept" / "_nested.tex").read_text() == "nested asset"
+        assert (target / "_kept.tex").read_text() == "root asset"
     assert note.read_text() == "my notes"
-    assert (target / "decks" / "demo.tex").read_text() == "template"
-
-
-def test_project_picker_shows_collision_error(monkeypatch, tmp_path):
-    from PySide6 import QtWidgets
-
-    from slidemage import project
-
-    chosen = str(tmp_path / "not-a-project")
-    selections = iter([chosen, ""])
-
-    class FakeFileDialog:
-        @staticmethod
-        def getExistingDirectory(*_args):
-            return next(selections)
-
-    class FakeMessageBox:
-        class ButtonRole:
-            AcceptRole = 1
-            RejectRole = 2
-
-        class StandardButton:
-            Cancel = 3
-
-        warnings: list[tuple[str, str]] = []
-
-        def __init__(self, _parent):
-            self.buttons = []
-            self.clicked = None
-
-        def setWindowTitle(self, _title):
-            pass
-
-        def setText(self, _text):
-            pass
-
-        def setInformativeText(self, _text):
-            pass
-
-        def addButton(self, label, _role=None):
-            button = object()
-            self.buttons.append((label, button))
-            return button
-
-        def setDefaultButton(self, _button):
-            pass
-
-        def exec(self):
-            self.clicked = self.buttons[0][1]
-
-        def clickedButton(self):
-            return self.clicked
-
-        @classmethod
-        def warning(cls, _parent, title, message):
-            cls.warnings.append((title, message))
-
-    monkeypatch.setattr(QtWidgets, "QFileDialog", FakeFileDialog)
-    monkeypatch.setattr(QtWidgets, "QMessageBox", FakeMessageBox)
-    monkeypatch.setattr(project, "has_example_template", lambda: False)
-
-    def reject_creation(path, copy_example=True):
-        raise project.ProjectCreationError(path, [path / "decks" / "demo.tex"])
-
-    monkeypatch.setattr(project, "init_project", reject_creation)
-
-    assert project.pick_or_create_project(None, tmp_path) is None
-    assert FakeMessageBox.warnings
-    assert FakeMessageBox.warnings[0][0] == "Cannot create project"
-    assert "demo.tex" in FakeMessageBox.warnings[0][1]
 
 
 def _temporary_store(monkeypatch, tmp_path):
@@ -203,17 +117,14 @@ def _temporary_store(monkeypatch, tmp_path):
     media_dir = tmp_path / "media"
     media_dir.mkdir()
     store_path = media_dir / "alt-text.json"
-    csv_path = media_dir / "alt-text.csv"
-    monkeypatch.setattr(alt_images, "STORE_PATH", store_path)
-    monkeypatch.setattr(alt_images, "_COMPILE_CSV_PATH", csv_path)
     return alt_images, store_path
 
 
-def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
+def test_sync_store_serializes_scan_with_background_save(ctx, tmp_path, monkeypatch):
     from slidemage.alt_images import ImageEntry
 
     alt_images, store_path = _temporary_store(monkeypatch, tmp_path)
-    alt_images.save_store({
+    alt_images.save_store(ctx, {
         "media/existing.png": ImageEntry(
             image="media/existing.png", long="before"
         ),
@@ -227,18 +138,18 @@ def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
     update_done = threading.Event()
     errors: list[BaseException] = []
 
-    def gated_scan():
+    def gated_scan(_ctx):
         scan_started.set()
         if not continue_scan.wait(5):
             raise AssertionError("test did not release the scan")
         return ["media/new.png"]
 
     monkeypatch.setattr(alt_images, "scan_images", gated_scan)
-    monkeypatch.setattr(alt_images.alt_blocks, "scan_slides_raw", lambda: [])
+    monkeypatch.setattr(alt_images.alt_blocks, "scan_slides_raw", lambda _ctx: [])
 
     def sync_worker():
         try:
-            alt_images.sync_store()
+            alt_images.sync_store(ctx)
         except BaseException as exc:  # propagate worker failures to the test
             errors.append(exc)
         finally:
@@ -253,7 +164,7 @@ def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
             return True
 
         try:
-            alt_images.update_store(mutate)
+            alt_images.update_store(ctx, mutate)
         except BaseException as exc:
             errors.append(exc)
         finally:
@@ -286,19 +197,19 @@ def test_sync_store_serializes_scan_with_background_save(tmp_path, monkeypatch):
     assert not sync_thread.is_alive()
     assert not update_thread.is_alive()
     assert not errors
-    entries = alt_images.load_store()
+    entries = alt_images.load_store(ctx)
     assert entries["media/existing.png"].long == "completed batch draft"
     assert "media/new.png" in entries
     assert json.loads(store_path.read_text(encoding="utf-8"))["images"]
 
 
-def test_store_json_is_replaced_atomically(tmp_path, monkeypatch):
+def test_store_json_is_replaced_atomically(ctx, tmp_path, monkeypatch):
     import os
 
     from slidemage.alt_images import ImageEntry
 
     alt_images, store_path = _temporary_store(monkeypatch, tmp_path)
-    alt_images.save_store({
+    alt_images.save_store(ctx, {
         "media/chart.png": ImageEntry(image="media/chart.png", long="before"),
     })
     old_bytes = store_path.read_bytes()
@@ -315,11 +226,11 @@ def test_store_json_is_replaced_atomically(tmp_path, monkeypatch):
             raise AssertionError("test did not release atomic replacement")
         real_replace(source, destination)
 
-    monkeypatch.setattr(alt_images.os, "replace", gated_replace)
+    monkeypatch.setattr(os, "replace", gated_replace)
 
     def update_worker():
         try:
-            alt_images.update_store(
+            alt_images.update_store(ctx, 
                 lambda entries: _change_description(entries, "completed batch draft")
             )
         except BaseException as exc:
@@ -342,7 +253,7 @@ def test_store_json_is_replaced_atomically(tmp_path, monkeypatch):
     assert update_done.is_set()
     assert not thread.is_alive()
     assert not errors
-    saved = alt_images.load_store()["media/chart.png"]
+    saved = alt_images.load_store(ctx)["media/chart.png"]
     assert saved.long == "completed batch draft"
 
 

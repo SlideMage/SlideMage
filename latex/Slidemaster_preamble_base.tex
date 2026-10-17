@@ -1,3 +1,13 @@
+% \SMLuaOnce{<lua>}: run Lua now AND remember it, so a precompiled format
+% (SlideMage's fast preview, see preview_format.py) can replay it. A LuaTeX
+% format stores TeX state but not Lua state: every global function, table and
+% callback a preamble sets up is gone when the format is loaded. The replay list
+% is run by the format's \everyjob; in an ordinary build it is never used.
+\newtoks\SMLuaReplayList
+\newcommand{\SMLuaOnce}[1]{%
+	\directlua{#1}%
+	\global\SMLuaReplayList\expandafter{\the\SMLuaReplayList\directlua{#1}}%
+}
 \usepackage{etoolbox} % \AtEndEnvironment, used for the itemize level-drop spacing below
 \usepackage{tikz} % For painting a white box over title bar
 \usetikzlibrary{calc}
@@ -1424,23 +1434,23 @@
 % not just once at class-option time, so this is safe, not a hack that
 % happens to work by luck of file ordering.
 % \omitslide{}/\omitslideversion{} are drop-in replacements for
-% \slide{}/\slideversion{} that tag a slide as excluded from that variant:
+% \slide{}/\slideversion{} that tag a slide as excluded from student deck versions:
 %
 %   \omitslide{xyz-Answer-key}                 % instead of \slide{...}
 %   \omitslideversion{xyz-Answer-key}{1-0-0}    % instead of \slideversion{...}{...}
 %
-% In a \studentversion compile, a tagged slide's \input{} is skipped
-% entirely -- no frame is produced for it at all (not a blank page, not a
-% numbering gap: beamer's frame/slide counters simply never advance for a
-% call that never ran). In every other (i.e. normal/instructor) compile, a
-% tagged slide loads exactly as it would via \slide{}/\slideversion{}, with
+% In a \studentversion compile or a deck version other than instructor,
+% a tagged slide's \input{} is skipped entirely and its frame number still
+% advances, keeping numbering aligned across deck versions. In an
+% instructor compile (the default), a tagged slide loads exactly as it
+% would via \slide{}/\slideversion{}, with
 % one difference: \SMOmittedSlide is set for the duration of that one
 % \input{}, so the footer template below can print a marker next to that
 % frame's slide ID -- a deliberately visible reminder, while reviewing the
 % instructor deck, of which slides won't make it to students. The same tag
-% works for both compiles because it lives at the call site in the *deck*
+% works for all deck versions because it lives at the call site in the *deck*
 % file (not inside the slide's own content file): the identical slide list
-% can serve both the instructor deck and the student handout, e.g.
+% can serve the instructor deck and both student deck versions, e.g.
 %
 %   \input{Slidemaster_preamble_uni-graz}
 %   \FooterText{...}
@@ -1652,7 +1662,7 @@
 
 \newif\ifSMOmittedSlide
 \newcommand{\SMOmittedSlideMarker}{ | omitted from student deck}
-% \stepcounter{framenumber} in the skipped branch below keeps the student
+% \stepcounter{framenumber} in the skipped branches below keeps the student
 % deck's slide numbers matching the instructor deck's, gap and all, so "see
 % slide 12" means the same physical slide to both audiences: beamer steps
 % "framenumber" exactly once per \begin{frame} (checked in
@@ -1660,28 +1670,33 @@
 % right regardless of how many overlay steps the omitted slide would have
 % had), and this is the one place that increment is skipped along with the
 % frame itself, so it has to be replayed by hand.
+% Both forms are instructor-only; \studentversion also skips them.
 \newcommand{\omitslide}[1]{%
 	\ifSMStudentVersion
 		\stepcounter{framenumber}%
 	\else
-		\global\SMOmittedSlidetrue
-		\global\SMSlideVersionSetfalse
-		\setSlideID{#1}%
-		\setSlideLanguageFromSlug{#1}%
-		\input{slides/#1-current.tex}%
-		\global\SMOmittedSlidefalse
+		\ifdeckversioninlist{\SMDeckVersion}{instructor}%
+			{\global\SMOmittedSlidetrue
+			 \global\SMSlideVersionSetfalse
+			 \setSlideID{#1}%
+			 \setSlideLanguageFromSlug{#1}%
+			 \input{slides/#1-current.tex}%
+			 \global\SMOmittedSlidefalse}%
+			{\stepcounter{framenumber}}%
 	\fi
 }
 \newcommand{\omitslideversion}[2]{%
 	\ifSMStudentVersion
 		\stepcounter{framenumber}%
 	\else
-		\global\SMOmittedSlidetrue
-		\setSlideID{#1}%
-		\setSlideLanguageFromSlug{#1}%
-		\setSlideVersion{#2}%
-		\input{slides/#1-v#2.tex}%
-		\global\SMOmittedSlidefalse
+		\ifdeckversioninlist{\SMDeckVersion}{instructor}%
+			{\global\SMOmittedSlidetrue
+			 \setSlideID{#1}%
+			 \setSlideLanguageFromSlug{#1}%
+			 \setSlideVersion{#2}%
+			 \input{slides/#1-v#2.tex}%
+			 \global\SMOmittedSlidefalse}%
+			{\stepcounter{framenumber}}%
 	\fi
 }
 
@@ -2211,7 +2226,7 @@
 	% this failed exactly that way). This loader snippet is deliberately
 	% free of "%" and "#" so it is safe to keep inline. Found via kpathsea
 	% (TEXINPUTS), since it lives in latex/, outside the project.
-	\directlua{
+	\SMLuaOnce{
 		local path = kpse.find_file("Slidemaster_alt.lua", "lua")
 			or kpse.find_file("Slidemaster_alt.lua", "tex")
 		if path then
@@ -2684,7 +2699,7 @@
 	\setbeamertemplate{note page}[gothampresenter]
 	\makeatother
 \fi
-\directlua{
+\SMLuaOnce{
 	function SMZeroPad(n) if n < 10 then return "0" .. n else return "" .. n end end
 }
 \newwrite\SMCompileTimestampFile
@@ -3321,7 +3336,7 @@
 	gap/.store in=\gothamtable@gap,
 }
 \ifluatex
-	\directlua{
+	\SMLuaOnce{
 		local path = kpse.find_file("Slidemaster_layout.lua", "lua")
 			or kpse.find_file("Slidemaster_layout.lua", "tex")
 		if path then
@@ -3495,7 +3510,7 @@
 % boxes already set it.) Checked in LuaTeX by walking the current list.
 \newlength{\SMColumnsTopCorrection}
 \setlength{\SMColumnsTopCorrection}{10.17pt}
-\directlua{
+\SMLuaOnce{
 	gotham_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
 		for n in node.traverse(head) do
@@ -3800,7 +3815,7 @@
 \newwrite\SM@topfile
 \newcommand{\SMSetTopCorrection}[2]{\global\@namedef{SM@topcorr@#1}{#2}}
 \ifluatex
-	\directlua{
+	\SMLuaOnce{
 		luatexbase.add_to_callback("pre_shipout_filter", function(head)
 			if gotham_layout and gotham_layout.top_measure_page then
 				gotham_layout.top_measure_page(head)

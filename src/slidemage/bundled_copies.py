@@ -42,7 +42,7 @@ which is merged instead: descriptions of images the project doesn't describe
 yet are added, unreviewed ones of updated images are replaced). New slide ids
 are appended to the project's ``slide_ids.csv``.
 
-Free of Qt; qt_gui.py shows the dialog.
+Free of Qt; ui/workspace/maintenance.py shows the dialog.
 """
 from __future__ import annotations
 
@@ -54,6 +54,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from .fileio import read_json, write_json
+from .project import ProjectContext
 
 MANIFEST_PATH = Path(".slidemage") / "bundled_copies.json"
 BACKUP_DIR = Path(".slidemage") / "backups"
@@ -133,18 +136,11 @@ def manual_files(example_dir: Path) -> list[str]:
 # -- the manifest ------------------------------------------------------------
 
 def read_manifest(project_root: Path) -> dict:
-    try:
-        data = json.loads((project_root / MANIFEST_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(project_root / MANIFEST_PATH)
 
 
 def write_manifest(project_root: Path, data: dict) -> None:
-    path = project_root / MANIFEST_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
+    write_json(project_root / MANIFEST_PATH, data, ensure_ascii=True)
 
 
 def record_copies(project_root: Path, app_version: str, *, framework_dir: Optional[Path],
@@ -249,7 +245,7 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
 def plan_updates(project_root: Path, *, latex_source: Optional[Path],
                  example_source: Optional[Path]) -> list[Part]:
     """The parts with something to do for `project_root`, given the bundled
-    framework and example folders (project._template_dir()). Never plans
+    framework and example folders (project.template_dir()). Never plans
     against the bundle itself (a developer running on the repo's example/),
     and never against a deck snapshot, which keeps the framework and manual it
     was made with (v5.33.0)."""
@@ -296,12 +292,12 @@ def dismiss(project_root: Path, app_version: str) -> None:
 
 # -- applying ----------------------------------------------------------------
 
-def apply_update(project_root: Path, part: Part, app_version: str,
+def apply_update(ctx: ProjectContext, part: Part, app_version: str,
                  now: Optional[datetime] = None) -> Path:
     """Carry out `part`; returns the backup folder (created only if anything
     was replaced or removed)."""
     stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
-    backup = project_root / BACKUP_DIR / stamp / part.name
+    backup = ctx.root / BACKUP_DIR / stamp / part.name
     for rel in part.update + part.remove:
         dest = backup / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -320,17 +316,17 @@ def apply_update(project_root: Path, part: Part, app_version: str,
     for rel in part.remove:
         (part.target / rel).unlink()
 
-    data = read_manifest(project_root)
+    data = read_manifest(ctx.root)
     entry = {"app_version": app_version, "files": dict(part.bundle_hashes)}
     if part.name == FRAMEWORK:
-        entry["dir"] = _relative_dir(project_root, part.target)
+        entry["dir"] = _relative_dir(ctx.root, part.target)
     data[part.name] = entry
     data.pop("dismissed_app_version", None)
-    write_manifest(project_root, data)
+    write_manifest(ctx.root, data)
 
     if part.name == MANUAL:
-        _merge_slide_ids(project_root, part)
-        _merge_image_descriptions(part)
+        _merge_slide_ids(ctx.root, part)
+        _merge_image_descriptions(ctx, part)
     return backup
 
 
@@ -360,17 +356,18 @@ def _merge_slide_ids(project_root: Path, part: Part) -> None:
             f.write(f'"{slide_id}"\r\n')
 
 
-def _merge_image_descriptions(part: Part) -> None:
+def _merge_image_descriptions(ctx: ProjectContext, part: Part) -> None:
     """Add the manual's image descriptions the project lacks; replace the
     unreviewed descriptions of images this update replaced. Goes through
-    alt_images (the running app's project store, which regenerates the CSV)."""
+    alt_images (the running app's project store, which regenerates the CSV). A new image keeps the
+    citation it ships with; replacing an image's description with a different citation puts it to review."""
     from . import alt_images
 
     try:
         raw = json.loads((part.source / "media" / "alt-text.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
-    bundled = {image: alt_images._entry_from_dict(image, d)
+    bundled = {image: alt_images.entry_from_dict(image, d)
                for image, d in raw.get("images", raw).items()}
     replaced = set(part.update) | set(part.add)
 
@@ -381,10 +378,12 @@ def _merge_image_descriptions(part: Part) -> None:
             if current is None or (image in replaced
                                    and current.status != alt_images.STATUS_REVIEWED):
                 entries[image] = entry
+                if current is not None:   # a replaced entry whose citation differs is to review
+                    alt_images.flag_source_change(entry, (current.source, current.source_de))
                 changed = True
         return changed
 
-    alt_images.update_store(mutate)
+    alt_images.update_store(ctx, mutate)
 
 
 def summary_lines(part: Part) -> list[str]:

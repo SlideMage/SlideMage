@@ -1,7 +1,9 @@
 """Locate the Slidemaster project (the folder holding slide_ids.csv) to operate on.
 
-Deliberately free of side effects and of imports from the rest of the package:
-cli.py must settle the project before deck_scan computes PROJECT_ROOT at import.
+Deliberately free of side effects and of imports from the rest of the package.
+Importing any SlideMage module selects no project: the entry points (cli.py,
+the deck_snapshot and preview command lines) create one ProjectContext and
+hand it on.
 """
 from __future__ import annotations
 
@@ -10,7 +12,10 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+from .fileio import atomic_write, read_json
 
 MARKER = "slide_ids.csv"
 ENV_VAR = "SLIDEMASTER_PROJECT"
@@ -40,6 +45,7 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     skip = {".build", ".previews", ".backups", "pdf", "__pycache__"}
     if os.path.basename(directory) == "decks":
         skip |= {n for n in names if n.endswith((".pdf", ".synctex.gz"))}
+        skip |= {n for n in names if n.startswith("_") and (Path(directory) / n).is_file()}
     return {n for n in names if n in skip}
 
 
@@ -162,7 +168,35 @@ def load_last_project() -> Path | None:
     return None
 
 
+RECENT_LIMIT = 8
+
+
+def _recent_file() -> Path:
+    return config_dir() / "recent_projects.json"
+
+
+def recent_projects() -> list[Path]:
+    """The projects opened last on this computer, newest first. A folder that has
+    gone since stays listed (project_status says so)."""
+    return [Path(p) for p in read_json(_recent_file(), list) if isinstance(p, str)]
+
+
+def _remember_recent(path: Path) -> None:
+    paths = [str(path)] + [str(p) for p in recent_projects() if p != path]
+    text = json.dumps(paths[:RECENT_LIMIT], indent=2) + "\n"
+    try:
+        if _recent_file().read_text(encoding="utf-8") == text:
+            return
+    except OSError:
+        pass
+    try:
+        atomic_write(_recent_file(), text)
+    except OSError:
+        pass
+
+
 def save_last_project(path: Path) -> None:
+    _remember_recent(path)
     for target in (_last_project_file(), _exe_sidecar_file()):
         if target is None:
             continue
@@ -180,26 +214,18 @@ def read_project_info(root: Path) -> dict:
     project.json; a missing or unreadable file reads as format
     PROJECT_FORMAT with no known last version."""
     info = {"format": PROJECT_FORMAT, "last_app_version": ""}
-    try:
-        data = json.loads((root / PROJECT_INFO_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return info
-    if isinstance(data, dict):
-        if isinstance(data.get("format"), int):
-            info["format"] = data["format"]
-        if isinstance(data.get("last_app_version"), str):
-            info["last_app_version"] = data["last_app_version"]
+    data = read_project_json(root)
+    if isinstance(data.get("format"), int):
+        info["format"] = data["format"]
+    if isinstance(data.get("last_app_version"), str):
+        info["last_app_version"] = data["last_app_version"]
     return info
 
 
 def read_project_json(root: Path) -> dict:
     """The whole of the project's project.json (every key, also those a
     newer or other part of SlideMage wrote); {} if missing or unreadable."""
-    try:
-        data = json.loads((root / PROJECT_INFO_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(root / PROJECT_INFO_PATH)
 
 
 def write_project_json(root: Path, data: dict) -> None:
@@ -210,8 +236,26 @@ def write_project_json(root: Path, data: dict) -> None:
             return  # unchanged -- don't touch a cloud-synced file for nothing
     except OSError:
         pass
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\n")
+    atomic_write(path, text)
+
+
+@dataclass(frozen=True)
+class ProjectStatus:
+    """What the project picker shows about a folder."""
+    path: Path
+    name: str
+    exists: bool            # a folder with slide_ids.csv
+    last_version: str       # the SlideMage that last opened it ("" if none is recorded)
+    newer: bool             # its format, or a SlideMage that used it, is newer than the running one
+
+
+def project_status(root: Path, app_version: str) -> ProjectStatus:
+    info = read_project_info(root)
+    used_with = read_project_json(root).get("highest_app_version") or info["last_app_version"]
+    from .updater import parse_version
+    top, current = parse_version(used_with or ""), parse_version(app_version)
+    newer = info["format"] > PROJECT_FORMAT or (top is not None and current is not None and top > current)
+    return ProjectStatus(root, root.name, is_project(root), info["last_app_version"], newer)
 
 
 # Deck snapshots (deck_snapshot.py, v5.33.0): a snapshot's project folder is
@@ -306,7 +350,7 @@ def record_project_open(root: Path, app_version: str) -> None:
     write_project_json(root, data)
 
 
-def _template_dir(name: str) -> Path | None:
+def template_dir(name: str) -> Path | None:
     """Where the bundled `name` template ("example" or "latex") lives
     right now, or None if this run has neither -- shouldn't happen for
     either supported way of running SlideMage, but a missing template is
@@ -334,7 +378,7 @@ def has_example_template() -> bool:
     something to copy -- both the example project and the LaTeX
     framework it depends on need to be found, or a copy without one of
     them would leave a project that looks complete but can't compile."""
-    return _template_dir("example") is not None and _template_dir("latex") is not None
+    return template_dir("example") is not None and template_dir("latex") is not None
 
 
 def init_project(path: Path, copy_example: bool = True) -> None:
@@ -351,7 +395,7 @@ def init_project(path: Path, copy_example: bool = True) -> None:
     if os.path.lexists(path) and (path.is_symlink() or not path.is_dir()):
         raise ProjectCreationError(path, [path])
 
-    example_dir = _template_dir("example") if copy_example else None
+    example_dir = template_dir("example") if copy_example else None
     if example_dir is not None:
         conflicts = _template_copy_conflicts(example_dir, path)
         if conflicts:
@@ -360,7 +404,7 @@ def init_project(path: Path, copy_example: bool = True) -> None:
         shutil.copytree(
             example_dir, path, dirs_exist_ok=True, ignore=_ignore_template_build_output
         )
-        latex_dir = _template_dir("latex")
+        latex_dir = template_dir("latex")
         sibling_latex = path.parent / "latex"
         copied_latex = latex_dir is not None and not os.path.lexists(sibling_latex)
         if copied_latex:
@@ -397,21 +441,78 @@ def discover() -> Path | None:
     return find_upward(Path.cwd()) or load_last_project()
 
 
+class _Under:
+    """A place inside the project folder, named once: `ctx.slides_dir` is `ctx.root / "slides"`."""
+
+    def __init__(self, *parts: str) -> None:
+        self.parts = parts
+
+    def __get__(self, context: "ProjectContext | None", owner: type | None = None):
+        return self if context is None else context.root.joinpath(*self.parts)
+
+
+@dataclass(frozen=True)
+class ProjectContext:
+    """One project folder and the places inside it. Immutable; created once at the entry point
+    (ProjectContext.at) and passed to whatever reads or writes project files. Pure text
+    operations take strings, not this."""
+    root: Path
+    build_dir: Path = None      # type: ignore[assignment]  # latexmk's folder; root/.build unless a benchmark isolates its builds
+
+    slides_dir = _Under("slides")
+    slide_backups_dir = _Under("slides", ".backups")
+    decks_dir = _Under("decks")
+    archive_dir = _Under("decks", "archive")
+    media_dir = _Under("media")
+    snippets_dir = _Under("snippets")
+    sources_dir = _Under("sources")              # papers and figures the user attached to the chat
+    pdf_dir = _Under("pdf")
+    temp_dir = _Under(".temp")
+    previews_dir = _Under(".previews")
+    slide_previews_dir = _Under(".previews", "slide_previews")
+    tikz_previews_dir = _Under(".previews", "tikz_illustration_previews")
+    pdf_render_cache_dir = _Under(".previews", "pdf_render_cache")
+    settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json
+    ai_review_path = _Under(".slidemage", "ai-review.json")
+    ai_before_dir = _Under(".slidemage", "ai-before")   # a slide's text before the last AI edit (ai_review.last_before)
+    claude_hook_dir = _Under(".slidemage", "claude-hooks")
+    slide_ids_csv = _Under(MARKER)
+    bibliography_path = _Under("Slidemaster.bib")
+    slide_template_path = _Under(".scripts", "R_Slidemaster", "inst", "templates", "slide-template.tex")
+
+    def __post_init__(self) -> None:
+        if self.build_dir is None:
+            object.__setattr__(self, "build_dir", self.root / ".build")
+
+    @classmethod
+    def at(cls, root: Path) -> "ProjectContext":
+        return cls(Path(root))
+
+    @property
+    def name(self) -> str:
+        return self.root.name
+
+    @property
+    def deck_folders(self) -> tuple[Path, Path]:
+        """Where decks live: the active ones, then the archived ones."""
+        return self.decks_dir, self.archive_dir
+
+
+def from_environment() -> ProjectContext:
+    """The project a command line works on: $SLIDEMASTER_PROJECT, else the one found
+    upward from the working directory, else the last opened (else the working directory)."""
+    return ProjectContext.at(discover() or Path.cwd())
+
+
 def relaunch_with_project(root: Path) -> None:
     """Start a fresh SlideMage process pointed at `root` and return --
     never quits the current one itself, since a GUI action needs to
     finish its own event handling first (Qt closes windows/quits the
     QApplication in its caller, after this returns).
 
-    Switching projects can't just mutate the running process's own state:
-    deck_scan.PROJECT_ROOT and every directory constant derived from it at
-    import time across this whole package (compiler.BUILD_DIR/PDF_DIR,
-    slide_source.SLIDES_DIR, alt_images.STORE_PATH, app_settings.STORE_PATH,
-    ...) are fixed once, at the first `from . import deck_scan` anywhere
-    in the process -- there is no single place left to change them all
-    after the fact. A new process re-derives every one of them fresh from
-    this one new root, the same as if the user had launched SlideMage
-    pointed at `root` from the start.
+    Switching projects restarts instead of changing the running process: windows,
+    caches and background jobs all hold the ProjectContext they were built with. A new process
+    starts exactly as if the user had launched SlideMage pointed at `root`.
 
     Frozen (PyInstaller): sys.executable *is* the SlideMage binary itself,
     so it's relaunched directly. Unfrozen: sys.executable is the Python
@@ -434,54 +535,3 @@ def relaunch_with_project(root: Path) -> None:
         else [sys.executable, "-m", "slidemage", "--project", str(root)]
     )
     subprocess.Popen(argv, env=env)
-
-
-def pick_or_create_project(parent, start_dir: Path) -> Path | None:
-    """Shared folder-picker loop for cli.py's first-run fallback (no
-    window exists yet, parent=None) and qt_gui.py's "Open Project…"
-    (parent=the main window) -- one implementation so the two don't drift
-    apart, and so the "not a project yet" case offers to create one
-    (init_project() above) instead of only ever rejecting the folder and
-    making the user pick a different, already-existing project."""
-    from PySide6.QtWidgets import QFileDialog, QMessageBox
-
-    start = str(start_dir)
-    while True:
-        chosen = QFileDialog.getExistingDirectory(
-            parent, f"Open a Slidemaster project (folder containing {MARKER})", start
-        )
-        if not chosen:
-            return None
-        path = Path(chosen)
-        if is_project(path):
-            return path.resolve()
-        with_example = has_example_template()
-        detail = (
-            "Create a new project here, seeded with the demo content "
-            "(Gotham theme, sample slides, a deck-version example) so "
-            "there's something to compile and learn from right away?"
-            if with_example else
-            "Create a new, empty project here?"
-        )
-        box = QMessageBox(parent)
-        box.setWindowTitle("Not a Slidemaster project")
-        box.setText(f"{path} has no {MARKER} yet.")
-        box.setInformativeText(detail)
-        create_button = box.addButton("Create", QMessageBox.ButtonRole.AcceptRole)
-        pick_again_button = box.addButton(
-            "Pick a different folder", QMessageBox.ButtonRole.RejectRole)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(pick_again_button)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is create_button:
-            try:
-                init_project(path, copy_example=with_example)
-            except ProjectCreationError as exc:
-                QMessageBox.warning(parent, "Cannot create project", str(exc))
-                start = chosen
-                continue
-            return path.resolve()
-        if clicked is not pick_again_button:
-            return None  # Cancel
-        start = chosen

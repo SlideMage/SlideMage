@@ -13,7 +13,7 @@ calls generate_appendix_tex() and appends the result right before
 """
 from __future__ import annotations
 
-from . import deck_editor, slide_snapshot
+from . import deck_editor, project, slide_snapshot
 from .deck_editor import SlideCall
 from .deck_scan import Deck
 
@@ -60,20 +60,6 @@ _GEOMETRY_TEX = r"""
 """.strip()
 
 
-def _visible_for_version(call: SlideCall, version: str) -> bool:
-    """Whether `call` renders on a compile of deck version `version`
-    ("instructor", "during-course" or "after-course"; a version-less or
-    presenter job counts as "instructor"). \\conditionalslide and \\slidestep
-    are the macros whose visibility depends on the deck version; every other
-    macro (\\slide, \\slidefinal, \\slideversion, \\omitslide,
-    \\omitslideversion) always renders -- \\omitslide{}/\\omitslideversion{}
-    only skip under \\ifSMStudentVersion, which no real deck in this project
-    currently ever sets true."""
-    if call.macro in ("conditionalslide", "slidestep"):
-        return version in (call.conditions or [])
-    return True
-
-
 def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, list[SlideCall]]]:
     """(order, title, calls) per appendix entry, in agenda order -- a
     leading "Front matter" entry (order 0) for slides before the first
@@ -87,7 +73,7 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
     for c in deck_editor.parse_slide_calls(deck):
         if deck_editor.is_commented_out(deck.text, c):
             continue
-        if not _visible_for_version(c, version):
+        if not c.included_in(version):
             continue
         if deck_editor.is_commented_out(deck.text, c):
             # A disabled "% \slide{abc-EN-Old}" is not a real slide in
@@ -115,8 +101,8 @@ def _chunks(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-def _thumb_cell(call: SlideCall, template: str) -> str:
-    png = slide_snapshot.snapshot_path(call.id, template, slide_snapshot.THUMB_SIZE)
+def _thumb_cell(ctx: project.ProjectContext, call: SlideCall, template: str) -> str:
+    png = slide_snapshot.snapshot_path(ctx, call.id, template, slide_snapshot.THUMB_SIZE)
     if png.is_file():
         inner = f"\\includegraphics[width=\\SMAppendixThumbW]{{{png.as_posix()}}}"
     else:
@@ -134,13 +120,13 @@ def _thumb_cell(call: SlideCall, template: str) -> str:
     return f"\\hyperlink{{{call.id}}}{{{inner}}}"
 
 
-def _grid_slide(title: str, page_calls: list[SlideCall], template: str, hypertarget: str | None) -> str:
+def _grid_slide(ctx: project.ProjectContext, title: str, page_calls: list[SlideCall], template: str, hypertarget: str | None) -> str:
     rows_tex = []
     for r in range(GRID_ROWS):
         cells = []
         for c in range(GRID_COLS):
             idx = r * GRID_COLS + c
-            cells.append(_thumb_cell(page_calls[idx], template) if idx < len(page_calls) else "")
+            cells.append(_thumb_cell(ctx, page_calls[idx], template) if idx < len(page_calls) else "")
         rows_tex.append(" & ".join(cells) + " \\\\[0.5pt]")
     colspec = "c" * GRID_COLS
     table = (
@@ -185,7 +171,7 @@ def _agenda_slide(sections: list[tuple[int, str, list[SlideCall]]]) -> str:
     )
 
 
-def generate_appendix_tex(deck: Deck, template: str, version: str = "instructor") -> str:
+def generate_appendix_tex(ctx: project.ProjectContext, deck: Deck, template: str, version: str = "instructor") -> str:
     """The full appendix block: \\appendix, the agenda slide, then each
     section's thumbnail grid (paginated at GRID_ROWS*GRID_COLS per page),
     for the slides the deck shows in `version` ("instructor", "during-course"
@@ -216,5 +202,5 @@ def generate_appendix_tex(deck: Deck, template: str, version: str = "instructor"
         for i, page_calls in enumerate(pages):
             page_title = title if total == 1 else f"{title} ({i + 1}/{total})"
             hypertarget = f"SMAppendixCh{order}" if i == 0 else None
-            parts.append(_grid_slide(page_title, page_calls, template, hypertarget))
+            parts.append(_grid_slide(ctx, page_title, page_calls, template, hypertarget))
     return "\n".join(parts)

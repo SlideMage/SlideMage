@@ -16,11 +16,15 @@ dependencies = [
     "lxml",
     "python-pptx",
     "odfpy",
+    "anthropic>=1.13.0",
+    "ptyprocess>=0.7.0 ; sys_platform != 'win32'",
+    "pywinpty>=3.0.5 ; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
 build = ["pyinstaller"]
+keyring = ["keyring"]
 
 [project.gui-scripts]
 slidemage = "slidemage.cli:main"
@@ -43,6 +47,5 @@ target-version = "py311"
 src = ["src"]
 
 [tool.ruff.lint]
-# Only fatal classes for now (syntax errors, undefined names); widen once the
-# existing code has been cleaned up.
-select = ["E9", "F63", "F7", "F82"]
+# Fatal errors plus unused imports, redefinitions, and local variables.
+select = ["E9", "F63", "F7", "F82", "F401", "F811", "F841"]

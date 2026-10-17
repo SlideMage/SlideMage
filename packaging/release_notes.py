@@ -1,5 +1,5 @@
 """Print a release's notes for the GitHub release (release.yml), built from
-the history entries in src/slidemage/version.py of every version since the
+the history entries in src/slidemage/CHANGELOG.md of every version since the
 previous release, and refuse a release whose notes would be incomplete.
 
     python packaging/release_notes.py v4.1.0 > release_notes.md
@@ -18,7 +18,7 @@ plain user terms -- and the notes are
     ## Full changelog
     https://github.com/<repo>/compare/<previous>...<tag>
 
-The long technical text of an entry stays in version.py (Info -> Version
+The long technical text of an entry stays in CHANGELOG.md (Info -> Version
 history). Entries up to NEWS_REQUIRED_AFTER predate the NEW: paragraph; a
 release made only of those prints their full text as before.
 
@@ -39,7 +39,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from slidemage import updater, version  # noqa: E402
 
 BREAKING_PREFIX = updater.BREAKING_PREFIX
-NEWS_REQUIRED_AFTER = "v5.35.3"
+# v8.3.0 (direct decision): versions up to and including v8.2.1 are exempt;
+# the 6.x-8.x entries were written without a NEW: paragraph.
+NEWS_REQUIRED_AFTER = "v8.2.1"
 
 
 def previous_tag(tag: str) -> str | None:
@@ -88,7 +90,7 @@ def check(tag: str, previous: str | None, paragraphs: list[str]) -> list[str]:
     if new is not None and old is not None and new[0] > old[0] and not marked:
         return [
             f"{tag} raises the major version (previous release {previous}) but its "
-            f"history entry in version.py has no paragraph starting {BREAKING_PREFIX!r}. "
+            f"history entry in CHANGELOG.md has no paragraph starting {BREAKING_PREFIX!r}. "
             "Say what breaks with the past and what users need to do."
         ]
     return []
@@ -146,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
 
     if notes_for(args.tag) is None:
-        print(f"error: version.py has no history entry for {args.tag}", file=sys.stderr)
+        print(f"error: CHANGELOG.md has no history entry for {args.tag}", file=sys.stderr)
         return 1
     previous = args.previous or previous_tag(args.tag)
     entries = history_since(args.tag, previous)

@@ -1,0 +1,1221 @@
+"""The main window: top bar (deck switcher, view, language, Compile, Images, the
+⋮ menu), the hosted pages and where the old deck table's and menu bar's
+actions went."""
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtGui import QKeySequence, QShortcut, QTextLayout
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QInputDialog, QMessageBox, QWidget
+
+from slidemage import app_settings
+from slidemage.compiler import CompileJob, order_jobs
+from slidemage.deck_scan import Chapter, Deck
+from slidemage.ui import layout_settings
+from slidemage.ui.kit.fonts import load_fonts
+from slidemage.ui.kit.widgets import PopoverMenu
+from slidemage.ui.workspace import compile_actions, deck_actions, maintenance, side_panels, slide_list, window as window_module
+from slidemage.ui.workspace.actions import VIEW_AND_BUILD
+from slidemage.ui.workspace.menus import (
+    build_compile_menu,
+    build_deck_menu,
+    build_more_menu,
+    deck_key,
+)
+from slidemage.ui.workspace.palette import command_entries
+
+from conftest import EXAMPLE_PROJECT, build_window, command_context, qapp as qapp
+from slidemage.project import ProjectContext
+
+
+def make_deck(name, tags=(), *, archived=False, versions=True, chapters=()):
+    return Deck(
+        name=name, path=Path(f"decks/{'archive/' if archived else ''}{name}.tex"), archived=archived,
+        text="", supports_version=versions, uses_biblatex=False, preamble_end=0,
+        chapters=list(chapters), output_folders={}, tags=list(tags))
+
+
+CHAPTER = Chapter(order=1, title="One", slug="One", start=0, end=0)
+COURSE = make_deck("course", ["course"], chapters=[CHAPTER])
+WORK = make_deck("#workdeck", ["work"], versions=False)
+MANUAL = make_deck("slidemage-manual", ["manual"])
+TEST = make_deck("test-all", ["test"])
+OLD = make_deck("old-course", ["course"], archived=True)
+
+
+@pytest.fixture
+def window(qapp, monkeypatch):
+    """A window over a fixed set of decks, without building deck editors."""
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK, COURSE, MANUAL, TEST, OLD])
+    return build_window(monkeypatch)
+
+
+@pytest.fixture
+def topbar(window, qapp):
+    """Use the window's bar at exact widths, independent of the columns' minimums."""
+    assert load_fonts()
+    bar = window.topbar
+    bar.setParent(None)
+    bar.resize(1700, 63)
+    bar.show()
+    qapp.processEvents()
+    yield bar
+    bar.setParent(window.centralWidget())
+
+
+def entries(menu):
+    """(key, text, enabled) of a menu's items, and its headers as ("", text, True)."""
+    return [(e[1], e[2], e[6]) if e[0] == "item" else ("", e[1], True)
+            for e in menu._entries if e[0] in ("item", "header")]
+
+
+def items(menu):
+    return {key: enabled for key, _text, enabled in entries(menu) if key}
+
+
+# -- the deck switcher ---------------------------------------------------------
+
+def test_deck_switcher_groups_decks_and_lists_archived_ones_in_its_footer(qapp):
+    menu = build_deck_menu(None, [OLD, TEST, MANUAL, COURSE, WORK], COURSE)
+    assert entries(menu) == [
+        (deck_key(WORK), "#workdeck", True),                        # the work deck stands alone
+        ("", "Course decks", True), (deck_key(COURSE), "course", True),
+        ("", "SlideMage manual", True), (deck_key(MANUAL), "slidemage-manual", True),
+        ("", "Test decks", True), (deck_key(TEST), "test-all", True),
+        ("", "Archived decks (1)", True), (deck_key(OLD), "old-course", True),
+    ]
+    assert menu._entries[2][4] == "check"                          # the open deck is ticked
+    menu = build_deck_menu(None, [WORK], WORK)
+    assert [text for _key, text, _on in entries(menu)] == ["#workdeck"]
+
+
+def test_window_opens_the_first_active_deck_then_the_one_left_open(window, monkeypatch):
+    assert window.state.deck is WORK                                # first active deck
+    window.topbar._on_deck_picked(deck_key(MANUAL))
+    assert app_settings.get(EXAMPLE_PROJECT, window_module.LAST_DECK_KEY) == "slidemage-manual"
+    again = build_window(monkeypatch)
+    assert again.state.deck.name == "slidemage-manual"
+
+
+def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
+    window.topbar._on_deck_picked(deck_key(TEST))
+    assert window.state.deck is TEST
+    assert window.topbar._deck_button.text() == "test-all"
+    assert "test deck" in window.centre.preview._page.message       # it has no slide list
+    assert window.stack.currentWidget() is window.centre
+
+
+def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, monkeypatch):
+    decks = [WORK, COURSE]
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: decks)
+    window = build_window(monkeypatch)
+    assert window.slide_list.deck is WORK
+    assert window.stack.currentWidget() is window.centre
+    assert "Double-click" in window.centre.preview._page.message
+    window.state.set_deck(COURSE)
+    assert window.slide_list.deck is COURSE
+    decks[:] = [WORK]                                               # course archived or removed
+    window.reload_decks()
+    assert window.slide_list.deck is WORK
+
+
+def test_reload_follows_an_archived_deck_and_falls_back_when_it_is_gone(window, monkeypatch):
+    window.state.set_deck(COURSE)
+    archived = make_deck("course", ["course"], archived=True)
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK, archived])
+    window.reload_decks()
+    assert window.state.deck is archived
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK])
+    window.reload_decks()
+    assert window.state.deck is WORK
+
+
+def test_a_project_without_decks_shows_a_placeholder_and_offers_the_manual_where_it_can_be_added(qapp, monkeypatch):
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [])
+    window = build_window(monkeypatch)
+    assert window.state.deck is None
+    assert "no decks" in window.centre.preview._page.message
+    assert window.topbar._deck_button.text() == "No deck"
+    assert not window.topbar._compile.isEnabled()
+    assert window.body.currentWidget() is window.no_decks
+    added = []
+    monkeypatch.setattr(maintenance, "can_add_manual", lambda _window: True)
+    monkeypatch.setattr(maintenance, "on_add_manual", lambda _window: added.append(1))
+    window.no_decks.refresh()
+    assert window.no_decks.manual.isEnabled()
+    window.no_decks.manual.clicked.emit()
+    assert added == [1]
+    monkeypatch.setattr(maintenance, "can_add_manual", lambda _window: False)
+    window.no_decks.refresh()
+    assert not window.no_decks.manual.isEnabled()
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK])
+    window.reload_decks()
+    assert window.body.currentWidget() is not window.no_decks    # decks again: the workspace is back
+
+
+# -- view, language, compile label ----------------------------------------------
+
+@pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
+def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window, qapp, theme):
+    bar = topbar
+    window.state.set_deck(MANUAL)
+    if theme is not None:
+        window.theme.dark = theme
+        bar.setStyleSheet(window.theme._build_qss())
+    window.state.set_ai_route("cloud")
+    for width, density in ((2000, "full"), (1400, "narrow"), (1200, "tight"), (1024, "tiny"), (2000, "full")):
+        bar.resize(width, bar.height())
+        qapp.processEvents()
+        assert bar.width() == width and bar._density == density
+        assert bar.minimumSizeHint().width() <= width
+        short = density != "full"
+        assert bar._view_as.isHidden() == short
+        assert bar._images.isHidden()            # only while the Images page is open
+        assert bar._save.text() == ("●" if density == "tiny" else "Saved")
+        assert bar._compile.text() == ("Compile" if short else "Compile PDF · Instructor")
+        assert bar._deck_button.text() == MANUAL.name
+        assert [button.text() for button in bar._views._buttons.values()] == (
+            ["Instr.", "During", "After"] if short else ["Instructor", "During course", "After course"])
+        assert [button.text() for button in bar._modes._buttons.values()] == (
+            ["Prev.", "Split", "Src.", "Info"] if short else ["Preview", "Split", "Source", "Details"])
+        # The AI switch is the last to shrink: it loses the name of its connection below 1320 px, and its labels
+        # in the narrowest window.
+        assert bar.ai_switch.state_label.text() == ("" if density in ("tight", "tiny") else "Claude Code")
+        assert [b.text() for b in bar.ai_switch.segments._buttons.values()] == (
+            ["", ""] if density == "tiny" else ["Local", "Cloud"])
+        for control in (bar.ai_switch, bar._views, bar._languages, bar._modes, bar._compile):
+            assert control.width() >= control.minimumSizeHint().width()
+        for control in (bar._left_column, bar.ai_switch, bar._views, bar._languages, bar._modes, bar._compile,
+                        bar._right_column):
+            assert bar.rect().contains(control.geometry())
+        assert bar._left_column.width() == bar._right_column.width() == 30
+
+
+def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, qapp, monkeypatch):
+    bar = topbar
+    name = "An exceptionally long course deck name " * 10
+    window.state.set_deck(make_deck(name))
+    bar.resize(1024, bar.height())
+    window.state.set_dirty(True)
+    qapp.processEvents()
+    assert bar._density == "tiny" and bar.minimumSizeHint().width() <= 1024
+    assert bar._deck_button.width() <= 170 and bar._deck_button.text().endswith("…")
+    assert bar._deck_button.toolTip() == name
+    assert bar._views.toolTip() == "View as"
+    assert [button.toolTip() for button in bar._views._buttons.values()] == [
+        "Instructor", "During course", "After course"]
+    assert [button.toolTip() for button in bar._modes._buttons.values()] == ["Preview", "Split", "Source", "Details"]
+    assert bar._save.text() == "●" and bar._save.toolTip() == "Unsaved changes"
+    window.state.set_dirty(False)
+    assert bar._save.text() == "●" and bar._save.toolTip() == "Saved"
+    assert bar._compile.toolTip() == "Compile PDF · Instructor"
+    assert ("compile:instructor", "Compile PDF · Instructor", True) in entries(bar._compile_menu)
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    bar._more.click()
+    menu = bar.findChildren(PopoverMenu)[-1]
+    assert ("images", "Image descriptions", True) in entries(menu)      # Images is in ⋮ → Project at every width
+    menu._on_activated("images")
+    assert window.stack.currentWidget() is window.images_page and not bar._images.isHidden()
+    bar._images.click()
+    assert window.stack.currentWidget() is window.centre and bar._images.isHidden()
+    bar.resize(2000, bar.height())
+    qapp.processEvents()
+    assert bar._density == "full"
+    assert bar._deck_button.width() <= 170 and bar._deck_button.toolTip() == name
+
+
+def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, window, qapp, monkeypatch):
+    bar = topbar
+    window.state.set_deck(COURSE)
+    buttons = {key: button for key, button in bar._modes._buttons.items()}
+    window.state.set_lint_errors(120)
+    bar.resize(1024, bar.height())
+    qapp.processEvents()
+    badge = bar._modes._badges["source"]
+    assert badge.isVisible() and badge.text() == "99+"
+    assert badge.geometry().right() < buttons["source"].width()
+    assert bar.minimumSizeHint().width() <= 1024
+    bar._views._buttons["during-course"].click()
+    bar._languages._buttons["DE"].click()
+    buttons["source"].click()
+    assert (window.state.view, window.state.language, window.state.mode) == ("during-course", "DE", "source")
+    assert bar._compile.toolTip() == "Compile PDF · During course"
+    jobs = compiled(window, monkeypatch)
+    bar._compile._main.click()
+    assert describe(jobs[0][0])[:2] == ("course", "during-course")
+    window.state.set_view("after-course")
+    window.state.set_language("EN")
+    window.state.set_mode("details")
+    assert (bar._views.current(), bar._languages.current(), bar._modes.current()) == ("after-course", "EN", "details")
+    bar.resize(1700, bar.height())
+    qapp.processEvents()
+    assert bar._density == "full" and bar._compile.text() == "Compile PDF · After"
+    assert bar._modes._buttons == buttons
+    assert badge.isVisible() and badge.geometry().right() < buttons["source"].width()
+    window.state.set_lint_errors(0)
+    assert badge.isHidden()
+
+
+def test_top_bar_rechecks_density_when_content_changes(topbar, window):
+    bar = topbar
+    bar.resize(1800, bar.height())
+    window.state.set_deck(make_deck("W" * 24))
+    assert bar.width() == 1800 and bar._density == "full"
+    window.state.set_dirty(True)
+    assert bar._density == "narrow" and bar.minimumSizeHint().width() <= bar.width()
+    window.state.set_dirty(False)
+    assert bar._density == "full"
+    window.state.set_deck(make_deck("W" * 100))
+    assert bar._density == "full"       # a long name is elided at 170 px and cannot make the bar wider
+    window.state.set_deck(COURSE)
+    assert bar._density == "full"
+
+
+def test_top_bar_allows_the_window_to_shrink_after_full_density(window, qapp):
+    assert load_fonts()
+    bar = window.topbar
+    window.resize(1700, 800)
+    window.show()
+    qapp.processEvents()
+    assert bar._density == "full"
+    window.resize(1100, 800)
+    qapp.processEvents()
+    # A full-density minimum must not stop the parent delivering the smaller width.
+    assert window.width() == 1100
+    assert bar.width() == 1100 and bar._density == "tiny"
+    window.resize(1700, 800)
+    qapp.processEvents()
+    assert bar.width() == 1700 and bar._density == "full"
+
+
+def test_view_and_language_controls_drive_the_state_and_follow_it(window):
+    bar = window.topbar
+    window.state.set_deck(COURSE)
+    bar._views._buttons["during-course"].click()
+    bar._languages._buttons["DE"].click()
+    assert (window.state.view, window.state.language) == ("during-course", "DE")
+    window.state.set_view("after-course")                           # e.g. restored for another deck
+    window.state.set_language("EN")
+    assert bar._views.current() == "after-course" and bar._languages.current() == "EN"
+
+
+def test_the_view_comes_back_with_the_deck(window):
+    window.state.set_deck(COURSE)
+    window.state.set_view("after-course")
+    window.state.set_deck(MANUAL)
+    assert window.topbar._views.current() == "instructor"
+    window.state.set_deck(COURSE)
+    assert window.topbar._views.current() == "after-course"
+    assert window.topbar._compile.text() == "Compile PDF · After"
+
+
+# -- compile -------------------------------------------------------------------
+
+def compiled(window, monkeypatch):
+    jobs: list = []
+    monkeypatch.setattr(compile_actions, "compile_jobs", lambda _window, batch: jobs.append(batch))
+    return jobs
+
+
+def describe(job: CompileJob):
+    return (job.deck.name, job.version, job.chapter.order if job.chapter else None,
+            job.presenter, job.pages)
+
+
+def test_compile_button_compiles_the_current_view_of_the_current_deck(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    window.state.set_deck(COURSE)
+    window.topbar._compile._main.click()
+    window.state.set_view("after-course")
+    window.topbar._compile._main.click()
+    window.state.set_deck(WORK)                                     # no versions: one plain job
+    window.topbar._compile._main.click()
+    assert [[describe(j) for j in batch] for batch in jobs] == [
+        [("course", "instructor", None, False, None)],
+        [("course", "after-course", None, False, None)],
+        [("#workdeck", None, None, False, None)],
+    ]
+
+
+def test_compile_menu_entries_compile_the_other_pdfs(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    window.state.set_deck(COURSE)
+    for key in ("compile:during-course", "compile:chapters", "compile:presenter"):
+        window.topbar.command.emit(key)
+    assert [[describe(j) for j in batch] for batch in jobs] == [
+        [("course", "during-course", None, False, None)],
+        [("course", "after-course", 1, False, None)],
+        [("course", "instructor", None, True, None)],
+    ]
+
+
+def test_selected_pages_compile_the_current_view(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    window.state.set_deck(COURSE)
+    window.state.set_view("during-course")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("4, 7-9", True))
+    window.topbar.command.emit("compile:pages")
+    assert [describe(j) for j in jobs[0]] == [("course", "during-course", None, False, [4, 7, 8, 9])]
+    told: list = []
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("4, x", True))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a: told.append(a[2]))
+    window.topbar.command.emit("compile:pages")
+    assert len(jobs) == 1 and told                                    # refused with a message
+
+
+def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
+    full = items(build_compile_menu(None, command_context(COURSE)))
+    assert list(full) == [
+        "compile:instructor", "compile:during-course", "compile:after-course", "compile:all",
+        "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
+        "compile:everything", "transcript:during-course", "transcript:after-course", "stop", "build_options"]
+    assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
+    assert items(build_compile_menu(None, command_context(COURSE, selected=('aaa', 'bbb'))))["compile:slides"]
+    plain = items(build_compile_menu(None, command_context(make_deck("plain", versions=False))))
+    assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters", "compile:presenter",
+                           "compile:slides", "compile:pages", "compile:several", "compile:everything",
+                           "stop", "build_options"]
+    assert not plain["compile:chapters"]                              # no \section chapters
+    assert items(build_compile_menu(None, command_context(COURSE, compiling=True)))["stop"]
+
+
+def test_transcript_entries_write_the_current_decks_transcript(window, monkeypatch):
+    window.state.set_deck(COURSE)
+    made: list = []
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript", lambda _window, deck, version: made.append((deck, version)))
+    window.topbar.command.emit("transcript:after-course")
+    assert made == [(COURSE, "after-course")]
+
+
+def test_log_lines_keep_working_after_the_decks_are_reloaded(window):
+    window.reload_decks()
+    for line in ("==== Compiling a -> a ====", "==== PASS: a -> pdf ====", "==== Done: 1 passed ===="):
+        window.log(line)
+    assert window.compile_display.drawer.text.toPlainText().splitlines()[-1] == "==== Done: 1 passed ===="
+
+
+# -- Images and the pages ----------------------------------------------------------
+
+def test_centre_stack_size_hints_follow_the_shown_page(window, monkeypatch, qapp):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.state.set_mode("preview")
+    window.show()
+    qapp.processEvents()
+    assert window.centre.minimumSizeHint().width() <= 400
+    assert window.images_page.minimumSizeHint().width() <= 700
+    assert window.images_page.minimumSizeHint().width() > window.centre.minimumSizeHint().width()
+    for page in (window.centre, window.images_page, window.centre):
+        window.stack.setCurrentWidget(page)
+        qapp.processEvents()
+        assert window.stack.minimumSizeHint() == page.minimumSizeHint()
+        assert window.stack.sizeHint() == page.sizeHint()
+
+
+def test_images_button_toggles_the_images_page(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.state.set_mode("source")
+    window.show()
+    bar = window.topbar
+    assert window.slide_list.isVisible() and window.side_panels.isVisible()
+    assert bar._images.isHidden()            # Images is a command (⋮ → Project, ⌘K); the button only closes it
+    window.commands.run("images", window)
+    assert window.stack.currentWidget() is window.images_page and bar._images.text() == "Close images"
+    assert bar._images.property("kind") == "primary" and not bar._images.isHidden()
+    assert not window.slide_list.isVisible() and not window.side_panels.isVisible()
+    bar._images.click()
+    assert window.stack.currentWidget() is window.centre and bar._images.isHidden()
+    assert window.slide_list.isVisible() and window.side_panels.isVisible()
+    window._toggle_images()
+    window.images_page.closed.emit()
+    assert window.stack.currentWidget() is window.centre
+    assert window.slide_list.isVisible() and window.side_panels.isVisible()
+    window._toggle_images()
+    bar._modes.changed.emit(window.state.mode)  # clicking the mode that is already set also leaves Images
+    assert window.stack.currentWidget() is window.centre
+
+
+def test_a_slide_editor_opens_in_the_centre_and_only_edits_that_cannot_be_saved_show_in_the_top_bar(
+        window, tmp_path, monkeypatch):
+    redraws = []
+    monkeypatch.setattr(window.slide_list, "rebuild", lambda: redraws.append(True))
+    path = tmp_path / "abc-EN-Test-current.tex"
+    path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
+    window.open_slide_editor(path)
+    file = window.centre.source.current
+    assert window.stack.currentWidget() is window.centre and window.state.mode == "source"
+    assert file.path == path and window.topbar._save.text() == "Saved"
+    window._after_write.setInterval(20)
+    file.editor.insertPlainText("x")
+    assert window.topbar._save.text() == "Saved" and not window.state.dirty    # an autosave is pending
+    assert file.write_now() and redraws == []                     # no rebuild per write while typing
+    QTest.qWait(200)
+    assert len(redraws) == 1                                      # one, after a pause
+    path.write_text("someone else's\n", encoding="utf-8")
+    file.editor.insertPlainText("y")
+    assert not file.write_now()                                   # in conflict: cannot be saved
+    assert window.topbar._save.text() == "Unsaved changes" and window.state.dirty
+
+
+def test_an_autosave_renders_the_preview_only_with_the_live_render_setting(window, monkeypatch):
+    from slidemage import app_settings
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+
+    slide = next(iter(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex")))
+    renders = []
+    monkeypatch.setattr(window.centre.preview, "render_after_save", lambda: renders.append(True))
+    window.state.set_mode("split")
+    monkeypatch.setattr(window.centre.preview, "_target", type("T", (), {"source_path": slide})())
+    window._live_render(slide)
+    assert renders == []                                          # off by default
+    monkeypatch.setattr(app_settings, "get", lambda ctx, key, default=None: key == LIVE_RENDER_SETTING_KEY or default)
+    window._live_render(slide)
+    assert renders == [True]
+    window.state.set_mode("source")
+    window._live_render(slide)
+    assert renders == [True]                                      # the Source view alone has no page to render
+
+
+def test_opening_a_slide_focuses_it(window):
+
+    slide = next(iter(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex")))
+    window.open_slide_editor(slide)
+    assert window.state.focused_slide == slide.name.split("-", 1)[0]
+
+
+# -- the slide list in the window ----------------------------------------------------
+
+def test_an_edit_rescans_and_the_slide_list_keeps_what_it_takes_to_undo_it(window, monkeypatch):
+    rescans = []
+    monkeypatch.setattr(window, "_regenerate_headers_bg", lambda: None)
+    monkeypatch.setattr(window, "resync_deck", rescans.append)
+    window.after_deck_edit(WORK.path, "Removed x", previous_text="the text before")
+    assert rescans == [WORK.path]
+    assert window.slide_list._undo[WORK.path] == ["the text before"]
+    assert not window.slide_list.toast.isHidden()
+    window.after_deck_edit(WORK.path, "Undid last change")        # an undo has nothing to undo itself
+    assert window.slide_list._undo[WORK.path] == ["the text before"]
+
+
+def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(ctx, window, monkeypatch):
+    seen, warned = [], []
+    monkeypatch.setattr(compile_actions, "compile_current", lambda _window, kind, pages=None: seen.append((kind, pages)))
+    monkeypatch.setattr(window_module.QMessageBox, "warning", lambda *a: warned.append(a[2]))
+    monkeypatch.setattr(window_module.QMessageBox, "information", lambda *a: warned.append(a[2]))
+    asked = []
+    from slidemage import partial_compile
+    monkeypatch.setattr(partial_compile, "frames_for_slides",
+                        lambda ctx, job, ids: asked.append(ids) or [4, 7])
+    window.state.set_view("during-course")
+    compile_actions.compile_slides(window, ["1ab", "1cd"])
+    assert asked == [["1ab", "1cd"]] and seen == [("during-course", [4, 7])]
+    monkeypatch.setattr(partial_compile, "frames_for_slides", lambda ctx, job, ids: [])
+    compile_actions.compile_slides(window, ["1ab"])
+    assert "None of these slides" in warned[-1] and len(seen) == 1
+    def refuse(ctx, job, ids):
+        raise partial_compile.PartialError("compile the whole deck once")
+    monkeypatch.setattr(partial_compile, "frames_for_slides", refuse)
+    compile_actions.compile_slides(window, ["1ab"])
+    assert warned[-1] == "compile the whole deck once" and len(seen) == 1
+
+
+# -- the ⋮ menu: nothing of the old deck table and menu bar is lost --------------------
+
+def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
+    window.state.set_deck(COURSE)
+    seen: list = []
+    monkeypatch.setattr(deck_actions, "on_duplicate_deck", lambda _window, deck: seen.append(deck))
+    window.topbar.command.emit("duplicate_deck")
+    assert seen == [COURSE]
+
+
+@pytest.mark.parametrize("deck, disabled", [
+    (COURSE, []),
+    (MANUAL, ["deck_settings", "deck_tags"]),              # the manual keeps its settings and group
+    (OLD, ["deck_source", "deck_tags", "duplicate_deck", "export_pptx", "archive_deck"]),
+    (None, ["deck_settings", "deck_source", "deck_tags", "duplicate_deck", "export_pptx",
+            "archive_deck"]),
+])
+def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, deck, disabled):
+    enabled = items(build_more_menu(None, command_context(deck)))
+    deck_keys = ["deck_settings", "deck_source", "deck_tags", "duplicate_deck",
+                 "export_pptx", "archive_deck"]
+    assert [key for key in deck_keys if not enabled[key]] == disabled
+
+
+def test_the_more_button_opens_the_menu_and_forwards_the_choice(window):
+    seen: list = []
+    window.topbar.command.connect(seen.append)
+    window.topbar._more.click()
+    menu = window.topbar.findChildren(PopoverMenu)[-1]
+    assert menu.isVisible()
+    menu._on_activated("edit_bib")
+    assert seen == ["edit_bib"] and not menu.isVisible()
+
+
+def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    window.state.set_deck(COURSE)
+    window.topbar.command.emit("compile:all")
+    window.state.set_deck(WORK)
+    window.topbar.command.emit("compile:all")
+    assert [[describe(j)[:2] for j in batch] for batch in jobs] == [
+        [("course", "instructor"), ("course", "during-course"), ("course", "after-course")],
+        [("#workdeck", None)],
+    ]
+
+
+def open_several(window, monkeypatch, ticks=(), *, accept=True, select_all=False, clear=False):
+    """Runs Compile -> Several decks… with `ticks` ((deck name, kind) pairs) ticked."""
+    seen: dict = {}
+
+    def fake_exec(sheet):
+        seen["sheet"] = sheet
+        if select_all:
+            sheet._set_all(True)
+        if clear:
+            sheet._set_all(False)
+        for key in ticks:
+            sheet.boxes[key].setChecked(True)
+        return accept
+
+    monkeypatch.setattr(compile_actions.MultiCompileSheet, "exec", fake_exec)
+    window.topbar.command.emit("compile:several")
+    return seen["sheet"]
+
+
+def test_several_decks_queue_all_ticked_pdfs_in_the_usual_order(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    open_several(window, monkeypatch, [
+        ("slidemage-manual", "during-course"), ("course", "instructor"), ("#workdeck", "instructor"),
+        ("course", "chapters"), ("course", "presenter")])
+    assert len(jobs) == 1                      # one run for all decks
+    ordered = order_jobs(jobs[0])              # what compile_jobs does: version by version
+    assert [(j.deck.name, j.version, j.presenter, j.chapter is not None) for j in ordered] == [
+        ("course", "instructor", True, False), ("#workdeck", None, False, False),
+        ("course", "instructor", False, False), ("slidemage-manual", "during-course", False, False),
+        ("course", "after-course", False, True)]
+
+
+def test_the_sheet_offers_what_the_old_table_did(window, monkeypatch):
+    sheet = open_several(window, monkeypatch, accept=False)
+    offered = {name: sorted(kind for n, kind in sheet.boxes if n == name)
+               for name in ("course", "#workdeck")}
+    assert "old-course" not in {n for n, _k in sheet.boxes}          # archived decks excluded
+    assert offered["#workdeck"] == ["instructor", "presenter"]       # no versions, no chapters
+    assert "chapters" in offered["course"] and "transcript:after-course" in offered["course"]
+
+
+def test_select_all_and_clear_and_cancel(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript", lambda *a, **k: True)
+    sheet = open_several(window, monkeypatch, select_all=True, clear=True)
+    assert not any(box.isChecked() for box in sheet.boxes.values()) and jobs == []
+    open_several(window, monkeypatch, [("course", "instructor")], accept=False)
+    assert jobs == []                                                 # cancelled
+    sheet = open_several(window, monkeypatch, select_all=True)
+    assert all(box.isChecked() for box in sheet.boxes.values()) and len(jobs[0]) > 4
+
+
+def test_several_decks_write_the_ticked_transcripts_quietly(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    made: list = []
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript",
+                        lambda _window, deck, version, quiet=False: made.append((deck.name, version, quiet)) or True)
+    open_several(window, monkeypatch, [("course", "transcript:after-course"),
+                                       ("slidemage-manual", "transcript:during-course")])
+    assert jobs == []
+    assert made == [("course", "after-course", True), ("slidemage-manual", "during-course", True)]
+
+
+# -- the centre column in the window ---------------------------------------------------
+
+def test_the_mode_switch_of_the_top_bar_drives_the_state_and_follows_it(window):
+    bar = window.topbar
+    assert bar._modes.isEnabled() and bar._modes.current() == "preview"
+    bar._modes._buttons["source"].click()
+    assert window.state.mode == "source" and window.centre.source.isVisibleTo(window.centre)
+    window.state.set_mode("details")
+    assert bar._modes.current() == "details" and window.centre.details.isVisibleTo(window.centre)
+
+
+def test_a_saved_deck_source_goes_through_the_deck_edit_pipeline(window, tmp_path, monkeypatch):
+
+    path = tmp_path / "course.tex"
+    path.write_text("\\begin{document}\n\\end{document}\n", encoding="utf-8")
+    deck = make_deck("course", ["course"])
+    deck.path = path
+    edits = []
+    monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append((args, kwargs)))
+    window.project = ProjectContext.at(tmp_path)
+    window.open_deck_source_editor(deck)
+    window.centre.source.current.editor.insertPlainText("% hand edit\n")
+    assert window.centre.source.save()
+    assert edits == [((path, "Edited course's source directly"),
+                      {"previous_text": "\\begin{document}\n\\end{document}\n"})]
+
+
+def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_path, monkeypatch):
+    from slidemage import bibliography
+
+    bib = tmp_path / "Slidemaster.bib"
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    window.project = ProjectContext.at(tmp_path)
+    sorted_ = []
+    monkeypatch.setattr(bibliography, "sort_entries", lambda path: sorted_.append(True))
+    window._on_edit_bib()
+    assert sorted_ == [True] and window.centre.source.current.path == bib
+    window._on_edit_bib()                                   # already open: nothing to sort under it
+    assert sorted_ == [True]
+    window.centre.source.show_path(None)                    # leaving the clean buffer closes it
+    assert sorted_ == [True, True]
+
+
+def test_leaving_the_images_page_saves_a_pending_edit_and_opening_a_slide_leaves_it(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    flushed = []
+    monkeypatch.setattr(window.images_page, "flush", lambda: flushed.append(True))
+    window._toggle_images()
+    assert flushed == []
+    window._toggle_images()
+    assert flushed == [True]
+    window._toggle_images()
+    window.open_slide_editor(Path(__file__))          # the Source view replaces the page
+    assert window.stack.currentWidget() is window.centre and flushed == [True, True]
+
+
+def test_the_slide_lists_images_entry_lands_on_that_slides_images(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    shown = []
+    monkeypatch.setattr(window.images_page, "show_slide", shown.append)
+    window.open_images_for_slide("1an-EN-Slide-Versions")
+    assert window.stack.currentWidget() is window.images_page and shown == ["1an-EN-Slide-Versions"]
+
+
+def test_closing_asks_about_unsaved_image_edits_and_stops_the_page_s_job(window, monkeypatch):
+    page, saved, stopped = window.images_page, [], []
+    page.dirty = True                                  # what a form with a pending edit sets
+    monkeypatch.setattr(page, "flush", lambda: (saved.append(True), setattr(page, "dirty", False)))
+    monkeypatch.setattr(page, "shutdown", lambda: stopped.append(True))
+    asked = []
+
+    def answer(choice):
+        def question(_parent, _title, text, *_args):
+            asked.append(text)
+            return choice
+        return question
+
+    monkeypatch.setattr(QMessageBox, "question", answer(QMessageBox.StandardButton.Cancel))
+    assert window._resolve_dirty_edits() is False and saved == []
+    assert len(asked) == 1
+    monkeypatch.setattr(QMessageBox, "question", answer(QMessageBox.StandardButton.No))
+    assert window._resolve_dirty_edits() is True and saved == []        # discarded: closing goes on
+    monkeypatch.setattr(QMessageBox, "question", answer(QMessageBox.StandardButton.Yes))
+    assert window._resolve_dirty_edits() is True and saved == [True]
+    window.close()
+    assert stopped == [True]                                           # no worker thread outlives the window
+
+
+def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, monkeypatch):
+    path = tmp_path / "abc-EN-Test-current.tex"
+    path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
+    window.open_slide_editor(path)
+    editor = window.centre.source.current.editor
+    repainted = []
+    monkeypatch.setattr(editor, "refresh_colors", lambda: repainted.append(True))
+    monkeypatch.setattr(window.theme, "set_dark", lambda dark: None)     # no app-wide restyle here
+    window.set_dark_mode(True)
+    assert repainted == [True]
+    before = editor.tabStopDistance()
+    window.set_tab_width_chars(4)
+    assert editor.tabStopDistance() == pytest.approx(before * 2)
+    assert app_settings.get(EXAMPLE_PROJECT, "tab_width_chars") == 4
+
+
+def test_the_build_options_footer_timestamp_is_the_states(window):
+    box = window.build_options.footer_timestamp_checkbox
+    assert not box.isChecked() and not window.state.footer_timestamp
+    box.setChecked(True)
+    assert window.state.footer_timestamp
+
+
+def test_closing_asks_about_a_pending_side_panel_edit_too(window, monkeypatch):
+    saved = []
+    panel = window.side_panels.panels["transcript"]
+    monkeypatch.setattr(panel, "flush", lambda: saved.append(True))
+    panel.set_dirty(True)
+    assert window.state.dirty                  # a panel's pending edit is an unsaved edit of the workspace
+    asked = []
+
+    def answer(_parent, _title, text, *_args):
+        asked.append(text)
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(QMessageBox, "question", answer)
+    assert window._resolve_dirty_edits() is False
+    assert len(asked) == 1 and saved == []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    assert window._resolve_dirty_edits() is True and saved == [True]
+
+
+def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path, monkeypatch):
+    import threading
+
+    from slidemage.ai.providers import OllamaProvider
+    from slidemage.syntax_check import SyntaxCheckResult
+    from slidemage.ui.workspace import ai_fix
+
+    path = tmp_path / "abc-EN-Test-current.tex"
+    path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
+    held, aborted = threading.Event(), threading.Event()
+
+    class Checker:
+        def __init__(self, provider):
+            pass
+
+        def check(self, text):
+            held.wait(10)
+            return SyntaxCheckResult(model="m", error="Aborted.", cancelled=True)
+
+        def abort(self):
+            aborted.set()
+            held.set()
+
+    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["m"])
+    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m", "is_local": True})())
+    monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
+    window.open_slide_editor(path)
+    file = window.centre.source.current
+    file.ask_ai_button.click()
+    worker = file.fix_panel._worker
+    assert worker is not None and worker.isRunning() and window._ollama_task_label == "checking syntax"
+    window.state.set_mode("preview")           # the file is kept only because its check runs
+    window.centre.source.show_path(None)
+    assert file.keep_open
+
+    assert window.close() is True
+    assert aborted.is_set() and worker.isFinished()
+    assert window._ollama_task_label is None and not file.fix_panel.running
+
+
+def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(window, monkeypatch):
+    panels = window.side_panels
+    refreshed = []
+    monkeypatch.setattr(panels, "refresh", lambda: refreshed.append(True))
+    window.reload_decks()                      # a rescan is no state change, so the window tells the panels
+    window._on_dirty_changed(False)            # and a save changes the slide's versions
+    window.centre.versions_changed.emit()
+    assert len(refreshed) == 3
+
+
+def test_the_right_column_is_resizable_and_its_width_is_remembered(qapp, monkeypatch):
+    first = build_window(monkeypatch)
+    first.resize(2400, 800)
+    first.show()
+    first.set_column_widths(right=520)
+    first.splitter.splitterMoved.emit(0, 2)                                 # what a drag of the handle sends
+    assert first.side_panels.width() == 520 and layout_settings.get(side_panels.WIDTH_SETTING) == 520
+    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) is None
+    second = build_window(monkeypatch)
+    second.resize(2400, 800)
+    second.show()
+    assert second.side_panels.width() == 520
+
+
+@pytest.mark.parametrize("width, expected", [(220, 220), (360, 360), (520, 520), (1000, 520)])
+def test_the_left_splitter_handle_resizes_within_limits_at_the_centres_expense(window, width, expected):
+    window.resize(2400, 800)
+    window.show()
+    before = window.splitter.sizes()
+    assert before[0] == slide_list.WIDTH
+    window.splitter.moveSplitter(width, 1)
+    left, centre, right = window.splitter.sizes()
+    assert left == window.slide_list.width() == expected
+    assert right == before[2]
+    assert centre == before[1] + before[0] - left
+
+
+@pytest.mark.parametrize("handle", [1, 2])
+def test_moving_either_handle_saves_both_column_widths_and_restores_them(window, monkeypatch, handle):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    position = window.splitter.handle(handle).x()
+    window.splitter.moveSplitter(position + 40, handle)
+    left, _, right = window.splitter.sizes()
+    assert (left, right) == ((440, 520) if handle == 1 else (400, 480))
+    assert layout_settings.get(slide_list.WIDTH_SETTING) == left
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == right
+    assert app_settings.get(EXAMPLE_PROJECT, slide_list.WIDTH_SETTING) is None
+    second = build_window(monkeypatch)
+    second.resize(2400, 800)
+    second.show()
+    assert (second.slide_list.width(), second.side_panels.width()) == (left, right)
+    second.set_column_widths(right=600)
+    assert second.slide_list.width() == left
+
+
+@pytest.mark.parametrize("handle", [1, 2])
+def test_double_clicking_a_column_handle_resets_only_its_column_and_remembers_it(window, handle):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    QTest.mouseDClick(window.splitter.handle(handle), Qt.MouseButton.LeftButton)
+    expected = (slide_list.WIDTH, 520) if handle == 1 else (400, side_panels.WIDTH)
+    assert (window.slide_list.width(), window.side_panels.width()) == expected
+    assert layout_settings.get(slide_list.WIDTH_SETTING) == expected[0]
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == expected[1]
+
+
+@pytest.mark.parametrize("value, expected", [(None, 280), (100, 220), (400, 400), (1000, 520), ("wide", 280)])
+def test_the_left_column_restores_widths_within_its_limits(window, value, expected):
+    layout_settings.set(slide_list.WIDTH_SETTING, value)
+    window.resize(2400, 800)
+    window.show()
+    assert window.slide_list.width() == expected
+
+
+def test_hidden_columns_keep_their_remembered_widths(window):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, 1)
+    window.stack.setCurrentWidget(window.images_page)
+    window.splitter.splitterMoved.emit(0, 1)
+    assert layout_settings.get(slide_list.WIDTH_SETTING) == 400
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
+
+
+def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
+    app_settings.set(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING, 520)
+    first = build_window(monkeypatch)
+    first.resize(2400, 800)
+    first.show()
+    assert first.side_panels.width() == 520
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
+    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 520
+    app_settings.set(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING, 600)       # a different project's old preference
+    second = build_window(monkeypatch)
+    second.resize(2400, 800)
+    second.show()
+    assert second.side_panels.width() == 520
+    second.set_column_widths(right=580)
+    second.splitter.splitterMoved.emit(0, 2)
+    assert layout_settings.get(side_panels.WIDTH_SETTING) == 580
+    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 600
+
+
+@pytest.mark.parametrize("value, expected", [(None, 360), (200, 360), (1000, 900), ("wide", 360)])
+def test_the_right_column_keeps_its_width_limits(value, expected):
+    layout_settings.set(side_panels.WIDTH_SETTING, value)
+    assert side_panels.remembered_width(EXAMPLE_PROJECT) == expected
+
+
+# -- hiding and showing columns ------------------------------------------------
+
+@pytest.mark.parametrize("side, label, shortcut", [
+    ("left", "slide list", "Ctrl+Alt+["), ("right", "side panel", "Ctrl+Alt+]"),
+])
+@pytest.mark.parametrize("trigger", ["command", "shortcut", "button", "palette"])
+def test_column_toggles_update_visibility_labels_and_buttons(window, qapp, tmp_path, side, label, shortcut, trigger):
+    window.resize(2400, 800)
+    window.show()
+    if trigger == "shortcut":
+        path = tmp_path / "source.tex"
+        path.write_text("Some source\n")
+        window.open_slide_editor(path)
+    qapp.processEvents()
+    window.activateWindow()
+    if trigger == "shortcut":
+        window.centre.source.current.editor.setFocus()
+    qapp.processEvents()
+    column = window.slide_list if side == "left" else window.side_panels
+    button = getattr(window.topbar, f"_{side}_column")
+    command = window.commands[f"column:{side}"]
+    assert command.group == VIEW_AND_BUILD and command.shortcut == shortcut
+    assert button.isChecked() and button.property("active")
+    for hidden in (True, False):
+        if trigger == "command":
+            assert window.commands.run(command.id, window)
+        elif trigger == "shortcut":
+            QTest.keySequence(window.centre.source.current.editor, QKeySequence(shortcut))
+        elif trigger == "button":
+            button.click()
+        else:
+            entry = next(e for e in command_entries(window, [label]) if e.label == command.title(window))
+            entry.run()
+        qapp.processEvents()
+        assert column.isHidden() == hidden
+        assert getattr(window, f"{side}_column_hidden") == hidden
+        assert button.isChecked() == (not hidden)
+        assert button.property("active") == (not hidden)
+        title = f"{'Show' if hidden else 'Hide'} {label}"
+        assert command.title(window) == title
+        assert button.toolTip() == f"{title} ({shortcut})"
+        assert layout_settings.get(f"{side}_column_hidden") == hidden
+        assert app_settings.get(EXAMPLE_PROJECT, f"{side}_column_hidden") is None
+
+
+@pytest.mark.parametrize("left_hidden, right_hidden", [(True, False), (False, True), (True, True), (False, False)])
+def test_column_choices_survive_a_new_window_with_their_widths(window, qapp, monkeypatch, left_hidden, right_hidden):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, 1)
+    for side, hidden in (("left", left_hidden), ("right", right_hidden)):
+        if hidden:
+            window.commands.run(f"column:{side}", window)
+    assert window.close()
+    second = build_window(monkeypatch)
+    assert second.slide_list.isHidden() == left_hidden
+    assert second.side_panels.isHidden() == right_hidden
+    second.resize(2400, 800)
+    second.show()
+    qapp.processEvents()
+    for side, column, width, hidden in (("left", second.slide_list, 400, left_hidden),
+                                        ("right", second.side_panels, 520, right_hidden)):
+        button = getattr(second.topbar, f"_{side}_column")
+        assert column.isHidden() == hidden and button.isChecked() == (not hidden)
+        if hidden:
+            button.click()
+        assert column.isVisible() and column.width() == width
+
+
+@pytest.mark.parametrize("side, handle, width", [("left", 1, 400), ("right", 2, 520)])
+def test_dragging_a_column_closed_remembers_hidden_state_and_restores_its_width(window, qapp, side, handle, width):
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, handle)
+    qapp.processEvents()
+    assert window.splitter.isCollapsible(0) and window.splitter.isCollapsible(2)
+    assert not window.splitter.isCollapsible(1)
+    grip = window.splitter.handle(handle)
+    start = grip.rect().center()
+    end = QPoint(-grip.x(), start.y()) if side == "left" else QPoint(window.splitter.width() - grip.x(), start.y())
+    QTest.mousePress(grip, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(grip, end)
+    QTest.mouseRelease(grip, Qt.MouseButton.LeftButton, pos=end)
+    qapp.processEvents()
+    column = window.slide_list if side == "left" else window.side_panels
+    button = getattr(window.topbar, f"_{side}_column")
+    assert column.isHidden() and not button.isChecked()
+    assert window.splitter.sizes()[0 if side == "left" else 2] == 0
+    assert window.splitter.sizes()[1] > 0 and window.stack.isVisible()
+    assert layout_settings.get(f"{side}_column_hidden") is True
+    assert layout_settings.get(f"{side}_column_width") == width
+    button.click()
+    qapp.processEvents()
+    assert column.isVisible() and column.width() == width and button.isChecked()
+
+
+@pytest.mark.parametrize("left_hidden, right_hidden", [(True, False), (False, True), (True, True), (False, False)])
+def test_images_temporarily_hides_columns_and_restores_the_users_choices(window, qapp, monkeypatch, left_hidden, right_hidden):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.resize(2400, 800)
+    window.show()
+    window.set_column_widths(left=400, right=520)
+    window.splitter.splitterMoved.emit(0, 1)
+    for side, hidden in (("left", left_hidden), ("right", right_hidden)):
+        if hidden:
+            window.commands.run(f"column:{side}", window)
+    before = layout_settings.STORE_PATH.read_text()
+    window._toggle_images()
+    qapp.processEvents()
+    assert window.slide_list.isHidden() and window.side_panels.isHidden()
+    window.splitter.splitterMoved.emit(0, 1)
+    assert layout_settings.STORE_PATH.read_text() == before
+    window._toggle_images()
+    qapp.processEvents()
+    assert layout_settings.STORE_PATH.read_text() == before
+    for side, column, width, hidden in (("left", window.slide_list, 400, left_hidden),
+                                        ("right", window.side_panels, 520, right_hidden)):
+        assert column.isHidden() == hidden
+        assert getattr(window.topbar, f"_{side}_column").isChecked() == (not hidden)
+        if not hidden:
+            assert column.width() == width
+
+
+def test_column_choices_can_change_while_images_is_open(window, qapp, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    window.show()
+    window.commands.run("column:left", window)
+    window._toggle_images()
+    window.commands.run("column:left", window)
+    window.commands.run("column:right", window)
+    assert window.slide_list.isHidden() and window.side_panels.isHidden()
+    window._toggle_images()
+    qapp.processEvents()
+    assert window.slide_list.isVisible() and window.side_panels.isHidden()
+    assert layout_settings.get("left_column_hidden") is False
+    assert layout_settings.get("right_column_hidden") is True
+
+
+def test_column_toggle_icons_render_as_single_bundled_font_glyphs(window):
+    assert load_fonts()
+    for button in (window.topbar._left_column, window.topbar._right_column):
+        for name in ("first_page", "last_page"):
+            text = QTextLayout(name, button.font())
+            text.beginLayout()
+            line = text.createLine()
+            text.endLayout()
+            assert line.naturalTextWidth() == pytest.approx(18)
+            runs = text.glyphRuns()
+            assert sum(len(run.glyphIndexes()) for run in runs) == 1
+            assert all(index != 0 for run in runs for index in run.glyphIndexes())
+        assert not button.grab().isNull()
+    layout = window.topbar._row_layout
+    assert layout.itemAt(0).widget() is window.topbar._left_column
+    assert layout.itemAt(layout.count() - 1).widget() is window.topbar._right_column
+
+
+def test_registered_shortcuts_are_unique_and_column_shortcuts_do_not_conflict_with_editor_keys(window, tmp_path):
+    path = tmp_path / "source.tex"
+    path.write_text("Some source\n")
+    window.open_slide_editor(path)
+    shortcuts = window.findChildren(QShortcut)
+    # Esc closes several separate text fields; their WidgetShortcut scopes never overlap.
+    escape = [s for s in shortcuts if s.key() == QKeySequence("Esc")]
+    assert all(s.context() == Qt.ShortcutContext.WidgetShortcut for s in escape)
+    assert len({s.parent() for s in escape}) == len(escape)
+    keys = [key.toString() for s in shortcuts if s not in escape for key in s.keys()]
+    assert len(keys) == len(set(keys)), keys
+    assert {QKeySequence(c.shortcut).toString() for c in window.commands if c.shortcut} <= set(keys)
+    assert {"Ctrl+S", "Ctrl+Return", "Ctrl+Enter", "Ctrl+Shift+F", "Ctrl+/", "Ctrl+I", "Ctrl+B",
+            "Ctrl+U", "Ctrl+R", "Ctrl+F", "Ctrl+H", "Ctrl+Z", "Ctrl+Alt+[", "Ctrl+Alt+]"} <= set(keys)
+    # QPlainTextEdit handles the standard edit/navigation keys without QShortcut objects.
+    editor_keys = {key.toString() for standard in QKeySequence.StandardKey
+                   if standard.name.startswith(("MoveTo", "Select", "Delete"))
+                   or standard.name in ("Undo", "Redo", "Cut", "Copy", "Paste", "Backspace", "InsertParagraphSeparator")
+                   for key in QKeySequence.keyBindings(standard)}
+    assert {"Ctrl+Alt+[", "Ctrl+Alt+]"}.isdisjoint(editor_keys)
+
+
+# -- per-machine layout and window geometry ------------------------------------
+
+def test_layout_settings_round_trip_and_create_the_folder(tmp_path, monkeypatch):
+    store = tmp_path / "user" / "settings" / "layout.json"
+    monkeypatch.setattr(layout_settings, "STORE_PATH", store)
+    assert layout_settings.get("missing") is None
+    assert layout_settings.get("missing", 42) == 42
+    layout_settings.set("right_column_width", 520)
+    layout_settings.set("label", "Fenstergröße")
+    assert layout_settings.get("right_column_width") == 520
+    assert layout_settings.get("label") == "Fenstergröße"
+    assert "Fenstergröße" in store.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("contents", [b"{broken", b"\xff", b"[]", b"null"])
+def test_layout_settings_survive_a_corrupt_file(contents):
+    layout_settings.STORE_PATH.write_bytes(contents)
+    assert layout_settings.get("right_column_width", 340) == 340
+    layout_settings.set("right_column_width", 520)
+    assert layout_settings.get("right_column_width") == 520
+
+
+def test_layout_settings_treat_an_unreadable_file_as_empty(monkeypatch):
+    read_text = Path.read_text
+
+    def unreadable(path, *args, **kwargs):
+        if path == layout_settings.STORE_PATH:
+            raise PermissionError("unreadable layout")
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+    assert layout_settings.get("right_column_width", 340) == 340
+
+
+@pytest.mark.parametrize("maximized", [False, True])
+def test_window_geometry_saved_on_close_is_restored_before_show(window, qapp, monkeypatch, maximized):
+    window.resize(1024, 680)
+    window.move(0, 40)
+    window.show()
+    qapp.processEvents()
+    if maximized:
+        window.showMaximized()
+        qapp.processEvents()
+    geometry = window.geometry()
+    saved = window.saveGeometry().toBase64().data().decode("ascii")
+    assert window.close()
+    assert layout_settings.get("window_geometry") == saved
+    assert app_settings.get(EXAMPLE_PROJECT, "window_geometry") is None
+    second = build_window(monkeypatch)
+    assert not second.isVisible()
+    assert second.isMaximized() == maximized
+    if not maximized:
+        assert second.geometry() == geometry
+    second.show()
+    qapp.processEvents()
+    assert second.isMaximized() == maximized
+    if not maximized:
+        assert second.geometry() == geometry
+
+
+@pytest.mark.parametrize("saved", [None, "invalid geometry", 7])
+@pytest.mark.parametrize("available", [QRect(120, 80, 1920, 1080), QRect(120, 80, 1100, 700)])
+def test_without_valid_window_geometry_the_window_fits_the_primary_screen(qapp, monkeypatch, saved, available):
+    # The offscreen plugin's 800 px screen is narrower than the required minimum.
+    screen = SimpleNamespace(availableGeometry=lambda: available)
+    monkeypatch.setattr(window_module.QApplication, "primaryScreen", lambda: screen)
+    layout_settings.set("window_geometry", saved)
+    window = build_window(monkeypatch)
+    assert available.contains(window.frameGeometry())
+    assert window.frameGeometry().center() == available.center()
+    assert window.size() == (available.size() * 0.9).expandedTo(QSize(1024, 640))
+
+
+def test_geometry_outside_every_available_screen_falls_back_to_the_primary(window, qapp, monkeypatch):
+    window.showMaximized()
+    qapp.processEvents()
+    assert window.close()
+    available = QRect(4000, 100, 1920, 1080)
+    screens = [SimpleNamespace(availableGeometry=lambda: available),
+               SimpleNamespace(availableGeometry=lambda: QRect(6000, 100, 1920, 1080))]
+    monkeypatch.setattr(window_module.QApplication, "primaryScreen", lambda: screens[0])
+    monkeypatch.setattr(window_module.QApplication, "screens", lambda: screens)
+    second = build_window(monkeypatch)
+    assert not second.isMaximized()
+    assert available.contains(second.frameGeometry())
+    assert second.frameGeometry().center() == available.center()
+
+
+def test_a_cancelled_close_keeps_the_saved_window_geometry(window, monkeypatch):
+    layout_settings.set("window_geometry", "previous geometry")
+    monkeypatch.setattr(window, "_resolve_dirty_edits", lambda: False)
+    assert not window.close()
+    assert layout_settings.get("window_geometry") == "previous geometry"
+
+
+def test_window_minimum_size_is_1024_by_640(window):
+    assert window.minimumSize() == QSize(1024, 640)
+
+
+@pytest.mark.parametrize("width", [1024, 1280, 1600, 1920])
+@pytest.mark.parametrize("height", [640, 1000])
+def test_workspace_layout_fits_the_window(qapp, monkeypatch, width, height):
+    assert load_fonts()
+    window = build_window(monkeypatch)
+    window.theme.apply()
+    window.resize(width, height)
+    window.show()
+    qapp.processEvents()
+    assert window.size() == QSize(width, height)
+    hint = window.minimumSizeHint()
+    assert hint.width() <= 1024 and hint.height() <= 640
+    bar = window.topbar
+    for control in bar.findChildren(QWidget):
+        if control.isVisible():
+            assert bar.rect().contains(QRect(control.mapTo(bar, QPoint()), control.size()))
+    for column in (window.slide_list, window.stack, window.side_panels):
+        assert column.isVisible()
+        minimum = column.minimumSizeHint().expandedTo(column.minimumSize()).width()
+        assert minimum <= column.width() <= column.maximumWidth()
+    for side in ("left", "right"):
+        window.commands.run(f"column:{side}", window)
+    qapp.processEvents()
+    assert window.splitter.sizes() == [0, window.splitter.width(), 0]
+    assert window.stack.geometry() == window.splitter.rect()
+    assert window.centre.width() == window.splitter.width()

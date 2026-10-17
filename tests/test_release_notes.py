@@ -73,10 +73,19 @@ def test_release_lists_every_versions_bullets_then_breaking_then_changelog():
 
 
 def test_release_without_new_paragraph_is_refused(capsys, monkeypatch):
-    entries = [_entry("v5.36.0", ["Technical only."])]
-    assert release_notes.missing_news(entries) == ["v5.36.0"]
-    assert release_notes.missing_news([_entry("v5.35.3", ["Old style."])]) == []
+    # only versions after v8.2.1 need the paragraph; 5.35.4 .. 8.2.1 are exempt
+    entries = [_entry("v8.3.1", ["Technical only."])]
+    assert release_notes.missing_news(entries) == ["v8.3.1"]
+    for old in ("v5.35.3", "v5.36.0", "v6.0.0", "v8.2.1"):
+        assert release_notes.missing_news([_entry(old, ["Old style."])]) == []
     monkeypatch.setattr(release_notes, "history_since", lambda tag, prev: entries)
     monkeypatch.setattr(release_notes, "notes_for", lambda tag: ["Technical only."])
-    assert release_notes.main(["v5.36.0", "--previous", "v5.35.4"]) == 3
+    assert release_notes.main(["v8.3.1", "--previous", "v8.3.0"]) == 3
     assert "no NEW: paragraph" in capsys.readouterr().err
+
+
+def test_current_release_has_a_new_paragraph():
+    # the running version's own entry carries the NEW: paragraph (v8.3.0 on)
+    from slidemage import version
+    entry = next(e for e in version.parse_history() if e.version == version.VERSION_NUMBER)
+    assert entry.news and entry.summary

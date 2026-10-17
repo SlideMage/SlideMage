@@ -21,15 +21,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pymupdf as fitz
+from . import project
 
-from .deck_scan import PROJECT_ROOT
 
 # Gitignored (see .gitignore), same as .previews/slide_previews/ -- a
 # regeneratable, best-effort cache, not project content worth tracking.
 # Moved under previews/ 2026-09-18, then .previews/ the same day (was a
 # project-root folder before that; dot-prefixed since nothing here is ever
 # something the user needs to interact with).
-RENDER_DIR = PROJECT_ROOT / ".previews" / "pdf_render_cache"
 
 # ~216 DPI at PyMuPDF's 72-DPI-per-unit default (matrix scale = DPI/72) --
 # same reasoning as slide_snapshot.py's own zoom choice: enough detail to
@@ -38,25 +37,25 @@ RENDER_DIR = PROJECT_ROOT / ".previews" / "pdf_render_cache"
 _ZOOM = 3.0
 
 
-def rendered_png_path(pdf_path: Path) -> Path:
-    return RENDER_DIR / f"{pdf_path.stem}.png"
+def rendered_png_path(ctx: project.ProjectContext, pdf_path: Path) -> Path:
+    return ctx.pdf_render_cache_dir / f"{pdf_path.stem}.png"
 
 
-def is_fresh(pdf_path: Path) -> bool:
-    png = rendered_png_path(pdf_path)
+def is_fresh(ctx: project.ProjectContext, pdf_path: Path) -> bool:
+    png = rendered_png_path(ctx, pdf_path)
     return png.is_file() and png.stat().st_mtime >= pdf_path.stat().st_mtime
 
 
-def ensure_rendered(pdf_path: Path) -> Path:
+def ensure_rendered(ctx: project.ProjectContext, pdf_path: Path) -> Path:
     """The cached PNG of `pdf_path`'s first page, rendering it first if
     missing or stale. Raises RuntimeError (wrapping whatever PyMuPDF
     raised) on a genuinely broken/unreadable PDF -- callers decide
     per-context whether that means skipping the image or showing an
     error, so it isn't swallowed here."""
-    png = rendered_png_path(pdf_path)
-    if is_fresh(pdf_path):
+    png = rendered_png_path(ctx, pdf_path)
+    if is_fresh(ctx, pdf_path):
         return png
-    RENDER_DIR.mkdir(parents=True, exist_ok=True)
+    ctx.pdf_render_cache_dir.mkdir(parents=True, exist_ok=True)
     try:
         doc = fitz.open(pdf_path)
         try:

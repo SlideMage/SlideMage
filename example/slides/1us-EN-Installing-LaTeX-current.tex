@@ -1,4 +1,7 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+%% DE translation: ypp-DE-LaTeX-installieren
 %%
 
 % SlideMage manual, chapter "Installing SlideMage": the TeX distribution.
@@ -7,10 +10,19 @@
 \setSlideVersion{1-0-0}
 \begin{standardframe}{Installing LaTeX}
 	\small
-	SlideMage compiles every deck with LuaLaTeX through latexmk, so it needs a
-	TeX distribution. On Windows, MiKTeX is the smaller install: it fetches each
-	package the first time a deck needs it. TeX Live installs everything at once.
-	\par\medskip
+	\begin{columns}[c,onlytextwidth]
+		\begin{column}{0.86\linewidth}
+			\textbf{This slide is for Windows only.}
+			SlideMage compiles every deck with LuaLaTeX through latexmk, so it needs a
+			TeX distribution. MiKTeX is the smaller install: it fetches each
+			package the first time a deck needs it. TeX Live installs everything at once.
+		\end{column}
+		\begin{column}{0.1\linewidth}
+			% The icon needs fontawesome5, which only some decks load.
+			\ifdefined\faWindows\raggedleft{\fontsize{34}{34}\selectfont\faWindows}\fi
+		\end{column}
+	\end{columns}
+	\par\bigskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.56\linewidth}
 			\shrinklists{1}

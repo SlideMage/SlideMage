@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import compile_passes
+from .project import ProjectContext
 from .deck_scan import Deck
 
 # Characters Windows itself refuses in a filename -- a deck name here is
@@ -36,7 +37,7 @@ def is_valid_deck_name(name: str, directory: Path) -> Optional[str]:
     return None
 
 
-def duplicate_deck(deck: Deck, new_name: str) -> Path:
+def duplicate_deck(ctx: ProjectContext, deck: Deck, new_name: str) -> Path:
     """Copy deck.path to <same directory>/<new_name>.tex, verbatim.
     Raises ValueError if new_name isn't valid (see is_valid_deck_name) --
     always call that first to show the reason directly in the UI; this
@@ -47,5 +48,5 @@ def duplicate_deck(deck: Deck, new_name: str) -> Path:
         raise ValueError(reason)
     dest = deck.path.parent / f"{new_name}.tex"
     shutil.copy2(str(deck.path), str(dest))
-    compile_passes.copy_counts(deck.name, new_name)   # same content, same passes
+    compile_passes.copy_counts(ctx, deck.name, new_name)   # same content, same passes
     return dest

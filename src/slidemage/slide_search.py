@@ -1,58 +1,68 @@
-"""Full-text search across every slide's own .tex source (2026-08-26,
-direct instruction) -- unlike alt_blocks.scan_slides_raw() (image-review
-focused, skips any slide with no image entirely), this scans *every*
-slides/<id>-<slug>-current.tex file, since a slide's text is exactly what
-you'd search for regardless of whether it happens to carry an image too.
+"""Full-text search of the project's own source files, for the command palette
+(2026-10-10; the slide search dialog of 2026-08-26 became its "Text in project
+files" group).
 
-Plain case-insensitive substring match against the raw TeX source, not a
-regex/fuzzy search or a maintained index -- this project's slide corpus
-(~665 files, each a few KB) is small enough to re-scan fresh on every
-search (confirmed directly: well under a second), so there is nothing to
-keep in sync or invalidate the way a real index would need. Searching the
-raw source (not a macro-stripped rendering of it) is deliberate too: it
-also finds a citation key, a macro name, or an exact LaTeX fragment,
-which is often exactly what's wanted when working with source files
-directly.
+Searched are every slide's `slides/<id>-<slug>-current.tex` (a slide's text is
+what one searches for, with or without an image), the decks `decks/*.tex` and
+`decks/archive/*.tex`, and `Slidemaster.bib`. A plain case-insensitive substring
+match against the raw source, not a regex or a maintained index: ~665 slide
+files of a few KB each are re-read in well under a second, so there is nothing
+to keep in sync. Matching the raw source is deliberate too: it also finds a
+citation key, a macro name or an exact LaTeX fragment.
+
+The palette runs the search on a worker thread and cancels it when the query
+changes, hence `cancelled`, asked between two files.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import alt_blocks
-from .deck_scan import PROJECT_ROOT
+from .slide_language import CURRENT_SUFFIX
 
-# Characters of context kept on each side of a match, for the results
-# list's own preview snippet. 150 (2026-08-26, direct instruction --
-# raised from 60, too short to place a match in context) rather than
-# something huge: the results list wraps each snippet to two visible
-# lines already (see qt_slide_search_dialog.py's setWordWrap(True)), so a
-# snippet much longer than what that already shows just gets clipped.
-_SNIPPET_CONTEXT = 150
+# Characters of context kept on each side of the match: a palette row shows one line.
+_SNIPPET_CONTEXT = 40
+SLIDE_SUFFIX = CURRENT_SUFFIX
+BIB_NAME = "Slidemaster.bib"
 
 
-@dataclass
-class SlideSearchResult:
+@dataclass(frozen=True)
+class SearchHit:
     path: Path
-    slide_id: str
-    title: str
-    snippet: str  # collapsed-whitespace context around the first match
+    line: int       # 1-based line of the first match
+    title: str      # "1y8 · Frame title" for a slide, else the path within the project
+    snippet: str    # collapsed-whitespace context around the match
 
 
-def search_slides(query: str, slides_dir: Path | None = None) -> list[SlideSearchResult]:
-    """Every slide whose raw source contains `query` (case-insensitive),
-    one result per slide, not per occurrence -- "which slide has this
-    text" is the question this answers, not "how many times does it
-    appear there." Returns [] for a blank/whitespace-only query rather
-    than matching every slide."""
+def project_files(root: Path) -> list[Path]:
+    """The files that are searched, slides first."""
+    files = sorted((root / "slides").glob(f"*{SLIDE_SUFFIX}"))
+    for folder in (root / "decks", root / "decks" / "archive"):
+        # "_slidemage_preview-*.tex" are the preview's throwaway wrappers
+        files += sorted(p for p in folder.glob("*.tex") if not p.name.startswith("_"))
+    bib = root / BIB_NAME
+    return files + ([bib] if bib.is_file() else [])
+
+
+def search_project(
+    query: str, root: Path, cancelled: Callable[[], bool] = lambda: False,
+    allow: Callable[[Path], bool] = lambda path: True,
+) -> list[SearchHit]:
+    """One hit per file that contains `query` (case-insensitive): "which file has
+    this text" is the question, not how often it appears. [] for a blank query, and
+    whatever was found so far once `cancelled()` says so. Only files `allow` accepts are read."""
     query = query.strip()
     if not query:
         return []
     needle = query.lower()
-    directory = slides_dir or (PROJECT_ROOT / "slides")
-
-    results: list[SlideSearchResult] = []
-    for path in sorted(directory.glob("*-current.tex")):
+    hits: list[SearchHit] = []
+    for path in project_files(root):
+        if cancelled():
+            break
+        if not allow(path):
+            continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -60,12 +70,15 @@ def search_slides(query: str, slides_dir: Path | None = None) -> list[SlideSearc
         index = text.lower().find(needle)
         if index == -1:
             continue
-        slide_id, title = alt_blocks._slide_title(text, path)
-        results.append(SlideSearchResult(
-            path=path, slide_id=slide_id, title=title,
-            snippet=_snippet(text, index, len(query)),
-        ))
-    return results
+        if path.name.endswith(SLIDE_SUFFIX):
+            slide_id, title = alt_blocks.slide_title(text, path)
+            title = f"{slide_id} · {title}"
+        else:
+            title = path.relative_to(root).as_posix()
+        hits.append(SearchHit(
+            path=path, line=text.count("\n", 0, index) + 1, title=title,
+            snippet=_snippet(text, index, len(query))))
+    return hits
 
 
 def _snippet(text: str, index: int, match_len: int) -> str:

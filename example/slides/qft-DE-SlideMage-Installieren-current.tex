@@ -1,0 +1,34 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+%% Translation of: 1nk-EN-Installing-SlideMage
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the app itself, its first
+% start and its updates.
+\begin{standardframe}{SlideMage installieren}
+	\small
+	SlideMage ist ein einzelnes Windows-Programm ohne Python. Das GitHub-Repository
+	ist privat: Ihr Konto braucht Zugriff für Download und Updates.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.49\linewidth}
+			\shrinklists{1}
+			\textbf{Herunterladen und erster Start}
+			\begin{itemize}
+				\item \SMCode{SlideMage-windows.zip} aus dem neuesten \emph{Release} holen
+				\item Entpacken und \SMCode{SlideMage.exe} starten (Windows-Warnung: \emph{Weitere Informationen} $\rightarrow$ \emph{Trotzdem ausführen})
+				\item Einen Projektordner wählen; ein leerer wird zu einem neuen Projekt
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.47\linewidth}
+			\shrinklists{1}
+			\textbf{Updates und mehr}
+			\begin{itemize}
+				\item \emph{Einstellungen} $\rightarrow$ Allgemein $\rightarrow$ \emph{Updates}: GitHub-Token (Lesezugriff), prüfen/fragen/installieren
+				\item Framework und Handbuch sind Kopien; eine neuere SlideMage bietet an, sie zu aktualisieren
+				\item Aus dem Quellcode: Python 3.11+, \SMCode{git clone}, \SMCode{pip install -e .}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

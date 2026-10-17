@@ -1,7 +1,7 @@
 """Multi-language parsing primitives shared by the SlideMage GUI's
-language badges (qt_deck_editor_tab.py, qt_add_slide_dialog.py,
-qt_slide_source_tab.py) and slide_rename.py's translation-link repair
-pass. See LANGUAGE_NOTES.md for the whole design.
+language badges (deck_outline.py, the Add slide sheet,
+the Details view) and slide_rename.py's translation-link repair
+pass.
 
 Language lives in a slide's own id-slug, as its *second* hyphen segment
 (<id>-<LANG>-<slug>), exactly mirroring what
@@ -20,28 +20,32 @@ alongside the existing "%% Included in decks: ..." block
     %% Translation of: <source id-slug>        -- this file IS a translation
     %% <LANG> translation: <target id-slug>     -- this file HAS a translation
 
-Written by AddSlideDialog's "base on existing slide" flow (both sides at
+Written by slide_add.create_copy() for a translation (both sides at
 once) and kept honest afterward by slide_rename.regenerate_translation_links().
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .deck_scan import PROJECT_ROOT
+from . import slide_source
+from .project import ProjectContext
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
 
 # Keep in sync with Slidemaster_preamble_base.tex's own
 # \setSlideLanguageFromSlug@aux fixed keyword set.
 LANGUAGES = ("EN", "DE", "mult")
+# Excludes "mult", which is not a translation target.
+TRANSLATION_LANGUAGES = ("EN", "DE")
 
 TRANSLATION_OF_RE = re.compile(r"^%% Translation of: (\S+)", re.MULTILINE)
 LANG_TRANSLATION_RE = re.compile(r"^%% (EN|DE|mult) translation: (\S+)", re.MULTILINE)
 
 CURRENT_SUFFIX = "-current.tex"
+FROZEN_RE = re.compile(r"-v([0-9]+-[0-9]+-[0-9]+)\.tex$")
 
 
 def bare_id(id_slug_or_ref: str) -> str:
@@ -60,55 +64,155 @@ def own_language(id_slug: str) -> Optional[str]:
     return None
 
 
-def current_path_for_bare_id(bare_id_: str) -> Optional[Path]:
+def current_name(id_slug: str) -> str:
+    """The file name of a slide's current file ("1ab-EN-Demo-current.tex")."""
+    return f"{id_slug}{CURRENT_SUFFIX}"
+
+
+def frozen_name(id_slug: str, version: str) -> str:
+    """The frozen file name for a version in its file form ("1-0-0")."""
+    return f"{id_slug}-v{version}.tex"
+
+
+def is_current_file(path: Path) -> bool:
+    """Whether `path` is a slide's current file (not one of its frozen versions)."""
+    return path.name.endswith(CURRENT_SUFFIX)
+
+
+def current_path_for_bare_id(ctx: ProjectContext, bare_id_: str) -> Optional[Path]:
     """The slides/<bare_id_>-...-current.tex path on disk right now, or
     None if that ID has no current file any more (renamed again, or
     deleted) -- by this project's own convention there is at most one
     -current.tex per bare ID."""
-    matches = list(SLIDES_DIR.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
+    matches = list(ctx.slides_dir.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
     return matches[0] if matches else None
 
 
-def current_id_slug_for_bare_id(bare_id_: str) -> Optional[str]:
-    path = current_path_for_bare_id(bare_id_)
+def current_id_slug_for_bare_id(ctx: ProjectContext, bare_id_: str) -> Optional[str]:
+    path = current_path_for_bare_id(ctx, bare_id_)
     if path is None:
         return None
     return path.name[: -len(CURRENT_SUFFIX)]
 
 
-def cross_referenced_language(id_slug: str, path: Optional[Path] = None) -> Optional[str]:
-    """The language of whatever this slide's own header comment names as
-    a translation partner, in either direction -- None if there's no such
-    comment, the partner file no longer exists, or the file can't be
-    read. Cheap enough to call per row in a slide list (one small regex
-    search over one already-short header block), but does read the file,
-    unlike own_language() which is pure string parsing."""
-    if path is None:
-        path = SLIDES_DIR / f"{id_slug}{CURRENT_SUFFIX}"
+def _header(path: Path) -> str:
     try:
-        text = path.read_bytes().decode("utf-8")
+        return path.read_text(
+            encoding="utf-8", errors="replace")
     except OSError:
+        return ""
+
+
+class TranslationLinks:
+    """One scan per resolution, including links recorded on only one side."""
+
+    def __init__(self, slides_dir: Path) -> None:
+        self.slides_dir = slides_dir
+        self.paths = {bare_id(p.name): p
+                      for p in self.slides_dir.glob("*-current.tex")}
+        self.headers: dict[str, str] = {}
+        self.reverse: dict[tuple[str, str], set[str]] | None = None
+
+    def partner(self, ref: str) -> str | None:
+        path = self.paths.get(bare_id(ref))
+        partner = path.name[:-len(CURRENT_SUFFIX)] if path else None
+        return partner if partner and own_language(partner) in TRANSLATION_LANGUAGES else None
+
+    def header(self, id_slug: str) -> str:
+        if id_slug not in self.headers:
+            self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
+        return self.headers[id_slug]
+
+    def find(self, id_slug: str, language: str, path: Path | None = None) -> str | None:
+        language = language.upper()
+        if own_language(id_slug) in (None, "mult", language):
+            return None
+        text = _header(path) if path else self.header(id_slug)
+        refs = [m.group(1) for m in TRANSLATION_OF_RE.finditer(text)]
+        refs += [m.group(2) for m in LANG_TRANSLATION_RE.finditer(text)
+                 if m.group(1) == language]
+        for ref in refs:
+            partner = self.partner(ref)
+            if partner and partner != id_slug and own_language(partner) == language:
+                return partner
+        if self.reverse is None:
+            self.reverse = {}
+            for file in self.paths.values():
+                slug = file.name[:-len(CURRENT_SUFFIX)]
+                own = own_language(slug)
+                if own not in TRANSLATION_LANGUAGES:
+                    continue
+                header = self.header(slug)
+                refs = [m.group(1) for m in TRANSLATION_OF_RE.finditer(header)]
+                refs += [m.group(2) for m in LANG_TRANSLATION_RE.finditer(header)]
+                for ref in refs:
+                    partner = self.partner(ref)
+                    if partner and own_language(partner) != own:
+                        self.reverse.setdefault((bare_id(partner), own), set()).add(slug)
+        candidates = self.reverse.get((bare_id(id_slug), language), set())
+        # Conflicting reverse links do not pick an arbitrary translation.
+        return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def cross_referenced_language(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> Optional[str]:
+    """The language of this slide's resolved translation partner, or None.
+
+    Links belong to the current slide, also when a frozen version of it is shown.
+    Pass a shared index when building badges for a whole list."""
+    links = links or TranslationLinks(ctx.slides_dir)
+    return next((language for language in TRANSLATION_LANGUAGES
+                 if links.find(id_slug, language)), None)
+
+
+@dataclass
+class TranslationLink:
+    """A slide and its resolved translation partner."""
+
+    partner: str                # the partner's id-slug
+    language: Optional[str]     # the partner's language
+    path: Path                  # the partner's current file
+    is_translation: bool        # this slide is the translation of `partner` (else `partner` is of this)
+    outdated: bool              # the original was saved in SlideMage after the translation was last written
+
+
+def translation_link(ctx: ProjectContext, id_slug: str, path: Optional[Path] = None, *,
+                     links: Optional[TranslationLinks] = None) -> Optional[TranslationLink]:
+    """The slide's resolved translation partner, including links recorded on only one side.
+    Links belong to the current slide, even when `path` is a frozen version.
+
+    `outdated` measures this and nothing more: the original has been saved through SlideMage
+    (slide_source.last_saved(): its newest backup) later than the translation was last written
+    (the later of its own newest backup and its file's mtime). It is not a comparison of
+    content, and an edit made outside SlideMage is not noticed."""
+    links = links or TranslationLinks(ctx.slides_dir)
+    path = path or links.slides_dir / current_name(id_slug)
+    partner = next((partner for language in TRANSLATION_LANGUAGES
+                    if (partner := links.find(id_slug, language))), None)
+    if partner is None:
         return None
-
-    m = TRANSLATION_OF_RE.search(text)
-    if m:
-        partner_id_slug = current_id_slug_for_bare_id(bare_id(m.group(1)))
-        if partner_id_slug is not None:
-            return own_language(partner_id_slug)
-        return None
-
-    lm = LANG_TRANSLATION_RE.search(text)
-    if lm:
-        return lm.group(1)
-
-    return None
+    partner_path = links.paths[bare_id(partner)]
+    text = links.header(id_slug)
+    is_translation = any(links.partner(m.group(1)) == partner
+                         for m in TRANSLATION_OF_RE.finditer(text))
+    if not is_translation and not any(m.group(1) == own_language(partner)
+                                     and links.partner(m.group(2)) == partner
+                                     for m in LANG_TRANSLATION_RE.finditer(text)):
+        # A reverse link carries the opposite role of the partner's comment.
+        is_translation = not any(bare_id(m.group(1)) == bare_id(id_slug)
+                                 for m in TRANSLATION_OF_RE.finditer(links.header(partner)))
+    original, translation = (partner_path, path) if is_translation else (path, partner_path)
+    saved = slide_source.last_saved(ctx, original)
+    written = max(filter(None, (slide_source.last_saved(ctx, translation),
+                                datetime.fromtimestamp(translation.stat().st_mtime))))
+    return TranslationLink(partner, own_language(partner), partner_path, is_translation,
+                           saved is not None and saved > written)
 
 
 @dataclass
 class LanguageBadge:
     """What a GUI list row should show for one slide -- built once per
-    row so every caller (qt_deck_editor_tab.py, qt_add_slide_dialog.py,
-    qt_slide_source_tab.py) renders the same underlying facts, even
+    row so every caller (deck_outline.py, the Add slide sheet,
+    the Details view) renders the same underlying facts, even
     though each one displays them slightly differently (rich-text HTML,
     plain text + bold font, a QLabel)."""
 
@@ -137,7 +241,21 @@ class LanguageBadge:
         return f"[{self.own}]"
 
 
-def badge_for(id_slug: str, path: Optional[Path] = None) -> LanguageBadge:
+def badge_for(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> LanguageBadge:
     own = own_language(id_slug)
-    cross = cross_referenced_language(id_slug, path) if own is not None else None
+    cross = cross_referenced_language(ctx, id_slug, links=links) if own is not None else None
     return LanguageBadge(own=own, cross_referenced=cross)
+
+
+def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
+    """Given slides/<id>-<slug>-current.tex or slides/<id>-<slug>-vX-Y-Z.tex,
+    return (macro, id_slug, version) for the \\slide{}/\\slideversion{}
+    call that loads exactly that file -- used by the slide-source editor,
+    which only knows its own file path, not a deck-parsed SlideCall."""
+    name = path.name
+    if name.endswith(CURRENT_SUFFIX):
+        return "slide", name[: -len(CURRENT_SUFFIX)], None
+    m = FROZEN_RE.search(name)
+    if m:
+        return "slideversion", name[: m.start()], m.group(1)
+    raise ValueError(f"{name}: doesn't look like a slides/ current or version file")

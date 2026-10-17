@@ -1,4 +1,4 @@
-"""Resolve citation keys against Slidemaster.bib (ALT_TEXT_NOTES.md, phase 4).
+"""Resolve citation keys against Slidemaster.bib.
 
 Without this a transcript renders `\\fullcite{loughran1995}` as the bare key
 "loughran1995", which tells a student nothing.
@@ -16,28 +16,27 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .deck_scan import PROJECT_ROOT
+from .tex_source import braced_argument
 
-DEFAULT_BIB = PROJECT_ROOT / "Slidemaster.bib"
+
 
 # Same logic as the former one-off sort_bib.py (project root, deleted once
 # folded in here) -- SlideMage now runs this itself, on open and close of
-# the "Edit .bib" tab (qt_gui.py's _on_edit_bib/close_slide_editor_tab), so
+# the "Edit .bib" tab (the main window's _on_edit_bib/close_slide_editor_tab), so
 # the file never needs a manual sort pass again. Splits on a bare "@" at the
 # start of a line rather than trying to fully parse each entry -- the file's
 # own entries are already one-per-paragraph, blank-line-separated, so this
 # is simpler and just as reliable as re-using load()'s own stricter parser,
 # which is built to tolerate malformed fields, not to round-trip formatting.
-def sort_entries(path: Path | None = None) -> bool:
-    """Rewrite `path` (default Slidemaster.bib) with its entries sorted
+def sort_entries(path: Path) -> bool:
+    """Rewrite the .bib at `path` with its entries sorted
     alphabetically by citation key, preserving the leading header comment
     block verbatim. Returns whether the file actually changed -- a no-op
     write (already sorted) is skipped so the file's mtime/git diff stays
     quiet on every open of an already-tidy file."""
-    target = path or DEFAULT_BIB
-    if not target.is_file():
+    if not path.is_file():
         return False
-    text = target.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
     first_entry = re.search(r"^@", text, re.MULTILINE)
     if first_entry is None:
         return False
@@ -54,12 +53,12 @@ def sort_entries(path: Path | None = None) -> bool:
     new_text = header.rstrip("\n") + "\n\n" + "\n\n".join(entries) + "\n"
     if new_text == text:
         return False
-    target.write_text(new_text, encoding="utf-8", newline="\n")
+    path.write_text(new_text, encoding="utf-8", newline="\n")
     return True
 
 
-# Per-entry-type field order for newly written entries (qt_citation_dialog.py's
-# "Add citation" form) -- author/title/year always first, matching every
+# Per-entry-type field order for newly written entries (ui/dialogs/citation.py's
+# "Add reference" form) -- author/title/year always first, matching every
 # existing entry of every type in this file; the rest follows each type's
 # own most common existing ordering (see the field-frequency survey this was
 # based on: 96 article/23 book/3 online/4 report entries, measured directly).
@@ -162,19 +161,8 @@ def _read_value(text: str, start: int) -> tuple[str, int]:
         return "", index
 
     if text[index] == "{":
-        depth, cursor = 0, index
-        while cursor < len(text):
-            if text[cursor] == "\\":
-                cursor += 2
-                continue
-            if text[cursor] == "{":
-                depth += 1
-            elif text[cursor] == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[index + 1:cursor], cursor + 1
-            cursor += 1
-        return text[index + 1:], len(text)
+        value, after = braced_argument(text, index)
+        return (value, after) if after != index else (text[index + 1:], len(text))  # unbalanced: the rest
 
     if text[index] == '"':
         end = text.find('"', index + 1)
@@ -188,11 +176,10 @@ def _read_value(text: str, start: int) -> tuple[str, int]:
     return text[index:end], end
 
 
-def load(path: Path | None = None) -> dict[str, BibEntry]:
+def load(path: Path) -> dict[str, BibEntry]:
     """Parse a .bib file into {key: BibEntry}. Empty dict if unreadable."""
-    target = path or DEFAULT_BIB
     try:
-        text = target.read_text(encoding="utf-8", errors="ignore")
+        text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return {}
 
@@ -216,6 +203,16 @@ def load(path: Path | None = None) -> dict[str, BibEntry]:
     return entries
 
 
+def entry_line(key: str, path: Path) -> int | None:
+    """The 1-based line of `@type{key,` in the .bib, or None when the file has no such entry."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    match = re.search(rf"^[ \t]*@\w+\s*\{{\s*{re.escape(key)}\s*,", text, re.MULTILINE)
+    return text.count("\n", 0, match.start()) + 1 if match else None
+
+
 KEY_RE = re.compile(r"^[a-z]+[0-9]{4}[a-z]?$")
 
 
@@ -234,7 +231,7 @@ def _first_surname(author_field: str) -> str:
     return re.sub(r"[^A-Za-z]", "", surname).lower()
 
 
-def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry] | None = None) -> str:
+def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry]) -> str:
     """<first author's surname><year>, lowercased, e.g. "Smith, John and
     Doe, Jane" + "2024" -> "smith2024" -- this file's own established key
     convention (see its own header comment). Appends "a", "b", "c", ... if
@@ -246,7 +243,7 @@ def suggest_key(author_field: str, year: str, existing: dict[str, BibEntry] | No
     base = f"{surname}{year}" if surname and year else ""
     if not base:
         return ""
-    taken = {k.lower() for k in (existing if existing is not None else load())}
+    taken = {k.lower() for k in existing}
     if base.lower() not in taken:
         return base
     for letter in "abcdefghijklmnopqrstuvwxyz":
@@ -277,7 +274,7 @@ def format_entry(kind: str, key: str, fields: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = None) -> str:
+def add_entry(kind: str, key: str, fields: dict[str, str], path: Path) -> str:
     """Insert a new entry into `path` (default Slidemaster.bib) and leave
     the file alphabetically sorted by key afterward -- appends the new
     entry, then re-runs sort_entries() rather than computing its own
@@ -289,16 +286,29 @@ def add_entry(kind: str, key: str, fields: dict[str, str], path: Path | None = N
     convention, so a same-key-different-case entry would be confusing
     dead weight rather than a legitimately distinct citation). Returns
     the newly written entry's own text."""
-    target = path or DEFAULT_BIB
-    existing = load(target)
+    existing = load(path)
     if key.lower() in {k.lower() for k in existing}:
-        raise ValueError(f"citation key {key!r} already exists in {target.name}")
+        raise ValueError(f"citation key {key!r} already exists in {path.name}")
     entry_text = format_entry(kind, key, fields)
-    text = target.read_text(encoding="utf-8") if target.is_file() else ""
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
     new_text = text.rstrip("\n") + "\n\n" + entry_text + "\n"
-    target.write_text(new_text, encoding="utf-8", newline="\n")
-    sort_entries(target)
+    path.write_text(new_text, encoding="utf-8", newline="\n")
+    sort_entries(path)
     return entry_text
+
+
+def search(entries: dict[str, BibEntry], query: str) -> list[str]:
+    """The keys, sorted, of the entries that contain every word of `query`
+    (case-insensitive) in their key, author, title, year or container."""
+    words = query.lower().split()
+    found = []
+    for key in sorted(entries):
+        entry = entries[key]
+        haystack = " ".join((key, entry.fields.get("author", ""), entry.title, entry.year,
+                             entry.container)).lower()
+        if all(word in haystack for word in words):
+            found.append(key)
+    return found
 
 
 def _authors(entry: BibEntry) -> str:

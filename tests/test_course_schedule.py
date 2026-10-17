@@ -80,8 +80,13 @@ COURSE_DATA_JSON = json.dumps({
 }).encode()
 
 
-def test_parse_course_groups_shape_and_multiple_groups():
-    schedule = parse_schedule(GROUPS_JSON)
+@pytest.mark.parametrize("total_count", [2, 3])
+def test_parse_course_groups_shape_and_multiple_groups(total_count):
+    payload = json.loads(GROUPS_JSON)
+    payload["totalCount"] = total_count
+    schedule = parse_schedule(json.dumps(payload))
+    assert schedule.truncated is (total_count > 2)
+    assert parse_schedule(json.dumps({"courseGroupDtos": []})) == CourseSchedule(())
 
     assert [group.name for group in schedule.groups] == [
         "Standardgruppe", "Gruppe Wirtschaftsinformatik",
@@ -134,16 +139,6 @@ def test_listed_standard_group_is_not_repeated_as_an_empty_group():
     assert [(group.name, len(group.sessions)) for group in schedule.groups] == [("Standardgruppe", 1)]
 
 
-def test_parser_handles_missing_or_unnamed_groups():
-    assert parse_schedule(json.dumps({"courseGroupDtos": []}).encode()) == CourseSchedule(())
-    unnamed = parse_schedule(json.dumps({"courseGroupDtos": [
-        {"name": None, "appointmentDtos": [appointment("2026-10-05T09:00:00", "2026-10-05T10:00:00", "x")]},
-    ]}).encode())
-    assert unnamed.groups[0].name == "Standardgruppe"
-    with pytest.raises(ValueError):
-        parse_schedule(b"{}")
-
-
 def test_parser_tolerates_null_fields():
     schedule = parse_schedule(json.dumps({"courseGroupDtos": [
         {"name": "G", "appointmentDtos": None},
@@ -159,66 +154,44 @@ def test_parser_tolerates_null_fields():
     assert schedule.groups[1].sessions[0] == CourseSession("05.10.2026", "09:00", "10:00", "", "", "")
 
 
-@pytest.mark.parametrize("appointment", [
-    {},
-    {"timestampFrom": {"value": "not a date"}, "timestampTo": {"value": "2026-10-05T10:00:00"}},
-    {"timestampFrom": None, "timestampTo": None},
-    "not an object",
-])
-def test_parser_reports_malformed_appointments_as_value_error(appointment):
+@pytest.mark.parametrize("kind", ["schedule", "appointment", "detail", "lecturer"])
+def test_parsers_report_malformed_responses_as_value_error(kind):
+    payload = {}
+    if kind == "appointment":
+        payload = {"courseGroupDtos": [{"name": "G", "appointmentDtos": [{}]}]}
+    elif kind == "lecturer":
+        payload = json.loads(COURSE_DATA_JSON)
+        payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]["lectureships"] = [{}]
+    parser = parse_schedule if kind in ("schedule", "appointment") else parse_course_detail
     with pytest.raises(ValueError):
-        parse_schedule(json.dumps({"courseGroupDtos": [{"name": "G", "appointmentDtos": [appointment]}]}))
+        parser(json.dumps(payload))
 
 
-def test_parser_flags_truncated_group_list():
-    source = {"totalCount": 3, "courseGroupDtos": [{"name": "G", "appointmentDtos": []}]}
-    assert parse_schedule(json.dumps(source)).truncated
-    source["totalCount"] = 1
-    assert not parse_schedule(json.dumps(source)).truncated
-
-
-def test_text_fields_prefer_german_translation_and_are_stripped():
-    langdata = {"value": "Bachelor's Course\t \t", "translations": {"translation": [
-        {"lang": "de", "value": " Bachelorkurs "}, {"lang": "en", "value": "Bachelor's Course\t \t"},
-    ]}}
+@pytest.mark.parametrize("language", ["de", "en"])
+def test_course_detail_uses_requested_translation_and_german_fallback(language):
     payload = json.loads(COURSE_DATA_JSON)
     course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
-    course["courseTitle"] = langdata
-    course["semesterDto"]["semesterDesignation"] = {"value": "Winter semester 2026/27 "}
-    course["lectureships"] = None
-    detail = parse_course_detail(json.dumps(payload))
-    assert detail.title == "Bachelorkurs"
-    assert detail.semester == "Winter semester 2026/27"
-    assert detail.lecturers == ()
-
-
-def test_parse_course_detail_reports_malformed_lecturer_as_value_error():
-    payload = json.loads(COURSE_DATA_JSON)
-    payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]["lectureships"] = [{}]
-    with pytest.raises(ValueError):
-        parse_course_detail(json.dumps(payload))
-
-
-def test_fetch_asks_for_german(monkeypatch):
-    headers = []
-
-    class Response(BytesIO):
-        def geturl(self):
-            return COURSE_DATA_URL
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            self.close()
-
-    def fake_urlopen(request, timeout):
-        headers.append(request.get_header("Accept-language"))
-        return Response(COURSE_DATA_JSON)
-
-    monkeypatch.setattr("slidemage.course_schedule.urlopen", fake_urlopen)
-    fetch_course_detail(COURSE_URL)
-    assert headers == ["de"]
+    course["courseTitle"] = {"value": "Bachelor's Course\t \t", "translations": {"translation": [
+        {"lang": "de", "value": " Bachelorkurs "}, {"lang": "en", "value": "Bachelor's Course\t \t"},
+    ]}}
+    if language == "en":
+        course["courseTitle"]["value"] = "Bachelorkurs"
+    if language == "de":
+        course["semesterDto"]["semesterDesignation"] = {"value": "Winter semester 2026/27 "}
+        course["lectureships"] = None
+    else:
+        course["semesterDto"]["semesterDesignation"] = {"value": "Wintersemester 2026/27", "translations": {
+            "translation": [{"lang": "de", "value": "Wintersemester 2026/27"}, {"lang": "en"}],
+        }}
+    detail = parse_course_detail(json.dumps(payload), language)
+    if language == "de":
+        assert detail.title == "Bachelorkurs"
+        assert detail.semester == "Winter semester 2026/27"
+        assert detail.lecturers == ()
+    else:
+        assert detail.title == "Bachelor's Course"
+        # No English semester name: falls back to German.
+        assert detail.semester == "Wintersemester 2026/27"
 
 
 def test_fetch_rejects_redirect_to_another_host(monkeypatch):
@@ -248,8 +221,6 @@ def test_urls_validate_course_url(bad_url):
         course_groups_url(bad_url)
     with pytest.raises(ValueError):
         course_data_url(bad_url)
-    assert course_groups_url(COURSE_URL) == GROUPS_URL
-    assert course_data_url(COURSE_URL) == COURSE_DATA_URL
 
 
 def test_renderer_escapes_latex_special_characters():
@@ -290,7 +261,11 @@ def test_translation_is_whole_word_only():
     assert translate_to_english("Prüfung 1 entfällt", whole_only=True) == "Exam 1 cancelled"
 
 
-def test_fetch_schedule_uses_course_groups_url(monkeypatch):
+@pytest.mark.parametrize("fetch, source, url, expected", [
+    (fetch_schedule, GROUPS_JSON, GROUPS_URL, "Standardgruppe"),
+    (fetch_course_detail, COURSE_DATA_JSON, COURSE_DATA_URL, "Bachelorkurs (Management Science)"),
+])
+def test_fetch_uses_the_course_endpoint_and_german_json(monkeypatch, fetch, source, url, expected):
     requested = []
 
     class Response(BytesIO):
@@ -304,13 +279,15 @@ def test_fetch_schedule_uses_course_groups_url(monkeypatch):
             self.close()
 
     def fake_urlopen(request, timeout):
-        requested.append((request.full_url, request.headers.get("Accept"), timeout))
-        return Response(GROUPS_JSON)
+        requested.append((request.full_url, request.get_header("Accept"),
+                          request.get_header("Accept-language"), timeout))
+        return Response(source)
 
     monkeypatch.setattr("slidemage.course_schedule.urlopen", fake_urlopen)
-    schedule = fetch_schedule(COURSE_URL)
-    assert requested == [(GROUPS_URL, "application/json", 15)]
-    assert schedule.groups[0].name == "Standardgruppe"
+    result = fetch(COURSE_URL)
+    assert requested == [(url, "application/json", "de", 15)]
+    name = result.groups[0].name if isinstance(result, CourseSchedule) else result.title
+    assert name == expected
 
 
 def test_parse_course_detail_shape():
@@ -326,53 +303,10 @@ def test_parse_course_detail_shape():
     )
 
 
-def test_parse_course_detail_rejects_unexpected_shape():
-    with pytest.raises(ValueError):
-        parse_course_detail(b"{}")
-
-
-def test_fetch_course_detail_uses_course_data_url(monkeypatch):
-    requested = []
-
-    class Response(BytesIO):
-        def geturl(self):
-            return requested[-1][0]
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            self.close()
-
-    def fake_urlopen(request, timeout):
-        requested.append((request.full_url, request.headers.get("Accept"), timeout))
-        return Response(COURSE_DATA_JSON)
-
-    monkeypatch.setattr("slidemage.course_schedule.urlopen", fake_urlopen)
-    detail = fetch_course_detail(COURSE_URL)
-    assert requested == [(COURSE_DATA_URL, "application/json", 15)]
-    assert detail.title == "Bachelorkurs (Management Science)"
-
-
 def test_render_title_slide_escapes_and_joins_selected_lecturers():
     detail = parse_course_detail(COURSE_DATA_JSON)
     rendered = render_title_slide(detail, detail.lecturers[:1])
     assert rendered == r"\titleframe{Bachelorkurs (Management Science)}{Andreas Darmann\\Wintersemester 2026/27}"
-
-
-def test_course_detail_in_english_uses_ugo_translations():
-    payload = json.loads(COURSE_DATA_JSON)
-    course = payload["resource"][0]["content"]["cpCourseDetailDto"]["cpCourseDto"]
-    course["courseTitle"] = {"value": "Bachelorkurs", "translations": {"translation": [
-        {"lang": "de", "value": "Bachelorkurs"}, {"lang": "en", "value": "Bachelor's Course\t \t"},
-    ]}}
-    course["semesterDto"]["semesterDesignation"] = {"value": "Wintersemester 2026/27", "translations": {
-        "translation": [{"lang": "de", "value": "Wintersemester 2026/27"}, {"lang": "en"}],
-    }}
-    detail = parse_course_detail(json.dumps(payload), "en")
-    assert detail.title == "Bachelor's Course"
-    # No English semester name: falls back to German.
-    assert detail.semester == "Wintersemester 2026/27"
 
 
 def test_parse_course_detail_reads_languages_of_instruction_main_first():

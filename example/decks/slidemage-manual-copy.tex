@@ -1,0 +1,168 @@
+% !TeX program = lualatex
+% The SlideMage manual: explains how SlideMage works (Part A, chapters 1-5)
+% and shows every feature working (Part B, chapters 6-9), in the generic
+% SlideMage template. Most slides demonstrate what they explain: the title
+% slide is a \titleframe, every chapter divider a sectionframe carrying the
+% chapter's agenda (\SMChapterAgenda), the reveal-step slides reveal, and
+% the \slidestep demo appears twice. Compile it as instructor, during-course
+% and after-course to see the deck-version system on the manual itself.
+% Navigation for readers: \SMNavigationBar (footer links), \SMDeckAgenda on
+% the contents slide, chapter agendas on the dividers, and \deckappendixtoc,
+% so SlideMage always adds the appendix with the slide previews.
+% Code panels: \SMCodeFile{snippets/<slide id>-<n>.tex}.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{gotham}
+
+% Compile from the project root or from decks/ (see README.md, "Directory layout").
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\input{Slidemaster_preamble_slidemage}
+\usepackage{fontawesome5}          % operating-system icons on the "Installing LaTeX" slides
+
+% Bibliography (biblatex + biber, opt-in per deck): the .bib lookup and the house
+% citation format come from the institution template (\SMUseBibliography,
+% defined in Slidemaster_preamble_base.tex; the format in this deck's template
+% file). To use another format in this deck, redefine \SMBiblatexOptions /
+% \SMBibliographyStyle before the call.
+\SMUseBibliography
+
+\newcommand{\FooterText}{SlideMage Manual}
+
+\ifdefined\deckversionoverride
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]           % options: instructor, during-course, after-course
+\fi
+\ifdefined\decklanguageoverride
+	\decklanguage[\decklanguageoverride]
+\else
+	\decklanguage[en]                  % options: en, de
+\fi
+
+\SMNavigationBar[Manual chapters,Chapter contents,Slide previews]
+\deckappendixtoc
+
+%
+
+\decktags{course}
+\begin{document}
+
+	\slide{1jh-EN-Title-Slide}
+	\slide{tnb-DE-Title-Slide}
+	\slide{1r2-EN-Contents}
+
+	% ---- Part A: How SlideMage works ----
+	\section{The big picture}
+	\slide{1y9-EN-Chapter-The-Big-Picture}
+	\slide{mkd-DE-Chapter-The-Big-Picture}
+	\slide{1ym-EN-Framework-Project-App}
+	\slide{1jv-EN-Anatomy-of-a-Project}
+	\slide{1pf-EN-One-Look-Several-Institutions}
+	\slide{hd5-DE-Ein-Blick-Mehrere-Institutionen}
+
+	% Chapter 2: its divider carries the summary, the slides after it the details.
+	\section{Installing SlideMage}
+	\slide{1f8-EN-Chapter-Installation}
+	\slide{1bb-EN-What-You-Need}
+	\slide{1us-EN-Installing-LaTeX}
+	\slide{neg-EN-Installing-LaTeX-Linux}
+	\slide{dkf-EN-Installing-LaTeX-macOS}
+	\slide{des-DE-LaTeX-unter-Linux-installieren}
+	\slide{1nk-EN-Installing-SlideMage}
+	\slide{1hi-EN-Installing-Ollama}
+	\slide{1v5-EN-Optional-Helpers}
+
+	\section{Slides}
+	\slide{1j6-EN-Chapter-Slides}
+	\slide{1cx-EN-Slide-IDs}
+	\slide{1nt-EN-Inside-a-Slide-File}
+	\slide{1an-EN-Slide-Versions}
+	\slide{1vn-EN-Languages}
+
+	\section{Decks and deck versions}
+	\slide{1ru-EN-Chapter-Decks}
+	\slide{1y5-EN-Anatomy-of-a-Deck-File}
+	\slide{1rv-EN-One-Deck-Several-PDFs}
+	\slide{1d8-EN-Deck-Tags-and-Groups}
+	\slide{1kp-EN-Deck-Housekeeping}
+	\slide{1nu-EN-Deck-Snapshots}
+
+	\section{Working in SlideMage}
+	\slide{1qn-EN-Chapter-Working-in-SlideMage}
+	\slide{1ub-EN-Main-Window}
+	\slide{1ti-EN-Deck-Editor}
+	\slide{1b6-EN-Slide-Editor}
+	\slide{1b2-EN-Managing-a-Slide}
+	\slide{1cb-EN-Side-Panels}
+	\slide{1fg-EN-Command-Palette}
+	\slide{1wk-EN-AI-Assistant}
+	\slide{1gu-EN-Slide-Previews}
+	\slide{1kg-EN-Getting-Slides-Out}
+	\slide{1tb-EN-Compiling-Single-Pages}
+	\slide{1vd-EN-Options-and-Other-Formats}
+	\slide{1n6-EN-Safety-Nets}
+
+	\section{Accessibility}
+	\slide{1wj-EN-Chapter-Accessibility}
+	\slide{1ih-EN-Describing-Images}
+	\slide{1be-EN-Drafting-Image-Descriptions}
+	\slide{1pn-EN-Describing-Diagrams}
+	\slide{1az-EN-Accessible-Transcripts}
+
+	% ---- Part B: Showcase ----
+	\section{Frame types}
+	\slide{1xq-EN-Chapter-Frame-Types}
+	\slide{1td-EN-Frame-Gallery}
+	\slide{1y8-EN-Standardframe}
+	\slide{1y3-EN-Frames-That-Are-One-Command}
+	\slide{1i4-EN-Quote-Demo}
+	\slide{1vk-EN-Full-Bleed-Demo}
+	\slide{1rb-EN-Figureframe}
+	\slide{1vh-EN-Sideimageframe}
+	\slide{1mb-EN-Highlightframe}
+	\slide{1xf-EN-Standout-Demo}
+	\slide{1j2-EN-Step-Strip-and-Chapter-Logo}
+
+	\section{Content and layout}
+	\slide{1g6-EN-Chapter-Content-and-Layout}
+	\slide{1sv-EN-Lists-and-Formulas}
+	\slide{1w4-EN-Numbered-and-Lettered-Lists}
+	\slide{1x6-EN-Blocks}
+	\slide{1wa-EN-Columns-and-Tables}
+	\slide{1c9-EN-Placing-Figures}
+	\slide{1nz-EN-Footnotes-Sources-Citations}
+	\slide{1u5-EN-Color-and-Emphasis}
+	\slide{1gr-EN-Layout-Grid}
+
+	\section{Reveal steps and deck versions}
+	\slide{1x8-EN-Chapter-Reveal-Steps}
+	\slide{1dk-EN-Plain-Beamer-Reveals}
+	\slide{1un-EN-Other-Beamer-Overlays}
+	\slide{1th-EN-Version-Dependent-Reveals}
+	\slide{1t2-EN-Reveals-That-Do-Not-Jump}
+	\slide{1x2-EN-Final-State-for-Students}
+
+	\section{Assembling decks}
+	\slide{1zy-EN-Chapter-Assembling-Decks}
+	\slide{1u4-EN-Ways-to-Include-a-Slide}
+	% The \slidestep demo: the same slide twice, with different reveal steps
+	% per deck version (see slide 1u4 and the demo slide itself).
+	\slidestep{1mu-EN-Slidestep-Demo}[instructor]{1,2}
+	\slidestep{1mu-EN-Slidestep-Demo}[during-course,after-course]{1}
+	\slide{1x7-EN-Linking-and-Navigating}
+	\slidestep{1mu-EN-Slidestep-Demo}[instructor]{3}
+	\slidestep{1mu-EN-Slidestep-Demo}[during-course,after-course]{1}
+
+	\section{Appendix: Reference}
+	\slide{1dt-EN-Chapter-Appendix}
+	\slide{1d7-EN-Quick-Reference-Deck-Commands}
+	\slide{1uw-EN-Quick-Reference-Slide-Commands}
+	\slide{1r8-EN-More-Tools}
+	\slide{2rg-EN-Footnote-symbol-options}
+	\slide{2v9-EN-Itemize-Spacing-Reference}
+	\slide{tks-DE-Chapter-Installation}
+
+\end{document}

@@ -41,11 +41,15 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
+
+from .fileio import write_json
+from .processes import command_output
+from .project import ProjectContext
+from .slide_language import TRANSLATION_LANGUAGES
 
 RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
@@ -177,20 +181,11 @@ def version_lines(log_text: str) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-def _popen_kwargs() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-
-
 @functools.lru_cache(maxsize=1)
 def engine_version() -> str:
     """lualatex's version line ("This is LuaHBTeX, Version 1.22.0 (MiKTeX
     25.4)"), once per run of SlideMage; "" if it can't be run."""
-    try:
-        result = subprocess.run(["lualatex", "--version"], capture_output=True, text=True,
-                                errors="replace", timeout=30, **_popen_kwargs())
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    lines = result.stdout.splitlines() if result.returncode == 0 else []
+    lines = (command_output(["lualatex", "--version"]) or "").splitlines()
     return lines[0].strip() if lines else ""
 
 
@@ -236,7 +231,7 @@ def aux_dir(build_dir: Path, jobname: str) -> Path:
 
 
 def write_record(
-    build_dir: Path, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
+    ctx: ProjectContext, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
     pdf: Path, started: float, log: Optional[Callable[[str], None]] = None,
     deck_path: Optional[Path] = None,
 ) -> Optional[Path]:
@@ -245,7 +240,7 @@ def write_record(
     it isn't recorded (see the module docstring); an old record of the same
     job is removed then, so it can't vouch for a PDF it doesn't describe."""
     log = log or (lambda _line: None)
-    target = record_path(build_dir, jobname)
+    target = record_path(ctx.build_dir, jobname)
     try:
         fls = invocation_dir / f"{jobname}.fls"
         log_file = invocation_dir / f"{jobname}.log"
@@ -254,12 +249,22 @@ def write_record(
             target.unlink(missing_ok=True)
             return None
         bib_sources = parse_blg_sources(invocation_dir / f"{jobname}.blg")
-        aux = aux_dir(build_dir, jobname)
+        aux = aux_dir(ctx.build_dir, jobname)
         shutil.rmtree(aux, ignore_errors=True)
         aux.mkdir(parents=True)
         entries = []
         seen: set[str] = set()
-        for path in [*parse_fls(fls), *bib_sources]:
+        inline_inputs = [deck_path] if deck_path is not None else []
+        if deck_path is not None and deck_path.is_file():
+            from . import deck_language, deck_scan
+            deck = next((d for d in deck_scan.scan_dir(deck_path.parent, False) if d.path == deck_path), None)
+            if deck is not None:
+                # Include dependencies in either language: the wrapper can inline
+                # a shared slide list instead of having TeX open its original file.
+                for language in TRANSLATION_LANGUAGES:
+                    _resolved, inputs = deck_language.compile_deck(ctx, deck, language)
+                    inline_inputs.extend(inputs)
+        for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:
             key = norm(path)
             if key in seen or is_within(path, invocation_dir) or key == norm(wrapper_path):
                 continue
@@ -307,9 +312,7 @@ def write_record(
         # changed only after the slides it compiles (partial_compile.plan)
         if deck_path is not None and deck_path.is_file():
             shutil.copy2(deck_path, aux / DECK_COPY_NAME)
-        tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
-        os.replace(tmp, target)
+        write_json(target, record, indent=1, sort_keys=False, ensure_ascii=True)
         return target
     except (OSError, ValueError) as exc:
         log(f"    (compile not recorded for snapshots: {exc})")
@@ -330,16 +333,19 @@ def read_record(build_dir: Path, jobname: str) -> Optional[dict]:
     return data
 
 
-def check_record(record: dict, wrapper_text: str, aux: Optional[Path] = None) -> Staleness:
+def check_record(record: dict, wrapper_text: Optional[str], aux: Optional[Path] = None) -> Staleness:
     """Why `record` no longer describes what a compile with `wrapper_text`
     would produce now (empty when it still does). `aux`: the record's folder,
-    holding the copies of derived inputs."""
+    holding the copies of derived inputs. `wrapper_text` None: only the PDF
+    and the files the compile read are compared, not the wrapper and the
+    engine (the readability check asks whether the PDF is still current)."""
     stale = Staleness()
-    if record.get("wrapper_sha256") != wrapper_sha256(wrapper_text):
-        stale.reasons.append("the deck's version settings changed")
-    current_engine = engine_version()
-    if current_engine and record.get("engine") != current_engine:
-        stale.reasons.append("the TeX engine changed")
+    if wrapper_text is not None:
+        if record.get("wrapper_sha256") != wrapper_sha256(wrapper_text):
+            stale.reasons.append("the deck's version settings changed")
+        current_engine = engine_version()
+        if current_engine and record.get("engine") != current_engine:
+            stale.reasons.append("the TeX engine changed")
     pdf = Path(record.get("pdf", ""))
     if not pdf.is_file():
         stale.reasons.append(f"{pdf.name} is gone")

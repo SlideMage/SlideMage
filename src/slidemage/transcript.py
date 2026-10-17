@@ -1,5 +1,4 @@
-"""Generate an accessible companion transcript for a deck (ALT_TEXT_NOTES.md,
-phase 4).
+"""Generate an accessible companion transcript for a deck.
 
 Markdown is the source format, HTML the delivered one. Generated on demand and
 never committed: everything it needs already lives in the deck file, the slide
@@ -25,32 +24,28 @@ import itertools
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography
-from .deck_scan import PROJECT_ROOT, Deck
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from .project import ProjectContext
+from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
+from .deck_scan import Deck
+from .tex_source import COMMENT_RE, braced_argument
 
-SLIDES_DIR = PROJECT_ROOT / "slides"
-
-VERSION_DURING = "during-course"
-VERSION_AFTER = "after-course"
-VERSION_INSTRUCTOR = "instructor"
 
 # Only the student versions are generated. See the module docstring.
-STUDENT_VERSIONS = (VERSION_DURING, VERSION_AFTER)
+STUDENT_VERSIONS = (VIEW_DURING, VIEW_AFTER)
 
 VERSION_LABELS = {
-    VERSION_DURING: "during-course version",
-    VERSION_AFTER: "after-course version",
+    VIEW_DURING: "during-course version",
+    VIEW_AFTER: "after-course version",
 }
 VERSION_LABELS_DE = {
-    VERSION_DURING: "Semesterbegleitende Version",
-    VERSION_AFTER: "Version nach Kursende",
+    VIEW_DURING: "Semesterbegleitende Version",
+    VIEW_AFTER: "Version nach Kursende",
 }
 _VERSION_LABELS_BY_LANGUAGE = {"en": VERSION_LABELS, "de": VERSION_LABELS_DE}
-
-_ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 
 # How each slide-inclusion command behaves, mirrored from the preamble:
 #
@@ -69,16 +64,8 @@ _ALL_VERSIONS = (VERSION_INSTRUCTOR, VERSION_DURING, VERSION_AFTER)
 # other command it does NOT advance the frame counter when the version is not in [vs]:
 # two \slidestep calls at one position are alternatives, exactly one of which exists
 # in any given deck version (see \slidestep in Slidemaster_preamble_base.tex).
-_SLIDE_CALL_RE = re.compile(
-    r"\\slidestep\s*\{(?P<ss_id>[^}]*)\}(?:\s*\[(?P<ss_versions>[^\]]*)\])?\s*\{[^}]*\}"
-    r"|\\(?P<cmd>slidefinal|slideversion|slide|omitslideversion|omitslide"
-    r"|conditionalslide)\s*(?:\[(?P<versions>[^\]]*)\])?\s*\{(?P<id>[^}]*)\}"
-    r"(?:\s*\{(?P<second>[^}]*)\})?"
-)
-
 _SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
 _SUBSECTION_RE = re.compile(r"\\subsection\*?\s*(?:\[[^\]]*\])?\s*\{")
-_DECK_VERSION_RE = re.compile(r"\\deckversion\s*\[([^\]]*)\]")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 
 # UI strings that need to read naturally in the deck's own language
@@ -86,7 +73,7 @@ _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 # scaffolding around German slide content. Only strings *transcript.py
 # itself* writes are here; a slide's own body/title/source text is never
 # translated by this module at all -- it's already in whichever language
-# that slide's own file is written in (see LANGUAGE_NOTES.md: a
+# that slide's own file is written in (a
 # German-content slide is a separate file, not a translated field), so
 # only the alt_images-sourced per-image fields (short/long/takeaway/
 # source) and this module's own scaffolding need a language dimension.
@@ -171,8 +158,8 @@ _DECK_ITEM_RE = re.compile(r"\\deckitem(?![a-zA-Z])\s*(?:<[^>]*>)?")
 # \ifSMInstructorVersion / \ifSMDuringCourseVersion / \ifSMAfterCourseVersion
 _VERSION_IF_RE = re.compile(r"\\ifSM(Instructor|DuringCourse|AfterCourse)Version(?![a-zA-Z])")
 _TEX_IF_TOKEN_RE = re.compile(r"\\(if[a-zA-Z@]*|else|fi)(?![a-zA-Z@])")
-_VERSION_OF_IF = {"Instructor": VERSION_INSTRUCTOR, "DuringCourse": VERSION_DURING,
-                  "AfterCourse": VERSION_AFTER}
+_VERSION_OF_IF = {"Instructor": VIEW_INSTRUCTOR, "DuringCourse": VIEW_DURING,
+                  "AfterCourse": VIEW_AFTER}
 
 
 @dataclass
@@ -226,50 +213,30 @@ def _versions_from(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]
     if raw is None:
         return default
     parts = tuple(p.strip() for p in raw.split(",") if p.strip())
-    return parts or default
-
-
-def deck_version_of(deck_text: str) -> str | None:
-    """The version a deck file hard-codes, or None if it decides at compile time.
-
-    Returns None when `\\deckversion[...]` holds a macro rather than a literal:
-    SlideMage compiles each version by wrapping the deck and defining
-    `\\deckversionoverride`, so most real decks read `\\deckversion[\\deckversionoverride]`
-    and have no fixed version of their own. Informational only -- a transcript
-    is always generated for an explicitly chosen version, never for whatever
-    the file happens to say.
-    """
-    match = _DECK_VERSION_RE.search(alt_blocks.COMMENT_RE.sub("", deck_text))
-    if not match:
-        return VERSION_INSTRUCTOR          # the preamble's own default
-    listed = _versions_from(match.group(1), (VERSION_INSTRUCTOR,))
-    return listed[0] if listed[0] in _ALL_VERSIONS else None
+    return parts
 
 
 def deck_language_of(deck_text: str) -> str:
-    """"en"/"de" -- mirrors deck_version_of() above, for \\decklanguage[...]
-    instead of \\deckversion[...]. Unlike deck_version_of(), always
-    returns a concrete value rather than None: language is fixed per deck
-    (not a per-compile-run choice the way version is -- see
-    LANGUAGE_NOTES.md), so "\\decklanguage[\\decklanguageoverride]" (the
+    """"en"/"de" from the deck's \\decklanguage[...]; always a concrete
+    value, never None: language is fixed per deck
+    (not a per-compile-run choice the way version is),
+    so "\\decklanguage[\\decklanguageoverride]" (the
     macro-argument case, only ever used for SlideMage's own one-off
     render preview, never a real deck's own hardcoded line) falling
     through to the preamble's own "en" default is the right answer here,
     the same way it would be at actual compile time for any deck that
     doesn't set \\decklanguageoverride itself.
 
-    Unlike deck_version_of()'s single .search() (fine there -- a macro
-    match legitimately means "no single answer, informational only" for
-    version), this deliberately scans every \\decklanguage[...] occurrence
+    This deliberately scans every \\decklanguage[...] occurrence
     and picks the first *literal* one: every real deck's own
     \\ifdefined\\decklanguageoverride ... \\else \\decklanguage[en] ... \\fi
-    boilerplate (see README.md/LANGUAGE_NOTES.md) puts the macro-argument
+    boilerplate (see README.md) puts the macro-argument
     branch textually *first*, so a plain first-match .search() would
     always see "\\decklanguageoverride" and fall through to the "en"
     default for every real deck, including ones whose actual hardcoded
     language is "de" -- caught by testing against a real deck file, not
     assumed."""
-    text = alt_blocks.COMMENT_RE.sub("", deck_text)
+    text = COMMENT_RE.sub("", deck_text)
     for match in _DECK_LANGUAGE_RE.finditer(text):
         value = match.group(1).strip()
         if value and not value.startswith("\\"):
@@ -286,13 +253,13 @@ def _document_body(text: str) -> str:
     """
     document_start = None
     document_end = None
-    for name, start, command_end in alt_blocks._iter_tex_commands(text):
+    for name, start, command_end in alt_blocks.iter_tex_commands(text):
         if name not in {"begin", "end"}:
             continue
         cursor = command_end
         while cursor < len(text) and text[cursor].isspace():
             cursor += 1
-        environment, after = alt_blocks.braced_argument(text, cursor)
+        environment, after = braced_argument(text, cursor)
         if after == cursor or environment.strip() != "document":
             continue
         if name == "begin" and document_start is None:
@@ -305,7 +272,7 @@ def _document_body(text: str) -> str:
     return text[document_start:document_end]
 
 
-def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
+def _resolve_literal_include(ctx: ProjectContext, token: str, deck_dir: Path) -> Path | None:
     """Find a literal TeX include from the compiler working directory, then project."""
     requested = Path(token)
     names = [requested]
@@ -315,7 +282,7 @@ def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
     if requested.is_absolute():
         bases = [Path()]
     else:
-        bases = [deck_dir, PROJECT_ROOT]
+        bases = [deck_dir, ctx.root]
 
     seen: set[Path] = set()
     for base in bases:
@@ -330,13 +297,14 @@ def _resolve_literal_include(token: str, deck_dir: Path) -> Path | None:
 
 
 def _expand_literal_includes(
+    ctx: ProjectContext,
     source: str,
     source_path: Path,
     deck_dir: Path,
     active_paths: tuple[Path, ...],
 ) -> str:
     """Inline literal body includes in order, with stack-based cycle checks."""
-    clean = alt_blocks.COMMENT_RE.sub("", source)
+    clean = COMMENT_RE.sub("", source)
     body = _document_body(clean)
     # Instructor notes may contain arbitrary TeX. They are not deck-level
     # includes and must not affect slide numbering or trigger file lookups.
@@ -344,13 +312,13 @@ def _expand_literal_includes(
 
     parts: list[str] = []
     copied_through = 0
-    for name, start, command_end in alt_blocks._iter_tex_commands(body):
+    for name, start, command_end in alt_blocks.iter_tex_commands(body):
         if name not in {"input", "include"} or start < copied_through:
             continue
         cursor = command_end
         while cursor < len(body) and body[cursor].isspace():
             cursor += 1
-        token_text, after = alt_blocks.braced_argument(body, cursor)
+        token_text, after = braced_argument(body, cursor)
         if after == cursor:
             continue
         token = token_text.strip()
@@ -358,7 +326,7 @@ def _expand_literal_includes(
         if not token or "\\" in token or "#" in token:
             continue
 
-        include_path = _resolve_literal_include(token, deck_dir)
+        include_path = _resolve_literal_include(ctx, token, deck_dir)
         if include_path is None:
             raise FileNotFoundError(
                 f"Literal deck include {token!r} from {source_path} was not found."
@@ -369,7 +337,7 @@ def _expand_literal_includes(
 
         included_text = include_path.read_text(encoding="utf-8")
         expanded = _expand_literal_includes(
-            included_text, include_path, deck_dir, (*active_paths, include_path)
+            ctx, included_text, include_path, deck_dir, (*active_paths, include_path)
         )
         parts.append(body[copied_through:start])
         parts.append(expanded)
@@ -379,7 +347,7 @@ def _expand_literal_includes(
     return "".join(parts)
 
 
-def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
+def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[DeckSlide]:
     """Every slide the deck contains, in order, flagged for this version.
 
     Excluded slides are kept in the list with `included=False` rather than
@@ -387,61 +355,32 @@ def resolve_deck(deck_path: Path, version: str) -> list[DeckSlide]:
     -- so the numbers a transcript prints keep matching the numbers a student
     sees.
     """
-    source = deck_path.read_text(encoding="utf-8")
-    deck_dir = deck_path.parent.resolve()
-    text = _expand_literal_includes(source, deck_path, deck_dir, (deck_path.resolve(),))
+    deck = deck_scan.read_deck(deck_path)
+    language = deck_language_of(deck.text).upper()
+    # Preamble definitions and text after the document are not slide placements.
+    body = _document_body(deck.text)
+    deck = replace(deck, text=body, preamble_end=0)
+    deck, _dependencies = deck_language.expand_fragments(deck, strict_includes=True)
     slides: list[DeckSlide] = []
     number = 0
-    section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
-    subsection_starts = [m.start() for m in _SUBSECTION_RE.finditer(text)]
+    # the LaTeX counter: \subsection{}s since the chapter's \section{}
+    subsection_starts = [m.start() for m in _SUBSECTION_RE.finditer(deck_language.masked(deck.text))]
 
-    for match in _SLIDE_CALL_RE.finditer(text):
-        chapter = bisect.bisect_left(section_starts, match.start())
-        # the LaTeX counter: \subsection{}s since the chapter's \section{}
-        chapter_base = (bisect.bisect_left(subsection_starts, section_starts[chapter - 1])
-                        if chapter > 0 else 0)
-        subsection = bisect.bisect_left(subsection_starts, match.start()) - chapter_base
-        if match.group("ss_id") is not None:
-            step_id = match.group("ss_id").strip()
-            if not step_id or version not in _versions_from(match.group("ss_versions"), _ALL_VERSIONS):
-                continue
-            number += 1
-            slides.append(DeckSlide(
-                number=number,
-                slide_id=step_id.partition("-")[0],
-                path=SLIDES_DIR / f"{step_id}-current.tex",
-                included=True,
-                chapter=chapter,
-                subsection=subsection,
-            ))
+    for slot in deck_language.deck_slots(ctx, deck, language):
+        call = slot.call
+        included = call.included_in(version)
+        if call.macro == "slidestep" and not included:
             continue
-        command = match.group("cmd")
-        slide_id = match.group("id").strip()
-        if not slide_id:
-            continue
+        chapter_start = call.chapter.start if call.chapter else 0
+        subsection = (bisect.bisect_left(subsection_starts, slot.original.call_start)
+                      - bisect.bisect_left(subsection_starts, chapter_start))
         number += 1
-
-        if command in ("omitslide", "omitslideversion"):
-            included = version == VERSION_INSTRUCTOR
-        elif command == "conditionalslide":
-            included = version in _versions_from(match.group("versions"),
-                                                 _ALL_VERSIONS)
-        else:
-            included = True
-
-        if command == "slideversion" and match.group("second"):
-            filename = f"{slide_id}-v{match.group('second').strip()}.tex"
-        elif command == "omitslideversion" and match.group("second"):
-            filename = f"{slide_id}-v{match.group('second').strip()}.tex"
-        else:
-            filename = f"{slide_id}-current.tex"
-
         slides.append(DeckSlide(
             number=number,
-            slide_id=slide_id.partition("-")[0],
-            path=SLIDES_DIR / filename,
+            slide_id=call.id,
+            path=ctx.slides_dir / call.source_filename,
             included=included,
-            chapter=chapter,
+            chapter=call.chapter.order if call.chapter else 0,
             subsection=subsection,
         ))
     return slides
@@ -492,7 +431,7 @@ def _resolve_deck_reveals(text: str, version: str) -> str:
             out.append(text[index:])
             return "".join(out)
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end())
+        content, after = braced_argument(text, match.end())
         if after == match.end():
             out.append(text[match.start():])
             return "".join(out)
@@ -522,13 +461,13 @@ def resolve_deck_conditionals(text: str, version: str) -> str:
             return "".join(out)
 
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end())
+        content, after = braced_argument(text, match.end())
         if after == match.end():                 # unbalanced; bail out safely
             out.append(text[match.start():])
             return "".join(out)
 
-        versions = _versions_from(match.group("versions"), _ALL_VERSIONS)
-        keep = version == VERSION_INSTRUCTOR or version in versions
+        versions = _versions_from(match.group("versions"), VIEWS)
+        keep = version == VIEW_INSTRUCTOR or version in versions
         if keep:
             # Recurse: the content may itself contain conditionals.
             out.append(resolve_deck_conditionals(content, version))
@@ -677,7 +616,7 @@ def _transform_environments(text: str, name: str, handler) -> str:
 _ITEM_SPLIT_RE = re.compile(r"\\item\b\s*(?:<[^>]*>)?")
 
 
-def _render_list(body: str, marker: str, depth: int) -> str:
+def _render_list(body: str, marker: str, depth: int, bib: dict) -> str:
     # Convert nested list environments FIRST and park them in placeholders.
     # Splitting on \item otherwise tears a nested list apart -- its own \items
     # become items of the outer list and its \begin/\end survive as the stray
@@ -685,7 +624,7 @@ def _render_list(body: str, marker: str, depth: int) -> str:
     parked: list[str] = []
 
     def park(inner: str, m=marker) -> str:
-        parked.append("\n" + _render_list(inner, m, depth + 1) + "\n")
+        parked.append("\n" + _render_list(inner, m, depth + 1, bib) + "\n")
         return f"\x00{len(parked) - 1}\x00"
 
     for nested_name, nested_marker in _LIST_ENVIRONMENTS.items():
@@ -697,7 +636,7 @@ def _render_list(body: str, marker: str, depth: int) -> str:
     lead = items[0].strip()
     lines: list[str] = []
     if lead:                                # text before the first \item
-        rendered_lead = _inline_markdown(lead)
+        rendered_lead = _inline_markdown(lead, bib)
         for slot, text in enumerate(parked):
             rendered_lead = rendered_lead.replace(f"\x00{slot}\x00", text)
         lines.append(rendered_lead)
@@ -710,9 +649,9 @@ def _render_list(body: str, marker: str, depth: int) -> str:
         if stripped.startswith("["):
             close = stripped.find("]")
             if close != -1:
-                label = _inline_markdown(stripped[1:close]).strip()
+                label = _inline_markdown(stripped[1:close], bib).strip()
                 raw = stripped[close + 1:]
-        rendered = _convert_body(raw, depth + 1).strip()
+        rendered = _convert_body(raw, bib, depth + 1).strip()
         if label and rendered:
             rendered = f"{label} {rendered}"
         for slot, text in enumerate(parked):
@@ -738,22 +677,22 @@ def _skip_optional_argument(body: str) -> str:
     return body
 
 
-def _render_block(body: str, label: str) -> str:
+def _render_block(body: str, label: str, bib: dict) -> str:
     """A beamer block becomes a titled Markdown quote."""
     title = ""
     stripped = _skip_optional_argument(body).lstrip()
     if label.startswith("gothamfloating") and stripped.startswith("{"):
         # the floating variants take the block's width first: {6cm}{Title}
-        _width, after = alt_blocks.braced_argument(stripped, 0)
+        _width, after = braced_argument(stripped, 0)
         if after > 0:
             stripped = stripped[after:].lstrip()
     body = stripped
     if stripped.startswith("{"):
-        title, after = alt_blocks.braced_argument(stripped, 0)
+        title, after = braced_argument(stripped, 0)
         if after > 0:
             body = stripped[after:]
-    heading = _inline_markdown(title).strip() or label.replace("block", "").title()
-    inner = _convert_body(body, 0).strip()
+    heading = _inline_markdown(title, bib).strip() or label.replace("block", "").title()
+    inner = _convert_body(body, bib, 0).strip()
     quoted = "\n".join(f"> {line}" if line.strip() else ">"
                        for line in inner.splitlines())
     return f"\n> **{heading}**\n>\n{quoted}\n"
@@ -774,7 +713,7 @@ def _strip_column_spec(body: str, count: int) -> str:
         stripped = body.lstrip()
         if not stripped.startswith("{"):
             break
-        _content, after = alt_blocks.braced_argument(stripped, 0)
+        _content, after = braced_argument(stripped, 0)
         if after == 0:
             break
         body = stripped[after:]
@@ -795,7 +734,7 @@ def _flatten_table(body: str, spec_args: int = 1) -> str:
                     _TABLE_CELL_END_RE.split(_TABLE_ROW_END_RE.sub(" ", body)))
 
 
-def _render_table(body: str, spec_args: int = 1) -> str:
+def _render_table(body: str, bib: dict, spec_args: int = 1) -> str:
     """Best-effort LaTeX table to Markdown table.
 
     Deliberately conservative: rows are split on `\\\\` and cells on `&`, and
@@ -809,7 +748,7 @@ def _render_table(body: str, spec_args: int = 1) -> str:
     body = re.sub(r"\\(?:hline|toprule|midrule|bottomrule|rowcolor\{[^}]*\})", "",
                   body)
     rows = [r.strip() for r in _TABLE_ROW_END_RE.split(body) if r.strip()]
-    cells = [[_inline_markdown(c).strip() for c in _TABLE_CELL_END_RE.split(row)]
+    cells = [[_inline_markdown(c, bib).strip() for c in _TABLE_CELL_END_RE.split(row)]
              for row in rows]
     cells = [row for row in cells if any(c for c in row)]
     if not cells:
@@ -879,7 +818,7 @@ def _park_code_spans(text: str) -> str:
             out.append(text[index:])
             return "".join(out)
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end() - 1)
+        content, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             out.append(text[match.start():])
             return "".join(out)
@@ -946,11 +885,11 @@ def _replace_two_arguments(text: str, pattern: re.Pattern, render) -> str:
         if match is None:
             out.append(text[index:])
             return "".join(out)
-        first, after = alt_blocks.braced_argument(text, match.end() - 1)
+        first, after = braced_argument(text, match.end() - 1)
         cursor = after
         while cursor < len(text) and text[cursor].isspace():
             cursor += 1
-        second, after2 = alt_blocks.braced_argument(text, cursor)
+        second, after2 = braced_argument(text, cursor)
         if after == match.end() - 1 or after2 == cursor:
             out.append(text[index:match.end()])
             index = match.end()
@@ -989,27 +928,15 @@ _CITE_RE = re.compile(r"\\(fullcite|textcite|citep|citet|cite)\s*\{([^}]*)\}")
 _CITE_STYLES = {"fullcite": "full", "textcite": "text", "citet": "text",
                 "citep": "paren", "cite": "paren"}
 
-_BIB_CACHE: dict | None = None
-
-
-def _bib() -> dict:
-    """Slidemaster.bib, parsed once per process."""
-    global _BIB_CACHE
-    if _BIB_CACHE is None:
-        _BIB_CACHE = bibliography.load()
-    return _BIB_CACHE
-
-
-def _render_citation(match: re.Match) -> str:
+def _render_citation(match: re.Match, bib: dict) -> str:
     style = _CITE_STYLES.get(match.group(1), "full")
     keys = [k.strip() for k in match.group(2).split(",") if k.strip()]
-    entries = _bib()
-    return "; ".join(bibliography.format_citation(k, entries, style)
+    return "; ".join(bibliography.format_citation(k, bib, style)
                      for k in keys)
 _FOOTNOTE_RE = re.compile(r"\\footnote\s*(?:\[[^\]]*\])?\s*\{")
 
 
-def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> str:
+def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str, bib: dict) -> str:
     out: list[str] = []
     index = 0
     while True:
@@ -1018,16 +945,16 @@ def _apply_wrapped(text: str, pattern: re.Pattern, prefix: str, suffix: str) -> 
             out.append(text[index:])
             return "".join(out)
         out.append(text[index:match.start()])
-        content, after = alt_blocks.braced_argument(text, match.end() - 1)
+        content, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             out.append(text[match.start():])
             return "".join(out)
-        inner = _inline_markdown(content).strip()
+        inner = _inline_markdown(content, bib).strip()
         out.append(f"{prefix}{inner}{suffix}" if inner else "")
         index = after
 
 
-def _inline_markdown(text: str) -> str:
+def _inline_markdown(text: str, bib: dict) -> str:
     """Inline-level LaTeX to Markdown. Recursive: macros nest."""
     text = _park_code_spans(text)
     text = _COLOR_COMMAND_RE.sub("", text)
@@ -1046,28 +973,28 @@ def _inline_markdown(text: str) -> str:
         match = _HREF_RE.search(text)
         if match is None:
             break
-        url, after = alt_blocks.braced_argument(text, match.end() - 1)
+        url, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             break
-        label, after2 = alt_blocks.braced_argument(text, after)
+        label, after2 = braced_argument(text, after)
         if after2 == after:
             text = text[:match.start()] + url + text[after:]
             continue
         text = (text[:match.start()]
-                + f"[{_inline_markdown(label).strip()}]({url.strip()})"
+                + f"[{_inline_markdown(label, bib).strip()}]({url.strip()})"
                 + text[after2:])
 
-    text = _apply_wrapped(text, _URL_RE, "<", ">")
+    text = _apply_wrapped(text, _URL_RE, "<", ">", bib)
     text = _ELLIPSIS_RE.sub("…", text)
     # Footnotes are inlined: a transcript reader has nothing to hover over.
-    text = _apply_wrapped(text, _FOOTNOTE_RE, " (", ")")
+    text = _apply_wrapped(text, _FOOTNOTE_RE, " (", ")", bib)
     # Citation keys are resolved against Slidemaster.bib, so a source line
     # reads "Loughran, Ritter & Rydqvist (1995), ..." rather than the bare
     # key. An unknown key renders as "[key]" rather than disappearing.
-    text = _CITE_RE.sub(_render_citation, text)
+    text = _CITE_RE.sub(lambda m: _render_citation(m, bib), text)
 
     for pattern, prefix, suffix in _INLINE_MACROS:
-        text = _apply_wrapped(text, pattern, prefix, suffix)
+        text = _apply_wrapped(text, pattern, prefix, suffix, bib)
 
     for escaped, plain in (("\\$", "$"), ("\\&", "&"), ("\\_", "_"),
                            ("\\#", "#"), ("\\%", "%"), ("\\,", " ")):
@@ -1085,7 +1012,7 @@ _TABLE_LINE_RE = re.compile(r"^\s*\|.*\|\s*$")
 _NODE_RE = re.compile(r"\\node\b")
 
 
-def _tikz_labels(body: str) -> str:
+def _tikz_labels(body: str, bib: dict) -> str:
     """The text of a tikzpicture's `\\node{...}` labels, drawing syntax dropped.
 
     A node is `\\node[opts] (name) at (coord) {LABEL};` -- the label is the last
@@ -1115,10 +1042,10 @@ def _tikz_labels(body: str) -> str:
         last_open = span.rfind("{")
         if last_open == -1:
             continue
-        content, after = alt_blocks.braced_argument(span, last_open)
+        content, after = braced_argument(span, last_open)
         if after == last_open or "includegraphics" in content:
             continue
-        rendered = _convert_body(content).strip()
+        rendered = _convert_body(content, bib).strip()
         # The same node is often re-emitted once per overlay step; the
         # transcript has no overlays, so consecutive repeats are noise.
         if rendered and (not labels or labels[-1] != rendered):
@@ -1160,7 +1087,7 @@ def _figure_commands(text: str) -> str:
         if match is None:
             out.append(text[index:])
             return "".join(out)
-        argument, after = alt_blocks.braced_argument(text, match.end() - 1)
+        argument, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             out.append(text[index:])
             return "".join(out)
@@ -1176,7 +1103,7 @@ def _arguments(text: str, start: int, count: int) -> tuple[list[str], int]:
     for _ in range(count):
         while cursor < len(text) and text[cursor].isspace():
             cursor += 1
-        content, after = alt_blocks.braced_argument(text, cursor)
+        content, after = braced_argument(text, cursor)
         if after == cursor:
             return [], start
         arguments.append(content)
@@ -1217,7 +1144,7 @@ def _toc_slot(match: re.Match) -> str:
     return f"\n\x02SMTOC:{spec}\x02\n"
 
 
-def _convert_body(text: str, depth: int = 0) -> str:
+def _convert_body(text: str, bib: dict, depth: int = 0) -> str:
     text = _park_code_spans(text)
     text = _CONTROL_SPACE_RE.sub(r"\1 ", text)
     text = _SETBEAMER_RE.sub("", text)
@@ -1237,18 +1164,18 @@ def _convert_body(text: str, depth: int = 0) -> str:
     # A tikzillustration is described like an image, in its own section;
     # its node labels would only repeat that description.
     text = _transform_environments(text, "tikzillustration", lambda _body: "")
-    text = _transform_environments(text, "tikzpicture", _tikz_labels)
+    text = _transform_environments(text, "tikzpicture", lambda body: _tikz_labels(body, bib))
     for name in _UNWRAP_ENVIRONMENTS:
         text = _transform_environments(text, name, lambda body: "\n" + body + "\n")
     for name in _BLOCK_ENVIRONMENTS:
         text = _transform_environments(
-            text, name, lambda body, n=name: _render_block(body, n))
+            text, name, lambda body, n=name: _render_block(body, n, bib))
     for name, spec_args in _TABLE_SPEC_ARGS.items():
         text = _transform_environments(
-            text, name, lambda body, n=spec_args: _render_table(body, n))
+            text, name, lambda body, n=spec_args: _render_table(body, bib, n))
     for name, marker in _LIST_ENVIRONMENTS.items():
         text = _transform_environments(
-            text, name, lambda body, m=marker: "\n" + _render_list(body, m, depth) + "\n")
+            text, name, lambda body, m=marker: "\n" + _render_list(body, m, depth, bib) + "\n")
 
     # Table rows are skipped: their cells were already converted in
     # _render_table, and re-running inline conversion turns the separator
@@ -1256,7 +1183,7 @@ def _convert_body(text: str, depth: int = 0) -> str:
     # recognised as a table at all -- every cell then renders as a stray
     # paragraph beginning with a pipe.
     lines = [line.rstrip() if _TABLE_LINE_RE.match(line)
-             else _inline_markdown(line).rstrip()
+             else _inline_markdown(line, bib).rstrip()
              for line in text.splitlines()]
     out: list[str] = []
     for line in lines:
@@ -1271,7 +1198,6 @@ def _convert_body(text: str, depth: int = 0) -> str:
 # Rendering one slide
 # --------------------------------------------------------------------------
 
-_FRAME_END_RE = re.compile(r"\\end\{\w*frame\}")
 _PLAIN_FRAME_OPEN_RE = re.compile(r"\\begin\{frame\}\s*(?:<[^>]*>)?\s*(?:\[[^\]]*\])?")
 
 # \SMCodeFile[listings keys]{path}: LaTeX source a slide shows from a file
@@ -1283,13 +1209,13 @@ _CODE_LINE_KEY_RE = re.compile(r"\b(firstline|lastline)\s*=\s*(\d+)")
 _CODE_SLOT = "\x02SMCODE{}\x02"
 
 
-def _park_code_files(text: str) -> tuple[str, list[str]]:
+def _park_code_files(ctx: ProjectContext, text: str) -> tuple[str, list[str]]:
     blocks: list[str] = []
 
     def park(match: re.Match) -> str:
         ref = match.group(2).strip()
         try:
-            lines = (PROJECT_ROOT / ref).read_text(encoding="utf-8").splitlines()
+            lines = (ctx.root / ref).read_text(encoding="utf-8").splitlines()
         except OSError:
             lines = [f"(code file {ref} not found)"]
         keys = dict(_CODE_LINE_KEY_RE.findall(match.group(1) or ""))
@@ -1338,7 +1264,7 @@ def _expand_local_macros(text: str) -> str:
         match = _LOCAL_MACRO_DEF_RE.search(text)
         if match is None:
             break
-        body, after = alt_blocks.braced_argument(text, match.end() - 1)
+        body, after = braced_argument(text, match.end() - 1)
         if after == match.end() - 1:
             break
         macros[match.group(1) or match.group(2)] = (
@@ -1388,12 +1314,12 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
     """Replaces every \\multilingualtext{EN}{DE} call with just its EN or
     DE argument, mirroring \\ifSMGerman's own choice at compile time
     (Slidemaster_preamble_base.tex) -- brace-matched
-    (alt_blocks.braced_argument), not a naive regex, since either argument
+    (braced_argument), not a naive regex, since either argument
     can itself contain a braced macro (e.g. \\textbf{...}).
 
     Must run before title/body extraction: a "mult" slide's transcript
     otherwise showed *both* languages concatenated together (2026-08-25,
-    reported directly against g6q) -- alt_blocks._slide_title()'s own
+    reported directly against g6q) -- alt_blocks.slide_title()'s own
     macro-name-stripping regex only ever removes the bare "\\multilingualtext"
     token, then strips every remaining brace indiscriminately, leaving
     "{EN}{DE}" collapse into "ENDE" rather than picking one."""
@@ -1406,11 +1332,11 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
             return "".join(out)
         out.append(text[index:found])
         first_open = found + len(_MULTILINGUAL_NEEDLE) - 1
-        arg_en, after_first = alt_blocks.braced_argument(text, first_open)
+        arg_en, after_first = braced_argument(text, first_open)
         if after_first == first_open:  # unbalanced first arg -- leave the rest untouched
             out.append(text[found:])
             return "".join(out)
-        arg_de, after_second = alt_blocks.braced_argument(text, after_first)
+        arg_de, after_second = braced_argument(text, after_first)
         if after_second == after_first:  # no second {...} immediately following -- malformed
             out.append(text[found:after_first])
             index = after_first
@@ -1419,12 +1345,15 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
         index = after_second
 
 
-def render_slide(deck_slide: DeckSlide, version: str,
+def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
                  entries: dict[str, "alt_images.ImageEntry"],
                  slide_notes: dict[str, "alt_images.SlideNotes"] | None = None,
-                 language: str = "en",
+                 language: str = "en", bib: dict | None = None,
                  ) -> TranscriptSlide | None:
-    """Turn one slide file into a transcript entry, or None if unreadable."""
+    """Turn one slide file into a transcript entry, or None if unreadable. `bib` is the project's
+    parsed .bib (read here when a caller rendering many slides does not hand it in)."""
+    if bib is None:
+        bib = bibliography.load(ctx.bibliography_path)
     try:
         source_text = deck_slide.path.read_text(encoding="utf-8")
     except OSError:
@@ -1435,7 +1364,7 @@ def render_slide(deck_slide: DeckSlide, version: str,
     # so both the title and the body reflect only the requested language.
     source_text = _resolve_multilingual_text(source_text, language)
 
-    stripped = alt_blocks.COMMENT_RE.sub("", source_text)
+    stripped = COMMENT_RE.sub("", source_text)
     stripped = resolve_deck_conditionals(stripped, version)
     stripped, _notes = alt_blocks.extract_note_calls(stripped)
     body = _expand_local_macros(stripped)
@@ -1449,19 +1378,19 @@ def render_slide(deck_slide: DeckSlide, version: str,
     has_subsection_agenda = bool(_SUBSECTION_AGENDA_RE.search(body))
     body = _SUBSECTION_AGENDA_RE.sub("\n\n" + _SUBAGENDA_SLOT + "\n\n", body)
     body = _TOC_RE.sub(_toc_slot, body)
-    agenda_title = (_finish(_inline_markdown(agenda_titles[0]).strip())
+    agenda_title = (_finish(_inline_markdown(agenda_titles[0], bib).strip())
                     if agenda_titles else "")
 
-    slide_id, title = alt_blocks._slide_title(stripped, deck_slide.path)
+    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path)
     if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
                              or alt_blocks.TITLEFRAME_RE.search(stripped)):
         title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)
 
     begin = alt_blocks.FRAME_OPEN_RE.search(body)
     plain = _PLAIN_FRAME_OPEN_RE.search(body)
-    end = _FRAME_END_RE.search(body)
+    end = alt_blocks.FRAME_END_RE.search(body)
     if begin and end:
-        _title_arg, after_title = alt_blocks.braced_argument(body, begin.end() - 1)
+        _title_arg, after_title = braced_argument(body, begin.end() - 1)
         if begin.group(0).startswith("\\begin{sideimageframe}"):
             _path, after_title = _arguments(body, after_title, 1)  # its image
         if after_title < end.start():
@@ -1472,17 +1401,17 @@ def render_slide(deck_slide: DeckSlide, version: str,
         while cursor < len(body) and body[cursor].isspace():
             cursor += 1
         if body.startswith("{", cursor):
-            _title_arg, cursor = alt_blocks.braced_argument(body, cursor)
+            _title_arg, cursor = braced_argument(body, cursor)
         body = body[cursor:end.start()]
     else:
         # \titleframe{title}{subtitle}/\fullbleedframe{path} are commands,
-        # not environments, so they never match FRAME_OPEN_RE/_FRAME_END_RE
+        # not environments, so they never match FRAME_OPEN_RE/alt_blocks.FRAME_END_RE
         # above -- without this branch, `body` stayed the *entire* raw
         # stripped source (this slide's own macro call included), and
         # _convert_body() below only strips bare macro *names*, leaving
         # brace-argument content (a version string, a raw image path)
         # flattened into the transcript text. The title slide's own title
-        # is already captured separately via _slide_title() above, so only
+        # is already captured separately via slide_title() above, so only
         # its subtitle (the second argument) is real body content; a
         # fullbleedframe slide has no text at all -- its image's own
         # description (now detected by referenced_images(), see
@@ -1490,23 +1419,23 @@ def render_slide(deck_slide: DeckSlide, version: str,
         title_cmd = alt_blocks.TITLEFRAME_RE.search(body)
         fullbleed_cmd = alt_blocks.FULLBLEEDFRAME_RE.search(body)
         if title_cmd:
-            _title_arg, after_title = alt_blocks.braced_argument(body, title_cmd.end() - 1)
+            _title_arg, after_title = braced_argument(body, title_cmd.end() - 1)
             cursor = after_title
             while cursor < len(body) and body[cursor].isspace():
                 cursor += 1
-            subtitle, _after_subtitle = alt_blocks.braced_argument(body, cursor)
+            subtitle, _after_subtitle = braced_argument(body, cursor)
             body = subtitle
         elif fullbleed_cmd:
             body = ""
 
     notes = (slide_notes or {}).get(slide_id)
-    body, code_blocks = _park_code_files(body)
+    body, code_blocks = _park_code_files(ctx, body)
     entry = TranscriptSlide(
         number=deck_slide.number,
         slide_id=slide_id,
         title=title,
-        body=_unpark_code_files(_finish(_convert_body(body).strip()), code_blocks),
-        source=_finish(" ".join(_inline_markdown(" ".join(sources)).split())),
+        body=_unpark_code_files(_finish(_convert_body(body, bib).strip()), code_blocks),
+        source=_finish(" ".join(_inline_markdown(" ".join(sources), bib).split())),
         summary=notes.summary if notes else "",
         agenda_title=agenda_title,
         chapter_agenda=has_chapter_agenda,
@@ -1617,34 +1546,34 @@ def _fill_chapter_agendas(entries: list[TranscriptSlide], chapters: list[int],
             entry.body = entry.body.replace(_SUBAGENDA_SLOT, block).strip()
 
 
-def _section_titles(deck_path: Path) -> list[str]:
+def _section_titles(ctx: ProjectContext, deck_path: Path, bib: dict) -> list[str]:
     """The deck's \\section titles, in order (literal includes expanded, as
     resolve_deck() counts them)."""
     source = deck_path.read_text(encoding="utf-8")
-    text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
+    text = _expand_literal_includes(ctx, source, deck_path, deck_path.parent.resolve(),
                                     (deck_path.resolve(),))
-    text = alt_blocks.COMMENT_RE.sub("", text)
+    text = COMMENT_RE.sub("", text)
     titles: list[str] = []
     for match in _SECTION_RE.finditer(text):
-        title, _after = alt_blocks.braced_argument(text, match.end() - 1)
-        titles.append(_finish(_inline_markdown(title).strip()))
+        title, _after = braced_argument(text, match.end() - 1)
+        titles.append(_finish(_inline_markdown(title, bib).strip()))
     return titles
 
 
-def _subsection_titles(deck_path: Path) -> dict[int, list[str]]:
+def _subsection_titles(ctx: ProjectContext, deck_path: Path, bib: dict) -> dict[int, list[str]]:
     """The deck's \\subsection titles per chapter (1-based \\section number;
     0 = before the first), in order -- the same text and counting as
     resolve_deck()'s DeckSlide.subsection."""
     source = deck_path.read_text(encoding="utf-8")
-    text = _expand_literal_includes(source, deck_path, deck_path.parent.resolve(),
+    text = _expand_literal_includes(ctx, source, deck_path, deck_path.parent.resolve(),
                                     (deck_path.resolve(),))
-    text = alt_blocks.COMMENT_RE.sub("", text)
+    text = COMMENT_RE.sub("", text)
     section_starts = [m.start() for m in _SECTION_RE.finditer(text)]
     titles: dict[int, list[str]] = {}
     for match in _SUBSECTION_RE.finditer(text):
-        title, _after = alt_blocks.braced_argument(text, match.end() - 1)
+        title, _after = braced_argument(text, match.end() - 1)
         chapter = bisect.bisect_left(section_starts, match.start())
-        titles.setdefault(chapter, []).append(_finish(_inline_markdown(title).strip()))
+        titles.setdefault(chapter, []).append(_finish(_inline_markdown(title, bib).strip()))
     return titles
 
 
@@ -1687,13 +1616,13 @@ def _fill_deck_tocs(entries: list[TranscriptSlide], chapters: list[int],
 
 
 def generate_single_slide(
-    source_text: str, bare_id: str, version: str, language: str
+    ctx: ProjectContext, source_text: str, bare_id: str, version: str, language: str
 ) -> TranscriptResult:
-    """qt_slide_source_tab.py's own "Render transcript" button (2026-08-25)
+    """The Preview's own "Render transcript" menu entry (2026-08-25)
     -- one slide's transcript entry, independent of any real deck (no
     numbering/deck title/undescribed-image-count context beyond this one
     slide), rendered exactly as generate() would render it inside a real
-    deck. `version` silently falls back to VERSION_DURING when it isn't a
+    deck. `version` silently falls back to VIEW_DURING when it isn't a
     student version (e.g. "instructor", picked from the same Render-bar
     combo used for PDF rendering) -- transcripts genuinely don't exist for
     that version at all, so refusing outright would just be an extra click
@@ -1702,23 +1631,23 @@ def generate_single_slide(
     `source_text` -- the editor's current buffer, possibly unsaved -- is
     written to a throwaway temp file under `bare_id`'s own real filename
     stem before render_slide() ever sees it: that function only reads from
-    a real Path, and alt_blocks._slide_title()/entry.takeaway_for() derive
+    a real Path, and alt_blocks.slide_title()/entry.takeaway_for() derive
     this slide's *identity* (its bare id, and therefore its own per-slide
     image-takeaway overrides and transcript summary) from that filename's
     stem, not from anything inside the text itself. A randomly-named temp
     file would silently produce a transcript for a slide with no identity
     at all -- no takeaway overrides, no summary, wrong image lookups."""
     if version not in STUDENT_VERSIONS:
-        version = VERSION_DURING
+        version = VIEW_DURING
 
-    entries = alt_images.load_store()
-    slide_notes = alt_images.load_slide_notes()
+    entries = alt_images.load_store(ctx)
+    slide_notes = alt_images.load_slide_notes(ctx)
     tmp_dir = Path(tempfile.mkdtemp(prefix="slidemage-transcript-"))
     try:
-        tmp_path = tmp_dir / f"{bare_id}-current.tex"
+        tmp_path = tmp_dir / slide_language.current_name(bare_id)
         tmp_path.write_text(source_text, encoding="utf-8", newline="")
         deck_slide = DeckSlide(number=1, slide_id=bare_id, path=tmp_path, included=True)
-        entry = render_slide(deck_slide, version, entries, slide_notes, language=language)
+        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1750,20 +1679,21 @@ class TranscriptResult:
     language: str = "en"
 
 
-def generate(deck_path: Path, version: str) -> TranscriptResult:
+def generate(ctx: ProjectContext, deck_path: Path, version: str) -> TranscriptResult:
     if version not in STUDENT_VERSIONS:
         raise ValueError(
             f"Transcripts are generated for {' and '.join(STUDENT_VERSIONS)} "
-            f"only, not {version!r} — see ALT_TEXT_NOTES.md."
+            f"only, not {version!r}."
         )
 
     language = deck_language_of(deck_path.read_text(encoding="utf-8"))
     strings = STRINGS[language]
     version_labels = _VERSION_LABELS_BY_LANGUAGE[language]
 
-    entries = alt_images.load_store()
-    slide_notes = alt_images.load_slide_notes()
-    deck_slides = resolve_deck(deck_path, version)
+    entries = alt_images.load_store(ctx)
+    slide_notes = alt_images.load_slide_notes(ctx)
+    bib = bibliography.load(ctx.bibliography_path)
+    deck_slides = resolve_deck(ctx, deck_path, version)
     rendered: list[TranscriptSlide] = []
     chapters: list[int] = []
     subsections: list[int] = []
@@ -1772,7 +1702,7 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
     for deck_slide in deck_slides:
         if not deck_slide.included:
             continue
-        entry = render_slide(deck_slide, version, entries, slide_notes, language=language)
+        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language, bib=bib)
         if entry is None:
             missing_files.append(deck_slide.path.name)
             continue
@@ -1780,8 +1710,8 @@ def generate(deck_path: Path, version: str) -> TranscriptResult:
         chapters.append(deck_slide.chapter)
         subsections.append(deck_slide.subsection)
     _fill_chapter_agendas(rendered, chapters, language, subsections,
-                          _subsection_titles(deck_path))
-    _fill_deck_tocs(rendered, chapters, _section_titles(deck_path), language)
+                          _subsection_titles(ctx, deck_path, bib))
+    _fill_deck_tocs(rendered, chapters, _section_titles(ctx, deck_path, bib), language)
 
     undescribed = sum(1 for s in rendered if s.missing_description)
 
@@ -2012,7 +1942,7 @@ def to_html(result: TranscriptResult, title: str) -> str:
                               lang=result.language)
 
 
-def resolve_transcript_location(deck: Deck, deck_path: Path, version: str) -> tuple[Path, str]:
+def resolve_transcript_location(ctx: ProjectContext, deck: Deck, deck_path: Path, version: str) -> tuple[Path, str]:
     """Where this deck's transcript should land, and what its filename
     (without extension) should be: a deck-declared
     \\deckoutputfolder[transcript]{...} (deck_scan.py's OUTPUT_FOLDER_RE),
@@ -2041,20 +1971,20 @@ def resolve_transcript_location(deck: Deck, deck_path: Path, version: str) -> tu
     default_stem = f"{deck_path.stem}-{version}-transcript"
     raw = deck.output_folders.get("transcript") or deck.output_folders.get(None)
     if raw is None:
-        return PROJECT_ROOT / "transcripts", default_stem
+        return ctx.root / "transcripts", default_stem
     path = Path(raw)
-    resolved = path if path.is_absolute() else PROJECT_ROOT / path
+    resolved = path if path.is_absolute() else ctx.root / path
     if resolved.suffix:
         return resolved.parent, resolved.stem
     return resolved, default_stem
 
 
-def write_transcript(deck_path: Path, version: str,
+def write_transcript(ctx: ProjectContext, deck_path: Path, version: str,
                      directory: Path | None = None,
                      filename_stem: str | None = None) -> tuple[Path, Path, TranscriptResult]:
     """Generate and write both formats. Returns (markdown path, html path, result)."""
-    result = generate(deck_path, version)
-    target_dir = directory or (PROJECT_ROOT / "transcripts")
+    result = generate(ctx, deck_path, version)
+    target_dir = directory or (ctx.root / "transcripts")
     target_dir.mkdir(parents=True, exist_ok=True)
     stem = filename_stem or f"{deck_path.stem}-{version}-transcript"
 

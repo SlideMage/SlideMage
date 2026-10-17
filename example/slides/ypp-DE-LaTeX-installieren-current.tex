@@ -1,0 +1,42 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+%% Translation of: 1us-EN-Installing-LaTeX
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the TeX distribution.
+% Not a click-by-click guide: where to download, which choices matter,
+% what to do afterwards.
+\begin{standardframe}{LaTeX installieren}
+	\small
+	\textbf{Diese Folie gilt nur für Windows.}
+	SlideMage übersetzt jedes Deck mit LuaLaTeX über latexmk und braucht daher eine
+	TeX-Distribution. MiKTeX ist die kleinere Installation: Es lädt jedes
+	Paket erst, wenn ein Deck es zum ersten Mal braucht. TeX Live installiert alles auf einmal.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\shrinklists{1}
+			\textbf{MiKTeX} (\SMCode{miktex.org/download}, der Basic Installer)
+			\begin{itemize}
+				\item „Only for me“ braucht keine Administratorrechte
+				\item \emph{Install missing packages on-the-fly} auf \emph{Yes} stellen, sonst fragt jeder erste Übersetzungslauf nach
+				\item Danach: MiKTeX Console $\rightarrow$ \emph{Updates} $\rightarrow$ \emph{Check for updates}, dann \emph{Update now}
+				\item latexmk braucht Perl: Git for Windows installieren (\SMCode{git-scm.com}, Standardoptionen); SlideMage findet dessen Perl selbst
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\textbf{TeX Live} (\SMCode{tug.org/texlive})
+			\begin{itemize}
+				\item \SMCode{install-tl-windows.exe}, Schema \emph{full} (etwa 8\,GB, Perl inklusive)
+			\end{itemize}
+			\medskip
+			\textbf{In beiden Fällen}
+			\begin{itemize}
+				\item Der erste Übersetzungslauf lädt Schriften und Pakete: Er braucht Internet und dauert einige Minuten
+				\item Im Terminal testen: \SMCode{lualatex --version}, \SMCode{latexmk -v}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

@@ -13,19 +13,23 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import slide_preview
+from slidemage import compiler, slide_preview
 
 
-class _FakeProc:
-    def __init__(self, cmd, build_dir: Path):
+def _fake_run_streamed(build_dir: Path):
+    def run(cmd, *, cwd, env, log, on_line=None, **kwargs):
         jobname = next(a for a in cmd if a.startswith("-jobname=")).split("=", 1)[1]
         for suffix, text in ((".pdf", "%PDF-1.5 fake"), (".log", "no problems"),
                              (".fls", "x"), (".aux", "x"), (".synctex.gz", "x")):
             (build_dir / f"{jobname}{suffix}").write_text(text, encoding="utf-8")
-        self.stdout = iter(["Latexmk: All targets are up-to-date\n"])
-
-    def wait(self):
+        log("Latexmk: All targets are up-to-date")
         return 0
+    return run
+
+
+def _render(ctx, lines):
+    # reuse_build=False is the fresh-job path with the .build/ cleanup
+    return slide_preview.compile_and_extract(ctx, "x", "abc-EN-Test", lines.append, reuse_build=False)
 
 
 @pytest.fixture
@@ -33,24 +37,19 @@ def project(monkeypatch, tmp_path):
     build = tmp_path / ".build"
     build.mkdir()
     (tmp_path / "decks").mkdir()
-    monkeypatch.setattr(slide_preview, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(slide_preview, "DECKS_DIR", tmp_path / "decks")
-    monkeypatch.setattr(slide_preview, "BUILD_DIR", build)
-    monkeypatch.setattr(slide_preview, "_build_env", lambda: {})
+    monkeypatch.setattr(slide_preview, "build_env", lambda ctx: {})
     monkeypatch.setattr(slide_preview, "_LOCK_RETRY_DELAY", 0)
-    # renders (and the sweep after them) must never touch the real temp directory
+    # renders must never touch the real temp directory
     fake_temp = tmp_path / "temp"
     fake_temp.mkdir()
     monkeypatch.setattr(slide_preview.tempfile, "tempdir", str(fake_temp))
     monkeypatch.setattr(
         slide_preview.slide_snapshot, "capture_single_slide", lambda *a, **k: None)
-    monkeypatch.setattr(
-        slide_preview.subprocess, "Popen",
-        lambda cmd, **kw: _FakeProc(cmd, build))
+    monkeypatch.setattr(compiler, "run_streamed", _fake_run_streamed(build))
     return build
 
 
-def test_locked_build_file_does_not_fail_a_finished_render(monkeypatch, project):
+def test_locked_build_file_does_not_fail_a_finished_render(ctx, monkeypatch, project):
     real_unlink = Path.unlink
 
     def locked_unlink(self, *args, **kwargs):
@@ -61,7 +60,7 @@ def test_locked_build_file_does_not_fail_a_finished_render(monkeypatch, project)
     monkeypatch.setattr(Path, "unlink", locked_unlink)
     lines: list[str] = []
 
-    pdf = slide_preview._compile_and_extract("x", "abc-EN-Test", lines.append)
+    pdf = _render(ctx, lines)
 
     assert pdf.exists() and pdf.read_text(encoding="utf-8").startswith("%PDF")
     assert any(line.startswith("==== PASS: render of abc-EN-Test") for line in lines)
@@ -70,7 +69,7 @@ def test_locked_build_file_does_not_fail_a_finished_render(monkeypatch, project)
     assert {p.suffix for p in project.iterdir()} == {".fls"}
 
 
-def test_stale_preview_leftovers_are_swept_by_the_next_render(project):
+def test_stale_preview_leftovers_are_swept_by_the_next_render(ctx, project):
     old = project / "preview-old-deadbeef.fls"
     old.write_text("x", encoding="utf-8")
     long_ago = time.time() - 2 * slide_preview._STALE_PREVIEW_AGE
@@ -79,7 +78,7 @@ def test_stale_preview_leftovers_are_swept_by_the_next_render(project):
     young = project / "preview-young-cafebabe.fls"
     young.write_text("x", encoding="utf-8")
 
-    slide_preview._compile_and_extract("x", "abc-EN-Test", lambda line: None)
+    _render(ctx, [])
 
     assert not old.exists()
     assert young.exists()

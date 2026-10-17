@@ -23,7 +23,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .deck_scan import PROJECT_ROOT
+from .project import ProjectContext
+
 
 
 # -- LaTeX escaping ---------------------------------------------------------
@@ -416,7 +417,7 @@ def slide_content_to_tex(content: SlideContent, image_paths: list[str]) -> tuple
 
 # -- Orchestration -------------------------------------------------------
 
-# Same shape as qt_add_slide_dialog.py's own SLUG_RE (letters/digits,
+# Same shape as slide_add.SLUG_RE (letters/digits,
 # single hyphens between groups, no leading/trailing/doubled hyphen) --
 # an id_slug built here has to satisfy every other part of the app that
 # assumes a slide's slug looks like this (slide_rename.py's own parsing,
@@ -454,7 +455,7 @@ def media_filename(id_slug: str, index: int, ext: str) -> str:
     return f"imported-{id_slug}{suffix}{ext}"
 
 
-def import_presentation(source_path: Path, deck, language: str, log=None) -> ImportSummary:
+def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: str, log=None) -> ImportSummary:
     """Extracts every slide from `source_path` (.pptx or .odp) and appends
     one new Slidemaster slide per non-blank source slide to the end of
     `deck` -- new slide files under slides/, their images (if any) under
@@ -472,7 +473,7 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
     (python-pptx's own PackageNotFoundError, odfpy's) -- neither is
     caught here, so a caller can show the real underlying error rather
     than a generic "import failed"."""
-    from . import deck_editor, slide_ids
+    from . import deck_editor, slide_ids, slide_language
 
     extractor = {".pptx": extract_pptx, ".odp": extract_odp}.get(source_path.suffix.lower())
     if extractor is None:
@@ -484,14 +485,14 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
     summary = ImportSummary()
     expected_text = deck.text
     insert_at, indent = deck_editor.append_position(deck)
-    media_dir = PROJECT_ROOT / "media"
+    media_dir = ctx.media_dir
 
     for content in contents:
         if content.is_blank:
             summary.skipped_blank += 1
             continue
 
-        slide_id = slide_ids.mint_slide_id()
+        slide_id = slide_ids.mint_slide_id(ctx)
         fallback_slug = f"Imported-Slide-{len(summary.imported) + summary.skipped_blank + 1}"
         slug = slug_from_title(content.title, fallback_slug)
         id_slug = f"{slide_id}-{language}-{slug}"
@@ -511,14 +512,14 @@ def import_presentation(source_path: Path, deck, language: str, log=None) -> Imp
         # up using.
         layout, body = slide_content_to_tex(content, image_rel_paths)
         header = slide_ids.build_new_slide_header()
-        dest = slide_ids.SLIDES_DIR / f"{id_slug}-current.tex"
-        slide_ids.SLIDES_DIR.mkdir(parents=True, exist_ok=True)
+        dest = ctx.slides_dir / slide_language.current_name(id_slug)
+        ctx.slides_dir.mkdir(parents=True, exist_ok=True)
         dest.write_text(header + body + "\n", encoding="utf-8", newline="")
         # Registered immediately, not batched until the end of the loop --
         # mint_slide_id() checks slide_ids.csv fresh on every call, so the
         # *next* iteration's mint would otherwise be free to draw this
         # same id again before it's ever recorded anywhere.
-        slide_ids.append_slide_id(slide_id)
+        slide_ids.append_slide_id(ctx, slide_id)
 
         new_text = deck_editor.insert_slide_call(
             deck.path, expected_text, insert_at, indent, "slide", id_slug,

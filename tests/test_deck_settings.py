@@ -146,3 +146,28 @@ def test_save_settings_refuses_a_deck_changed_on_disk(tmp_path):
     saved = deck_settings.save_settings(path, DECK, old, new)
     assert path.read_text(encoding="utf-8", errors="replace") == saved
     assert read(saved).template == "mci"
+
+
+def form(original=None, **fields) -> DeckSettings:
+    original = original or DeckSettings(template="uni-graz")
+    values = dict(template="uni-graz", language="en", footer_text="", course_url="", output_folders={},
+                  appendix_toc=False, open_pdf="instructor") | fields
+    return deck_settings.from_form(original, **values)
+
+
+def test_from_form_checks_the_course_link_and_drops_empty_paths():
+    assert form(course_url="  https://example.org/course  ").course_url == "https://example.org/course"
+    assert form(course_url="   ").course_url == ""
+    with pytest.raises(ValueError, match="http"):
+        form(course_url="ftp://example.org/course")
+    with pytest.raises(ValueError, match="spaces"):
+        form(course_url="not a url")
+    assert form(output_folders={None: " ", "presenter": "E:\\Talks "}).output_folders == {"presenter": "E:/Talks"}
+
+
+def test_from_form_refuses_latex_specials_in_a_path_but_keeps_an_untouched_one_byte_for_byte():
+    with pytest.raises(ValueError, match="may not contain"):
+        form(output_folders={None: "D:/100%"})
+    original = DeckSettings(output_folders={None: "D:\\Old\\Way", "presenter": "D:/50%"})
+    new = form(original, output_folders={None: "D:\\Old\\Way", "presenter": "D:/50%"})
+    assert new.output_folders == original.output_folders

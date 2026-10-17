@@ -5,7 +5,7 @@ bibliography -- since v5.15.0 the number the deck needed last time, see
 compile_passes.py; progress *within* a pass from the slide currently being
 typeset; also for single-slide renders and Update previews).
 
-No Qt in here -- `BatchProgress.feed(line)` is called by qt_gui.py's `_log()`
+No Qt in here -- `BatchProgress.feed(line)` is called by the compile controller (ui/workspace/compile_controller.py)
 for every log line and returns the new (fraction, text) when something
 changed, so the whole thing can be tested by replaying a captured log.
 
@@ -30,7 +30,20 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from . import compile_passes, latex_lint
+from . import compile_passes, latex_lint, project
+from .compile_log import (
+    COMPILING_RE as _COMPILING_RE,
+    FAIL_PREFIX_RE as _FAIL_RE,
+    FINISHED_RE as _FINISHED_RE,
+    MOVING_RE as _MOVING_RE,
+    PASS_RE as _PASS_RE,
+    RENDER_FAIL_RE as _RENDER_FAIL_RE,
+    RENDER_PASS_RE as _RENDER_PASS_RE,
+    RENDERING_RE as _RENDERING_RE,
+    SKIPPED_RE as _SKIPPED_RE,
+    STOPPED_RE as _STOPPED_RE,
+)
+from .tex_source import INPUT_RE, masked_same_length
 
 PASSES_WITH_BIBLIOGRAPHY = 4
 PASSES_WITHOUT_BIBLIOGRAPHY = 3
@@ -38,21 +51,6 @@ SINGLE_RENDER_PASSES = 3
 
 _RUN_RE = re.compile(r"^Run number (\d+) of rule '([^']+)'")
 _SLIDE_OPEN_RE = re.compile(r"\(\S*?/slides/[0-9A-Za-z]{3}-")
-_COMPILING_RE = re.compile(r"^==== Compiling \S+ -> (\S+) ====")
-_RENDERING_RE = re.compile(r"^==== Rendering (\S+) -> (\S+) ====")
-_MOVING_RE = re.compile(r"^==== MOVING: (\S+) ->")
-_FAIL_RE = re.compile(r"^\*\*\* FAIL: (\S+) --")
-_RENDER_PASS_RE = re.compile(r"^==== PASS: render of (\S+) ->")
-_RENDER_FAIL_RE = re.compile(r"^\*\*\* FAIL: render of (\S+) --")
-_STOPPED_RE = re.compile(r"^==== (Stopped:|Stop requested)")
-# A job that ends without publishing a PDF (deck_snapshot's reference and
-# verification compiles) says so explicitly.
-_FINISHED_RE = re.compile(r"^==== Finished: (\S+) ====")
-# A job's PASS line ends it as well: a page compile (partial_compile.py)
-# patches its PDF itself and never logs "MOVING" (v5.35.1 -- its busy bar
-# kept running after the compile). A whole-deck job's PASS comes after its
-# MOVING line, when the job is no longer the current one: no effect.
-_PASS_RE = re.compile(r"^==== PASS: (\S+) ->")
 
 _HOLD_BELOW_DONE = 0.99
 
@@ -74,7 +72,8 @@ def passes_for(uses_biblatex: bool) -> int:
     return PASSES_WITH_BIBLIOGRAPHY if uses_biblatex else PASSES_WITHOUT_BIBLIOGRAPHY
 
 
-def count_job_slides(deck, version: Optional[str], chapter) -> int:
+def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], chapter,
+                    language: Optional[str] = None) -> int:
     """Slide calls a compile of `deck` (in `version`, whole or one chapter)
     typesets per pass -- the same scoping the pre-render syntax check uses:
     calls left out of the version by \\conditionalslide/\\slidestep are not
@@ -82,32 +81,39 @@ def count_job_slides(deck, version: Optional[str], chapter) -> int:
     fragments (test-slides.tex) count with their own calls."""
     total = 0
     text = deck.text
-    for call in latex_lint._calls_in(text, deck.chapters):
+    if not text:
+        return 0
+    from . import deck_language
+    from .deck_settings import read_settings
+    language = (language or read_settings(text).language).upper()
+    resolved_deck, _inputs = deck_language.compile_deck(ctx, deck, language)
+    for slot in deck_language.deck_slots(ctx, resolved_deck, language):
+        call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
-        if latex_lint._slide_included(call, version):
+        if call.included_in(version):
             total += 1
-    if deck.preamble_end is not None:
-        body = latex_lint._masked_same_length(text)[deck.preamble_end:]
-        for m in latex_lint._INPUT_RE.finditer(body):
+    if deck.preamble_end is not None and resolved_deck.text == text:
+        body = masked_same_length(text)[deck.preamble_end:]
+        for m in INPUT_RE.finditer(body):
             name = m.group(1).strip()
-            frag = latex_lint.DECKS_DIR / (name if name.endswith(".tex") else name + ".tex")
+            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
             if frag.is_file():
                 frag_text = latex_lint.read_source(frag) or ""
-                total += sum(1 for c in latex_lint._calls_in(frag_text, [])
-                             if latex_lint._slide_included(c, version))
+                total += sum(1 for s in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language)
+                             if s.call.included_in(version))
     return total
 
 
-def spec_for_job(job) -> JobSpec:
+def spec_for_job(ctx: project.ProjectContext, job) -> JobSpec:
     """JobSpec of a compiler.CompileJob: the passes this deck needed last
     time (compile_passes), else the 4/3 guess."""
     if getattr(job, "pages", None):
         # a page compile: two short single-pass runs, size unknown (busy bar)
         return JobSpec(1, 0, estimated=True)
-    remembered, known = compile_passes.predict(job)
+    remembered, known = compile_passes.predict(ctx, job)
     return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
-                   count_job_slides(job.deck, job.version, job.chapter),
+                   count_job_slides(ctx, job.deck, job.version, job.chapter, getattr(job, "language", None)),
                    estimated=not known)
 
 
@@ -222,6 +228,8 @@ class BatchProgress:
                     elif _STOPPED_RE.match(line):
                         self.reset({})      # stopped by the user: back to idle
                         self._announced = True
+                    elif m := _SKIPPED_RE.match(line):
+                        self._skip(m.group(1))
         elif line.startswith("*** FAIL"):
             if _FAIL_RE.match(line) or _RENDER_FAIL_RE.match(line):
                 self._finish_current()
@@ -234,6 +242,12 @@ class BatchProgress:
         if after == before:
             return None
         return (after[0], after[1], False)
+
+    def _skip(self, jobname: str) -> None:
+        """A queued job that will not run counts as done work."""
+        if jobname in self._specs and jobname not in self._finished:
+            self._finished.add(jobname)
+            self._done_units += self._specs[jobname].units
 
     def _begin(self, jobname: str, fallback: JobSpec, force: bool = False) -> None:
         """A job starts. Jobs announced up front (reset()) keep their spec;

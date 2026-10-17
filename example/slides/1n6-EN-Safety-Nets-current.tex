@@ -1,4 +1,4 @@
-%% Included in decks: slidemage-manual
+%% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
 % SlideMage manual, chapter "Working in SlideMage": the checks before and
@@ -30,8 +30,8 @@
 		\begin{column}{0.5\linewidth}
 			\shrinklists{2}
 			\begin{itemize}
-				\item An error stops the compile and asks: \emph{Cancel}, \emph{Show in editor} (at that line) or \emph{Render anyway}; warnings only go to the log
-				\item It runs before every render: \emph{Render to PDF} in the slide editor, \emph{Create PDF}, \emph{Export PPTX}, \emph{Update slide previews}
+				\item An error stops the compile and asks: \emph{Cancel}, \emph{Show in editor} (at that line) or \emph{Render anyway}; warnings only go to the log. In the Source view the same check runs as you type, and \emph{Ask AI to fix} offers help
+				\item It runs before every render: \emph{Render} in the Preview, \emph{Compile PDF}, \emph{Export PPTX}, \emph{Update slide previews}
 				\item It reads the LaTeX as text, so it cannot find what only a real compile shows
 				\item \SMCode{tools/check\_layout.py} in SlideMage's source repository is a separate command-line tool that measures a compiled PDF against the margins; \SMCode{\%\% layout-check: skip top} exempts a slide
 			\end{itemize}

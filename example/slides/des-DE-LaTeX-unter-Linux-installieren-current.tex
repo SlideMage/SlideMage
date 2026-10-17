@@ -1,0 +1,38 @@
+%% Included in decks: slidemage-manual-copy
+%%
+
+%% Translation of: neg-EN-Installing-LaTeX-Linux
+%%
+
+\begin{standardframe}{LaTeX unter Linux installieren}
+	\small
+	SlideMage übersetzt jedes Deck mit LuaLaTeX über latexmk und braucht dafür
+	eine TeX-Distribution. Unter Linux ist das TeX Live, entweder aus der
+	Paketverwaltung der Distribution oder mit dem offiziellen Installer.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\shrinklists{1}
+			\textbf{Paketverwaltung} (am einfachsten)
+			\begin{itemize}
+				\item Debian/Ubuntu: \SMCode{sudo apt install texlive-full latexmk}
+				\item Fedora: \SMCode{sudo dnf install texlive-scheme-full latexmk}
+				\item Arch: \SMCode{sudo pacman -S texlive texlive-lang}
+				\item Oft ein, zwei Jahre hinter dem aktuellen TeX Live, für SlideMage reicht das
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\textbf{TeX Live direkt} (\SMCode{tug.org/texlive})
+			\begin{itemize}
+				\item \SMCode{install-tl}, Schema \emph{full} (etwa 8\,GB), im Home-Verzeichnis ohne Root-Rechte
+				\item Den \SMCode{bin}-Ordner in den \SMCode{PATH}
+			\end{itemize}
+			\medskip
+			\textbf{In beiden Fällen}
+			\begin{itemize}
+				\item Im Terminal testen: \SMCode{lualatex --version}, \SMCode{latexmk -v}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}
