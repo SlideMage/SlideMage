@@ -111,3 +111,50 @@ def test_renders_older_than_24_hours_are_deleted(tmp_path):
     assert removed == 1
     assert not old.exists()
     assert young.exists() and foreign.exists() and odd.exists()
+
+
+def _render_folder(temp: Path, name: str, age: float) -> Path:
+    import os
+
+    folder = temp / name
+    folder.mkdir(parents=True)
+    pdf = folder / "abc.pdf"
+    pdf.write_text("%PDF", encoding="utf-8")
+    then = time.time() - age
+    os.utime(pdf, (then, then))
+    os.utime(folder, (then, then))
+    return folder
+
+
+def test_the_cleanup_age_is_the_project_setting_and_never_keeps_every_render(tmp_path):
+    # v8.21.0: Settings -> General, "Delete single-slide renders"
+    from slidemage import app_settings
+    from slidemage.project import ProjectContext
+
+    ctx = ProjectContext.at(tmp_path / "project")
+    temp = tmp_path / "temp"
+    hour = 3600
+    assert slide_preview.render_cleanup_hours(ctx) == 24          # out of the box
+    two_hours = _render_folder(temp, "slidemage_preview_two_hours", 2 * hour)
+    two_days = _render_folder(temp, "slidemage_preview_two_days", 48 * hour)
+
+    assert slide_preview.sweep_renders(ctx, temp) == 1            # 24 hours: only the two-day-old one
+    assert two_hours.exists() and not two_days.exists()
+
+    app_settings.set(ctx, slide_preview.RENDER_CLEANUP_SETTING_KEY, slide_preview.RENDER_CLEANUP_NEVER)
+    assert slide_preview.sweep_renders(ctx, temp) == 0
+    assert two_hours.exists()
+
+    app_settings.set(ctx, slide_preview.RENDER_CLEANUP_SETTING_KEY, 1)
+    assert slide_preview.sweep_renders(ctx, temp) == 1
+    assert not two_hours.exists()
+
+
+def test_an_unreadable_cleanup_setting_means_24_hours(tmp_path):
+    from slidemage import app_settings
+    from slidemage.project import ProjectContext
+
+    ctx = ProjectContext.at(tmp_path / "project")
+    for value in ("soon", -5, None):
+        app_settings.set(ctx, slide_preview.RENDER_CLEANUP_SETTING_KEY, value)
+        assert slide_preview.render_cleanup_hours(ctx) == 24

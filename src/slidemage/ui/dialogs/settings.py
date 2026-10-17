@@ -1,7 +1,7 @@
 """The Settings sheet (UI_REDESIGN_PLAN.md, step 9): the preferences that are not about one deck.
 
-* General: dark mode, the Source editor's tab width, live rendering after an autosave, the template single slides render with, how
-  updates are handled and the GitHub token for them.
+* General: dark mode, the Source editor's tab width, live rendering after an autosave, the template single slides render with,
+  when single-slide renders are deleted, how updates are handled and the GitHub token for them.
 * AI: how Claude Code translations address the audience in German (this project's `de_address`;
   ai/translation_style.py) and the glossary. The model of each AI task on each side, what Cloud means and the
   project's Local | Cloud setting are not here: they are AI setup, the ▾ of the AI switch in the top bar
@@ -23,7 +23,7 @@ import os
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
 
-from ... import app_settings, slide_snapshot, updater
+from ... import app_settings, slide_preview, slide_snapshot, updater
 from ...ai import credentials, translation_style
 from ...ai.providers import InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
@@ -97,6 +97,19 @@ class GeneralTab(Page):
             "Used by the slide's Render and Preview and by tikz illustration renders, outside a deck. A "
             "deck's own renders always use the deck's template."))
 
+        self.cleanup_combo = QComboBox()
+        for hours, label in slide_preview.RENDER_CLEANUP_CHOICES:
+            self.cleanup_combo.addItem(label, hours)
+        current_hours = slide_preview.render_cleanup_hours(app.project)
+        if self.cleanup_combo.findData(current_hours) < 0:      # a value set by hand in app_settings.json
+            self.cleanup_combo.addItem(f"After {current_hours} hours", current_hours)
+        self.cleanup_combo.setCurrentIndex(self.cleanup_combo.findData(current_hours))
+        self.cleanup_combo.currentIndexChanged.connect(self._on_cleanup)
+        layout.addWidget(Field("Delete single-slide renders", self.cleanup_combo))
+        layout.addWidget(caption(
+            "Every Render of a single slide leaves a PDF in a folder of its own in the temporary folder. SlideMage "
+            "deletes those that are older than this when it starts and after each render; Never keeps them."))
+
         self.update_mode = SegmentedControl(UPDATE_MODES, current=updater.get_update_mode())
         self.update_mode.changed.connect(self._on_update_mode)
         self.update_note = caption(UPDATE_NOTES[updater.get_update_mode()])
@@ -122,6 +135,13 @@ class GeneralTab(Page):
         if key:
             slide_snapshot.set_render_template(self.app.project, key)
             self.app.log(f"Default render template set to {slide_snapshot.TEMPLATES[key]}")
+
+    def _on_cleanup(self, index: int) -> None:
+        hours = self.cleanup_combo.itemData(index)
+        if hours is None:
+            return
+        app_settings.set(self.app.project, slide_preview.RENDER_CLEANUP_SETTING_KEY, int(hours))
+        self.app.log(f"Single-slide renders: {self.cleanup_combo.itemText(index).lower()}")
 
     def _on_update_mode(self, mode: str) -> None:
         try:

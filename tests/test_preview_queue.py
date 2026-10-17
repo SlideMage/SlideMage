@@ -373,7 +373,7 @@ def test_any_exception_in_the_render_worker_ends_the_render_with_a_fail_line(pan
     # v5.35.7: a render must never stay "rendering" because of an unexpected error
     view, target, _ = pane
     swept = []
-    monkeypatch.setattr(preview_view.slide_preview, "sweep_old_renders", lambda: swept.append(True))
+    monkeypatch.setattr(preview_view.slide_preview, "sweep_renders", lambda ctx: swept.append(True))
 
     def broken():
         raise PermissionError(32, "locked")

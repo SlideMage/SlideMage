@@ -174,14 +174,15 @@ def on_check_for_updates(window) -> None:
 
 def schedule_bundled_copies_check(window) -> None:
     QTimer.singleShot(BUNDLED_COPIES_CHECK_DELAY_MS, partial(check_bundled_copies, window))
-    # Single-slide renders older than 24 hours are deleted from the temp
-    # directory (slide_preview.sweep_old_renders), off the GUI thread; the
-    # preview's render worker sweeps again after every render.
+    # Single-slide renders older than the cleanup setting (Settings -> General,
+    # 24 hours by default, or Never) are deleted from the temp directory
+    # (slide_preview.sweep_renders), off the GUI thread; the preview's render
+    # worker sweeps again after every render.
     QTimer.singleShot(RENDER_SWEEP_DELAY_MS, partial(sweep_old_renders, window))
 
 
 def sweep_old_renders(window) -> None:
-    threading.Thread(target=slide_preview.sweep_old_renders, daemon=True).start()
+    threading.Thread(target=slide_preview.sweep_renders, args=(window.project,), daemon=True).start()
 
 
 def bundled_parts(window) -> list:

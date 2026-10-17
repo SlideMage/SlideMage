@@ -2346,3 +2346,9 @@ NEW: Follow-ups to saving as you type.
 - Settings → General can render the Preview after every autosave (off by default).
 - Creating a snapshot or exporting to PowerPoint warns when slides have changes that are not a version yet.
 - ⋮ → This deck → "Update Version of all changed slides…" makes a version of every changed slide of the deck in one go.
+
+v8.21.0 (2026-10-18, direct instruction: "Make the 24-hour cleanup a settings option, allowing the user to set a cleanup timeframe, including a "Never" option"): the first release after merging ui-redesign (v8.20.0) into develop (v5.36.1), so it also carries v5.36.1's presenter-deck footnote fix. Settings -> General: "Delete single-slide renders" -- After 1 hour / 24 hours (default) / 3 days / 1 week / 30 days / Never (app_settings key render_cleanup_hours, in hours; 0 = Never; a value set by hand in app_settings.json is shown as "After N hours"). slide_preview.render_cleanup_hours(ctx) reads it (a missing, negative or unreadable value means 24 hours); slide_preview.sweep_renders(ctx) runs sweep_old_renders() with that age, or nothing for Never. Both sweeps use it: 8 seconds after the start (ui/workspace/maintenance.py) and after every render (PreviewPane's render worker). Tests in tests/test_slide_preview_cleanup.py, tests/test_settings_gui.py and tests/test_preview_queue.py.
+
+NEW: You choose when single-slide renders are deleted.
+- Settings → General → "Delete single-slide renders": after 1 hour, 24 hours (as before), 3 days, 1 week or 30 days, or Never.
+- The presenter deck prints a footnote in a slide title once (from v5.36.1).
