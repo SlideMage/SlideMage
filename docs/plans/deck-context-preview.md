@@ -7,8 +7,8 @@ Status: plan only (no code). Base: develop @ b3acd47 (v8.23.1). Companion of `do
 A single-slide preview compiles one slide alone. Slides that show deck-wide information look wrong or empty:
 - agenda / contents slides (`\tableofcontents`, e.g. `example/slides/1r2-EN-Contents-current.tex:26,36`, which also warns it needs "the first pass, before the .toc exists"), `\SMDeckAgenda`, `\deckappendixtoc`;
 - chapter dividers and their agenda (`sectionframe`, `Slidemaster_preamble_base.tex:6295`, `\SMChapterAgenda`, `:6769`; `\SMAgendaFrametitleHook` records titles of the section's frames, `:962`);
-- anything using the current section: `\insertsection` (the footer, `:2679-2682`), `\insertsectionhead`/`\insertsubsectionhead` (`beamerfontthemegotham.sty:219-253`), `\insertsectionnumber` (`beamerinnerthemegotham.sty:744-751`), section navigation, `\secname`;
-- frame and page numbers: `\insertframenumber` in every footer (`:2786`), `\inserttotalframenumber`, the progress strip (`\progressstrip`, `:3805`);
+- anything using the current section: `\insertsection` in a slide's own body (the one use in `Slidemaster_preamble_base.tex:2679-2682` is in the `gothampresenter` **notes page** template, `:2651-2699`, i.e. the breadcrumb of the presenter notes, not the slide footer; the frame footer, `:2778`, does not use it), `\insertsectionhead`/`\insertsubsectionhead` (`beamerfontthemegotham.sty:219-253`), `\insertsectionnumber` (`beamerinnerthemegotham.sty:744-751`), section navigation, `\secname`;
+- frame and page numbers: `\insertframenumber` in every frame footer (`:2778-2786`), `\inserttotalframenumber`, the progress strip (`\progressstrip`, `:3805`);
 - deck-level references: `\ref`, `\pageref`, `\hyperlink` to other slides (`\SMDeckAgenda` target, README.md "Manual chapters" link), `\cite`/bibliography numbers (`example/slides/1nz-EN-Footnotes-Sources-Citations-current.tex`).
 
 ## 2. What the single-slide wrapper provides today
@@ -30,7 +30,7 @@ A new scan `deck_context.needs_context(slide_source) -> set[str]` over the slide
 | numbers | `\insertframenumber`, `\inserttotalframenumber`, `\insertpagenumber`, `\progressstrip` |
 | references | `\ref`, `\pageref`, `\cref`, `\autoref`, `\hyperlink` to another id, `\cite*`, `\nocite`, `\printbibliography` |
 
-Every footer prints `\insertframenumber`, which the frame-number line already handles, so the "numbers" row only counts when the slide body itself uses these macros. Likewise the footer may print `\insertsection` (`:2679-2682`); the scan looks at the slide file only, and whether every slide of a sectioned deck should count is open question 1.
+Every frame footer prints `\insertframenumber`, which the frame-number line already handles, so the "numbers" row only counts when the slide body itself uses these macros. The slide footer does not print `\insertsection`, so section macros count only when the slide's own content uses them (owner decision: only slides whose own content needs it get the deck-context render).
 
 Also used: an "unresolved reference" signal from the preview log (`LaTeX Warning: Reference ... undefined`, `??` in text) as a backstop: the lint already reads logs; a render with such a warning is flagged "may differ" even if the scan missed it.
 
@@ -41,14 +41,20 @@ Also used: an "unresolved reference" signal from the preview log (`LaTeX Warning
 Render the slide through `partial_compile`-style `wrapper_text`: the deck's preamble and body with all other slide calls removed, counters set, the last full compile's aux files restored. The preview then shows the real contents list, real section name, real frame/page numbers and citations, because those come from the full compile's files.
 
 - Precondition: a **fresh whole-deck compile of the same version exists** and the deck file is unchanged since (`plan()` / `_first_change`). If the slide itself changed after that compile, the slide is rendered from its current text but numbers and section structure come from the old aux data (acceptable and exactly what `partial_compile` documents). If the deck changed (a slide added/moved), the numbers may be off: fall back to B and say so.
+- **A needs one full compile of the version first** (owner accepted). The compile records and the aux files that approach A restores live **on disk** in `.build/compile-records/<jobname>.json` plus the compile's build folder, so they **survive closing and reopening SlideMage**; the warning only comes back when they are gone or stale. What removes them: a new whole-deck compile of that version replaces them (then they are fresh again); deleting `.build` or its job folder by hand; "Remove temp files"/build cleanup removes the *build folders* (`compiler.removable_build_entries`, `compiler.py:94-118`, `housekeeping.py`) but deliberately **keeps** `.build/compile-records/` (`compiler.py:107-109`). Caveat to check at implementation: the records store hashes and the PDF path, while the restored `.aux/.toc/.nav` come from the full compile's build folder, which that cleanup does remove, so after "Remove temp files" the warning probably returns until the next full compile; verify and, if so, either keep the aux files with the records or state it in the tooltip. A deck edit makes the records stale (`partial_compile._first_change`) without deleting them.
 - Views: contexts are per version (`compile_records` is keyed by job/version), so the view being previewed must have a record; else fall back.
 - Buffer renders (unsaved text) use the same wrapper with the buffer text as the slide body, as `slide_preview.render_slide_source` does today.
 
-### B. Lightweight skeleton (fallback and for decks never compiled)
+### B. Lightweight skeleton with ALL sections (fallback and for decks never compiled)
 
-Emit into the single-slide wrapper, before the slide call: the deck's `\section`/`\subsection` commands **up to and including** the slide's position (parsed from the deck text, as `partial_compile` already walks it), each followed by nothing (no frames), plus `\setcounter{framenumber}`/`{page}`. Gives: correct `\insertsection`, section numbers, and a `\tableofcontents` that lists sections up to this slide. Does not give: later sections in a contents slide (so "Part B on the right" is empty), chapter-agenda entries (`\SMChapterAgenda` needs the frame titles of its section, recorded via `\SMAgendaFrametitleHook`, so it would be empty), total frame count, citations, cross-references.
+Wrapper text: the deck preamble, then (1) the deck's `\section`/`\subsection` commands **up to the slide's position**, in order, with nothing between them (no frames); (2) `\setcounter{framenumber}`/`{page}`; (3) the slide call; (4) the **remaining `\section`/`\subsection` commands after the slide's position**, again with no frames; then `\end{document}`. The commands are parsed from the deck text as `partial_compile.wrapper_text` already walks it (`:347-404`). Two passes (as A): on the second pass beamer reads the `.toc` written in pass 1, which now lists every section, so a `\tableofcontents` slide shows the later sections too, while `\insertsection` and the current-section highlight at the slide are correct because the sections before it were executed before the slide.
 
-`\addtocontents`-style tricks are possible to seed later sections: write all `\section` entries of the whole deck into the `.toc` before the slide with `\addtocontents{toc}{...}`, or generate the `.toc`/`.nav` text ourselves, but the section page numbers and the agenda link targets are guesses without a full compile, and beamer reads `.toc` at `\begin{document}` (first pass) only. It is not worth reimplementing what approach A gets from real files.
+Checked in the installed beamer (`beamerbasesection.sty`, MiKTeX):
+- `\section` writes its `.toc` entry (`\beamer@sectionintoc{number}{title}{\c@page}{part}{tocnumber}`, line 195) and its `.nav` entries (`\beamer@sectionpages`, `\sectionentry`, lines 199-202) **at the point of the command, with no frame required**; `\subsection` likewise (lines 272-277). So section-only wrappers do produce a complete `.toc`/`.nav`.
+- What breaks or is wrong: (a) each entry records `\the\c@page` at the moment of the command, so every section after the slide gets the **same page number** as the slide (and earlier ones the starting page), not its real page: section page numbers in a contents slide, and the hyperlinks `Navigation<page>` that `\insertsectionhead` builds (`beamerfontthemegotham.sty:219-253`), point at that page; harmless in a single-slide PDF, but not the real numbers; (b) `\beamer@sectionpages` / progress data (`.nav`) are computed from those fake pages, so section-progress bars and "sections x of y" navigation are not faithful; (c) `\SMChapterAgenda` (`:6769`) lists the frame titles of its section, recorded by `\SMAgendaFrametitleHook` (`:962`) while frames are typeset; no frames, no titles, so chapter agendas are empty or incomplete in B (A is needed; optional later improvement: emit empty placeholder frames with the real titles taken from the slide files, one `\begin{frame}{title}\end{frame}` per call, at the cost of many more pages and compile time); (d) citations and `\ref`s are not resolved in B; (e) the page counter: the skeleton leaves `page` at the slide's page and the trailing sections add nothing, so the slide itself keeps the right number.
+- Hypothesis to test early (cheap): with trailing `\section`s, the first pass ends with a `.toc` whose entries after the slide have the slide's page; confirm that `\tableofcontents[currentsection]` still highlights the right entry because highlighting uses section numbers, not pages.
+
+`\addtocontents`-style seeding of invented page numbers is still not worth it; real numbers only come from A.
 
 ### C. Seed only the auxiliary files into the existing preview build
 
@@ -65,7 +71,7 @@ Copy `.toc/.nav/.aux/.snm` from the full compile into `.build/preview-cache/<sli
 ## 7. Cost, caching, interactions
 
 - **A**: two lualatex passes of a deck-sized wrapper (the deck preamble loads once; only the one slide is typeset). Roughly the cost of a partial compile of one page (reported in `partial_compile` as seconds, to be measured; measure with `tools/preview_benchmark`), more than a single-slide preview because the aux data is larger. Mitigation: only for flagged slides; cache the PDF by key (slide source hash, deck hash, compile-record id, view, language) and reuse until one of them changes; the compile-record id comes from `compile_records.read_run_id`/record path.
-- **B**: the cost of a normal single-slide preview plus a few lines.
+- **B**: the cost of a normal single-slide preview plus two passes and a few lines.
 - **C** (as optimisation of A): reuse `preview_build` incremental state for the one-slide wrapper, restoring the aux files only when the compile-record id changes.
 - **Invalidation**: a new whole-deck compile of that version, an edited deck (hash), an edited slide (mtime), a template change.
 - **Reveal slider** (`reveal-step-slider.md`): context only changes numbering/section data, not overlays, so the slider's unrestricted render and per-version renders use the same wrapper type as the normal render of that slide (A for flagged slides) and share the cache key part for context. Background version renders (5.1 there) skip flagged slides when no record exists. The page count N is unaffected by context except for agenda slides whose entries use overlays (the context makes the real list appear: do the count from the context render).
@@ -91,14 +97,15 @@ Copy `.toc/.nav/.aux/.snm` from the full compile into `.build/preview-cache/<sli
 ## 10. Tests
 
 - Unit: `needs_context` table (each trigger, masked comments, plain footer macros not flagged).
-- Unit: B wrapper text: `\section` lines up to the slide position only, counters set, subsections included.
+- Unit: B wrapper text: all `\section`/`\subsection` commands of the deck present in order, those before the slide position placed before the slide call, those after it placed after the slide call and before `\end{document}`, no frames, counters set, subsections included.
+- Real-TeX (skipped without LaTeX): a three-section deck, slide in section 2: the context-free B render of a `\tableofcontents` slide lists all three sections, highlights section 2, and the footer-independent `\insertsection` in the body shows section 2.
 - `partial_compile`-based: with a fake compile record, the context render picks A; with a changed deck, B; without a record, B + warning chip (GUI test in the style of `tests/test_centre_gui.py`).
 - Snapshot gating: a B render never writes the canonical snapshot.
 - Real-TeX (skipped without LaTeX): a two-section deck with a `\tableofcontents` slide: context render lists both sections and the right current section in the footer; the single-slide render does not.
 
 ## 11. Open questions for the owner
 
-1. The footer of the Gotham template prints `\insertsection` (a conditional at `:2679`). Should every slide of a deck with sections count as "needs context" (so every preview shows the real section name), or only slides that use these macros in their own body (proposed)? The former costs a two-pass render for most previews.
-2. Is it acceptable that A needs a full compile of the version first (one-time per deck state), with the warning until then?
-3. Contents slides listing later sections and chapter agendas are only right in A. Is B's partial result (sections up to this slide) better than showing the warning only?
-4. Should the Preview offer a manual toggle "Render with deck context" for any slide, not just flagged ones?
+Decided: only slides whose own content needs it get the deck-context render (no footer-based trigger); approach A requires one full compile of the version first; approach B emits all sections (before and after the slide); no manual "Render with deck context" switch.
+
+1. After "Remove temp files" the build folders (and with them the aux files A restores) are removed while the records stay. Is it acceptable that the warning then returns until the next full compile, or should the aux files needed by A be kept with the records (a few small files per version)?
+2. Chapter agendas (`\SMChapterAgenda`) stay empty in B. Accept, or add placeholder frames with real titles as a later improvement?
