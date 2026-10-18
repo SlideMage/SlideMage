@@ -380,12 +380,27 @@ class PreviewPane(Surface):
                          if identity[:3] == key[:3]), None)
         if previous is not None and rendered is None:
             return previous[0], False, "Timestamp setting changed"
+        stored = self._stored_pixmap(target, view, language)
+        if stored is not None:
+            return stored, True, ""
         cached = preview_target.cached_image(target) if view == "instructor" else None
         if cached is not None and (cached[1] or rendered is None):
             pixmap = QPixmap(str(cached[0]))
             if not pixmap.isNull():
                 return pixmap, False, "Cached preview; render to verify current settings"
         return (rendered[0], False, "") if rendered is not None else None
+
+    def _stored_pixmap(self, target: PreviewTarget, view: str, language: str) -> Optional[QPixmap]:
+        """The last page of the background render of the saved slide, when one is current (background_renders.py):
+        shown at once, nothing compiled. Not for a render of one reveal step or part of the slide."""
+        background = getattr(self.app, "background", None)
+        if background is None or self._overlay or self._scope != "slide":
+            return None
+        data = background.stored_page(target, view, language)
+        if data is None:
+            return None
+        pixmap = QPixmap()
+        return pixmap if pixmap.loadFromData(data) else None
 
     def _refresh(self) -> None:
         target, row = self._target, self._row

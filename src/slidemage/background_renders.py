@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
-from . import app_settings, deck_language, deck_settings, render_key, render_store, slide_language
+from . import app_settings, course_schedule, deck_language, deck_settings, render_key, render_store, slide_language
 from . import power_status, preview_build, preview_target, slide_preview
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .compiler import CancelToken
@@ -119,14 +119,15 @@ class BackgroundRenderer:
                  decks: Callable[[], list] = lambda: [], open_deck: Callable[[], Optional[Deck]] = lambda: None,
                  engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
                  raster: Optional[RasterClient] = None, on_change: Callable[[], None] = lambda: None,
-                 soon: Callable[[Deck], bool] = lambda deck: False, clock: Callable[[], float] = time.time) -> None:
+                 soon: Optional[Callable[[Deck], bool]] = None, clock: Callable[[], float] = time.time) -> None:
         self.ctx, self.store = ctx, store
         self.hashes = HashCache(store.db, store.lock)
         self.resolver = render_key.Resolver(ctx, self.hashes, store, engine_fp=engine_fp)
         self.gate = gate or IdleGate(
             enabled=lambda: self.enabled, only_on_mains=lambda: bool(setting(ctx, ONLY_MAINS_KEY, True)),
             free_bytes=lambda: power_status.free_bytes(store.root))
-        self._decks, self._open_deck, self._soon = decks, open_deck, soon
+        self._decks, self._open_deck = decks, open_deck
+        self._soon = soon or (lambda deck: course_schedule.session_soon(deck.course_url))
         self._render = renderer or self._render_pdf
         self._raster = raster
         self._on_change = on_change

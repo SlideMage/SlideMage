@@ -84,6 +84,8 @@ def do_archive_deck(window, deck: Deck) -> None:
         QMessageBox.critical(window, "Archive failed", str(exc))
         return
     window.log(f"Archived {deck.name}.tex -> decks/archive/{deck.name}.tex")
+    if getattr(window, "background", None) is not None:
+        window.background.deck_archived(deck)      # its prepared previews go, and it is no longer prepared
     window.reload_decks()
 
 

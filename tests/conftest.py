@@ -18,6 +18,7 @@ EXAMPLE_PROJECT = ProjectContext.at(EXAMPLE)
 # symlink is needed, including on Windows where symlinks may need privileges.
 os.environ["SLIDEMASTER_LATEX"] = str(_REPO_ROOT / "latex")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("SLIDEMAGE_NO_BACKGROUND_PREVIEWS", "1")      # a window under test renders nothing by itself
 
 
 import pytest  # noqa: E402 -- after the environment setup above
@@ -65,6 +66,14 @@ def _claude_signed_in(monkeypatch):
     from slidemage.ai import claude_launch
 
     monkeypatch.setattr(claude_launch, "signed_in", lambda claude: True)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache_dir(monkeypatch, tmp_path_factory):
+    """The render store's index lives in the user's cache folder; a test gets one of its own."""
+    from slidemage import project
+
+    monkeypatch.setattr(project, "cache_dir", lambda path=tmp_path_factory.mktemp("cache"): path)
 
 
 @pytest.fixture(autouse=True)

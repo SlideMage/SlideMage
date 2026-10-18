@@ -9,10 +9,10 @@ what else they return.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 import json
 import re
-from typing import Union
+from typing import Optional, Union
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
@@ -125,7 +125,53 @@ def _get_json(url: str, label: str) -> bytes:
 
 def fetch_schedule(course_url: str) -> CourseSchedule:
     """Download and parse a public Uni Graz course's session groups."""
-    return parse_schedule(_get_json(course_groups_url(course_url), "course groups"))
+    schedule = parse_schedule(_get_json(course_groups_url(course_url), "course groups"))
+    remember_schedule(course_url, schedule)
+    return schedule
+
+
+# -- the copy kept for background rendering ------------------------------------------------
+# Background rendering prepares the decks of courses that meet soon first (background_renders.py). It must
+# never go to the network by itself, so it reads the session dates of the last schedule this computer fetched
+# (the course dialogs do), kept in the user's cache folder.
+
+def _cache_file():
+    from . import project
+    return project.cache_dir() / "course-schedules.json"
+
+
+def remember_schedule(course_url: str, schedule: CourseSchedule) -> None:
+    """Keep the session dates of `schedule` for session_soon(). Best-effort: a failure here is not the caller's."""
+    try:
+        path = _cache_file()
+        try:
+            known = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            known = {}
+        dates = sorted({s.date for group in schedule.groups for s in group.sessions})
+        known[_course_number(course_url)] = {"fetched": datetime.now().isoformat(timespec="seconds"), "dates": dates}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(known), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def session_soon(course_url: Optional[str], *, days: int = 7, today: Optional[date] = None) -> bool:
+    """Whether the cached schedule of the course has a session today or within `days` days. False without a
+    cached schedule or for an unknown course: this never fetches anything."""
+    if not course_url:
+        return False
+    try:
+        known = json.loads(_cache_file().read_text(encoding="utf-8"))
+        dates = known.get(_course_number(course_url), {}).get("dates", [])
+        today = today or date.today()
+        for text in dates:
+            day = datetime.strptime(text, "%d.%m.%Y").date()
+            if 0 <= (day - today).days <= days:
+                return True
+    except Exception:  # noqa: BLE001 -- no cache, a course url that is not one: no boost
+        return False
+    return False
 
 
 def fetch_course_detail(course_url: str, language: str = "de") -> CourseDetail:

@@ -37,6 +37,7 @@ class IdleGate:
         self.started = clock()
         self.last_input = clock()
         self.forced_until = 0.0           # "Render now": the idle rules are skipped until then
+        self.paused = False               # "Pause" in the status chip
 
     def note_input(self) -> None:
         self.last_input = self._clock()
@@ -48,6 +49,8 @@ class IdleGate:
         """Why background rendering may not start now, or None when it may."""
         if not self.enabled():
             return "switched off"
+        if self.paused:
+            return "paused"
         now = self._clock()
         busy_with = self._busy()
         if busy_with:
