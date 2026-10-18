@@ -1215,8 +1215,9 @@ coming up, from the schedule SlideMage already fetched, counts as used), within 
 instructor version comes first, then During course and After course, and within a version
 the slides start where you last looked. A deck whose files did not change is not rendered
 again. Whatever you do stops it: a render you ask for, a compile or an AI task goes first, and
-the slider's renders never wait for it. A small chip at the bottom left says how many are left (click it
-for the decks, **Pause**, **Render now** and to leave the open deck out); on battery nothing runs.
+the slider's renders never wait for it. A small dial at the bottom of the centre column shows how much of all your decks' previews is up to date (hover for
+details); clicking it opens a window with every deck, its three versions and what is outstanding, with **Pause** and
+**Render now**. A chip next to it says how many are left and can leave the open deck out; on battery nothing runs.
 
 A prepared render is only used while everything it was made from is unchanged: the slide,
 the deck's preamble, the template files, the images and the bibliography it reads, and the TeX

@@ -422,3 +422,5 @@ Covered in 1.4/3.3: shared immutable objects in the project plus a per-machine i
 ### Still open
 
 None at present; remaining decisions are measurements from Phase 0.
+
+**Implementation notes (v8.25.0).** Aliasing one render across views (5.3) was dropped: the footer names the deck version (\SMDeckVersionText), so the three views never render identically. The dial and status window (share of up-to-date renders, per deck and version) were added at the owner's request.
