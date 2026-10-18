@@ -169,3 +169,14 @@ def test_the_slide_lists_edit_runs_the_cleanup_and_one_undo_takes_back_deck_and_
     # an edit without a cleanup leaves a plain entry
     assert sl.edit("Failed", "Plain", lambda path, text: text + "y")
     assert getattr(sl._undo[WORK.path][-1], "slide", None) is None
+
+
+def test_a_slide_with_edits_open_in_the_source_view_keeps_its_flag_until_they_are_written(window, monkeypatch):
+    sl = window.slide_list
+    asked = []
+    monkeypatch.setattr(reveal_steps, "drop_dead_final_flag", lambda ctx, id_slug: asked.append(id_slug))
+    monkeypatch.setattr(window.centre, "unsaved", lambda path: True)
+    assert sl._flag_cleanup(["abc-EN-Demo"])() is None and asked == []
+    monkeypatch.setattr(window.centre, "unsaved", lambda path: False)
+    sl._flag_cleanup(["abc-EN-Demo", "xyz-EN-Other"])()
+    assert asked == ["abc-EN-Demo", "xyz-EN-Other"]

@@ -574,7 +574,13 @@ class SlideList(QWidget):
         """The `cleanup` of an edit that changed the calls of `id_slugs`: take a \\SMFinalStateForStudents out of
         the first slide that no deck needs it in any longer (reveal_steps.drop_dead_final_flag)."""
         def run() -> Optional[tuple[Path, str, str]]:
+            from ...slide_language import current_name
+
+            centre = getattr(self.app, "centre", None)
             for id_slug in id_slugs:
+                # A slide whose edits are open in the Source view is left alone unless they could be written first.
+                if centre is not None and centre.unsaved(self.app.project.slides_dir / current_name(id_slug)):
+                    continue
                 changed = reveal_steps.drop_dead_final_flag(self.app.project, id_slug)
                 if changed is not None:
                     return changed
