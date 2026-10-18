@@ -43,7 +43,7 @@ Non-UI, `src/slidemage/presentation/` (testable without a display):
 |---|---|
 | `pdf_source.py` | `PresentationDeck`: opens the PDF; `page_count`, `slide_rect(page)`, `notes_rect(page)`, `render(page, part, size_px) -> QImage`, `links(page)` (rects in normalized slide units, kind, target), named destinations -> page, slide ids/titles for the jump list. |
 | `renderer.py` | One worker thread owning the MuPDF document (MuPDF objects never cross threads, the rule `preview_raster.py` states). LRU cache keyed `(page, part, w, h, dpr)`, prefetch of page±1, invalidation on resize/DPI change. |
-| `session.py` | `PresentationSession(QObject)`: current page, black/white flag, laser position, strokes per page; signals `page_changed`, `blank_changed`, `pointer_moved`, `strokes_changed`. **Single source of truth both windows listen to.** All coordinates normalized to the slide (0..1). |
+| `session.py` | `PresentationSession(QObject)`: current page (what the presenter sees), the audience state (`black` flag, `frozen_page` or none, hence `audience_page`, see 4.12), laser position, strokes per page; signals `page_changed`, `audience_changed`, `pointer_moved`, `strokes_changed`. **Single source of truth both windows listen to.** All coordinates normalized to the slide (0..1). |
 | `screens.py` | `choose_screens(screens, preferred) -> ScreenPlan(presenter, audience or None)`, mirror detection (4.3); pure function over QScreen-like data, tested with fakes. |
 | `locate.py` | `find_presenter_pdf(ctx, deck) -> (DeckPdf or None, stale: bool)` using `compiler.deck_pdfs`. |
 | `layout.py` | Layout profile model: the split tree, element names, JSON load/save/validate, the built-in profiles (4.10). No Qt widgets. |
@@ -80,7 +80,7 @@ Common logic (`screens.choose_screens`, pure and tested with fakes):
 2. Fewer than 2 screens -> audience-only mode.
 3. Mirrored/duplicated -> audience-only mode (per-platform detection below).
 4. Otherwise the audience is the first screen not equivalent to the presenter screen; the setting "Audience screen" (stored by `name()` + `serialNumber()`) overrides it, with a chooser when 3+ screens exist.
-5. Audience-only mode: one full-screen `SlideCanvas` on the main window's screen, same keys and mouse wheel, toast "Only one screen: showing the slide full-screen"; key `F` swaps into presenter layout (M3).
+5. Audience-only mode: one full-screen `SlideCanvas` on the main window's screen, same keys and mouse wheel, toast "Only one screen: showing the slide full-screen"; key `Tab` swaps into the presenter layout and back (M3); `B` works, `F` (freeze) is disabled there because presenter and audience are the same screen.
 6. Hot-plug (M3): re-plan on `screenAdded/Removed` and `geometryChanged`. Render each window with its own `devicePixelRatio` (mixed scaling).
 
 | | Windows | macOS | Linux X11 | Linux Wayland |
@@ -105,8 +105,9 @@ Both windows forward input to the controller, which uses one table. Clickers sen
 | Home / End | first / last |
 | digits + Enter | jump to slide/page number (typed number shown in the bar) |
 | G | slide grid in the presenter window (M3) |
-| B or `.` | toggle black screen (any navigation also restores) |
-| W or `,` | white screen |
+| B or `.` | black out the projector; pressing it again, or any navigation, restores it (4.12) |
+| F | freeze / unfreeze the projector (4.12); navigation does not unfreeze |
+| Tab | audience-only mode: swap between full-screen slide and presenter layout (M3) |
 | Ctrl + left mouse button held on the current-slide view | laser pointer while held (M2; 4.8) |
 | D / E | pen on/off, eraser (M2) |
 | T / Shift+T | timer start-pause / reset (4.5; only when a timer is configured) |
@@ -160,7 +161,7 @@ No automatic compile without asking; compiles are slow and visible.
 ### 4.10 Layout profiles (presenter window)
 The presenter window layout and the elements it shows come from a named **profile**; the user picks the profile and the profile sets the layout.
 
-**Elements:** `current` (current slide, interactive: links, laser, pen), `next` (next slide), `notes`, `clock`, `timer`, `counter` (slide n / N and step), `toolbar` (pen, eraser, clear, black, profile menu, end).
+**Elements:** `current` (current slide, interactive: links, laser, pen), `next` (next slide), `notes`, `clock`, `timer`, `counter` (slide n / N and step), `audience` (optional small thumbnail of what the projector shows, useful while frozen or black; M3), `toolbar` (pen, eraser, clear, black, freeze, profile menu, end).
 
 **Recommended layout model: a split tree.** A profile is a binary tree of splits, each node `{split: "h"|"v", ratio: 0..1, a: node, b: node}` and each leaf either one big element (`current`, `next`, `notes`) or an **info strip**, an ordered list of the small elements (`clock`, `timer`, `counter`, `toolbar`). It maps one-to-one onto nested `QSplitter`s, can express every layout the owner described, always fills the window with no overlaps or gaps, resizes cleanly on any screen, and is trivial to validate and serialize. Rejected: free-form drag-anywhere canvases (overlaps, off-screen elements, hard to test, bad at different resolutions) and fixed templates only (cannot express the owner's layout without special cases).
 
@@ -201,11 +202,34 @@ All presentation options live in one **"Presentation"** page of the existing set
 * **Screens:** audience screen (Automatic, or a named screen), keep the computer awake while presenting (M3).
 * Every setting has a default, so presenting works with the page never opened; a "Reset to defaults" button.
 
+### 4.12 Projector control: black and freeze
+The audience screen is controlled by two independent states in the session: `black` (bool) and `frozen_page` (page number or none). The page the audience shows is `audience_page = frozen_page if frozen else current page`; black overrides everything on the projector.
+
+| Action | Effect |
+|---|---|
+| **B** or **`.`** (alias; many clickers send either) | Toggles `black`. The projector goes fully black (no laser, no drawings). |
+| Navigation while black | Clears `black` (the projector shows `audience_page` again: the new page if live, the frozen page if frozen). |
+| **F** | Toggles freeze. Freezing sets `frozen_page` to the page the audience currently has (`audience_page`, which is the presenter's page at that moment), and the strokes visible at that moment are kept as a snapshot. While frozen, laser and drawing changes are **not** mirrored: the presenter still sees them in the presenter window, the projector keeps the snapshot. |
+| Navigation while frozen | Moves only the presenter's `page`; it does **not** unfreeze and does not touch the projector. Link clicks and jumps behave the same way. |
+| **F** again (unfreeze) | The projector jumps to the presenter's current page and gets its current strokes (the laser is live again). |
+| **B while frozen** | Allowed and independent: the projector goes black, the freeze stays set. Navigation clears the black only, so the projector returns to the frozen slide, never to the presenter's new page. **B** again also returns to the frozen slide. |
+| **F while black** | Freezes at the page the projector showed before it went black and stays black; the next B or navigation shows that frozen slide. |
+| Black and frozen both on | Badge shows both. |
+| Presentation start / end, or a PDF reload | Both states reset. |
+
+**Presenter feedback (always on, not removable by a profile):** the current-slide view draws a coloured frame and a label on a corner badge: "PROJECTOR BLACK" (red frame) or "PROJECTOR FROZEN: slide N" (amber frame); both states stack in one label ("BLACK · FROZEN: slide N"); nothing is drawn when live. The same toolbar buttons (black, freeze) are shown as checked. The state is also in the window title bar tooltip for screen readers. Colours come from the theme tokens and are accessible by shape (label text), not by colour alone.
+
+**Optional (M3): `audience` profile element**, a small live thumbnail of what the projector shows (the frozen page with its snapshot strokes, or a black tile), so the presenter can see the difference between the audience page and the presenter's current page. It is not needed for the badge to work.
+
+**White screen (W, `,`) is dropped.** The owner asked for black and freeze only, a white projector is blinding in a dark lecture hall and adds a third state to the state machine, tests and badge. It can be added later as a one-line variant of `black` if someone asks.
+
+**Audience-only mode** (one screen or mirrored): B works (the full-screen window goes black); F is disabled because there is no separate presenter view whose page could diverge (the toolbar button is hidden and the key is ignored with a short toast).
+
 ## 5. Milestones
 
 * **M0 spike (≈0.5-1 day).** Compile a real deck with Presenter; measure page size, the slide and note rectangles, whether the note appears on every overlay page, link rectangles, named destinations for slide ids. Append findings to this file. Gate for M2 and for 4.6.
-* **M1 MVP (≈4 days).** `pdf_source`, `renderer`, `session`, `screens`, `locate`, `layout` + `layout_view` with two built-in profiles ("Current large", "Next large") and a profile menu; `settings` with defaults; audience and presenter windows (current, next, notes, counter, toolbar); optional clock and timer elements (`timer.py`, 4.5); key table plus mouse wheel with next/prev/first/last/black/white/jump-by-number/exit (Esc exits at once); `present` command and menu entries; no/stale PDF dialogs; single-screen and mirrored fallback; tests.
-* **M2 interaction (≈2-3 days).** Link clicks (internal jump with return, external with confirmation), Ctrl+left-button laser, pen/highlighter with undo and the Clear button/Delete key (per-page persistent drawings), all synced to the audience; the "Presentation" settings page with colours and link confirmation (profile editing not yet).
+* **M1 MVP (≈4 days).** `pdf_source`, `renderer`, `session`, `screens`, `locate`, `layout` + `layout_view` with two built-in profiles ("Current large", "Next large") and a profile menu; `settings` with defaults; audience and presenter windows (current, next, notes, counter, toolbar); optional clock and timer elements (`timer.py`, 4.5); key table plus mouse wheel with next/prev/first/last/black/white/jump-by-number/exit (Esc exits at once); `present` command and menu entries; no/stale PDF dialogs; single-screen and mirrored fallback; **B (black) with the presenter badge in M1; F (freeze) also in M1 because it is a few lines in the session's `audience_page` logic and the canvas already reads that**; tests.
+* **M2 interaction (≈2-3 days).** (F moves here if it turns out not to be cheap in M1.) Link clicks (internal jump with return, external with confirmation), Ctrl+left-button laser, pen/highlighter with undo and the Clear button/Delete key (per-page persistent drawings), all synced to the audience; the "Presentation" settings page with colours and link confirmation (profile editing not yet).
 * **M3 polish.** More built-in profiles; profile create/copy/rename/delete, live splitter saving and the settings-page editor with preview (4.10); slide grid/jump list with titles, hot-plug, per-platform keep-awake (4.3), macOS full-screen helper, audience chooser, `present_from_here`.
 * **M4 optional.** Notes as text with adjustable size, phone remote, skip-reveals idea, per-deck profile override.
 
@@ -214,11 +238,11 @@ All presentation options live in one **"Presentation"** page of the existing set
 pytest with `QT_QPA_PLATFORM=offscreen` (already set in `tests/conftest.py`, `qapp` fixture). New: `tests/test_presentation_source.py`, `_session.py`, `_screens.py`, `_gui.py`.
 * **Fixture PDF without LaTeX:** build a small presenter-like PDF with `pymupdf` in the test (6 double-width pages: left half a coloured block with the number, right half "note n", `insert_link` for a URI and an internal link). Deterministic; no TeX needed. An optional test on a real compiled PDF skips when absent.
 * `pdf_source`: split rectangles, sampled colours of both halves, link normalization, destination -> page.
-* `session`: bounds, black/white, jump by number, link jump and return, per-page stroke persistence across navigation, clear page / clear all, a reload discards strokes, pointer, signals.
+* `session`: bounds, jump by number, link jump and return, per-page stroke persistence across navigation, clear page / clear all, a reload discards strokes, pointer, signals; black/freeze state machine (4.12): B toggles; navigation clears black but never frozen; frozen audience page stays while `page` moves; B while frozen blacks over the frozen slide and B again returns to the frozen slide; F again jumps the audience to the current page; strokes and laser are not mirrored while frozen and resync on unfreeze; the audience canvas never shows the presenter page while frozen; the presenter badge text for live/black/frozen/both.
 * `layout`: profile JSON round-trip, validation (missing `current`, duplicate element, bad ratio, unknown element), built-ins valid, invalid/deleted active profile falls back.
 * `timer`: end-time mode (today/tomorrow/rejected), duration mode with start on first navigation, pause/resume/reset, flash state and overrun with an injected clock; an unset timer does nothing.
 * `screens.choose_screens` with fakes: 1 screen, 2 distinct, 2 identical geometry (mirror), 3 screens with a preferred name, preferred screen missing.
-* GUI (offscreen): controller creates two windows for two fake screens and one for one; `QTest.keyClick` changes the page in both canvases; a wheel event steps pages (one touchpad swipe steps once); a mouse move over the current view puts the pointer at the same normalized spot on the audience canvas (check via `grab()` pixel sampling); the presenter window builds the right splitters for each built-in profile and switches profile on `P`; Ctrl+left press-move shows the dot on the audience canvas and release hides it, a plain click on a link area jumps, a Ctrl press on a link area does not, and with the pen on a plain drag draws while Ctrl+drag lasers; Delete clears the page's drawings; the audience window contains no clock or timer widget; Esc closes windows and joins the render thread without leftovers.
+* GUI (offscreen): controller creates two windows for two fake screens and one for one; `QTest.keyClick` changes the page in both canvases; a wheel event steps pages (one touchpad swipe steps once); B/`.` blacks and navigation restores, F freezes and the audience canvas keeps its page and strokes while the presenter navigates, the badge and frame appear on the current-slide view; a mouse move over the current view puts the pointer at the same normalized spot on the audience canvas (check via `grab()` pixel sampling); the presenter window builds the right splitters for each built-in profile and switches profile on `P`; Ctrl+left press-move shows the dot on the audience canvas and release hides it, a plain click on a link area jumps, a Ctrl press on a link area does not, and with the pen on a plain drag draws while Ctrl+drag lasers; Delete clears the page's drawings; the audience window contains no clock or timer widget; Esc closes windows and joins the render thread without leftovers.
 * Not covered offscreen, manual checklist in the PR: the per-platform checklist of section 4.3 (placement, duplicate mode, hot-plug, clicker keys, wheel, projector smoothness) on Windows, macOS, X11 and Wayland.
 
 ## 7. Risks
