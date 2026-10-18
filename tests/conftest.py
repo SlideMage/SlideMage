@@ -49,6 +49,15 @@ _KIT_QSS: list[str] = []       # the light stylesheet every test starts with (qa
 
 
 @pytest.fixture(autouse=True)
+def _no_idle_step_renders(monkeypatch):
+    """The Preview counts a slide's reveal steps in the background after 1.5 s of idle time; a test that
+    counts renders must not be surprised by one. Tests of the step bar set preview_view.PROBE_MS themselves."""
+    from slidemage.ui.workspace import preview_view
+
+    monkeypatch.setattr(preview_view, "PROBE_MS", 3_600_000)
+
+
+@pytest.fixture(autouse=True)
 def _no_cloud_credentials(monkeypatch):
     """No test may find a real Anthropic key (environment or keychain), so
     none can reach the network by accident; tests that need a key set one

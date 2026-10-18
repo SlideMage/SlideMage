@@ -88,19 +88,24 @@ class RenderService:
             request.cancel.request_stop()
 
     def request(self, target, text, view, language, timestamp, log, *, saved=False,
-                presenter=False, mode='slide', overlay=None):
+                presenter=False, mode='slide', overlay=None, all_steps=False):
         revision = target.source_path.stat().st_mtime_ns
         key = (target.source_path.resolve(), target.key, text, revision, view, language,
-               timestamp, presenter, mode, overlay, saved if target.macro != "slide" or target.conditions else None)
+               timestamp, presenter, mode, overlay, saved if target.macro != "slide" or target.conditions else None,
+               all_steps)
 
         def work(cancel):
             if saved:
                 pdf = preview_target.render(target, view, language, footer_timestamp=timestamp,
-                                            log=log, capture_snapshot=False, cancel=cancel)
+                                            log=log, capture_snapshot=False, cancel=cancel, all_steps=all_steps)
             else:
                 pdf = preview_target.render_text(
                     target, text, view, language, footer_timestamp=timestamp, log=log,
-                    presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel)
+                    presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
+                    all_steps=all_steps)
+            if all_steps:
+                preview_build.check_cancel(cancel)
+                return pdf, None, (), None
             snapshots = view == 'instructor' and not target.is_frozen_alone and not presenter and mode == 'slide' and overlay is None
             try:
                 preview_build.check_cancel(cancel)

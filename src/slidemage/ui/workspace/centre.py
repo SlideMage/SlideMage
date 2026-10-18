@@ -93,6 +93,7 @@ class CentreColumn(QFrame):
 
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
+        self.preview.neighbours = self._neighbour_targets
         self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
         ratio = layout_settings.get(SPLIT_SETTING)
@@ -526,6 +527,22 @@ class CentreColumn(QFrame):
                   else for_path(state.project, self._path))
         title = deck_outline.slide_file_title(self._path, id_slug) if target else ""
         return target, row if partner else None, title, own if partner else None
+
+    def _neighbour_targets(self) -> list:
+        """[(target, row)] of the slides nearest to the focused one in the deck (one before, one after, two before,
+        two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle."""
+        state, row = self.state, self._focused_row()
+        if state.deck is None or row is None:
+            return []
+        rows = [r for section in deck_outline.build_outline(state.project, state.deck, state.view, state.language)
+                for r in section.rows]
+        index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
+        if index is None:
+            return []
+        picks = []
+        for distance in range(1, 4):
+            picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
+        return [(for_call(state.project, state.deck, r.call, r.position), r) for r in picks if not r.hidden]
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

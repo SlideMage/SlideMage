@@ -217,3 +217,30 @@ Open research item (the owner is being briefed separately):
 
 To confirm by experiment before building:
 2. Does `\beamer@whichframes` override a raw `\begin{frame}<spec>`, and does `\slidestep` really have no effect on a raw frame (3.2)?
+
+## Implementation notes and results
+
+Experiments (2026-10-18, scratch project copied from `example/`):
+- A raw `\begin{frame}<2-3>` emits only its own overlays (2 pages); `\gdef\beamer@whichframes{1-}` (the `all_steps` line) makes it 4 pages, page k = overlay k. Confirmed.
+- `\slidestep` (`\SMSlideSteps`) restricts `standardframe` (1 page for `{1}`) but has **no effect on a raw `\begin{frame}<spec>`**, as planned; the `1-` override beats both and the final-state flag. So the plan's parsing of the slide's own spec is only used to *mark* steps the slide itself drops (crossed ticks), not to number pages.
+- `\conditionalpause`: 2 pages instructor, 1 page during-course. Confirmed with real TeX (`tests/test_reveal_steps_tex.py`).
+
+Design changes while building:
+- No pass over the slide's frame spec is needed for numbering: the all-steps render makes page k = step k always, so "Page k" fallbacks exist only for `allowframebreaks` slides (bar marks them unreliable).
+- The bar's status text is an elided label ("Step 3 of 5 · in During"), the version names are toggle chips; the bar is two lines so it fits narrow Preview panes.
+- Neighbour look-ahead counts the steps of the current view only (4 slides), not of other versions.
+
+Phase 3 (tick editing) as built, and where it differs from 4c:
+- Rule 5's "revert to the plain macro" goes only to `\slide`, and only when the place serves all three versions with every step. A lone `\slidestep[V]` does nothing in the other versions (no frame-counter step) while a `\conditionalslide[V]` steps the counter, so turning one into the other would renumber the frames of the other versions. For the same reason a `\conditionalslide` that is not in every version is **read-only** in the bar, with the reason "use Call as -> Reveal steps first"; nothing is converted silently.
+- The place of a call is the run of `\slidestep` calls of the same slide with only blank or comment lines between them (`deck_editor.step_block`); a plain `\slide` stands alone. The rewrite works on that block: the versions are regrouped by the steps each typesets, calls that already say exactly the right thing stay byte for byte, the first replaced call is changed in place (a trailing comment survives), further groups follow as new lines with the same indent and line ending.
+- Runs of two steps are written `1,2`, longer runs `1-3`, as the README shows; an open `2-` stays open while the set still reaches the end.
+- The page lists are keyed without the call's macro, versions or steps (`target.key[1:3] + target.key[5:]`), so an edit of the deck does not throw the counted steps away.
+- The flag clean-up (4c.1) runs after tick edits and after the slide list's variant and visibility edits (`SlideList._flag_cleanup`). It writes through `slide_versioning.save_slide(mark=False)`: no "+", no freeze; the backup copy under `slides/.backups/` that every write of a slide makes still happens. `slide_versioning._changed_since` ignores exactly one difference between a slide and its frozen version: the flag line present in the frozen text and gone from the current one, so `plan_update` and `mark_external_edit` do not call the slide changed. The undo record is a `str` subclass (`DeckUndo`) carrying the slide's text before and after, so existing undo stacks and tests keep seeing plain strings.
+- Not done: refusing tick edits while an AI task holds the deck (the slide list has no such flag to ask; a stale deck file is refused by the ordinary stale check).
+
+## Changelog draft
+
+- Preview: a reveal-step bar under the slide: slider, tick marks for the steps the selected deck call includes, "Deck steps only", dashed ticks for editor-buffer renders, keyboard stepping, a slide opens on its last step; expandable into one timeline per deck version.
+- Reveal steps are counted by an all-steps render in the background while the Preview is idle (selected slide plus 4 neighbours, one process, never during a render of your own).
+- Preview step bar, ticks of each version editable: click a tick to add or remove that step for that version; the deck's `\slidestep` calls are split, merged or created as needed, one Undo step per click.
+- `\SMFinalStateForStudents` is taken out of a slide automatically once every call of it in every deck overrides it or skips the student versions (no new version, no "+", no frozen file; Undo restores it).

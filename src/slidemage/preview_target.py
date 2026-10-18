@@ -95,20 +95,22 @@ def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
 
 
 def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log,
-           capture_snapshot: bool = True, cancel=None) -> Path:
+           capture_snapshot: bool = True, cancel=None, all_steps: bool = False) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
+    `all_steps` keeps every reveal step (page k = step k) whatever the call or the slide restricts.
     Raises RuntimeError with the compile log's tail on failure."""
     return slide_preview.render_slide_to_pdf(
         target.context, target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(), footer_timestamp=footer_timestamp,
         preamble_text=target.preamble_text, frame_number=target.frame_number,
-        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel)
+        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
+        all_steps=all_steps)
 
 
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, footer_timestamp: bool, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
-    capture_snapshot: bool = True, cancel=None,
+    capture_snapshot: bool = True, cancel=None, all_steps: bool = False,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
@@ -119,4 +121,4 @@ def render_text(
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
         frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,
-        capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel)
+        capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel, all_steps=all_steps)
