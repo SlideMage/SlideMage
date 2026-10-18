@@ -404,11 +404,11 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 
 **Decided (owner confirmation):** the footer-timestamp functionality is removed entirely: the template's `\SMFooterTimestampOverride`, the wrapper lines (`slide_preview`, `compiler.wrapper_text`), the toolbar checkbox and the `.timestamp` mechanism. Own small PR before Phase 2.
 
+**Decided:** background work gets its own second rasteriser child (no lock contention with the foreground one). Defaults 2 GB / 30 days are kept, and the disk limit is a user setting (Settings -> General, "Disk limit for background previews"); "Remove temp files" does not touch the store, Housekeeping has its own "Clear background previews".
+
 ### Still open
 
 - **Hash of the slide source:** raw bytes (a line-ending flip by sync re-renders once, recommended) or normalised text?
-- **Raster child:** share the existing single rasteriser (chunked) or start a second one for background work? (Decide in Phase 1.)
 - **Recency:** only decks opened on this machine, or also decks with recent file changes / upcoming course sessions?
-- **Budget:** is 2 GB / 30 days right for the store when all decks are in scope (it may fill; the chip says so), and should "Remove temp files" offer to clear it?
 - **Reveal-slider coordination:** OK to ask that session to build its neighbour queue as a producer into this shared scheduler and store renders through `render_store`?
 
