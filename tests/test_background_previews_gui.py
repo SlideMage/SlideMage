@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtWidgets import QApplication
 
 from slidemage import app_settings, background_renders
 from slidemage.background_renders import DeckProgress, Progress
@@ -228,6 +229,7 @@ def test_the_dial_sits_at_the_bottom_left_and_a_click_opens_the_status_window(wi
     controller = window.background
     controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
     controller.refresh()
+    QApplication.processEvents()                                             # the status row is laid out
     corner = controller.dial.mapTo(window, QPoint(0, 0))
     assert corner.x() > 100 and corner.y() > 500                             # in the centre column, clear of the slide list
     dial = QRect(corner, controller.dial.size())
