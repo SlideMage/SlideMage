@@ -85,7 +85,7 @@ def test_three_requests_compile_only_first_and_latest_and_publish_latest(
 
 
 @pytest.mark.parametrize(
-    "change", ["slide", "view", "language", "timestamp", "preamble", "disk", "buffer"]
+    "change", ["slide", "view", "language", "preamble", "disk", "buffer"]
 )
 def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
     pane, tmp_path, monkeypatch, change
@@ -116,8 +116,6 @@ def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
         view.state.set_view("after-course")
     elif change == "language":
         view.state.set_language("DE")
-    elif change == "timestamp":
-        view.state.set_footer_timestamp(True)
     elif change == "preamble":
         from dataclasses import replace
 
@@ -253,32 +251,13 @@ def test_session_pixmaps_are_bounded_and_keep_the_most_recent(pane, tmp_path):
     view, target, _ = pane
     pixmap = QPixmap(1, 1)
     for i in range(13):
-        view._pixmaps[(("old", i), "instructor", "EN", False)] = (pixmap, 0)
+        view._pixmaps[(("old", i), "instructor", "EN")] = (pixmap, 0)
     pdf = pdf_at(tmp_path / "recent.pdf")
     view._start(lambda: pdf, view._job(target))
     view._run(*view.launched[0])
     assert len(view._pixmaps) == 12
-    assert (target.key, "instructor", "EN", False) in view._pixmaps
-    assert (("old", 0), "instructor", "EN", False) not in view._pixmaps
-
-
-@pytest.mark.parametrize("buffer_render", [False, True])
-def test_timestamp_changes_make_accepted_images_stale_and_switching_back_restores_them(
-    pane, tmp_path, buffer_render,
-):
-    view, target, _ = pane
-    pdf = pdf_at(tmp_path / "accepted.pdf")
-    fields = dict(note="Buffer", buffer_text="BODY") if buffer_render else {}
-    view._start(lambda: pdf, view._job(target, **fields))
-    view._run(*view.launched[0])
-    previous = view._image(target)[0]
-    assert view._image(target)[1]
-    view.state.set_footer_timestamp(True)
-    image, fresh, _ = view._image(target)
-    assert image.cacheKey() == previous.cacheKey() and not fresh
-    assert view._pending is None
-    view.state.set_footer_timestamp(False)
-    assert view._image(target)[1]
+    assert (target.key, "instructor", "EN") in view._pixmaps
+    assert (("old", 0), "instructor", "EN") not in view._pixmaps
 
 
 def test_disk_snapshot_is_best_effort_not_verified_context(pane, tmp_path, monkeypatch):
@@ -410,21 +389,21 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     workspace.show_slide(path)
     monkeypatch.setattr(preview_target, 'render', lambda *a, **k: tmp_path / 'composite.pdf')
-    assert workspace.render_preview(target, "BODY", state.view, language, state.footer_timestamp,
+    assert workspace.render_preview(target, "BODY", state.view, language,
                                     preview_view.slide_preview.compiler.CancelToken()) == png
     assert state.focused_slide == "bbb" and state.mode == "split" and state.language == language
     assert view._page.message == "" and not view._page.pixmap.isNull()
     assert not view.launched
 
 
-@pytest.mark.parametrize("change", ["slide", "view", "language", "timestamp", "buffer", "disk", "deleted"])
+@pytest.mark.parametrize("change", ["slide", "view", "language", "buffer", "disk", "deleted"])
 def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, monkeypatch, change):
     view, target, path = pane
     png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     publications = []
     monkeypatch.setattr(preview_target, 'render', lambda *a, **k: tmp_path / 'composite.pdf')
     monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
-    request = view.request_render(target, 'BODY', 'instructor', 'EN', False)
+    request = view.request_render(target, 'BODY', 'instructor', 'EN')
     assert request.wait()[3] == png
     if change == "slide":
         view.show_slide(None, None, "", "No slide")
@@ -432,8 +411,6 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, mo
         view.state.set_view("after-course")
     elif change == "language":
         view.state.set_language("DE")
-    elif change == "timestamp":
-        view.state.set_footer_timestamp(True)
     elif change == "buffer":
         view.buffer[0] = "NEW"
     else:
@@ -474,10 +451,10 @@ def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, de
         worker = WorkerThread(target=view._run, args=view.launched[0])
         worker.start()
         assert started.wait(2)
-    ws = FakeWorkspace(tmp_path, WorkspaceContext(path=path, footer_timestamp=False))
+    ws = FakeWorkspace(tmp_path, WorkspaceContext(path=path))
 
-    def render(target, text, mode, language, timestamp, cancel):
-        request = view.request_render(target, text, mode, language, timestamp)
+    def render(target, text, mode, language, cancel):
+        request = view.request_render(target, text, mode, language)
         assert request is job.request
         release.set()
         return request.wait(cancel)[3]
@@ -513,5 +490,5 @@ def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkey
     monkeypatch.setattr(preview_target, 'render', lambda *a, **k: pdf)
     monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
     workspace = GuiWorkspace(SimpleNamespace(project=view.state.project, centre=SimpleNamespace(preview=view)))
-    png = workspace.render_preview(target, 'OTHER', 'instructor', 'EN', False, compiler.CancelToken())
+    png = workspace.render_preview(target, 'OTHER', 'instructor', 'EN', compiler.CancelToken())
     assert png.startswith(b'\x89PNG') and not publications and view._page.pixmap is None

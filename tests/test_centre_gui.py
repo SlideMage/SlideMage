@@ -307,13 +307,8 @@ def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_resu
     wait_idle(centre)
     kind, id_slug, args, kwargs = renders[0]
     assert (kind, id_slug, args[:2]) == ("saved", "aaa-EN-One", ("instructor", "EN"))
-    assert kwargs["footer_timestamp"] is False
     assert page(centre).pixmap is not None
     assert page(centre).render_button.isHidden() and not centre.preview._status_chip.isVisibleTo(centre)
-    state.set_footer_timestamp(True)
-    centre.preview.render_now()
-    wait_idle(centre)
-    assert [c[3]["footer_timestamp"] for c in renders] == [False, True]
     state.set_view("during-course")                         # another view has no picture yet
     assert page(centre).pixmap is None and "During course" in page(centre).message
     state.set_view("instructor")

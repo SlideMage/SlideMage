@@ -309,10 +309,10 @@ class ReadabilityCheck(QObject):
         if context is None:
             app.toast.show_message("Open a slide first: the readability check reads a typeset slide.")
             return None
-        target, view, language, timestamp = context
+        target, view, language = context
         text = request.text = app.centre.slide_text(path)
         ctx = app.project
-        return lambda: readability_check.check_slide(ctx, target, text, view, language, timestamp, cancel, log=app.log)
+        return lambda: readability_check.check_slide(ctx, target, text, view, language, cancel, log=app.log)
 
     def _done(self, worker: _Worker, report: Optional[readability.Report], error: Optional[Exception]) -> None:
         if worker is not self._worker:         # closed or restarted meanwhile

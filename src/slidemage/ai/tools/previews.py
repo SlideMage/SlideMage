@@ -68,7 +68,7 @@ def refresh_preview(ctx: ToolContext, args: dict) -> str:
 
     def render(cancel):
         # capture_snapshot (the default) writes the cached PNGs; the PDF itself is not needed.
-        pdf = preview_target.render(target, VIEW_INSTRUCTOR, language, footer_timestamp=context.footer_timestamp,
+        pdf = preview_target.render(target, VIEW_INSTRUCTOR, language,
                                     log=lambda _line: None, cancel=cancel)
         shutil.rmtree(pdf.parent, ignore_errors=True)
 

@@ -31,7 +31,7 @@ def main():
             pdf = slide_preview.render_slide_to_pdf(ctx,
                 call.macro, call.id_slug, call.version, call.conditions,
                 preamble_text=deck.preamble_text, frame_number=i,
-                footer_timestamp=False, steps=call.steps, log=log.append, reuse_build=False)
+                steps=call.steps, log=log.append, reuse_build=False)
             row['seconds'] = time.perf_counter() - start
             shutil.copy2(pdf, args.output / f'{i:03}.pdf')
             shutil.rmtree(pdf.parent)

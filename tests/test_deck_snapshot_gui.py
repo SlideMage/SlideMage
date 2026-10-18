@@ -167,7 +167,6 @@ def run_window(monkeypatch, settings, running=False, ctx=EXAMPLE_PROJECT):
     win = SimpleNamespace(
         project=ctx,
         build_options=SimpleNamespace(
-            footer_timestamp_checkbox=SimpleNamespace(isChecked=lambda: True),
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
         compile=SimpleNamespace(running=running, start=lambda *args, **kwargs: started.append((args, kwargs))))
     monkeypatch.setattr(compile_actions, "_confirm_changed_slides", lambda *_a: True)   # fake decks
@@ -193,7 +192,7 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
     logged: list = []
     results = work(logged.append, None)
     assert seen["decks"] == ["t-A", "t-B"] and seen["delete_old"] == old
-    assert seen["options"].footer_timestamp is True and seen["options"].appendix_toc is None
+    assert seen["options"].appendix_toc is None
     assert logged == ["==== Done: 2 of 2 snapshot(s) created ===="] and [r.deck_name for r in results] == ["t-A", "t-B"]
     # progress knows every reference and verification compile up front
     assert set(labels) == {

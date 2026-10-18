@@ -729,7 +729,7 @@ class WorkspaceWindow(QMainWindow):
         """A line above the tabs when the open project is a deck snapshot:
         what it is, and that SlideMage leaves it as it was (no compatibility
         migrations, no framework updates; compiles use the snapshot's own
-        framework, PDF dates and footer timestamps)."""
+        framework, PDF dates)."""
         info = project.snapshot_info(self.project.root)
         if info is None:
             return None

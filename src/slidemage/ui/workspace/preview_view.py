@@ -129,14 +129,14 @@ def context_chip(target: PreviewTarget, view: str, mode: Optional[str], rendered
             f"This slide shows {why}: a render typesets it with the deck's context.")
 
 
-def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str, bool]]:
-    """(target, view, language, footer timestamp) for rendering the slide file `path` as the top bar says: in its own
+def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str]]:
+    """(target, view, language) for rendering the slide file `path` as the top bar says: in its own
     language when that is one of EN and DE, as the open deck calls it. None when `path` is no slide file."""
     state = window.state
     language = own_language(path.name)
     language = language if language in TRANSLATION_LANGUAGES else state.language
     target = slide_target(window.project, state.deck, path, state.view, language)
-    return None if target is None else (target, state.view, language, state.footer_timestamp)
+    return None if target is None else (target, state.view, language)
 
 
 @dataclass
@@ -154,7 +154,6 @@ class _Job:
     generation: int = 0
     source: Optional[Path] = None
     buffer_text: Optional[str] = None
-    timestamp: bool = False
     snapshot_template: Optional[str] = None
     images: tuple = ()
     requested: float = 0
@@ -295,7 +294,7 @@ class PreviewPane(Surface):
         self._last_pdf: Optional[Path] = None
         self._scope = "slide"
         self._overlay = 0
-        # Renders this session: (target.key, view, language, timestamp) -> image.
+        # Renders this session: (target.key, view, language) -> image.
         self._pixmaps: OrderedDict[tuple, tuple[QPixmap, int]] = OrderedDict()
         # The latest render of the editor buffer: (target.key, view, language) -> (pixmap, note).
         self._adhoc: Optional[tuple[tuple, QPixmap, str]] = None
@@ -371,7 +370,6 @@ class PreviewPane(Surface):
 
         state.view_changed.connect(self._on_context_changed)
         state.language_changed.connect(self._on_context_changed)
-        state.footer_timestamp_changed.connect(self._on_context_changed)
         self._refresh()
 
     # -- what is shown -----------------------------------------------------------------
@@ -425,7 +423,7 @@ class PreviewPane(Surface):
         render of the buffer, else this session's render of the saved file, else the
         cached snapshot (instructor view only)."""
         view, language = self.state.view, self.language
-        key = (target.key, view, language, self._footer_timestamp())
+        key = (target.key, view, language)
         if self._adhoc is not None and self._adhoc[0] == key:
             buffer = self._buffer()
             fresh = buffer is None or buffer[0] == self._adhoc_text
@@ -436,12 +434,6 @@ class PreviewPane(Surface):
             self._pixmaps.move_to_end(key)
         if rendered is not None and rendered[1] == mtime:
             return rendered[0], True, ""
-        if self._adhoc is not None and self._adhoc[0][:3] == key[:3]:
-            return self._adhoc[1], False, "Timestamp setting changed"
-        previous = next((image for identity, image in reversed(self._pixmaps.items())
-                         if identity[:3] == key[:3]), None)
-        if previous is not None and rendered is None:
-            return previous[0], False, "Timestamp setting changed"
         cached = preview_target.cached_image(target) if view == "instructor" else None
         if cached is not None and (cached[1] or rendered is None):
             pixmap = QPixmap(str(cached[0]))
@@ -507,7 +499,7 @@ class PreviewPane(Surface):
         shown = target is not None and not (row is not None and row.hidden)
         draft = shown and not busy_here and self._is_draft(target)
         current = shown and self._adhoc is not None and self._adhoc[0] == (
-            target.key, view, language, self._footer_timestamp()) and self._buffer() is not None \
+            target.key, view, language) and self._buffer() is not None \
             and self._buffer()[0] == self._adhoc_text
         self._status_draft = bool(draft and not current)
         if self._status_draft:
@@ -535,11 +527,11 @@ class PreviewPane(Surface):
         except RuntimeError:     # the pane is gone
             pass
 
-    def _steps_key(self, target: PreviewTarget, view: str, language: str, timestamp: bool, draft: bool,
+    def _steps_key(self, target: PreviewTarget, view: str, language: str, draft: bool,
                    stamp) -> tuple:
         """What a page list depends on. `stamp`: the source's mtime (a saved render) or the buffer's text."""
         identity = target.key[1:3] + target.key[5:]       # not the macro, the versions or the steps of the call
-        return ("draft" if draft else "saved", str(target.source_path), identity, view, language, timestamp,
+        return ("draft" if draft else "saved", str(target.source_path), identity, view, language,
                 hash(stamp) if draft else stamp)
 
     def _scan_of(self, path: Path, text: Optional[str], stamp) -> reveal_steps.SlideScan:
@@ -558,14 +550,14 @@ class PreviewPane(Surface):
 
     def _current_steps(self, target: PreviewTarget):
         """(key, text, draft, scan) of the page list that belongs to what the pane shows now."""
-        view, language, timestamp = self.state.view, self.language, self._footer_timestamp()
-        shown = (target.key, view, language, timestamp)
+        view, language = self.state.view, self.language
+        shown = (target.key, view, language)
         if self._adhoc is not None and self._adhoc[0] == shown and self._adhoc_full and self._adhoc_text is not None:
             text = self._adhoc_text
-            key = self._steps_key(target, view, language, timestamp, True, text)
+            key = self._steps_key(target, view, language, True, text)
             return key, text, True, self._scan_of(target.source_path, text, hash(text))
         mtime = _mtime(target.source_path)
-        return (self._steps_key(target, view, language, timestamp, False, mtime), None, False,
+        return (self._steps_key(target, view, language, False, mtime), None, False,
                 self._scan_of(target.source_path, None, mtime))
 
     def _after_render(self, job: _Job) -> None:
@@ -575,7 +567,7 @@ class PreviewPane(Surface):
             return
         draft = bool(job.note)
         text = job.buffer_text if draft else job.revision_text
-        key = self._steps_key(target, job.view, job.language, job.timestamp, draft,
+        key = self._steps_key(target, job.view, job.language, draft,
                               text if draft else job.mtime)
         if key in self._step_pages or self._steps.pending(key):
             return
@@ -591,8 +583,8 @@ class PreviewPane(Surface):
 
     def _request_steps(self, target: PreviewTarget, key: tuple, text: Optional[str], draft: bool,
                        priority: int) -> None:
-        """Queue the all-steps render for `key` (kind, path, target key, view, language, timestamp, stamp)."""
-        view, language, timestamp = key[3], key[4], key[5]
+        """Queue the all-steps render for `key` (kind, path, target key, view, language, stamp)."""
+        view, language = key[3], key[4]
         if text is None:
             try:
                 text = target.source_path.read_text(encoding='utf-8')
@@ -601,7 +593,7 @@ class PreviewPane(Surface):
         service, log = self._renders, self.app.log
 
         def build(cancel):
-            request = service.request(target, text, view, language, timestamp, log, saved=not draft, all_steps=True)
+            request = service.request(target, text, view, language, log, saved=not draft, all_steps=True)
             return request.wait(cancel)[0]
 
         self._steps.submit(key, priority, build)
@@ -619,9 +611,9 @@ class PreviewPane(Surface):
             self._request_steps(target, key, text, draft, BACKGROUND)
         if scan.version_dependent and self._reveal.expanded:
             self._request_other_views(target, key, text, draft, self._served_views())
-        view, language, timestamp = self.state.view, self.language, self._footer_timestamp()
+        view, language = self.state.view, self.language
         for other, _row in self.neighbours()[:NEIGHBOURS]:
-            other_key = self._steps_key(other, view, language, timestamp, False, _mtime(other.source_path))
+            other_key = self._steps_key(other, view, language, False, _mtime(other.source_path))
             if other_key not in self._step_pages and other_key not in self._step_failed:
                 self._request_steps(other, other_key, None, False, BACKGROUND)
 
@@ -824,9 +816,6 @@ class PreviewPane(Surface):
 
     # -- rendering ---------------------------------------------------------------------
 
-    def _footer_timestamp(self) -> bool:
-        return self.state.footer_timestamp
-
     @property
     def _closed(self) -> bool:
         return self._lifetime.closed.is_set()
@@ -902,8 +891,8 @@ class PreviewPane(Surface):
         if job.request is not None and job.request.cancelled():
             return False
         if (target is None or job.generation != self._generation or target.key != job.target_key
-                or (self.state.view, self.language, self.state.footer_timestamp)
-                != (job.view, job.language, job.timestamp)
+                or (self.state.view, self.language)
+                != (job.view, job.language)
                 or _mtime(job.source) != job.mtime):
             return False
         buffer = self._buffer()
@@ -954,7 +943,7 @@ class PreviewPane(Surface):
             else:
                 pixmap = QPixmap()
                 if job.png is not None and pixmap.loadFromData(job.png):
-                    key = (job.target_key, job.view, job.language, job.timestamp)
+                    key = (job.target_key, job.view, job.language)
                     if job.note:
                         self._adhoc = (key, pixmap, job.note)
                         self._adhoc_text = job.buffer_text
@@ -978,8 +967,7 @@ class PreviewPane(Surface):
 
     def _job(self, target: PreviewTarget, **fields) -> _Job:
         return _Job(target_key=target.key, view=self.state.view, language=self.language,
-                    mtime=_mtime(target.source_path), source=target.source_path,
-                    timestamp=self._footer_timestamp(), **fields)
+                    mtime=_mtime(target.source_path), source=target.source_path, **fields)
 
     def render_now(self) -> None:
         """Compile the saved slide in the view and language being edited."""
@@ -1011,11 +999,10 @@ class PreviewPane(Surface):
                 show_in_editor=lambda issue: render_check.open_issue_in_editor(self.app, issue)):
             return
         view, language = self.state.view, self.language
-        timestamp = self._footer_timestamp()
         text = path.read_text(encoding='utf-8')
         job = self._job(target, revision_text=text, snapshot_template=target.template
                         if view == 'instructor' and not target.is_frozen_alone else None)
-        job.request = self._renders.request(target, text, view, language, timestamp, self.app.log, saved=True)
+        job.request = self._renders.request(target, text, view, language, self.app.log, saved=True)
         self._start(lambda: None, job, debounce=debounce)
 
     def render_after_save(self) -> None:
@@ -1046,28 +1033,27 @@ class PreviewPane(Surface):
             return
         view, language = self.state.view, self.language
         overlay = None if scope == "element" else (self._overlay or None)
-        timestamp = self._footer_timestamp()
         job = self._job(target, external=presenter, buffer_text=text, revision_text=text,
                         snapshot_template=target.template if view == 'instructor' and not presenter
                         and scope == 'slide' and overlay is None and not target.is_frozen_alone else None,
                         note="Rendered from the editor buffer, not the saved file",
                         steps_ok=scope == "slide" and overlay is None and not presenter)
-        job.request = self._renders.request(target, body, view, language, timestamp, self.app.log,
+        job.request = self._renders.request(target, body, view, language, self.app.log,
                                             presenter=presenter, mode=scope, overlay=overlay)
         self._start(lambda: None, job)
 
-    def request_render(self, target, text, view, language, timestamp) -> RenderRequest:
+    def request_render(self, target, text, view, language) -> RenderRequest:
         """GUI-thread entry for tools; publication uses the ordinary job acceptance checks."""
         if self._closed:
             raise RuntimeError('Preview pane closed')
         saved = target.source_path.read_text(encoding='utf-8') == text
-        request = self._renders.request(target, text, view, language, timestamp, self.app.log, saved=saved)
+        request = self._renders.request(target, text, view, language, self.app.log, saved=saved)
         # An ordinary pane worker already delivers this exact build to the GUI.
         for job in (self._active, self._pending[1] if self._pending else None, self._remote.get(request)):
             if job is not None and job.request is request and job.generation == self._generation:
                 return request
         job = _Job(target_key=target.key, source=target.source_path, mtime=_mtime(target.source_path),
-                   view=view, language=language, timestamp=timestamp, generation=self._generation,
+                   view=view, language=language, generation=self._generation,
                    revision_text=text, buffer_text=None if saved else text,
                    note='' if saved else 'Rendered from the editor buffer, not the saved file',
                    snapshot_template=target.template if view == 'instructor' and not target.is_frozen_alone else None,

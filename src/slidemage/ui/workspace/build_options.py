@@ -1,5 +1,5 @@
 """Compile -> "Build options…": the checkboxes the compile flows (compile_actions.py) and the
-editor tabs (the footer timestamp) read."""
+editor tabs read."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QVBoxLayout, QWidget
@@ -11,19 +11,12 @@ from .state import WorkspaceState
 class BuildOptionsDialog(QDialog):
     """The four checkboxes that sat in the old window's bottom row, now behind
     Compile -> "Build options…". The checkboxes keep their state while the
-    dialog is closed, which is what the compile code (and the editor tabs, for
-    the footer timestamp) read."""
+    dialog is closed, which is what the compile code reads."""
 
     def __init__(self, parent: QWidget, state: WorkspaceState) -> None:
         super().__init__(parent)
         self.setWindowTitle("Build options")
         layout = QVBoxLayout(self)
-
-        self.footer_timestamp_checkbox = QCheckBox("Include footer timestamp")
-        # Default off (2026-08-20, direct instruction) -- was on by default.
-        self.footer_timestamp_checkbox.setChecked(state.footer_timestamp)
-        self.footer_timestamp_checkbox.toggled.connect(state.set_footer_timestamp)
-        layout.addWidget(self.footer_timestamp_checkbox)
 
         self.appendix_toc_checkbox = QCheckBox("Generate appendix TOC")
         self.appendix_toc_checkbox.setToolTip(
@@ -34,7 +27,7 @@ class BuildOptionsDialog(QDialog):
         )
         # Persisted (app_settings.py, same local per-machine store dark
         # mode/tab-width/model-picker settings already use) -- unlike
-        # footer_timestamp/auto_open just below, which stay hardcoded
+        # auto_open just below, which stay hardcoded
         # per-launch defaults; direct instruction, 2026-09-16.
         self.appendix_toc_checkbox.setChecked(bool(app_settings.get(state.project, "appendix_toc", False)))
         self.appendix_toc_checkbox.toggled.connect(

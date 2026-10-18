@@ -35,7 +35,6 @@ class WorkspaceContext:
     path: Path | None = None             # the file the Source view shows (a slide, a deck, the .bib ...)
     view: str = "instructor"             # "View as": instructor / during-course / after-course
     language: str = "EN"                 # the language being edited
-    footer_timestamp: bool = True        # previews show the compile time in the footer
 
 
 class Workspace:
@@ -108,10 +107,10 @@ class Workspace:
         """Bring the slide file `path` into focus for the user: its preview and its source. Headless
         there is nobody to show it to."""
 
-    def render_preview(self, target, text, view, language, footer_timestamp, cancel) -> bytes:
+    def render_preview(self, target, text, view, language, cancel) -> bytes:
         """Headless render; GUI workspaces share the pane's build and publication path."""
         def render(token):
-            pdf = preview_target.render_text(target, text, view, language, footer_timestamp=footer_timestamp,
+            pdf = preview_target.render_text(target, text, view, language,
                                              log=lambda _: None, capture_snapshot=False, cancel=token)
             png = slide_snapshot.page_png(pdf, 1280)
             if png is None:

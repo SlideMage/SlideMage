@@ -39,13 +39,13 @@ def pages_of(pdf):
 
 def text_render(body, view="instructor", all_steps=True):
     return slide_preview.render_slide_text_to_pdf(
-        EXAMPLE_PROJECT, SLIDE_ID, body, deck_version=view, footer_timestamp=False, capture_snapshot=False,
+        EXAMPLE_PROJECT, SLIDE_ID, body, deck_version=view, capture_snapshot=False,
         all_steps=all_steps)
 
 
 def call_render(macro="slide", view="instructor", steps=None, all_steps=True):
     return slide_preview.render_slide_to_pdf(
-        EXAMPLE_PROJECT, macro, SLIDE_ID, deck_version=view, footer_timestamp=False, steps=steps,
+        EXAMPLE_PROJECT, macro, SLIDE_ID, deck_version=view, steps=steps,
         capture_snapshot=False, all_steps=all_steps)
 
 

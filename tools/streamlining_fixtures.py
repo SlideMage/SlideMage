@@ -7,8 +7,7 @@ paths and records per-page text and image hashes of each PDF in a small manifest
     python tools/streamlining_fixtures.py --check    # recompile, compare with the manifest
 
 Text hashes must match (mismatch: exit 1); image hashes are warnings. Needs TeX and PyMuPDF.
-Footer timestamps are switched off in every render (footer_timestamp=False), which is what
-makes the image hashes stable. Run with PYTHONPATH=src.
+The footer carries no timestamp, which keeps the image hashes stable. Run with PYTHONPATH=src.
 """
 from __future__ import annotations
 
@@ -52,7 +51,6 @@ def produce(copy: Path) -> dict:
     deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == DECK)
     jobs = compiler.build_jobs(deck, "instructor")
     for job in jobs:
-        job.footer_timestamp = False
     log: list[str] = []
     results = compiler.run_jobs(ctx, jobs, log.append)
     if not all(results.values()):
@@ -72,7 +70,7 @@ def produce(copy: Path) -> dict:
     for slug in SLIDES:
         for reuse in (True, False):
             pdf = slide_preview.render_slide_to_pdf(
-                ctx, "slide", slug, footer_timestamp=False, reuse_build=reuse, capture_snapshot=False)
+                ctx, "slide", slug, reuse_build=reuse, capture_snapshot=False)
             out[f"preview:{slug}:{'cached' if reuse else 'fresh'}"] = page_hashes(pdf)
     return out
 
