@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QToolTip, QVBoxL
 from ...reveal_steps import StepPlan
 from ..kit.tokens import Tokens
 from ..kit import kit_qss as q
-from ..kit.widgets import ElidedLabel, IconButton, ToggleChip, clear_layout
+from ..kit.widgets import ElidedLabel, IconButton, Surface, ToggleChip, clear_layout
 from .menus import VIEW_LABELS
 from .state import VIEWS
 from .topbar import VIEW_TONES
@@ -254,7 +254,7 @@ class RevealBar(QWidget):
         outer.addLayout(below)
         self._rows_box = QVBoxLayout()
         self._rows_box.setSpacing(2)
-        self._rows_holder = QWidget()
+        self._rows_holder = Surface()
         self._rows_holder.setLayout(self._rows_box)
         self._rows_holder.setVisible(False)
         outer.addWidget(self._rows_holder)
@@ -335,31 +335,34 @@ class RevealBar(QWidget):
             row = self._rows.get(view)
             if row is None:
                 continue
-            line = QHBoxLayout()
+            holder = Surface(self._rows_holder)         # children are made with their parent, else they stay hidden
+            line = QHBoxLayout(holder)
+            line.setContentsMargins(0, 0, 0, 0)
             line.setSpacing(6)
-            name = ToggleChip(VIEW_LABELS[view], VIEW_TONES[view])
+            name = ToggleChip(VIEW_LABELS[view], VIEW_TONES[view], holder)
             name.setChecked(view == self._view)
             name.setToolTip(f"Show the slide in {VIEW_LABELS[view]}")
             name.setFixedWidth(120)
             name.clicked.connect(lambda _checked=False, v=view: self.view_requested.emit(v))
-            track = StepTrack(self._tokens, view)
+            track = StepTrack(self._tokens, view, holder)
             track.edit_mode = row.editable
             track.set_plan(row.plan, only, self._step if view == self._view else 0, self._draft)
             track.counting = row.plan is None and row.present
             track.selected.connect(lambda step, v=view: self._pick(v, step))
             track.toggled.connect(lambda step, v=view: self.tick_toggled.emit(v, step))
-            note = QLabel("" if row.present else "not in this version")
+            note = ElidedLabel("", holder)
+            note.setObjectName(q.SOURCE_NOTE)
+            note.setMinimumWidth(60)
+            text = "" if row.present else "not in this version"
             if row.reason:
                 track.setToolTip(row.reason)
-                note.setText(("" if row.editable else "read-only: ") + row.reason)
-            note.setObjectName("kitSourceNote")
-            note.setMaximumWidth(260)
+                text = ("" if row.editable else "read-only: ") + row.reason
+            note.set_full_text(text)
             line.addWidget(name)
-            line.addWidget(track, 1)
-            line.addWidget(note)
-            holder = QWidget()
-            holder.setLayout(line)
+            line.addWidget(track, 3)
+            line.addWidget(note, 2)
             self._rows_box.addWidget(holder)
+            holder.show()
             self._rows_widgets[view] = (note, track)
 
     def _pick(self, view: str, step: int) -> None:

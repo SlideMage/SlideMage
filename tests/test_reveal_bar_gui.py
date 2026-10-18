@@ -174,8 +174,8 @@ def test_editable_rows_report_a_click_on_a_tick_and_read_only_rows_say_why(qapp)
     locked = bar._rows_widgets["instructor"][1]
     QTest.mouseClick(locked, Qt.MouseButton.LeftButton, pos=QPoint(int(locked._x(1)), locked.height() // 2))
     assert toggled == [("during-course", 2)]                         # read-only: a click only picks the step
-    assert "read-only: A pinned version." in bar._rows_widgets["instructor"][0].text()
-    assert bar._rows_widgets["during-course"][0].text() == "Numbered per version."
+    assert "read-only: A pinned version." in bar._rows_widgets["instructor"][0].full_text()
+    assert bar._rows_widgets["during-course"][0].full_text() == "Numbered per version."
     bar.hide()
 
 
@@ -472,7 +472,7 @@ def test_a_pinned_call_has_nothing_to_edit_and_says_why(centre, deck, steps_rend
     bar = centre.preview._reveal
     bar.set_expanded(True)
     track = row_track(centre.preview, "instructor")
-    assert not track.edit_mode and "pinned" in bar._rows_widgets["instructor"][0].text()
+    assert not track.edit_mode and "pinned" in bar._rows_widgets["instructor"][0].full_text()
     bar.tick_toggled.emit("instructor", 1)                      # even a stray signal does nothing
 
 
@@ -496,7 +496,7 @@ def test_version_dependent_slides_are_editable_with_a_warning(centre, deck, step
     bar.set_expanded(True)
     wait_for(lambda: all(not t.counting for _n, t in bar._rows_widgets.values()), 30)
     note, track = bar._rows_widgets["during-course"]
-    assert track.edit_mode and note.text().startswith("Numbered per version")
+    assert track.edit_mode and note.full_text().startswith("Numbered per version")
 
 
 def test_a_buffer_render_is_not_edited_until_the_slide_is_saved(editing):
