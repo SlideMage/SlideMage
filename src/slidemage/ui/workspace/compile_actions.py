@@ -157,7 +157,6 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
     run_id = datetime.now().isoformat(timespec="seconds")   # one id for everything this click compiles (PDF info /SlideMageRun)
     outputs: dict[str, Path] = {}   # jobname -> where its PDF lands (the deck's own \deckoutputfolder, or pdf/)
     for job in jobs:
-        job.footer_timestamp = options.footer_timestamp_checkbox.isChecked()
         # \deckappendixtoc in the deck: always, checkbox or not
         job.appendix_toc = options.appendix_toc_checkbox.isChecked() or job.deck.appendix_toc
         job.replace_pages = options.replace_pages_checkbox.isChecked()
@@ -329,8 +328,7 @@ def start_snapshots(
             return False
         if answer == snapshot_sheets.DELETE_OLD:
             delete_old = existing
-    # Same footer/appendix choices as a compile from the toolbar.
-    options.footer_timestamp = window.build_options.footer_timestamp_checkbox.isChecked()
+    # Same appendix choice as a compile from the toolbar.
     options.appendix_toc = True if window.build_options.appendix_toc_checkbox.isChecked() else None
 
     specs: dict[str, compile_progress.JobSpec] = {}

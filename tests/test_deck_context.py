@@ -140,10 +140,10 @@ def test_the_render_uses_the_deck_when_it_can_and_the_skeleton_when_it_cannot(ct
     pdf = tmp_path / "in-deck.pdf"
     monkeypatch.setattr(deck_context, "render_in_deck", lambda *a, **k: seen.append(("deck", k)) or pdf)
     monkeypatch.setattr(slide_preview, "render_slide_to_pdf", lambda *a, **k: seen.append(("plain", k)) or tmp_path / "p.pdf")
-    assert preview_target.render(target, "instructor", "EN", footer_timestamp=False, log=print) == pdf
+    assert preview_target.render(target, "instructor", "EN", log=print) == pdf
     assert seen[0][0] == "deck" and seen[0][1]["language"] == "EN" and len(seen) == 1
     monkeypatch.setattr(deck_context, "render_in_deck", lambda *a, **k: None)
-    preview_target.render(target, "instructor", "EN", footer_timestamp=False, log=print)
+    preview_target.render(target, "instructor", "EN", log=print)
     kwargs = seen[-1][1]
     assert seen[-1][0] == "plain" and kwargs["context_before"].startswith("\\setSlideID{1aa-EN-Intro}")
     assert kwargs["context_after"].endswith(deck_context.FLUSH_FRAME)
@@ -153,9 +153,9 @@ def test_an_unsaved_buffer_gets_the_skeleton_only_when_it_needs_the_deck(ctx, de
     target = preview_target.for_call(ctx, deck, deck_scan_call(ctx, deck, "1bb"), 2)
     seen = []
     monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", lambda *a, **k: seen.append(k))
-    preview_target.render_text(target, "\\tableofcontents", "instructor", "EN", footer_timestamp=False, log=print)
-    preview_target.render_text(target, "plain text", "instructor", "EN", footer_timestamp=False, log=print)
-    preview_target.render_text(target, "\\tableofcontents", "instructor", "EN", footer_timestamp=False, log=print,
+    preview_target.render_text(target, "\\tableofcontents", "instructor", "EN", log=print)
+    preview_target.render_text(target, "plain text", "instructor", "EN", log=print)
+    preview_target.render_text(target, "\\tableofcontents", "instructor", "EN", log=print,
                                mode="region")
     assert "context_before" in seen[0] and "context_before" not in seen[1] and "context_before" not in seen[2]
 
@@ -227,6 +227,6 @@ def test_only_a_render_in_the_deck_may_refresh_the_snapshot_of_a_slide_that_need
     asked = []
     monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
                         lambda path, snapshots, widths: asked.append(snapshots) or ((b"a", b"b"), ()))
-    request = preview_requests.RenderService().request(target, "text", "instructor", "EN", False, print, saved=True)
+    request = preview_requests.RenderService().request(target, "text", "instructor", "EN", print, saved=True)
     request.wait()
     assert asked == [snapshot]

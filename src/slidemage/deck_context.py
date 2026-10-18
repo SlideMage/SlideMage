@@ -246,14 +246,14 @@ def drop_last_page(pdf: Path) -> None:
 # -- rendering ----------------------------------------------------------------------------------
 
 def render_in_deck(ctx: ProjectContext, deck: Deck, view: str, slide_id: str, id_slug: str, log: Callable[[str], None],
-                   cancel: Optional[CancelToken] = None, *, footer_timestamp: bool = True,
+                   cancel: Optional[CancelToken] = None, *,
                    all_steps: bool = False, language: Optional[str] = None) -> Optional[Path]:
     """The slide `id_slug` of `deck` typeset by a page compile in the deck's last whole-deck compile of `view`:
     a PDF of its own pages (in a scratch folder), or None when that is not possible (no usable compile, the deck
     changed before the slide, the slide is not in that compile)."""
     from . import slide_preview
 
-    job = CompileJob(deck, view if deck.supports_version else None, None, footer_timestamp=footer_timestamp,
+    job = CompileJob(deck, view if deck.supports_version else None, None,
                      language=language)
     try:
         frames = partial_compile.frames_for_slides(ctx, job, [slide_id])

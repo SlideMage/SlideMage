@@ -29,7 +29,6 @@ def main():
                 "zz1-EN-PreviewValidation",
                 body,
                 preamble_text=preamble or deck.preamble_text,
-                footer_timestamp=options.pop("footer_timestamp", False),
                 log=logs.append,
                 capture_snapshot=False,
                 **options,
@@ -60,21 +59,6 @@ def main():
     rejects("broken-edit", frame(r"\DefinitelyUndefinedPreviewCommand"))
     text, _ = render("recovery", frame("Recovered text"))
     assert "Recovered text" in text
-
-    original_timestamp = slide_preview._preview_timestamp_line
-    try:
-        for stamp in ("2026-10-11 12:01", "2026-10-11 12:02"):
-            slide_preview._preview_timestamp_line = lambda enabled, *a: (
-                original_timestamp(enabled, stamp)
-            )
-            text, _ = render(
-                "timestamp-" + stamp[-2:],
-                frame("Timestamp validation"),
-                footer_timestamp=True,
-            )
-            assert stamp in text, repr(text)
-    finally:
-        slide_preview._preview_timestamp_line = original_timestamp
 
     dependency = root / "preview-check-input.tex"
     bibliography = root / "preview-check-reference.bib"

@@ -329,8 +329,7 @@ Which files a deck uses is decided by compiling it: every version (and the prese
 PDF) is compiled with latexmk's `-recorder`, and everything the compile read is copied
 -- project files and the framework; the TeX distribution's files (and the fonts the
 PDFs embed) are recorded with version and hash, and copied only with "Include LaTeX
-package files". The footer timestamps of those compiles are kept and
-`SOURCE_DATE_EPOCH` fixes the PDF dates, so rendering the snapshot later reproduces
+package files". `SOURCE_DATE_EPOCH` fixes the PDF dates, so rendering the snapshot later reproduces
 the reference PDFs. Then the snapshot is rendered from its own folder: every file that
 compile reads must lie inside the snapshot (or the TeX distribution), and every page
 must equal the reference PDF -- otherwise the snapshot is discarded and the log says
@@ -339,8 +338,8 @@ why. That doubles the compile time; a large deck takes a while, on the compile s
 Versions that are already current aren't compiled again (since v5.34.0). After every
 successful whole-deck compile SlideMage records, in `.build/compile-records/<jobname>.json`,
 the SHA-256 of every file the compile read (latexmk's `.fls`, plus the `.bib` files from
-biber's `.blg`), of its settings (the wrapper: version, presenter, footer timestamp,
-appendix), the TeX engine version, the footer timestamp, and the published PDF's path
+biber's `.blg`), of its settings (the wrapper: version, presenter,
+appendix), the TeX engine version, and the published PDF's path
 and hash. A snapshot checks each version against its record: if nothing changed and the
 PDF is still the one published, that PDF is the snapshot's reference; otherwise the
 version is compiled, and the log says why ("1aa-EN-...-current.tex changed", "no compile
@@ -356,7 +355,7 @@ Cancel.
 A snapshot's `<project>/` folder can be opened in SlideMage as a project: a line above
 the workspace says it is a snapshot, SlideMage never changes it by itself (no compatibility
 migrations, no framework or manual updates, no `project.json` bookkeeping), and compiles
-use the snapshot's framework, PDF dates and footer timestamps, with PDFs in its own
+use the snapshot's framework and PDF dates, with PDFs in its own
 `pdf/` (its `\deckoutputfolder` paths belong to the original project). Edits made there
 do change the snapshot. From the command line:
 
@@ -2415,8 +2414,7 @@ and a link lands on whichever occurrence is *last* in the document —
 inherent to any permanent-id-based target scheme, not something to design
 around.
 
-**"Generate appendix TOC"** (SlideMage's Build options, next to
-"Include footer timestamp") adds a clickable appendix to every whole-deck
+**"Generate appendix TOC"** (SlideMage's Build options) adds a clickable appendix to every whole-deck
 compile — Presenter, Instructor, During-course and After-course (since
 v5.5.0; before, the Instructor/version-less and Presenter compiles only) —
 but not to a per-chapter compile, whose PDF holds one chapter only. Each
@@ -3104,8 +3102,7 @@ presenter PDF or publish a canonical snapshot. Image preparation is shared betwe
 the display and snapshots, with a bounded cache keyed by PDF content. A reusable
 child process rasterizes PDFs so MuPDF objects stay out of GUI/worker threads. Cached scratch
 previews skip SyncTeX output. Cleanup and build reservations share locks that also protect previews
-in other processes. Timestamp changes mark older accepted images stale, and disk thumbnails
-request verification by rendering. Actual pane destruction discards late results safely. A stalled
+in other processes. Disk thumbnails request verification by rendering. Actual pane destruction discards late results safely. A stalled
 raster helper is killed after 15 seconds and restarted by the next request.
 The v6.1.1 review fixes passed 1,491 tests and the four-slide subset benchmark
 completed 80 requests in 7 minutes 54 seconds without failures or PDF mismatches.

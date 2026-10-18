@@ -101,23 +101,19 @@ def removable_build_entries(ctx: project.ProjectContext) -> list[Path]:
 
     Per-invocation directories remain excluded while latexmk or any PDF copy
     attempt can still read them. Root-level legacy build files are included
-    for compatibility with older runs and slide previews. In a deck snapshot
-    the seeded footer timestamps (.build/<jobname>/<jobname>.timestamp, see
-    _seed_snapshot_timestamp) are part of the snapshot and stay. The compile
+    for compatibility with older runs and slide previews. The compile
     records (.build/compile-records/, compile_records.py) always stay
     (2026-10-08, direct instruction: "They are small and would be good to
     keep even if the user generally wants to clean up").
     """
     from .preview_build import is_active
-    snapshot = project.is_snapshot(ctx.root)
     with _BUILD_STATE_LOCK:
         if not ctx.build_dir.is_dir():
             return []
         return sorted(
             (entry for entry in ctx.build_dir.iterdir()
              if entry not in _ACTIVE_BUILD_DIRS and not is_active(entry)
-             and entry.name != compile_records.RECORDS_DIRNAME
-             and not (snapshot and (entry / f"{entry.name}.timestamp").is_file())),
+             and entry.name != compile_records.RECORDS_DIRNAME),
             key=lambda entry: entry.name,
         )
 
@@ -488,14 +484,6 @@ class CompileJob:
     version: Optional[str]     # "instructor" / "during-course" / "after-course",
                                 # or None for a deck with no version support
     chapter: Optional[Chapter]  # None = whole deck
-    # Whether the footer shows \SMCompileTimestamp -- True (the shared
-    # preamble's own default) unless the GUI's "Footer timestamp" checkbox
-    # was unticked for this batch. A deck can still hardcode
-    # \SMShowCompileTimestampfalse/true in its own preamble (as
-    # t-Uni-IA2-2026w.tex does temporarily, for its front-to-back render/diff
-    # final check) -- that runs *after* this override is read, so it always
-    # wins over whatever this checkbox says.
-    footer_timestamp: bool = True
     # A separate "Presenter" output (never a toggle on the plain instructor
     # PDF) -- beamer's own \setbeameroption{show notes on second screen}
     # dual-screen mechanism, so \note{} content (already authored
@@ -506,8 +494,7 @@ class CompileJob:
     # never on its own a reason to change what version means here.
     presenter: bool = False
     # SlideMage's "Generate appendix TOC" checkbox -- set uniformly on
-    # every job a compile batch builds (the window's _compile_jobs(), same
-    # pattern as footer_timestamp), but wrapper_text() below only actually
+    # every job a compile batch builds (the window's _compile_jobs()), but wrapper_text() below only actually
     # generates the appendix for a whole-deck job (job.chapter is None) --
     # of any version since 2026-10-03 (direct instruction; it used to be
     # the instructor/presenter compiles only). A per-chapter job stays
@@ -584,25 +571,11 @@ def build_env(ctx: project.ProjectContext) -> dict:
     return project.snapshot_compile_env(ctx.root, env)
 
 
-def _seed_snapshot_timestamp(ctx: project.ProjectContext, jobname: str, build_dir: Path) -> None:
-    """In a deck snapshot, the footer shows the time the snapshot's
-    reference compile ran: its <jobname>.timestamp (deck_snapshot.py keeps it
-    in .build/<jobname>/) goes into this invocation's build folder, where the
-    preamble's \\SMCompileTimestamp reads it instead of the clock."""
-    if not project.is_snapshot(ctx.root):
-        return
-    seed = ctx.build_dir / jobname / f"{jobname}.timestamp"
-    if seed.is_file():
-        shutil.copy2(seed, build_dir / seed.name)
-
-
 def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
     from . import deck_language
     lines: list[str] = []
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
-    if not job.footer_timestamp:
-        lines.append("\\def\\SMFooterTimestampOverride{0}")
     if job.presenter:
         lines.append("\\def\\SMPresenterModeOverride{1}")
     if job._appendix_applies:
@@ -852,7 +825,6 @@ def run_job(
         with wrapper_file(wrapper_path, wrapper):
             ctx.build_dir.mkdir(parents=True, exist_ok=True)
             build_dir.mkdir(parents=True, exist_ok=False)
-            _seed_snapshot_timestamp(ctx, jobname, build_dir)
             # The configured output path is private to this invocation; there is no deck-directory
             # or prior-build fallback that can pass as fresh.
             cmd = latexmk_command(wrapper_path, jobname, build_dir.resolve(), "-f", "-recorder", cwd=ctx.root)

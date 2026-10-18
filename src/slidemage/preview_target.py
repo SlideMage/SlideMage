@@ -105,7 +105,7 @@ def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
     return png, slide_snapshot.is_fresh(target.context, target.bare_id, target.source_path, target.template)
 
 
-def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log,
+def render(target: PreviewTarget, view: str, language: str, *, log,
            capture_snapshot: bool = True, cancel=None, all_steps: bool = False) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     `all_steps` keeps every reveal step (page k = step k) whatever the call or the slide restricts.
@@ -117,7 +117,7 @@ def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp:
         deck, position = target.deck, target.frame_number
         in_deck = deck_context.render_in_deck(
             target.context, deck, view, target.bare_id, target.id_slug, log, cancel,
-            footer_timestamp=footer_timestamp, all_steps=all_steps, language=language)
+            all_steps=all_steps, language=language)
         if in_deck is not None:
             return in_deck
         around = None if position is None else deck_context.skeleton(
@@ -127,14 +127,14 @@ def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp:
             context = dict(context_before=around.before, context_after=around.after)
     return slide_preview.render_slide_to_pdf(
         target.context, target.macro, target.id_slug, target.version, target.conditions,
-        deck_version=view, deck_language=language.lower(), footer_timestamp=footer_timestamp,
+        deck_version=view, deck_language=language.lower(),
         preamble_text=target.preamble_text, frame_number=target.frame_number,
         log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
         all_steps=all_steps, **context)
 
 
 def render_text(
-    target: PreviewTarget, text: str, view: str, language: str, *, footer_timestamp: bool, log,
+    target: PreviewTarget, text: str, view: str, language: str, *, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
     capture_snapshot: bool = True, cancel=None, all_steps: bool = False,
 ) -> Path:
@@ -153,7 +153,7 @@ def render_text(
     return slide_preview.render_slide_text_to_pdf(
         target.context, target.id_slug, text,
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
-        footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
+        presenter=presenter, preamble_text=target.preamble_text,
         frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,
         capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel, all_steps=all_steps,
         **context)

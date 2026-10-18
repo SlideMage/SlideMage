@@ -727,10 +727,10 @@ class TaskRunner(QObject):
             outcome = run()
             if outcome.status != DONE or context is None:
                 return outcome
-            target, view, language, timestamp = context
+            target, view, language = context
             try:
                 outcome.measured = readability_check.check_slide(window.project, target, outcome.text, view, language,
-                                                                 timestamp, cancel, log=window.log)
+                                                                 cancel, log=window.log)
             except Exception as exc:  # noqa: BLE001 -- why the draft could not be measured is the card's text
                 if cancel.is_set():
                     outcome.status = CANCELLED
@@ -1011,10 +1011,10 @@ class TaskRunner(QObject):
         window, path = self._window, card.result_path
         if (context := render_context(window, path)) is None:   # not a slide file: nothing to render
             return self._phase(card, card_model.DONE, preview_skipped=True)
-        target, view, language, timestamp = context
+        target, view, language = context
         text = window.centre.slide_text(path)
         self._preview_cancel = cancel = threading.Event()
-        self._preview = worker = _PreviewWorker(lambda: self._workspace.render_preview(target, text, view, language, timestamp, cancel))
+        self._preview = worker = _PreviewWorker(lambda: self._workspace.render_preview(target, text, view, language, cancel))
         worker.done.connect(self._on_preview)
         self._phase(card, card_model.CHECK, where=f"{slide_language.bare_id(path.name)} · {VIEW_LABELS[view]} · {language}")
         background.start_detached(worker)

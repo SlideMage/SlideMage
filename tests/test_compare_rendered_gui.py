@@ -65,9 +65,9 @@ class FakeRenders:
     def plan(self, text: str, pages: int = 1, error: str = "", hold: bool = False) -> None:
         self.plans[text] = dict(pages=pages, error=error, hold=hold)
 
-    def request(self, target, text, view, language, timestamp, log, **kwargs):
+    def request(self, target, text, view, language, log, **kwargs):
         request = FakeRequest(self, len(self.requests), text)
-        self.requests.append((request, target, text, view, language, timestamp, kwargs))
+        self.requests.append((request, target, text, view, language, kwargs))
         return request
 
     def read_pages(self, pdf: Path) -> list[bytes]:
@@ -115,13 +115,12 @@ def close(dialog) -> None:
 def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(chat_env, renders):  # noqa: F811
     env = chat_env
     env.window.state.set_view("during-course")
-    env.window.state.set_footer_timestamp(True)
     before = env.path.read_bytes()
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
     (first, second) = renders.requests
-    for (request, target, text, view, language, timestamp, kwargs), expected in zip((first, second), ("old text", "new text")):
+    for (request, target, text, view, language, kwargs), expected in zip((first, second), ("old text", "new text")):
         assert text == expected and kwargs == {}                      # a draft: not `saved`, whatever the file says
-        assert (view, language, timestamp) == ("during-course", "EN", True) and target.source_path == env.path
+        assert (view, language) == ("during-course", "EN") and target.source_path == env.path
     assert dialog.windowTitle() == "Compare rendered · abc · During · EN" and not dialog.isModal()
     assert chips(dialog) == ["Rendering…", "Rendering…"] and messages(dialog) == ["Rendering…", "Rendering…"]
     settle(dialog)

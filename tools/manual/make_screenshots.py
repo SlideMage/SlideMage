@@ -111,7 +111,7 @@ class Shooter:
         preview = self.window.centre.preview
         target = preview._target
         image = preview._image(target)
-        key = (target.key, self.window.state.view, preview.language, preview._footer_timestamp())
+        key = (target.key, self.window.state.view, preview.language)
         preview._pixmaps[key] = (image[0], _mtime(target.source_path))
         preview._refresh()
         self.settle(10)
