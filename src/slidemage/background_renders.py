@@ -88,10 +88,24 @@ class DeckProgress:
     total: int = 0
     fresh: int = 0
     failed: int = 0
+    off: bool = False                               # the deck is left out of the background work
+    views: dict = field(default_factory=dict)       # view -> [total, fresh, failed]
 
     @property
     def left(self) -> int:
         return self.total - self.fresh - self.failed
+
+    @property
+    def percent(self) -> float:
+        return 100.0 * self.fresh / self.total if self.total else 100.0
+
+    @property
+    def up_to_date(self) -> bool:
+        return not self.off and self.left == 0 and self.failed == 0
+
+    def count(self, view: str, kind: int) -> None:
+        """Count one unit of `view`: kind 0 = seen, 1 = fresh, 2 = failed."""
+        self.views.setdefault(view, [0, 0, 0])[kind] += 1
 
 
 @dataclass
@@ -104,7 +118,28 @@ class Progress:
 
     @property
     def left(self) -> int:
-        return sum(d.left for d in self.decks)
+        return sum(d.left for d in self.decks if not d.off)
+
+    @property
+    def total(self) -> int:
+        return sum(d.total for d in self.decks if not d.off)
+
+    @property
+    def fresh(self) -> int:
+        return sum(d.fresh for d in self.decks if not d.off)
+
+    @property
+    def percent(self) -> float:
+        """The share of the renders of all prepared decks that are up to date (100 when there is nothing to render)."""
+        return 100.0 * self.fresh / self.total if self.total else 100.0
+
+    @property
+    def decks_up_to_date(self) -> int:
+        return sum(1 for d in self.decks if d.up_to_date)
+
+    @property
+    def decks_counted(self) -> int:
+        return sum(1 for d in self.decks if not d.off)
 
     def deck(self, name: str) -> Optional[DeckProgress]:
         return next((d for d in self.decks if d.deck == name), None)
@@ -243,19 +278,26 @@ class BackgroundRenderer:
                         continue
                     for order, unit in enumerate(units):
                         progress.total += 1
+                        progress.count(view, 0)
                         found = self.resolver.lookup(unit)
                         if found.final and found.state is not render_key.Freshness.FAILED:
                             progress.fresh += 1
+                            progress.count(view, 1)
                         elif found.state is render_key.Freshness.FAILED:
                             if found.failure and self.store.may_retry(found.failure):
                                 first.append(((deck_rank, language_rank, view_rank, order), unit))
                             else:
                                 progress.failed += 1
+                                progress.count(view, 2)
                         elif found.usable and found.record and found.record.get("origin") == ORIGIN_BACKGROUND:
                             progress.fresh += 1                  # right, apart from its page number: refreshed last
+                            progress.count(view, 1)
                             numbering.append(((deck_rank, language_rank, view_rank, order), unit))
                         else:
                             first.append(((deck_rank, language_rank, view_rank, order), unit))
+        off = self.decks_off()
+        decks_progress += [DeckProgress(d.name, off=True) for d in self._decks()
+                           if not d.archived and not d.is_test_deck and d.name in off]
         plan = first + [((1000 + k[0],) + k[1:], u) for k, u in numbering]
         self.progress = Progress(decks_progress, self.progress.working, None,
                                  self.store_failures_count(), self._clock())
@@ -332,6 +374,7 @@ class BackgroundRenderer:
                 counted = self.progress.deck(unit.deck)
                 if counted is not None and counted.fresh < counted.total:
                     counted.fresh += 1
+                    counted.count(unit.view, 1)
         finally:
             self.progress.working = None
 
@@ -423,6 +466,7 @@ class BackgroundRenderer:
         if counted is not None and getattr(exc, "kind", None) == render_store.DETERMINISTIC or str(exc).startswith("Render failed"):
             if counted is not None:
                 counted.failed += 1
+                counted.count(job.payload[0].view, 2)
 
     def _changed(self) -> None:
         try:

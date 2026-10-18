@@ -56,7 +56,7 @@ def test_user_input_anywhere_in_the_application_resets_the_idle_clock(window):
 def test_the_chip_says_what_is_going_on_and_only_then(window):
     controller = window.background
     window.show()
-    progress = Progress([DeckProgress("a", total=10, fresh=4), DeckProgress("b", total=5)])
+    progress = Progress([DeckProgress("a", total=10, fresh=4), DeckProgress("b", total=5)], scanned_at=1.0)
     controller.renderer.progress = progress
     assert controller.summary() == ("Previews · 11 left", "muted")
     progress.working = "a:1jh:instructor:EN"
@@ -66,11 +66,11 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     assert controller.summary() == ("Previews paused (you are working) · 11 left", "muted")
     controller.refresh()
     assert controller.chip.isVisible() and "paused" in controller.chip.text()
-    controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], failures=2)
+    controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], failures=2, scanned_at=1.0)
     assert controller.summary() == ("2 slides cannot be rendered", "warning")
-    controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)])
+    controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], scanned_at=1.0)
     controller.refresh()
-    assert controller.chip.isHidden()
+    assert controller.chip.isHidden() and controller.dial.isVisible()
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)
     controller.renderer.progress = progress
     assert controller.summary()[0] == ""
@@ -190,3 +190,73 @@ def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(windo
         path.write_bytes(original)
         os.utime(path, (old, old))
         shutil.rmtree(controller.store.root, ignore_errors=True)       # the example project is shared by the tests
+
+
+# -- the dial and the status window ---------------------------------------------------------------
+
+def progress_of(*decks, **kwargs):
+    return Progress(list(decks), scanned_at=1.0, **kwargs)
+
+
+def test_the_dial_shows_the_share_of_up_to_date_renders_and_explains_it(window):
+    controller = window.background
+    window.show()
+    assert controller.dial.isHidden()                                    # before the first look at the decks
+    a = DeckProgress("a", total=10, fresh=10)
+    b = DeckProgress("b", total=30, fresh=10)
+    off = DeckProgress("c", off=True)
+    controller.renderer.progress = progress_of(a, b, off)
+    controller.refresh()
+    assert controller.dial.isVisible() and controller.dial.text() == "50" and controller.dial.state == "waiting"
+    tip = controller.dial.toolTip()
+    assert "50 % of the previews" in tip and "20 of 40 renders" in tip and "1 of 2 decks complete" in tip
+    assert "20 outstanding" in tip and "Click for the decks" in tip
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=4))
+    controller.refresh()
+    assert controller.dial.text() == "100" and controller.dial.state == "done" and "Everything is ready" in controller.dial.toolTip()
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=3, failed=1), failures=1)
+    controller.refresh()
+    assert controller.dial.state == "failed" and "1 slide cannot be rendered" in controller.dial.toolTip()
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1), working="a:x:instructor:EN")
+    controller.refresh()
+    assert controller.dial.state == "working" and "Rendering now" in controller.dial.toolTip()
+    app_settings.set(window.project, background_renders.ENABLED_KEY, False)
+    controller.refresh()
+    assert controller.dial.isHidden()
+
+
+def test_the_dial_sits_at_the_bottom_left_and_a_click_opens_the_status_window(window):
+    window.resize(1200, 800)
+    window.show()
+    controller = window.background
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
+    controller.refresh()
+    assert controller.dial.x() > 100 and controller.dial.y() > 500           # in the centre column, clear of the slide list
+    controller.dial.clicked.emit()
+    dialog = controller._status_dialog
+    assert dialog is not None and dialog.isVisible()
+    dialog.reject()
+
+
+def test_the_status_window_lists_every_deck_with_its_versions_and_state(window):
+    controller = window.background
+    ready = DeckProgress("ready", total=6, fresh=6, views={"instructor": [2, 2, 0], "during-course": [2, 2, 0], "after-course": [2, 2, 0]})
+    todo = DeckProgress("todo", total=6, fresh=2, views={"instructor": [2, 2, 0], "during-course": [2, 0, 0], "after-course": [2, 0, 0]})
+    broken = DeckProgress("broken", total=2, fresh=1, failed=1, views={"instructor": [2, 1, 1]})
+    off = DeckProgress("aside", off=True)
+    controller.renderer.progress = progress_of(ready, todo, broken, off, working="todo:x:during-course:EN")
+    controller.renderer.progress.failures = 1
+    from slidemage.ui.workspace.background_previews import StatusDialog
+    dialog = StatusDialog(controller, window)
+    rows = {dialog.tree.topLevelItem(i).text(0): [dialog.tree.topLevelItem(i).text(c) for c in range(1, 5)] for i in range(dialog.tree.topLevelItemCount())}
+    assert list(rows) == ["ready", "todo", "broken", "aside"]                       # in the order they are worked through
+    assert rows["ready"] == ["2 / 2", "2 / 2", "2 / 2", "up to date"]
+    assert rows["todo"] == ["2 / 2", "0 / 2", "0 / 2", "4 outstanding · rendering"]
+    assert rows["broken"][0] == "1 / 2  (1 failed)" and rows["broken"][3] == "1 failed"
+    assert rows["aside"] == ["–", "–", "–", "left out"]
+    assert dialog.overall.value() == int(100 * 9 / 14)
+    assert not dialog.failures.isHidden() or dialog.isHidden()
+    dialog.pause.click()
+    assert controller.renderer.gate.paused and dialog.pause.text() == "Resume"
+    dialog.reject()
+

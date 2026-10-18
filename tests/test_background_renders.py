@@ -292,3 +292,22 @@ def test_the_course_schedule_is_only_read_from_the_copy_kept_when_it_was_fetched
     assert course_schedule.session_soon(url, today=date(2026, 10, 18)) is True        # in two days
     assert course_schedule.session_soon(url, today=date(2026, 10, 22)) is False       # the next is six weeks away
     assert course_schedule.session_soon(None) is False and course_schedule.session_soon("not a url") is False
+
+
+def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project, store, raster):
+    tex = FakeTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")
+    for unit in units[:5]:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    background_renders.app_settings.set(project, background_renders.DECKS_OFF_KEY, ["slidemage-manual-copy"])
+    r.scan()
+    progress = r.progress
+    mine = progress.deck("slidemage-manual")
+    assert mine.views["instructor"][:2] == [len(units), 5] and set(mine.views) == set(VIEWS)
+    assert mine.total == sum(v[0] for v in mine.views.values()) and mine.fresh == 5
+    assert progress.deck("slidemage-manual-copy").off and progress.decks_counted == 1
+    assert progress.total == mine.total and progress.fresh == 5 and 0 < progress.percent < 10
+    assert progress.decks_up_to_date == 0 and not mine.up_to_date
+    assert progress.scanned_at > 0
