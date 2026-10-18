@@ -2,6 +2,8 @@
 
 **Status (13 October 2026): the streamlining run is complete (steps M-6, v8.3.8); see the Final report in `docs/STREAMLINING_RUN.md`.**
 
+UI follow-up, 13 October: [Assistant and workflow UI overhaul](ASSISTANT_AND_WORKFLOW_UI_PLAN.md) specifies one Local / Cloud assistant area, visible task steps, and streamlined navigation. It supersedes the two outer assistant tabs while retaining their capabilities and all providers.
+
 Revised 12 October 2026: preserve every existing feature; savings re-estimated bottom-up per step. This replaces the earlier feature-cut proposal. Scope is a plan revision; no application rewrite has been performed.
 
 ## Recommendation and expected savings

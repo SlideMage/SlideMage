@@ -33,6 +33,10 @@ LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
 # \newcommand{\FooterText}{...}: the match ends just before the {...}.
 FOOTER_RE = re.compile(r"\\(?:re)?newcommand\s*\{\\FooterText\}\s*(?=\{)")
 
+# \def\SMFooterHide{id,deck}: the footer elements the deck leaves out (framework: \SMFooterHide).
+FOOTER_HIDE_RE = re.compile(r"\\def\s*\\SMFooterHide\s*\{([^{}]*)\}")
+FOOTER_ELEMENTS: tuple[str, ...] = ("text", "id", "deck")
+
 # The keys \deckoutputfolder takes: None is the bare form that covers every
 # output, the rest are one version, the presenter PDF or the transcript.
 OUTPUT_KEYS: tuple[str | None, ...] = (
@@ -49,6 +53,9 @@ class DeckSettings:
     appendix_toc: bool = False
     # which PDF the deck table's "Open pdf" opens by default (deck_scan.OPEN_PDF_RE)
     open_pdf: str = "instructor"
+    # the footer elements left out: any of FOOTER_ELEMENTS (text = the left text, id = the slide id
+    # block, deck = "instructor deck" etc.)
+    footer_hide: tuple[str, ...] = ()
 
 
 def set_open_pdf(text: str, choice: str) -> str:
@@ -117,6 +124,7 @@ def _clean_path(path: str) -> str:
 def from_form(
     original: DeckSettings, *, template: str, language: str, footer_text: str, course_url: str,
     output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
+    footer_hide: tuple[str, ...] = (),
 ) -> DeckSettings:
     """The settings a form of the sheet holds, checked: a course link must be a web address
     (ValueError otherwise), an output path may not hold LaTeX specials. A path left as it was in
@@ -131,7 +139,8 @@ def from_form(
     return DeckSettings(
         template=template, language=language, footer_text=footer_text,
         course_url=deck_editor.normalize_course_url(url) if url else "",
-        output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf)
+        output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf,
+        footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide))
 
 
 def template_choices(root: Path) -> list[tuple[str, str]]:
@@ -165,6 +174,10 @@ def read_settings(text: str) -> DeckSettings:
     footer = _live(text, FOOTER_RE)
     if footer:
         settings.footer_text = braced_argument(text, footer[0].end())[0]
+    hide = _live(text, FOOTER_HIDE_RE)
+    if hide:
+        listed = {item.strip() for item in hide[-1].group(1).split(",")}
+        settings.footer_hide = tuple(e for e in FOOTER_ELEMENTS if e in listed)
     begin = DOCUMENT_BEGIN_LINE_RE.search(text)
     preamble = text[:begin.start()] if begin else text
     settings.course_url = parse_course_url(text) or ""
@@ -217,6 +230,21 @@ def set_footer_text(text: str, value: str) -> str:
     return _insert_line(text, "\\newcommand{\\FooterText}{" + value + "}")
 
 
+def set_footer_hide(text: str, hidden: tuple[str, ...]) -> str:
+    """Write (or, for nothing hidden, remove) the deck's \\def\\SMFooterHide line."""
+    live = _live(text, FOOTER_HIDE_RE)
+    value = ",".join(e for e in FOOTER_ELEMENTS if e in hidden)
+    if not value:
+        for match in reversed(live):
+            text = _remove(text, match)
+        return text
+    if live:
+        span = live[-1].span(1)
+        return text[:span[0]] + value + text[span[1]:]
+    footer = _live(text, FOOTER_RE)
+    return _insert_line(text, "\\def\\SMFooterHide{" + value + "}", after=footer[-1] if footer else None)
+
+
 def set_output_folder(text: str, key: str | None, path: str) -> str:
     """Set (or, for an empty `path`, remove) the \\deckoutputfolder of `key`."""
     path = _clean_path(path)
@@ -259,6 +287,8 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
             text = set_output_folder(text, key, after)
     if new.appendix_toc != old.appendix_toc:
         text = set_appendix_toc(text, new.appendix_toc)
+    if new.footer_hide != old.footer_hide:
+        text = set_footer_hide(text, new.footer_hide)
     if new.open_pdf != old.open_pdf:
         text = set_open_pdf(text, new.open_pdf)
     return text

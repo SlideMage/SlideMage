@@ -156,3 +156,101 @@ def test_cancel_preamble_build_propagates_and_releases_format_lock(tmp_path, mon
     with preview_build.build_lock(lock, blocking=False) as acquired:
         assert acquired
     assert not (lock.parent / 'format.bad').exists()
+
+
+def test_completed_service_cache_survives_restart_and_validates_content(tmp_path, monkeypatch):
+    import json
+    from slidemage import slide_snapshot
+
+    root = tmp_path / 'project'
+    ctx = ProjectContext.at(root)
+    ctx.slides_dir.mkdir(parents=True)
+    source = ctx.slides_dir / 'abc-EN-One-current.tex'
+    source.write_text('1.2.0+ FIRST')
+    framework = tmp_path / 'framework'
+    framework.mkdir()
+    theme = framework / 'theme.tex'
+    theme.write_text('THEME ONE')
+    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    monkeypatch.setattr(compiler, 'build_env', lambda _: env)
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool'), ()))
+    monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
+    calls = []
+    pdf = tmp_path / 'result.pdf'
+
+    def render(*args, **kwargs):
+        calls.append(kwargs)
+        pdf.write_bytes(b'PDF ' + str(len(calls)).encode())
+        pdf.with_suffix('.inputs.json').write_text(json.dumps([str(source), str(theme)]))
+        return pdf
+
+    monkeypatch.setattr(preview_target, 'render_text', render)
+    target = preview_target.for_path(ctx, source)
+
+    def request(service, force=False, stamp=None):
+        pending = service.request(target, source.read_text(), 'instructor', 'EN', True,
+                                  lambda _: None, saved=True, force=force, render_stamp=stamp)
+        pending.wait()
+        return pending
+
+    first_service = preview_requests.RenderService()
+    first = request(first_service, stamp='2026-10-15 10:00:00')
+    assert first.preview_result.status == 'rendered'
+    assert first.preview_result.dependencies == (theme, source)
+    assert first.result[0].is_relative_to(root / '.previews')
+    # Immutable result records keep their PDF alive after the future is released.
+    import gc
+    from slidemage.preview_cache import PreviewCache
+    retained = first.preview_result
+    del first
+    gc.collect()
+    PreviewCache(root).prune(max_bytes=0)
+    assert retained.pdf.exists()
+    first_service.close()
+    service = preview_requests.RenderService()
+    cached = request(service)
+    assert len(calls) == 1 and cached.preview_result.status == 'cached'
+    assert cached.metrics['compile_avoided'] == 1
+    assert cached.preview_result.render_stamp == '2026-10-15 10:00:00'
+    forced = request(service, force=True, stamp='2026-10-15 11:00:00')
+    assert len(calls) == 2 and forced.result[0] != cached.result[0]
+    assert forced.preview_result.render_stamp == '2026-10-15 11:00:00'
+    assert all(call['force_build'] for call in calls)
+    old = theme.stat()
+    theme.write_text('THEME TWO')
+    os.utime(theme, ns=(old.st_atime_ns, old.st_mtime_ns))
+    assert request(service).preview_result.status == 'rendered' and len(calls) == 3
+    old = source.stat()
+    source.write_text('1.2.0+ OTHER')
+    os.utime(source, ns=(old.st_atime_ns, old.st_mtime_ns))
+    assert request(service).preview_result.status == 'rendered' and len(calls) == 4
+    service.close()
+
+
+def test_saved_request_changed_before_start_never_compiles(tmp_path, monkeypatch):
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    source = ctx.slides_dir / 'abc-EN-One-current.tex'
+    source.write_text('old')
+    target = preview_target.for_path(ctx, source)
+    request = preview_requests.RenderService().request(target, 'old', 'instructor', 'EN', False,
+                                                      lambda _: None, saved=True)
+    source.write_text('new')
+    monkeypatch.setattr(preview_target, 'render', lambda *a, **kw: pytest.fail('superseded source compiled'))
+    with pytest.raises(RuntimeError, match='superseded'):
+        request.wait()
+
+
+def test_cache_identity_tracks_raster_version_and_ignores_forced_stamp(tmp_path, monkeypatch):
+    from dataclasses import replace
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    source = ctx.slides_dir / 'abc-EN-One-current.tex'
+    source.write_text('body')
+    target = preview_target.for_path(ctx, source)
+    spec = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(source), 'instructor', 'EN')
+    initial = preview_requests.cache_identity(spec)
+    forced = replace(spec, options=replace(spec.options, force=True, render_stamp='different time'))
+    assert preview_requests.cache_identity(forced) == initial
+    monkeypatch.setattr(preview_requests, 'version', lambda _: 'new renderer')
+    assert preview_requests.cache_identity(spec) != initial

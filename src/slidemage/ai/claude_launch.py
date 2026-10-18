@@ -19,6 +19,7 @@ from pathlib import Path
 from ..cli import CLAUDE_HOOK_FLAG
 from ..processes import no_console_kwargs
 from .claude_scope import FOCUS_ENV
+from .image_instructions import IMAGE_DESCRIPTION_RULES
 from .tools import CLAUDE_CODE_READ_ONLY
 
 SERVER_NAME = "slidemage"
@@ -36,8 +37,8 @@ ORIENTATION = (
     "it checks, writes, renders and shows in one call. Use native Edit/Write for other files. read_buffer shows "
     "an open file with its unsaved edits (your Read shows the older file on disk); read_selection gives the text "
     "the user selected in the editor, with its context; lint checks a slide; "
-    "render_preview typesets it and shows you the image (look at it after a layout change); refresh_preview and "
-    "refresh_deck_previews only rerender the cached previews, when asked; check_readability measures whether the "
+    "render_preview(view=...) typesets it and returns labelled images for visual checks after layout changes; use view=all for a general preview request or to inspect all course variants. Omitted view uses the selected view. refresh_preview defaults to all views, reads saved source and returns per-view statuses without images; refresh_preview and "
+    "refresh_deck_previews only rerender cached previews, when asked (refresh_deck_previews creates legacy Instructor snapshots only); check_readability measures whether the "
     "text and images of a slide or deck can be read by an audience (it changes nothing; to fix its findings, change "
     "the slide with modify_slide, then check that slide again); list_slides lists "
     "a deck; read_guide explains the conventions (slides, frames, layout, reveals, citations, "
@@ -52,7 +53,7 @@ ORIENTATION = (
     "add_slide, call show_slide so they see it. To translate a slide, call "
     "translate_slide and then only say that SlideMage is translating it. Answers are short: one or two "
     "sentences on what you did, no recap of the slide's content, no list of things to check; end with at most "
-    "one question offering a concrete next step (e.g. 'Create the German version?').")
+    "one question offering a concrete next step (e.g. 'Create the German version?'). " + IMAGE_DESCRIPTION_RULES)
 
 
 def _extra_dirs() -> list[Path]:
@@ -118,9 +119,11 @@ def settings(hook: str) -> dict:
         "permissions": {"allow": [f"mcp__{SERVER_NAME}__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]}}
 
 
-def build_command(claude: Path, url: str, hook: str | None = None) -> list[str]:
-    """The interactive session's command line; the model and effort are the user's Claude Code defaults."""
-    return [str(claude),
+def build_command(claude: Path, url: str, hook: str | None = None, *,
+                  model: str = "", effort: str | None = None) -> list[str]:
+    """Start with the saved chat choice, or inherit Claude Code's defaults when no choice is saved."""
+    return [str(claude), *(["--model", model] if model else []),
+            *(["--effort", effort] if effort else []),
             "--mcp-config", json.dumps(mcp_config(url)),
             "--settings", json.dumps(settings(hook or hook_command())),
             "--append-system-prompt", ORIENTATION]

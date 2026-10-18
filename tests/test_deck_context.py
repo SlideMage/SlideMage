@@ -227,6 +227,7 @@ def test_only_a_render_in_the_deck_may_refresh_the_snapshot_of_a_slide_that_need
     asked = []
     monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
                         lambda path, snapshots, widths: asked.append(snapshots) or ((b"a", b"b"), ()))
-    request = preview_requests.RenderService().request(target, "text", "instructor", "EN", False, print, saved=True)
+    saved = target.source_path.read_text(encoding="utf-8")    # a saved request renders the file as it is on disk
+    request = preview_requests.RenderService().request(target, saved, "instructor", "EN", False, print, saved=True)
     request.wait()
     assert asked == [snapshot]

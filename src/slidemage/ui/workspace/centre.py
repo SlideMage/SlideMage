@@ -293,6 +293,18 @@ class CentreColumn(QFrame):
         if not changed:
             QMessageBox.information(self.app, "Update version", f"No slide of {deck.name} has changes since its last version.")
             return
+        self._update_versions(changed, "Update version of all changed slides", f"in {deck.name}")
+
+    def update_selected_versions(self) -> None:
+        """Make a version of each selected slide, using one shared bump level."""
+        slugs = list(dict.fromkeys(row.call.id_slug for row in self.app.slide_list.targets()))
+        if not slugs:
+            return
+        self.source.flush_all()
+        self._update_versions(slugs, "Update versions", "selected")
+
+    def _update_versions(self, changed: list[str], title: str, label: str) -> None:
+        """Batch versioning keeps deck calls as they are, including pinned versions."""
         blocked = [slug for slug in changed
                    if self.is_blocked(self.state.project.slides_dir / slide_language.current_name(slug))]
         if blocked:
@@ -302,8 +314,8 @@ class CentreColumn(QFrame):
             return
         shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:12]) + (", …" if len(changed) > 12 else "")
         box = QMessageBox(self.app)
-        box.setWindowTitle("Update version of all changed slides")
-        box.setText(f"{len(changed)} slide(s) of {deck.name} have changes since their last version:\n{shown}\n\n"
+        box.setWindowTitle(title)
+        box.setText(f"Update versions of {len(changed)} slide(s) {label}:\n{shown}\n\n"
                     "How significant are the changes? Each slide is frozen as the next version of that size.")
         levels: dict[str, object] = {}
         for level in ("major", "minor", "patch"):
@@ -314,21 +326,21 @@ class CentreColumn(QFrame):
         level = next((name for name, button in levels.items() if box.clickedButton() is button), None)
         if level is None:
             return
-        done, failed = 0, []
+        done, failed, updated = 0, [], []
         for slug in changed:
             current = self.state.project.slides_dir / slide_language.current_name(slug)
             open_current = self.source.file_for(current)
             try:
                 _frozen, version, _base = slide_versioning.update_version(self.state.project, current, slug, level)
-            except (ValueError, slide_source.StaleFileError) as exc:
+            except (OSError, ValueError, slide_source.StaleFileError) as exc:
                 failed.append(f"{slide_language.bare_id(slug)}: {exc}")
                 continue
+            updated.append(current)
             done += 1
             self.app.log(f"{slug} is now v{slide_versioning.format_dot(version)}")
             if open_current is not None:
                 open_current.adopt_disk()
-        self.refresh()
-        self.versions_changed.emit()
+        self.app.after_version_updates(updated)
         if failed:
             QMessageBox.warning(self.app, "Update version",
                                 f"{done} slide(s) updated; not these:\n" + "\n".join(failed))
@@ -441,7 +453,8 @@ class CentreColumn(QFrame):
         deck = state.deck
         if deck is None or deck.is_test_deck or state.focused_slide is None:
             return None
-        return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language)
+        return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language,
+                                      occurrence_key=state.focused_occurrence)
 
     def _focused_path(self) -> Optional[Path]:
         """The file of the focused slide, if it has one: what the deck's call loads, else the
@@ -517,7 +530,8 @@ class CentreColumn(QFrame):
         id_slug, version = self._file_slide()
         state = self.state
         if row is not None and (self._path is None or (id_slug == row.call.id_slug and version == row.call.version)):
-            return for_call(state.project, state.deck, row.call, row.position), row, row.title, None
+            return for_call(state.project, state.deck, row.call, row.position, language=state.language, frame_number=row.frame_number,
+                            occurrence_key=row.key, hidden=row.hidden), row, row.title, None
         if self._path is None:
             return None, None, "", None
         own = own_language(id_slug)

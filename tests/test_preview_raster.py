@@ -158,3 +158,40 @@ def test_invalid_protocol_response_is_rejected_and_helper_closed(monkeypatch, re
     with pytest.raises(RuntimeError, match="Cannot prepare preview images"):
         client.render(pdf_bytes(), ((160, 90),), (160, 90))
     assert client._process is None
+
+
+def sequence_pdf(pages):
+    with pymupdf.open() as doc:
+        for text, width, height in pages:
+            page = doc.new_page(width=width, height=height)
+            page.insert_text((30, 30), text)
+        return doc.tobytes()
+
+
+def test_sequence_signature_checks_all_reveals_order_count_and_dimensions():
+    base = [('first', 320, 180), ('last', 320, 180)]
+    first = preview_raster_client.render_sequence(sequence_pdf(base))
+    assert len(first['images']) == len(first['pages']) == 2
+    assert preview_raster_client.render_sequence(sequence_pdf(base)) == first
+    assert first['pages'][0]['size'] == [320.0, 180.0]
+    for other in (
+        [('changed first', 320, 180), base[-1]],
+        list(reversed(base)),
+        [base[-1]],
+        [('first', 321, 180), base[-1]],
+        [('first footer during-course 2', 320, 180), base[-1]],
+    ):
+        rendered = preview_raster_client.render_sequence(sequence_pdf(other))
+        assert rendered['signature'] != first['signature']
+        # Same last-page pixels cannot establish complete-preview equality.
+        if other[-1] == base[-1]:
+            assert rendered['images'][-1] == first['images'][-1]
+
+
+@pytest.mark.parametrize('field,value', [('schema', 999), ('dpi', 72), ('alpha', True)])
+def test_sequence_client_rejects_incompatible_configuration(monkeypatch, field, value):
+    response = preview_raster.sequence(pdf_bytes())
+    response['configuration'][field] = value
+    monkeypatch.setattr(preview_raster_client, '_ask', lambda *args, **kwargs: response)
+    with pytest.raises(RuntimeError, match='configuration'):
+        preview_raster_client.render_sequence(pdf_bytes())

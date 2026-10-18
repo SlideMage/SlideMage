@@ -70,7 +70,7 @@ class FakeRenders:
         self.requests.append((request, target, text, view, language, timestamp, kwargs))
         return request
 
-    def read_pages(self, pdf: Path) -> list[bytes]:
+    def read_pages(self, pdf: Path, project_root: Path) -> list[bytes]:
         request = self.requests[int(pdf.stem)][0]
         return [png("#c04040" if request.index % 2 == 0 else "#40a040", 320 + n)
                 for n in range(self.plans.get(request.text, {}).get("pages", 1))]
@@ -120,7 +120,7 @@ def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(ch
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
     (first, second) = renders.requests
     for (request, target, text, view, language, timestamp, kwargs), expected in zip((first, second), ("old text", "new text")):
-        assert text == expected and kwargs == {}                      # a draft: not `saved`, whatever the file says
+        assert text == expected and kwargs == {'require_pdf': True}  # a draft, with its own view's PDF
         assert (view, language, timestamp) == ("during-course", "EN", True) and target.source_path == env.path
     assert dialog.windowTitle() == "Compare rendered · abc · During · EN" and not dialog.isModal()
     assert chips(dialog) == ["Rendering…", "Rendering…"] and messages(dialog) == ["Rendering…", "Rendering…"]
@@ -141,6 +141,9 @@ def test_the_arrow_keys_and_buttons_move_both_sides_and_the_shorter_one_has_no_p
     settle(dialog)
     assert dialog.page() == 2 and chips(dialog) == ["Page 2 of 3", "Page 2 of 2"]       # the last page both have
     assert dialog._position.text() == "Page 2 of 3" and dialog._previous.isEnabled() and dialog._next.isEnabled()
+    # Window shortcuts require an active window, including on the offscreen platform.
+    dialog.activateWindow()
+    pump()
     QTest.keyClick(dialog, Qt.Key.Key_Right)
     assert dialog.page() == 3 and chips(dialog) == ["Page 3 of 3", "No page 3"]
     assert messages(dialog)[1] == "After has only 2 pages." and dialog._sides[1].view.pixmap is None
@@ -350,7 +353,7 @@ def test_the_task_card_compares_in_review_and_done(asked, renders):  # noqa: F81
     (dialog,) = renders.dialogs(env.window)
     assert dialog.texts == {"Before": BROKEN, "After": card(env).after} and "\\end{itemize}" in dialog.texts["After"]
     assert dialog.target.source_path == env.path and (dialog.view, dialog.language) == ("instructor", "EN")
-    assert len(renders.requests) == 2 and all(entry[6] == {} for entry in renders.requests)
+    assert len(renders.requests) == 2 and all(entry[6] == {'require_pdf': True} for entry in renders.requests)
     close(dialog)
     press(env, "Apply")
     wait_until(phase_is(env, model.DONE))

@@ -90,7 +90,8 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
         for name in re.findall(r'^\s+"((?:[^"\\]|\\.)*)"\s+\d', database.read_text(errors='replace'), re.M):
             names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
     paths = set()
-    cache_roots = (cache.absolute(), cache.resolve())
+    formats = project_root / '.build' / 'preview-formats'
+    cache_roots = (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())
     for name in set(names):
         path = Path(name)
         # Normalize . and .. without repeated filesystem/symlink walks for the
@@ -163,7 +164,7 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()[:24]
 
 
-def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cancel=None):
+def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cancel=None, force=False):
     """Build with the preamble precompiled when that works, else the ordinary way.
 
     A run that fails only with the format is repeated without it, so a preamble
@@ -179,18 +180,18 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
     if format_dir is not None:
         try:
             return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
-                                   key_text=wrapper_text, format_dir=format_dir, cancel=cancel)
+                                   key_text=wrapper_text, format_dir=format_dir, cancel=cancel, force=force)
         except RuntimeError as exc:
             check_cancel(cancel)
             log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
-    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel)
+    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel, force=force)
     if format_dir is not None:
         # The slide builds without the format but not with it: stop using it.
         preview_format.disable(format_dir)
     return pdf
 
 
-def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None):
+def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None, force=False):
     key = configuration_key(key_text, id_slug, ctx.root, env)
     if format_dir is not None:
         # A rebuilt format means changed preamble inputs, which latexmk's own
@@ -208,10 +209,10 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
         with build_lock(cache / 'build.lock', cancel=cancel):
             return _compile_reserved(wrapper_text, id_slug, log, ctx=ctx, env=env,
                                      cache=cache, wrapper=wrapper, jobname=jobname,
-                                     format_dir=format_dir, cancel=cancel)
+                                     format_dir=format_dir, cancel=cancel, force=force)
 
 
-def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None, cancel=None):
+def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None, cancel=None, force=False):
     unstable = cache / 'rerun-limit'
     if unstable.exists():
         # Retaining oscillating layout state changes the next preview.
@@ -226,6 +227,8 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
     # Returned previews contain only a temporary PDF, so a SyncTeX file in
     # this private build directory cannot be used by the external viewer.
     options = ['-synctex=0']
+    if force:
+        options.append('-g')
     if format_dir is not None:
         # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.
         # Found through TEXFORMATS: a path given to -fmt names the recorder file.

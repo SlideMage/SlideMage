@@ -84,8 +84,8 @@ deck switcher offers the rest). From top to bottom and left to right:
 - **Compare rendered** (v8.13.0, `compare_rendered.py`): a non-modal dialog, not in the 360 px column, that typesets
   two texts of one slide as drafts for the same target, view, language and timestamp as Check preview
   (`preview_view.render_context`) and shows "Before" and "After" in equal panes. Both go through a `RenderService` of
-  the dialog's own (the Preview pane's compile slot and build locks; nothing is written), each on a `QThread`
-  that also reads the PDF's pages as PNGs in the raster child (`preview_raster_client.read_document`); ‹ › and the
+  the dialog's own (shared persistent preview cache and build locks; sources stay unchanged), each on a `QThread`
+  that reuses validated reveal images or `preview_pages`' content-addressed PDF page cache; ‹ › and the
   arrow keys move both sides to the same reveal step (a side with fewer pages says "No page N"), a side that fails
   says why while the other is shown, *Text diff* swaps in the chat's `DiffCard`, Esc/Close cancels the pending
   renders. Opened from the task card (Review, Conflict: the proposal against the slide as it is now, Done), the
@@ -633,7 +633,8 @@ What matters when touching *this code*:
   **AI setup**, the ▾ of the AI switch in the top bar, `ui/workspace/ai_setup.py`: every
   model picker lists the models of the route in use and preselects its default, picking
   another there applies to that use only; the local chat lists only models that can call
-  tools, local image descriptions only vision models), **Cloud** (the Anthropic API key
+  tools, local image descriptions only vision models; Claude Code chat saves a model and
+  effort used on the next start or Restart, or inherits **Claude Code default**), **Cloud** (the Anthropic API key
   with where it is stored), **Ollama**
   (`settings_ollama.py`: the host URL and the installed models, update and delete) and
   **Prompts** (`settings_prompts.py`: the editable system prompt of image descriptions,
@@ -767,33 +768,31 @@ What matters when touching *this code*:
   `RUNNING_LOG_RE` handling matches the line fine, but its
   `_job_progress_texts` lookup finds nothing, since that dict is normally
   only populated by `_start_jobs()` for the real compile queue, which
-  this ad-hoc job never goes through. `run(deck=...)` / `rerender_deck()` (v8.11.0) narrow
-  the same run to one deck's slides (`needed_slides_by_template(ctx, deck)`) and prune
-  nothing, because only a scan of every deck knows which files are stale; `run()` also waits
-  for `run_job()`'s background PDF relocation (`on_relocated`) so the snapshots exist when it
-  returns, and `rerender_deck()` reports which of the deck's snapshot files were written
-  (`DeckResult`). One implementation for **Rerender all previews for this deck**
-  (`compile_actions.rerender_deck_previews`, the ⋮ menu's *This deck* column and ⌘K) and the
-  agent's `refresh_deck_previews` (`Workspace.refresh_deck_previews`: the window runs it on its
-  compile slot, the headless workspace calls it directly); `refresh_preview` renders one slide
-  with `preview_target.render` (the locked, reusable preview build of the Preview pane), which
-  writes the cached PNGs itself (`ai/tools/previews.py`).
+  this ad-hoc job never goes through. Project-wide `run()` waits for
+  `run_job()`'s background PDF relocation and prunes unused legacy snapshots.
+  Deck-scoped `rerender_deck()` uses `deck_preview_refresh` and the shared
+  scheduler/cache instead, retaining exact occurrence/view outcomes in
+  `DeckResult.details`. The deck UI and `refresh_deck_previews` use this same
+  path with all/selected-view scope; `refresh_preview` uses the common per-slide
+  batch path. Compatible Instructor results still publish legacy snapshots.
 - [`ui/workspace/preview_view.py`](../src/slidemage/ui/workspace/preview_view.py) -- the
   Preview view (the redesign's replacement of the old preview popup and the deck editor's
   List / Thumbnail / Grid views, hover tooltip and chapter dropdown, all gone): the
-  `slide_snapshot.py` PNG of the focused slide (instructor view; other views render on
-  demand) with chips for what it is not showing (`preview_target.py`, `deck_outline`
+  matching verified whole-slide image of the focused occurrence and selected view,
+  with explicit previous-render or shared Instructor-reference fallback and chips for what it is not showing (`preview_target.py`, `deck_outline`
   facts: pinned version, language, missing translation, hidden in this view; the language
   chip of a slide with a translation partner reads "EN + DE" and is a button (Tab stop,
   Enter or Space, tooltip "Go to the German version" / "Go to the English original") that
   shows the partner file for this one slide, in the deck's theme and typeset in its own
   language, while the top bar's language and the mode stay, and back) and
-  staleness (`slide_snapshot.is_fresh()`: a snapshot older than the slide's own source is
-  flagged, not hidden). **Render** compiles the saved slide; its menu renders the editor
+  content-based freshness (including dependencies and unchanged version markers;
+  previous matching images remain visible with an old-preview label). **Render** compiles the saved slide; its menu renders the editor
   buffer instead (Ctrl+Enter, or Ctrl+R in the Source view: whole slide, selection as frame or element, one reveal step),
-  a presenter PDF or a transcript. The slide list's thumbnails read the cached
-  `THUMB_SIZE` file directly (not the full-size one scaled down, which was the source of
-  an early "not crisp" complaint). Single-slide renders run on a worker thread through
+  a presenter PDF or a transcript. The slide list's thumbnails now use the same verified
+  final whole-slide image for the selected view and source/deck identity. Older matching
+  renders and shared Instructor references are labelled; region and individual-step
+  previews can intentionally differ. See [Thumbnail and Preview consistency](PREVIEW_THUMBNAILS.md).
+  Single-slide renders run on a worker thread through
   `preview_build.py`'s cached latexmk graph (see "Interactive preview builds" in the
   README).
 - [`deck_duplicate.py`](../src/slidemage/deck_duplicate.py) -- **Duplicate deck…** (⋮ menu, *This deck*). A plain `shutil.copy2` under a new filename stem, no
@@ -1298,3 +1297,31 @@ it) -- never the real course decks
   `decks/archive/` -- PASS, citations resolved correctly (this is what
   caught the `\IfFileExists`-cascade bug above; the first attempt at this
   exact test is what failed and led to the fix).
+
+## Preview requests and optimization
+
+The user workflow is described in README.md, “Preview views and reuse”.
+`preview_equivalence` classifies supported rules before rendering. `RenderService`
+shares equivalent images and matching in-flight requests while preserving each
+consumer's view, saved/draft provenance and cancellation. Saved and identical
+buffer requests execute the same captured-text wrapper and use one identity.
+Presenter, region, element and overlay inputs remain distinct. Image equivalence
+does not authorize substituting a view-specific PDF.
+
+`preview_cache` stores immutable artifacts and content-based dependency evidence.
+`preview_selection` supplies the same verified/previous/Instructor-reference policy
+to both surfaces. `preview_thumbnails` and the pane validate off-thread with
+revision guards. `preview_pages` reuses full sequence images when resolution
+suffices, or caches additional PDF page ranges/resolutions for comparisons and
+inspection tools. Cache-validation timings and bytes read are recorded separately
+from LaTeX passes and raster jobs.
+
+`deck_preview_refresh` resolves each occurrence/view, including translated and
+pinned calls, before using the common batch scheduler. `rerender_deck` retains a
+slide summary and exact results; the project-wide legacy snapshot pruning path
+remains separate. `WorkspaceWindow.after_version_updates(paths)` refreshes rows
+once, preserves selection, and applies the live-render policy without broadly
+deleting caches belonging to unchanged pinned calls.
+
+The completion evidence and reproduction commands are in
+[Preview optimization validation](PREVIEW_RENDER_OPTIMIZATION_VALIDATION.md).

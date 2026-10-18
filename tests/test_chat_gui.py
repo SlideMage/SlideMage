@@ -650,8 +650,10 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
 
     def reload(path):
         assert threading.current_thread() is threading.main_thread()
-        reloaded.append(path)
-        return real_reload(path)
+        outcome = real_reload(path)
+        if outcome == RELOADED:
+            reloaded.append(path)
+        return outcome
 
     monkeypatch.setattr(latex_lint, "lint_text", lint)
     monkeypatch.setattr(env.window.centre, "disk_changed", reload)
@@ -659,7 +661,14 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
                         checked.append(text) or env.root / "fake.pdf")
     monkeypatch.setattr(preview_target, "render", lambda target, *a, **k:
                         checked.append(target.source_path.read_text()) or env.root / "fake.pdf")
-    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((b"PNG", b"PNG"), ()))
+    from io import BytesIO
+    from PIL import Image
+    from slidemage.ui.workspace.source_file import RELOADED
+
+    png_buffer = BytesIO()
+    Image.new("RGB", (16, 9), "white").save(png_buffer, format="PNG")
+    png = png_buffer.getvalue()
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((png, png), ()))
     server = McpServer(toolbox)
     client = Client(server)
     monkeypatch.setattr(client, "raw", lambda body: (200, server.handle(body)))
@@ -672,7 +681,10 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
     assert plusless(file.editor.text()) == expected and file.dirty == dirty   # an outside edit gets the "+"
     assert plusless(env.path.read_text(encoding="utf-8")).replace("\r\n", "\n") == disk_text.replace("\r\n", "\n")
     assert reloaded == ([] if dirty else [env.path])
-    assert "editor (unsaved)" in text if dirty else "file" in text and "unsaved" not in text
+    if tool == "render_preview":
+        assert "captured source (including open editor buffers)" in text
+    else:
+        assert "editor (unsaved)" in text if dirty else "file" in text and "unsaved" not in text
     if tool == "read_buffer":
         assert "% typed" in text if dirty else "Claude's new point" in text
     else:
@@ -759,10 +771,11 @@ def refresh(env, cancel=None):
 
 def test_refreshing_a_decks_previews_runs_on_the_compile_slot_and_returns_its_result(env, monkeypatch):
     from slidemage import update_all_previews
-    given = []
+    given, settings = [], []
 
-    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None):
+    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None, **options):
         given.append((deck.name, needed))
+        settings.append(options)
         log("==== Rerender previews of test: 2 slide(s) ====")
         return update_all_previews.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"])
 
@@ -771,7 +784,11 @@ def test_refreshing_a_decks_previews_runs_on_the_compile_slot_and_returns_its_re
     assert (result.refreshed, result.failed) == (["abc-EN-Hello"], ["abd-EN-Second"])
     assert given == [("test", {"uni-graz": {"abc-EN-Hello", "abd-EN-Second"}})]       # this deck's slides only
     row, = env.window.compile.run.rows.values()
-    assert row.label == "Rerender previews of test (UniGraz)"                          # the window's own job panel
+    assert row.label == "Rerender previews of test"                          # the window's own job panel
+    assert settings[0]['service'] is env.window.centre.preview._renders
+    assert settings[0]['scope'] == 'all'
+    assert settings[0]['selected_view'] == env.window.state.view
+    assert row.state == 'failed'
     assert not env.window.compile.running
 
 
@@ -793,7 +810,7 @@ def test_the_chats_stop_ends_a_preview_refresh_without_asking(env, monkeypatch):
     release = threading.Event()
     stopped = []
 
-    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None):
+    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None, **options):
         release.wait(5)
         return update_all_previews.DeckResult()
 
@@ -952,3 +969,39 @@ def test_dropping_files_and_pasting_an_image_attach_them(env, tmp_path):
     assert (env.root / "sources" / "pasted-image-2.png").read_bytes().startswith(b"\x89PNG")
     del mime, image
     collect_garbage()
+
+
+def test_batched_version_notification_preserves_selection_and_refreshes_once(env, monkeypatch):
+    window = env.window
+    for item in window.slide_list.tree.slide_items():
+        item.setSelected(True)
+    assert window.state.selection == ('abc', 'abd')
+    paths = [env.root / SLIDE, env.root / 'slides/abd-EN-Second-current.tex']
+    rebuild, live = [], []
+    original = window.slide_list.rebuild
+    def refresh_rows(**kwargs):
+        rebuild.append(kwargs)
+        original(**kwargs)
+    monkeypatch.setattr(window.slide_list, 'rebuild', refresh_rows)
+    monkeypatch.setattr(window, '_live_render', live.append)
+    window._after_write.start()
+    window.after_version_updates([*paths, paths[0]])
+    assert rebuild == [{'preserve_focus': True}]
+    assert live == paths
+    assert window.state.selection == ('abc', 'abd')
+    assert not window._after_write.isActive()
+
+
+def test_version_notification_obeys_live_render_setting(env, monkeypatch):
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+    window = env.window
+    window.state.set_mode('preview')
+    calls = []
+    monkeypatch.setattr(window.centre.preview, 'render_after_save', lambda: calls.append(True))
+    path = env.root / SLIDE
+    app_settings.set(window.project, LIVE_RENDER_SETTING_KEY, False)
+    window.after_version_updates([path])
+    assert calls == []
+    app_settings.set(window.project, LIVE_RENDER_SETTING_KEY, True)
+    window.after_version_updates([path, path])
+    assert calls == [True]

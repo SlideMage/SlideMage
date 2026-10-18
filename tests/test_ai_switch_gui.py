@@ -280,7 +280,16 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert [chat.itemData(i) for i in range(chat.count())] == ["", "chat-model"]            # models that call tools
     assert [image.itemData(i) for i in range(image.count())] == ["", "vision-model"]
     assert setup.heads[CLAUDE_CODE].text() == "Cloud · Claude Code"
-    assert setup.fixed[ai_profile.CHAT].isVisible() and setup.fixed[ai_profile.CHAT].text() == "set in Claude Code"
+    cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
+    assert cloud_chat.isVisible() and cloud_chat.currentData() == ""
+    assert cloud_chat.currentText() in cloud_chat.toolTip() and "Restart Claude Code" in cloud_chat.toolTip()
+    cloud_chat.setCurrentIndex(cloud_chat.findData("sonnet:high"))
+    cloud_chat.activated.emit(cloud_chat.currentIndex())
+    assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.CHAT) == "sonnet:high"
+    setup.refresh()
+    assert cloud_chat.currentData() == "sonnet:high"
+    assert cloud_chat.currentText() in cloud_chat.toolTip() and "Restart Claude Code" in cloud_chat.toolTip()
+    assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
     image.setCurrentIndex(1)
     image.activated.emit(1)
     assert ai_profile.model_choice(window.project, LOCAL, ai_profile.IMAGE_DESCRIPTION) == "vision-model"

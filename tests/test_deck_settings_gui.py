@@ -1,6 +1,8 @@
 """The Deck settings sheet and the ⋮ menu entries that open it (formerly the deck row's Settings button)."""
 from __future__ import annotations
 
+import pytest
+
 from types import SimpleNamespace
 
 from PySide6.QtWidgets import QDialog, QMessageBox
@@ -260,3 +262,26 @@ def test_admin_slides_entry_is_only_for_a_linked_course_deck(tmp_path, qapp):
     assert enabled(course)
     assert not enabled(make_deck(tmp_path, ["course"], course_url=None))        # no linked course page
     assert not enabled(make_deck(tmp_path, ["research"], course_url=COURSE_URL))  # not a course deck
+
+
+@pytest.mark.parametrize("field,value", [("footer_hide", ("id", "deck")), ("footer_text", "New footer")])
+@pytest.mark.parametrize("mode", ["preview", "split", "source"])
+def test_footer_changes_render_the_visible_preview_after_reloading(tmp_path, qapp, field, value, mode):
+    deck = make_deck(tmp_path)
+    old = deck_settings.read_settings(deck.text)
+    new = DeckSettings(**vars(old))
+    setattr(new, field, value)
+    events = []
+    window = SimpleNamespace(
+        state=SimpleNamespace(deck=deck, mode=mode),
+        centre=SimpleNamespace(preview=SimpleNamespace(render_after_save=lambda: events.append("render"))),
+        log=lambda message: events.append(message),
+        refresh_open_deck_editors=lambda: events.append("editors"),
+        reload_decks=lambda: events.append("reload"),
+    )
+
+    deck_actions.save_deck_settings(window, deck, old, new)
+
+    assert deck_settings.read_settings(deck.path.read_text()).footer_hide == new.footer_hide
+    assert field.replace("_", " ") in events[0]
+    assert events[1:] == ["editors", "reload"] + (["render"] if mode != "source" else [])

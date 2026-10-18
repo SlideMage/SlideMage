@@ -265,9 +265,9 @@ def test_the_arrow_keys_flip_the_cloud_connection_and_the_project_setting_like_r
 def test_tab_goes_through_ai_setup_in_reading_order_and_stays_inside(window, qapp):
     setup = open_setup(window)
     assert QApplication.focusWidget() is setup
-    # reading order: Local then Cloud of each row; the Claude Code chat cell is a label, not a stop
+    # reading order: Local then Cloud of every row, including Claude Code chat
     rows = [(setup.cells[(LOCAL, task)], setup.cells[(CLOUD, task)]) for task in ai_profile.TASKS]
-    stops = [setup.cells[(LOCAL, ai_profile.CHAT)]] + [cell for pair in rows[1:] for cell in pair]
+    stops = [cell for pair in rows for cell in pair]
     assert tab(len(stops)) == stops
     more = tab(3)                                                  # the connection, the setting, the link
     assert more[0] in setup.conn._buttons.values() and more[1] in setup.policy._buttons.values()

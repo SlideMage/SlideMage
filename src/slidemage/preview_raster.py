@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 from contextlib import redirect_stdout
 import json
+import hashlib
 import os
 import sys
 
@@ -43,6 +44,32 @@ def raster(data, sizes, full_size):
             )
             images[size] = page.get_pixmap(matrix=matrix).tobytes("png")
         return [images[tuple(size)] for size in sizes]
+
+
+SEQUENCE_SCHEMA = 1
+SEQUENCE_DPI = 144
+
+
+def sequence(data):
+    """Render every reveal at one fixed RGB/opaque configuration, in PDF order."""
+    import pymupdf
+
+    configuration = dict(schema=SEQUENCE_SCHEMA, dpi=SEQUENCE_DPI, colorspace="rgb",
+                         alpha=False, annots=True, renderer=pymupdf.VersionBind)
+    pages, images = [], []
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        for page in doc:
+            pixmap = page.get_pixmap(dpi=SEQUENCE_DPI, colorspace=pymupdf.csRGB,
+                                    alpha=False, annots=True)
+            # Pixel hashes exclude PNG metadata; exact point sizes also matter.
+            pages.append(dict(size=[page.rect.width, page.rect.height],
+                              pixels=[pixmap.width, pixmap.height],
+                              sha256=hashlib.sha256(pixmap.samples).hexdigest()))
+            images.append(pixmap.tobytes("png"))
+    evidence = dict(configuration=configuration, pages=pages)
+    signature = hashlib.sha256(json.dumps(evidence, sort_keys=True,
+                              separators=(",", ":")).encode()).hexdigest()
+    return dict(**evidence, signature=signature, images=images)
 
 
 def document(path, op, start=1, count=1, dpi=110):
@@ -98,7 +125,10 @@ def serve():
         try:
             request = json.loads(line)
             with redirect_stdout(errors):
-                if "op" in request:
+                if request.get("op") == "sequence":
+                    response = sequence(base64.b64decode(request["pdf"]))
+                    images = response.pop("images")
+                elif "op" in request:
                     response = document(**request)
                     images = response.pop("images", [])
                 else:

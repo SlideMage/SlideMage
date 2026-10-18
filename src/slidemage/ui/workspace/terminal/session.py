@@ -17,7 +17,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from .... import compiler
-from ....ai import claude_launch, claude_scope
+from ....ai import ai_profile, claude_launch, claude_scope
 from ....ai.agent_types import EDIT_AUTO
 from ....ai.mcp_server import McpServer
 from ....ai.tools import CLAUDE_CODE_TOOLS, ToolBox, build_toolbox
@@ -76,7 +76,8 @@ class ClaudeCodeSession(QObject):
             self._focus_file = Path(name)
         self.publish_focus(force=True)
         self._timer.start()
-        command = claude_launch.build_command(self.claude, self._server.url)
+        route = ai_profile.route_for(self._window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT)
+        command = claude_launch.build_command(self.claude, self._server.url, model=route.model, effort=route.effort)
         env = claude_launch.environment(self._server.token, self._window.project.root, self.claude, focus_file=self._focus_file)
         with self._lock:
             self._generation += 1

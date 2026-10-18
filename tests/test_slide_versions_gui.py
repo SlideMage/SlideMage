@@ -150,3 +150,44 @@ def test_details_survive_a_slide_without_a_file_and_show_a_message_without_a_sli
     details.show_slide("zzz-EN-Gone", None)            # no file: the facts are empty, nothing raises
     details.show_slide("", None, "Select a slide")
     assert [label.text() for label in details.findChildren(QLabel)] == ["Select a slide"]
+
+
+@pytest.mark.parametrize("level,version", [("patch", "1-2-1"), ("minor", "1-3-0"), ("major", "2-0-0"),
+                                          (None, "1-2-0+")])
+def test_selected_versions_share_one_choice_and_leave_other_slides_alone(ctx, qapp, tmp_path, monkeypatch,
+                                                                         level, version):
+    from types import SimpleNamespace
+    from slidemage.ui.workspace import centre as module
+
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    original = "\\setSlideVersion{1-2-0+}\n" + BODY
+    slugs = ["abc-EN-Demo", "def-DE-Beispiel", "ghi-EN-Unselected"]
+    for slug in slugs:
+        (slides / f"{slug}-current.tex").write_text(original, encoding="utf-8")
+    app = FakeApp(ctx)
+    app.slide_list = SimpleNamespace(targets=lambda: [SimpleNamespace(call=SimpleNamespace(id_slug=slug))
+                                                     for slug in [slugs[0], slugs[1], slugs[0]]])
+    updated = []
+    app.after_version_updates = lambda paths: updated.extend(paths)
+    centre = CentreColumn(app, WorkspaceState(ctx))
+    prompts = []
+
+    class Choice(QMessageBox):
+        def __init__(self, _parent):
+            super().__init__()
+            prompts.append(self)
+
+        def exec(self):
+            if level is not None:
+                next(button for button in self.buttons() if button.text() == level.capitalize()).click()
+
+    monkeypatch.setattr(module, "QMessageBox", Choice)
+    centre.update_selected_versions()
+    assert len(prompts) == 1 and "2 slide(s) selected" in prompts[0].text()
+    for slug in slugs[:2]:
+        assert f"\\setSlideVersion{{{version}}}" in (slides / f"{slug}-current.tex").read_text()
+        assert (slides / f"{slug}-v{version}.tex").exists() == (level is not None)
+    assert (slides / f"{slugs[2]}-current.tex").read_text() == original
+    assert len(updated) == (2 if level is not None else 0)
+    centre.deleteLater()

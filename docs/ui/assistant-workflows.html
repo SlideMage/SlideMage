@@ -1,0 +1,166 @@
+<div id="sm-assistant-design" aria-label="SlideMage assistant and task workflow proposal">
+  <style>
+    #sm-assistant-design{--sm-bg:light-dark(#f3f4f6,#1e1e1e);--sm-surface:light-dark(#ffffff,#2d2d2d);--sm-text:light-dark(#1d1d1d,#e0e0e0);--sm-muted:light-dark(#4b5563,#b0b0b0);--sm-line:light-dark(#d6d9de,#505050);--sm-active:light-dark(#1d1d1d,#e0e0e0);--sm-on:light-dark(#ffffff,#1d1d1d);--sm-soft:light-dark(#e7f3ff,#1c2f46);--sm-ok:light-dark(#065f46,#a7f3d0);--sm-warn:light-dark(#78350f,#fde68a);--sm-warnbg:light-dark(#fef3c7,#422006);font:14px/1.5 Roboto,system-ui,sans-serif;color:var(--sm-text);width:100%}
+    #sm-assistant-design *{box-sizing:border-box}#sm-assistant-design [hidden]{display:none!important}
+    #sm-assistant-design .sm-window{background:var(--sm-bg);border:1px solid var(--sm-line);border-radius:8px;overflow:clip}
+    #sm-assistant-design button,#sm-assistant-design select,#sm-assistant-design textarea{font:inherit;color:var(--sm-text);background:var(--sm-surface);border:1px solid var(--sm-line);border-radius:4px;padding:6px 10px;max-width:100%}
+    #sm-assistant-design button{min-height:34px}#sm-assistant-design button:disabled{opacity:.55}
+    #sm-assistant-design button[aria-pressed=true],#sm-assistant-design .sm-primary{background:var(--sm-active);color:var(--sm-on);border-color:var(--sm-active)}
+    #sm-assistant-design .sm-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#sm-assistant-design .sm-spread{justify-content:space-between}
+    #sm-assistant-design .sm-top{padding:12px 16px;background:var(--sm-surface);border-bottom:1px solid var(--sm-line)}
+    #sm-assistant-design .sm-brand{font-weight:600;margin-right:6px}#sm-assistant-design .sm-deck{flex:1;min-width:180px}
+    #sm-assistant-design .sm-sub{padding-top:10px;color:var(--sm-muted);font-size:12px}#sm-assistant-design .sm-sub label{display:flex;gap:7px;align-items:center}
+    #sm-assistant-design .sm-main{display:grid;grid-template-columns:150px minmax(180px,1fr) minmax(310px,390px);gap:12px;padding:12px;align-items:start}
+    #sm-assistant-design .sm-pane{background:var(--sm-surface);border:1px solid var(--sm-line);border-radius:8px;min-width:0}
+    #sm-assistant-design .sm-panehead{padding:10px 12px;border-bottom:1px solid var(--sm-line);font-weight:500}
+    #sm-assistant-design .sm-slides{padding:10px}#sm-assistant-design .sm-slides button{width:100%;text-align:left;margin-bottom:5px;border-color:transparent}
+    #sm-assistant-design .sm-slides .sm-selected{background:var(--sm-soft);border-color:var(--sm-line)}
+    #sm-assistant-design .sm-muted{color:var(--sm-muted);font-size:12px}#sm-assistant-design .sm-section{margin:8px 0;font-size:12px;color:var(--sm-muted)}
+    #sm-assistant-design .sm-canvas{padding:18px 12px;background:var(--sm-bg)}
+    #sm-assistant-design .sm-slide{aspect-ratio:16/10;background:var(--sm-surface);padding:18px;border:1px solid var(--sm-line);display:flex;flex-direction:column;justify-content:space-between}
+    #sm-assistant-design .sm-slide h3{font-size:20px;margin:0 0 12px;font-weight:500}#sm-assistant-design .sm-slide p{margin:6px 0}
+    #sm-assistant-design .sm-editorbar{padding:10px 12px;border-bottom:1px solid var(--sm-line);gap:5px}#sm-assistant-design .sm-editorbar button{padding:4px 6px;font-size:12px}
+    #sm-assistant-design .sm-inspector{margin-top:12px;padding:12px}#sm-assistant-design summary{font-weight:500}#sm-assistant-design .sm-inspector p{margin:10px 0 0}
+    #sm-assistant-design .sm-assistant{min-height:560px;display:flex;flex-direction:column}
+    #sm-assistant-design .sm-assistanthead{padding:12px;border-bottom:1px solid var(--sm-line)}
+    #sm-assistant-design .sm-segments{display:flex;gap:3px}#sm-assistant-design .sm-assistanthead label{font-size:12px;color:var(--sm-muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    #sm-assistant-design .sm-route{margin-top:10px}#sm-assistant-design .sm-target{margin-top:7px;font-size:12px;color:var(--sm-muted)}
+    #sm-assistant-design .sm-body{padding:14px 12px;flex:1;min-height:190px;overflow-wrap:anywhere}
+    #sm-assistant-design .sm-empty{margin:20px 0 12px;font-size:18px;font-weight:500}#sm-assistant-design .sm-emptyhint{color:var(--sm-muted);margin:0 0 18px}
+    #sm-assistant-design .sm-compose{padding:12px;border-top:1px solid var(--sm-line)}#sm-assistant-design textarea{width:100%;resize:vertical;min-height:70px;display:block;margin-bottom:8px}
+    #sm-assistant-design .sm-hint{color:var(--sm-muted);font-size:12px;margin:8px 0 0}
+    #sm-assistant-design .sm-notice{background:var(--sm-warnbg);color:var(--sm-warn);padding:10px 12px;border-radius:4px;margin-bottom:10px}
+    #sm-assistant-design .sm-steps{display:flex;gap:8px;flex-wrap:wrap;list-style:none;padding:0;margin:12px 0 16px;font-size:12px;color:var(--sm-muted)}
+    #sm-assistant-design .sm-steps li{padding:3px 5px;border-bottom:2px solid var(--sm-line)}#sm-assistant-design .sm-steps li[aria-current=step]{color:var(--sm-text);border-bottom-color:var(--sm-active);font-weight:600}
+    #sm-assistant-design .sm-tasktitle{margin:0;font-size:16px;font-weight:500}#sm-assistant-design .sm-taskinfo{margin:3px 0 10px;color:var(--sm-muted);font-size:12px}
+    #sm-assistant-design .sm-diff{padding:10px;background:var(--sm-bg);border-radius:4px;margin:10px 0}#sm-assistant-design .sm-diff p{margin:5px 0 12px}
+    #sm-assistant-design .sm-taskactions{margin-top:14px}#sm-assistant-design .sm-success{color:var(--sm-ok)}
+    #sm-assistant-design .sm-terminal{background:#181818;color:#ececec;padding:12px;border-radius:4px;white-space:pre-wrap;font:12px/1.7 'Roboto Mono',monospace;min-height:145px;margin:0 0 12px}
+    #sm-assistant-design .sm-message{padding:10px;background:var(--sm-bg);border-radius:6px;margin-bottom:10px;white-space:pre-wrap}
+    #sm-assistant-design .sm-activity{padding:9px 14px;border-top:1px solid var(--sm-line);background:var(--sm-surface);font-size:12px}
+    #sm-assistant-design .sm-focus .sm-main{grid-template-columns:minmax(180px,1fr) minmax(340px,1.35fr)}#sm-assistant-design .sm-focus .sm-navigation,#sm-assistant-design .sm-focus .sm-inspector{display:none}
+    #sm-assistant-design .sm-compact .sm-assistanthead,#sm-assistant-design .sm-compact .sm-body,#sm-assistant-design .sm-compact .sm-compose{padding:9px}
+    @media(max-width:850px){#sm-assistant-design .sm-main{grid-template-columns:minmax(180px,1fr) minmax(300px,1.15fr)}#sm-assistant-design .sm-navigation{display:none}}
+    @media(max-width:620px){#sm-assistant-design .sm-main,#sm-assistant-design .sm-focus .sm-main{grid-template-columns:1fr}#sm-assistant-design .sm-slide{aspect-ratio:auto;min-height:190px}#sm-assistant-design .sm-top{padding:10px}#sm-assistant-design .sm-focus .sm-centre{display:none}#sm-assistant-design .sm-assistant{min-height:490px}}
+    @media(pointer:coarse){#sm-assistant-design button,#sm-assistant-design select{min-height:44px}#sm-assistant-design textarea{font-size:16px}}
+  </style>
+  <div class="sm-window">
+    <header class="sm-top">
+      <div class="sm-row"><span class="sm-brand">SlideMage</span><span class="sm-deck">Research methods · 24 slides</span><button data-action="compile" class="sm-primary">Compile PDF</button><button data-action="project">Project ▾</button></div>
+      <div class="sm-row sm-spread sm-sub"><div class="sm-row"><label>Audience <select aria-label="Audience"><option>Instructor</option><option>During course</option><option>After course</option></select></label><label>Language <select aria-label="Slide language"><option>EN</option><option>DE</option></select></label></div><span data-save>Saved</span></div>
+    </header>
+    <div class="sm-main">
+      <nav class="sm-pane sm-navigation" aria-label="Slides"><div class="sm-panehead">Slides</div><div class="sm-slides"><button data-action="add">+ Add slide</button><div class="sm-section">Introduction</div><button data-slide="Learning objectives">01 · Objectives</button><button class="sm-selected" data-slide="Research questions">02 · Questions</button><button data-slide="Study design">03 · Study design</button><div class="sm-section">Data collection</div><button data-slide="Interviews">04 · Interviews</button><button data-slide="Surveys">05 · Surveys</button></div></nav>
+      <main class="sm-centre">
+        <section class="sm-pane" aria-label="Slide editor"><div class="sm-row sm-editorbar"><button aria-pressed="true" data-mode="Preview">Preview</button><button aria-pressed="false" data-mode="Split">Split</button><button aria-pressed="false" data-mode="Source">Source</button><button aria-pressed="false" data-mode="Details">Details</button></div><div class="sm-canvas"><div class="sm-slide"><div><h3 data-slide-title>Research questions</h3><div data-slide-content><p>Start with a focused question.</p><p>Choose evidence that can answer it.</p><p>Explain the limits of your study.</p></div></div><span class="sm-muted">Research methods · Instructor · 02</span></div></div><div class="sm-row sm-spread sm-panehead"><span class="sm-muted" data-preview>Preview is up to date</span><button data-action="preview">Render preview</button></div></section>
+        <details class="sm-pane sm-inspector"><summary>Slide details · Language &amp; versions</summary><p>English · Current version</p><p class="sm-muted" data-partner>No German translation yet</p><button data-action="translate">Translate to German</button></details>
+      </main>
+      <aside class="sm-pane sm-assistant" aria-label="Assistant">
+        <div class="sm-assistanthead">
+          <div class="sm-row sm-spread"><strong>Assistant</strong><button data-action="expand" aria-pressed="false">Expand</button></div>
+          <div class="sm-row sm-spread sm-route"><div class="sm-segments" role="group" aria-label="AI execution location"><button data-route="local" aria-pressed="true">Local</button><button data-route="cloud" aria-pressed="false">Cloud</button></div><button data-action="new" aria-label="New conversation">New</button></div>
+          <div class="sm-row sm-route"><label data-local-model>Model <select aria-label="Local model"><option>Installed Ollama model</option></select></label><label data-cloud-model hidden>Connection <select data-connection aria-label="Cloud connection"><option value="code">Claude Code</option><option value="api">Anthropic API</option></select></label></div>
+          <div class="sm-row sm-route"><label>Scope <select data-scope aria-label="AI scope"><option value="slide">This slide</option><option value="deck">Whole deck · 24 slides</option></select></label></div>
+          <div class="sm-target" data-target>Research questions · saved source</div>
+        </div>
+        <div class="sm-body" data-body></div>
+        <div class="sm-compose" data-composer></div>
+      </aside>
+    </div>
+    <div class="sm-activity sm-row sm-spread" aria-live="polite"><span data-activity>Ready · No active tasks</span><button data-action="activity">Activity</button></div>
+  </div>
+  <script>
+  (() => {
+    const root=document.getElementById('sm-assistant-design');
+    const find=s=>root.querySelector(s);
+    const state={route:'local',connection:'code',scope:'slide',title:'Research questions',focus:false,phase:'idle',task:'translate',taskTarget:'',taskScope:'slide',pending:null,terminalLive:false,localOnly:false,compact:false,timer:null,changed:false,returnPhase:null};
+    const drafts={local:'',code:'',api:''};const messages={local:[],code:[],api:[]};
+    const key=()=>state.route==='local'?'local':state.connection;
+    const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const busy=()=>['generate','apply','preview'].includes(state.phase);
+    const taskName=()=>state.task==='translate'?'Translate to German':state.task==='fix'?'Fix LaTeX errors':'Summarise deck';
+    function activity(text){find('[data-activity]').textContent=text;}
+    function saveDraft(){const t=find('[data-draft]');if(t)drafts[key()]=t.value;}
+    function schedule(fn){clearTimeout(state.timer);state.timer=setTimeout(fn,800);}
+    function switchTo(route,connection=state.connection){
+      saveDraft();
+      if(busy()||(state.route==='cloud'&&state.connection==='code'&&state.terminalLive)){
+        state.pending={route,connection};render();return;
+      }
+      performSwitch(route,connection);
+    }
+    function performSwitch(route,connection){
+      if(route==='cloud'&&state.localOnly)return;
+      state.route=route;state.connection=connection;state.terminalLive=route==='cloud'&&connection==='code';state.pending=null;
+      if(['review','done','failed','stopped','conflict'].includes(state.phase)){state.returnPhase=state.phase;state.phase='idle';}
+      else if(state.phase==='prepare')state.phase='idle';
+      activity(state.returnPhase?'Task result retained · Open Activity to return':'Ready · '+(route==='local'?'Ollama connection':'Cloud connection'));
+      render();
+    }
+    function begin(task){saveDraft();state.task=task;state.taskScope=task==='summary'?'deck':state.scope;state.taskTarget=state.taskScope==='deck'?'Research methods · 24 slides':state.title;state.taskRoute=state.route==='local'?'Ollama':state.connection==='code'?'Claude Code task':'Anthropic API';state.phase='prepare';state.returnPhase=null;render();}
+    function stages(){const names=state.task==='summary'?['Prepare','Generate','Result']:['Prepare','Generate','Review','Apply','Preview'];const current={prepare:0,generate:1,review:2,apply:3,preview:4,done:state.task==='summary'?2:4};return '<ol class="sm-steps" aria-label="Task steps">'+names.map((n,i)=>'<li '+(current[state.phase]===i?'aria-current="step"':'')+'>'+n+'</li>').join('')+'</ol>';}
+    function taskBody(){
+      let body='<h3 class="sm-tasktitle">'+taskName()+'</h3><p class="sm-taskinfo">'+escape(state.taskTarget)+' · '+escape(state.taskRoute)+'</p>'+stages();
+      if(state.phase==='prepare')body+='<p>'+(state.task==='summary'?'Summarise the deck without editing files.':state.taskScope==='deck'?'Review proposed changes before applying them to the deck.':'Use the current source and review the proposed change.')+'</p><p class="sm-hint">'+(state.task==='translate'?'Translation style: formal German · existing glossary':'Scope and source are captured when this task starts.')+'</p><div class="sm-row sm-taskactions"><button data-action="start" class="sm-primary">Start</button><button data-action="dismiss">Cancel</button></div>';
+      if(busy())body+='<p aria-live="polite">'+({generate:'Generating a proposal…',apply:'Applying approved changes…',preview:'Checking updated preview…'}[state.phase])+'</p><div class="sm-row"><button data-action="stop">Stop</button></div>';
+      if(state.phase==='review')body+='<p>Proposed changes · ready for your review</p><div class="sm-diff"><span class="sm-muted">Before</span><p>Start with a focused question.</p><span class="sm-muted">'+(state.task==='translate'?'German translation':'After')+'</span><p>'+(state.task==='translate'?'Beginnen Sie mit einer klar eingegrenzten Frage.':'Start with a focused research question.')+'</p></div><div class="sm-row"><button class="sm-primary" data-action="apply">Apply'+(state.taskScope==='deck'?' selected':'')+'</button><button data-action="reject">Reject</button><button data-action="conflict">Compare with current</button></div>';
+      if(state.phase==='done')body+='<p class="sm-success">'+(state.task==='summary'?'Summary ready':'Changes applied · preview checked')+'</p><p>'+(state.task==='summary'?'This deck introduces research questions, study design, interviews, and surveys.':state.task==='translate'?'German translation created and linked.':'LaTeX fix applied to the source.')+'</p><div class="sm-row"><button data-action="dismiss">Return to conversation</button>'+(state.task==='summary'?'':'<button data-action="undo">Undo example edit</button>')+'</div>';
+      if(state.phase==='conflict')body+='<div class="sm-notice">The source changed while this task ran. Your current source is unchanged.</div><div class="sm-diff"><span class="sm-muted">Current</span><p>Begin with a precise research question.</p><span class="sm-muted">Retained proposal</span><p>Beginnen Sie mit einer klar eingegrenzten Frage.</p></div><div class="sm-row"><button data-action="start" class="sm-primary">Run again</button><button data-action="dismiss">Dismiss</button></div>';
+      if(state.phase==='stopped')body+='<p>Stopped. '+(state.changed?'Previously applied changes remain.':'No changes applied.')+'</p><div class="sm-row"><button data-action="start">Try again</button><button data-action="dismiss">Return to conversation</button></div>';
+      return body;
+    }
+    function render(){
+      root.querySelectorAll('[data-route]').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.route===state.route);b.disabled=b.dataset.route==='cloud'&&state.localOnly;});
+      find('[data-cloud-model]').hidden=state.route!=='cloud';find('[data-local-model]').hidden=state.route!=='local';find('[data-connection]').value=state.connection;
+      find('[data-target]').textContent=(state.phase!=='idle'?'Task target: '+state.taskTarget:state.scope==='deck'?'Research methods · 24 slides':state.title+' · saved source');
+      find('.sm-window').classList.toggle('sm-focus',state.focus);find('.sm-window').classList.toggle('sm-compact',state.compact);
+      find('[data-action=expand]').textContent=state.focus?'Restore':'Expand';find('[data-action=expand]').setAttribute('aria-pressed',state.focus);
+      find('[data-action=new]').disabled=busy();find('[data-scope]').disabled=busy();find('[data-scope]').value=state.scope;
+      let body=state.localOnly?'<div class="sm-notice">Cloud disabled for this project</div>':'';
+      if(state.pending)body+='<div class="sm-notice">'+(state.terminalLive?'End the Claude Code session to switch?':'Stop the current task to switch?')+'<div class="sm-row sm-taskactions"><button data-action="switch-confirm">'+(state.terminalLive?'End session and switch':'Stop and switch')+'</button><button data-action="switch-cancel">Stay</button></div></div>';
+      if(state.phase!=='idle'){body+=taskBody();find('[data-composer]').hidden=true;}
+      else{
+        find('[data-composer]').hidden=false;
+        const terminal=state.route==='cloud'&&state.connection==='code';
+        body+=terminal?'<pre class="sm-terminal">Claude Code\nResearch methods / slide context attached\n\nConversation model and permissions:\ncontrolled in Claude Code\n\n› Ready for your request</pre>':'<p class="sm-empty">What would you like to change?</p><p class="sm-emptyhint">Ask about '+(state.scope==='deck'?'this deck':'this slide')+', or start a task.</p>';
+        body+=messages[key()].map(m=>'<div class="sm-message">'+escape(m)+'</div>').join('');
+        body+='<div class="sm-row"><button data-action="translate">Translate to German</button><button data-action="fix">Fix LaTeX errors</button><details><summary>All actions</summary><button data-action="summary">Summarise deck</button></details></div>';
+        find('[data-composer]').innerHTML='<label class="sm-muted" for="sm-message">'+(terminal?'Claude Code terminal input':'Message')+'</label><textarea id="sm-message" data-draft placeholder="'+(terminal?'Type in Claude Code…':'Ask about this '+(state.scope==='deck'?'deck':'slide')+'…')+'">'+escape(drafts[key()])+'</textarea><div class="sm-row sm-spread"><span class="sm-muted">'+(terminal?'Permissions in Claude Code':'Review changes before applying')+'</span><button data-action="send" class="sm-primary">'+(terminal?'Enter':'Send')+'</button></div><p class="sm-hint">'+(terminal?'Task buttons use the separate configured task model.':state.route==='local'?'Ollama · on this computer':'Anthropic API · cloud')+'</p>';
+      }
+      find('[data-body]').innerHTML=body;
+    }
+    root.addEventListener('input',e=>{if(e.target.matches('[data-draft]'))drafts[key()]=e.target.value;});
+    root.addEventListener('change',e=>{if(e.target.matches('[data-connection]'))switchTo('cloud',e.target.value);if(e.target.matches('[data-scope]')){saveDraft();state.scope=e.target.value;render();}});
+    root.addEventListener('click',e=>{
+      const b=e.target.closest('button');if(!b)return;
+      if(b.dataset.route){if(b.dataset.route!==state.route)switchTo(b.dataset.route);return;}
+      if(b.dataset.slide){state.title=b.dataset.slide;find('[data-slide-title]').textContent=state.title;root.querySelectorAll('[data-slide]').forEach(x=>x.classList.toggle('sm-selected',x===b));saveDraft();render();return;}
+      if(b.dataset.mode){root.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',x===b));activity(b.dataset.mode+' selected · editor layout preview');return;}
+      const action=b.dataset.action;
+      if(['translate','fix','summary'].includes(action)){begin(action);return;}
+      if(action==='expand'){saveDraft();state.focus=!state.focus;render();}
+      if(action==='new'){saveDraft();drafts[key()]='';messages[key()]=[];state.phase='idle';render();}
+      if(action==='start'){state.phase='generate';activity(taskName()+' · generating');render();schedule(()=>{state.phase=state.task==='summary'?'done':'review';activity(state.phase==='review'?'AI task · waiting for review':'Deck summary ready');render();});}
+      if(action==='apply'){state.phase='apply';activity('Applying approved changes');render();schedule(()=>{state.changed=true;state.phase='preview';find('[data-preview]').textContent='Updating preview…';activity('Changes applied · checking preview');render();schedule(()=>{state.phase='done';find('[data-preview]').textContent='Preview checked';if(state.task==='translate')find('[data-partner]').textContent='German translation linked · current';activity('AI task complete · view result');render();});});}
+      if(action==='stop'){clearTimeout(state.timer);state.phase='stopped';activity('AI task stopped');render();}
+      if(action==='switch-confirm'){clearTimeout(state.timer);if(busy()){state.phase='stopped';state.returnPhase='stopped';}state.terminalLive=false;const p=state.pending;performSwitch(p.route,p.connection);}
+      if(action==='switch-cancel'){state.pending=null;render();}
+      if(action==='conflict'){state.phase='conflict';activity('AI task · source conflict');render();}
+      if(action==='reject'||action==='dismiss'){if(action==='dismiss'&&state.phase!=='prepare')state.returnPhase=state.phase;state.phase='idle';activity(action==='reject'?'Proposal rejected · no changes applied':'Ready');render();}
+      if(action==='undo'){state.changed=false;state.phase='idle';state.returnPhase=null;find('[data-partner]').textContent='No German translation yet';activity('Example edit undone');render();}
+      if(action==='send'){saveDraft();const msg=drafts[key()].trim();if(!msg)return;messages[key()].push(msg);messages[key()].push('Example response: I can help with this '+(state.scope==='deck'?'deck':'slide')+'. Use a task button to explore generation, review, and apply.');drafts[key()]='';render();}
+      if(action==='activity'){if(state.returnPhase){state.phase=state.returnPhase;state.returnPhase=null;render();}else activity(state.phase==='idle'?'No task results in this example yet':taskName()+' · '+state.phase);}
+      if(action==='preview'){find('[data-preview]').textContent='Preview checked';activity('Preview ready');}
+      if(action==='compile'){activity('Compile PDF · Instructor · pass 2 · 54%');schedule(()=>activity('PDF ready · Instructor · 24 slides'));}
+      if(action==='project')activity('Project menu: Open project · Settings · Maintenance · Updates');
+      if(action==='add')activity('Add slide: choose a template and insertion point');
+    });
+    function restore(saved){const s=saved?.privateContent;if(!s||busy())return;if(['local','cloud'].includes(s.route))state.route=s.route;if(['code','api'].includes(s.connection))state.connection=s.connection;if(['slide','deck'].includes(s.scope))state.scope=s.scope;for(const field of ['focus','compact','localOnly'])if(typeof s[field]==='boolean')state[field]=s[field];if(state.localOnly)state.route='local';state.terminalLive=state.route==='cloud'&&state.connection==='code';}
+    function remember(){if(!window.openai?.setWidgetState)return;const {route,connection,scope,focus,compact,localOnly}=state;window.openai.setWidgetState({modelContent:{route,connection,scope,focus,compact,localOnly},privateContent:{route,connection,scope,focus,compact,localOnly}}).catch(()=>{});}
+    restore(window.openai?.widgetState);render();
+    root.addEventListener('click',remember);root.addEventListener('change',remember);
+    window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState){restore(e.detail.globals.widgetState);render();}});
+    if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{if(state.localOnly&&state.route==='cloud'){clearTimeout(state.timer);state.phase=busy()?'stopped':state.phase;state.terminalLive=false;performSwitch('local',state.connection);}render();remember();}});tweak.addToggle(state,'compact',{label:'Compact assistant controls'});tweak.addToggle(state,'localOnly',{label:'Project allows local AI only'});}
+  })();
+  </script>
+</div>

@@ -18,12 +18,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 
-from .. import compiler, preview_target, slide_snapshot, update_all_previews
+from .. import compiler, preview_batch, preview_target, slide_snapshot, update_all_previews
 from ..deck_scan import Deck
 from ..project import ProjectContext
 from ..selection import Selection, SelectionError
-from ..preview_requests import RenderRequest
+from ..preview_requests import RenderOptions, RenderService, resolve_requests
 from .providers import ChatProvider
 
 
@@ -36,12 +37,14 @@ class WorkspaceContext:
     view: str = "instructor"             # "View as": instructor / during-course / after-course
     language: str = "EN"                 # the language being edited
     footer_timestamp: bool = True        # previews show the compile time in the footer
+    occurrence_key: tuple | None = None  # focused logical deck occurrence
 
 
 class Workspace:
     def __init__(self, project: ProjectContext, context: WorkspaceContext | None = None) -> None:
         self.project = project
         self._context = context or WorkspaceContext()
+        self._preview_service = RenderService()
 
     @property
     def root(self) -> Path:
@@ -110,15 +113,96 @@ class Workspace:
 
     def render_preview(self, target, text, view, language, footer_timestamp, cancel) -> bytes:
         """Headless render; GUI workspaces share the pane's build and publication path."""
-        def render(token):
-            pdf = preview_target.render_text(target, text, view, language, footer_timestamp=footer_timestamp,
-                                             log=lambda _: None, capture_snapshot=False, cancel=token)
-            png = slide_snapshot.page_png(pdf, 1280)
-            if png is None:
-                raise RuntimeError('The rendered PDF could not be read')
-            return png
+        request = self.preview_service().request(target, text, view, language, footer_timestamp,
+                                                  self.preview_log)
+        artifact = request.wait(cancel)
+        image = artifact[3] or artifact[1]
+        if image is None:
+            raise RuntimeError('The rendered PDF could not be read')
+        return image
 
-        return RenderRequest(render, lambda: None).wait(cancel)
+    def preview_service(self):
+        """The service shared by this workspace's preview consumers."""
+        return self._preview_service
+
+    def preview_log(self, line):
+        """Receive batch compiler output; headless callers have no log drawer."""
+
+    def publish_preview_result(self, result, ticket) -> str:
+        """Retain completed views and refresh compatible instructor thumbnails."""
+        spec = result.request
+        target, revision, options = spec.target, spec.revision, spec.options
+        try:
+            if target.source_path.stat().st_mtime_ns != revision.mtime_ns:
+                return 'superseded'
+            saved = target.source_path.read_text(encoding='utf-8') == revision.text
+        except OSError:
+            return 'superseded'
+        if options.saved and not saved:
+            return 'superseded'
+        if (saved and spec.view == 'instructor' and not target.is_frozen_alone
+                and not options.presenter and options.mode == 'slide' and options.overlay is None):
+            slide_snapshot.publish_preview(target.context, result.page_images, target.bare_id, target.template)
+        return 'cached'
+
+    def prepare_preview_batch(self, path: Path, view='all', *, saved=False, force=False, context=None):
+        """Resolve targets and capture source before handing a batch to a worker.
+
+        A slide-id request uses the focused occurrence only when it names the focused
+        slide; otherwise target resolution chooses the first deck occurrence.
+        """
+        context = context or self.context()
+        path = Path(path)
+        occurrence = (context.occurrence_key if context.slide_id ==
+                      preview_target.slide_language.bare_id(path.name) else None)
+        options = RenderOptions(footer_timestamp=context.footer_timestamp, saved=saved, force=force)
+
+        def read_source(source):
+            if not saved and self.is_open(source):
+                return self.buffer_snapshot(source)[0]
+            return None
+
+        return resolve_requests(self.project, context.deck, path, view, context.language,
+                                selected_view=context.view, occurrence_key=occurrence,
+                                options=options, read_source=read_source)
+
+    def render_preview_batch(self, path: Path, view='all', *, saved=False, force=False,
+                             cancel=None, progress=None, context=None, requests=None, ticket=None):
+        """Render immutable selected/all-view requests without moving workspace focus."""
+        if requests is None:
+            requests = self.prepare_preview_batch(path, view, saved=saved, force=force, context=context)
+        if ticket is None:
+            ticket = self.begin_preview_refresh()
+        return preview_batch.render_batch(self.preview_service(), requests, cancel=cancel,
+                                          progress=progress, log=self.preview_log,
+                                          publish=lambda result: self.publish_preview_result(result, ticket))
+
+    def begin_preview_refresh(self):
+        """Capture publication ordering before a saved-source refresh starts; headless has no pane."""
+        return None
+
+    def publish_preview_refresh(self, target, text, revision, view, language, timestamp, artifact, ticket) -> str:
+        """Publish only a still-current saved revision. Return cached or superseded headless."""
+        try:
+            if target.source_path.stat().st_mtime_ns != revision or target.source_path.read_text(encoding='utf-8') != text:
+                return 'superseded'
+        except OSError:
+            return 'superseded'
+        slide_snapshot.publish_preview(self.project, artifact[2], target.bare_id, target.template)
+        return 'cached'
+
+    def refresh_preview(self, target, view, language, timestamp, cancel) -> str:
+        """Render saved source, then hand the revision and artifact to the publication owner."""
+        ticket = self.begin_preview_refresh()
+        revision = target.source_path.stat().st_mtime_ns
+        text = target.source_path.read_text(encoding='utf-8')
+        request = RenderService().request(target, text, view, language, timestamp, lambda _: None, saved=True)
+        artifact = request.wait(cancel)
+        try:
+            return self.publish_preview_refresh(target, text, revision, view, language, timestamp, artifact, ticket)
+        finally:
+            if ticket is None and artifact[0] is not None and artifact[0].parent.name.startswith('slidemage_preview_'):
+                shutil.rmtree(artifact[0].parent, ignore_errors=True)
 
     def translate_slide(self, path: Path) -> str:
         """Start SlideMage's own translation of the slide `path` (its Translate bubble); what to tell the
@@ -139,8 +223,13 @@ class Workspace:
         the jobs through its job panel."""
         return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel)
 
-    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken) -> update_all_previews.DeckResult:
+    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> update_all_previews.DeckResult:
         """Rerender the cached previews of every slide of `deck` and no other deck's. Blocks until the
         snapshots are written (the Stop of the chat ends it through `cancel`). The window overrides this
         to run it on the compile slot, with its job panel; raises RuntimeError when it cannot run."""
-        return update_all_previews.rerender_deck(self.project, deck, lambda _line: None, cancel)
+        context = self.context()
+        return update_all_previews.rerender_deck(
+            self.project, deck, self.preview_log, cancel, service=self.preview_service(),
+            scope=scope, selected_view=context.view, language=context.language,
+            footer_timestamp=context.footer_timestamp,
+            publish=lambda result: self.publish_preview_result(result, None))

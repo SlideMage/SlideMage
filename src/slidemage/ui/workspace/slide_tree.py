@@ -64,6 +64,8 @@ def meta_text(row: SlideRow, language: str) -> str:
         parts.append("source error")
     if row.stale_preview:
         parts.append("preview old")
+    elif row.thumbnail is not None and row.thumbnail_note and not row.thumbnail_verified:
+        parts.append("reference preview")
     return " · ".join(parts)
 
 
@@ -80,6 +82,8 @@ def tooltip_text(row: SlideRow, view_label: str, language: str) -> str:
         lines.append("The source has an error the pre-render check would stop at.")
     if row.stale_preview:
         lines.append("The preview is older than the source.")
+    if row.thumbnail_note:
+        lines.append(row.thumbnail_note)
     if not call.editable:
         lines.append(f"Read-only here: {call.readonly_reason}.")
     return "\n".join(lines)
@@ -98,8 +102,12 @@ class SlideDelegate(QStyledItemDelegate):
         self._state = state
         self._pixmaps: dict[Path, QPixmap] = {}
 
-    def forget_pixmaps(self) -> None:
-        self._pixmaps.clear()
+    def forget_pixmaps(self, paths=None) -> None:
+        if paths is None:
+            self._pixmaps.clear()
+        else:
+            for path in paths:
+                self._pixmaps.pop(path, None)
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
         row = index.data(DATA)

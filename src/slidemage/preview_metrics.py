@@ -20,6 +20,7 @@ class PreviewMetrics:
     def __init__(self):
         self.started = time.perf_counter()
         self.stages = {}
+        self.counters = {}
         self.rules = []
         self._rule = None
 
@@ -56,6 +57,7 @@ class PreviewMetrics:
         return dict(
             seconds=getattr(self, "seconds", time.perf_counter() - self.started),
             stages=stages,
+            counters=dict(self.counters),
             rules=list(self.rules),
         )
 
@@ -71,6 +73,12 @@ def stage(name):
         yield
     finally:
         trace.stages[name] = trace.stages.get(name, 0) + time.perf_counter() - start
+
+
+def count(name, amount):
+    trace = _current.get()
+    if trace is not None:
+        trace.counters[name] = trace.counters.get(name, 0) + amount
 
 
 def measure(name):

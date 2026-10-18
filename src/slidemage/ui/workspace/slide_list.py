@@ -15,9 +15,14 @@ from before it, a few of them per deck.
 from __future__ import annotations
 
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+import hashlib
+import time
 from typing import Callable, Optional
+import weakref
 
-from PySide6.QtCore import QItemSelectionModel, QPoint, Qt
+from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -30,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, deck_editor, deck_outline, reveal_steps
+from ... import ai_review, deck_editor, deck_outline, preview_thumbnails, reveal_steps
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
@@ -39,7 +44,7 @@ from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
 from .menus import VIEW_LABELS, add_commands
-from .slide_tree import SlideTree
+from .slide_tree import SlideTree, tooltip_text
 from .state import VIEWS, WorkspaceState
 
 UNDO_LIMIT = 20
@@ -73,6 +78,8 @@ def remembered_width() -> int:
 
 
 class SlideList(QWidget):
+    _thumbnails_finished = Signal(object)
+
     def __init__(self, app, state: WorkspaceState, theme: ThemeManager, toast: Toast) -> None:
         """`app` is the window: it rescans after an edit (`after_deck_edit`), opens the
         add-slide dialog, the source editor, the preview and the image descriptions, and
@@ -141,6 +148,23 @@ class SlideList(QWidget):
         undo.activated.connect(self.undo)
         toast.action_triggered.connect(lambda key: self.undo() if key == "undo" else None)
 
+        self._thumbnail_paths = set()
+        self._thumbnail_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='list-thumbnails')
+        self._thumbnail_ticket = 0
+        self._thumbnail_future = None
+        self._thumbnail_pending_paths = None
+        self._thumbnail_full_requested = False
+        self._background_thumbnails = True
+        self._thumbnail_metrics = {}
+        self._thumbnail_gui_latency = 0.0
+        self._thumbnails_finished.connect(self._on_thumbnails_finished)
+        self.destroyed.connect(lambda *_: self._thumbnail_executor.shutdown(wait=False, cancel_futures=True))
+        self._thumbnail_timer = QTimer(self)
+        self._thumbnail_timer.setSingleShot(True)
+        self._thumbnail_timer.setInterval(450)
+        self._thumbnail_timer.timeout.connect(self._refresh_preview_rows)
+        state.footer_timestamp_changed.connect(lambda _enabled: self._refresh_all_preview_rows())
+
         state.deck_changed.connect(lambda _deck: self.rebuild())
         state.view_changed.connect(lambda _view: self.rebuild())
         state.language_changed.connect(lambda _language: self.rebuild())
@@ -185,10 +209,193 @@ class SlideList(QWidget):
         deck = self.state.deck
         return None if deck is None or deck.is_test_deck else deck
 
+    def _thumbnail_source(self, path):
+        centre = getattr(self.app, 'centre', None)
+        source = getattr(centre, 'source', None)
+        reader = getattr(source, 'buffer', None)
+        buffer = reader(path) if reader is not None else None
+        return buffer[0] if buffer is not None else None
+
+    def _preview_images(self, outline, *, paths=None):
+        return preview_thumbnails.for_outline(
+            self.app.project, self.deck, outline, self.state.view, self.state.language,
+            self.state.footer_timestamp, read_source=self._thumbnail_source, paths=paths)
+
+    def _queue_preview_images(self, outline, *, paths=None):
+        deck = self.deck
+        if deck is None:
+            return
+        if self._thumbnail_full_requested:
+            paths = None
+        if self._thumbnail_future is not None:
+            previous = self._thumbnail_pending_paths
+            paths = None if previous is None or paths is None else set(previous) | set(paths)
+        if self._thumbnail_future is not None:
+            self._thumbnail_future.cancel()
+        self._thumbnail_ticket += 1
+        ticket = self._thumbnail_ticket
+        dispatched = time.perf_counter()
+        QTimer.singleShot(0, lambda: setattr(self, '_thumbnail_gui_latency',
+                                             time.perf_counter() - dispatched))
+        ctx, view, language, stamp = (self.app.project, self.state.view, self.state.language,
+                                      self.state.footer_timestamp)
+        selected_paths = None if paths is None else frozenset(path.resolve() for path in paths)
+        self._thumbnail_pending_paths = selected_paths
+        self._thumbnail_full_requested = False
+        buffers = {}
+        for section in outline:
+            for row in section.rows:
+                path = ctx.slides_dir / row.call.source_filename
+                if selected_paths is None or path.resolve() in selected_paths:
+                    buffers[path.resolve()] = self._thumbnail_source(path)
+        outline = tuple(outline)
+
+        def work():
+            from ... import compiler, preview_cache
+            validation = preview_cache.ValidationPass()
+            revisions = {}
+            started = time.perf_counter()
+            updated = preview_thumbnails.for_outline(
+                ctx, deck, outline, view, language, stamp, read_source=lambda path: buffers.get(path.resolve()),
+                paths=selected_paths, validation=validation, revision_sink=revisions)
+            stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
+            metrics = {'validation_seconds': time.perf_counter() - started,
+                       'dependency_hash_seconds': validation.dependency_seconds,
+                       'configuration_seconds': validation.configuration_seconds,
+                       'stability_seconds': validation.stability_seconds,
+                       'stability_bytes': validation.stability_bytes,
+                       'dependency_bytes': validation.dependency_bytes,
+                       'hashed_bytes': validation.hashed_bytes, 'unstable': not stable}
+            return updated if stable else None, metrics, revisions
+
+        future = self._thumbnail_executor.submit(work)
+        self._thumbnail_future = future
+        owner = weakref.ref(self)
+
+        def done(result):
+            widget = owner()
+            if widget is None:
+                return
+            try:
+                value = result.result()
+            except Exception as exc:  # noqa: BLE001 -- keep existing rows on lookup failure
+                value = (None, {'error': str(exc)}, {})
+            try:
+                widget._thumbnails_finished.emit((ticket, deck.path, view, language, stamp,
+                                                   selected_paths, buffers, value))
+            except RuntimeError:
+                pass
+
+        future.add_done_callback(done)
+
+    def _on_thumbnails_finished(self, payload):
+        ticket, path, view, language, stamp, paths, buffers, (outline, metrics, revisions) = payload
+        if ticket != self._thumbnail_ticket or self.deck is None or self.deck.path != path or (
+                self.state.view, self.state.language, self.state.footer_timestamp) != (view, language, stamp):
+            return
+        self._thumbnail_future = None
+        self._thumbnail_pending_paths = None
+        if any(self._thumbnail_source(source) != text for source, text in buffers.items()):
+            self._queue_preview_images(self._outline, paths=paths)
+            return
+        for source, content_hash in revisions.items():
+            try:
+                text = self._thumbnail_source(source)
+                current = text if text is not None else source.read_text(encoding='utf-8')
+                if hashlib.sha256(current.encode('utf-8')).hexdigest() != content_hash:
+                    self._queue_preview_images(self._outline, paths=paths)
+                    return
+            except OSError:
+                self._queue_preview_images(self._outline, paths=paths)
+                return
+        if outline is None:
+            if metrics.get('unstable'):
+                QTimer.singleShot(150, lambda: self._queue_preview_images(self._outline, paths=paths)
+                                  if ticket == self._thumbnail_ticket and self.deck is not None else None)
+            return
+        self._thumbnail_metrics = metrics
+        self._thumbnail_metrics['gui_event_latency_seconds'] = self._thumbnail_gui_latency
+        publishing = time.perf_counter()
+        self._apply_preview_rows(outline, paths=paths)
+        self._thumbnail_metrics['publication_seconds'] = time.perf_counter() - publishing
+
+    def preview_source_changed(self, path: Path) -> None:
+        """Refresh image age after typing pauses, without rebuilding the slide tree."""
+        if self.deck is not None:
+            if not self._thumbnail_full_requested:
+                self._thumbnail_paths.add(path)
+            self._thumbnail_ticket += 1  # reject a validation already queued to the GUI
+            if self._thumbnail_future is not None and self._thumbnail_pending_paths is None:
+                self._thumbnail_full_requested = True
+                self._thumbnail_paths.clear()  # an unfinished full pass still needs every row
+            elif self._thumbnail_pending_paths is not None:
+                self._thumbnail_paths.update(self._thumbnail_pending_paths)
+            if self._thumbnail_future is not None:
+                self._thumbnail_future.cancel()
+            self._thumbnail_future = None
+            self._thumbnail_timer.start()
+
+    def _refresh_all_preview_rows(self) -> None:
+        self._thumbnail_full_requested = True
+        self._thumbnail_paths.clear()
+        self._thumbnail_timer.stop()
+        self._refresh_preview_rows()
+
+    def _refresh_preview_rows(self) -> None:
+        if self.deck is None:
+            return
+        paths = None if self._thumbnail_full_requested else set(self._thumbnail_paths) or None
+        self._thumbnail_paths.clear()
+        if self._background_thumbnails:
+            self._queue_preview_images(self._outline, paths=paths)
+            return
+        self._thumbnail_full_requested = False
+        self._apply_preview_rows(self._preview_images(self._outline, paths=paths), paths=paths)
+
+    def _apply_preview_rows(self, outline, *, paths=None):
+        if paths is None:
+            self._outline = list(outline)
+        else:
+            affected = {path.resolve() for path in paths}
+            candidates = {row.key: row for section in outline for row in section.rows}
+            self._outline = [replace(section, rows=[
+                candidates.get(row.key, row) if
+                (self.app.project.slides_dir / row.call.source_filename).resolve() in affected else row
+                for row in section.rows]) for section in self._outline]
+        rows = {row.key: row for section in self._outline for row in section.rows}
+        affected = None if paths is None else {path.resolve() for path in paths}
+        forgotten = set()
+        for head in self.tree.section_items():
+            section = self.tree.data_of(head)
+            updated = next((candidate for candidate in self._outline if candidate.chapter == section.chapter), None)
+            if updated is not None and (affected is None or any(
+                    (self.app.project.slides_dir / row.call.source_filename).resolve() in affected
+                    for row in updated.rows)):
+                head.setData(0, Qt.ItemDataRole.UserRole, updated)
+        for item in self.tree.slide_items():
+            row = rows.get(self.tree.data_of(item).key)
+            if row is not None and (affected is None or
+                                    (self.app.project.slides_dir / row.call.source_filename).resolve() in affected):
+                old = self.tree.data_of(item)
+                if old.thumbnail is not None:
+                    forgotten.add(old.thumbnail)
+                if row.thumbnail is not None:
+                    forgotten.add(row.thumbnail)
+                item.setData(0, Qt.ItemDataRole.UserRole, row)
+                item.setToolTip(0, tooltip_text(row, VIEW_LABELS[self.state.view], self.state.language))
+                self.tree.viewport().update(self.tree.visualItemRect(item))
+        self.tree.delegate.forget_pixmaps(forgotten)
+
     def rebuild(self, *, preserve_focus: bool = False) -> None:
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""
         deck = self.deck
+        self._thumbnail_ticket += 1
+        if self._thumbnail_future is not None:
+            self._thumbnail_future.cancel()
+        self._thumbnail_future = None
+        self._thumbnail_pending_paths = None
+        self._thumbnail_full_requested = False
         path = deck.path if deck else None
         same_deck = path == self._deck_path
         selected = {r.key for r in self.tree.selected_rows()} if same_deck else set()
@@ -202,8 +409,14 @@ class SlideList(QWidget):
         self._deck_path = path
         self._outline = (deck_outline.build_outline(self.app.project, deck, self.state.view, self.state.language)
                          if deck else [])
+        if deck and not self._background_thumbnails:
+            self._outline = self._preview_images(self._outline)
+        self._thumbnail_paths.clear()
+        self._thumbnail_timer.stop()
         self.tree.blockSignals(True)
         self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
+        if deck and self._background_thumbnails:
+            self._queue_preview_images(self._outline)
         items = self.tree.slide_items()
         for item in items:
             item.setSelected(self.tree.data_of(item).key in selected)
@@ -259,12 +472,13 @@ class SlideList(QWidget):
     def _on_current_changed(self, item: Optional[QTreeWidgetItem], _previous) -> None:
         row = self.tree.data_of(item)
         if isinstance(row, SlideRow):
-            self.state.set_focused_slide(row.call.id)
+            self.state.set_focused_slide(row.call.id, occurrence_key=row.key)
 
     def _on_state_focus(self, slide_id: Optional[str]) -> None:
         """Another part of the window focused a slide (the source editor, the palette's Go to
         slide): it is shown even if the Find box hides it or its section is closed."""
-        item = next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)), None)
+        item = next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)
+                     and (self.state.focused_occurrence is None or self.tree.data_of(i).key == self.state.focused_occurrence)), None)
         if item is None:
             return
         head = item.parent()
@@ -274,7 +488,8 @@ class SlideList(QWidget):
             self.find.clear()   # shows every slide again, the sections open as the user left them
         head.setExpanded(True)
         current = self.tree.data_of(self.tree.currentItem())
-        if not (isinstance(current, SlideRow) and current.matches(slide_id)):
+        if not (isinstance(current, SlideRow) and current.matches(slide_id)
+                and (self.state.focused_occurrence is None or current.key == self.state.focused_occurrence)):
             self.tree.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.tree.scrollToItem(item)
 
@@ -323,6 +538,8 @@ class SlideList(QWidget):
             self._open_item(self.tree.currentItem())
         elif command == "remove":
             self._remove(self.tree.selected_rows() or ([current] if isinstance(current, SlideRow) else []))
+        elif command == "rename" and isinstance(current, SectionRow) and self._front_rows(current):
+            self._name_front_section(current)
         elif command == "rename" and isinstance(current, SectionRow) and current.editable:
             self.tree.rename(self.tree.currentItem())
         elif command in ("move_up", "move_down"):
@@ -436,7 +653,7 @@ class SlideList(QWidget):
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
-        add_commands(menu, self.app, ["slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
+        add_commands(menu, self.app, ["slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
         return menu
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:
@@ -461,6 +678,8 @@ class SlideList(QWidget):
             return False
         marker = section.chapter is not None
         editable = marker and section.editable
+        if name == "rename" and self._front_rows(section):
+            return bool(self._front_rows(section)[0].call.editable)
         if name == "section_before":
             return marker
         if name in ("rename", "remove_section"):
@@ -494,7 +713,7 @@ class SlideList(QWidget):
         if name == "open":
             self._open_source(target)
         elif name == "preview":
-            self.state.set_focused_slide(target.call.id)
+            self.state.set_focused_slide(target.call.id, occurrence_key=target.key)
             self.state.set_mode("preview")
         elif name == "images":
             self.app.open_images_for_slide(target.call.id_slug)
@@ -522,7 +741,9 @@ class SlideList(QWidget):
 
     def _run_section(self, name: str, section: SectionRow) -> None:
         deck = self.deck
-        if name == "rename":
+        if name == "rename" and self._front_rows(section):
+            self._name_front_section(section)
+        elif name == "rename":
             self.tree.rename(next(h for h in self.tree.section_items() if self.tree.data_of(h) is section))
         elif name == "add_slide":
             self._add_slide_to(section)
@@ -697,11 +918,24 @@ class SlideList(QWidget):
         self.app.open_add_slide_dialog(self.deck, insert_at, indent, where=where, source=source, slide=slide,
                                        target=target)
 
-    def _add_section(self, insert_at: int) -> None:
-        title, accepted = QInputDialog.getText(self, "Add section", "Section title:")
+    def _add_section(self, insert_at: int, caption: str = "Add section", label: str = "Section title:") -> None:
+        title, accepted = QInputDialog.getText(self, caption, label)
         if accepted:
             self.edit("Add section failed", f"Added section {title.strip()} in {self.deck.name}",
                        lambda path, text: deck_editor.add_section(path, text, title, insert_at))
+
+    @staticmethod
+    def _front_rows(section: SectionRow) -> list[SlideRow]:
+        """The slides of the unnamed lead-in (before the first \\section); empty for a real section."""
+        return list(section.rows) if section.chapter is None else []
+
+    def _name_front_section(self, section: SectionRow) -> None:
+        """The lead-in has no marker to rename: naming it inserts a \\section line before its first slide."""
+        rows = self._front_rows(section)
+        if not rows:
+            return
+        at = rows[0].deck_call.line_start
+        self._add_section(at, "Name section", "Name for the slides before the first section:")
 
     def _rename_section(self, section: SectionRow, title: str) -> None:
         if title.strip() and title.strip() != section.title:

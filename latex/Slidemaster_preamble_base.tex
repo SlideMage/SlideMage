@@ -2774,16 +2774,42 @@
 	\rule[-\dp\SMFooterIDMeasureBox]{0pt}{\ht\SMFooterIDMeasureBox}%
 }
 
+% \SMFooterHide: which footer elements a deck leaves out, a comma list of
+% text (the left \FooterText), id ("slide id: ... | v..."), deck ("instructor
+% deck" etc.). Empty by default = everything shown. SlideMage's deck
+% settings write it as \def\SMFooterHide{id,deck} in the deck's preamble;
+% it is read once at \begin{document}, so the deck may set it before or
+% after \input{Slidemaster_preamble_...}. The frame number and the compile
+% timestamp (\SMShowCompileTimestampfalse) have their own switches.
+\providecommand{\SMFooterHide}{}
+\newif\ifSMFooterShowText
+\newif\ifSMFooterShowID
+\newif\ifSMFooterShowDeck
+\newcommand{\SMFooterHideItem}[1]{%
+	\ifstrequal{#1}{text}{\SMFooterShowTextfalse}{}%
+	\ifstrequal{#1}{id}{\SMFooterShowIDfalse}{}%
+	\ifstrequal{#1}{deck}{\SMFooterShowDeckfalse}{}%
+}
+\AtBeginDocument{%
+	\SMFooterShowTexttrue\SMFooterShowIDtrue\SMFooterShowDecktrue
+	\expandafter\forcsvlist\expandafter{\expandafter\SMFooterHideItem\expandafter}\expandafter{\SMFooterHide}%
+}
+
 \newif\ifSMNavigationBar % \SMNavigationBar, see "Navigation for readers" at the end
 \setbeamertemplate{frame footer}{%
 	\vspace*{\SMFooterTextDrop}%
 	\ifSMHideFooterText
 		\global\SMHideFooterTextfalse
 	\else
-		\FooterText\ifSMNavigationBar\SMNavigationLinks\fi
+		\ifSMFooterShowText
+			\FooterText\ifSMNavigationBar\SMNavigationLinks\fi
+		\fi
 	\fi
 	\hfill%
-	{\fontsize{4}{4}\selectfont \SMFooterIDStrut (slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ | \SMDeckVersionText\ifSMShowCompileTimestamp\ | \SMCompileTimestamp\fi)}\hspace*{2em}\insertframenumber%
+	{\fontsize{4}{4}\selectfont \SMFooterIDStrut
+		\ifSMFooterShowID(slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ifSMFooterShowDeck\ | \SMDeckVersionText\fi\ifSMShowCompileTimestamp\ | \SMCompileTimestamp\fi)%
+		\else\ifSMFooterShowDeck(\SMDeckVersionText\ifSMShowCompileTimestamp\ | \SMCompileTimestamp\fi)%
+		\else\ifSMShowCompileTimestamp(\SMCompileTimestamp)\fi\fi\fi}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
 	\hspace*{-\SMFooterRightShift}%
 	\vspace*{0.4ex}%

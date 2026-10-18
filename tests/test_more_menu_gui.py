@@ -24,7 +24,7 @@ LEFT = [("header", "This deck"), "present", "deck_settings", "admin_slides", "de
         "export_pptx", "create_snapshot", "rerender_deck_previews", "update_deck_versions", ("sep",), "archive_deck"]
 RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck",
          ("header", "Housekeeping"), "housekeeping", "archive_unused",
-         ("header", "Info"), "version_history", "check_updates", "project_compat"]
+         ("header", "Info"), "wizard_preview", "version_history", "check_updates", "project_compat"]
 
 # Every entry the old one-column menu had and the new one has not: they are ⌘K commands.
 LEFT_OUT = ["column:left", "column:right", "open_pdf", "import_presentation", "refresh_decks", "log", "empty_pdf",

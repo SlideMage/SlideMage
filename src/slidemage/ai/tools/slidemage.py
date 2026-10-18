@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from ... import (
@@ -160,34 +161,89 @@ def lint(ctx: ToolContext, args: dict) -> str:
             + "\n".join(latex_lint.format_issue(i) for i in issues))
 
 
+PREVIEW_VIEW = {"type": "string", "enum": [*VIEWS, "all"],
+                "description": "instructor, during-course, after-course, or all (in that order)."}
+
+
 @tool("render_preview",
-      "Typeset a slide and look at the result (the image comes back to you): the view and language the "
-      "user has selected, from the editor buffer if the slide is open (unsaved edits included). Takes "
-      "seconds. Use it to check layout after an edit: overflow, overlaps, the image on the slide.",
-      {"slide": {"type": "string", "description": "A slide id (1y8) or a path; default the slide in focus."}})
+      "Typeset a slide and return labelled images for visual inspection: check layout, overflow and overlaps. "
+      "view may be instructor, during-course, after-course, or all. Omitted view uses the selected workspace "
+      "view. Includes unsaved editor source. Hidden views have no image; successful views survive partial "
+      "failures. Publishes the current view when still current, without changing slide/view selection.",
+      {"slide": {"type": "string", "description": "A slide id (1y8) or a path; default the slide in focus."},
+       "view": {**PREVIEW_VIEW, "description": PREVIEW_VIEW["description"] + " Default: selected workspace view."}})
 def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
-    path = slide_or_file(ctx, args.get("slide"))
-    return _render_preview(ctx, path)
+    return preview_batch_output(ctx, slide_or_file(ctx, args.get("slide")), args.get("view"))
 
 
-def slide_target(project, deck: Deck | None, path: Path, view: str, language: str) -> preview_target.PreviewTarget | None:
+def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, saved=False) -> tuple[str, list[bytes]]:
+    """One captured batch for chat and MCP; image numbers refer to returned image order."""
+    context = ctx.workspace.context()
+    language = slide_language.own_language(path.name) if saved else context.language
+    language = language if language in slide_language.TRANSLATION_LANGUAGES else context.language
+    context = replace(context, language=language,
+                      deck=open_deck(ctx) if context.deck is not None else None)
+    try:
+        requests = ctx.workspace.prepare_preview_batch(path, view, saved=saved, force=saved, context=context)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from None
+    if saved and any(spec.target.is_frozen_alone for spec in requests):
+        raise ToolError(f"{path.name} is a frozen version; only the current slide has a cached preview.")
+    results = ctx.workspace.render_preview_batch(path, view, saved=saved, force=saved,
+                                                 cancel=ctx.cancel, requests=requests)
+    lines, images = [], []
+    source = "saved source" if saved else "captured source (including open editor buffers)"
+    for result in results:
+        spec = result.request
+        label = f"{spec.target.bare_id}: {spec.view}, {spec.language}"
+        if result.status == 'hidden':
+            lines.append(f"{label}: hidden; no preview rendered, no image.")
+            continue
+        if result.status in ('failed', 'cancelled'):
+            error = result.error or result.status
+            lines.append(f"{label}: {result.status}; {error[-1500:]}; no image.")
+            continue
+        publication = result.publication_status
+        detail = {'cached': f"cached for {spec.view}", 'displayed': 'displayed in the visible pane',
+                  'superseded': 'publication superseded; visible pane unchanged',
+                  'failed': f"publication failed: {result.error}"}.get(publication, publication)
+        image = result.secondary_png or result.display_png
+        if not saved and image is not None:
+            images.append(image)
+            detail += f"; image #{len(images)} = {spec.view}, {spec.language}"
+        elif not saved:
+            detail += '; no image available'
+        lines.append(f"{label}: {result.status}; {detail}.")
+    text = f"{path.name} ({source}):\n" + "\n".join(lines)
+    if results and all(result.status in ('failed', 'cancelled') or (saved and result.publication_status == 'failed')
+                       for result in results):
+        raise ToolError(text)
+    timing.event(ctx.root, "render_done", file=path.name)
+    return text, images
+
+
+def slide_target(project, deck: Deck | None, path: Path, view: str, language: str, *,
+                 occurrence_key: tuple | None = None) -> preview_target.PreviewTarget | None:
     """The slide file `path` as a preview renders it: as `deck` calls it in `view` and `language`, else alone
     (None when it is no slide file)."""
-    if deck is not None:
-        row = deck_outline.slide_row(project, deck, slide_language.bare_id(path.name), view, language)
-        if row is not None and row.call.source_filename == path.name:
-            return preview_target.for_call(project, deck, row.call, row.position)
-    return preview_target.for_path(project, path)
+    try:
+        return preview_target.resolve_views(project, deck, path, view, language,
+                                            occurrence_key=occurrence_key)[0][1]
+    except ValueError:
+        return None
 
 
 def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None,
                     show: bool = False) -> tuple[str, list[bytes]]:
     context = ctx.workspace.context()
     language = language or context.language
-    target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path, context.view, language)
+    target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path, context.view, language,
+                          occurrence_key=context.occurrence_key)
     if target is None:
         raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
-    text, source = current_revision(ctx.workspace, path)
+    if target.hidden:
+        return f"{target.source_path.name} is hidden in {context.view}, {language}.", []
+    text, source = current_revision(ctx.workspace, target.source_path)
     if show:
         ctx.workspace.show_slide(path)
     try:

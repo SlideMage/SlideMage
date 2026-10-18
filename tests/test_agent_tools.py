@@ -7,6 +7,7 @@ import os
 import time
 
 import pytest
+import pymupdf
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
@@ -343,7 +344,8 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
         return root / "x.pdf"
 
     monkeypatch.setattr(preview_target, "render_text", fake_render)
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda pdf, width: b"\x89PNG-image")
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
+                        lambda *a: ((b"\x89PNG-image", b"\x89PNG-image"), ()))
     box.ws.open(root / SLIDE, LF + "% unsaved\n")
     result = box.run("render_preview")
     assert not result.is_error and result.images == [b"\x89PNG-image"]
@@ -482,52 +484,53 @@ def test_compile_deck_reports_per_pdf_and_the_latex_errors(box, root):
 
 
 def fake_render(monkeypatch, root, fail=None):
-    """preview_target.render without LaTeX: records the call and writes the slide's cached preview."""
+    """Compile without LaTeX; exercise real rasterization and snapshot publication."""
     seen = []
 
-    def render(target, view, language, **kwargs):
+    def render(target, text, view, language, **kwargs):
         seen.append((target.id_slug, target.frame_number, view, language, kwargs.get("capture_snapshot", True)))
         if fail:
             raise RuntimeError(fail)
-        png = slide_snapshot.snapshot_path(target.context, target.bare_id, target.template, id_slug=target.id_slug)
-        png.parent.mkdir(parents=True, exist_ok=True)
-        png.write_bytes(b"png")
         folder = root / f"slidemage_preview_{target.bare_id}"
         folder.mkdir(exist_ok=True)
-        return folder / "x.pdf"
+        pdf = folder / "x.pdf"
+        with pymupdf.open() as doc:
+            doc.new_page(width=320, height=180)
+            doc.save(pdf)
+        return pdf
 
-    monkeypatch.setattr(preview_target, "render", render)
+    monkeypatch.setattr(preview_target, "render_text", render)
     return seen
 
 
 def test_refresh_preview_rerenders_the_focused_slide_and_an_explicit_one(box, root, monkeypatch):
     seen = fake_render(monkeypatch, root)
-    assert box.ok("refresh_preview") == "abc: preview refreshed (UniGraz)."          # the slide in focus
-    assert seen == [("abc-EN-Hello", 1, "instructor", "EN", True)]                    # as the open deck calls it
-    assert not (root / "slidemage_preview_abc").exists()                              # the temporary PDF is gone
+    assert "abc: instructor, EN: rendered; cached for instructor." in box.ok("refresh_preview", view="instructor")          # the slide in focus
+    assert seen == [("abc-EN-Hello", 1, "instructor", "EN", False)]                    # as the open deck calls it
     assert slide_snapshot.snapshot_path(box.ws.project, "abc", "uni-graz", id_slug="abc-EN-Hello").is_file()
-    assert "abd: preview refreshed" in box.ok("refresh_preview", slide="abd")
+    assert "abd: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="abd")
     assert seen[-1][:2] == ("abd-EN-Second", 2)
-    assert "abc: preview refreshed" in box.ok("refresh_preview", slide="slides/abc-EN-Hello-current.tex")
+    assert "abc: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="slides/abc-EN-Hello-current.tex")
 
 
 def test_refresh_preview_renders_the_instructor_view_whatever_the_user_looks_at(box, root, monkeypatch):
     box.ws._context = WorkspaceContext(deck=box.ws.context().deck, slide_id="abc", path=root / SLIDE,
                                        view="after-course", language="DE")
     seen = fake_render(monkeypatch, root)
-    box.ok("refresh_preview")
+    box.ok("refresh_preview", view="instructor")
     assert seen[0][2:4] == ("instructor", "EN")                    # the slide's own language, not the editing one
 
 
 def test_refresh_preview_reports_the_first_latex_error_and_other_problems(box, root, monkeypatch):
     fake_render(monkeypatch, root, fail="Render failed for abc-EN-Hello:\nnoise\n! Undefined control sequence.\nmore")
-    assert box.error("refresh_preview") == "abc: the preview was not refreshed. ! Undefined control sequence."
+    assert "! Undefined control sequence." in box.error("refresh_preview", view="instructor")
     fake_render(monkeypatch, root, fail="Render failed")
-    assert box.error("refresh_preview", slide="abd").endswith("Render failed")
+    assert "Render failed" in box.error("refresh_preview", slide="abd")
     assert "not a slide file" in box.error("refresh_preview", slide="Slidemaster.bib")
     assert "frozen version" in box.error("refresh_preview", slide="slides/abc-EN-Hello-v1-0-0.tex")
-    monkeypatch.setattr(preview_target, "render", lambda *a, **k: root)         # compiled, but no snapshot appeared
-    assert "could not be written" in box.error("refresh_preview")
+    monkeypatch.setattr(slide_snapshot, "publish_preview", lambda *a: (_ for _ in ()).throw(OSError("disk full")))
+    fake_render(monkeypatch, root)
+    assert "publication failed: disk full" in box.error("refresh_preview", view="instructor")
 
 
 def test_refresh_deck_previews_reports_counts_and_lists(box, root):
@@ -669,3 +672,66 @@ def test_reading_files_never_runs_mupdf_in_the_app_process(box, root, monkeypatc
     assert box.run("read_file", path="paper.pdf", pages_as_images=True).images
     assert box.run("read_file", path="fig.svg").images
     assert "pymupdf" not in open(files_module.__file__).read()
+
+
+def test_refresh_preview_hidden_instructor_slide_does_not_compile(box, monkeypatch):
+    deck_path = box.ws.context().deck.path
+    text = deck_path.read_text()
+    assert r'\slide{abc-EN-Hello}' in text
+    deck_path.write_text(text.replace(r'\slide{abc-EN-Hello}', r'\conditionalslide[during-course]{abc-EN-Hello}'))
+    monkeypatch.setattr(preview_target, 'render', lambda *a, **k: pytest.fail('hidden slide compiled'))
+    assert 'abc: instructor, EN: hidden; no preview rendered, no image.' in box.ok('refresh_preview', view='instructor')
+
+
+def test_refresh_preview_headless_rejects_a_source_edit_during_render(box, root, monkeypatch):
+    fake_render(monkeypatch, root)
+    render = preview_target.render_text
+
+    def changed(target, *args, **kwargs):
+        pdf = render(target, *args, **kwargs)
+        target.source_path.write_text('new saved source')
+        return pdf
+
+    monkeypatch.setattr(preview_target, 'render_text', changed)
+    result = box.ok('refresh_preview')
+    assert 'rendered' in result and 'superseded' in result and 'displayed' not in result
+    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', 'uni-graz').exists()
+
+
+def test_render_preview_default_is_selected_view_and_refresh_default_is_all_views(box, root, monkeypatch):
+    from dataclasses import replace
+    box.ws._context = replace(box.ws.context(), view='during-course')
+    seen = fake_render(monkeypatch, root)
+    box.ws.open(root / SLIDE, LF + '% draft\n')
+    assert box.run('render_preview').images
+    assert seen[-1][2] == 'during-course'
+    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', 'uni-graz').exists()
+    result = box.ok('refresh_preview')
+    assert all(f'{view}, EN' in result for view in ('instructor', 'during-course', 'after-course'))
+    assert [row[2] for row in seen[-3:]] == ['instructor', 'during-course', 'after-course']
+    assert slide_snapshot.snapshot_path(box.ws.project, 'abc', 'uni-graz', id_slug='abc-EN-Hello').exists()
+    assert box.ws.context().view == 'during-course'
+
+
+@pytest.mark.parametrize('args', [{}, {'view': 'all'}])
+def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root, monkeypatch, args):
+    seen = fake_render(monkeypatch, root)
+    box.ws.open(root / SLIDE, 'UNSAVED')
+    captures = []
+    render = preview_target.render_text
+
+    def capture(target, text, *args, **kwargs):
+        captures.append(text)
+        return render(target, text, *args, **kwargs)
+
+    monkeypatch.setattr(preview_target, 'render_text', capture)
+    result = box.run('refresh_preview', **args)
+    assert not result.is_error and result.images == []
+    assert [row[2] for row in seen] == ['instructor', 'during-course', 'after-course']
+    assert all(text == (root / SLIDE).read_text() for text in captures)
+    assert 'saved source' in result.text and 'cached for after-course' in result.text
+
+
+def test_preview_tools_reject_invalid_view(box):
+    assert "Argument 'view' must be one of" in box.error('render_preview', view='student')
+    assert "Argument 'view' must be one of" in box.error('refresh_preview', view='student')

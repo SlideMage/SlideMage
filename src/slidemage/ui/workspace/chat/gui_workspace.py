@@ -144,7 +144,8 @@ class GuiWorkspace(Workspace):
         window, state = self.window, self.window.state
         self._context = WorkspaceContext(
             deck=state.deck, slide_id=state.focused_slide, path=window.centre.path, view=state.view,
-            language=state.language, footer_timestamp=state.footer_timestamp)
+            language=state.language, footer_timestamp=state.footer_timestamp,
+            occurrence_key=state.focused_occurrence)
 
     def is_open_deck(self, path: Path) -> bool:
         return self.on_gui(lambda: self.window.state.deck is not None and
@@ -269,6 +270,33 @@ class GuiWorkspace(Workspace):
             self.on_gui(lambda: self.window.centre.preview.finish_render(request))
             timing.event(self.project.root, "pane_published")
 
+    def preview_service(self):
+        return self.on_gui(lambda: self.window.centre.preview._renders)
+
+    def preview_log(self, line):
+        self.on_gui(lambda: self.window.log(line))
+
+    def publish_preview_result(self, result, ticket) -> str:
+        source = result.request.revision.path
+        if self.is_open(source) and self.buffer_snapshot(source)[0] != result.request.revision.text:
+            return 'superseded'
+        return self.on_gui(lambda: self.window.centre.preview.publish_batch_result(result, ticket),
+                           'superseded')
+
+    def render_preview_batch(self, path, view='all', *, saved=False, force=False,
+                             cancel=None, progress=None, context=None, requests=None, ticket=None):
+        notify = (lambda event: self.on_gui(lambda: progress(event))) if progress is not None else None
+        return super().render_preview_batch(path, view, saved=saved, force=force,
+                                            cancel=cancel, progress=notify, context=context,
+                                            requests=requests, ticket=ticket)
+
+    def begin_preview_refresh(self):
+        return self.on_gui(lambda: self.window.centre.preview._generation, -1)
+
+    def publish_preview_refresh(self, target, text, revision, view, language, timestamp, artifact, ticket) -> str:
+        return self.on_gui(lambda: self.window.centre.preview.publish_refresh(
+            target, text, revision, view, language, timestamp, artifact, ticket), 'superseded')
+
     def translate_slide(self, path: Path) -> str:
         return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else
                            "SlideMage cannot translate now: the Claude Code terminal is not running.", "")
@@ -329,7 +357,7 @@ class GuiWorkspace(Workspace):
                 self.on_gui(detach)
         return outcome
 
-    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken) -> DeckResult:
+    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> DeckResult:
         """The window's own "Rerender all previews for this deck" run (compile slot, job panel, Log
         drawer), without its questions; returns when the slot is free again."""
         window = self.window
@@ -345,7 +373,7 @@ class GuiWorkspace(Workspace):
                 return False
             needed = needed_slides_by_template(window.project, deck)
             if any(needed.values()):
-                compile_actions.start_deck_previews(window, deck, needed, on_done)
+                compile_actions.start_deck_previews(window, deck, needed, on_done, scope=scope)
             else:
                 on_done(DeckResult())
             return True

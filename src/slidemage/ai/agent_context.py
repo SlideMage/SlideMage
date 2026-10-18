@@ -16,6 +16,7 @@ from ..project import ProjectContext
 from .tools.base import ToolError
 from .tools.files import current_text, relative
 from .workspace import Workspace
+from .image_instructions import IMAGE_DESCRIPTION_RULES
 
 SCOPE_SLIDE = "slide"
 SCOPE_DECK = "deck"
@@ -71,9 +72,9 @@ rewrite what was not mentioned. Use only LaTeX and macros that exist: standard L
 you saw in the project's slides or in a guide. Never invent a macro, a citation key or a fact.
 - New slides: create_slide with a full draft and the open deck name; add_slide for skeletons. \
 New references: add_bib_entry.
-- Look at the returned slide preview, especially after layout changes. Report what you could not check. \
+- Look at the returned slide preview, especially after layout changes. Use render_preview(view=...) for a specific view, or view=all for a general preview request or to inspect all course variants; omission uses the selected view. refresh_preview reads saved source, defaults to all views and returns per-view statuses without images. Report what you could not check. \
 compile_deck is slow: use it only when asked or for a final check. refresh_preview and \
-refresh_deck_previews rerender the cached previews of a slide or of a whole deck (slow): use them only when asked. \
+refresh_deck_previews rerender the cached previews of a slide or legacy Instructor snapshots of a whole deck (slow): use them only when asked. \
 check_readability measures, without changing anything, whether a slide's or a deck's text and images are big and \
 clear enough for an audience; a deck needs a current compiled PDF (compile_deck first). To fix what it finds, \
 enlarge text with the template's size commands (\\small, \\normalsize) rather than \\fontsize, make \\includegraphics \
@@ -83,7 +84,9 @@ marked "set by the template" are not the slide's to change, and the user's Make 
 - Files open in the editor are changed in the editor (the user saves them); the rest are saved at once.
 - You cannot run programs, browse the web or change image files. Say so and suggest what the user can do.
 - Answer in the language the user writes in. Be brief: say what you did and what is left to decide, not \
-a tour of the LaTeX."""
+a tour of the LaTeX.
+
+{IMAGE_DESCRIPTION_RULES}"""
 
 
 def _lint_lines(ctx: ProjectContext, text: str, name: str) -> list[str]:

@@ -188,7 +188,7 @@ class TopBar(QWidget):
         tiny = density == "tiny"
         margin = 8 if tiny else 12 if tight else 24
         self._row_layout.setContentsMargins(margin, 0, margin, 0)
-        self._row_layout.setSpacing(6 if tiny else 8 if tight else 14)
+        self._row_layout.setSpacing(5 if tiny else 8 if tight else 14)
         self._view_as.setVisible(full)
         self._views.setToolTip("View as")
         self._views.set_labels(VIEW_LABELS if full else SHORT_VIEWS, tooltips=VIEW_LABELS, compact=not full)

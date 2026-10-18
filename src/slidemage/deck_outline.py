@@ -13,7 +13,7 @@ changed).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
@@ -45,6 +45,10 @@ class SlideRow:
     folded_calls: tuple[SlideCall, ...] = ()
     related_ids: tuple[str, ...] = ()
     unreviewed: bool = False
+    frame_number: Optional[int] = None
+    thumbnail_verified: bool = False
+    thumbnail_note: str = ""
+    image_selection: object | None = None
 
     @property
     def deck_call(self) -> SlideCall:
@@ -126,21 +130,47 @@ def _call_key(call: SlideCall) -> tuple:
             tuple(call.conditions) if call.conditions else None, call.steps)
 
 
+@dataclass(frozen=True)
+class ResolvedSlot:
+    slot: deck_language.SlideSlot
+    key: tuple
+    position: int
+    frame_number: int
+    hidden: bool
+
+
+def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
+                  links: slide_language.TranslationLinks | None = None) -> tuple[ResolvedSlot, ...]:
+    """Logical occurrences and their per-view frame counters (hidden steps consume none)."""
+    if view not in deck_editor.VIEWS:
+        raise ValueError(f"Invalid preview view: {view!r}")
+    occurrences = {}
+    frame = 0
+    result = []
+    for position, slot in enumerate(deck_language._slots(deck_language.active_calls(deck), language,
+                                                      links or slide_language.TranslationLinks(ctx.slides_dir)), 1):
+        base = _call_key(slot.original)
+        occurrence = occurrences.get(base, 0)
+        occurrences[base] = occurrence + 1
+        hidden = not slot.call.included_in(view)
+        if not (hidden and slot.call.macro == "slidestep"):
+            frame += 1
+        result.append(ResolvedSlot(slot, base + (occurrence,), position, frame, hidden))
+    return tuple(result)
+
+
 def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> list[SectionRow]:
     """The sections of `deck` in file order, as seen in `view` (a deck version)
     while editing in `language` ("EN"/"DE")."""
     template = slide_snapshot.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
-    occurrences: dict[tuple, int] = {}
     links = slide_language.TranslationLinks(ctx.slides_dir)
     unreviewed_paths = set(ai_review.unreviewed(ctx))
-    slots = deck_language._slots(deck_language.active_calls(deck), language, links)
-    for position, slot in enumerate(slots, start=1):
-        call = slot.original
-        base = _call_key(call)
-        occurrences[base] = occurrences.get(base, 0) + 1
+    for resolved in resolve_slots(ctx, deck, view, language, links=links):
+        call = resolved.slot.original
+        row = _row(ctx, resolved.slot, resolved.key, resolved.position, template, view, language, links, unreviewed_paths)
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
-            _row(ctx, slot, base + (occurrences[base] - 1,), position, template, view, language, links, unreviewed_paths))
+            replace(row, frame_number=resolved.frame_number))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -150,15 +180,16 @@ def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> 
     return sections
 
 
-def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, language: str) -> Optional[SlideRow]:
-    """The row of the first call of slide `slide_id` in `deck`, without building the whole outline."""
+def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, language: str, *, occurrence_key: tuple | None = None) -> Optional[SlideRow]:
+    """The focused occurrence, otherwise the first call of slide `slide_id` in `deck`, without building the whole outline."""
     template = slide_snapshot.detect_template(deck.preamble_text)
     links = slide_language.TranslationLinks(ctx.slides_dir)
     unreviewed_paths = set(ai_review.unreviewed(ctx))
-    slots = deck_language._slots(deck_language.active_calls(deck), language, links)
-    for position, slot in enumerate(slots, start=1):
-        if slot.matches(slide_id):
-            return _row(ctx, slot, _call_key(slot.original) + (0,), position, template, view, language, links, unreviewed_paths)
+    matches = [r for r in resolve_slots(ctx, deck, view, language, links=links) if r.slot.matches(slide_id)]
+    selected = next((r for r in matches if r.key == occurrence_key), matches[0] if matches else None)
+    if selected is not None:
+        return replace(_row(ctx, selected.slot, selected.key, selected.position, template, view, language,
+                            links, unreviewed_paths), frame_number=selected.frame_number)
     return None
 
 

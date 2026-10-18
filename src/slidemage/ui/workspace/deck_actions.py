@@ -161,12 +161,17 @@ def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings)
         QMessageBox.critical(window, "Deck settings failed", str(exc))
         return
     changed = [name for name in ("template", "language", "footer_text", "course_url",
-                                 "output_folders", "appendix_toc", "open_pdf")
+                                 "output_folders", "appendix_toc", "open_pdf", "footer_hide")
                if getattr(new, name) != getattr(old, name)]
     window.log(f"Updated settings of {deck.name}: " + ", ".join(
         name.replace("_", " ") for name in changed))
     window.refresh_open_deck_editors()
     window.reload_decks()
+    if (old.footer_hide != new.footer_hide or old.footer_text != new.footer_text) and (
+            window.state.deck is not None and window.state.deck.path == deck.path
+            and window.state.mode in ("preview", "split")):
+        # reload_decks refreshes the target with the saved preamble first.
+        window.centre.preview.render_after_save()
 
 
 def insert_admin_slides(window, deck: Deck, admin: AdminSlidesTab) -> None:

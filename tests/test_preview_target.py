@@ -115,3 +115,134 @@ def test_page_png_is_the_last_page_at_the_requested_width(tmp_path):
     pixmap = pymupdf.Pixmap(data)
     assert (pixmap.width, pixmap.height) == (100, 200)
     assert slide_snapshot.page_png(tmp_path / "missing.pdf") is None
+
+
+def test_view_resolution_preserves_hidden_counters_but_skips_absent_steps(tmp_path):
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    body = ("\\conditionalslide[instructor]{aaa-EN-One}\n"
+            "\\omitslide{bbb-EN-Two}\n"
+            "\\slidestep{ccc-EN-Three}[instructor]{1,2}\n"
+            "\\slide{ddd-EN-Four}\n")
+    deck = make_deck(body)
+    resolved = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'ddd-EN-Four-current.tex', 'all', 'EN')
+    assert [v for v, _ in resolved] == ['instructor', 'during-course', 'after-course']
+    assert [t.frame_number for _, t in resolved] == [4, 3, 3]
+    hidden = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'all', 'EN')
+    assert [t.hidden for _, t in hidden] == [False, True, True]
+    with pytest.raises(ValueError, match='hidden'):
+        preview_target.render(hidden[1][1], 'during-course', 'EN', footer_timestamp=False, log=print)
+
+
+def test_duplicate_resolution_uses_occurrence_key_otherwise_first(tmp_path):
+    from slidemage import deck_outline
+
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    deck = make_deck('\\slidestep{aaa-EN-One}{1}\n\\slide{bbb-EN-Two}\n\\slidestep{aaa-EN-One}{3}\n')
+    path = ctx.slides_dir / 'aaa-EN-One-current.tex'
+    rows = deck_outline.resolve_slots(ctx, deck, 'instructor', 'EN')
+    first = preview_target.resolve_views(ctx, deck, path, 'instructor', 'EN')[0][1]
+    last = preview_target.resolve_views(ctx, deck, path, 'instructor', 'EN', occurrence_key=rows[2].key)[0][1]
+    assert (first.steps, first.frame_number) == ('1', 1)
+    assert (last.steps, last.frame_number) == ('3', 3)
+    assert first.key != last.key
+
+
+def test_invalid_view_fails_before_source_capture(tmp_path):
+    from slidemage import preview_requests
+
+    ctx = ProjectContext.at(tmp_path)
+    with pytest.raises(ValueError, match='Invalid preview view'):
+        preview_requests.resolve_requests(ctx, None, tmp_path / 'aaa-EN-One-current.tex', 'student', 'EN',
+                                          read_source=lambda _: pytest.fail('read before validation'))
+
+
+def test_all_views_capture_one_revision_and_new_same_version_source_is_distinct(tmp_path):
+    from slidemage import preview_requests
+
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    path = ctx.slides_dir / 'aaa-EN-One-current.tex'
+    path.write_text('% version 1.0.0+\nOLD')
+    captures = []
+
+    def read(source):
+        captures.append(source)
+        return source.read_text()
+
+    requests = preview_requests.resolve_requests(ctx, None, path, 'all', 'en', read_source=read)
+    assert len(captures) == 1
+    assert requests[0].revision is requests[1].revision is requests[2].revision
+    assert requests[0].language == 'EN'
+    path.write_text('% version 1.0.0+\nNEW')
+    newer = preview_requests.resolve_requests(ctx, None, path, None, 'EN')[0]
+    assert newer.revision.content_hash != requests[0].revision.content_hash
+
+
+def test_pinned_resolution_and_translation_folding(tmp_path):
+    from slidemage import preview_requests
+
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    en = ctx.slides_dir / 'aaa-EN-One-current.tex'
+    de = ctx.slides_dir / 'bbb-DE-Eins-current.tex'
+    en.write_text('%% Language: EN\n%% DE translation: bbb-DE-Eins\nEN CURRENT')
+    de.write_text('%% Language: DE\n%% Translation of: aaa-EN-One\nDE CURRENT')
+    pinned = ctx.slides_dir / 'aaa-EN-One-v1-0-0.tex'
+    pinned.write_text('EN PINNED')
+    deck = make_deck('\\slideversion{aaa-EN-One}{1-0-0}\n\\slide{bbb-DE-Eins}\n\\slide{ccc-EN-Three}\n')
+    english = preview_requests.resolve_requests(ctx, deck, en, 'instructor', 'EN')[0]
+    assert english.target.version == '1-0-0'
+    assert english.revision.text == 'EN PINNED'
+    german = preview_requests.resolve_requests(ctx, deck, en, 'all', 'DE')
+    assert all(r.target.id_slug == 'bbb-DE-Eins' and r.target.version is None for r in german)
+    assert all(r.revision.text.endswith('DE CURRENT') for r in german)
+    next_target = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'ccc-EN-Three-current.tex', 'instructor', 'DE')[0][1]
+    assert next_target.frame_number == 2
+
+
+def test_buffer_full_slide_preserves_call_steps_and_pinned_omit_state(monkeypatch):
+    wrappers = []
+    monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
+    _, target = target_of('\\slidestep{aaa-EN-One}[instructor]{2,4}\n')
+    preview_target.render_text(target, 'BODY', 'instructor', 'EN', footer_timestamp=False, log=print)
+    assert r'\gdef\SMSlideSteps{2,4}' in wrappers[-1]
+    _, pinned = target_of('\\omitslideversion{aaa-EN-One}{1-0-0}\n')
+    preview_target.render_text(pinned, 'PINNED BODY', 'instructor', 'EN', footer_timestamp=False, log=print)
+    assert r'\setSlideVersion{1-0-0}' in wrappers[-1]
+    assert r'\global\SMOmittedSlidetrue' in wrappers[-1]
+
+
+def test_presenter_of_hidden_student_target_uses_instructor_frame_number(monkeypatch, tmp_path):
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    deck = make_deck('\\slidestep{bbb-EN-Two}[instructor]{1}\n\\omitslide{aaa-EN-One}\n')
+    target = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'after-course', 'EN')[0][1]
+    assert target.hidden and target.frame_number == 1
+    wrappers = []
+    monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
+    preview_target.render_text(target, 'BODY', 'after-course', 'EN', presenter=True, footer_timestamp=False, log=print)
+    assert r'\setcounter{framenumber}{1}' in wrappers[0]  # beamer increments before printing frame 2
+
+
+def test_unrelated_frozen_version_stays_standalone(tmp_path):
+    ctx = ProjectContext.at(tmp_path)
+    deck = make_deck('\\slideversion{aaa-EN-One}{1-0-0}\n')
+    target = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-v2-0-0.tex', 'instructor', 'EN')[0][1]
+    assert target.version == '2-0-0' and target.preamble_text is None
+
+
+def test_slidefinal_buffer_disables_conditional_pauses(monkeypatch):
+    wrappers = []
+    monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
+    _, target = target_of('\\slidefinal{aaa-EN-One}\n')
+    preview_target.render_text(target, 'BODY', 'instructor', 'EN', footer_timestamp=False, log=print)
+    assert r'\renewcommand{\conditionalpause}[1][instructor]{}' in wrappers[0]
+
+
+def test_presenter_frame_number_is_part_of_target_identity():
+    from dataclasses import replace
+
+    _, target = target_of('\\slide{aaa-EN-One}\n')
+    assert replace(target, presenter_frame_number=2).key != replace(target, presenter_frame_number=3).key

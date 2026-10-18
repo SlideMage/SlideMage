@@ -35,8 +35,10 @@ import subprocess
 from .compiler import FATAL_ERROR_RE, run_streamed
 from .preview_metrics import stage
 from .processes import no_console_kwargs
+from .preview_cache import configuration_state, file_state, search_state
+from .fileio import atomic_write
 
-SCHEMA = 2
+SCHEMA = 3
 ENGINE = 'lualatex'
 NAME = 'preamble'   # the format's file name (and TeX jobname) inside its directory
 
@@ -101,10 +103,10 @@ PRELUDE_TAIL = r"""
 
 def _stamp(path: Path):
     try:
-        info = path.stat()
+        state = file_state(path)
     except OSError:
         return None
-    return [str(path), info.st_mtime_ns, info.st_size]
+    return [str(path), state] if state is not None else None
 
 
 def _fls_inputs(fls: Path, cwd: Path, skip: Path) -> list[str]:
@@ -120,11 +122,13 @@ def _fls_inputs(fls: Path, cwd: Path, skip: Path) -> list[str]:
     return sorted(set(names))
 
 
-def _fresh(manifest: Path) -> bool:
+def _fresh(manifest: Path, project_root: Path, env: dict) -> bool:
     try:
         data = json.loads(manifest.read_text(encoding='utf-8'))
-        return all(_stamp(Path(item[0])) == item for item in data['inputs'])
-    except (OSError, ValueError, KeyError, IndexError):
+        return (data['search'] == search_state(project_root, env)
+                and data['configuration'] == configuration_state(project_root, env)
+                and all(_stamp(Path(item[0])) == item for item in data['inputs']))
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
         return False
 
 
@@ -143,7 +147,7 @@ def inputs(directory: Path) -> list[str]:
     try:
         data = json.loads((directory / 'format.json').read_text(encoding='utf-8'))
         return [item[0] for item in data['inputs']]
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
         return []
 
 
@@ -167,7 +171,7 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
             if (directory / 'format.bad').exists():
                 return None
             fmt = stem(directory).with_suffix('.fmt')
-            if fmt.is_file() and _fresh(directory / 'format.json'):
+            if fmt.is_file() and _fresh(directory / 'format.json', project_root, env):
                 return directory
             return _build(preamble, directory, project_root=project_root, env=env,
                           log=log, cancel=cancel)
@@ -218,6 +222,12 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
         disable(directory)
         return None
     stamps = [_stamp(Path(name)) for name in _fls_inputs(fls, cwd, directory)]
-    (directory / 'format.json').write_text(
-        json.dumps({'inputs': [s for s in stamps if s]}), encoding='utf-8')
+    try:
+        inventory = search_state(project_root, env)
+        configuration = configuration_state(project_root, env)
+    except (OSError, ValueError):
+        disable(directory)
+        return None
+    atomic_write(directory / 'format.json', json.dumps({'inputs': [s for s in stamps if s], 'search': inventory,
+                                                       'configuration': configuration}))
     return directory

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QGridLayout, QLabel, QLineEdit
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from ... import deck_editor, deck_settings, open_path
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
@@ -64,6 +64,8 @@ class DeckSettingsSheet(ModalSheet):
         for widget in (self.footer_edit, self.url_edit, *self.output_edits.values()):
             widget.textChanged.connect(self._sync_footer)
         self.appendix_check.toggled.connect(self._sync_footer)
+        for check in self.footer_checks.values():
+            check.toggled.connect(self._sync_footer)
         self.admin.changed.connect(self._sync_footer)
         self.tab_changed.connect(self._on_tab)
         self.set_current_tab(tab)
@@ -103,6 +105,22 @@ class DeckSettingsSheet(ModalSheet):
         self.footer_edit.setPlaceholderText("Shown at the left of the footer, e.g. course | name | term")
         self.footer_edit.setToolTip("The deck's \\FooterText.")
         layout.addWidget(Field("Footer text", self.footer_edit))
+
+        self.footer_checks: dict[str, QCheckBox] = {}
+        shown = QWidget()
+        shown_row = QHBoxLayout(shown)
+        shown_row.setContentsMargins(0, 0, 0, 0)
+        for key, label, tip in (
+                ("text", "Footer text (left)", "The deck's \\FooterText at the left of the footer."),
+                ("id", "Slide id (right)", "\"slide id: abc | v1.0.0\" at the right of the footer."),
+                ("deck", "Deck version (right)", "\"instructor deck\", \"student course deck\" ... at the right.")):
+            check = QCheckBox(label)
+            check.setToolTip(tip)
+            check.setChecked(key not in settings.footer_hide)
+            self.footer_checks[key] = check
+            shown_row.addWidget(check)
+        shown_row.addStretch(1)
+        layout.addWidget(Field("Footer shows", shown))
 
         self.url_edit = QLineEdit(settings.course_url)
         self.url_edit.setPlaceholderText("https://online.uni-graz.at/...")
@@ -159,7 +177,7 @@ class DeckSettingsSheet(ModalSheet):
     def _values(self) -> tuple:
         return (self.template_combo.currentData(), self.language_combo.currentData(), self.footer_edit.text(),
                 self.url_edit.text(), tuple(edit.text() for edit in self.output_edits.values()),
-                self.appendix_check.isChecked(), self.open_pdf_combo.currentData())
+                self.appendix_check.isChecked(), self.open_pdf_combo.currentData(), self._footer_hide())
 
     def dirty(self) -> bool:
         return self._values() != self._initial
@@ -173,7 +191,11 @@ class DeckSettingsSheet(ModalSheet):
             course_url=self.url_edit.text(),
             output_folders={key: edit.text() for key, edit in self.output_edits.items()},
             appendix_toc=self.appendix_check.isChecked(),
-            open_pdf=self.open_pdf_combo.currentData() or "instructor")
+            open_pdf=self.open_pdf_combo.currentData() or "instructor",
+            footer_hide=self._footer_hide())
+
+    def _footer_hide(self) -> tuple[str, ...]:
+        return tuple(key for key, check in self.footer_checks.items() if not check.isChecked())
 
     def result_settings(self) -> DeckSettings:
         return self.settings

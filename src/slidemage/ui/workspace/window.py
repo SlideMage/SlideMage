@@ -115,6 +115,8 @@ class WorkspaceWindow(QMainWindow):
         super().__init__()
         self.theme = theme
         self.project = project_context
+        from .wizard_portal import review_snapshot
+        self._wizard_review = review_snapshot(self)
         self.compile = CompileController(project_context, self)
         self.readability_known = readability_check.KnownFindings()    # what the readability checks found, per slide text
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
@@ -226,9 +228,10 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.written.connect(lambda _path: self._after_write.start())
         self.centre.source.written.connect(self._live_render)
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
-        self.centre.preview.rendered.connect(self.slide_list.rebuild)   # a render may have captured a thumbnail
+        self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
+        self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+S writes the file open in the Source view now and renders it, whichever view has the focus.
@@ -439,6 +442,22 @@ class WorkspaceWindow(QMainWindow):
         if target is not None and target.source_path == path and not self.compiling:
             self.centre.preview.render_after_save()
 
+    def after_version_updates(self, paths) -> None:
+        """Notify once after a batch of version writes, retaining reusable pinned previews.
+
+        Source hashes and independently resolved calls determine freshness; do not
+        delete caches for an entire slide id, which also owns unchanged frozen calls.
+        """
+        paths = tuple(dict.fromkeys(Path(path).resolve() for path in paths))
+        if not paths:
+            return
+        self._after_write.stop()
+        self.slide_list.rebuild(preserve_focus=True)
+        self.centre.refresh()
+        self.side_panels.refresh()
+        for path in paths:
+            self._live_render(path)
+
     def _refresh_after_write(self) -> None:
         self._after_write.stop()
         self.slide_list.rebuild()   # a save changes lint errors and stale previews
@@ -620,6 +639,8 @@ class WorkspaceWindow(QMainWindow):
         self.log(summary)
 
     def refresh_ai_review(self) -> None:
+        from .wizard_portal import note_review_updates
+        note_review_updates(self)
         self.slide_list.rebuild(preserve_focus=True)
         if self.state.mode == "details":
             self.centre.refresh()

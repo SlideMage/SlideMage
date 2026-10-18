@@ -1,10 +1,6 @@
-"""Update previews narrowed to one deck (update_all_previews.rerender_deck): only that deck's slides
-are compiled, other decks' cached previews survive (nothing is pruned), and the result says which
-slides' snapshots were written. The compile is replaced by a script that writes the snapshots a real
-run's background capture writes."""
+"""Exact deck request routing, partial outcomes, reuse and legacy project pruning."""
 from __future__ import annotations
 
-import os
 import threading
 import time
 
@@ -71,20 +67,6 @@ def test_the_needed_set_narrows_to_one_decks_slides(project):
         TEMPLATE: {"abc-EN-Hello", "abd-EN-Second", "zzz-EN-Zed"}}
 
 
-def test_a_deck_rerender_compiles_only_its_slides_and_prunes_nothing(project, monkeypatch):
-    compiles = Compiles(project, monkeypatch)
-    other_slide = write_snapshot(project, "zzz-EN-Zed")           # only the other deck needs it
-    stale = write_snapshot(project, "qqq-EN-Gone")                # no deck needs it: the project-wide run deletes it
-    lines: list[str] = []
-    result = update_all_previews.rerender_deck(project, deck_named(project, "test"), lines.append)
-    assert compiles.slides == [["abc-EN-Hello", "abd-EN-Second"]]
-    assert other_slide.read_bytes() == b"png" and stale.is_file()
-    assert result and result.refreshed == ["abc-EN-Hello", "abd-EN-Second"] and result.failed == []
-    assert snapshot(project, "abc", "abc-EN-Hello").is_file()      # written before the call returned
-    assert any("Rerender previews of test: 2 slide(s)" in line for line in lines)
-    assert not any("removed" in line for line in lines)
-
-
 def test_the_project_wide_run_still_prunes(project, monkeypatch):
     compiles = Compiles(project, monkeypatch)
     stale = write_snapshot(project, "qqq-EN-Gone")
@@ -94,22 +76,88 @@ def test_the_project_wide_run_still_prunes(project, monkeypatch):
     assert not stale.exists() and any("removed 1 stale" in line for line in lines)
 
 
-def test_a_slide_whose_snapshot_was_not_written_is_reported_failed_with_the_first_error(project, monkeypatch):
-    Compiles(project, monkeypatch, skip={"abd-EN-Second"})
-    old = write_snapshot(project, "abd-EN-Second")                 # from an earlier run: not fresh
-    old_time = time.time() - 3600
-    os.utime(old, (old_time, old_time))
+def test_deck_refresh_uses_exact_requests_and_keeps_partial_results(project):
+    from test_preview_batch import Service
+    service = Service(fail='during-course')
+    events = []
+    result = update_all_previews.rerender_deck(
+        project, deck_named(project, 'test'), lambda _: None, service=service,
+        progress=events.append, publish=lambda _: 'cached')
+    assert len(result.details.results) == 6
+    assert result.failed == ['abc-EN-Hello', 'abd-EN-Second']
+    assert len(result.details.failed) == 2
+    assert result.error == 'bad TeX'
+    assert events[-1].index == events[-1].total == 6
+    assert {r.target.frame_number for r in service.calls} == {1, 2}
 
-    result = update_all_previews.rerender_deck(project, deck_named(project, "test"), lambda _line: None)
-    assert not result and result.refreshed == ["abc-EN-Hello"] and result.failed == ["abd-EN-Second"]
+
+def test_selected_scope_and_hidden_calls_do_not_compile(project):
+    from test_preview_batch import Service
+    from dataclasses import replace
+    deck = deck_named(project, 'test')
+    deck = replace(deck, text=deck.text.replace(r'\slide{abc-EN-Hello}', r'\omitslide{abc-EN-Hello}'))
+    service = Service()
+    result = update_all_previews.rerender_deck(
+        project, deck, lambda _: None, service=service, scope='selected',
+        selected_view='after-course', publish=lambda _: 'cached')
+    assert result.details.count('hidden') == 1
+    assert len(service.calls) == 1
+    assert service.calls[0].view == 'after-course'
+    assert result
 
 
-def test_the_first_tex_error_line_is_kept(project, monkeypatch):
-    def failing(ctx, job, log, cancel=None, dest_override=None, on_relocated=None):
-        for line in ("! Undefined control sequence.", "*** FAIL: x -- see .build/x.log ***", "! Second error."):
-            log(line)
-        return False
+def test_resolver_keeps_repeated_and_pinned_sources_separate(project):
+    from slidemage import deck_preview_refresh
+    from dataclasses import replace
+    deck = deck_named(project, 'test')
+    frozen = project.slides_dir / 'abc-EN-Hello-v1-0-0.tex'
+    frozen.write_text('FROZEN')
+    deck = replace(deck, text=deck.text.replace(r'\slide{abd-EN-Second}',
+        r'\slideversion{abc-EN-Hello}{1-0-0}' + '\n' + r'\slide{abc-EN-Hello}'))
+    requests = deck_preview_refresh.plan(project, deck)
+    assert len(requests) == 9
+    assert len({r.target.occurrence_key for r in requests}) == 3
+    assert {r.target.frame_number for r in requests} == {1, 2, 3}
+    pinned = [r for r in requests if r.target.version]
+    assert len(pinned) == 3
+    assert all(r.revision.text == 'FROZEN' and r.revision.path == frozen.resolve() for r in pinned)
 
-    monkeypatch.setattr(update_all_previews, "run_job", failing)
-    result = update_all_previews.rerender_deck(project, deck_named(project, "test"), lambda _line: None)
-    assert result.error == "! Undefined control sequence." and result.failed == ["abc-EN-Hello", "abd-EN-Second"]
+
+def test_missing_source_does_not_abort_other_occurrences(project):
+    from test_preview_batch import Service
+    (project.slides_dir / 'abc-EN-Hello-current.tex').unlink()
+    result = update_all_previews.rerender_deck(
+        project, deck_named(project, 'test'), lambda _: None, service=Service(),
+        publish=lambda _: 'cached')
+    assert result.failed == ['abc-EN-Hello']
+    assert result.refreshed == ['abd-EN-Second']
+
+
+def test_unchanged_deck_refresh_reuses_groups_after_restart(tmp_path, monkeypatch):
+    from test_preview_image_groups import fixture
+    from test_preview_target import make_deck
+    ctx, _target, _source, compiles, _group = fixture(tmp_path, monkeypatch)
+    deck = make_deck('\\slide{abc-EN-One}\n')
+    first = update_all_previews.rerender_deck(ctx, deck, lambda _: None,
+                                            publish=lambda _: 'cached')
+    assert first and len(compiles) == 1
+    second = update_all_previews.rerender_deck(ctx, deck, lambda _: None,
+                                             publish=lambda _: 'cached')
+    assert second and len(compiles) == 1
+    assert second.details.count('cached') == 3
+
+
+def test_deck_resolver_uses_translation_and_reveal_selection(project):
+    from dataclasses import replace
+    from slidemage import deck_preview_refresh
+    deck = deck_named(project, 'test')
+    (project.slides_dir / 'abc-EN-Hello-current.tex').write_text(
+        '%% Language: EN\n%% DE translation: bbb-DE-Hallo\nEnglish')
+    (project.slides_dir / 'bbb-DE-Hallo-current.tex').write_text(
+        '%% Language: DE\n%% Translation of: abc-EN-Hello\nGerman')
+    deck = replace(deck, text=deck.text.replace(r'\slide{abc-EN-Hello}',
+                                               r'\slidestep{abc-EN-Hello}[instructor]{2,4}'))
+    specs = deck_preview_refresh.plan(project, deck, language='DE')
+    translated = [r for r in specs if r.target.id_slug == 'bbb-DE-Hallo']
+    assert len(translated) == 3
+    assert all(r.target.steps == '2,4' and r.revision.text.endswith('German') for r in translated)

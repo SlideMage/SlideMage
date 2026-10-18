@@ -4,7 +4,7 @@ A dialog of its own (not modal, wider than the assistant's 360 px column) that e
 the task card (Review, Conflict, Done), the chat's diff cards, and the Claude Code edits (the earlier text is the one
 ai_review.last_before() keeps). Both sides are rendered as drafts, for the same target, view and language as the Check
 preview step (preview_view.render_context): the text goes through a RenderService, so the compile slot and the build
-locks are the Preview pane's, and nothing is written. Each side has a worker thread that waits for its request and
+locks are the Preview pane's, with persistent caches and unchanged slide sources. Each side has a worker thread that waits for its request and
 reads the pages of the PDF; a side that fails says so while the other is still shown. Esc or Close cancels
 whatever is pending.
 
@@ -23,7 +23,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QScrollArea, QStackedWidget, QVBoxLayout
 
-from ... import ai_review, preview_raster_client, preview_target
+from ... import ai_review, preview_pages, preview_target
 from ...preview_requests import RenderService
 from .. import background
 from ..kit import kit_qss as q
@@ -36,9 +36,9 @@ PAGE_DPI = 130
 MAX_PAGES = 60
 
 
-def read_pages(pdf: Path) -> list[bytes]:
+def read_pages(pdf: Path, project_root: Path) -> list[bytes]:
     """The pages of a rendered slide as PNGs (in the raster child process, like every MuPDF read)."""
-    return preview_raster_client.read_document(pdf, "pdf_images", 1, MAX_PAGES, PAGE_DPI)["images"]
+    return preview_pages.read_document(pdf, project_root=project_root, count=MAX_PAGES, dpi=PAGE_DPI)["images"]
 
 
 def can_compare(window, path: Path) -> bool:
@@ -49,15 +49,17 @@ def can_compare(window, path: Path) -> bool:
 class _Worker(QThread):
     done = Signal(object)              # this worker
 
-    def __init__(self, request, cancel: threading.Event) -> None:
+    def __init__(self, request, cancel: threading.Event, project_root: Path) -> None:
         super().__init__()
-        self.request, self.cancel = request, cancel
+        self.request, self.cancel, self.project_root = request, cancel, project_root
         self.pages: list[bytes] = []
         self.error = ""
 
     def run(self) -> None:
         try:
-            self.pages = read_pages(self.request.wait(self.cancel)[0])
+            artifact = self.request.wait(self.cancel)
+            pages = preview_pages.sequence_images(self.request, count=MAX_PAGES, dpi=PAGE_DPI)
+            self.pages = pages if pages is not None else read_pages(artifact[0], self.project_root)
         except Exception as exc:  # noqa: BLE001 -- whatever the render raised is this side's message
             self.error = str(exc) or type(exc).__name__
         if not self.cancel.is_set():
@@ -177,8 +179,8 @@ class CompareRendered(QDialog):
 
         for side in self._sides:
             request = self._renders.request(self.target, self.texts[side.name], self.view, self.language, timestamp,
-                                            app.log)
-            side.worker = _Worker(request, self._cancel)
+                                            app.log, require_pdf=True)
+            side.worker = _Worker(request, self._cancel, app.project.root)
             side.worker.done.connect(self._on_done)
         self._show()
         for side in self._sides:
