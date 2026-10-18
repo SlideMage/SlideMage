@@ -28,7 +28,7 @@ Goal from the owner: whenever SlideMage is idle it brings previews up to date, s
 1. Render unit = (slide call as the deck typesets it, deck version, language, deck preamble). One **unrestricted** latexmk run yields every reveal step as one PDF page each; no per-step compiles.
 2. Key = `fast_key` (slide content hash, call, view, language, preamble hash, template, engine fingerprint, wrapper schema) **and** a manifest of every file the last render read, each with a content hash. A render is valid iff both match. Hashes are cached by (path, size, mtime_ns) so checking is `stat`-only; mtime is a *shortcut*, never the verdict.
 3. The frame number is **not** in the content key; it is a "decoration" recorded with the render. A render whose only difference is the page number is shown as *fresh, numbering differs* and refreshed at low priority. This stops one inserted slide from invalidating the rest of a deck and lets a slide shared by several decks share one render.
-4. Renders live **outside the synced project**, per machine (`<cache dir>/render-store/<project-id>/`), as PDF + pre-rasterised page PNGs + SQLite index. Not touched by `render_cleanup_hours`/`sweep_renders` (those only match `slidemage_preview_*` in the OS temp folder).
+4. Renders live **inside the project folder** (`.previews/render-store/`, gitignored, synced with the project; owner decision) as immutable, content-addressed objects (PDF + pre-rasterised page PNGs + a self-describing `meta.json`). Only the **index is per machine** (local SQLite outside the project), because SQLite files and WAL do not survive a sync client. A second machine adopts the other's objects by key (portable engine fingerprint) instead of re-rendering. Not touched by `render_cleanup_hours`/`sweep_renders` (those only match `slidemage_preview_*` in the OS temp folder).
 5. One worker, one LaTeX process by default, below-normal OS priority, preempted at once by a foreground render or deck compile, paused on user input, paused on battery by default, duty-cycled for heat.
 6. **One run per slide-version**, isolated, identical to a foreground render. Multi-slide batching is evaluated (section 5.5) but deferred behind a benchmark gate, because it leaks TeX state between slides and loses per-slide dependency attribution.
 7. Background renders **never** write canonical snapshots (MVP). Failures are remembered by key and retried only when an input changes or after backoff.
@@ -174,23 +174,26 @@ A stored render is **valid** iff `fast_key` equals and every manifest entry's cu
 
 ## 4. Design: storage
 
-### 4.1 Where
+### 4.1 Where (revised: owner asked for the store in the project)
 
-`<cache base>/render-store/<project-id>/` outside the project (never synced): Windows `%LOCALAPPDATA%\SlideMage\`, macOS `~/Library/Caches/SlideMage/`, Linux `$XDG_CACHE_HOME/slidemage/`. This needs a new `project.cache_dir()` (today `project.config_dir()` is `%APPDATA%` = roaming). `project-id` = SHA-256[:16] of the normalised absolute project root, so two copies of a project on one machine do not collide and a project moved on disk starts empty (cheap to rebuild).
+Is a store in the project sensible even though it is synced? Mostly yes, with two conditions. Renders are a function of project content (the key is a content hash), so a render made on machine A is valid on machine B when B has the same TeX engine/packages; sharing saves B from re-rendering the whole project after a sync. What does *not* work in a synced folder is a database file: SQLite (and its `-wal`/`-shm` files) is corrupted or conflicted by sync clients. So:
+
+- **Shared, in the project:** `.previews/render-store/objects/<ab>/<render_key>/` holding `slide.pdf`, `p01.png ... pNN.png` (every page at `STORE_WIDTH` 1280) and `meta.json` (the full index row incl. manifest, written **last**, with sizes and SHA-256 of the other files). Objects are write-once and never modified, so sync never sees a conflict; a half-synced object (no `meta.json`, or sizes/hash mismatch) is ignored until complete. Written to a temp dir and renamed into place.
+- **Per machine, outside the project:** the SQLite index (`<cache base>/render-store/<project-id>/index.sqlite`; Windows `%LOCALAPPDATA%\SlideMage\`, macOS `~/Library/Caches/SlideMage/`, Linux `$XDG_CACHE_HOME/slidemage/`; new `project.cache_dir()`), the file-hash cache, failure memory and `deck_usage`. It is a cache of the `meta.json` files: if lost, it is rebuilt by listing `objects/` (cheap: small JSON files), which is also how objects arriving from another machine get adopted.
+- **Portable fingerprint:** because objects are shared, `engine_fp` must not contain machine paths or mtimes: engine version line + latexmk/biber versions + OS family (fonts and rasterisation differ across OSes) only. The stat-based "distribution stamp" of TeX package files (3.2) stays a *local* check applied to renders this machine made; an object adopted from another machine is accepted on `fast_key` + project-file manifest and is marked `foreign` (shown as fresh; a local re-verification render is an optional setting, default off).
+- **Cost:** the store counts against the cloud-sync quota and every machine's disk, up to the disk limit (setting). Two machines rendering the same unit at once create two objects with the same key; the second rename fails and is discarded (identical content). Eviction deletes object directories; sync propagates the deletion, which is correct (the other machine's index forgets it at its next listing).
+- Wrappers and latexmk build caches (a speed layer with machine-specific absolute paths) stay out of the synced folder where Phase 0 shows it works (`ctx.build_dir` override under the local cache base); the store is the only new thing in the project.
 
 ```
-render-store/<project-id>/
-  index.sqlite            # WAL; schema below
-  renders/ab/<render_id>/ # one dir per stored render
-      slide.pdf           # the unrestricted PDF (vector, ~50-300 KB)
-      p01.png ... pNN.png # every page at STORE_WIDTH (1280 px; slider and pane width)
-      meta.json           # redundant copy of the index row for rebuild
-  tmp/                    # in-progress renders, wiped at start
+<project>/.previews/render-store/objects/ab/<render_key>/
+    slide.pdf   p01.png ... pNN.png   meta.json   (meta.json last)
+<local cache>/render-store/<project-id>/
+    index.sqlite   tmp/
 ```
 
-Identical pixels are deduplicated (a slide without version logic renders identically in all three views): page PNGs are stored once under `blobs/<sha>.png` and referenced by `p01.png` hardlinks or by index rows. PDFs are kept so any other size can be rasterised later and a page-count/step list is always known.
+Identical pixels are deduplicated across keys (a slide without version logic renders identically in all views) via a `blobs/<sha>.png` store referenced from `meta.json`. PDFs are kept so any other size can be rasterised later and the step count is always known.
 
-### 4.2 Index (SQLite, stdlib)
+### 4.2 Index (SQLite, stdlib, per machine)
 
 Persistence across restarts needs a durable index and SQLite gives atomic multi-row updates, cheap LRU queries and "what is missing for deck D" queries with no JSON rewriting.
 
@@ -200,7 +203,7 @@ Persistence across restarts needs a durable index and SQLite gives atomic multi-
 - `failures(fast_key, manifest_probe_sha, attempts, last_error_tail, kind, first_at, next_try_at)` (6.4).
 - `deck_usage(deck_path, last_opened, open_count, last_slide_id, last_view, last_language, pinned)` - **per machine**, replaces reliance on the synced `last_deck` (that setting stays for startup).
 - `meta(schema, engine_fp, tex_root, created)`.
-- Rebuild rule: if `index.sqlite` is missing/corrupt/newer-schema, delete the store and start empty (a cache, never source of truth).
+- Rebuild rule: if `index.sqlite` is missing/corrupt/newer-schema, delete it and rebuild from the `meta.json` files in `objects/` (the objects are the source; the index is a cache). `deck_usage` and failures are local and simply start empty.
 
 ### 4.3 Budget and eviction
 
@@ -234,7 +237,13 @@ submit(unit, priority_class, rank, reason, cancel_group)
 cancel_group(name) ; preempt()        # foreground arrival
 ```
 
-Classes (strict order): **P0 foreground** (the user asked: selected slide, edit render, deck compile busy -> pause); **P1 neighbours** (the reveal-slider plan's "selected slide + 4 neighbours, 1 process"); **P2 idle sweep** (this plan). `RenderService` keeps request dedupe and becomes the P0 entry; the reveal plan's `BackgroundRenders` is the P1 producer. All three call `store.ensure(unit)`: look up -> valid? done : render -> store. When this plan has been working, the P1 producer finds almost everything already ready and does nothing; when it hasn't, P1 behaves exactly as the reveal plan describes. **Coordination ask for the reveal session:** build `BackgroundRenders` as "a producer into the scheduler with a priority class", expose the key as `render_key.unit_for(target, view, language)`, and store renders via `render_store` instead of a private dict; this plan will adopt their per-slide "unrestricted render" definition verbatim (steps-free, no snapshot) and their version-dependence scan (section 3.3 of their plan) for the alias optimisation (5.4).
+Classes (strict order): **P0 foreground** (the user asked: selected slide, edit render, deck compile busy -> pause); **P1 neighbours** (the reveal-slider plan's "selected slide + 4 neighbours, 1 process"); **P2 idle sweep** (this plan). `RenderService` keeps request dedupe and becomes the P0 entry; the reveal plan's `BackgroundRenders` is the P1 producer. All three call `store.ensure(unit)`: look up -> valid? done : render -> store. When this plan has been working, the P1 producer finds almost everything already ready and does nothing; when it hasn't, P1 behaves exactly as the reveal plan describes. **Precedence between the reveal-slider's renders and background renders (owner decision).**
+
+1. *Scheduling:* the reveal-slider's renders (P1) always run before background renders (P2) and are **never blocked by one**: when a P1 job arrives while a P2 job runs, the P2 job is cancelled and re-queued (not a failure), unless that P2 job has the **same key**, in which case the P1 request attaches to it and waits for its result (it would produce the identical render; cancelling would waste it). P1 may also use a second process slot when the profile allows it.
+2. *Which result stays:* the store holds one object per `render_key`; insert is "first writer wins, background wins ties". If the key is already valid in the store, the reveal producer does not render at all. If a reveal render and a background render of the same slide, version and edit state (= same key) finish around the same time, the background object is kept and the reveal one is used only for display, then dropped. A reveal-made object already stored gets its `origin` upgraded to background (adopted) instead of being re-rendered when the sweep reaches that unit. Where the two differ in something that is in the key (for example the background render has deck context, `context_sha`, and the reveal one is standalone), they are different keys and lookup prefers the richer one; the slider then shows the background render once it exists, and a poorer entry never replaces a richer one.
+3. *What the reveal producer must do (the "feeding" interface):* call `scheduler.submit(unit, class=P1, rank, cancel_group='reveal')`; obtain results through the store (`ensure(unit)`); build units with `render_key.unit_for(target, view, language)` using the unrestricted/steps-free definition; write nothing of its own (no private dict, no snapshots). Its 4-neighbour/1-process limits become producer-side policy, not a separate worker.
+
+**Coordination ask for the reveal session:** build `BackgroundRenders` as "a producer into the scheduler with priority class P1", as above.
 
 ### 5.2 Work unit and what a render produces
 
@@ -244,7 +253,7 @@ For a unit the worker: builds the target (`preview_target.for_call` with the dec
 
 Candidate generation (the producer, cheap, runs only when idle):
 
-1. Decks: from `deck_usage`, ordered by `last_opened` desc, then (tie-breaker/secondary signal for decks never opened on this machine) newest `decks/<deck>.tex` mtime; **all non-archived decks, in order of recency** (no cap; the cost is bounded because a deck whose manifests all still validate is never touched again, and by the disk budget). A setting "Recent decks to prepare" can limit it (default: all). Optional boost (open question below): decks whose course sessions (`course_schedule`) fall in the next 7 days. Archived decks excluded. The open deck is always rank 0, even if only just opened.
+1. Decks: from `deck_usage`, ordered by `last_opened` desc, then (tie-breaker/secondary signal for decks never opened on this machine) newest `decks/<deck>.tex` mtime; **all non-archived decks, in order of recency** (no cap; the cost is bounded because a deck whose manifests all still validate is never touched again, and by the disk budget). A setting "Recent decks to prepare" can limit it (default: all). Recency signals, in order: (a) `last_opened` on this machine; (b) **upcoming course sessions** from a **cached** course schedule only (never a network call from the scheduler; the course UI that already fetches it, `course_schedule.fetch_schedule`, keeps the copy it got with its fetch time; no cache = no boost): a deck whose next session is within 7 days ranks as if opened today; (c) decks changed through the synced folder (another machine) are noticed by the newest mtime of the deck file and its slides, ranking after (a)/(b) for decks never opened here. Archived decks excluded. The open deck is always rank 0, even if only just opened.
 2. Per deck, version-major: **instructor** for the whole deck, then **during-course**, then **after-course** (the owner's order). A version is skipped for a call whose conditions exclude it (recorded as "absent", counted done). Unflagged slides (no version logic anywhere in the slide or its recorded dependency files) are rendered once and **aliased** to the other two views through the dedup in 4.1 (saves two thirds of the compiles for most slides); a slide's first full set of three renders validates the alias heuristic once, and a mismatch (different PDFs for unflagged slides) switches that slide to per-view renders and logs a warning.
 3. Within a version: slides in deck order **starting at the last-viewed slide of that deck** (`deck_usage.last_slide_id`), wrapping around; for the open deck, outward from the current selection (distance order) so the next slides the user is likely to visit come first, and the currently selected view/language first.
 4. Language: the deck's own language, plus the UI's last-used language for that deck; the other language of a multilingual deck only after everything else (low priority, optional setting).
@@ -252,6 +261,8 @@ Candidate generation (the producer, cheap, runs only when idle):
 6. Units whose deck recently went stale en masse (preamble layer change) are processed in the same order; the count in the indicator jumps accordingly, which is honest.
 
 Ties across decks resolve by deck rank; there is no round-robin between decks (finish deck 1's instructor set before deck 2's). Exception: the open deck's instructor version is finished before anything else, and a deck that has ≤ 5 outstanding units is finished before moving on.
+
+**Per-deck override and archiving (owner decision).** Each deck has a setting "Background previews: automatic / off" (stored with the project's per-deck settings, `deck_settings`/`app_settings`, in the deck's settings dialog; default automatic). Off means the producer never submits units for that deck (its already stored objects stay until evicted). **Archiving a deck** removes the objects that only that deck uses (an object also used by a non-archived deck's unit stays; tracked by `deck_path_hint` references in the index) and exempts the deck from background rendering; unarchiving puts it back under "automatic" and it re-enters the recency order. Rendering a slide for an archived deck by hand still works (foreground path, not stored by the background rules).
 
 ### 5.4 All reveal steps
 
@@ -291,7 +302,7 @@ Options: (A) one run per unit (isolated); (B) one wrapper with many `\slide{}` c
 
 ### 5.7 Raster in the background
 
-The rasteriser child is a shared single process (`preview_raster_client._ask` under a global lock). Background rasterisation sends ≤ 4 pages per request so a foreground raster waits at most one small request (target ≤ 200 ms). Alternatively start a second raster child for background use (cheap, one more process) - decide at implementation (open question below). All pages are rasterised at `STORE_WIDTH` 1280 (matching the 1280 display width already requested in `RenderService.work`); the 304x171 thumb is derived for the last page only when the snapshot-adoption path is on.
+The rasteriser child is a shared single process (`preview_raster_client._ask` under a global lock). Background rasterisation sends ≤ 4 pages per request so a foreground raster waits at most one small request (target ≤ 200 ms). Decided: background work uses its **own second raster child**, so the 4-page chunking is only a courtesy. All pages are rasterised at `STORE_WIDTH` 1280 (matching the 1280 display width already requested in `RenderService.work`); the 304x171 thumb is derived for the last page only when the snapshot-adoption path is on.
 
 ### 5.8 UI: "work remaining" and states
 
@@ -325,7 +336,7 @@ The SQLite index and files on disk are the state; startup does: open index, drop
 
 ### 6.5 Sync folders and two machines
 
-Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with racy-file deferral; no writes to shared locations except `decks/_slidemage_preview-*.tex` wrappers (owner approved) and, in phase 3, snapshots. If two machines use the same project simultaneously there is no shared mutable state in the new design. Conflicted copies (`file (1).tex`, `.conflict` files) are not slides/decks and are ignored by the scanners already; they are not manifest members unless TeX read them.
+Covered in 1.4/3.3: shared immutable objects in the project plus a per-machine index (4.1); hash shortcut with racy-file deferral; no writes to shared locations except `decks/_slidemage_preview-*.tex` wrappers (owner approved) and, in phase 3, snapshots. If two machines use the same project simultaneously there is no shared mutable state: objects are write-once and the index is local. Conflicted copies (`file (1).tex`, `.conflict` files) are not slides/decks and are ignored by the scanners already; they are not manifest members unless TeX read them.
 
 ---
 
@@ -360,7 +371,7 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 - `slide_snapshot.py` - key sidecar, `is_fresh` fallback (phase 3).
 - `housekeeping.py`, `ui/dialogs/housekeeping.py`, `ui/dialogs/settings.py`, `app_settings` keys.
 - `ui/workspace/preview_view.py` - states; `slide_list.py` - row dots; `window.py` - install the monitor, record deck opens/last slide; `maintenance.py` - start-up sweep after the delay.
-- `project.py` - `cache_dir()`.
+- `project.py` - `cache_dir()` (local index) and `ctx.render_store_dir = .previews/render-store`; `.gitignore`.
 - `CHANGELOG.md`, `README.md` (Settings text, privacy: nothing leaves the machine).
 
 ### Tests (pytest, `QT_QPA_PLATFORM=offscreen`, a fake render function; no real LaTeX unless marked)
@@ -406,9 +417,9 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 
 **Decided:** background work gets its own second rasteriser child (no lock contention with the foreground one). Defaults 2 GB / 30 days are kept, and the disk limit is a user setting (Settings -> General, "Disk limit for background previews"); "Remove temp files" does not touch the store, Housekeeping has its own "Clear background previews".
 
+**Decided (round 3):** raw bytes are hashed (a line-ending flip by sync re-renders once). Store lives in the project, with a per-machine index (4.1). Course schedule: cached copy only. Reveal-slider renders take scheduling precedence and the background render is the one that stays on a same-key conflict (5.1). Per-deck override and archive rule (5.3).
+
 ### Still open
 
-- **Hash of the slide source:** raw bytes (a line-ending flip by sync re-renders once, recommended) or normalised text?
-- **Recency:** only decks opened on this machine, or also decks with recent file changes / upcoming course sessions?
-- **Reveal-slider coordination:** OK to ask that session to build its neighbour queue as a producer into this shared scheduler and store renders through `render_store`?
-
+- **Sync quota:** the shared store can reach the disk limit (default 2 GB) in your cloud quota and on every machine; is that acceptable, or should the default be lower for the shared part?
+- **Renders from another machine:** accepted as fresh when engine version and OS family match (4.1). Do you want a stricter default (re-render locally once per machine), accepting the extra CPU?
