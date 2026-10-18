@@ -154,7 +154,8 @@ def test_small_thumbnail_keeps_final_page_identity_and_reads_only_its_blob(tmp_p
 def test_changed_input_during_compile_is_not_stored(tmp_path):
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     before = cache.begin(env)
-    package.write_text('THEME TWO')
+    # A different length: an edit of the same size in the same instant can keep Windows' file time unchanged.
+    package.write_text('THEME TWO, edited')
     assert cache.store(identity, env, pdf=pdf, dependencies=(str(package),), before=before) is None
 
 

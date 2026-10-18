@@ -248,7 +248,7 @@ def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None
         ctx.workspace.show_slide(path)
     try:
         png = ctx.workspace.render_preview(target, text, context.view, language,
-                                           context.footer_timestamp, ctx.cancel)
+                                           ctx.cancel)
     except RuntimeError as exc:
         raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
     timing.event(ctx.root, "render_done", file=path.name)

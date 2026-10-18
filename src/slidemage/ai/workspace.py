@@ -36,7 +36,6 @@ class WorkspaceContext:
     path: Path | None = None             # the file the Source view shows (a slide, a deck, the .bib ...)
     view: str = "instructor"             # "View as": instructor / during-course / after-course
     language: str = "EN"                 # the language being edited
-    footer_timestamp: bool = True        # previews show the compile time in the footer
     occurrence_key: tuple | None = None  # focused logical deck occurrence
 
 
@@ -111,10 +110,9 @@ class Workspace:
         """Bring the slide file `path` into focus for the user: its preview and its source. Headless
         there is nobody to show it to."""
 
-    def render_preview(self, target, text, view, language, footer_timestamp, cancel) -> bytes:
+    def render_preview(self, target, text, view, language, cancel) -> bytes:
         """Headless render; GUI workspaces share the pane's build and publication path."""
-        request = self.preview_service().request(target, text, view, language, footer_timestamp,
-                                                  self.preview_log)
+        request = self.preview_service().request(target, text, view, language, self.preview_log)
         artifact = request.wait(cancel)
         image = artifact[3] or artifact[1]
         if image is None:
@@ -155,7 +153,7 @@ class Workspace:
         path = Path(path)
         occurrence = (context.occurrence_key if context.slide_id ==
                       preview_target.slide_language.bare_id(path.name) else None)
-        options = RenderOptions(footer_timestamp=context.footer_timestamp, saved=saved, force=force)
+        options = RenderOptions(saved=saved, force=force)
 
         def read_source(source):
             if not saved and self.is_open(source):
@@ -181,7 +179,7 @@ class Workspace:
         """Capture publication ordering before a saved-source refresh starts; headless has no pane."""
         return None
 
-    def publish_preview_refresh(self, target, text, revision, view, language, timestamp, artifact, ticket) -> str:
+    def publish_preview_refresh(self, target, text, revision, view, language, artifact, ticket) -> str:
         """Publish only a still-current saved revision. Return cached or superseded headless."""
         try:
             if target.source_path.stat().st_mtime_ns != revision or target.source_path.read_text(encoding='utf-8') != text:
@@ -191,15 +189,15 @@ class Workspace:
         slide_snapshot.publish_preview(self.project, artifact[2], target.bare_id, target.template)
         return 'cached'
 
-    def refresh_preview(self, target, view, language, timestamp, cancel) -> str:
+    def refresh_preview(self, target, view, language, cancel) -> str:
         """Render saved source, then hand the revision and artifact to the publication owner."""
         ticket = self.begin_preview_refresh()
         revision = target.source_path.stat().st_mtime_ns
         text = target.source_path.read_text(encoding='utf-8')
-        request = RenderService().request(target, text, view, language, timestamp, lambda _: None, saved=True)
+        request = RenderService().request(target, text, view, language, lambda _: None, saved=True)
         artifact = request.wait(cancel)
         try:
-            return self.publish_preview_refresh(target, text, revision, view, language, timestamp, artifact, ticket)
+            return self.publish_preview_refresh(target, text, revision, view, language, artifact, ticket)
         finally:
             if ticket is None and artifact[0] is not None and artifact[0].parent.name.startswith('slidemage_preview_'):
                 shutil.rmtree(artifact[0].parent, ignore_errors=True)
@@ -231,5 +229,4 @@ class Workspace:
         return update_all_previews.rerender_deck(
             self.project, deck, self.preview_log, cancel, service=self.preview_service(),
             scope=scope, selected_view=context.view, language=context.language,
-            footer_timestamp=context.footer_timestamp,
             publish=lambda result: self.publish_preview_result(result, None))

@@ -46,7 +46,7 @@ class DeckRefreshResult:
 
 
 def plan(ctx, deck, *, scope='all', selected_view='instructor', language='EN',
-         footer_timestamp=True, force=False) -> tuple[PreviewRequest, ...]:
+         force=False) -> tuple[PreviewRequest, ...]:
     """Capture saved sources for every occurrence, including hidden and pinned calls."""
     if scope not in ('selected', 'all'):
         raise ValueError("scope must be 'selected' or 'all'")
@@ -78,7 +78,7 @@ def plan(ctx, deck, *, scope='all', selected_view='instructor', language='EN',
                     revisions[source] = SourceRevision.capture(source, '')
                     errors[source] = str(exc)
             requests.append(PreviewRequest(target, revisions[source], view, language,
-                                           RenderOptions(footer_timestamp, saved=True, force=force),
+                                           RenderOptions(saved=True, force=force),
                                            errors.get(source)))
     return tuple(requests)
 

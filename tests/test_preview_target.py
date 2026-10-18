@@ -39,20 +39,20 @@ def target_of(body, index=0):
 def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(renders):
     _, target = target_of("\\slide{aaa-EN-One}\n\\slidestep{bbb-EN-Two}{1,2}\n", 1)
     assert target.macro == "slidestep" and target.frame_number == 2 and target.template == "uni-ibk"
-    assert preview_target.render(target, "during-course", "DE", footer_timestamp=True, log=print) == "a.pdf"
+    assert preview_target.render(target, "during-course", "DE", log=print) == "a.pdf"
     kind, args, kwargs = renders[0]
     assert args[1:3] == ("slidestep", "bbb-EN-Two")
     assert kwargs["deck_version"] == "during-course" and kwargs["deck_language"] == "de"
-    assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2" and kwargs["footer_timestamp"]
+    assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2"
     assert kwargs["capture_snapshot"]
     assert kwargs["preamble_text"].startswith("\\documentclass{beamer}")
 
 
 def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instructor(renders):
     _, target = target_of("\\slide{aaa-EN-One}\n")
-    preview_target.render_text(target, "BODY", "after-course", "EN", footer_timestamp=False, log=print,
+    preview_target.render_text(target, "BODY", "after-course", "EN", log=print,
                                mode="region", overlay=2)
-    preview_target.render_text(target, "BODY", "after-course", "EN", footer_timestamp=False, log=print,
+    preview_target.render_text(target, "BODY", "after-course", "EN", log=print,
                                presenter=True)
     (_, args, kwargs), (_, _, presenter) = renders
     assert args[1:] == ("aaa-EN-One", "BODY")
@@ -78,7 +78,7 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     assert frozen.is_frozen_alone
     slide_snapshot.snapshot_path(ctx, "abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
     assert preview_target.cached_image(frozen) is None
-    preview_target.render(frozen, "instructor", "EN", footer_timestamp=False, log=print)
+    preview_target.render(frozen, "instructor", "EN", log=print)
     assert renders[0][2]["capture_snapshot"] is False
     # a deck that pins the version does show it, so the snapshot is its to refresh
     _, pinned = target_of("\\slideversion{abc-EN-Demo}{1-0-0}\n")
@@ -131,7 +131,7 @@ def test_view_resolution_preserves_hidden_counters_but_skips_absent_steps(tmp_pa
     hidden = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'all', 'EN')
     assert [t.hidden for _, t in hidden] == [False, True, True]
     with pytest.raises(ValueError, match='hidden'):
-        preview_target.render(hidden[1][1], 'during-course', 'EN', footer_timestamp=False, log=print)
+        preview_target.render(hidden[1][1], 'during-course', 'EN', log=print)
 
 
 def test_duplicate_resolution_uses_occurrence_key_otherwise_first(tmp_path):
@@ -206,10 +206,10 @@ def test_buffer_full_slide_preserves_call_steps_and_pinned_omit_state(monkeypatc
     wrappers = []
     monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
     _, target = target_of('\\slidestep{aaa-EN-One}[instructor]{2,4}\n')
-    preview_target.render_text(target, 'BODY', 'instructor', 'EN', footer_timestamp=False, log=print)
+    preview_target.render_text(target, 'BODY', 'instructor', 'EN', log=print)
     assert r'\gdef\SMSlideSteps{2,4}' in wrappers[-1]
     _, pinned = target_of('\\omitslideversion{aaa-EN-One}{1-0-0}\n')
-    preview_target.render_text(pinned, 'PINNED BODY', 'instructor', 'EN', footer_timestamp=False, log=print)
+    preview_target.render_text(pinned, 'PINNED BODY', 'instructor', 'EN', log=print)
     assert r'\setSlideVersion{1-0-0}' in wrappers[-1]
     assert r'\global\SMOmittedSlidetrue' in wrappers[-1]
 
@@ -222,7 +222,7 @@ def test_presenter_of_hidden_student_target_uses_instructor_frame_number(monkeyp
     assert target.hidden and target.frame_number == 1
     wrappers = []
     monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
-    preview_target.render_text(target, 'BODY', 'after-course', 'EN', presenter=True, footer_timestamp=False, log=print)
+    preview_target.render_text(target, 'BODY', 'after-course', 'EN', presenter=True, log=print)
     assert r'\setcounter{framenumber}{1}' in wrappers[0]  # beamer increments before printing frame 2
 
 
@@ -237,7 +237,7 @@ def test_slidefinal_buffer_disables_conditional_pauses(monkeypatch):
     wrappers = []
     monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
     _, target = target_of('\\slidefinal{aaa-EN-One}\n')
-    preview_target.render_text(target, 'BODY', 'instructor', 'EN', footer_timestamp=False, log=print)
+    preview_target.render_text(target, 'BODY', 'instructor', 'EN', log=print)
     assert r'\renewcommand{\conditionalpause}[1][instructor]{}' in wrappers[0]
 
 

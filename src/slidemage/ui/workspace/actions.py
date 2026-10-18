@@ -141,9 +141,6 @@ def build_registry() -> CommandRegistry:
     def add(*args, **kwargs) -> None:
         registry.add(Command(*args, **kwargs))
 
-    from .wizard_portal import play_wizard
-    add("wizard_preview", "Preview wizard magic", PROJECT, lambda w: play_wizard(w), icon="auto_awesome")
-
     # View & build -----------------------------------------------------------------
     add("preview:all-saved", "Render all preview views · saved file", VIEW_AND_BUILD,
         lambda w: w.centre.preview.render_all_views(saved=True), icon="preview",
@@ -285,6 +282,8 @@ def build_registry() -> CommandRegistry:
     add("palette", "Find anything…", PROJECT, lambda w: w.palette.toggle(), icon="search", shortcut="Ctrl+K")
     add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
+    from .wizard_portal import play_wizard
+    add("wizard_preview", "Preview wizard magic", PROJECT, lambda w: play_wizard(w), icon="auto_awesome")
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
     add("settings", "Settings…", PROJECT, _window("_on_open_settings"))

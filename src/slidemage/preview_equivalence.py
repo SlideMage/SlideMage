@@ -19,22 +19,22 @@ from . import compiler, slide_preview
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "8ba8bfb858ab149ed9d40ba4b04ba659154d8cfea514d6ca4f16af76e2a479d3"
 AUDITED_FRAMEWORK = {
-    "Slidemaster_preamble_base.tex": "6c5eae1bb83825875b2307663379f2241a1abfb974ec3ddd160f8d33e935c381",
-    "Slidemaster_preamble_slidemage.tex": "8eee5a8bad196bac2ed4c423bae1042865d43146b049d2a4500e6623c840fd51",
-    "beamerthemegotham.sty": "7f0fb3fb09c9e0279fa41baba4660b247bc3cfd1cf9ba9fc7dab10ed1426b230",
-    "beamerouterthemegotham.sty": "a80d1db0bd836b16b598631094ce58a3102ef81c1b3a216cf6176a55e7301ac0",
-    "beamerinnerthemegotham.sty": "8d8e222da0a03c3515a6e61c0f03784c91e232c73675eacd3327dc3b09aaa8a1",
-    "beamercolorthemegotham.sty": "8ee739f7b46eaf04e03223c188ea49d287db9a891ab1da3b3f57f8d7e0fee573",
-    "beamerfontthemegotham.sty": "3a6cc4900c36f0cc783e02d23244a1ac24d78ca8af5ae8e6d650eea5ec423952",
-    "Slidemaster_alt.lua": "d623ebee0117d3e47ae885d7176dfafd9015bb32f9b3814b7d5f3d173f976ece",
-    "Slidemaster_layout.lua": "59b553f969a7acd937295554c988af5f691837831911bfaa1d43f5e3b009a04b",
+    "Slidemaster_preamble_base.tex": "e526bb903d4b085a84cbb2060a1ef6511d7cc1af9934f2d40cb758f344d79b8a",
+    "Slidemaster_preamble_slidemage.tex": "50b4e3ce0e9a120251cded5e4c46ee6d00a218bc5326f703f60df30701ae45ba",
+    "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
+    "beamerouterthemegotham.sty": "e864c6968fd744051c28f33373c122126081bc4564c6c740c8f305d397a13126",
+    "beamerinnerthemegotham.sty": "9a2c86be77ba4e322a6c868f7d23d0136870a9c2fa6734ca7df4738d962ab8fc",
+    "beamercolorthemegotham.sty": "2479108c0ff99173a036d326cab8338fd33f44a94fc8000885a64b8bc36446a5",
+    "beamerfontthemegotham.sty": "08065ad8fd5767ac036e5c53cc1e0c428962c9bdad6afa3f9fa9199ef64a6824",
+    "Slidemaster_alt.lua": "5e538da2a2ca5bd05e408a8ce70254696ba7ee21457accf4718adc0409c7c6a3",
+    "Slidemaster_layout.lua": "b04862d938cd06fbcc2957b09ed8b9dbdd9240fb2a0f59162492d63827bcb3fe",
 }
 AUDITED_PROJECT_TEMPLATES = {
-    "Slidemaster_preamble_uni-graz.tex": "b9be6f396344cd3c65c0b3fb7160891b451ebef0e8f0e69cbbaacc7237c4401e",
+    "Slidemaster_preamble_uni-graz.tex": "fb8bcd1fea2a69ec2086dc8df7843ec336e5801f5ccc467e291095643f578338",
 }
 AUDITED_LATEXMKRC = {
-    ".latexmkrc": "9ba59a7e4bf3f71f68bb7e1383177293d6ed26be71272a250c99cde3068f14d5",
-    "decks/.latexmkrc": "cfc5d6cacec9d655398f5f6c441fc626d240851dfa64ae74eb6f8d5cddb1e85f",
+    ".latexmkrc": "b1a1ce4d46229a854d936d870af6e849af21708642c62f7e3c0242fd4625f8e4",
+    "decks/.latexmkrc": "d0588c58f270e748a4eb36576ca122b2801da7da075a3449890b58b92457bd15",
 }
 
 _VIEWS = ("instructor", "during-course", "after-course")
@@ -113,7 +113,9 @@ class Classification:
 
 
 def _digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    # Line endings do not change what TeX reads, and a checkout may give a file either (Git's autocrlf):
+    # the audited files are compared without them, or Windows and macOS would never share a render.
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _without_comments(source: str) -> str:
@@ -471,7 +473,6 @@ def classify_views(requests) -> Classification:
                   spec.target.macro in ("omitslide", "omitslideversion"),
                   spec.target.occurrence_key,
                   preamble, tuple(sorted(local_dependencies.items())),
-                  spec.options.footer_timestamp,
                   spec.options.mode, spec.options.overlay)
         signature = (common, events, None if deck_hidden else spec.view)
         if problem:

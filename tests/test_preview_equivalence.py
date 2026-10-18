@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 import shutil
 
+import pytest
+
 from slidemage.preview_equivalence import classify_views
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from slidemage.preview_target import PreviewTarget
@@ -141,7 +143,10 @@ def test_default_template_and_stock_framework_fallback(tmp_path, monkeypatch):
     root.mkdir()
     shutil.copy2(REPO / "example" / "Slidemaster_preamble_uni-graz.tex",
                  root / "Slidemaster_preamble_uni-graz.tex")
-    (tmp_path / "latex").symlink_to(REPO / "latex", target_is_directory=True)
+    try:
+        (tmp_path / "latex").symlink_to(REPO / "latex", target_is_directory=True)
+    except OSError as exc:      # Windows lets only privileged users (or Developer Mode) create symlinks
+        pytest.skip(f"cannot create a symlink here: {exc}")
     monkeypatch.delenv("SLIDEMASTER_LATEX")
     classified = classify_views(specs(tmp_path, "Plain", preamble=None))
     assert all(d.certain for d in classified.decisions)

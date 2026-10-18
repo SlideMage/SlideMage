@@ -286,7 +286,7 @@ def rerender_deck(ctx: project.ProjectContext, deck: Deck, log: LogCallback, can
                   base_jobnames: Optional[dict[str, str]] = None,
                   needed: Optional[dict[str, set[str]]] = None, *, service=None,
                   scope='all', selected_view='instructor', language=None,
-                  footer_timestamp=False, force=False, progress=None, publish=None) -> DeckResult:
+                  force=False, progress=None, publish=None) -> DeckResult:
     """Refresh exact occurrence/view caches; legacy arguments remain for project callers.
 
     Completed cache hits count as refreshed. No project-wide pruning is performed.
@@ -296,7 +296,7 @@ def rerender_deck(ctx: project.ProjectContext, deck: Deck, log: LogCallback, can
     from .preview_requests import RenderService
     language = language or deck_settings.read_settings(deck.text).language.upper()
     requests = deck_preview_refresh.plan(ctx, deck, scope=scope, selected_view=selected_view,
-                                        language=language, footer_timestamp=footer_timestamp, force=force)
+                                        language=language, force=force)
     owned = service is None
     service = service or RenderService()
 

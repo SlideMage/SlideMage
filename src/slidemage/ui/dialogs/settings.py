@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QMessageBox, QSpinBox
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLineEdit, QMessageBox, QSpinBox
 
 from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater
 from ...ai import credentials, translation_style
@@ -125,6 +125,8 @@ class GeneralTab(Page):
             "Every Render of a single slide leaves a PDF in a folder of its own in the temporary folder. SlideMage "
             "deletes those that are older than this when it starts and after each render; Never keeps them."))
 
+        self._add_background_previews(layout)
+
         self.update_mode = SegmentedControl(UPDATE_MODES, current=updater.get_update_mode())
         self.update_mode.changed.connect(self._on_update_mode)
         self.update_note = caption(UPDATE_NOTES[updater.get_update_mode()])
@@ -150,6 +152,70 @@ class GeneralTab(Page):
         if key:
             slide_snapshot.set_render_template(self.app.project, key)
             self.app.log(f"Default render template set to {slide_snapshot.TEMPLATES[key]}")
+
+    def _add_background_previews(self, layout) -> None:
+        """Prepare previews in the background: on/off, only on mains power, speed, disk limit, clear."""
+        from ... import background_renders as bg
+
+        project = self.app.project
+        self.bg_check = QCheckBox("Prepare previews in the background when SlideMage is idle")
+        self.bg_check.setChecked(bool(app_settings.get(project, bg.ENABLED_KEY, True)))
+        self.bg_mains_check = QCheckBox("Only when plugged in")
+        self.bg_mains_check.setChecked(bool(app_settings.get(project, bg.ONLY_MAINS_KEY, True)))
+        self.bg_profile = QComboBox()
+        for key, label in (("gentle", "Gentle (one process, long rests)"), ("normal", "Normal (one process)"),
+                           ("fast", "Fast (two processes)")):
+            self.bg_profile.addItem(label, key)
+        self.bg_profile.setCurrentIndex(max(self.bg_profile.findData(app_settings.get(project, bg.PROFILE_KEY, bg.DEFAULT_PROFILE)), 0))
+        self.bg_limit = QDoubleSpinBox()
+        self.bg_limit.setRange(0.1, 500.0)
+        self.bg_limit.setDecimals(1)
+        self.bg_limit.setSuffix(" GB")
+        self.bg_limit.setValue(float(app_settings.get(project, bg.LIMIT_GB_KEY, bg.DEFAULT_LIMIT_GB)))
+        self.bg_clear = Button("Clear background previews")
+        for control, apply in ((self.bg_check, lambda on: app_settings.set(project, bg.ENABLED_KEY, bool(on))),
+                               (self.bg_mains_check, lambda on: app_settings.set(project, bg.ONLY_MAINS_KEY, bool(on)))):
+            control.toggled.connect(lambda on, apply=apply: (apply(on), self._background_changed()))
+        self.bg_profile.currentIndexChanged.connect(
+            lambda _i: (app_settings.set(project, bg.PROFILE_KEY, self.bg_profile.currentData()), self._background_changed()))
+        self.bg_limit.editingFinished.connect(
+            lambda: (app_settings.set(project, bg.LIMIT_GB_KEY, float(self.bg_limit.value())), self._background_changed()))
+        self.bg_clear.clicked.connect(self._clear_background)
+        layout.addWidget(Field("Background previews", row(self.bg_check, self.bg_mains_check)))
+        layout.addWidget(columns(Field("Speed", self.bg_profile), Field("Disk limit", self.bg_limit)))
+        layout.addWidget(row(self.bg_clear))
+        self.bg_caption = caption("")
+        layout.addWidget(self.bg_caption)
+        layout.addWidget(caption(
+            "When you have not touched SlideMage for 30 seconds, it renders the slides of your decks, with all their "
+            "reveal steps, most recently used decks first and the instructor version first, so they are ready when you "
+            "open them. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
+            "a deck can be left out in the chip that shows the progress."))
+        self._background_size()
+
+    def _background_controller(self):
+        return getattr(self.app, "background", None)
+
+    def _background_changed(self) -> None:
+        controller = self._background_controller()
+        if controller is not None:
+            controller.settings_changed()
+
+    def _background_size(self) -> None:
+        controller = self._background_controller()
+        store = getattr(controller, "store", None)
+        self.bg_caption.setText("" if store is None else f"{store.count()} renders stored, {store.total_bytes() / 1024 ** 2:.0f} MB.")
+
+    def _clear_background(self) -> None:
+        controller = self._background_controller()
+        if controller is None or controller.store is None:
+            return
+        if QMessageBox.question(self, "Clear background previews", "Delete all prepared previews? They are rendered again "
+                                "when SlideMage is idle.") != QMessageBox.StandardButton.Yes:
+            return
+        controller.store.clear()
+        controller.renderer.replan()
+        self._background_size()
 
     def _on_cleanup(self, index: int) -> None:
         hours = self.cleanup_combo.itemData(index)

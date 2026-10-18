@@ -183,13 +183,6 @@ def main():
     original_compile = slide_preview.compile_and_extract
 
     def frozen_compile(ctx, wrapper, *a, **kw):
-        wrapper = wrapper.replace(
-            r"\begin{document}",
-            r"\begin{document}"
-            + "\n"
-            + slide_preview._preview_timestamp_line(True, "2026-10-11 12:00"),
-            1,
-        )
         if args.no_images:
             kw["snapshot_template"] = None
         return original_compile(ctx, wrapper, *a, **kw)
@@ -247,7 +240,6 @@ def main():
                         common = dict(
                             preamble_text=deck.preamble_text,
                             frame_number=i,
-                            footer_timestamp=False,
                             reuse_build=not args.no_cache,
                             overlay=1 if "overlay" in config else None,
                             log=log_line,

@@ -31,6 +31,9 @@ def run(root, monkeypatch):
     """The tool `name` of a toolbox on the open deck; slides are not rendered."""
     monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: root / "fake.pdf")
     monkeypatch.setattr(slide_snapshot, "page_png", lambda pdf, width: b"\x89PNG")
+    # The render service reads the rendered PDF's images (prepare_preview_images) for saved and draft renders alike.
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda pdf, snapshots, widths: ((b"\x89PNG", b"\x89PNG"), ()))
+    (root / "fake.pdf").write_bytes(b"%PDF-1.4")
 
     def run(name, **arguments):
         deck = next(d for d in scan_decks(ProjectContext.at(root)) if d.name == "test")

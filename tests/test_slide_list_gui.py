@@ -786,12 +786,12 @@ def test_duplicate_occurrence_focus_is_preserved_for_preview_and_tools(make_list
     assert slide_list.tree.data_of(slide_list.tree.currentItem()).key == row.key
 
 
-def test_thumbnail_refresh_keeps_tree_selection_and_updates_view_and_footer(make_list, monkeypatch):
+def test_thumbnail_refresh_keeps_tree_selection_and_updates_view(make_list, monkeypatch):
     calls = []
 
-    def images(ctx, deck, outline, view, language, timestamp, **kwargs):
-        calls.append((view, language, timestamp, kwargs.get('paths')))
-        return [replace(section, rows=[replace(row, thumbnail_note=f'{view}/{timestamp}',
+    def images(ctx, deck, outline, view, language, **kwargs):
+        calls.append((view, language, kwargs.get('paths')))
+        return [replace(section, rows=[replace(row, thumbnail_note=f'{view}',
                                                thumbnail_verified=False) for row in section.rows])
                 for section in outline]
 
@@ -805,14 +805,12 @@ def test_thumbnail_refresh_keeps_tree_selection_and_updates_view_and_footer(make
     listing._refresh_preview_rows()
     assert listing.tree.currentItem() is current
     assert tuple(listing.tree.selectedItems()) == selected
-    assert calls[-1][3] == {window.project.slides_dir / 'abc-EN-One-current.tex'}
+    assert calls[-1][2] == {window.project.slides_dir / 'abc-EN-One-current.tex'}
     listing.preview_source_changed(window.project.slides_dir / 'abc-EN-One-current.tex')
-    window.state.set_footer_timestamp(True)
-    assert calls[-1][2:] == (True, None)  # every row, despite pending source refresh
-    assert not listing._thumbnail_timer.isActive()
     window.state.set_view('during-course')
-    assert calls[-1][:3] == ('during-course', window.state.language, True)
-    assert 'during-course/True' in item_of(listing, 'abc').toolTip(0)
+    assert calls[-1] == ('during-course', window.state.language, None)  # every row, despite pending source refresh
+    assert not listing._thumbnail_timer.isActive()
+    assert 'during-course' in item_of(listing, 'abc').toolTip(0)
 
 
 def test_async_thumbnail_refresh_coalesces_rapid_distinct_source_edits(make_list, monkeypatch, qapp):
@@ -829,7 +827,7 @@ def test_async_thumbnail_refresh_coalesces_rapid_distinct_source_edits(make_list
     started, release = Event(), Event()
     calls = []
 
-    def images(_ctx, _deck, outline, _view, _language, _stamp, **kwargs):
+    def images(_ctx, _deck, outline, _view, _language, **kwargs):
         paths = kwargs['paths']
         calls.append(paths)
         if len(calls) == 1:
@@ -867,7 +865,7 @@ def test_interrupted_full_thumbnail_pass_stays_full_after_rapid_source_events(ma
     started, release = Event(), Event()
     calls = []
 
-    def images(_ctx, _deck, outline, _view, _language, _stamp, **kwargs):
+    def images(_ctx, _deck, outline, _view, _language, **kwargs):
         calls.append(kwargs['paths'])
         if len(calls) == 1:
             started.set()
@@ -900,7 +898,7 @@ def test_large_list_validation_does_not_block_qt_events(make_list, monkeypatch, 
     listing._background_thumbnails = True
     started, release = Event(), Event()
 
-    def images(_ctx, _deck, outline, _view, _language, _stamp, **_kwargs):
+    def images(_ctx, _deck, outline, _view, _language, **_kwargs):
         started.set()
         assert release.wait(3)
         return outline
@@ -929,7 +927,7 @@ def test_async_thumbnail_rejects_same_mtime_external_source_edit(make_list, monk
     started, release = Event(), Event()
     calls = []
 
-    def images(_ctx, _deck, outline, _view, _language, _stamp, **kwargs):
+    def images(_ctx, _deck, outline, _view, _language, **kwargs):
         text = source.read_text()
         kwargs['revision_sink'][source.resolve()] = hashlib.sha256(text.encode()).hexdigest()
         calls.append(text)

@@ -62,6 +62,7 @@ from .chat.view import ChatView
 from . import maintenance
 from .build_options import BuildOptionsDialog
 from .compile_controller import CompileController
+from .background_previews import BackgroundPreviews
 from .compile_display import CompileDisplay
 from .palette import CommandPalette
 from .panels.base import PanelActions
@@ -242,6 +243,7 @@ class WorkspaceWindow(QMainWindow):
         # Ctrl+Shift+F, the old project-wide text search, opens the palette, where that search is now.
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 
+        self.background = BackgroundPreviews(self, central)     # idle-time rendering of every deck's slides
         self.reload_decks()
         self._restore_window_geometry()
 
@@ -495,6 +497,7 @@ class WorkspaceWindow(QMainWindow):
         self.images_page.shutdown()
         self.palette.stop_search(5000)
         self.compile.shutdown()
+        self.background.stop()
         layout_settings.set("window_geometry", self.saveGeometry().toBase64().data().decode("ascii"))
         super().closeEvent(event)
 
@@ -750,7 +753,7 @@ class WorkspaceWindow(QMainWindow):
         """A line above the tabs when the open project is a deck snapshot:
         what it is, and that SlideMage leaves it as it was (no compatibility
         migrations, no framework updates; compiles use the snapshot's own
-        framework, PDF dates and footer timestamps)."""
+        framework, PDF dates)."""
         info = project.snapshot_info(self.project.root)
         if info is None:
             return None

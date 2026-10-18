@@ -556,7 +556,10 @@ class CentreColumn(QFrame):
         picks = []
         for distance in range(1, 4):
             picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
-        return [(for_call(state.project, state.deck, r.call, r.position), r) for r in picks if not r.hidden]
+        # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
+        # under the same key once that slide is focused.
+        return [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
+                          occurrence_key=r.key, hidden=r.hidden), r) for r in picks if not r.hidden]
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

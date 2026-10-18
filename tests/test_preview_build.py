@@ -98,8 +98,6 @@ def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
     slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
     slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
     assert all(kwargs['snapshot_template'] is None for _, kwargs in calls)
-    assert r'\SMCompileTimestampValue' in calls[0][0][1]
-    assert slide_preview._preview_timestamp_line(False) == ''
 
 
 def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):

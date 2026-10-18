@@ -33,6 +33,9 @@ def env(root, monkeypatch):
     monkeypatch.setattr(ws, "show_slide", shown.append)
     monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: renders.append(a) or root / "fake.pdf")
     monkeypatch.setattr(slide_snapshot, "page_png", lambda *a: PNG)
+    # The render service reads the rendered PDF's images (prepare_preview_images) for saved and draft renders alike.
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda pdf, snapshots, widths: ((PNG, PNG), ()))
+    (root / "fake.pdf").write_bytes(b"%PDF-1.4")
     box = build_toolbox(ws, events.append, compiler.CancelToken(), EDIT_AUTO)
     return SimpleNamespace(root=root, project=project, ws=ws, box=box, path=root / SLIDE,
                            shown=shown, renders=renders, events=events)

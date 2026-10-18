@@ -576,7 +576,8 @@ class PreviewCache:
             evidence = self._evidence(env)
             with build_lock(self.root / 'maintenance.lock', shared=True):
                 parent = self.root / digest(identity)
-                directory = parent / uuid.uuid4().hex
+                # Short names: the cache sits several folders deep in a project, and Windows paths stop at 260.
+                directory = parent / uuid.uuid4().hex[:16]
                 directory.mkdir(parents=True)
                 shutil.copy2(pdf, directory / 'preview.pdf')
                 blobs = {'display.png': display_png, 'secondary.png': secondary_png,
@@ -660,7 +661,7 @@ class PreviewCache:
     def lease(self, entry: CachedPreview, *, blocking=True):
         """Keep this generation alive until the consumer releases its PDF."""
         lease = None
-        path = entry.directory / ('.lease-' + uuid.uuid4().hex + '.lock')
+        path = entry.directory / ('.lease-' + uuid.uuid4().hex[:12] + '.lock')
         try:
             with build_lock(self.root / 'maintenance.lock', shared=True, blocking=blocking) as acquired:
                 if not acquired:

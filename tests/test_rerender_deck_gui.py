@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from conftest import command_context, qapp as qapp, wait_until  # noqa: F401 -- fixture
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from slidemage import update_all_previews
 from slidemage.ui.workspace import compile_actions
@@ -31,8 +31,8 @@ def run(window, monkeypatch):
         r.needed_for.append(deck)
         return NEEDED
 
-    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None):
-        r.calls.append((ctx, deck, base_jobnames, needed))
+    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None, **options):
+        r.calls.append((ctx, deck, needed, options))
         log("==== Rerender previews of course: 2 slide(s) ====")
         return r.result
 
@@ -43,6 +43,8 @@ def run(window, monkeypatch):
     monkeypatch.setattr(update_all_previews, "needed_slides_by_template", needed)
     monkeypatch.setattr(update_all_previews, "rerender_deck", rerender)
     monkeypatch.setattr(QMessageBox, "question", question)
+    r.scope = ("All course views", True)        # the "Views to refresh" choice (QInputDialog.getItem)
+    monkeypatch.setattr(QInputDialog, "getItem", lambda *a: r.scope)
     monkeypatch.setattr(compile_actions, "_confirm_previews_lint", lambda _window, _needed: r.lint_ok)
     monkeypatch.setattr(QMessageBox, "information", lambda *a: r.asked.append(a[1:3]))
     r.finished = lambda: wait_until(lambda: not window.compile.running)
@@ -72,17 +74,19 @@ def test_the_menu_item_follows_create_deck_snapshot_and_is_enabled_with_a_deck(q
 
 # -- the action ----------------------------------------------------------------------
 
-def test_the_action_runs_the_shared_function_on_the_current_deck_through_the_compile_flow(window, run):
+@pytest.mark.parametrize("choice, scope", [("All course views", "all"), ("Selected course view", "selected")])
+def test_the_action_runs_the_shared_function_on_the_current_deck_through_the_compile_flow(window, run, choice, scope):
     window.state.set_deck(COURSE)
+    run.scope = (choice, True)
     assert window.commands.run("rerender_deck_previews", window)
     assert window.compile.running
     run.finished()
-    (ctx, deck, base_jobnames, needed), = run.calls
-    assert ctx is window.project and deck is COURSE and needed == NEEDED and list(base_jobnames) == ["uni-graz"]
+    (ctx, deck, needed, options), = run.calls
+    assert ctx is window.project and deck is COURSE and needed == NEEDED
+    assert options["scope"] == scope and options["selected_view"] == window.state.view
     assert run.needed_for == [COURSE]                                        # only this deck was looked at
-    assert "course" in run.asked[0][1] and "2 slide(s)" in run.asked[0][1] and "other decks" in run.asked[0][1]
     row, = window.compile.run.rows.values()
-    assert row.label == "Rerender previews of course (UniGraz)" and row.jobname.startswith(update_all_previews.JOBNAME_PREFIX)
+    assert row.label == "Rerender previews of course"
     assert not window.compile._opens_pdfs                                    # a throw-away deck never pops open
 
 
@@ -92,7 +96,7 @@ def test_declining_the_question_or_the_syntax_check_starts_nothing(window, run, 
     compile_actions.rerender_deck_previews(window)
     assert not window.compile.running and run.calls == []
     run.lint_ok = True
-    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.No)
+    run.scope = ("All course views", False)                                  # the view choice cancelled
     compile_actions.rerender_deck_previews(window)
     assert not window.compile.running and run.calls == []
 

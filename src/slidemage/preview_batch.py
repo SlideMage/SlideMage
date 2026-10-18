@@ -61,7 +61,7 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
                         remember(spec, observed_at=batch_observed_at)
                 else:
                     request = service.request(spec.target, spec.revision.text, spec.view, spec.language,
-                                              options.footer_timestamp, log or (lambda _: None),
+                                              log or (lambda _: None),
                                               saved=options.saved, presenter=options.presenter,
                                               mode=options.mode, overlay=options.overlay, spec=spec)
                     artifact = request.wait(cancel)

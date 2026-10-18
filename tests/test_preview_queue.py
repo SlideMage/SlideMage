@@ -98,7 +98,7 @@ def test_three_requests_compile_only_first_and_latest_and_publish_latest(
 
 
 @pytest.mark.parametrize(
-    "change", ["slide", "view", "language", "timestamp", "preamble", "disk", "buffer"]
+    "change", ["slide", "view", "language", "preamble", "disk", "buffer"]
 )
 def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
     pane, tmp_path, monkeypatch, change
@@ -129,8 +129,6 @@ def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
         view.state.set_view("after-course")
     elif change == "language":
         view.state.set_language("DE")
-    elif change == "timestamp":
-        view.state.set_footer_timestamp(True)
     elif change == "preamble":
         from dataclasses import replace
 
@@ -199,7 +197,7 @@ def test_open_pdf_for_shared_buffer_image_requests_exact_buffer_view(pane, monke
 
     view, target, path = pane
     view.buffer[0] = 'UNSAVED DRAFT'
-    key = (target.key, view.state.view, view.language, view._footer_timestamp())
+    key = (target.key, view.state.view, view.language)
     view._adhoc = (key, QPixmap(2, 2), 'Rendered from the editor buffer')
     view._adhoc_text = view.buffer[0]
     view._adhoc_spec = None
@@ -313,7 +311,7 @@ def test_open_pdf_ignores_older_whole_slide_adhoc_after_shared_selection(pane, t
     old = preview_requests.PreviewRequest(
         target, preview_requests.SourceRevision.capture(path, 'OLDER BUFFER'), 'instructor', 'EN',
         preview_requests.RenderOptions(saved=False))
-    key = (target.key, 'instructor', 'EN', False)
+    key = (target.key, 'instructor', 'EN')
     view._adhoc = (key, preview_view.QPixmap(), 'older whole slide')
     view._adhoc_spec = old
     view._adhoc_text = 'OLDER BUFFER'
@@ -398,11 +396,11 @@ def test_selection_keeps_pixels_when_prune_holds_cache_lock(pane, tmp_path, qapp
     entry = CachedPreview(generation, pdf, png, None, (), (), None)
     revision = SourceRevision.capture(path, 'BODY')
     spec = PreviewRequest(target, revision, view.state.view, view.language,
-                          RenderOptions(view._footer_timestamp(), True))
+                          RenderOptions(saved=True))
     selected = SelectedImage('verified', png, spec, 'locked-image', spec.view, pdf, '',
                              cache_entry=entry, artifact_revision_hash=revision.content_hash)
     key = (view._generation, target.key, spec.view, spec.language,
-           spec.options.footer_timestamp, hashlib.sha256(b'BODY').hexdigest(), 'slide', None)
+           hashlib.sha256(b'BODY').hexdigest(), 'slide', None)
     view._selection_ticket += 1
     view._selection_pending_key = key
     view._background_validation = True
@@ -554,7 +552,7 @@ def test_scoped_background_validation_runs_off_gui_thread(pane, tmp_path, monkey
     spec = preview_requests.PreviewRequest(
         target, preview_requests.SourceRevision.capture(path, 'BODY'), 'instructor', 'EN',
         preview_requests.RenderOptions(saved=False, mode='region', overlay=2))
-    view._adhoc = ((target.key, 'instructor', 'EN', False), pixmap, 'Scoped')
+    view._adhoc = ((target.key, 'instructor', 'EN'), pixmap, 'Scoped')
     view._adhoc_spec = spec
     view._adhoc_text = 'BODY'
     started, release = Event(), Event()
@@ -613,8 +611,8 @@ def test_previous_whole_slide_selection_outranks_older_ad_hoc_draft(pane, tmp_pa
                                              'instructor', 'EN', preview_requests.RenderOptions(saved=True))
     assert cache.store(preview_requests.cache_identity(saved), env, pdf=saved_pdf,
                        display_png=saved_png, dependencies=(path,), before=cache.begin(env))
-    assert view._renders.selected_preview(target, 'BODY', 'instructor', 'EN', False).fresh
-    key = (target.key, 'instructor', 'EN', False)
+    assert view._renders.selected_preview(target, 'BODY', 'instructor', 'EN').fresh
+    key = (target.key, 'instructor', 'EN')
     view._adhoc = (key, old_pixmap, 'Older draft')
     view._adhoc_text = 'OLD DRAFT'
     view._adhoc_spec = preview_requests.PreviewRequest(
@@ -706,32 +704,13 @@ def test_session_pixmaps_are_bounded_and_keep_the_most_recent(pane, tmp_path):
     view, target, _ = pane
     pixmap = QPixmap(1, 1)
     for i in range(13):
-        view._pixmaps[(("old", i), "instructor", "EN", False)] = (pixmap, 0)
+        view._pixmaps[(("old", i), "instructor", "EN")] = (pixmap, 0)
     pdf = pdf_at(tmp_path / "recent.pdf")
     view._start(lambda: pdf, view._job(target))
     view._run(*view.launched[0])
     assert len(view._pixmaps) == 12
-    assert (target.key, "instructor", "EN", False) in view._pixmaps
-    assert (("old", 0), "instructor", "EN", False) not in view._pixmaps
-
-
-@pytest.mark.parametrize("buffer_render", [False, True])
-def test_timestamp_changes_preserve_unverified_images_and_switching_back_restores_them(
-    pane, tmp_path, buffer_render,
-):
-    view, target, _ = pane
-    pdf = pdf_at(tmp_path / "accepted.pdf")
-    fields = dict(note="Buffer", buffer_text="BODY") if buffer_render else {}
-    view._start(lambda: pdf, view._job(target, **fields))
-    view._run(*view.launched[0])
-    previous = view._image(target)[0]
-    assert not view._image(target)[1]
-    view.state.set_footer_timestamp(True)
-    assert view._image(target) is None  # timestamp is part of the render context
-    assert view._pending is None
-    view.state.set_footer_timestamp(False)
-    restored = view._image(target)
-    assert restored is not None and restored[0].toImage() == previous.toImage() and not restored[1]
+    assert (target.key, "instructor", "EN") in view._pixmaps
+    assert (("old", 0), "instructor", "EN") not in view._pixmaps
 
 
 def test_disk_snapshot_is_best_effort_not_verified_context(pane, tmp_path, monkeypatch):
@@ -865,21 +844,21 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     workspace.show_slide(path)
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: tmp_path / 'composite.pdf')
-    assert workspace.render_preview(target, "BODY", state.view, language, state.footer_timestamp,
+    assert workspace.render_preview(target, "BODY", state.view, language,
                                     preview_view.slide_preview.compiler.CancelToken()) == png
     assert state.focused_slide == "bbb" and state.mode == "split" and state.language == language
     assert view._page.message == "" and not view._page.pixmap.isNull()
     assert not view.launched
 
 
-@pytest.mark.parametrize("change", ["slide", "view", "language", "timestamp", "buffer", "disk", "deleted"])
+@pytest.mark.parametrize("change", ["slide", "view", "language", "buffer", "disk", "deleted"])
 def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, monkeypatch, change):
     view, target, path = pane
     png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     publications = []
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: tmp_path / 'composite.pdf')
     monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
-    request = view.request_render(target, 'BODY', 'instructor', 'EN', False)
+    request = view.request_render(target, 'BODY', 'instructor', 'EN')
     assert request.wait()[3] == png
     if change == "slide":
         view.show_slide(None, None, "", "No slide")
@@ -887,8 +866,6 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, mo
         view.state.set_view("after-course")
     elif change == "language":
         view.state.set_language("DE")
-    elif change == "timestamp":
-        view.state.set_footer_timestamp(True)
     elif change == "buffer":
         view.buffer[0] = "NEW"
     else:
@@ -924,14 +901,14 @@ def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, de
     monkeypatch.setattr(preview_target, 'render_text', builder)
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: rasters.append(a) or ((png, png), ()))
     job = view._job(target, buffer_text='BODY', revision_text='BODY')
-    job.request = view._renders.request(target, 'BODY', 'instructor', 'EN', False, view.app.log)
+    job.request = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
     view._start(lambda: None, job, debounce=debounce)
     job = view._pending[1] if debounce else view._active
     if not debounce:
         worker = WorkerThread(target=view._run, args=view.launched[0])
         worker.start()
         assert started.wait(2)
-    ws = FakeWorkspace(tmp_path, WorkspaceContext(path=path, footer_timestamp=False))
+    ws = FakeWorkspace(tmp_path, WorkspaceContext(path=path))
 
     def service():
         release.set()
@@ -968,7 +945,7 @@ def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkey
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pdf)
     monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
     workspace = GuiWorkspace(SimpleNamespace(project=view.state.project, centre=SimpleNamespace(preview=view)))
-    png = workspace.render_preview(target, 'OTHER', 'instructor', 'EN', False, compiler.CancelToken())
+    png = workspace.render_preview(target, 'OTHER', 'instructor', 'EN', compiler.CancelToken())
     assert png.startswith(b'\x89PNG') and not publications and view._page.pixmap is None
 
 
@@ -988,11 +965,11 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
     view.app.project = view.state.project
     workspace = GuiWorkspace(SimpleNamespace(project=view.state.project, centre=SimpleNamespace(
         preview=view, source=SimpleNamespace(file_for=lambda path: None))))
-    workspace._context = WorkspaceContext(path=path, language="EN", footer_timestamp=False)
+    workspace._context = WorkspaceContext(path=path, language="EN")
     old = slide_snapshot.page_png(pdf_at(tmp_path / 'old-refresh.pdf', 'old'))
     old_pixmap = preview_view.QPixmap()
     assert old_pixmap.loadFromData(old)
-    key = (target.key, 'instructor', 'EN', False)
+    key = (target.key, 'instructor', 'EN')
     view._pixmaps[key] = (old_pixmap, preview_view._mtime(path))
     from slidemage import preview_requests, preview_selection
     old_spec = preview_requests.PreviewRequest(
@@ -1002,7 +979,7 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
     view._refresh()
     old_image = view._page.pixmap.toImage()
     if change == 'other-slide':
-        workspace._context = WorkspaceContext(path=tmp_path / 'slides' / 'bbb-EN-Other-current.tex', footer_timestamp=False)
+        workspace._context = WorkspaceContext(path=tmp_path / 'slides' / 'bbb-EN-Other-current.tex')
         workspace._context.path.write_text('OTHER')
     elif change == 'other-view':
         view.state.set_view('after-course')
@@ -1187,7 +1164,7 @@ def test_unverified_memory_image_is_not_current_even_when_source_mtime_matches(p
     png = slide_snapshot.page_png(pdf)
     pixmap = preview_view.QPixmap()
     assert pixmap.loadFromData(png)
-    view._pixmaps[(target.key, "instructor", "EN", False)] = (pixmap, preview_view._mtime(path))
+    view._pixmaps[(target.key, "instructor", "EN")] = (pixmap, preview_view._mtime(path))
     monkeypatch.setattr(view._renders, "selected_preview", lambda *args, **kw: SimpleNamespace(
         state='missing', image=None))
 

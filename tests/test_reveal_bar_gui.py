@@ -338,7 +338,8 @@ def test_expanding_counts_the_other_versions_only_when_the_slide_depends_on_them
     wait_for(lambda: all(not track.counting for _note, track in bar._rows_widgets.values()), 30)
     assert {v: t.stops for v, (_n, t) in bar._rows_widgets.items()} == {
         "instructor": [1, 2, 3, 4], "during-course": [1, 2, 3, 4], "after-course": [1, 2, 3, 4]}
-    views = [args[0] for _k, _i, args, _kw in mine(steps_renders) if args]
+    # render(target, view, ...) or render_text(target, text, view, ...): saved renders take either path
+    views = [args[1] if kind == "buffer" else args[0] for kind, _i, args, _kw in mine(steps_renders) if args]
     assert {"during-course", "after-course"} <= set(views)
     bar._rows_widgets["after-course"][1].selected.emit(2)
     assert centre.state.view == "after-course"
@@ -393,6 +394,7 @@ def test_a_failing_background_render_is_not_asked_for_again(centre, steps_render
         raise RuntimeError("no TeX")
 
     monkeypatch.setattr(preview_target, "render", broken)
+    monkeypatch.setattr(preview_target, "render_text", broken)     # saved renders take this path too
     centre.state.set_focused_slide("aaa")
     preview = centre.preview
     wait_for(lambda: len(preview._step_failed) == 3, 40)

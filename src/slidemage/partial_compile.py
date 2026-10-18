@@ -355,8 +355,6 @@ def wrapper_text(plan: PartialPlan) -> str:
     lines: list[str] = []
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
-    if not job.footer_timestamp:
-        lines.append("\\def\\SMFooterTimestampOverride{0}")
     if job.presenter:
         lines.append("\\def\\SMPresenterModeOverride{1}")
     if job._appendix_applies:

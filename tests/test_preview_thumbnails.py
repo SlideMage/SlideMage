@@ -52,11 +52,11 @@ def rows(outline):
 
 
 def store(project, selected_deck, view='instructor', language='EN', *, color='blue', saved=True,
-          occurrence=None, timestamp=False, text=None):
+          occurrence=None, text=None):
     ctx, package, image, env = project
     path = ctx.slides_dir / 'aaa-EN-One-current.tex'
     spec, = preview_requests.resolve_requests(ctx, selected_deck, path, view, language,
-        occurrence_key=occurrence, options=preview_requests.RenderOptions(timestamp, saved),
+        occurrence_key=occurrence, options=preview_requests.RenderOptions(saved=saved),
         read_source=(lambda path: text) if text is not None else None)
     # Keep engine output outside the project's search inventory, just as real builds do.
     output = ctx.root.parent / f'output-{view}-{language}-{color}.pdf'
@@ -69,11 +69,11 @@ def store(project, selected_deck, view='instructor', language='EN', *, color='bl
     return spec, entry
 
 
-def lookup(project, selected_deck, view='instructor', language='EN', *, timestamp=False, read_source=None, paths=None):
+def lookup(project, selected_deck, view='instructor', language='EN', *, read_source=None, paths=None):
     ctx = project[0]
     outline = deck_outline.build_outline(ctx, selected_deck, view, language)
     return rows(preview_thumbnails.for_outline(ctx, selected_deck, outline, view, language,
-                                              timestamp, read_source=read_source, paths=paths))
+                                              read_source=read_source, paths=paths))
 
 
 @pytest.mark.parametrize('view', ['instructor', 'during-course', 'after-course'])
@@ -165,13 +165,6 @@ def test_content_edits_with_preserved_mtime_invalidate_thumbnail_matches(project
         path.write_bytes(png('blue'))
     os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
     row, = lookup(project, selected)
-    assert not row.thumbnail_verified
-
-
-def test_timestamp_option_is_part_of_thumbnail_identity(project):
-    selected = deck(project[0])
-    store(project, selected, timestamp=False)
-    row, = lookup(project, selected, timestamp=True)
     assert not row.thumbnail_verified
 
 

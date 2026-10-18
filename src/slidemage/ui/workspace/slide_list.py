@@ -163,7 +163,6 @@ class SlideList(QWidget):
         self._thumbnail_timer.setSingleShot(True)
         self._thumbnail_timer.setInterval(450)
         self._thumbnail_timer.timeout.connect(self._refresh_preview_rows)
-        state.footer_timestamp_changed.connect(lambda _enabled: self._refresh_all_preview_rows())
 
         state.deck_changed.connect(lambda _deck: self.rebuild())
         state.view_changed.connect(lambda _view: self.rebuild())
@@ -219,7 +218,7 @@ class SlideList(QWidget):
     def _preview_images(self, outline, *, paths=None):
         return preview_thumbnails.for_outline(
             self.app.project, self.deck, outline, self.state.view, self.state.language,
-            self.state.footer_timestamp, read_source=self._thumbnail_source, paths=paths)
+            read_source=self._thumbnail_source, paths=paths)
 
     def _queue_preview_images(self, outline, *, paths=None):
         deck = self.deck
@@ -237,8 +236,7 @@ class SlideList(QWidget):
         dispatched = time.perf_counter()
         QTimer.singleShot(0, lambda: setattr(self, '_thumbnail_gui_latency',
                                              time.perf_counter() - dispatched))
-        ctx, view, language, stamp = (self.app.project, self.state.view, self.state.language,
-                                      self.state.footer_timestamp)
+        ctx, view, language = self.app.project, self.state.view, self.state.language
         selected_paths = None if paths is None else frozenset(path.resolve() for path in paths)
         self._thumbnail_pending_paths = selected_paths
         self._thumbnail_full_requested = False
@@ -256,7 +254,7 @@ class SlideList(QWidget):
             revisions = {}
             started = time.perf_counter()
             updated = preview_thumbnails.for_outline(
-                ctx, deck, outline, view, language, stamp, read_source=lambda path: buffers.get(path.resolve()),
+                ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
                 paths=selected_paths, validation=validation, revision_sink=revisions)
             stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
             metrics = {'validation_seconds': time.perf_counter() - started,
@@ -281,7 +279,7 @@ class SlideList(QWidget):
             except Exception as exc:  # noqa: BLE001 -- keep existing rows on lookup failure
                 value = (None, {'error': str(exc)}, {})
             try:
-                widget._thumbnails_finished.emit((ticket, deck.path, view, language, stamp,
+                widget._thumbnails_finished.emit((ticket, deck.path, view, language,
                                                    selected_paths, buffers, value))
             except RuntimeError:
                 pass
@@ -289,9 +287,9 @@ class SlideList(QWidget):
         future.add_done_callback(done)
 
     def _on_thumbnails_finished(self, payload):
-        ticket, path, view, language, stamp, paths, buffers, (outline, metrics, revisions) = payload
+        ticket, path, view, language, paths, buffers, (outline, metrics, revisions) = payload
         if ticket != self._thumbnail_ticket or self.deck is None or self.deck.path != path or (
-                self.state.view, self.state.language, self.state.footer_timestamp) != (view, language, stamp):
+                self.state.view, self.state.language) != (view, language):
             return
         self._thumbnail_future = None
         self._thumbnail_pending_paths = None

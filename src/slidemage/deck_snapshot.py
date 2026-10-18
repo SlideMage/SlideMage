@@ -14,7 +14,6 @@ project edits and SlideMage releases can't change it. Layout of
     <framework path>/               e.g. SlideMage/latex, copied whole
     <project folder>/               the files the deck uses, same relative paths
         decks/_snapshot_<jobname>.tex  one wrapper per compiled version
-        .build/<jobname>/<jobname>.timestamp  the footer stamp, pre-seeded
 
 The project and the framework keep their positions relative to each other, so
 the project's own, unchanged .latexmkrc finds the framework as it always does.
@@ -23,8 +22,7 @@ Which files a deck uses is decided by compiling it: every version (and the
 presenter PDF) is compiled with latexmk's -recorder, and every file the
 compile read (.fls) is copied -- project files and the framework; files of the
 TeX distribution are only recorded. biber's .bib files come from the .blg.
-These reference compiles run with SOURCE_DATE_EPOCH set, and their footer
-timestamps are kept, so a later render of the snapshot reproduces them. Then
+These reference compiles run with SOURCE_DATE_EPOCH set. Then
 (unless switched off) the snapshot is rendered from its own folder: every file
 that compile reads must be inside the snapshot or the TeX distribution, and
 its pages must equal the reference PDFs.
@@ -114,7 +112,6 @@ class SnapshotOptions:
     include_app: bool = False
     reference_pdfs: bool = True
     verify: bool = True
-    footer_timestamp: bool = True
     # None: the deck's own \deckappendixtoc decides.
     appendix_toc: Optional[bool] = None
     presenter: bool = True
@@ -166,7 +163,6 @@ class _JobOutput:
     inputs: list[Path]
     log_text: str
     bib_sources: list[Path]
-    timestamp: Optional[str]   # contents of <jobname>.timestamp
     # The SOURCE_DATE_EPOCH this PDF corresponds to: the snapshot's own for a
     # compile made for it, the compile's start for a reused one (None: the
     # snapshot's); renders of the snapshot use it, so \today matches.
@@ -364,22 +360,12 @@ def snapshot_jobs(deck: Deck, options: SnapshotOptions) -> list[CompileJob]:
     version-less compile) and, by default, the presenter PDF."""
     appendix = deck.appendix_toc if options.appendix_toc is None else options.appendix_toc
     versions = list(VIEWS) if deck.supports_version else [None]
-    jobs = [CompileJob(deck, v, None, footer_timestamp=options.footer_timestamp,
+    jobs = [CompileJob(deck, v, None,
                        appendix_toc=appendix) for v in versions]
     if options.presenter:
         jobs.append(CompileJob(deck, "instructor" if deck.supports_version else None, None,
-                               footer_timestamp=options.footer_timestamp,
                                presenter=True, appendix_toc=appendix))
     return jobs
-
-
-def timestamp_value(text: Optional[str]) -> str:
-    """"2026-10-07 14:53" from a .timestamp file's
-    \\gdef\\SMCompileTimestampValue{2026-10-07 14:53}; "" for none."""
-    if not text:
-        return ""
-    m = re.search(r"\{([^{}]*)\}\s*$", text.strip())
-    return m.group(1) if m else text.strip()
 
 
 def progress_key(jobname: str, verify: bool = False) -> str:
@@ -454,11 +440,8 @@ def run_recorded_compile(
     if _BIBER_NEEDED_RE.search(log_text):
         raise SnapshotError(f"{jobname}: the bibliography could not be built (biber failed; "
                             f"see the log above and {log_path})")
-    stamp_file = build_dir / f"{jobname}.timestamp"
-    timestamp = stamp_file.read_text(encoding="utf-8") if stamp_file.is_file() else None
     return _JobOutput(job_name=jobname, pdf=pdf, inputs=parse_fls(fls), log_text=log_text,
-                      bib_sources=parse_blg_sources(build_dir / f"{jobname}.blg"),
-                      timestamp=timestamp)
+                      bib_sources=parse_blg_sources(build_dir / f"{jobname}.blg"))
 
 
 # --------------------------------------------------------------------------
@@ -1020,9 +1003,6 @@ def verify_folder(ctx: project.ProjectContext, snapshot_root: Path, log: LogCall
             jobname = job["jobname"]
             build = Path(tmp) / jobname
             build.mkdir(parents=True)
-            seed = project_dir / ".build" / jobname / f"{jobname}.timestamp"
-            if seed.is_file():
-                shutil.copy2(seed, build / seed.name)
             key = progress_key(jobname, verify=True)
             log(compile_log.compiling(manifest.get('deck_name', '?'), key))
             log("    (verifying: rendering from the snapshot itself)")
@@ -1135,7 +1115,7 @@ def create_snapshot(
                     outputs.append(_JobOutput(
                         job_name=job.jobname, pdf=fresh.pdf, inputs=fresh.inputs,
                         log_text=fresh.log_text, bib_sources=fresh.bib_sources,
-                        timestamp=fresh.timestamp, epoch=fresh.started,
+                        epoch=fresh.started,
                         reused_from=fresh.created, copies=fresh.copies))
                     continue
                 log(f"    ({job.jobname} is compiled: {why})")
@@ -1185,17 +1165,13 @@ def create_snapshot(
             _write_text(target_project / wrapper_rel,
                         relative_wrapper(wrapper_text, project_root, job.jobname))
             copy_job_previews(out, job.jobname, project_root, target_project)
-            if out.timestamp is not None:
-                _write_text(target_project / ".build" / job.jobname / f"{job.jobname}.timestamp",
-                            out.timestamp)
             if options.reference_pdfs:
                 (partial / REFERENCE_PDF_DIR).mkdir(exist_ok=True)
                 shutil.copy2(out.pdf, partial / REFERENCE_PDF_DIR / f"{job.jobname}.pdf")
             job_entries.append({
                 "jobname": job.jobname, "wrapper": wrapper_rel,
                 "version": job.version, "presenter": job.presenter,
-                "appendix_toc": job._appendix_applies, "footer_timestamp": job.footer_timestamp,
-                "timestamp": timestamp_value(out.timestamp),
+                "appendix_toc": job._appendix_applies,
                 "source_date_epoch": out.epoch if out.epoch is not None else epoch,
                 "reused_compile": out.reused_from,
             })

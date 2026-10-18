@@ -81,9 +81,6 @@ def tree(tmp_path, monkeypatch):
             raise deck_snapshot.SnapshotError(f"{jobname} did not compile")
         build_dir.mkdir(parents=True, exist_ok=True)
         pdf = write(build_dir / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
-        stamp = build_dir / f"{jobname}.timestamp"
-        if not stamp.exists():
-            write(stamp, "\\gdef\\SMCompileTimestampValue{2026-10-07 14:12}\n")
         fw = cwd.parent / "SlideMage" / "latex"
         deck_file = re.search(r"\\input\{([^}]+)\}", wrapper.read_text(encoding="utf-8")).group(1)
         inputs = [
@@ -95,13 +92,12 @@ def tree(tmp_path, monkeypatch):
             fw / "Slidemaster_preamble_base.tex",
             fw / "beamerthemegotham.sty",
             texroot / "tex" / "latex" / "beamer" / "beamer.cls",
-            stamp,
         ]
         if state["leak"] is not None:
             inputs.append(state["leak"])
         return deck_snapshot._JobOutput(
             job_name=jobname, pdf=pdf, inputs=inputs, log_text="Package: beamer 2025/06/02 v3.75\n",
-            bib_sources=[cwd / "Slidemaster.bib"], timestamp=stamp.read_text(encoding="utf-8"))
+            bib_sources=[cwd / "Slidemaster.bib"])
 
     monkeypatch.setattr(deck_snapshot, "run_recorded_compile", fake_compile)
     decks = {d.name: d for d in deck_scan.scan_dir(root / "decks", archived=False)}
@@ -182,14 +178,12 @@ def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
     assert [f["path"].endswith("beamer.cls") for f in manifest["tex"]["files"]] == [True]
     assert manifest["deck_name"] == "t-Deck"
     assert manifest["framework_dir"] == "SlideMage/latex"
-    # one wrapper, one seeded footer stamp and one reference PDF per job
+    # one wrapper and one reference PDF per job
     jobnames = [j["jobname"] for j in manifest["jobs"]]
     assert jobnames == ["t-Deck", "t-Deck-presenter"]
     for job in manifest["jobs"]:
         assert (proj / job["wrapper"]).is_file()
-        assert (proj / ".build" / job["jobname"] / f"{job['jobname']}.timestamp").is_file()
         assert (snap / "reference-pdf" / f"{job['jobname']}.pdf").is_file()
-        assert job["timestamp"] == "2026-10-07 14:12"
     assert (proj / "decks" / "_snapshot_t-Deck-presenter.tex").read_text(encoding="utf-8") \
         .startswith("\\def\\SMPresenterModeOverride{1}")
     # the project's own deck folder holds no leftover wrapper
@@ -274,7 +268,6 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
         fw / "Slidemaster_preamble_base.tex", fw / "beamerthemegotham.sty",
         texroot / "tex" / "latex" / "beamer" / "beamer.cls")) + "\n")
     write(inv / f"{jobname}.log", "Package: beamer 2025/06/02 v3.75\n")
-    write(inv / f"{jobname}.timestamp", "\\gdef\\SMCompileTimestampValue{2026-10-06 08:00}\n")
     write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'Slidemaster.bib'}'\n")
     pdf = write(root / "pdf" / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
     assert compile_records.write_record(ctx, jobname, inv, root / "decks" / "_w.tex",
@@ -304,7 +297,6 @@ def test_unchanged_version_is_reused_changed_one_compiled(tree, monkeypatch):
     manifest = deck_snapshot.read_manifest(result.path)
     job = manifest["jobs"][0]
     assert job["reused_compile"] and job["source_date_epoch"] == int(started)
-    assert job["timestamp"] == "2026-10-06 08:00"
     assert manifest["jobs"][1]["reused_compile"] == ""
     assert (result.path / "reference-pdf" / "t-Deck.pdf").read_bytes() == pdf.read_bytes()
     assert f"{int(started)}" in (result.path / "render.bat").read_text(encoding="utf-8")
@@ -548,18 +540,14 @@ def test_snapshot_project_is_recognized_and_uses_its_own_framework_and_dates(ope
 def test_snapshot_compiler_mode(opened_snapshot, monkeypatch, tmp_path):
     """Inside a snapshot: PDFs stay in the snapshot's pdf/ (its
     \\deckoutputfolder belongs to the original project), and a compile's
-    build folder gets the seeded footer timestamp."""
+    build folder is its own."""
     ctx = ProjectContext.at(opened_snapshot)
     deck = deck_scan.scan_dir(opened_snapshot / "decks", False)[0]
     assert deck.output_folders  # D:/Teaching/Somewhere
     job = compiler.CompileJob(deck, None, None)
     assert compiler.resolve_output_location(ctx, job) == (opened_snapshot / "pdf", "t-Deck")
-    build = tmp_path / "b"
-    build.mkdir()
-    compiler._seed_snapshot_timestamp(ctx, "t-Deck", build)
-    assert "2026-10-07 14:12" in (build / "t-Deck.timestamp").read_text(encoding="utf-8")
-    # "Remove temp files" leaves the seeds alone, other build output goes
-    (opened_snapshot / ".build" / "t-Deck-abc123").mkdir()
+    # "Remove temp files" removes the build output
+    (opened_snapshot / ".build" / "t-Deck-abc123").mkdir(parents=True)
     removable = [p.name for p in compiler.removable_build_entries(ctx)]
     assert removable == ["t-Deck-abc123"]
 
@@ -647,7 +635,6 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
     jobs = [compiler.CompileJob(deck, None, None), *compiler.build_jobs(deck, "all"),
             *compiler.build_jobs(deck, "presenter")]
     for job in jobs:
-        job.footer_timestamp = False
         lines, outcome = [], []
         relocated = threading.Event()
 

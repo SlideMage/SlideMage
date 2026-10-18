@@ -144,8 +144,7 @@ class GuiWorkspace(Workspace):
         window, state = self.window, self.window.state
         self._context = WorkspaceContext(
             deck=state.deck, slide_id=state.focused_slide, path=window.centre.path, view=state.view,
-            language=state.language, footer_timestamp=state.footer_timestamp,
-            occurrence_key=state.focused_occurrence)
+            language=state.language, occurrence_key=state.focused_occurrence)
 
     def is_open_deck(self, path: Path) -> bool:
         return self.on_gui(lambda: self.window.state.deck is not None and
@@ -259,9 +258,9 @@ class GuiWorkspace(Workspace):
 
         self.on_gui(show)
 
-    def render_preview(self, target, text, view, language, footer_timestamp, cancel) -> bytes:
+    def render_preview(self, target, text, view, language, cancel) -> bytes:
         request = self.on_gui(lambda: self.window.centre.preview.request_render(
-            target, text, view, language, footer_timestamp))
+            target, text, view, language))
         if request is None:
             raise RuntimeError('Preview pane closed')
         try:
@@ -293,9 +292,9 @@ class GuiWorkspace(Workspace):
     def begin_preview_refresh(self):
         return self.on_gui(lambda: self.window.centre.preview._generation, -1)
 
-    def publish_preview_refresh(self, target, text, revision, view, language, timestamp, artifact, ticket) -> str:
+    def publish_preview_refresh(self, target, text, revision, view, language, artifact, ticket) -> str:
         return self.on_gui(lambda: self.window.centre.preview.publish_refresh(
-            target, text, revision, view, language, timestamp, artifact, ticket), 'superseded')
+            target, text, revision, view, language, artifact, ticket), 'superseded')
 
     def translate_slide(self, path: Path) -> str:
         return self.on_gui(lambda: self.translate(self._local(path)) if self.translate else

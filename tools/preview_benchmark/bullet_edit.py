@@ -78,8 +78,6 @@ def child(base, label, deadline, case_name):
     compile_original = slide_preview.compile_and_extract
 
     def frozen_compile(wrapper, *args, **kwargs):
-        wrapper = wrapper.replace(r"\begin{document}", r"\begin{document}" + "\n"
-            + slide_preview._preview_timestamp_line(True, "2026-10-11 12:00"), 1)
         return compile_original(wrapper, *args, **kwargs)
 
     slide_preview.compile_and_extract = frozen_compile
@@ -105,7 +103,7 @@ def child(base, label, deadline, case_name):
                     pdf = slide_preview.render_slide_to_pdf(ctx, call.macro, call.id_slug,
                         call.version, call.conditions, steps=call.steps,
                         preamble_text=deck.preamble_text, frame_number=case["index"],
-                        footer_timestamp=False, reuse_build=cached,
+                        reuse_build=cached,
                         capture_snapshot=not cached, log=log)
                     if cached:
                         _, images = slide_snapshot.prepare_preview(pdf, True)

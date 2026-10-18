@@ -120,6 +120,16 @@ def config_dir() -> Path:
     return base / "slidemage"
 
 
+def cache_dir() -> Path:
+    """Where this machine keeps what can be rebuilt (not roaming, never synced): the background renders' index."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+        return base / "SlideMage"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "SlideMage"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "slidemage"
+
+
 def _last_project_file() -> Path:
     return config_dir() / "last_project"
 

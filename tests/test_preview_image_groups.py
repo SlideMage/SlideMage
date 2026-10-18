@@ -77,14 +77,14 @@ def test_cold_batch_group_count_restart_and_exact_pdf(tmp_path, monkeypatch, gro
     again = preview_batch.render_batch(restarted, specs)
     assert len(calls) == len(rasters) == expected
     assert all(result.status == 'cached' for result in again)
-    later = restarted.request(target, source.read_text(), 'after-course', 'EN', False, lambda _: None, saved=True)
+    later = restarted.request(target, source.read_text(), 'after-course', 'EN', lambda _: None, saved=True)
     later.wait()
     assert len(calls) == len(rasters) == expected and later.preview_result.status == 'cached'
     if groups[2] != groups[0] and groups[2] != groups[1]:
         assert later.result[0] is not None
     else:
         assert later.result[0] is None
-        exact = restarted.request(target, source.read_text(), 'after-course', 'EN', False,
+        exact = restarted.request(target, source.read_text(), 'after-course', 'EN',
                                   lambda _: None, saved=True, require_pdf=True)
         exact.wait()
         assert len(calls) == expected + 1
@@ -109,7 +109,7 @@ def test_group_cache_rechecks_dependencies_and_source_revision(tmp_path, monkeyp
     service = preview_requests.RenderService()
 
     def request(view):
-        result = service.request(target, source.read_text(), view, 'EN', False, lambda _: None, saved=True)
+        result = service.request(target, source.read_text(), view, 'EN', lambda _: None, saved=True)
         result.wait()
         return result
 
@@ -132,9 +132,9 @@ def test_during_first_keeps_legacy_instructor_snapshot_sizes(tmp_path, monkeypat
         return original(pdf, snapshots, sizes)
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', prepare)
     service = preview_requests.RenderService()
-    first = service.request(target, source.read_text(), 'during-course', 'EN', False, lambda _: None, saved=True)
+    first = service.request(target, source.read_text(), 'during-course', 'EN', lambda _: None, saved=True)
     first.wait()
-    instructor = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None, saved=True)
+    instructor = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
     instructor.wait()
     assert len(calls) == 1 and flags == [True]
     assert instructor.preview_result.page_images == first.preview_result.page_images
@@ -178,8 +178,8 @@ def test_changed_classification_during_build_retries_foreign_consumer(tmp_path, 
     monkeypatch.setattr(preview_requests, 'image_group',
                         lambda spec, identity=None: None if changed.is_set() else group(spec, identity))
     service = preview_requests.RenderService()
-    first = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None, saved=True)
-    other = service.request(target, source.read_text(), 'during-course', 'EN', False, lambda _: None, saved=True)
+    first = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
+    other = service.request(target, source.read_text(), 'during-course', 'EN', lambda _: None, saved=True)
     results = []
     thread = threading.Thread(target=lambda: results.append(other.wait()))
     thread.start()
@@ -197,8 +197,8 @@ def test_changed_classification_during_build_retries_foreign_consumer(tmp_path, 
 def test_exact_pdf_waiter_joins_same_view_image_build(tmp_path, monkeypatch):
     _, target, source, calls, _ = fixture(tmp_path, monkeypatch)
     service = preview_requests.RenderService()
-    image = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None, saved=True)
-    exact = service.request(target, source.read_text(), 'instructor', 'EN', False,
+    image = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
+    exact = service.request(target, source.read_text(), 'instructor', 'EN',
                             lambda _: None, saved=True, require_pdf=True)
     assert exact is not image
     assert exact.wait()[0] is not None
@@ -236,7 +236,7 @@ def test_cross_view_cancel_detaches_only_that_waiter(tmp_path, monkeypatch):
 
     monkeypatch.setattr(preview_target, 'render_text', render)
     service = preview_requests.RenderService()
-    handles = [service.request(target, source.read_text(), view, 'EN', False, lambda _: None, saved=True)
+    handles = [service.request(target, source.read_text(), view, 'EN', lambda _: None, saved=True)
                for view in VIEWS]
     cancelled = compiler.CancelToken()
     finished, errors = {}, {}
@@ -281,9 +281,9 @@ def test_saved_and_identical_draft_share_cache_and_keep_provenance(tmp_path, mon
     else:
         monkeypatch.setattr(preview_requests, 'image_group', lambda *a: None)
     service = preview_requests.RenderService()
-    saved = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None, saved=True)
+    saved = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
     saved.wait()
-    draft = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None)
+    draft = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None)
     draft.wait()
     assert len(calls) == 1
     assert saved.preview_result.request.options.saved
@@ -291,10 +291,10 @@ def test_saved_and_identical_draft_share_cache_and_keep_provenance(tmp_path, mon
     assert draft.preview_result.status == 'cached'
     service.close()
     restarted = preview_requests.RenderService()
-    same = restarted.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None)
+    same = restarted.request(target, source.read_text(), 'instructor', 'EN', lambda _: None)
     same.wait()
     assert len(calls) == 1
-    changed = restarted.request(target, 'Actual unsaved change', 'instructor', 'EN', False, lambda _: None)
+    changed = restarted.request(target, 'Actual unsaved change', 'instructor', 'EN', lambda _: None)
     changed.wait()
     assert len(calls) == 2
     restarted.close()
@@ -311,11 +311,11 @@ def test_saved_and_draft_join_inflight_exact_work(tmp_path, monkeypatch):
         return render(*args, **kwargs)
     monkeypatch.setattr(preview_target, 'render_text', held)
     service = preview_requests.RenderService()
-    saved = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None, saved=True)
+    saved = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
     thread = threading.Thread(target=saved.wait)
     thread.start()
     assert started.wait(2)
-    draft = service.request(target, source.read_text(), 'instructor', 'EN', False, lambda _: None)
+    draft = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None)
     assert draft.source is saved
     release.set()
     draft.wait()
@@ -335,7 +335,7 @@ def test_new_frozen_sibling_retains_audited_pinned_result_but_shadow_and_content
     target = replace(target, version='1-0-0', preamble_text='audited fixture')
     service = preview_requests.RenderService()
     def request():
-        handle = service.request(target, pinned.read_text(), 'instructor', 'EN', False, lambda _: None,
+        handle = service.request(target, pinned.read_text(), 'instructor', 'EN', lambda _: None,
                                  saved=True)
         handle.wait()
         return handle
@@ -361,7 +361,7 @@ def test_unknown_pinned_tex_keeps_conservative_search_invalidation(tmp_path, mon
     monkeypatch.setattr(preview_requests, 'image_group', lambda *a: None)
     service = preview_requests.RenderService()
     def request():
-        handle = service.request(target, pinned.read_text(), 'instructor', 'EN', False, lambda _: None)
+        handle = service.request(target, pinned.read_text(), 'instructor', 'EN', lambda _: None)
         handle.wait()
     request()
     source.with_name('abc-EN-One-v1-0-1.tex').write_text('New version')

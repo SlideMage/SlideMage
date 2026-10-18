@@ -31,15 +31,15 @@ class PreviewTarget:
     steps: Optional[str]
     frame_number: Optional[int]
     preamble_text: Optional[str]    # the deck's; None: the default template's
+    # Callers pass these three by position (deck_preview_refresh.plan): keep them right after preamble_text.
+    occurrence_key: tuple = ()
+    hidden: bool = False
+    presenter_frame_number: Optional[int] = None
     # The open deck and, for a slide that only makes sense inside it (a contents slide, a chapter agenda, ...: see
     # deck_context), why; `deck_hash` then keeps a render apart from one made for another state of the deck.
     deck: Optional[Deck] = field(default=None, compare=False, repr=False)
     needs_context: tuple = ()
     deck_hash: str = ""
-
-    occurrence_key: tuple = ()
-    hidden: bool = False
-    presenter_frame_number: Optional[int] = None
     # The call's 1-based position among the deck's slide calls (deck_context.skeleton): frame_number may be the
     # real frame number instead, which differs once a call before it typesets several frames or none.
     position: Optional[int] = None
@@ -161,9 +161,8 @@ def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
     return png, slide_snapshot.is_fresh(target.context, target.bare_id, target.source_path, target.template)
 
 
-def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log,
-           capture_snapshot: bool = True, cancel=None, all_steps: bool = False, render_stamp=None,
-           force_build=False) -> Path:
+def render(target: PreviewTarget, view: str, language: str, *, log,
+           capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     `all_steps` keeps every reveal step (page k = step k) whatever the call or the slide restricts.
     A slide that needs its deck (target.needs_context) is typeset in the deck's last compile when there is one, else
@@ -176,7 +175,7 @@ def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp:
         deck, position = target.deck, target.position
         in_deck = deck_context.render_in_deck(
             target.context, deck, view, target.bare_id, target.id_slug, log, cancel,
-            footer_timestamp=footer_timestamp, all_steps=all_steps, language=language)
+            all_steps=all_steps, language=language)
         if in_deck is not None:
             return in_deck
         around = None if position is None else deck_context.skeleton(
@@ -186,18 +185,17 @@ def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp:
             context = dict(context_before=around.before, context_after=around.after)
     return slide_preview.render_slide_to_pdf(
         target.context, target.macro, target.id_slug, target.version, target.conditions,
-        deck_version=view, deck_language=language.lower(), footer_timestamp=footer_timestamp,
+        deck_version=view, deck_language=language.lower(),
         preamble_text=target.preamble_text, frame_number=target.frame_number,
         log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
         all_steps=all_steps, **context,
-        **({'render_stamp': render_stamp} if render_stamp is not None else {}),
         **({'force_build': True} if force_build else {}))
 
 
 def render_text(
-    target: PreviewTarget, text: str, view: str, language: str, *, footer_timestamp: bool, log,
+    target: PreviewTarget, text: str, view: str, language: str, *, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
-    capture_snapshot: bool = True, cancel=None, all_steps: bool = False, render_stamp=None, force_build=False,
+    capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
@@ -216,7 +214,7 @@ def render_text(
     return slide_preview.render_slide_text_to_pdf(
         target.context, target.id_slug, text,
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
-        footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
+        presenter=presenter, preamble_text=target.preamble_text,
         frame_number=(target.presenter_frame_number if presenter and target.presenter_frame_number is not None
                       else target.frame_number), log=log, preview_mode=mode, overlay=overlay,
         steps=target.steps if mode == "slide" else None,
@@ -225,5 +223,4 @@ def render_text(
         omitted=target.macro in ("omitslide", "omitslideversion") and mode == "slide",
         capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel, all_steps=all_steps,
         **context,
-        **({'render_stamp': render_stamp} if render_stamp is not None else {}),
         **({'force_build': True} if force_build else {}))

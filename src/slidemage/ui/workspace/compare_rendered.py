@@ -86,7 +86,7 @@ class CompareRendered(QDialog):
         if context is None:
             raise ValueError(f"{path.name} is not a slide file")
         self.app = app
-        self.target, self.view, self.language, timestamp = context
+        self.target, self.view, self.language = context
         self.texts = {"Before": before, "After": after}
         self.setObjectName(q.SHEET)
         self.setModal(False)
@@ -178,7 +178,7 @@ class CompareRendered(QDialog):
             shortcut.activated.connect(lambda delta=delta: self.step(delta))
 
         for side in self._sides:
-            request = self._renders.request(self.target, self.texts[side.name], self.view, self.language, timestamp,
+            request = self._renders.request(self.target, self.texts[side.name], self.view, self.language,
                                             app.log, require_pdf=True)
             side.worker = _Worker(request, self._cancel, app.project.root)
             side.worker.done.connect(self._on_done)

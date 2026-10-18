@@ -597,7 +597,6 @@ def test_a_real_beamer_deck_is_read_slide_by_slide(tmp_path, monkeypatch):
         encoding="utf-8")
     deck = next(d for d in scan_decks(ctx) if d.name == "read-test")
     job = compiler.CompileJob(deck, None, None)
-    job.footer_timestamp = False
     done = threading.Event()
     assert compiler.run_job(ctx, job, lambda _line: None, on_relocated=lambda ok, path: done.set())
     assert done.wait(60)

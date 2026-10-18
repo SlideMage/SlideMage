@@ -13,7 +13,7 @@ from .preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from .preview_selection import legacy_reference, select_image
 
 
-def for_outline(ctx, deck, outline, view, language, timestamp, *, read_source=None, paths=None,
+def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=None,
                 validation=None, revision_sink=None):
     cache = preview_cache.PreviewCache(ctx.root)
     validation = validation or preview_cache.ValidationPass()
@@ -55,7 +55,7 @@ def for_outline(ctx, deck, outline, view, language, timestamp, *, read_source=No
             revision = revisions[source]
             if revision_sink is not None:
                 revision_sink[source] = revision.content_hash
-            specs = (PreviewRequest(target, revision, view, language, RenderOptions(timestamp, saved=True)),)
+            specs = (PreviewRequest(target, revision, view, language, RenderOptions(saved=True)),)
             selected = select_image(cache, specs, env, thumbnail=True, validation=validation, reference=reference)
             if selected.image is not None:
                 note = selected.note + (' Region, element and individual-step previews can differ.'

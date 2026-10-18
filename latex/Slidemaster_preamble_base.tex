@@ -1955,8 +1955,7 @@
 \newcommand{\SMSetOverlays}[2]{\global\@namedef{SMOverlays@#1}{#2}}
 % Build files written before v5.3.0 (2026-10-01: this framework's \gotham...
 % names became \SM...) still use the old names: .ovl (\gotham...SetOverlays),
-% .top (...SetTopCorrection), .timestamp (...CompileTimestampValue, see
-% \SMCompileTimestamp). The old names are assembled from \SMOldPrefix so a
+% .top (...SetTopCorrection). The old names are assembled from \SMOldPrefix so a
 % rerun of slidemage.sm_rename leaves them alone. The next compile rewrites
 % the files with the new names.
 \def\SMOldPrefix{gotham}
@@ -2151,7 +2150,7 @@
 % as a /Pagination/Footer artifact, same as the real footer's own slide-id
 % text -- so it reaches neither a sighted reader nor a screen reader,
 % purely a technical marker for the compile pipeline. Only \slideID itself
-% is stamped, not the omitted-slide/version/timestamp suffix the visible
+% is stamped, not the omitted-slide/version suffix the visible
 % footer also carries: nothing here is ever read by a human, and
 % slide_snapshot.py's own regex only looks for the id.
 %
@@ -2488,88 +2487,12 @@
 \newlength{\SMFooterTextDrop}
 \setlength{\SMFooterTextDrop}{-0.49pt}
 
-% Compile timestamp: lets you tell, from a PDF alone (no need to check file
-% properties/mtime, which don't survive e.g. emailing or uploading a copy),
-% whether it reflects the latest edits or a stale earlier build -- handy
-% whenever a PDF's *content* is in question, not just when debugging compile
-% tooling itself. LuaTeX-only, matching this project's required engine (see
-% README.md's "Compiling" section) -- no \ifluatex guard needed since
-% nothing else here works under another engine to begin with.
-%
-% Deliberately avoids os.date's own %-format directives (e.g. "%Y-%m-%d")
-% entirely, building the string from os.date("*t")'s field table and plain
-% Lua concatenation instead -- \directlua's argument is tokenized by plain
-% TeX first, where % starts a comment, before the text ever reaches Lua as a
-% string. The obvious-looking fix, escaping each one as \%, does *not* work:
-% confirmed directly, it produces a Lua string containing a literal
-% backslash followed by a percent sign (detokenization keeps a control
-% sequence's own backslash, for \% same as any other), which Lua's own
-% string-literal parser then rejects outright ("invalid escape sequence"),
-% silently aborting that whole \directlua call -- with no visible LaTeX-side
-% error, just a cache file ending up written with an empty value. Switching
-% catcode temporarily (\catcode`\%=12 ... ) would also work but needs a
-% \begingroup/\endgroup wrapper at every call site; skipping % entirely is
-% simpler and needs no such wrapper.
-%
-% Cached to \jobname.timestamp (via plain TeX \write, so MiKTeX's
-% -aux-directory flag -- already applied through .latexmkrc's %O -- routes
-% it into .build/ like every other aux file, not left cluttering decks/ or
-% the project root) rather than recomputed fresh on every pass: a live
-% os.date() call on every pass, tried first, broke latexmk's own rerun
-% convergence outright -- confirmed directly, by isolating the change, that
-% an otherwise-identical clean compile converges normally without it. Each
-% of latexmk's internal reruns relaunches lualatex as a brand-new process,
-% and a full pass over a deck this size (font loading alone) comfortably
-% crosses a one-minute boundary, so two consecutive passes embedded two
-% different strings in the footer; latexmk saw the .aux checksum differ
-% *again* on the very next pass and looped ("Latexmk: References changed.")
-% until hitting its rerun limit and reporting a false "gave an error", with
-% no actual LaTeX error anywhere in the log. Caching to a file read back on
-% later passes fixes that: the value is fixed the moment it's first
-% written, so the footer's rendered text -- and therefore the .aux
-% checksum -- stays identical across every subsequent pass of the same
-% compile.
-%
-% This cache is deliberately *not* self-invalidating by date/content -- it
-% keeps reporting an old timestamp indefinitely once written, across
-% unrelated future compiles, unless something clears it first.
-% SlideMage's compiler.py does exactly that: before every job it deletes
-% that job's own .build/<jobname>.* (which includes <jobname>.timestamp), so
-% a run through SlideMage always gets a fresh stamp. An ad-hoc TeXstudio
-% compile without going through SlideMage first may show a stale stamp if
-% .build/ already has one left over from an earlier session -- delete
-% .build/<jobname>.timestamp by hand (or just compile that job once through
-% SlideMage) if that matters for what you're checking.
-%
-% \ifSMShowCompileTimestamp: on by default (unchanged existing
-% behavior); a deck can call \SMShowCompileTimestampfalse (e.g. right
-% after \input{Slidemaster_preamble_uni-graz}) to drop the timestamp from
-% every footer for that compile -- added 2026-07-28 so a deck's own
-% front-to-back final-check pass (recompiling repeatedly to diff pages
-% against a saved baseline render) doesn't see every single page as
-% "changed" purely because a fresh compile embeds a fresh timestamp,
-% jobname-caching quirks aside. \SMShowCompileTimestamptrue switches it
-% back on again once that pass is done.
-%
-% \SMFooterTimestampOverride: SlideMage's own hook into the above,
-% mirroring \deckversionoverride's own pattern (compiler.py's wrapper file
-% \def's it, before \input{}ing the real deck, whenever the GUI's "Footer
-% timestamp" checkbox is unticked for a batch) -- \ifdefined here, not
-% \IfFileExists or similar, since it's a plain macro a wrapper either
-% defines or doesn't, not a file. A deck's own explicit
-% \SMShowCompileTimestampfalse/true call (like the one above) runs
-% *after* this block, so it always overrides whatever the GUI checkbox says
-% for that one deck.
+% The footer no longer shows a compile date/time (removed in v8.25.0: a
+% changing stamp made every wrapper and PDF differ between compiles). The
+% two names below remain as harmless no-ops so decks that still call
+% \SMShowCompileTimestampfalse/true or print \SMCompileTimestamp compile.
 \newif\ifSMShowCompileTimestamp
-\ifdefined\SMFooterTimestampOverride
-	\ifnum\SMFooterTimestampOverride=0
-		\SMShowCompileTimestampfalse
-	\else
-		\SMShowCompileTimestamptrue
-	\fi
-\else
-	\SMShowCompileTimestamptrue
-\fi
+\newcommand{\SMCompileTimestamp}{}
 
 % \SMPresenterModeOverride: SlideMage's own hook for a "Presenter"
 % compile -- a separate output alongside the plain instructor PDF, never a
@@ -2577,7 +2500,7 @@
 % field and SlideMage/qt_deck_table.py's own "Presenter" checkbox,
 % independent of the three version checkboxes the same way "After-course,
 % per chapter" already is). Same \ifdefined-hook pattern as
-% \SMFooterTimestampOverride just above: compiler.py's wrapper file
+% \deckversionoverride: compiler.py's wrapper file
 % \def's it, before \input{}ing the real deck, whenever that checkbox is
 % ticked for a job.
 %
@@ -2699,33 +2622,6 @@
 	\setbeamertemplate{note page}[gothampresenter]
 	\makeatother
 \fi
-\SMLuaOnce{
-	function SMZeroPad(n) if n < 10 then return "0" .. n else return "" .. n end end
-}
-\newwrite\SMCompileTimestampFile
-\newcommand{\SMCompileTimestamp}{%
-	\ifdefined\SMCompileTimestampValue
-	\else
-		\IfFileExists{\jobname.timestamp}{%
-			\input{\jobname.timestamp}%
-			% a file from before v5.3.0 defines the old name (see \SMOldPrefix)
-			\ifdefined\SMCompileTimestampValue\else
-				\expandafter\global\expandafter\let\expandafter\SMCompileTimestampValue
-					\csname\SMOldPrefix CompileTimestampValue\endcsname
-			\fi
-		}{%
-			\xdef\SMCompileTimestampValue{\directlua{%
-				local d = os.date("*t")%
-				tex.sprint(d.year .. "-" .. SMZeroPad(d.month) .. "-" .. SMZeroPad(d.day) .. " " .. SMZeroPad(d.hour) .. ":" .. SMZeroPad(d.min))%
-			}}%
-			\immediate\openout\SMCompileTimestampFile=\jobname.timestamp\relax
-			\immediate\write\SMCompileTimestampFile{\string\gdef\string\SMCompileTimestampValue{\SMCompileTimestampValue}}%
-			\immediate\closeout\SMCompileTimestampFile
-		}%
-	\fi
-	\SMCompileTimestampValue
-}
-
 % \SMHideFooterText: opt-in flag suppressing just \FooterText (the left
 % part of the footer) -- default false. Set true by the standout template's
 % own hook below, so `\begin{frame}[standout]` hides only that left part,
@@ -2779,8 +2675,7 @@
 % deck" etc.). Empty by default = everything shown. SlideMage's deck
 % settings write it as \def\SMFooterHide{id,deck} in the deck's preamble;
 % it is read once at \begin{document}, so the deck may set it before or
-% after \input{Slidemaster_preamble_...}. The frame number and the compile
-% timestamp (\SMShowCompileTimestampfalse) have their own switches.
+% after \input{Slidemaster_preamble_...}. The frame number is always shown.
 \providecommand{\SMFooterHide}{}
 \newif\ifSMFooterShowText
 \newif\ifSMFooterShowID
@@ -2807,9 +2702,8 @@
 	\fi
 	\hfill%
 	{\fontsize{4}{4}\selectfont \SMFooterIDStrut
-		\ifSMFooterShowID(slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ifSMFooterShowDeck\ | \SMDeckVersionText\fi\ifSMShowCompileTimestamp\ | \SMCompileTimestamp\fi)%
-		\else\ifSMFooterShowDeck(\SMDeckVersionText\ifSMShowCompileTimestamp\ | \SMCompileTimestamp\fi)%
-		\else\ifSMShowCompileTimestamp(\SMCompileTimestamp)\fi\fi\fi}\hspace*{2em}\insertframenumber%
+		\ifSMFooterShowID(slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ifSMFooterShowDeck\ | \SMDeckVersionText\fi)%
+		\else\ifSMFooterShowDeck(\SMDeckVersionText)\fi\fi}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
 	\hspace*{-\SMFooterRightShift}%
 	\vspace*{0.4ex}%

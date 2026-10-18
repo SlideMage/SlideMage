@@ -42,7 +42,6 @@ class SourceRevision:
 
 @dataclass(frozen=True)
 class RenderOptions:
-    footer_timestamp: bool = False
     saved: bool = False
     presenter: bool = False
     mode: str = "slide"
@@ -133,8 +132,7 @@ def cache_identity(spec: PreviewRequest) -> dict:
         'raster': {'renderer': raster_version, 'sequence_schema': SEQUENCE_SCHEMA,
                    'sequence_dpi': SEQUENCE_DPI, 'full_size': slide_snapshot.FULL_SIZE,
                    'thumbnail_size': slide_snapshot.THUMB_SIZE, 'display_widths': [slide_snapshot.FULL_SIZE[0], 1280]},
-        'options': {'footer_timestamp': options.footer_timestamp,
-                    'presenter': options.presenter, 'mode': options.mode, 'overlay': options.overlay,
+        'options': {'presenter': options.presenter, 'mode': options.mode, 'overlay': options.overlay,
                     'all_steps': options.all_steps},
     }))
 
@@ -389,18 +387,18 @@ class RenderService:
         entry = cache.lookup(identity, env)
         return replace(self._retain_display(cache, entry), request_spec=spec) if entry is not None else None
 
-    def cached_preview(self, target, text, view, language, timestamp):
+    def cached_preview(self, target, text, view, language):
         """Read-only pane lookup; no Qt objects and no compile or selection changes."""
         spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
-                              RenderOptions(timestamp, saved=True))
+                              RenderOptions(saved=True))
         return self.cached_spec(spec)
 
-    def selected_preview(self, target, text, view, language, timestamp, *, reference=None):
+    def selected_preview(self, target, text, view, language, *, reference=None):
         """Read-only whole-slide selection shared with the list policy."""
         from .preview_selection import select_image
 
         revision = SourceRevision.capture(target.source_path, text)
-        specs = (PreviewRequest(target, revision, view, language, RenderOptions(timestamp, saved=True)),)
+        specs = (PreviewRequest(target, revision, view, language, RenderOptions(saved=True)),)
         cache = preview_cache.PreviewCache(target.context.root)
         selection = select_image(cache, specs, compiler.build_env(target.context), reference=reference)
         if selection.cache_entry is not None and selection.cache_entry.pdf is not None:
@@ -421,25 +419,23 @@ class RenderService:
             cache.remember_display(cache_identity(spec), found[2], found[1],
                                    evidence=found[3], observed_at=observed_at)
 
-    def previous_preview(self, target, text, view, language, timestamp):
+    def previous_preview(self, target, text, view, language):
         """Historical display fallback only; never used to skip rendering."""
         cache = preview_cache.PreviewCache(target.context.root)
         spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
-                              RenderOptions(timestamp, saved=True))
+                              RenderOptions(saved=True))
         entry = cache.previous(cache_identity(spec))
         return self._retain_display(cache, entry) if entry is not None else None
 
-    def request(self, target, text, view, language, timestamp, log, *, saved=False,
+    def request(self, target, text, view, language, log, *, saved=False,
                 presenter=False, mode='slide', overlay=None, spec=None, force=False, render_stamp=None,
                 require_pdf=False, all_steps=False):
         captured = spec is not None
         spec = spec or PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
-                                      RenderOptions(timestamp, saved, presenter, mode, overlay, force, render_stamp,
-                                                    all_steps))
+                                      RenderOptions(saved, presenter, mode, overlay, force, render_stamp, all_steps))
         target, text, view, language = spec.target, spec.revision.text, spec.view, spec.language
         options = spec.options
-        timestamp, saved, presenter, mode, overlay = (options.footer_timestamp, options.saved,
-                                                     options.presenter, options.mode, options.overlay)
+        saved, presenter, mode, overlay = options.saved, options.presenter, options.mode, options.overlay
         all_steps = options.all_steps
         if target.hidden and not presenter:
             raise ValueError(f'Slide {target.id_slug} is hidden in {view}')
@@ -503,14 +499,14 @@ class RenderService:
             if saved and target.needs_context and not presenter and mode == 'slide' and overlay is None:
                 # A slide that needs its deck is typeset in the deck's last compile when there is one
                 # (deck_context.render_in_deck), which reads the saved file, not the captured text.
-                pdf = preview_target.render(target, view, language, footer_timestamp=timestamp, log=log,
+                pdf = preview_target.render(target, view, language, log=log,
                                             capture_snapshot=False, cancel=cancel, all_steps=all_steps,
-                                            render_stamp=stamp, force_build=True)
+                                            force_build=True)
             else:
                 pdf = preview_target.render_text(
-                    target, text, view, language, footer_timestamp=timestamp, log=log,
+                    target, text, view, language, log=log,
                     presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
-                    all_steps=all_steps, render_stamp=stamp, force_build=True)
+                    all_steps=all_steps, force_build=True)
             if all_steps:
                 # The reveal-step bar's all-steps render: step_renders reads its pages; it is not cached here.
                 preview_build.check_cancel(cancel)
@@ -572,7 +568,7 @@ class RenderService:
                 image_request = self._requests.get((('image', group_key), options.force))
                 if image_request is not None and not image_request.cancel.is_set() and image_request.spec.view == view:
                     return _ImageConsumer(image_request, spec, group,
-                                          fallback=lambda: self.request(target, text, view, language, timestamp, log,
+                                          fallback=lambda: self.request(target, text, view, language, log,
                                                                         spec=spec, require_pdf=True), require_pdf=True,
                                           delivery=delivered)
             if request is None or request.cancel.is_set():
@@ -583,5 +579,5 @@ class RenderService:
             if request.spec == spec:
                 return request
             return _ImageConsumer(request, spec, group,
-                                  fallback=lambda: self.request(target, text, view, language, timestamp, log,
+                                  fallback=lambda: self.request(target, text, view, language, log,
                                                                 spec=spec, require_pdf=True), delivery=delivered)

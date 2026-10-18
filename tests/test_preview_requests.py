@@ -91,7 +91,7 @@ def test_tool_wait_cancels_shared_running_request(tmp_path, monkeypatch, timeout
 
     monkeypatch.setattr(preview_target, 'render_text', render)
     service = preview_requests.RenderService()
-    request = service.request(target, 'BODY', 'instructor', 'EN', False, lambda _: None)
+    request = service.request(target, 'BODY', 'instructor', 'EN', lambda _: None)
     cancel = compiler.CancelToken()
     if not timeout:
         stopper = threading.Thread(target=lambda: (started.wait(2), cancel.request_stop()))
@@ -188,7 +188,7 @@ def test_completed_service_cache_survives_restart_and_validates_content(tmp_path
     target = preview_target.for_path(ctx, source)
 
     def request(service, force=False, stamp=None):
-        pending = service.request(target, source.read_text(), 'instructor', 'EN', True,
+        pending = service.request(target, source.read_text(), 'instructor', 'EN',
                                   lambda _: None, saved=True, force=force, render_stamp=stamp)
         pending.wait()
         return pending
@@ -233,7 +233,7 @@ def test_saved_request_changed_before_start_never_compiles(tmp_path, monkeypatch
     source = ctx.slides_dir / 'abc-EN-One-current.tex'
     source.write_text('old')
     target = preview_target.for_path(ctx, source)
-    request = preview_requests.RenderService().request(target, 'old', 'instructor', 'EN', False,
+    request = preview_requests.RenderService().request(target, 'old', 'instructor', 'EN',
                                                       lambda _: None, saved=True)
     source.write_text('new')
     monkeypatch.setattr(preview_target, 'render', lambda *a, **kw: pytest.fail('superseded source compiled'))

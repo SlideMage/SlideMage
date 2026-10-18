@@ -51,7 +51,7 @@ def check_readability(ctx: ToolContext, args: dict) -> str:
     text, source = current_revision(ctx.workspace, path)
     try:
         report = readability_check.check_slide(ctx.project, target, text, context.view, language,
-                                               context.footer_timestamp, ctx.cancel)
+                                               ctx.cancel)
     except RuntimeError as exc:
         raise ToolError(f"{target.bare_id}: the slide ({source}) did not compile, so it was not checked. "
                         f"{first_error_line(str(exc))}") from None
