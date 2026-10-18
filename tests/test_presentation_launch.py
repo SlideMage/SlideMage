@@ -23,7 +23,7 @@ def pdf(label="Presenter"):
 @pytest.fixture
 def calls(monkeypatch):
     calls = SimpleNamespace(started=[], compiled=[], asked=[], answers=[])
-    monkeypatch.setattr(launch, "start", lambda window, found: calls.started.append(found))
+    monkeypatch.setattr(launch, "start", lambda window, found, deck=None: calls.started.append(found))
     monkeypatch.setattr(compile_actions, "compile_current", lambda window, kind: calls.compiled.append(kind))
     monkeypatch.setattr(launch, "_ask", lambda *args: calls.asked.append(args[1]) or calls.answers.pop(0))
     monkeypatch.setattr(launch.QMessageBox, "information", lambda *args: calls.asked.append("info"))

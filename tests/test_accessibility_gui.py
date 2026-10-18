@@ -347,7 +347,7 @@ def test_the_more_menu_opens_from_the_keyboard_on_its_first_item_and_escape_clos
     assert more.accessibleName() == "More"
     QTest.keyClick(more, Qt.Key.Key_Return)
     menu = next(w for w in window.topbar.findChildren(widgets.PopoverMenu) if w.isVisible())
-    assert menu._rows[menu._current].key == "deck_settings"            # it opens on the first item
+    assert menu._rows[menu._current].key == "present"                  # it opens on the first item
     closed = []
     menu.closed.connect(lambda: closed.append(True))
     QTest.keyClick(menu, Qt.Key.Key_Escape)

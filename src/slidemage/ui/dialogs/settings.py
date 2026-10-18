@@ -279,7 +279,7 @@ class SettingsSheet(ModalSheet):
         self.cloud = CloudTab(app.project)
         self.ollama = OllamaTab(app)
         self.prompts = PromptsTab(app)
-        self.presentation = PresentationTab(app.project)
+        self.presentation = PresentationTab()
         for label, tab_widget in (("General", self.general), ("AI", self.ai), ("Cloud", self.cloud),
                                   ("Ollama", self.ollama), ("Prompts", self.prompts),
                                   ("Presentation", self.presentation)):

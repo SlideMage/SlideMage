@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from ...compiler import DeckPdf
 from ...deck_scan import Deck
+from ...presentation import frames as frames_mod
 from ...presentation.locate import find_presenter_pdf
 from ...presentation.pdf_source import PresentationDeck
 from ...presentation.settings import PresentationSettings
@@ -28,7 +29,7 @@ def on_present(window, deck: Deck, after_compile: bool = False) -> None:
         if choice == 0:
             _compile_then_present(window, deck)
         elif choice == 1 and found.plain is not None:
-            start(window, found.plain)
+            start(window, found.plain, deck)
         return
     if found.stale and not after_compile:
         choice = _ask(window, "Presenter PDF is older than the deck",
@@ -39,7 +40,7 @@ def on_present(window, deck: Deck, after_compile: bool = False) -> None:
             return
         if choice != 1:
             return
-    start(window, found.presenter)
+    start(window, found.presenter, deck)
 
 
 def _ask(window, title: str, text: str, first: str, second: Optional[str]) -> int:
@@ -65,16 +66,17 @@ def _compile_then_present(window, deck: Deck) -> None:
     window.compile.settled.connect(settled)
 
 
-def start(window, pdf: DeckPdf) -> Optional[PresentationController]:
+def start(window, pdf: DeckPdf, deck: Optional[Deck] = None) -> Optional[PresentationController]:
     try:
         presentation_deck = PresentationDeck(pdf.path)
     except (ValueError, RuntimeError, OSError) as exc:
         QMessageBox.warning(window, "Present", f"{pdf.path.name} could not be opened: {exc}")
         return None
-    settings = PresentationSettings.load(window.project)
+    settings = PresentationSettings.load()
+    frames = frames_mod.load_for(window.project, deck, pdf.path, presentation_deck.page_count) if deck is not None else None
     controller = PresentationController(
-        presentation_deck, settings, main_screen=window.screen(),
-        save_settings=lambda changed: changed.save(window.project))
+        presentation_deck, settings, main_screen=window.screen(), frames=frames,
+        save_settings=lambda changed: changed.save())
     window.presentation = controller
     controller.finished.connect(lambda: setattr(window, "presentation", None))
     controller.start()

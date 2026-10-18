@@ -10,6 +10,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QScreen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QToolButton, QWidget
 
 from ...presentation import layout
+from ...presentation.frames import FrameMap
 from ...presentation.keep_awake import KeepAwake
 from ...presentation.pdf_source import NOTES, SLIDE, PresentationDeck
 from ...presentation.screens import ScreenInfo, choose_screens
@@ -39,16 +40,17 @@ def screen_infos(screens: list[QScreen]) -> list[tuple[ScreenInfo, QScreen]]:
 
 class PresentationController(QObject):
     finished = Signal()
+    typing_changed = Signal()      # the number being typed for "go to slide" changed
 
     def __init__(self, deck: PresentationDeck, settings: PresentationSettings, *,
                  screens: Optional[list[tuple[ScreenInfo, Optional[QScreen]]]] = None,
-                 main_screen: Optional[QScreen] = None, start_page: int = 0,
+                 main_screen: Optional[QScreen] = None, start_page: int = 0, frames: Optional[FrameMap] = None,
                  keep_awake: Optional[KeepAwake] = None, timer: Optional[PresentationTimer] = None,
                  save_settings: Optional[Callable[[PresentationSettings], None]] = None,
                  confirm: Optional[Callable[[QWidget, str], bool]] = None,
                  open_uri: Callable[[str], None] = lambda uri: QDesktopServices.openUrl(QUrl(uri))) -> None:
         super().__init__()
-        self.deck, self.settings = deck, settings
+        self.deck, self.settings, self.frames = deck, settings, frames
         self.session = PresentationSession(deck.page_count, start_page, self)
         self.timer = timer or PresentationTimer()
         self.keep_awake = keep_awake if keep_awake is not None else KeepAwake()
@@ -137,8 +139,9 @@ class PresentationController(QObject):
                                 empty_text="" if self.deck.has_notes else "No notes in this PDF.\nCompile the Presenter version to see notes.")
         if name == "counter":
             label = QLabel()
-            session.changed.connect(lambda: label.setText(f"Page {session.page + 1} / {session.page_count}"))
-            label.setText(f"Page {session.page + 1} / {session.page_count}")
+            session.changed.connect(lambda: label.setText(self.counter_text()))
+            self.typing_changed.connect(lambda: label.setText(self.counter_text()))
+            label.setText(self.counter_text())
             return label
         if name == "clock":
             label = QLabel()
@@ -150,6 +153,25 @@ class PresentationController(QObject):
         if name == "timer":
             return TimerButton(self.timer, self.settings)
         return self._toolbar()
+
+    def counter_text(self) -> str:
+        """"Slide n / N · step k / K" (from the .nav file), else "Page n / N"; the number being typed instead
+        while there is one."""
+        if self._digits:
+            return f"Go to {self.number_word()} {self._digits}  (Enter)"
+        if self.frames is None:
+            return f"Page {self.session.page + 1} / {self.session.page_count}"
+        slide, step, steps = self.frames.frame_of(self.session.page)
+        return f"Slide {slide} / {self.frames.count} · step {step} / {steps}"
+
+    def number_word(self) -> str:
+        """What a typed number means: the slide number printed in the footer, or (no .nav data) the PDF page."""
+        return "slide" if self.frames is not None else "page"
+
+    def _set_digits(self, digits: str) -> None:
+        if digits != self._digits:
+            self._digits = digits
+            self.typing_changed.emit()
 
     def _clock_text(self) -> str:
         fmt = self.settings.clock_format
@@ -205,10 +227,10 @@ class PresentationController(QObject):
         if self._save_settings is not None:
             self._save_settings(self.settings)
 
-    def _toast(self, text: str) -> None:
+    def _toast(self, text: str, milliseconds: int = 4000) -> None:
         window = self.presenter or self.audience
         if window is not None:
-            window.show_toast(text)
+            window.show_toast(text, milliseconds)
 
     def _page_changed(self, page: int) -> None:
         if (self.settings.timer_start_on_navigation and self.timer.mode == "duration" and not self.timer.running
@@ -233,13 +255,15 @@ class PresentationController(QObject):
         ctrl, shift, alt = (bool(mods & m) for m in (Qt.KeyboardModifier.ControlModifier,
                                                       Qt.KeyboardModifier.ShiftModifier, Qt.KeyboardModifier.AltModifier))
         if key in DIGITS and not (ctrl or alt):
-            self._digits = (self._digits + DIGITS[key])[-4:]
+            self._set_digits((self._digits + DIGITS[key])[-4:])
+            self._toast(f"Go to {self.number_word()} {self._digits}  (Enter)", 1500)
             return True
         if key in (Key.Key_Return, Key.Key_Enter) and self._digits:
-            number, self._digits = int(self._digits), ""
-            session.goto(number - 1)
+            number = int(self._digits)
+            self._set_digits("")
+            session.goto(self.frames.first_page(number) if self.frames is not None else number - 1)
             return True
-        self._digits = ""
+        self._set_digits("")
         if key == Key.Key_Escape:
             self.end()
         elif key == Key.Key_Left and alt:

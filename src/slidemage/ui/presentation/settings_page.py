@@ -20,10 +20,9 @@ def _swatch(button: QPushButton, color: str) -> None:
 
 
 class PresentationTab(Page):
-    def __init__(self, project) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.project = project
-        self.values = PresentationSettings.load(project)
+        self.values = PresentationSettings.load()
         values, body = self.values, self.body
 
         self.profile_combo = QComboBox()
@@ -102,7 +101,7 @@ class PresentationTab(Page):
 
     def _set(self, key: str, value) -> None:
         setattr(self.values, key, value)
-        self.values.save(self.project)
+        self.values.save()
 
     def _pick(self, button: QPushButton, key: str, alpha: bool) -> None:
         options = QColorDialog.ColorDialogOption.ShowAlphaChannel if alpha else QColorDialog.ColorDialogOption(0)
@@ -113,7 +112,7 @@ class PresentationTab(Page):
 
     def _reset(self) -> None:
         defaults = PresentationSettings()
-        defaults.save(self.project)
+        defaults.save()
         self.values = defaults
         for combo, value in ((self.profile_combo, defaults.profile),):
             combo.setCurrentIndex(max(combo.findText(value), 0))

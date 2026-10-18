@@ -8,6 +8,7 @@ import pytest
 
 from presentation_fixtures import JUMP_SPOT, URI_SPOT, make_pdf, page_color
 from slidemage import app_settings
+from slidemage.ui import layout_settings
 from slidemage.presentation import layout
 from slidemage.presentation.keep_awake import KeepAwake
 from slidemage.presentation.pdf_source import NOTES, SLIDE, PresentationDeck
@@ -280,12 +281,13 @@ def test_time_up_flashes_for_ten_seconds_then_stays_red_and_flashing_can_be_off(
 # -- settings and keep-awake -----------------------------------------------------------------
 
 def test_settings_have_defaults_survive_the_store_and_ignore_bad_values(ctx):
-    assert PresentationSettings.load(ctx) == PresentationSettings()
+    assert PresentationSettings.load() == PresentationSettings()
     changed = PresentationSettings(laser_color="#00ff00", timer_duration_minutes=20, confirm_links=False)
-    changed.save(ctx)
-    assert PresentationSettings.load(ctx) == changed
-    app_settings.set(ctx, "presentation", {"laser_color": 5, "pen_width": "wide", "confirm_links": False})
-    loaded = PresentationSettings.load(ctx)
+    changed.save()
+    assert PresentationSettings.load() == changed
+    assert app_settings.get(ctx, "presentation") is None            # per user, not in the project
+    layout_settings.set("presentation", {"laser_color": 5, "pen_width": "wide", "confirm_links": False})
+    loaded = PresentationSettings.load()
     assert loaded.laser_color == "#ff2020" and loaded.pen_width == 0.012 and loaded.confirm_links is False
 
 
@@ -315,3 +317,39 @@ def test_keep_awake_starts_and_stops_once_and_never_fails_the_show():
     broken.start()
     assert not broken.active
     broken.stop()
+
+
+# -- frames from the .nav file ---------------------------------------------------------------
+
+NAV = "\n".join([r"\headcommand {\slideentry {0}{0}{1}{1/1}{}{0}}"] + [
+    rf"\headcommand {{\beamer@framepages {{{first}}}{{{last}}}}}" for first, last in ((1, 1), (2, 4), (5, 5), (6, 6))])
+
+
+def test_the_nav_file_groups_pages_into_slides_with_steps():
+    from slidemage.presentation.frames import parse_nav
+    frames = parse_nav(NAV, 6)
+    assert frames.count == 4 and frames.frames == ((0, 0), (1, 3), (4, 4), (5, 5))
+    assert frames.frame_of(0) == (1, 1, 1) and frames.frame_of(2) == (2, 2, 3) and frames.frame_of(5) == (4, 1, 1)
+    assert frames.first_page(2) == 1 and frames.first_page(3) == 4
+    assert frames.first_page(0) == 0 and frames.first_page(99) == 5          # clamped to the existing slides
+
+
+def test_a_nav_file_that_does_not_fit_the_pdf_is_not_used():
+    from slidemage.presentation.frames import parse_nav
+    assert parse_nav(NAV, 7) is None and parse_nav(NAV, 5) is None and parse_nav("", 6) is None
+    assert parse_nav(r"\beamer@framepages {1}{3}" + "\n" + r"\beamer@framepages {2}{6}", 6) is None   # overlapping frames
+    assert parse_nav(r"\beamer@framepages {2}{6}", 6) is None                                       # not from page 1
+
+
+def test_the_kept_nav_of_the_presenter_compile_is_found_and_checked_against_the_pdf(ctx, tmp_path):
+    from types import SimpleNamespace
+
+    from slidemage import compile_records
+    from slidemage.presentation import frames as frames_mod
+    deck = SimpleNamespace(name="talk", supports_version=False, text=r"\decklanguage[en]" + "\n")
+    pdf = tmp_path / "talk-presenter.pdf"
+    kept = compile_records.aux_dir(ctx.build_dir, "talk-presenter")
+    kept.mkdir(parents=True)
+    (kept / "talk-presenter.nav").write_text(NAV, encoding="utf-8")
+    assert frames_mod.load_for(ctx, deck, pdf, 6).count == 4
+    assert frames_mod.load_for(ctx, deck, pdf, 9) is None                  # another PDF: fall back to page numbers

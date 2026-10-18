@@ -384,13 +384,13 @@ def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
     assert list(full) == [
         "compile:instructor", "compile:during-course", "compile:after-course", "compile:all",
         "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
-        "compile:everything", "transcript:during-course", "transcript:after-course", "stop", "build_options"]
+        "compile:everything", "transcript:during-course", "transcript:after-course", "present", "stop", "build_options"]
     assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
     assert items(build_compile_menu(None, command_context(COURSE, selected=('aaa', 'bbb'))))["compile:slides"]
     plain = items(build_compile_menu(None, command_context(make_deck("plain", versions=False))))
     assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters", "compile:presenter",
                            "compile:slides", "compile:pages", "compile:several", "compile:everything",
-                           "stop", "build_options"]
+                           "present", "stop", "build_options"]
     assert not plain["compile:chapters"]                              # no \section chapters
     assert items(build_compile_menu(None, command_context(COURSE, compiling=True)))["stop"]
 

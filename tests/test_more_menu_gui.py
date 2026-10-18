@@ -20,7 +20,7 @@ from slidemage.ui.workspace.palette import command_entries
 COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course",
                          course_url="https://example.org/course", supports_version=True)
 
-LEFT = [("header", "This deck"), "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
+LEFT = [("header", "This deck"), "present", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
         "export_pptx", "create_snapshot", "rerender_deck_previews", "update_deck_versions", ("sep",), "archive_deck"]
 RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck",
          ("header", "Housekeeping"), "housekeeping", "archive_unused",
@@ -70,7 +70,7 @@ def test_every_listed_command_exists_once_and_a_shortcut_shows_in_place_of_a_hin
     ids = [i for sections in MORE_COLUMNS for _header, ids in sections for i in ids] + list(MORE_FOOTER)
     assert keys == ids and len(set(keys)) == len(keys)
     meta = {e[1]: e[3] for e in menu._entries if e[0] == "item"}
-    assert meta["palette"] == "Ctrl+K" and [k for k, m in meta.items() if m] == ["palette"]   # no hints like "course page"
+    assert meta["palette"] == "Ctrl+K" and [k for k, m in meta.items() if m] == ["present", "palette"]   # shortcuts only, no hints like "course page"
 
 
 def test_the_popover_is_520_wide_with_the_right_column_divided_and_the_footer_below(qapp):
@@ -107,7 +107,7 @@ def test_archive_deck_is_red_after_a_separator_in_the_left_column(qapp):
 def test_commands_not_available_now_are_disabled(qapp):
     rows = rows_of(build_more_menu(None, command_context(None)))
     assert [k for k, r in rows.items() if not r.isEnabled()] == [
-        "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx", "rerender_deck_previews", "update_deck_versions", "archive_deck"]
+        "present", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx", "rerender_deck_previews", "update_deck_versions", "archive_deck"]
 
 
 # -- using it ------------------------------------------------------------------------
@@ -132,16 +132,16 @@ def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_c
         def current():
             return menu._rows[menu._current].key
 
-        assert current() == "deck_settings"                               # focus on the first item
+        assert current() == "present"                                     # focus on the first item
         QTest.keyClick(menu, Qt.Key.Key_Down)
         QTest.keyClick(menu, Qt.Key.Key_Down)
-        assert current() == "deck_source"
+        assert current() == "admin_slides"
         QTest.keyClick(menu, Qt.Key.Key_Right)                            # the same position, one column on
         assert current() == "edit_bib"
         QTest.keyClick(menu, Qt.Key.Key_Up)
         assert current() == "images"
         QTest.keyClick(menu, Qt.Key.Key_Left)
-        assert current() == "admin_slides"
+        assert current() == "deck_settings"
         QTest.keyClick(menu, Qt.Key.Key_Up)
         QTest.keyClick(menu, Qt.Key.Key_Up)                               # wraps round within the column
         assert current() == "archive_deck"
@@ -149,7 +149,7 @@ def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_c
         QTest.keyClick(menu, Qt.Key.Key_Right)                            # the footer is a third stop
         assert current() == "settings"
         QTest.keyClick(menu, Qt.Key.Key_Right)                            # and the first column follows it
-        assert current() == "deck_settings"
+        assert current() == "present"
         QTest.keyClick(menu, Qt.Key.Key_Left)
         assert current() == "settings"
     finally:
@@ -176,7 +176,7 @@ def test_enter_activates_the_current_item(qapp):
     menu.popup_at(QPoint(10, 10))
     QTest.keyClick(menu, Qt.Key.Key_Down)
     QTest.keyClick(menu, Qt.Key.Key_Return)
-    assert seen == ["admin_slides"] and not menu.isVisible()
+    assert seen == ["deck_settings"] and not menu.isVisible()
 
 
 def test_escape_closes_it(window):

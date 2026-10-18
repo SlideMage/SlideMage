@@ -1,11 +1,11 @@
-"""The presentation options (plan 4.11), kept in the project's app settings under one key. Every field has a
-default, so presenting works with the settings page never opened."""
+"""The presentation options (plan 4.11), kept per user and machine (ui/layout_settings.py, outside the project)
+under one key: the layout and the screens depend on the presenter's computer, not on the deck. Every field has
+a default, so presenting works with the settings page never opened."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields
 
-from .. import app_settings
-from ..project import ProjectContext
+from ..ui import layout_settings
 
 SETTINGS_KEY = "presentation"
 TIMER_END, TIMER_DURATION = "end", "duration"
@@ -27,8 +27,8 @@ class PresentationSettings:
     clock_format: str = "system"       # "system", "12" or "24"
 
     @classmethod
-    def load(cls, ctx: ProjectContext) -> "PresentationSettings":
-        stored = app_settings.get(ctx, SETTINGS_KEY, {})
+    def load(cls) -> "PresentationSettings":
+        stored = layout_settings.get(SETTINGS_KEY, {})
         stored = stored if isinstance(stored, dict) else {}
         settings = cls()
         for field in fields(cls):
@@ -37,5 +37,5 @@ class PresentationSettings:
                 setattr(settings, field.name, value)
         return settings
 
-    def save(self, ctx: ProjectContext) -> None:
-        app_settings.set(ctx, SETTINGS_KEY, asdict(self))
+    def save(self) -> None:
+        layout_settings.set(SETTINGS_KEY, asdict(self))

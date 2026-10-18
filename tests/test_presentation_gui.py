@@ -249,20 +249,20 @@ def test_a_duration_timer_starts_on_the_first_slide_change_and_t_toggles_it(make
     assert controller.timer.text() == "10:00"
 
 
-def test_the_settings_tab_saves_each_change_and_resets(qapp, ctx):
+def test_the_settings_tab_saves_each_change_and_resets(qapp):
     from slidemage.ui.presentation.settings_page import PresentationTab
-    tab = PresentationTab(ctx)
+    tab = PresentationTab()
     tab.confirm_links.setChecked(False)
     tab.timer_minutes.setValue(30)
     tab.timer_mode.setCurrentIndex(tab.timer_mode.findData("duration"))
     tab.profile_combo.setCurrentText("Next large")
     tab.pen_width.setValue(2.0)
-    saved = PresentationSettings.load(ctx)
+    saved = PresentationSettings.load()
     assert (saved.confirm_links, saved.timer_duration_minutes, saved.timer_mode, saved.profile, saved.pen_width) == (
         False, 30, "duration", "Next large", 0.02)
     assert tab.audience_screen.itemData(0) == "" and tab.audience_screen.count() >= 2
     tab._reset()
-    assert PresentationSettings.load(ctx) == PresentationSettings()
+    assert PresentationSettings.load() == PresentationSettings()
     assert tab.confirm_links.isChecked() and tab.timer_minutes.value() == 45
 
 
@@ -288,3 +288,35 @@ def test_a_drawing_lands_on_the_same_spot_of_the_slide_on_screens_of_different_s
             at = spot(canvas, fraction)
             colour = image.pixelColor(at.x(), at.y())
             assert (colour.red() > 200 and colour.green() < 60) == drawn, (canvas.view, fraction)
+
+
+def test_a_typed_number_is_the_slide_number_when_the_nav_data_fits_else_the_page(make):
+    from slidemage.presentation.frames import FrameMap
+    controller = make(frames=FrameMap(((0, 0), (1, 3), (4, 4), (5, 5))))
+    session = controller.session
+    counter = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Slide")][0]
+    assert counter.text() == "Slide 1 / 4 · step 1 / 1"
+    press_key(controller, Qt.Key.Key_2)
+    assert counter.text() == "Go to slide 2  (Enter)"
+    press_key(controller, Qt.Key.Key_Return)
+    assert session.page == 1 and counter.text() == "Slide 2 / 4 · step 1 / 3"       # the first step of slide 2
+    press_key(controller, Qt.Key.Key_Right)
+    assert counter.text() == "Slide 2 / 4 · step 2 / 3"
+    press_key(controller, Qt.Key.Key_4)
+    press_key(controller, Qt.Key.Key_Return)
+    assert session.page == 5
+    press_key(controller, Qt.Key.Key_9)
+    press_key(controller, Qt.Key.Key_Return)
+    assert session.page == 5                                               # beyond the last slide: the last one
+
+
+def test_without_nav_data_the_typed_number_is_a_page_and_the_indicator_says_so(make):
+    controller = make()
+    counter = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Page")][0]
+    press_key(controller, Qt.Key.Key_3)
+    assert counter.text() == "Go to page 3  (Enter)"
+    press_key(controller, Qt.Key.Key_Return)
+    assert controller.session.page == 2 and counter.text() == "Page 3 / 6"
+    press_key(controller, Qt.Key.Key_5)
+    press_key(controller, Qt.Key.Key_Escape)                                # anything else drops the typed number
+    assert controller.ended
