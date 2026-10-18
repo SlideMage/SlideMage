@@ -275,6 +275,18 @@ class CentreColumn(QFrame):
         if not changed:
             QMessageBox.information(self.app, "Update Version", f"No slide of {deck.name} has changes since its last version.")
             return
+        self._update_versions(changed, "Update Version of all changed slides", f"in {deck.name}")
+
+    def update_selected_versions(self) -> None:
+        """Make a version of each selected slide, using one shared bump level."""
+        slugs = list(dict.fromkeys(row.call.id_slug for row in self.app.slide_list.targets()))
+        if not slugs:
+            return
+        self.source.flush_all()
+        self._update_versions(slugs, "Update Versions", "selected")
+
+    def _update_versions(self, changed: list[str], title: str, label: str) -> None:
+        """Batch versioning keeps deck calls as they are, including pinned versions."""
         blocked = [slug for slug in changed
                    if self.is_blocked(self.state.project.slides_dir / slide_language.current_name(slug))]
         if blocked:
@@ -284,8 +296,8 @@ class CentreColumn(QFrame):
             return
         shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:12]) + (", …" if len(changed) > 12 else "")
         box = QMessageBox(self.app)
-        box.setWindowTitle("Update Version of all changed slides")
-        box.setText(f"{len(changed)} slide(s) of {deck.name} have changes since their last version:\n{shown}\n\n"
+        box.setWindowTitle(title)
+        box.setText(f"Update versions of {len(changed)} slide(s) {label}:\n{shown}\n\n"
                     "How significant are the changes? Each slide is frozen as the next version of that size.")
         levels: dict[str, object] = {}
         for level in ("major", "minor", "patch"):
@@ -302,7 +314,7 @@ class CentreColumn(QFrame):
             open_current = self.source.file_for(current)
             try:
                 _frozen, version, _base = slide_versioning.update_version(self.state.project, current, slug, level)
-            except (ValueError, slide_source.StaleFileError) as exc:
+            except (OSError, ValueError, slide_source.StaleFileError) as exc:
                 failed.append(f"{slide_language.bare_id(slug)}: {exc}")
                 continue
             updated.append(current)

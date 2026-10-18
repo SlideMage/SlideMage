@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .. import slide_add
+from .image_instructions import IMAGE_DESCRIPTION_RULES
 from ..project import ProjectContext
 
 _SLIDES = """\
@@ -105,7 +106,7 @@ GUIDES: dict[str, tuple[str, str | Callable[[ProjectContext], str]]] = {
     "layout": ("columns, tables, blocks, figures, spacing", _LAYOUT),
     "reveals": ("\\pause, \\only, \\slidestep, deck versions", _REVEALS),
     "citations": ("Slidemaster.bib, \\fullcite, \\textcite", _CITATIONS),
-    "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES),
+    "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES + "\n" + IMAGE_DESCRIPTION_RULES),
 }
 TOPICS = tuple(GUIDES)
 

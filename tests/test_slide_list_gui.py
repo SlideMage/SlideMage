@@ -568,7 +568,7 @@ def test_the_bulk_menu_moves_slides_into_a_section(make_list):
     menu = slide_list._bulk_menu()
     assert keys_of(menu) == [
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
-        "move:0", "move:1", "move:2", "move:3", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"]
+        "move:0", "move:1", "move:2", "move:3", "slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"]
     assert _entry(menu, "slide:remove")[2] == "Remove 2 from the deck"
     slide_list._on_menu_chosen("move:2")               # into the empty section
     assert deck_lines(path) == ["\\section{One}", "\\slide{bbb-One}", "\\section{Empty}", "\\slide{aaa-Front}",

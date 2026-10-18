@@ -152,3 +152,22 @@ def test_building_the_launch_writes_nothing_anywhere(tmp_path, monkeypatch):
     claude_launch.environment("t", project, found)
     assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*")) == [
         "home", "home/.local", "home/.local/bin", "home/.local/bin/claude", "project"]
+
+
+def test_saved_chat_model_and_effort_are_passed_as_launch_flags(ctx, tmp_path):
+    from slidemage.ai import ai_profile
+
+    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.CHAT, "opus:high")
+    route = ai_profile.route_for(ctx, ai_profile.CLAUDE_CODE, ai_profile.CHAT)
+    command = claude_launch.build_command(tmp_path / "claude", URL, model=route.model, effort=route.effort)
+    assert command[1:5] == ["--model", "opus", "--effort", "high"]
+
+
+def test_image_description_language_instructions_reach_both_chats_and_guide():
+    from slidemage.ai import agent_context, guides
+
+    for prompt in (claude_launch.ORIENTATION, agent_context.SYSTEM_PROMPT, guides.GUIDES["images_and_text"][1]):
+        assert "media/alt-text.json" in prompt
+        assert "short_de and long_de" in prompt and "in German" in prompt
+        assert "EN/DE segment" in prompt and "deck's editing language" in prompt
+        assert "Preserve existing descriptions in the other language" in prompt

@@ -646,7 +646,7 @@ class SlideList(QWidget):
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
-        add_commands(menu, self.app, ["slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
+        add_commands(menu, self.app, ["slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
         return menu
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:

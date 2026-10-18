@@ -16,6 +16,7 @@ from ..project import ProjectContext
 from .tools.base import ToolError
 from .tools.files import current_text, relative
 from .workspace import Workspace
+from .image_instructions import IMAGE_DESCRIPTION_RULES
 
 SCOPE_SLIDE = "slide"
 SCOPE_DECK = "deck"
@@ -83,7 +84,9 @@ marked "set by the template" are not the slide's to change, and the user's Make 
 - Files open in the editor are changed in the editor (the user saves them); the rest are saved at once.
 - You cannot run programs, browse the web or change image files. Say so and suggest what the user can do.
 - Answer in the language the user writes in. Be brief: say what you did and what is left to decide, not \
-a tour of the LaTeX."""
+a tour of the LaTeX.
+
+{IMAGE_DESCRIPTION_RULES}"""
 
 
 def _lint_lines(ctx: ProjectContext, text: str, name: str) -> list[str]:

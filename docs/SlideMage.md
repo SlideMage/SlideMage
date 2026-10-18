@@ -633,7 +633,8 @@ What matters when touching *this code*:
   **AI setup**, the ▾ of the AI switch in the top bar, `ui/workspace/ai_setup.py`: every
   model picker lists the models of the route in use and preselects its default, picking
   another there applies to that use only; the local chat lists only models that can call
-  tools, local image descriptions only vision models), **Cloud** (the Anthropic API key
+  tools, local image descriptions only vision models; Claude Code chat saves a model and
+  effort used on the next start or Restart, or inherits **Claude Code default**), **Cloud** (the Anthropic API key
   with where it is stored), **Ollama**
   (`settings_ollama.py`: the host URL and the installed models, update and delete) and
   **Prompts** (`settings_prompts.py`: the editable system prompt of image descriptions,

@@ -19,6 +19,7 @@ from pathlib import Path
 from ..cli import CLAUDE_HOOK_FLAG
 from ..processes import no_console_kwargs
 from .claude_scope import FOCUS_ENV
+from .image_instructions import IMAGE_DESCRIPTION_RULES
 from .tools import CLAUDE_CODE_READ_ONLY
 
 SERVER_NAME = "slidemage"
@@ -52,7 +53,7 @@ ORIENTATION = (
     "add_slide, call show_slide so they see it. To translate a slide, call "
     "translate_slide and then only say that SlideMage is translating it. Answers are short: one or two "
     "sentences on what you did, no recap of the slide's content, no list of things to check; end with at most "
-    "one question offering a concrete next step (e.g. 'Create the German version?').")
+    "one question offering a concrete next step (e.g. 'Create the German version?'). " + IMAGE_DESCRIPTION_RULES)
 
 
 def _extra_dirs() -> list[Path]:
@@ -118,9 +119,11 @@ def settings(hook: str) -> dict:
         "permissions": {"allow": [f"mcp__{SERVER_NAME}__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]}}
 
 
-def build_command(claude: Path, url: str, hook: str | None = None) -> list[str]:
-    """The interactive session's command line; the model and effort are the user's Claude Code defaults."""
-    return [str(claude),
+def build_command(claude: Path, url: str, hook: str | None = None, *,
+                  model: str = "", effort: str | None = None) -> list[str]:
+    """Start with the saved chat choice, or inherit Claude Code's defaults when no choice is saved."""
+    return [str(claude), *(["--model", model] if model else []),
+            *(["--effort", effort] if effort else []),
             "--mcp-config", json.dumps(mcp_config(url)),
             "--settings", json.dumps(settings(hook or hook_command())),
             "--append-system-prompt", ORIENTATION]

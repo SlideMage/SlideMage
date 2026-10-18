@@ -163,7 +163,9 @@ screenshots.
   and conversation, a task a route cannot do is
   refused instead of using another route, and the first cloud request in a project says
   what will be sent. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`
-  in the project folder (permissions and its model are Claude Code's); SlideMage serves it
+  in the project folder (permissions are Claude Code's). In **AI setup → Chat**, choose a
+  saved model and effort for new sessions; **Restart** applies a changed default to an open
+  terminal. **Claude Code default** keeps Claude Code's own model setting. SlideMage serves it
   the focused slide over a local MCP server and blocks edits to protected parts with a hook.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.
 - **Settings** (⋮ → Settings…): General, AI (German address of translations), Cloud (the API
@@ -1209,7 +1211,9 @@ Preview or Split view shows it. **⋮ → This deck → Update Version of all ch
 slides** asks major / minor / patch once and makes a version of every slide of
 the deck that has a **+**; a snapshot or PowerPoint export warns when a deck
 has such slides. An edit made outside the app (Claude Code in the terminal)
-gets the **+** too, the next time the slide is shown.
+gets the **+** too, the next time the slide is shown. Select multiple slides and
+right-click → **Update Versions…** to update just those slides with one shared
+Patch / Minor / Major choice; existing deck calls keep following current or their pinned version.
 
 If the file changes on disk while you have edits (Claude Code in the
 terminal), saving pauses and the bar above the editor lets you choose; the top

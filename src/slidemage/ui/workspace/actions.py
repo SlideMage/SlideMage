@@ -234,6 +234,8 @@ def build_registry() -> CommandRegistry:
     add("slide:section_before", "Add section before", SLIDE, _run_slide("section_before"), visible=_one_slide)
     add("slide:remove", _remove_label, SLIDE, _run_slide("remove"), tone="danger",
         visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
+    add("slide:update_versions", "Update Versions…", SLIDE,
+        lambda w: w.centre.update_selected_versions(), visible=lambda w: len(_slide_targets(w)) > 1)
     add("slide:clear", "Clear selection", SLIDE, _run_slide("clear"), meta="Esc",
         visible=lambda w: len(_slide_targets(w)) > 1)
     for panel in PANELS:

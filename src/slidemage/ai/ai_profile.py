@@ -59,8 +59,8 @@ class Route:
     """What one AI request runs on. Frozen: a request keeps the Route it was started with."""
     route: str                      # LOCAL, CLAUDE_CODE or API
     task: str                       # one of TASKS
-    model: str = ""                 # "" when none is chosen, and for the chat of Claude Code (set in Claude Code)
-    effort: str | None = None       # Claude Code tasks only
+    model: str = ""                 # "" when none is chosen; Claude Code chat then inherits its own default
+    effort: str | None = None       # Claude Code model choices
 
     @property
     def is_local(self) -> bool:
@@ -172,7 +172,7 @@ def _stored_models(settings: dict) -> dict[str, dict[str, str]]:
 
 def default_choice(route: str, task: str) -> str:
     """What a route runs a task on while the user has chosen nothing: nothing for Local (the pickers offer
-    what is installed), Claude Code's benchmarked setup for its tasks (its chat is the terminal's own model),
+    what is installed), Claude Code's benchmarked setup for its tasks (chat inherits its own default until chosen),
     the standard Claude model for the API."""
     if route == API:
         return DEFAULT_ANTHROPIC_MODEL

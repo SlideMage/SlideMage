@@ -280,7 +280,14 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert [chat.itemData(i) for i in range(chat.count())] == ["", "chat-model"]            # models that call tools
     assert [image.itemData(i) for i in range(image.count())] == ["", "vision-model"]
     assert setup.heads[CLAUDE_CODE].text() == "Cloud · Claude Code"
-    assert setup.fixed[ai_profile.CHAT].isVisible() and setup.fixed[ai_profile.CHAT].text() == "set in Claude Code"
+    cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
+    assert cloud_chat.isVisible() and cloud_chat.currentData() == ""
+    cloud_chat.setCurrentIndex(cloud_chat.findData("sonnet:high"))
+    cloud_chat.activated.emit(cloud_chat.currentIndex())
+    assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.CHAT) == "sonnet:high"
+    setup.refresh()
+    assert cloud_chat.currentData() == "sonnet:high"
+    assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
     image.setCurrentIndex(1)
     image.activated.emit(1)
     assert ai_profile.model_choice(window.project, LOCAL, ai_profile.IMAGE_DESCRIPTION) == "vision-model"
@@ -334,7 +341,8 @@ def test_ai_setup_closes_on_escape_and_on_a_click_outside_but_not_on_its_anchor(
     QTest.keyClick(setup, Qt.Key.Key_Escape)
     assert not setup.isVisible()
     setup = open_setup(window)
-    QTest.mouseClick(window.slide_list, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
+    # A real outside click lands on the overlay; QTest sends directly to the supplied widget.
+    QTest.mouseClick(setup._scrim, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
     assert not setup.isVisible()
     open_setup(window)
     window.topbar.ai_switch.caret.click()                                  # the ▾ again closes it

@@ -467,3 +467,12 @@ def test_attaching_is_off_while_claude_code_is_not_running(env):
     wait_until(lambda: "exit code" in env.view.status.text())
     assert not env.view.attach_button.isEnabled()
     env.view.attach_files([str(env.path)])      # nothing typed, nothing raised
+
+
+def test_saved_chat_choice_applies_on_start_and_restart(env):
+    ai_profile.set_model_choice(env.window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT, "sonnet:medium")
+    start_view(env)
+    assert json.loads(env.log.read_text())["argv"][:4] == ["--model", "sonnet", "--effort", "medium"]
+    ai_profile.set_model_choice(env.window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT, "opus:high")
+    env.view.restart_button.click()
+    wait_until(lambda: json.loads(env.log.read_text())["argv"][:4] == ["--model", "opus", "--effort", "high"])

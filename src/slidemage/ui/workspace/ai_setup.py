@@ -29,8 +29,6 @@ POLICIES = ((LOCAL, "Local"), (CLOUD, "Cloud"))
 NOTE = ("Saved as your defaults. Each side keeps its own models; switching back to Local restores these Ollama "
         "models and the Ollama address of Settings. Pickers elsewhere (Images page, chat) start on these.")
 NO_MODEL = "(none chosen)"
-SET_IN_CLAUDE_CODE = "set in Claude Code"
-SET_IN_CLAUDE_CODE_TIP = "The terminal's conversation model is set in Claude Code"
 
 
 class AiSetup(Popover):
@@ -64,7 +62,6 @@ class AiSetup(Popover):
             self.heads[route_key].setObjectName(q.AI_SETUP_HEAD)
             grid.addWidget(self.heads[route_key], 0, column)
         self.cells: dict[tuple[str, str], QComboBox] = {}       # (column: LOCAL or "cloud", task)
-        self.fixed: dict[str, QLabel] = {}                      # the Claude Code chat cell, by task
         for row, task in enumerate(TASKS, start=1):
             grid.addWidget(QLabel(TASK_LABELS[task]), row, 0)
             for column, side in ((1, LOCAL), (2, CLOUD)):
@@ -76,10 +73,6 @@ class AiSetup(Popover):
                 combo.activated.connect(lambda i, s=side, t=task: self._on_cell(s, t, i))
                 self.cells[(side, task)] = combo
                 grid.addWidget(combo, row, column)
-            self.fixed[task] = QLabel(SET_IN_CLAUDE_CODE)
-            self.fixed[task].setObjectName(q.AI_SETUP_CELL)
-            self.fixed[task].setToolTip(SET_IN_CLAUDE_CODE_TIP)
-            grid.addWidget(self.fixed[task], row, 2)
         self.body.addLayout(grid)
         self.body.addWidget(caption(NOTE))
 
@@ -141,13 +134,6 @@ class AiSetup(Popover):
             for side, route_key in ((LOCAL, LOCAL), (CLOUD, cloud)):
                 combo = self.cells[(side, task)]
                 set_property(combo, "active", (in_use == LOCAL) == (side == LOCAL))
-                if side == CLOUD:
-                    fixed = route_key == CLAUDE_CODE and task == CHAT
-                    combo.setVisible(not fixed)
-                    self.fixed[task].setVisible(fixed)
-                    set_property(self.fixed[task], "active", in_use != LOCAL)
-                    if fixed:
-                        continue
                 self._fill(combo, route_key, task)
 
     def _fill(self, combo: QComboBox, route: str, task: str) -> None:
@@ -156,8 +142,12 @@ class AiSetup(Popover):
         saved = ai_profile.model_choice(self._project, route, task)
         combo.blockSignals(True)
         combo.clear()
+        combo.setToolTip("Used for new sessions. Restart Claude Code to apply a changed default."
+                         if route == CLAUDE_CODE and task == CHAT else "")
         if route == LOCAL:
             combo.addItem(NO_MODEL, "")
+        elif route == CLAUDE_CODE and task == CHAT:
+            combo.addItem("Claude Code default", "")
         for choice in self._offered(route, task):
             combo.addItem(ai_profile.choice_label(route, choice), choice)
         if saved and combo.findData(saved) == -1:
@@ -170,7 +160,11 @@ class AiSetup(Popover):
         combo = self.cells[(side, task)]
         choice = combo.itemData(index) or ""
         ai_profile.set_model_choice(self._project, route, task, choice)
-        text = f"Default for {TOAST_ROUTES[route]} · {TASK_LABELS[task]}: {ai_profile.choice_label(route, choice) or NO_MODEL}"
+        label = ai_profile.choice_label(route, choice) if choice else (
+            "Claude Code default" if route == CLAUDE_CODE and task == CHAT else NO_MODEL)
+        text = f"Default for {TOAST_ROUTES[route]} · {TASK_LABELS[task]}: {label}"
+        if route == CLAUDE_CODE and task == CHAT:
+            text += ". Restart Claude Code to apply it to the terminal."
         self._window.toast.show_message(text)
         announce(self, text)
         self._window.refresh_ai_models()
