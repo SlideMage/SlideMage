@@ -295,6 +295,19 @@ FATAL_ERROR_RE = re.compile(r"^!|^\S.*:[0-9]+: ", re.MULTILINE)
 LogCallback = Callable[[str], None]
 
 
+def lower_priority(proc: subprocess.Popen) -> None:
+    """Run `proc` (and what it launches from now on) below normal priority. Best-effort."""
+    try:
+        if os.name == "nt":
+            import ctypes
+            BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.c_void_p(int(proc._handle)), BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.setpriority(os.PRIO_PROCESS, proc.pid, 10)
+    except (OSError, AttributeError, ValueError):
+        pass
+
+
 class CancelToken:
     """Cross-thread stop signal for a batch of jobs, created fresh per
     compile run. The GUI's "Stop creation" button calls request_stop();
@@ -314,6 +327,9 @@ class CancelToken:
         self._proc: Optional[subprocess.Popen] = None
         self._job_killed = False
         self._skipped: set[str] = set()
+        # Background renders run their process at below-normal priority (set right after it starts, so
+        # what it launches inherits it).
+        self.low_priority = False
 
     def is_set(self) -> bool:
         return self._event.is_set()
@@ -322,6 +338,8 @@ class CancelToken:
         with self._lock:
             self._proc = proc
             stopped = self._event.is_set()
+        if proc is not None and self.low_priority:
+            lower_priority(proc)
         if stopped:
             self._kill(proc)
 
