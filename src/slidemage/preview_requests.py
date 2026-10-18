@@ -9,7 +9,7 @@ import threading
 import shutil
 import time
 
-from . import compiler, preview_build, preview_target, slide_snapshot
+from . import compiler, deck_context, preview_build, preview_target, slide_snapshot
 from .preview_metrics import PreviewMetrics
 
 TIMEOUT = 300
@@ -107,6 +107,8 @@ class RenderService:
                 preview_build.check_cancel(cancel)
                 return pdf, None, (), None
             snapshots = view == 'instructor' and not target.is_frozen_alone and not presenter and mode == 'slide' and overlay is None
+            if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
+                snapshots = False        # a slide that needs its deck keeps the picture a whole-deck compile made
             try:
                 preview_build.check_cancel(cancel)
                 if presenter:

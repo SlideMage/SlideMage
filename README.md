@@ -3036,6 +3036,20 @@ archived ones too, is a `\slidestep` for the student versions it typesets, is no
 file), SlideMage takes `\SMFinalStateForStudents` out of the slide file on its own, with no new version, no "+"
 and no frozen file, and the same Undo puts it back.
 
+**Slides that need the deck around them.** A slide whose own text shows something that only exists in a whole deck
+(`\tableofcontents`, `\SMDeckAgenda`, `\SMChapterAgenda`, `\insertsection...`, `\secname`, `\insertframenumber` in its
+body, `\ref`, `\pageref`, `\hyperlink`, a `sectionframe`) is typeset with its deck around it, and a chip above the
+page says how. **In the deck's context**: SlideMage ran a page compile of that slide on top of the auxiliary files of
+the last whole-deck compile of that version (the ones kept under `.build/compile-records/<deck>-<version>/`, which
+*Remove temp files* leaves alone and which survive closing the app), so the contents, agendas, section, numbers and
+links are the real ones; it needs that compile and a deck unchanged before the slide, as the page compile of the
+Compile menu does. **Rendered without the deck**: with no usable compile, the slide is typeset with the deck's
+`\section` and `\subsection` commands before it and after it (so a contents slide lists every section) and an
+agenda record for every other slide of the version, with its title read from the slide file (for a title built from
+a macro the slide defines itself, the one the last compile recorded). Section page numbers are not the real ones
+then. The chip offers to compile the deck, and a render after that is in the deck's context. A render without the
+deck never replaces the slide's cached picture; only one in the deck does.
+
 The Source view's **Render** menu also offers **Selection as frame** (a complete
 frame, or self-contained text wrapped in a frame) and **Selection as element**
 (a cropped formula, graphic or text fragment using `preview.sty`). Select the

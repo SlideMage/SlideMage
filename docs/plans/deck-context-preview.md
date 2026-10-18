@@ -144,4 +144,26 @@ Copy `.toc/.nav/.aux/.snm` from the full compile into `.build/preview-cache/<sli
 
 Decided: only slides whose own content needs it get the deck-context render; approach A needs one full compile of the version first and keeps its helper files with the compile record (already so, section 5A); approach B emits all sections and, via B2, frameless agenda records with scanned titles; a title built from a macro defined inside the slide file is taken from the last full compile's aux (even if stale), and only when none exists does the slug/ID label show; no manual "Render with deck context" switch.
 
-1. B2 relies on `\SMAgendaTitle`/`\setSlideID` writing the agenda records without a frame. This is read from the source (`Slidemaster_preamble_base.tex:6849-6935`); confirm with one real-TeX experiment before building (a three-section deck, `\SMChapterAgenda` slide in section 2).
+Nothing is open any more: the experiment the last question asked for was done (below).
+
+## 12. Experiments, implementation notes, changelog draft
+
+Experiments (2026-10-18, scratch copies of `example/`):
+- **Frameless agenda records work** (B2): a chapter-agenda slide between `\setSlideID{id}\SMAgendaTitle{title}` lines (no frames) lists the slides before and after it with those titles after the second pass. One correction to the plan: the records must **not** suppress the hypertarget (`\SMSuppressSlideTargettrue` skips `\SM@agenda@slide` as well, `Slidemaster_preamble_base.tex:1274`), so the duplicated `\hypertarget` of the single-slide wrapper is accepted.
+- **Trailing sections need a frame after them**: `\section`/`\subsection` after the last frame wrote nothing to the `.toc` (the deferred `\write` never ships); a `\begin{frame}[plain]\end{frame}` after them makes `\tableofcontents` list every section. The skeleton therefore ends with that flush frame (`deck_context.FLUSH_FRAME`) and the PDF's last page is cut off again (`deck_context.drop_last_page`).
+- **Approach A works end to end** with a real whole-deck compile of a five-slide deck: the contents slide shows both sections, its real frame number and footer; a chapter agenda lists the titles of its section; the all-steps override works through the page compile (`PartialPlan.extra_lines`); a deck that changed before the slide is refused with the page compile's own reason, and the Preview then falls back to the skeleton.
+
+Built as planned, with these differences:
+- `\cite` is not a reason: the single-slide preview already resolves citations (it reuses the bibliography work of its build), so only `\ref`, `\pageref`, `\cref`, `\autoref`, `\nameref`, `\hyperlink` count under "references".
+- The compile record's aux files were already kept with the record and left alone by *Remove temp files* (`compile_records.aux_dir`, `compiler.removable_build_entries`), so nothing had to be added for the owner's decision on persistence.
+- A render in the deck uses the deck's language setting and the Preview's language the way a compile job does (`CompileJob.language`, which only changes the job name when it differs from the deck's).
+- Unsaved buffers get the skeleton only (A renders the saved slide file).
+- Slides that need the deck are keyed with a hash of the deck text (`PreviewTarget.deck_hash`), others are keyed as before.
+- A render without the deck, or with the skeleton, never writes the slide's cached snapshot (`preview_requests`); one in the deck does, for the instructor view.
+- The chip that says "Rendered without deck context" is a button: it compiles the deck in the view being edited (`PreviewPane.compile_requested`, connected to `compile_actions.compile_current` by the window).
+
+Not done: page numbers of sections in the skeleton are still the slide's own (the plan's idea of setting the page counter from the last compile's PDF was left out; the chip says they are not real).
+
+### Changelog draft
+
+- Preview: a slide that needs the rest of its deck (contents, chapter agenda, current section, references) is typeset in the deck's context: in the deck's last compile of that version when there is one, else with the deck's sections and the other slides' agenda titles around it. A chip says which, with a button to compile the deck. Only a render in the deck refreshes the slide's cached picture.

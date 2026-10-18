@@ -34,7 +34,7 @@ from PySide6.QtCore import QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import (deck_editor, latex_lint, preview_target, reveal_steps, slide_preview, slide_snapshot, slide_source,
+from ... import (deck_context, deck_editor, latex_lint, preview_target, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning)
 from ...ai.claude_tasks import LANGUAGE_NAMES
 from ...ai.tools.slidemage import slide_target
@@ -72,7 +72,8 @@ def partner_link(target: PreviewTarget, link: Optional[TranslationLink]) -> Opti
 
 
 def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str,
-              link: Optional[TranslationLink] = None) -> list[tuple]:
+              link: Optional[TranslationLink] = None, context_mode: Optional[str] = None,
+              rendered: bool = False) -> list[tuple]:
     """(icon, text, tone, tooltip) of the chips above the page. `row` is the
     slide's row in the open deck, None for a file shown alone; `link` the translation
     partner of the file shown, if it has one."""
@@ -94,6 +95,8 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
         if row.missing_translation:
             chips.append(("translate", f"No {language} version", "warning",
                           f"The slide has no translation into {language}."))
+    if target.needs_context:
+        chips.append(context_chip(target, view, context_mode, rendered))
     if link is not None and link.outdated:
         chips.append(("translate", "Translation outdated", "warning",
                       "The original was saved after the translation was last written (Language panel)."))
@@ -105,6 +108,25 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
     elif own:
         chips.append(("language", own, "neutral", "The slide's language; it has no translation."))
     return chips
+
+
+def context_chip(target: PreviewTarget, view: str, mode: Optional[str], rendered: bool) -> tuple:
+    """The chip of a slide that needs its deck (deck_context): whether the page shows it in the deck's context."""
+    why = deck_context.describe(target.needs_context)
+    if mode == deck_context.DECK:
+        return ("account_tree", "In the deck's context", "info",
+                f"This slide shows {why}. It was typeset in the last compile of the deck, so those are the real ones.")
+    if mode == deck_context.SKELETON:
+        return ("warning", "Rendered without the deck: may differ from the full deck", "warning",
+                f"This slide shows {why}. It was typeset with the deck's sections and agenda around it, but page "
+                f"numbers of sections are not the real ones. Compile the deck ({VIEW_LABELS[view]}) once, then render "
+                "again: click here to compile it.")
+    if rendered:
+        return ("warning", "Rendered without deck context: may differ from the full deck", "warning",
+                f"This slide shows {why}, which a single-slide render cannot know. Click to compile the deck "
+                f"({VIEW_LABELS[view]}); a render after that uses it.")
+    return ("account_tree", "Needs the deck around it", "muted",
+            f"This slide shows {why}: a render typesets it with the deck's context.")
 
 
 def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str, bool]]:
@@ -235,6 +257,7 @@ class PageView(QWidget):
 class PreviewPane(Surface):
     rendered = Signal()           # a render finished; the slide's snapshot (the list's thumbnail) may be new
     partner_requested = Signal(object)   # the language chip: the Path of the slide's file in the other language
+    compile_requested = Signal(str)      # the deck-context chip: compile the deck in this view
     _finished = Signal(object)    # a _Job, from the worker thread
     _steps_ready = Signal(object, object, str)   # (key, PNG pages, error), from the step queue's thread
 
@@ -285,6 +308,7 @@ class PreviewPane(Surface):
         self._step_pixmap: Optional[tuple[tuple, int, QPixmap]] = None
         self._scans: dict[tuple, reveal_steps.SlideScan] = {}
         self._step_failed: set[tuple] = set()      # page lists that did not render: not asked for again
+        self._context_modes: dict[tuple, Optional[str]] = {}   # (target key, view, language) -> deck_context mode
         # An edit of the open deck, (failed title, summary, change(path, text), cleanup) -> done: the slide list's
         # `edit`, which the window hands over. Without it the ticks of the step bar are not editable.
         self.edit_deck: Optional[Callable[..., bool]] = None
@@ -435,12 +459,18 @@ class PreviewPane(Surface):
         if target is not None:
             link = translation_link(self.app.project, target.id_slug)
             partner = partner_link(target, link)
-            for icon, text, tone, tooltip in chips_for(target, row, view, language, link):
+            mode_key = (target.key, view, language)
+            for icon, text, tone, tooltip in chips_for(
+                    target, row, view, language, link, self._context_modes.get(mode_key),
+                    mode_key in self._context_modes):
                 jump = icon == "language" and partner is not None
-                chip = Chip(text, tone, icon, pressable=jump)
+                compile_deck = icon == "warning" and target.needs_context and row is not None
+                chip = Chip(text, tone, icon, pressable=jump or compile_deck)
                 chip.setToolTip(tooltip)
                 if jump:
                     chip.clicked.connect(lambda path=partner.path: self._show_partner(path))
+                elif compile_deck:
+                    chip.clicked.connect(lambda v=view: self.compile_requested.emit(v))
                 self._chips.addWidget(chip)
         self._chips.addStretch(1)
 
@@ -915,6 +945,10 @@ class PreviewPane(Surface):
                 except Exception as exc:
                     self.app.log(f"    (preview snapshot not updated: {exc})")
             self._last_pdf = job.pdf
+            if self._target is not None and self._target.needs_context and not job.external:
+                self._context_modes[(job.target_key, job.view, job.language)] = deck_context.mode_of(job.pdf)
+                while len(self._context_modes) > 64:
+                    self._context_modes.pop(next(iter(self._context_modes)))
             if job.external:
                 slide_preview.open_pdf(job.pdf)
             else:
