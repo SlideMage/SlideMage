@@ -20,12 +20,9 @@ slide_snapshot.capture_deck() hook already do the actual work; this
 module's only job is building, per template, a deck file that hands them
 exactly the slides that template actually needs.
 
-A *deck* run (`deck=` / rerender_deck(), added 2026-10-14 for "Rerender all
-previews for this deck" and the agent's refresh_deck_previews tool) narrows
-the needed set to that one deck's slides and shares everything else. It
-prunes nothing: stale files are those no deck needs, which only a scan of
-every deck can tell, so the project-wide run stays the one place that
-deletes (a slide this deck dropped may still be shown by another deck).
+Deck-scoped rerender_deck() instead resolves actual occurrences and course views
+through deck_preview_refresh and the shared render scheduler/cache. It does not
+prune; the project-wide run remains the legacy snapshot maintenance operation.
 """
 from __future__ import annotations
 
@@ -33,7 +30,6 @@ import re
 import threading
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
 from . import deck_editor, project, slide_language, slide_snapshot
@@ -273,11 +269,14 @@ def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelTo
 
 @dataclass
 class DeckResult:
-    """What rerender_deck() did, slide by slide (id_slugs). Truthy when every slide's preview was
-    written. `error`: the first failure line of the compile log, if any."""
+    """Slide-level summary, with exact occurrence/view outcomes in ``details``.
+
+    Truthy when no requested slide failed; cache hits and hidden views succeed.
+    """
     refreshed: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     error: str = ""
+    details: object | None = None
 
     def __bool__(self) -> bool:
         return not self.failed
@@ -285,38 +284,45 @@ class DeckResult:
 
 def rerender_deck(ctx: project.ProjectContext, deck: Deck, log: LogCallback, cancel: Optional[CancelToken] = None,
                   base_jobnames: Optional[dict[str, str]] = None,
-                  needed: Optional[dict[str, set[str]]] = None) -> DeckResult:
-    """Rerender the cached previews of exactly this deck's slides (run(deck=deck)) and tell which
-    slides' snapshot files were written by it. The one implementation of the UI's "Rerender all
-    previews for this deck" and the agent's refresh_deck_previews."""
-    if needed is None:
-        needed = needed_slides_by_template(ctx, deck)
-    tex_errors: list[str] = []      # the first "! ..." line of the TeX output
-    failures: list[str] = []        # else the first "*** ..." line of the compile log
+                  needed: Optional[dict[str, set[str]]] = None, *, service=None,
+                  scope='all', selected_view='instructor', language=None,
+                  footer_timestamp=False, force=False, progress=None, publish=None) -> DeckResult:
+    """Refresh exact occurrence/view caches; legacy arguments remain for project callers.
 
-    def watch(line: str) -> None:
-        if line.startswith("! ") and not tex_errors:
-            tex_errors.append(line.strip())
-        elif line.startswith("*** ") and not failures:
-            failures.append(line.strip("* \n"))
-        log(line)
+    Completed cache hits count as refreshed. No project-wide pruning is performed.
+    ``details`` retains every occurrence/view outcome, including hidden/cancelled ones.
+    """
+    from . import deck_preview_refresh, deck_settings
+    from .preview_requests import RenderService
+    language = language or deck_settings.read_settings(deck.text).language.upper()
+    requests = deck_preview_refresh.plan(ctx, deck, scope=scope, selected_view=selected_view,
+                                        language=language, footer_timestamp=footer_timestamp, force=force)
+    owned = service is None
+    service = service or RenderService()
 
-    pngs = {(template, slug): slide_snapshot.snapshot_path(ctx, slide_language.bare_id(slug), template, id_slug=slug)
-            for template, slugs in needed.items() for slug in slugs}
-    before = {key: file_stamp(png) for key, png in pngs.items()}
-    run(ctx, watch, cancel, base_jobnames, needed, deck=deck)
-    result = DeckResult(error=(tex_errors or failures or [""])[0])
-    for key in sorted(pngs):
-        stamp = file_stamp(pngs[key])
-        (result.refreshed if stamp is not None and stamp != before[key] else result.failed).append(key[1])
-    return result
+    def publish_legacy(result):
+        spec = result.request
+        if spec.target.source_path.read_text(encoding='utf-8') != spec.revision.text:
+            return 'superseded'
+        if spec.view == 'instructor' and not spec.target.is_frozen_alone:
+            slide_snapshot.publish_preview(ctx, result.page_images, spec.target.bare_id, spec.target.template)
+        return 'cached'
 
+    def notify(event):
+        log(f"---- Preview {event.index}/{event.total}: {event.source.name} ({event.view}): {event.status} ----")
+        if progress is not None:
+            progress(event)
 
-def file_stamp(path: Path) -> Optional[int]:
-    """The file's modification time in ns, None when it is missing. A file counts as written by a run when its
-    stamp changed: comparing it with the clock before the run is not reliable, because the file system
-    stamps with a coarser clock than time.time()."""
     try:
-        return path.stat().st_mtime_ns
-    except OSError:
-        return None
+        details = deck_preview_refresh.run(service, deck, requests, scope=scope, language=language,
+                                          cancel=cancel, progress=notify,
+                                          publish=publish or publish_legacy, log=log)
+        failures = {r.request.target.id_slug for r in details.results
+                    if r.status in ('failed', 'cancelled') or r.publication_status in ('failed', 'superseded')}
+        slugs = sorted({r.request.target.id_slug for r in details.results})
+        return DeckResult(refreshed=[slug for slug in slugs if slug not in failures],
+                          failed=[slug for slug in slugs if slug in failures],
+                          error=next((r.error for r in details.results if r.error), ''), details=details)
+    finally:
+        if owned:
+            service.close()

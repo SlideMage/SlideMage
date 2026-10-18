@@ -1,0 +1,821 @@
+[
+  {
+    "phase": "cold-identical-all",
+    "seconds": 10.906956435996108,
+    "statuses": [
+      "rendered",
+      "rendered",
+      "rendered"
+    ],
+    "compile_count": 3,
+    "latex_passes": 6,
+    "raster_count": 3,
+    "sequence_raster_count": 3,
+    "cache_hits": 0,
+    "deduplicated_images": 8,
+    "metrics": [
+      {
+        "seconds": 6.2239793540065875,
+        "stages": {
+          "lock_wait": 6.794997898396105e-05,
+          "cache_configuration": 0.0010377199942013249,
+          "format_build": 1.7898763770062942,
+          "prune": 0.00021140099852345884,
+          "wrapper_write": 4.138800431974232e-05,
+          "latexmk": 4.002622444997542,
+          "pdf_copy": 0.00014247000217437744,
+          "dependencies": 0.013152072002412751,
+          "build": 5.861768086993834,
+          "render": 5.861784819004242,
+          "png": 0.19700885299243964,
+          "raster_sequence": 0.021374397998442873,
+          "prepare": 1.6732010408304632e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.248890903996653
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.2819963479996659
+          },
+          {
+            "rule": "lualatex",
+            "number": 3,
+            "seconds": 1.282904438994592
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 1
+      },
+      {
+        "seconds": 3.017874611003208,
+        "stages": {
+          "lock_wait": 6.579502951353788e-05,
+          "cache_configuration": 0.0011350040003890172,
+          "prune": 0.00027231700369156897,
+          "wrapper_write": 5.224900087341666e-05,
+          "latexmk": 2.7517913699994097,
+          "pdf_copy": 0.00015362098929472268,
+          "dependencies": 0.013699602000997402,
+          "build": 2.8072753779997583,
+          "render": 2.8072916899982374,
+          "png": 0.061022498994134367,
+          "raster_sequence": 0.021140423996257596,
+          "prepare": 1.631199847906828e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3281213349982863
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.2925389680021908
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 3
+      },
+      {
+        "seconds": 1.657054755007266,
+        "stages": {
+          "lock_wait": 5.410300218500197e-05,
+          "cache_configuration": 0.0012503539910539985,
+          "prune": 0.0002331429859623313,
+          "wrapper_write": 5.8470992371439934e-05,
+          "latexmk": 1.3916576599876862,
+          "pdf_copy": 0.0001700229913694784,
+          "dependencies": 0.012381088992697187,
+          "build": 1.44876177200058,
+          "render": 1.448776839999482,
+          "png": 0.0608124700083863,
+          "raster_sequence": 0.021956772994599305,
+          "prepare": 1.5067998901940882e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.2841871230048127
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 4
+      }
+    ]
+  },
+  {
+    "phase": "warm-all",
+    "seconds": 0.1668781390035292,
+    "statuses": [
+      "cached",
+      "cached",
+      "cached"
+    ],
+    "compile_count": 0,
+    "latex_passes": 0,
+    "raster_count": 0,
+    "sequence_raster_count": 0,
+    "cache_hits": 3,
+    "deduplicated_images": 0,
+    "metrics": [
+      {
+        "seconds": 0.053921851998893544,
+        "stages": {
+          "lock_wait": 1.8264006939716637e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 0.055501701004686765,
+        "stages": {
+          "lock_wait": 1.8705002730712295e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 0.05360577200190164,
+        "stages": {
+          "lock_wait": 1.7143000150099397e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      }
+    ]
+  },
+  {
+    "phase": "restart-all",
+    "seconds": 0.16942468199704308,
+    "statuses": [
+      "cached",
+      "cached",
+      "cached"
+    ],
+    "compile_count": 0,
+    "latex_passes": 0,
+    "raster_count": 0,
+    "sequence_raster_count": 0,
+    "cache_hits": 3,
+    "deduplicated_images": 0,
+    "metrics": [
+      {
+        "seconds": 0.05446407099952921,
+        "stages": {
+          "lock_wait": 2.2692998754791915e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 0.05453817200032063,
+        "stages": {
+          "lock_wait": 1.5138997696340084e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 0.05632389099628199,
+        "stages": {
+          "lock_wait": 1.751398667693138e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      }
+    ]
+  },
+  {
+    "phase": "view-switch-cache-lookup",
+    "seconds": 0.16702790300769266,
+    "compile_count": 0,
+    "raster_count": 0,
+    "cache_hits": 3
+  },
+  {
+    "phase": "default-labels-all",
+    "seconds": 10.957806341000833,
+    "statuses": [
+      "rendered",
+      "rendered",
+      "rendered"
+    ],
+    "compile_count": 3,
+    "latex_passes": 6,
+    "raster_count": 3,
+    "sequence_raster_count": 3,
+    "cache_hits": 0,
+    "deduplicated_images": 1,
+    "metrics": [
+      {
+        "seconds": 6.096089803002542,
+        "stages": {
+          "lock_wait": 5.339898052625358e-05,
+          "cache_configuration": 0.001083347000530921,
+          "format_build": 1.8335158139962004,
+          "prune": 0.00024561600002925843,
+          "wrapper_write": 5.1979004638269544e-05,
+          "latexmk": 3.9805841710040113,
+          "pdf_copy": 0.0001505959953647107,
+          "dependencies": 0.012297870998736471,
+          "build": 5.880045817000791,
+          "render": 5.880060704992502,
+          "png": 0.06386453099548817,
+          "raster_sequence": 0.022391417005565017,
+          "prepare": 1.4887991710565984e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.2675947259995155
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.2595873680111254
+          },
+          {
+            "rule": "lualatex",
+            "number": 3,
+            "seconds": 1.2634845139982644
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 1
+      },
+      {
+        "seconds": 3.0911147779988823,
+        "stages": {
+          "lock_wait": 5.89489791309461e-05,
+          "cache_configuration": 0.001171753989183344,
+          "prune": 0.0004052889999002218,
+          "wrapper_write": 5.3310999646782875e-05,
+          "latexmk": 2.811659327999223,
+          "pdf_copy": 0.00020204299653414637,
+          "dependencies": 0.012706306006293744,
+          "build": 2.8721932349872077,
+          "render": 2.8722079639992444,
+          "png": 0.0642052449984476,
+          "raster_sequence": 0.023166828003013507,
+          "prepare": 1.4729012036696076e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3585367310006404
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.3222430780006107
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 1.7670546379958978,
+        "stages": {
+          "lock_wait": 6.56260090181604e-05,
+          "cache_configuration": 0.0015248939889715984,
+          "prune": 0.0005078139947727323,
+          "wrapper_write": 6.856999243609607e-05,
+          "latexmk": 1.497831592001603,
+          "pdf_copy": 0.00013991500600241125,
+          "dependencies": 0.012958843988599256,
+          "build": 1.5562346749939024,
+          "render": 1.5562496929924237,
+          "png": 0.0574085349944653,
+          "raster_sequence": 0.023252700993907638,
+          "prepare": 1.5017998521216214e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3893332119914703
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 0
+      }
+    ]
+  },
+  {
+    "phase": "conditional-reveals-all",
+    "seconds": 9.353914972001803,
+    "statuses": [
+      "rendered",
+      "rendered",
+      "rendered"
+    ],
+    "compile_count": 3,
+    "latex_passes": 6,
+    "raster_count": 3,
+    "sequence_raster_count": 3,
+    "cache_hits": 0,
+    "deduplicated_images": 6,
+    "metrics": [
+      {
+        "seconds": 3.1323653269937495,
+        "stages": {
+          "lock_wait": 6.20170176262036e-05,
+          "cache_configuration": 0.0012143439962528646,
+          "prune": 0.0004273609956726432,
+          "wrapper_write": 5.0637012463994324e-05,
+          "latexmk": 2.8582621540117543,
+          "pdf_copy": 0.0001511770096840337,
+          "dependencies": 0.012419550999766216,
+          "build": 2.9144384800019907,
+          "render": 2.9144533590006176,
+          "png": 0.06134482499328442,
+          "raster_sequence": 0.022232314993743785,
+          "prepare": 1.4878998626954854e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3895759459992405
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.3348077310074586
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 2
+      },
+      {
+        "seconds": 3.131352030992275,
+        "stages": {
+          "lock_wait": 6.150697299744934e-05,
+          "cache_configuration": 0.0011849889997392893,
+          "prune": 0.00041820399928838015,
+          "wrapper_write": 6.101500184740871e-05,
+          "latexmk": 2.8585402940079803,
+          "pdf_copy": 0.00015203800285235047,
+          "dependencies": 0.012931642006151378,
+          "build": 2.916030603009858,
+          "render": 2.916044579993468,
+          "png": 0.05770652800856624,
+          "raster_sequence": 0.023081294988514856,
+          "prepare": 1.3976983609609306e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.350458710003295
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.3774982150061987
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 4
+      },
+      {
+        "seconds": 3.085435155997402,
+        "stages": {
+          "lock_wait": 7.74180080043152e-05,
+          "cache_configuration": 0.0012750110035995021,
+          "prune": 0.0004407859960338101,
+          "wrapper_write": 5.212899122852832e-05,
+          "latexmk": 2.8208926579973195,
+          "pdf_copy": 0.0001487929985160008,
+          "dependencies": 0.012739076992147602,
+          "build": 2.878811089001829,
+          "render": 2.878826668005786,
+          "png": 0.05582825199235231,
+          "raster_sequence": 0.012856008994276635,
+          "prepare": 1.5579003957100213e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3637212729954626
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.319753176998347
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 0
+      }
+    ]
+  },
+  {
+    "phase": "image-edit-all",
+    "seconds": 8.19225816699327,
+    "statuses": [
+      "rendered",
+      "rendered",
+      "rendered"
+    ],
+    "compile_count": 3,
+    "latex_passes": 5,
+    "raster_count": 3,
+    "sequence_raster_count": 3,
+    "cache_hits": 0,
+    "deduplicated_images": 8,
+    "metrics": [
+      {
+        "seconds": 3.1800225430051796,
+        "stages": {
+          "lock_wait": 6.442097947001457e-05,
+          "cache_configuration": 0.0012511449895100668,
+          "prune": 0.0003824460000032559,
+          "wrapper_write": 4.942399391438812e-05,
+          "latexmk": 2.850899617013056,
+          "pdf_copy": 0.00013630899775307626,
+          "dependencies": 0.013545185996918008,
+          "build": 2.908377900996129,
+          "render": 2.9083932799985632,
+          "png": 0.05823097199026961,
+          "raster_sequence": 0.02257391100283712,
+          "prepare": 1.537900243420154e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3951698790042428
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.32524115400156
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 1
+      },
+      {
+        "seconds": 3.1787361269962275,
+        "stages": {
+          "lock_wait": 7.072101288940758e-05,
+          "cache_configuration": 0.0013355650007724762,
+          "prune": 0.0003677079948829487,
+          "wrapper_write": 4.052699659951031e-05,
+          "latexmk": 2.846189490999677,
+          "pdf_copy": 0.0001414580037817359,
+          "dependencies": 0.014441096005612053,
+          "build": 2.907225164992269,
+          "render": 2.9072419469885062,
+          "png": 0.05454480499611236,
+          "raster_sequence": 0.0227314999938244,
+          "prepare": 1.6781996237114072e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3907664740108885
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.3203823160001775
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 3
+      },
+      {
+        "seconds": 1.8293206069938606,
+        "stages": {
+          "lock_wait": 7.592301699332893e-05,
+          "cache_configuration": 0.0013726549950661138,
+          "prune": 0.0003986160008935258,
+          "wrapper_write": 5.2799994591623545e-05,
+          "latexmk": 1.497333475999767,
+          "pdf_copy": 0.00019691399938892573,
+          "dependencies": 0.012953191995620728,
+          "build": 1.5559495969937416,
+          "render": 1.5559652769879904,
+          "png": 0.057821511989459395,
+          "raster_sequence": 0.022439154010498896,
+          "prepare": 1.567999424878508e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.3841217650042381
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 4
+      }
+    ]
+  },
+  {
+    "phase": "external-framework-edit-all",
+    "seconds": 12.146033072000137,
+    "statuses": [
+      "rendered",
+      "rendered",
+      "rendered"
+    ],
+    "compile_count": 3,
+    "latex_passes": 6,
+    "raster_count": 3,
+    "sequence_raster_count": 3,
+    "cache_hits": 0,
+    "deduplicated_images": 14,
+    "metrics": [
+      {
+        "seconds": 6.92875923999236,
+        "stages": {
+          "lock_wait": 7.299802382476628e-05,
+          "cache_configuration": 0.0012903390015708283,
+          "format_build": 2.0335316589917056,
+          "prune": 0.0003964219940826297,
+          "wrapper_write": 5.998399865347892e-05,
+          "latexmk": 4.536027499008924,
+          "pdf_copy": 0.0001491029979661107,
+          "dependencies": 0.013526200011256151,
+          "build": 6.653774428006727,
+          "render": 6.65378978800436,
+          "png": 0.06010846000572201,
+          "raster_sequence": 0.022465304005891085,
+          "prepare": 1.535999763291329e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.4919244139891816
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.4196252950059716
+          },
+          {
+            "rule": "lualatex",
+            "number": 3,
+            "seconds": 1.4023755749949487
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 6
+      },
+      {
+        "seconds": 3.338139280996984,
+        "stages": {
+          "lock_wait": 7.677602116018534e-05,
+          "cache_configuration": 0.0013068200059933588,
+          "prune": 0.0005399149958975613,
+          "wrapper_write": 5.118700210005045e-05,
+          "latexmk": 2.9912289210042218,
+          "pdf_copy": 0.0002544730086810887,
+          "dependencies": 0.01382746099261567,
+          "build": 3.051467147000949,
+          "render": 3.0514829179883236,
+          "png": 0.06247710400202777,
+          "raster_sequence": 0.023730904009426013,
+          "prepare": 1.5770987374708056e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.4191248249990167
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.427353138991748
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 4
+      },
+      {
+        "seconds": 1.8751631250052014,
+        "stages": {
+          "lock_wait": 6.560601468663663e-05,
+          "cache_configuration": 0.0013526260008802637,
+          "prune": 0.0005449440068332478,
+          "wrapper_write": 5.796999903395772e-05,
+          "latexmk": 1.5430908790003741,
+          "pdf_copy": 0.00014907300646882504,
+          "dependencies": 0.014062386006116867,
+          "build": 1.6029204569931608,
+          "render": 1.602936436989694,
+          "png": 0.05704000499099493,
+          "raster_sequence": 0.022283628000877798,
+          "prepare": 1.597999653313309e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.428617010009475
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 4
+      }
+    ]
+  },
+  {
+    "phase": "same-plus-source-edit-all",
+    "seconds": 8.568044194005779,
+    "statuses": [
+      "rendered",
+      "rendered",
+      "rendered"
+    ],
+    "compile_count": 3,
+    "latex_passes": 5,
+    "raster_count": 3,
+    "sequence_raster_count": 3,
+    "cache_hits": 0,
+    "deduplicated_images": 8,
+    "metrics": [
+      {
+        "seconds": 3.3585739429981913,
+        "stages": {
+          "lock_wait": 7.206897134892642e-05,
+          "cache_configuration": 0.0013761609880020842,
+          "prune": 0.0005627880018437281,
+          "wrapper_write": 6.124599894974381e-05,
+          "latexmk": 3.0778344569989713,
+          "pdf_copy": 0.00013665900041814893,
+          "dependencies": 0.013179871006286703,
+          "build": 3.135907813004451,
+          "render": 3.135927469993476,
+          "png": 0.0593676510034129,
+          "raster_sequence": 0.023501147996285,
+          "prepare": 1.9656989024952054e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.4892909439950017
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.446779719000915
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 1
+      },
+      {
+        "seconds": 3.3334375850099605,
+        "stages": {
+          "lock_wait": 6.549499812535942e-05,
+          "cache_configuration": 0.0012140740000177175,
+          "prune": 0.0005261079932097346,
+          "wrapper_write": 4.9183014198206365e-05,
+          "latexmk": 3.0519319500017446,
+          "pdf_copy": 0.00018156500300392509,
+          "dependencies": 0.014034102001460269,
+          "build": 3.110803900999599,
+          "render": 3.1108199000009336,
+          "png": 0.05937806899601128,
+          "raster_sequence": 0.023036615006276406,
+          "prepare": 1.5999001334421337e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.462709592000465
+          },
+          {
+            "rule": "lualatex",
+            "number": 2,
+            "seconds": 1.4580355179932667
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 3
+      },
+      {
+        "seconds": 1.8721238089929102,
+        "stages": {
+          "lock_wait": 6.210801075212657e-05,
+          "cache_configuration": 0.0012974319979548454,
+          "prune": 0.0005540209967875853,
+          "wrapper_write": 5.6136996136046946e-05,
+          "latexmk": 1.5836786110012326,
+          "pdf_copy": 0.00016703699657227844,
+          "dependencies": 0.013797352992696688,
+          "build": 1.6428452180116437,
+          "render": 1.6428618200006895,
+          "png": 0.06133892000070773,
+          "raster_sequence": 0.023629260002053343,
+          "prepare": 1.6601989045739174e-05
+        },
+        "rules": [
+          {
+            "rule": "lualatex",
+            "number": 1,
+            "seconds": 1.4636587229906581
+          }
+        ],
+        "cache_hit": false,
+        "compile_avoided": 0,
+        "deduplicated_images": 4
+      }
+    ]
+  },
+  {
+    "phase": "warm-after-edits-all",
+    "seconds": 0.18559874199854676,
+    "statuses": [
+      "cached",
+      "cached",
+      "cached"
+    ],
+    "compile_count": 0,
+    "latex_passes": 0,
+    "raster_count": 0,
+    "sequence_raster_count": 0,
+    "cache_hits": 3,
+    "deduplicated_images": 0,
+    "metrics": [
+      {
+        "seconds": 0.06082725898886565,
+        "stages": {
+          "lock_wait": 1.4717006706632674e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 0.06086654400860425,
+        "stages": {
+          "lock_wait": 1.4828008715994656e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      },
+      {
+        "seconds": 0.059723904996644706,
+        "stages": {
+          "lock_wait": 1.6550999134778976e-05
+        },
+        "rules": [],
+        "cache_hit": true,
+        "compile_avoided": 1,
+        "deduplicated_images": 0
+      }
+    ]
+  }
+]

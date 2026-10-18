@@ -2341,3 +2341,19 @@ NEW: Follow-ups to saving as you type.
 - Settings → General can render the Preview after every autosave (off by default).
 - Creating a snapshot or exporting to PowerPoint warns when slides have changes that are not a version yet.
 - ⋮ → This deck → "Update Version of all changed slides…" makes a version of every changed slide of the deck in one go.
+
+v8.21.0 (2026-10-15, view-specific preview rendering and verified reuse): Preview requests capture source and per-view deck targets, and share a persistent dependency-validated completed cache. Sequential all-view batches retain partial successes; full-page reveal sequence signatures permit image deduplication without sharing PDFs. Preview actions and Claude Code/chat tools support explicit/all views, forced rerendering, per-view outcomes and guarded publication to the pane. The real LuaLaTeX acceptance probe records cold/warm/restart and dependency invalidation metrics.
+
+NEW: Render and check every course view without repeating unchanged builds.
+- The Preview menu offers Render all views for the focused slide, and forced rerendering.
+- Switching among rendered course views reuses matching previews; source, image and framework changes invalidate affected results.
+- Claude Code and chat can request a specific view or all views and report hidden, cached, failed or superseded output accurately.
+- Successful tool renders appear in the Preview when its slide and view still match.
+
+
+v8.21.1 (2026-10-15, consistent slide thumbnails and retained course previews): Left-panel thumbnails prefer the same verified final slide image as the main Preview, including the selected course view, language, deck footer, occurrence, pinned version and editor revision. Shared Instructor snapshots are labelled as reference images. Hidden slides have no thumbnail in that view, and editor changes update thumbnail freshness without rebuilding the tree.
+
+Preview dependencies now track the precompiled preamble's source inputs rather than its generated format file. When dependency validation expires a saved preview, each course view can still display its own integrity-checked previous render with an explicit older-preview notice, including after restarting the app. Historical images never count as fresh cache hits or skip rendering.
+
+
+v8.21.2 (2026-10-15, Claude Code refreshes every course view): refresh_preview now defaults to all three course views instead of Instructor only; an explicit view still limits the refresh. Claude Code guidance uses view=all for general preview inspection and identifies the deck-wide refresh as a legacy Instructor snapshot operation.

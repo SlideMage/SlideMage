@@ -104,3 +104,28 @@ def test_retry_hands_back_only_the_failed_jobs(controller, monkeypatch):
                      work, jobs=jobs)
     wait_until(lambda: controller.is_settled)
     assert [job.jobname for job in controller.failed_jobs()] == [failed]
+
+
+def test_preview_progress_counts_cache_hits_and_preserves_failure(controller):
+    from types import SimpleNamespace
+    from slidemage.compile_status import FAILED
+    observed = []
+    controller.changed.connect(lambda: observed.append(
+        (controller.progress.fraction, controller.progress.text)))
+
+    def work(log, cancel):
+        for index, status in enumerate(('cached', 'failed', 'hidden'), 1):
+            controller.preview_progress.emit(SimpleNamespace(index=index, total=3,
+                                                            view='instructor', status=status))
+            log("Run number 4 of rule 'lualatex'")
+
+    start(controller, work)
+    wait_until(lambda: not controller.running)
+    assert controller.row('a').state == FAILED
+    assert controller.progress.fraction == 1
+    assert any(fraction == 1 / 3 and 'cached' in text for fraction, text in observed)
+    assert controller.progress.text == '3/3 previews · instructor · hidden'
+    start(controller, lambda log, cancel: [log(line) for line in PASS])
+    wait_until(lambda: not controller.running)
+    assert isinstance(controller.progress, compile_progress.BatchProgress)
+    assert controller.row('a').state == DONE

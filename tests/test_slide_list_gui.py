@@ -83,6 +83,7 @@ def make_list(tmp_path, qapp, monkeypatch, ctx):
         window = FakeWindow(state)
         host = QWidget()
         window.list = SlideList(window, state, ThemeManager(), Toast(host))
+        window.list._background_thumbnails = False  # legacy edit tests control synchronous row updates
         window.list.toast_host = host
         state.set_deck(deck)
         keep.append(window)
@@ -756,3 +757,199 @@ def test_a_slide_that_is_not_in_the_deck_is_added_at_the_end_of_it(make_list):
     assert window.added == [deck_editor.append_position(window.state.deck)]
     assert window.started[0] == {"where": "at the end of the deck", "source": "duplicate",
                                  "slide": "zzz-EN-Elsewhere", "target": None}
+
+
+def test_the_slides_before_the_first_section_are_named_by_rename(make_list, monkeypatch):
+    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
+    front = next(s for s in slide_list.tree.section_items() if slide_list.tree.data_of(s).chapter is None)
+    slide_list.tree.setCurrentItem(front)
+    assert slide_list.section_enabled("rename")
+    monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("Intro", True))
+    slide_list.run_section("rename")
+    assert read(path).index("\\section{Intro}") < read(path).index("\\slide{aaa-Front}")
+
+
+def test_duplicate_occurrence_focus_is_preserved_for_preview_and_tools(make_list):
+    from slidemage.ai.tools.slidemage import slide_target
+
+    slide_list, window, _ = make_list('\\slidestep{aaa-EN-One}{1}\n\\slide{bbb-EN-Two}\n\\slidestep{aaa-EN-One}{3}\n')
+    second = item_of(slide_list, 'aaa', 1)
+    slide_list.tree.setCurrentItem(second)
+    row = slide_list.tree.data_of(second)
+    assert window.state.focused_occurrence == row.key
+    target = slide_target(window.project, window.state.deck,
+                          window.project.slides_dir / 'aaa-EN-One-current.tex', 'instructor', 'EN',
+                          occurrence_key=window.state.focused_occurrence)
+    assert (target.steps, target.frame_number) == ('3', 3)
+    slide_list.rebuild()
+    assert window.state.focused_occurrence == row.key
+    assert slide_list.tree.data_of(slide_list.tree.currentItem()).key == row.key
+
+
+def test_thumbnail_refresh_keeps_tree_selection_and_updates_view_and_footer(make_list, monkeypatch):
+    calls = []
+
+    def images(ctx, deck, outline, view, language, timestamp, **kwargs):
+        calls.append((view, language, timestamp, kwargs.get('paths')))
+        return [replace(section, rows=[replace(row, thumbnail_note=f'{view}/{timestamp}',
+                                               thumbnail_verified=False) for row in section.rows])
+                for section in outline]
+
+    monkeypatch.setattr(slide_list_module.preview_thumbnails, 'for_outline', images)
+    listing, window, _ = make_list('\\slide{abc-EN-One}\n\\slide{def-EN-Two}\n')
+    focus(listing, 'abc')
+    select(listing, 'abc', 'def')
+    current = listing.tree.currentItem()
+    selected = tuple(listing.tree.selectedItems())
+    listing.preview_source_changed(window.project.slides_dir / 'abc-EN-One-current.tex')
+    listing._refresh_preview_rows()
+    assert listing.tree.currentItem() is current
+    assert tuple(listing.tree.selectedItems()) == selected
+    assert calls[-1][3] == {window.project.slides_dir / 'abc-EN-One-current.tex'}
+    listing.preview_source_changed(window.project.slides_dir / 'abc-EN-One-current.tex')
+    window.state.set_footer_timestamp(True)
+    assert calls[-1][2:] == (True, None)  # every row, despite pending source refresh
+    assert not listing._thumbnail_timer.isActive()
+    window.state.set_view('during-course')
+    assert calls[-1][:3] == ('during-course', window.state.language, True)
+    assert 'during-course/True' in item_of(listing, 'abc').toolTip(0)
+
+
+def test_async_thumbnail_refresh_coalesces_rapid_distinct_source_edits(make_list, monkeypatch, qapp):
+    import time
+    from threading import Event
+
+    listing, window, _ = make_list('\\slide{abc-EN-One}\n\\slide{def-EN-Two}\n')
+    listing._background_thumbnails = True
+    a = window.project.slides_dir / 'abc-EN-One-current.tex'
+    b = window.project.slides_dir / 'def-EN-Two-current.tex'
+    a.parent.mkdir(exist_ok=True)
+    a.write_text('first')
+    b.write_text('second')
+    started, release = Event(), Event()
+    calls = []
+
+    def images(_ctx, _deck, outline, _view, _language, _stamp, **kwargs):
+        paths = kwargs['paths']
+        calls.append(paths)
+        if len(calls) == 1:
+            started.set()
+            assert release.wait(3)
+        return [replace(section, rows=[replace(row, thumbnail_note='updated')
+                        if paths is None or (_ctx.slides_dir / row.call.source_filename).resolve() in paths else row
+                        for row in section.rows]) for section in outline]
+
+    monkeypatch.setattr(slide_list_module.preview_thumbnails, 'for_outline', images)
+    listing.preview_source_changed(a)
+    listing._refresh_preview_rows()
+    assert started.wait(2)
+    listing.preview_source_changed(b)
+    listing._refresh_preview_rows()
+    release.set()
+    deadline = time.monotonic() + 3
+    while (len(calls) < 2 or listing._thumbnail_future is not None) and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(.01)
+    assert len(calls) == 2 and calls[1] == {a.resolve(), b.resolve()}
+    assert item_of(listing, 'abc').data(0, Qt.ItemDataRole.UserRole).thumbnail_note == 'updated'
+    assert item_of(listing, 'def').data(0, Qt.ItemDataRole.UserRole).thumbnail_note == 'updated'
+    assert listing._thumbnail_metrics['gui_event_latency_seconds'] >= 0
+
+
+def test_interrupted_full_thumbnail_pass_stays_full_after_rapid_source_events(make_list, monkeypatch, qapp):
+    import time
+    from threading import Event
+
+    listing, window, _ = make_list('\\slide{abc-EN-One}\n\\slide{def-EN-Two}\n\\slide{ghi-EN-Three}\n')
+    listing._background_thumbnails = True
+    a = window.project.slides_dir / 'abc-EN-One-current.tex'
+    b = window.project.slides_dir / 'def-EN-Two-current.tex'
+    started, release = Event(), Event()
+    calls = []
+
+    def images(_ctx, _deck, outline, _view, _language, _stamp, **kwargs):
+        calls.append(kwargs['paths'])
+        if len(calls) == 1:
+            started.set()
+            assert release.wait(3)
+        return [replace(section, rows=[replace(row, thumbnail_note='all refreshed')
+                                       for row in section.rows]) for section in outline]
+
+    monkeypatch.setattr(slide_list_module.preview_thumbnails, 'for_outline', images)
+    listing._queue_preview_images(listing._outline)  # interrupted initial/full validation
+    assert started.wait(2)
+    listing.preview_source_changed(a)
+    listing.preview_source_changed(b)
+    listing._refresh_preview_rows()
+    release.set()
+    deadline = time.monotonic() + 3
+    while (len(calls) < 2 or listing._thumbnail_future is not None) and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(.01)
+    assert calls == [None, None]
+    assert all(item_of(listing, slide).data(0, Qt.ItemDataRole.UserRole).thumbnail_note == 'all refreshed'
+               for slide in ('abc', 'def', 'ghi'))
+
+
+def test_large_list_validation_does_not_block_qt_events(make_list, monkeypatch, qapp):
+    from threading import Event
+    from PySide6.QtCore import QTimer
+
+    body = ''.join(f'\\slide{{a{index:02d}-EN-Slide{index}}}\n' for index in range(80))
+    listing, _, _ = make_list(body)
+    listing._background_thumbnails = True
+    started, release = Event(), Event()
+
+    def images(_ctx, _deck, outline, _view, _language, _stamp, **_kwargs):
+        started.set()
+        assert release.wait(3)
+        return outline
+
+    monkeypatch.setattr(slide_list_module.preview_thumbnails, 'for_outline', images)
+    listing._queue_preview_images(listing._outline)
+    assert started.wait(2)
+    ticked = []
+    QTimer.singleShot(0, lambda: ticked.append(True))
+    qapp.processEvents()
+    assert ticked and len(listing.tree.slide_items()) == 80
+    release.set()
+
+
+def test_async_thumbnail_rejects_same_mtime_external_source_edit(make_list, monkeypatch, qapp):
+    import hashlib
+    import os
+    import time
+    from threading import Event
+
+    listing, window, _ = make_list('\\slide{abc-EN-One}\n')
+    listing._background_thumbnails = True
+    source = window.project.slides_dir / 'abc-EN-One-current.tex'
+    source.parent.mkdir(exist_ok=True)
+    source.write_text('FIRST')
+    started, release = Event(), Event()
+    calls = []
+
+    def images(_ctx, _deck, outline, _view, _language, _stamp, **kwargs):
+        text = source.read_text()
+        kwargs['revision_sink'][source.resolve()] = hashlib.sha256(text.encode()).hexdigest()
+        calls.append(text)
+        if len(calls) == 1:
+            started.set()
+            assert release.wait(3)
+        return [replace(section, rows=[replace(row, thumbnail_note=text) for row in section.rows])
+                for section in outline]
+
+    monkeypatch.setattr(slide_list_module.preview_thumbnails, 'for_outline', images)
+    listing.preview_source_changed(source)
+    listing._refresh_preview_rows()
+    assert started.wait(2)
+    before = source.stat()
+    source.write_text('OTHER')
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    release.set()
+    deadline = time.monotonic() + 3
+    while (len(calls) < 2 or listing._thumbnail_future is not None) and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(.01)
+    assert calls == ['FIRST', 'OTHER']
+    assert item_of(listing, 'abc').data(0, Qt.ItemDataRole.UserRole).thumbnail_note == 'OTHER'

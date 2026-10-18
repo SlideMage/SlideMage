@@ -172,6 +172,18 @@ def test_format_is_built_once_and_rebuilt_when_an_input_changes(tmp_path, monkey
     assert _ensure(tmp_path) == first and len(runs) == 2  # an input changed: rebuilt
 
 
+def test_format_invalidates_same_size_mtime_content_and_new_shadow(tmp_path, monkeypatch):
+    runs = _fake_engine(monkeypatch)
+    first = _ensure(tmp_path)
+    package = tmp_path / 'package.sty'
+    previous = package.stat()
+    package.write_text('y')
+    os.utime(package, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    assert _ensure(tmp_path) == first and len(runs) == 2
+    (tmp_path / 'new-shadow.sty').write_text('new search candidate')
+    assert _ensure(tmp_path) == first and len(runs) == 3
+
+
 def test_format_noise_after_the_preamble_is_not_a_failure_but_real_errors_are(tmp_path, monkeypatch):
     noise = ('Success\n)...uni-algos/lua-uni-stage-tables.lua:141: attempt to per\n'
              'Beginning to dump on file preamble.fmt\n')
@@ -211,3 +223,18 @@ def test_slide_failing_only_with_the_format_is_rebuilt_without_it_and_the_format
     preview_build.compile_cached(wrapper, 'abc', print, **kwargs)
     assert not any(c.startswith('-lualatex=') for c in commands[2])
     assert len(commands) == 3
+
+
+def test_recorder_expands_format_inputs_without_depending_on_generated_format(tmp_path):
+    root = tmp_path / 'project'
+    out = root / '.build/preview-cache/slide'
+    fmt = root / '.build/preview-formats/key'
+    fmt.mkdir(parents=True)
+    out.mkdir(parents=True)
+    source = root / 'slides/one.tex'
+    theme = tmp_path / 'framework/theme.tex'
+    fls = out / 'slide.fls'
+    fls.write_text(f'PWD {root}\nINPUT {fmt / "preamble.fmt"}\nINPUT {fmt / "capture.lua"}\nINPUT {source}\n')
+    deps = preview_build.recorded_inputs(fls, out / 'missing.fdb_latexmk',
+                                        project_root=root, cache=out, extra=[str(theme)])
+    assert deps == sorted([str(source), str(theme)])

@@ -101,6 +101,7 @@ def centre(qapp, project, deck, monkeypatch, ctx):
     app = FakeApp(ctx)
     state = WorkspaceState(ctx)
     centre = CentreColumn(app, state)
+    centre.preview._background_validation = False  # legacy widget tests assert synchronous state
     app.centre = centre
     state.set_deck(deck)
     return centre
@@ -108,7 +109,7 @@ def centre(qapp, project, deck, monkeypatch, ctx):
 
 def wait_idle(centre):
     deadline = time.monotonic() + 5
-    while centre.preview._busy and time.monotonic() < deadline:
+    while (centre.preview._busy or centre.preview._selection_pending is not None) and time.monotonic() < deadline:
         QApplication.processEvents()
         time.sleep(0.01)
     QApplication.processEvents()
@@ -163,7 +164,7 @@ def test_saving_renders_only_the_active_language_when_the_page_is_visible(centre
     assert centre.source.save()
     wait_idle(centre)
     assert edit in active.read_text() and other.read_bytes() == before
-    assert [c[0:2] for c in renders] == [("saved", id_slug)] and page(centre).pixmap is not None
+    assert [c[0:2] for c in renders] == [("buffer", id_slug)] and page(centre).pixmap is not None
     centre.state.set_mode("source")  # no page to show: no render
     centre.source.current.editor.insertPlainText("% again ")
     assert centre.source.save()
@@ -298,7 +299,7 @@ def test_a_slide_the_view_does_not_typeset_says_so_and_does_not_offer_to_render(
 def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_result(centre, renders, monkeypatch):
     # This checks the view/language-specific session cache, independently of
     # the canonical instructor snapshot the accepted render also publishes.
-    monkeypatch.setattr(preview_target, 'cached_image', lambda target: None)
+    monkeypatch.setattr(preview_view, 'legacy_reference', lambda *args: None)
     state = centre.state
     state.set_focused_slide("aaa")
     assert "No preview" in page(centre).message and not page(centre).render_button.isHidden()
@@ -306,10 +307,11 @@ def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_resu
     assert centre.preview._busy
     wait_idle(centre)
     kind, id_slug, args, kwargs = renders[0]
-    assert (kind, id_slug, args[:2]) == ("saved", "aaa-EN-One", ("instructor", "EN"))
+    assert (kind, id_slug, args[1:3]) == ("buffer", "aaa-EN-One", ("instructor", "EN"))
     assert kwargs["footer_timestamp"] is False
     assert page(centre).pixmap is not None
-    assert page(centre).render_button.isHidden() and not centre.preview._status_chip.isVisibleTo(centre)
+    assert page(centre).render_button.isHidden()
+    assert 'Previous render' in centre.preview._status_chip.text()  # fake PDF has no recorder evidence
     state.set_footer_timestamp(True)
     centre.preview.render_now()
     wait_idle(centre)
@@ -327,14 +329,15 @@ def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current
     centre.preview.render_now()
     wait_idle(centre)
     source = project / "aaa-EN-One-current.tex"
-    os.utime(source, ns=(1, source.stat().st_mtime_ns + 5_000_000_000))
+    source.write_text(source.read_text().replace('Text', 'Edited text'))
     centre.refresh()
+    wait_idle(centre)
     assert page(centre).pixmap is not None
-    assert centre.preview._status_chip.text() == "Older than the slide's source"
+    assert 'Previous render' in centre.preview._status_chip.text()
     assert centre.preview._status_button.isVisibleTo(centre)
     centre.preview._status_button.click()
     wait_idle(centre)
-    assert not centre.preview._status_chip.isVisibleTo(centre) and len(renders) == 2
+    assert 'Previous render' in centre.preview._status_chip.text() and len(renders) == 2
 
 
 def test_the_cached_snapshot_is_shown_for_the_instructor_view(ctx, centre, project, tmp_path):
@@ -348,22 +351,23 @@ def test_the_cached_snapshot_is_shown_for_the_instructor_view(ctx, centre, proje
     os.utime(png, (1, (project / "aaa-EN-One-current.tex").stat().st_mtime + 10))
     centre.refresh()
     assert page(centre).pixmap is not None
-    assert centre.preview._status_chip.text() == "Cached preview; render to verify current settings"
+    assert 'Shared Instructor reference' in centre.preview._status_chip.text()
     centre.state.set_view("after-course")
-    assert page(centre).pixmap is None                      # only the instructor view is cached
+    assert page(centre).pixmap is not None
+    assert 'Instructor reference' in centre.preview._status_chip.text()
 
 
 def test_a_failed_render_is_reported_and_can_be_repeated(centre, renders, monkeypatch):
     centre.state.set_focused_slide("aaa")
-    original = preview_target.render
-    monkeypatch.setattr(preview_target, "render", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom: no PDF")))
+    original = preview_target.render_text
+    monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom: no PDF")))
     centre.preview.render_now()
     wait_idle(centre)
     assert centre.preview._status_chip.text() == "Render failed" and "boom" in centre.preview._error_label.text()
     centre.state.set_view("during-course")                  # the failure belongs to the view it happened in
     assert not centre.preview._error
     centre.state.set_view("instructor")
-    monkeypatch.setattr(preview_target, "render", original)
+    monkeypatch.setattr(preview_target, "render_text", original)
     centre.preview.render_now()
     wait_idle(centre)
     assert not centre.preview._error and page(centre).pixmap is not None
@@ -422,7 +426,7 @@ def test_rendering_the_buffer_uses_the_unsaved_text_the_scope_and_the_reveal_ste
     assert kind == "buffer" and args[0] == editor.selected_text() == "unsaved"
     assert (kwargs["mode"], kwargs["overlay"], args[1]) == ("region", 3, "instructor")
     assert page(centre).pixmap is not None
-    assert preview._status_chip.text() == "Rendered from the editor buffer, not the saved file"
+    assert preview._status_chip.text() == "Render to verify current source and dependencies"
     preview._on_menu("scope:element")                         # a cropped element has no reveal steps
     preview.render_buffer()
     wait_idle(centre)
@@ -609,13 +613,13 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(centre,
     assert not renders  # noticing a draft never compiles
     preview._status_button.click()
     wait_idle(centre)
-    assert 'Rendered from the editor buffer' in preview._status_chip.text()
-    assert preview._status_button.isHidden() and not preview._status_draft
+    assert 'Previous render' in preview._status_chip.text()  # unverified stand-in renderer
+    assert not preview._status_draft  # the remaining button asks to verify dependencies
     assert len(renders) == 1 and 'a draft, never saved' in str(renders[0])
     assert centre.source.current.dirty
     centre.source.current.editor.insertPlainText('% a second edit while still dirty\n')
     QTest.qWait(200)
-    assert 'Older than the editor buffer' in preview._status_chip.text()
+    assert 'Previous render' in preview._status_chip.text() and preview._status_draft
     assert len(renders) == 1  # status refresh never compiles on a keystroke
 
 
@@ -668,7 +672,7 @@ def test_the_language_chip_shows_the_german_version_and_back_without_touching_th
     assert back.text() == "DE + EN" and back.toolTip() == "Go to the English original"
     centre.preview.render_now()
     wait_idle(centre)
-    assert renders[-1][1] == "ddd-DE-Eins" and renders[-1][2][:2] == ("instructor", "DE")
+    assert renders[-1][1] == "ddd-DE-Eins" and renders[-1][2][1:3] == ("instructor", "DE")
     back.clicked.emit()
     assert centre.path == english and state.focused_slide == "aaa" and state.language == "EN"
     assert centre.preview._target.id_slug == "aaa-EN-One" and centre.preview.language == "EN"

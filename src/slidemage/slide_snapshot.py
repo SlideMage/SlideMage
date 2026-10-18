@@ -251,6 +251,14 @@ def _preview_pngs(pdf_path: Path, sizes) -> tuple[bytes, ...]:
         return result
 
 
+@measure('raster_sequence')
+def preview_sequence(pdf_path: Path):
+    """Complete reveal evidence for the verified cache; snapshots stay final-page only."""
+    from .preview_raster_client import render_sequence
+
+    return render_sequence(pdf_path.read_bytes())
+
+
 def prepare_preview(pdf_path: Path, snapshots: bool = False):
     """Prepare the display and optional canonical PNGs without publishing them.
 

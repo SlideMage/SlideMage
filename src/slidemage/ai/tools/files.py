@@ -117,7 +117,11 @@ def _read_pdf(ctx: ToolContext, path: Path, args: dict) -> ToolOutput:
     images = args.get("pages_as_images", False)
     count = min(max(1, args.get("max_pages", PAGE_IMAGES if images else PDF_PAGES)), PAGE_IMAGES if images else 50)
     try:
-        got = preview_raster_client.read_document(path, "pdf_images" if images else "pdf", start, count, PAGE_DPI)
+        if images:
+            from ... import preview_pages
+            got = preview_pages.read_document(path, project_root=ctx.root, start=start, count=count, dpi=PAGE_DPI)
+        else:
+            got = preview_raster_client.read_document(path, "pdf", start, count, PAGE_DPI)
     except RuntimeError as exc:
         raise ToolError(f"{path.name} is not a readable PDF: {exc}") from None
     total = got["count"]

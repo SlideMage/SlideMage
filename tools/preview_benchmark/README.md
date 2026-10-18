@@ -162,3 +162,73 @@ tar -xzf .previews/benchmarks/preview-user-edits-2026-10-11.tar.gz \
 The aggregate report was recreated byte-for-byte from those archived tools and
 inputs. Each nested measurement archive's checksum and every contained file
 checksum were verified.
+
+## View cache acceptance probe
+
+`views.py --output /tmp/new-preview-views` creates a small project and a separate
+external framework copy, then uses the production RenderService and batch API.
+The output folder must be new. LuaLaTeX, latexmk and the project dependencies are
+required. In restricted environments set `TEXMFVAR` and `TEXMFCACHE` to a writable
+TeX cache directory. No model provider or Claude login is needed.
+
+The probe asserts identical full reveal sequences with the deck label hidden,
+differing default labels, deck-only content and conditional pauses, hidden views,
+per-view numbering, pinned input and a linked translation. It compares final
+pane-sized PNGs against the last PDF page. It records cold/warm/restarted all-view
+batches, direct view cache lookups, image edits, external framework edits and
+source edits retaining the same `+` version marker in `results.json`.
+
+`compile_count` counts non-cached view jobs, `latex_passes` counts actual latexmk
+LuaLaTeX rule passes (not optional format probes), `raster_count` counts display-image preparation batches and
+`sequence_raster_count` counts full-sequence verification batches. Multiple image
+sizes/pages can be produced by a raster batch. `cache_hits` and
+`deduplicated_images` distinguish compile avoidance from image storage sharing.
+Counts are from production request metrics; independent correctness raster checks
+outside the timed requests are excluded. View-switch timings measure validated
+backend lookups, excluding Qt painting.
+Timings are descriptive single runs and vary with font caches and machine load.
+
+The opt-in pytest gate is:
+
+```sh
+SLIDEMAGE_REAL_LATEX=1 .venv/bin/pytest -q tests/test_preview_views_latex.py
+```
+
+## Optimization completion probes
+
+The real-engine probe additionally checks one/two/three pre-render groups against
+independent per-view references, saved-file versus captured-text equality, and
+zero-compile/zero-raster identical-buffer reuse. Per-request metrics include
+`cache_validation` seconds, `dependency_bytes_read` and total `content_bytes_read`.
+Start with a new `TEXMFVAR`/`TEXMFCACHE` directory to distinguish initial font
+discovery from later warm requests; keep scanned font dependencies in the evidence.
+
+Run these sequentially, without concurrent tests, compilers or builds:
+
+```sh
+TEXMFVAR=/tmp/preview-fonts TEXMFCACHE=/tmp/preview-fonts \
+  .venv/bin/python tools/preview_benchmark/views.py --output /tmp/preview-latex
+TEXMFVAR=/tmp/preview-fonts TEXMFCACHE=/tmp/preview-fonts \
+  .venv/bin/python tools/preview_benchmark/deck.py \
+  --project /tmp/preview-latex/project --framework /tmp/preview-latex/external-framework \
+  --output /tmp/preview-deck
+TEXMFVAR=/tmp/preview-fonts TEXMFCACHE=/tmp/preview-fonts \
+  .venv/bin/python tools/preview_benchmark/pins.py \
+  --project /tmp/preview-latex/grouped/project \
+  --framework /tmp/preview-latex/grouped/external-framework --output /tmp/preview-pins
+QT_QPA_PLATFORM=offscreen .venv/bin/python tools/preview_benchmark/display.py \
+  --output /tmp/preview-display --rows 200
+PYINSTALLER_CONFIG_DIR=/tmp/preview-package-config .venv/bin/pyinstaller \
+  --noconfirm --distpath /tmp/preview-package/dist --workpath /tmp/preview-package/build \
+  packaging/slidemage.spec
+.venv/bin/python tools/preview_benchmark/package_smoke.py \
+  --binary /tmp/preview-package/dist/SlideMage --output /tmp/preview-package-smoke
+```
+
+The display probe seeds synthetic cache artifacts and a shared 32 MiB dependency.
+It measures background validation, Qt timer/event delay and viewport paints,
+checks item/selection/scroll preservation, and performs no TeX or raster work.
+It is a display workload, not a correctness reference or a desktop performance
+claim. The packaged smoke checks the real one-file entry point and two requests
+to its persistent raster child, comparing PNGs and the full reveal signature.
+The delivery results are in `docs/PREVIEW_RENDER_OPTIMIZATION_VALIDATION.md`.

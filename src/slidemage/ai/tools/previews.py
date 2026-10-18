@@ -1,24 +1,20 @@
 """The tools that refresh the cached previews (the PNG snapshots the Preview, the slide list's pages and
 the appendix show without compiling anything): one slide, or every slide of one deck (v8.11.0).
 
-They write only `.previews/slide_previews/`, and never another deck's files. They run beside an open
+They write only preview caches under `.previews/`, and never deck sources. They run beside an open
 window: a slide renders through the same locked, reusable preview build as the Preview pane
 (preview_build.py), a deck through the window's own compile slot (the same run as "Rerender all
 previews for this deck", Workspace.refresh_deck_previews), so neither can race the GUI's compiles.
 """
 from __future__ import annotations
 
-import shutil
 import threading
 import time
 from contextlib import contextmanager
 
-from ... import compiler, preview_target, slide_language, slide_snapshot
-from ...deck_editor import VIEW_INSTRUCTOR
-from ...update_all_previews import file_stamp
-from ...preview_requests import RenderRequest
+from ... import compiler, slide_language
 from .base import ToolContext, ToolError, tool
-from .slidemage import open_deck, slide_or_file, slide_target
+from .slidemage import PREVIEW_VIEW, open_deck, preview_batch_output, slide_or_file
 
 DECK_TIMEOUT_S = 3600      # a whole deck is one long compile; a single slide has RenderRequest's own timeout
 LISTED_MAX = 60            # slide ids named per list before "and N more"
@@ -50,38 +46,17 @@ def _deadline(ctx: ToolContext, seconds: float):
 
 
 @tool("refresh_preview",
-      "Rerender the cached preview of one slide (the instructor view, as the open deck typesets it) so the "
-      "Preview and thumbnails show its current source. Takes seconds. Reports done, or why it failed "
-      "(the first LaTeX error). It does not show you the image: for that use render_preview.",
-      {"slide": {"type": "string", "description": "A slide id (1y8) or a path; default the slide in focus."}})
+      "Rerender one slide's saved source into the preview cache; no images are returned for inspection. "
+      "view may be instructor, during-course, after-course, or all; omitted view defaults to all "
+      "so switching course views has matching previews. Instructor refresh also updates legacy "
+      "thumbnails. Reports each view as rendered/cached/displayed/superseded/hidden/failed. "
+      "Use render_preview(view=...) to look at images, including unsaved edits.",
+      {"slide": {"type": "string", "description": "A slide id (1y8) or a path; default the slide in focus."},
+       "view": {**PREVIEW_VIEW, "description": PREVIEW_VIEW["description"] + " Default: all views."}})
 def refresh_preview(ctx: ToolContext, args: dict) -> str:
-    path = slide_or_file(ctx, args.get("slide"))
-    context = ctx.workspace.context()
-    own = slide_language.own_language(path.name)
-    language = own if own in slide_language.TRANSLATION_LANGUAGES else context.language
-    target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path,
-                          VIEW_INSTRUCTOR, language)
-    if target is None:
-        raise ToolError(f"{path.name} is not a slide file, so it has no preview.")
-    if target.is_frozen_alone:
-        raise ToolError(f"{path.name} is a frozen version; only the current slide has a cached preview.")
-
-    def render(cancel):
-        # capture_snapshot (the default) writes the cached PNGs; the PDF itself is not needed.
-        pdf = preview_target.render(target, VIEW_INSTRUCTOR, language, footer_timestamp=context.footer_timestamp,
-                                    log=lambda _line: None, cancel=cancel)
-        shutil.rmtree(pdf.parent, ignore_errors=True)
-
-    png = slide_snapshot.snapshot_path(ctx.project, target.bare_id, target.template, id_slug=target.id_slug)
-    before = file_stamp(png)
-    try:
-        RenderRequest(render, lambda: None).wait(ctx.cancel)
-    except RuntimeError as exc:
-        raise ToolError(f"{target.bare_id}: the preview was not refreshed. {first_error_line(str(exc))}") from None
-    stamp = file_stamp(png)
-    if stamp is None or stamp == before:
-        raise ToolError(f"{target.bare_id}: it compiled, but its cached preview could not be written.")
-    return f"{target.bare_id}: preview refreshed ({slide_snapshot.TEMPLATES.get(target.template, target.template)})."
+    text, _ = preview_batch_output(ctx, slide_or_file(ctx, args.get("slide")),
+                                   args.get("view", "all"), saved=True)
+    return text
 
 
 def _listed(slugs: list[str]) -> str:
@@ -90,15 +65,21 @@ def _listed(slugs: list[str]) -> str:
 
 
 @tool("refresh_deck_previews",
-      "Rerender the cached previews of every slide of one deck, and of no other deck (the same as SlideMage's "
-      "'Rerender all previews for this deck'). One long compile: minutes for a big deck. Reports how many "
-      "slides were refreshed and which ones failed.",
-      {"deck": {"type": "string", "description": "Deck name; default the open deck."}})
+      "Refresh the exact occurrence previews of one deck using the shared render cache. "
+      "scope defaults to all course views; selected uses the workspace's selected view. "
+      "Reports partial failures and per-view cached, rendered and hidden counts.",
+      {"deck": {"type": "string", "description": "Deck name; default the open deck."},
+       "scope": {"type": "string", "enum": ["all", "selected"],
+                 "description": "All course views (default) or the selected course view."}})
 def refresh_deck_previews(ctx: ToolContext, args: dict) -> str:
     deck = open_deck(ctx, args.get("deck"))
+    scope = args.get('scope', 'all')
+    if scope not in ('all', 'selected'):
+        raise ToolError("scope must be all or selected")
     with _deadline(ctx, DECK_TIMEOUT_S) as token:
         try:
-            result = ctx.workspace.refresh_deck_previews(deck, token)
+            result = (ctx.workspace.refresh_deck_previews(deck, token, scope=scope) if 'scope' in args
+                      else ctx.workspace.refresh_deck_previews(deck, token))
         except RuntimeError as exc:
             raise ToolError(str(exc)) from None
     if ctx.cancel.is_set():
@@ -109,6 +90,15 @@ def refresh_deck_previews(ctx: ToolContext, args: dict) -> str:
     if not total:
         return f"{deck.name} has no slides to refresh."
     lines = [f"{deck.name}: {len(result.refreshed)} of {total} slide preview(s) refreshed, {len(result.failed)} failed."]
+    if result.details is not None:
+        details = result.details
+        lines.append(f"{details.scope} views, {details.language}: " + ", ".join(
+            f"{details.count(status)} {status}" for status in
+            ('rendered', 'cached', 'hidden', 'failed', 'cancelled')))
+        for item in details.failed:
+            spec = item.request
+            lines.append(f"Failed frame {spec.target.frame_number} ({spec.view}, "
+                         f"{spec.target.id_slug}): {item.error or item.publication_status}")
     if result.refreshed:
         lines.append(f"Refreshed: {_listed(result.refreshed)}")
     if result.failed:

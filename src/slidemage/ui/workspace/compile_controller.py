@@ -8,17 +8,28 @@ worker thread; every log line, from that thread or any other, goes through `log`
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal
 
 from ... import compile_progress, project
-from ...compile_status import DONE, MOVING, QUEUED, RUNNING, JobRow, RunStatus
+from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, STOPPED, JobRow, RunStatus
 from ...compiler import CancelToken, CompileJob
 from .. import background
 
 Work = Callable[[Callable[[str], None], CancelToken], Any]   # (log, cancel) -> whatever `on_done` is given
+
+
+@dataclass(frozen=True)
+class _PreviewProgress:
+    fraction: float
+    text: str
+
+    def feed(self, _line):
+        # Occurrence progress supersedes individual compiler pass estimates.
+        return None
 
 
 class _Worker(QThread):
@@ -31,6 +42,7 @@ class _Worker(QThread):
 
 
 class CompileController(QObject):
+    preview_progress = Signal(object)  # occurrence/view progress from the preview worker
     log = Signal(str)            # any thread: a line for the Log drawer, the progress and the rows
     started = Signal(object)     # the RunStatus of a new run
     changed = Signal()           # progress or a row moved, or the worker ended
@@ -53,6 +65,7 @@ class CompileController(QObject):
         self._on_done: Optional[Callable[[Any], None]] = None
         self._result: Any = None
         self.log.connect(self._feed)
+        self.preview_progress.connect(self._preview_progress)
 
     @property
     def running(self) -> bool:
@@ -67,6 +80,7 @@ class CompileController(QObject):
         on a worker thread. `jobs`: the compile jobs behind the rows, which can be stopped one by one
         and retried; `pdfs`: where each job's PDF will be. A work that raises is logged as
         "<failure> failed". `on_done(result)` runs once the slot is free again."""
+        self.progress = compile_progress.BatchProgress()
         self.progress.reset(specs)
         self.jobs = {job.jobname: job for job in jobs or []}
         self.run = RunStatus(labels, root=self.context.root, verb=verb, pdfs=pdfs,
@@ -104,6 +118,23 @@ class CompileController(QObject):
         if self.over and self.run.settled:
             self.is_settled = True
             self.settled.emit(self.run)
+
+    def _preview_progress(self, event) -> None:
+        completed = event.index - (event.status == 'rendering')
+        self.progress = _PreviewProgress(
+            fraction=completed / max(event.total, 1),
+            text=f"{completed}/{event.total} previews · {event.view} · {event.status}")
+        if self.run is not None:
+            row = next(iter(self.run.rows.values()), None)
+            if row is not None:
+                row.started = True
+                if event.status == 'failed':
+                    row.state = FAILED
+                elif event.status == 'cancelled' and row.state != FAILED:
+                    row.state = STOPPED
+                elif row.state not in (FAILED, STOPPED):
+                    row.state = DONE if completed == event.total else RUNNING
+        self._update()
 
     def _feed(self, line: str) -> None:
         progress_update = self.progress.feed(line)

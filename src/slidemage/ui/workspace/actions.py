@@ -140,7 +140,22 @@ def build_registry() -> CommandRegistry:
     def add(*args, **kwargs) -> None:
         registry.add(Command(*args, **kwargs))
 
+    from .wizard_portal import play_wizard
+    add("wizard_preview", "Preview wizard magic", PROJECT, lambda w: play_wizard(w), icon="auto_awesome")
+
     # View & build -----------------------------------------------------------------
+    add("preview:all-saved", "Render all preview views · saved file", VIEW_AND_BUILD,
+        lambda w: w.centre.preview.render_all_views(saved=True), icon="preview",
+        enabled=lambda w: w.centre.preview.can_render_all,
+        meta="Focused slide · Whole slide and all reveal steps")
+    add("preview:all-buffer", "Render all preview views · editor buffer", VIEW_AND_BUILD,
+        lambda w: w.centre.preview.render_all_views(saved=False), icon="edit_note",
+        enabled=lambda w: w.centre.preview.can_render_all,
+        meta="Focused slide · Whole slide and all reveal steps")
+    add("preview:force", "Force rerender current preview view", VIEW_AND_BUILD,
+        lambda w: w.centre.preview.force_rerender(), icon="refresh",
+        enabled=lambda w: w.centre.preview.can_force_render,
+        meta="Saved file · bypass completed cache")
     for side, label, shortcut in (("left", "slide list", "Ctrl+Alt+["), ("right", "side panel", "Ctrl+Alt+]")):
         add(f"column:{side}",
             lambda w, s=side, text=label: f"{'Show' if getattr(w, s + '_column_hidden') else 'Hide'} {text}",

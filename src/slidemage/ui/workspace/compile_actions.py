@@ -476,9 +476,7 @@ def update_previews(window) -> None:
 
 
 def rerender_deck_previews(window) -> None:
-    """"Rerender all previews for this deck": the same run as Update previews, narrowed to the current
-    deck's slides (update_all_previews.rerender_deck()). Nothing is deleted, other decks' previews are
-    left alone."""
+    """Refresh the current deck's exact cached previews, with an explicit view scope."""
     deck = window.state.deck
     if deck is None or _busy(window):
         return
@@ -487,24 +485,48 @@ def rerender_deck_previews(window) -> None:
     if not total_slides:
         QMessageBox.information(window, "Nothing to do", f"{deck.name} has no slides to render.")
         return
-    reply = QMessageBox.question(
-        window, "Rerender previews",
-        f"Rerender the cached previews of the {total_slides} slide(s) of {deck.name}? The previews "
-        f"of other decks are left alone.\n\nThis is one long compile (minutes for a big deck) -- it "
-        f"runs in the background, but occupies the compile slot, so no other compile can start until "
-        f"it's done.")
-    if reply == QMessageBox.StandardButton.Yes and _confirm_previews_lint(window, needed):
-        start_deck_previews(window, deck, needed)
+    labels = ["All course views", "Selected course view"]
+    choice, accepted = QInputDialog.getItem(window, "Refresh previews", "Views to refresh", labels, 0, False)
+    if accepted and _confirm_previews_lint(window, needed):
+        start_deck_previews(window, deck, needed, scope='all' if choice == labels[0] else 'selected')
 
 
 def start_deck_previews(window, deck: Deck, needed: dict[str, set[str]],
-                        on_done: Optional[Callable[[object], None]] = None) -> None:
-    """Take the compile slot for update_all_previews.rerender_deck(); `on_done(DeckResult)` runs when
-    the slot is free again (None if the run failed outright). No question is asked: the callers did."""
-    _start_previews(
-        window, needed, f"Rerender previews of {deck.name}",
-        lambda log, cancel, base_jobnames: update_all_previews.rerender_deck(
-            window.project, deck, log, cancel, base_jobnames, needed), on_done)
+                        on_done: Optional[Callable[[object], None]] = None, *, scope='all') -> None:
+    """Refresh exact requests using the pane's shared scheduler on the compile slot."""
+    pane = window.centre.preview
+    service, generation = pane._renders, pane._generation
+    view, language, timestamp = window.state.view, window.state.language, window.state.footer_timestamp
+    # Workers may only publish to Qt through the GUI dispatcher.
+    workspace = window.assistant.chat.workspace
+
+    def run(log, cancel, base_jobnames):
+        return update_all_previews.rerender_deck(
+            window.project, deck, log, cancel, base_jobnames, needed,
+            service=service, scope=scope, selected_view=view, language=language,
+            footer_timestamp=timestamp, progress=window.compile.preview_progress.emit,
+            publish=lambda result: workspace.publish_preview_result(result, generation))
+
+    def done(result):
+        from ...compile_status import DONE, FAILED, STOPPED
+        row = window.compile.row('deck_previews')
+        cancelled = result is not None and result.details is not None and result.details.count('cancelled')
+        row.state = STOPPED if cancelled else (DONE if result is not None and result else FAILED)
+        window.compile.changed.emit()
+        window.slide_list._refresh_all_preview_rows()
+        if result is not None:
+            window.log(f"{deck.name}: {len(result.refreshed)} refreshed, {len(result.failed)} failed")
+            if result.details is not None:
+                for item in result.details.failed:
+                    spec = item.request
+                    window.log(f"*** Frame {spec.target.frame_number} ({spec.view}, "
+                               f"{spec.target.id_slug}): {item.error or item.publication_status} ***")
+        if on_done is not None:
+            on_done(result)
+
+    window.compile.start({"deck_previews": f"Rerender previews of {deck.name}"}, {},
+                         lambda log, cancel: run(log, cancel, {}),
+                         opens_pdfs=False, on_done=done, failure="Preview refresh")
 
 
 def _confirm_previews_lint(window, needed: dict[str, set[str]]) -> bool:

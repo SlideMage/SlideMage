@@ -452,6 +452,11 @@ copied package files in `texmf/` record the exact originals.
   SlideMage's "Update slide previews" (⋮ → *Housekeeping…*). A best-effort cache for
   SlideMage's own Preview view and slide-list thumbnails, not a
   guaranteed-fresh one. Gitignored, same category as `transcripts/`.
+- `.previews/render-results/` — verified per-view/group preview artifacts, dependency
+  evidence, small thumbnails and display history. The pane, list and deck refresh
+  share these results.
+- `.previews/page-images/` — bounded cache of additional PDF page ranges and
+  resolutions used by comparisons and inspection tools.
 - `slide_ids.csv` — registry of all slide IDs in use, so new IDs never collide.
 - `.scripts/R_Slidemaster/inst/templates/slide-template.tex` — the starter
   template a brand-new slide is seeded from. The original project mints new
@@ -1210,6 +1215,49 @@ If the file changes on disk while you have edits (Claude Code in the
 terminal), saving pauses and the bar above the editor lets you choose; the top
 bar says **Unsaved changes** only while edits cannot be saved. Going back is
 the editor's undo, or restoring a version in the Versions panel.
+
+## Preview views and reuse
+
+The Preview's **Render** button renders the focused slide in the selected
+**Instructor**, **During course** or **After course** view. Its arrow menu adds
+**Render all views** for the focused slide and a forced rerender for checking
+changed dependencies or troubleshooting. Saved-file and editor-buffer renders
+are separate actions that share work when their captured text and context match. All-view rendering currently supports full-slide previews;
+presenter, region, element and explicit-overlay previews keep separate results.
+
+Each view resolves its own slide call, pinned version, translation, visibility,
+frame number and reveal steps. A hidden slide is reported as hidden. Rendering
+all views captures the source once, compiles missing view groups sequentially and keeps
+successful results if another view fails or the remaining work is stopped.
+Switching views displays the matching valid result without another compile.
+
+Completed previews persist under `.previews/`, with source and TeX dependency
+validation. Editing a graphic, included file, external framework or the slide
+(even while its version still carries the same **+**) invalidates affected
+results. A cache hit retains its original compile timestamp; forced rerendering
+uses a new timestamp. Missing or corrupt cache data causes a normal render.
+
+Before compiling, supported view rules and the resolved deck context determine
+which views can share a complete reveal sequence. Eligible all-view requests
+compile once; partially equivalent views need two renders, and different or
+uncertain views remain separate. Default deck labels usually distinguish the
+views. A shared image does not authorize sharing a view-specific PDF; requesting
+that PDF obtains the exact view when needed. Compare Rendered reuses validated
+reveal images or cached page images at its requested resolution.
+
+**Rerender all previews for this deck** uses the same resolver and cache, with
+an explicit choice of the selected view or all views in the selected language.
+It covers repeated calls, pinned versions, translations and reveal selections;
+progress includes cached and hidden results, and failures retain other successes.
+An unchanged refresh avoids compilation.
+
+Claude Code and chat can call `render_preview(view="during-course")` or
+`render_preview(view="all")` to inspect labelled images and per-view outcomes.
+Omitting `view` uses the selected view. `refresh_preview` accepts the same
+choices and defaults to **all three views** (v8.21.2); it refreshes saved-source
+artifacts rather than providing visual inspection. Tool renders update the
+visible pane only while its slide, view, language and source still match;
+otherwise the result is cached for its own view without changing your selection.
 
 ## Multi-language (EN/DE) slides
 
@@ -2920,9 +2968,10 @@ for the whole project) that occupies the compile slot until it finishes,
 so no other compile can start in the meantime.
 
 To refresh only the current deck's previews, choose **⋮ → This deck → Rerender all
-previews for this deck** (also in ⌘K / Ctrl+K). It asks first, then runs the same
-compile for just this deck's slides (both languages) with the same job panel and Log; it
-deletes nothing, and the cached previews of other decks are left as they are. It is
+previews for this deck** (also in ⌘K / Ctrl+K). Choose the selected course view or
+all views; it refreshes the exact occurrences in the selected language through
+the shared preview cache and reports progress in the job panel and Log. It
+deletes nothing. It is
 distinct from **Render** in the Preview (one slide) and from **Update slide previews**
 (every deck, with the clean-up). The agent has the same two jobs as tools:
 `refresh_preview` (one slide, default the focused one) and `refresh_deck_previews` (one

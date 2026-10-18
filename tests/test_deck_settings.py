@@ -171,3 +171,11 @@ def test_from_form_refuses_latex_specials_in_a_path_but_keeps_an_untouched_one_b
     original = DeckSettings(output_folders={None: "D:\\Old\\Way", "presenter": "D:/50%"})
     new = form(original, output_folders={None: "D:\\Old\\Way", "presenter": "D:/50%"})
     assert new.output_folders == original.output_folders
+
+
+def test_footer_elements_left_out_are_written_and_read_back():
+    text = "\\input{Slidemaster_preamble_uni-graz}\n\\newcommand{\\FooterText}{X}\n\\begin{document}\n\\end{document}\n"
+    hidden = deck_settings.set_footer_hide(text, ("deck", "id"))
+    assert "\\def\\SMFooterHide{id,deck}\n" in hidden
+    assert deck_settings.read_settings(hidden).footer_hide == ("id", "deck")
+    assert deck_settings.set_footer_hide(hidden, ()) == text

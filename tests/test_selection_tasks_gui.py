@@ -186,7 +186,10 @@ def test_the_context_menu_offers_the_edit_commands_and_the_two_tasks_when_the_se
     menu.triggered.emit("proofread")
     wait_until(phase_is(env, model.REVIEW))
     assert card(env).task is claude_tasks.PROOFREAD_SELECTION and card(env).title == "Proofread selection"
-    menu.close()
+    # Starting the task can already close and delete the context menu.
+    from shiboken6 import isValid
+    if isValid(menu):
+        menu.close()
 
 
 # -- the card: Generate, Review, Apply ------------------------------------------------------------------------------

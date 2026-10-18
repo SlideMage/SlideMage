@@ -52,6 +52,7 @@ class WorkspaceState(QObject):
         self.project = project
         self.deck: Optional[Deck] = None
         self.focused_slide: Optional[str] = None
+        self.focused_occurrence: tuple | None = None
         self.view = VIEW_INSTRUCTOR
         self.language = UI_LANGUAGES[0]
         self.selection: tuple[str, ...] = ()
@@ -76,6 +77,7 @@ class WorkspaceState(QObject):
         self.deck = deck
         remembered = self._remembered(deck)
         self.focused_slide, self.selection = None, ()
+        self.focused_occurrence = None
         self.view = remembered["view"] if remembered.get("view") in VIEWS else VIEW_INSTRUCTOR
         self.language = remembered["language"] if remembered.get("language") in UI_LANGUAGES \
             else self._deck_language(deck)
@@ -93,9 +95,10 @@ class WorkspaceState(QObject):
             self.mode_changed.emit(self.mode)
         return True
 
-    def set_focused_slide(self, slide_id: Optional[str]) -> None:
-        if slide_id != self.focused_slide:
+    def set_focused_slide(self, slide_id: Optional[str], *, occurrence_key: tuple | None = None) -> None:
+        if slide_id != self.focused_slide or occurrence_key != self.focused_occurrence:
             self.focused_slide = slide_id
+            self.focused_occurrence = occurrence_key
             self.focused_slide_changed.emit(slide_id)
 
     def set_view(self, view: str) -> None:

@@ -324,7 +324,7 @@ def _presenter_mode_line(presenter: bool) -> str:
 @measure('build')
 def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
-                         reuse_build: bool = True, cancel=None) -> Path:
+                         reuse_build: bool = True, cancel=None, force_build: bool = False) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
     render_slide_text_to_pdf(): build the wrapper (preview_build.run_preview),
     check the log for a real fatal error, move the finished PDF to its own
@@ -344,7 +344,8 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
     asked to see.
     """
     env = build_env(ctx)
-    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel) if reuse_build
+    build_options = {'force': True} if force_build else {}
+    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel, **build_options) if reuse_build
                 else _compile_fresh(ctx, wrapper_text, id_slug, log, env, cancel))
     if snapshot_template is not None:
         # bare id, not the full id_slug -- capture_deck() (the "Update
@@ -435,6 +436,8 @@ def render_slide_to_pdf(
     overlay: Optional[int] = None,
     capture_snapshot: bool = True,
     cancel=None,
+    render_stamp: Optional[str] = None,
+    force_build: bool = False,
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -489,7 +492,7 @@ def render_slide_to_pdf(
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"{_preview_timestamp_line(footer_timestamp)}"
+        f"{_preview_timestamp_line(footer_timestamp, render_stamp)}"
         f"{_frame_number_line(frame_number)}{_overlay_line(overlay)}"
         f"\t{call}\n\\end{{document}}\n"
     )
@@ -499,7 +502,7 @@ def render_slide_to_pdf(
     )
     return compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build, cancel=cancel,
+        reuse_build=reuse_build, cancel=cancel, **({'force_build': True} if force_build else {}),
     )
 
 
@@ -520,6 +523,12 @@ def render_slide_text_to_pdf(
     frame_number: Optional[int] = None,
     capture_snapshot: bool = True,
     cancel=None,
+    steps: Optional[str] = None,
+    slide_version: Optional[str] = None,
+    omitted: bool = False,
+    final: bool = False,
+    render_stamp: Optional[str] = None,
+    force_build: bool = False,
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -582,13 +591,24 @@ def render_slide_text_to_pdf(
     if presenter and preview_mode == "element":
         raise ValueError("Use Instructor instead of Presenter for an element preview")
     preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
+    if final and preview_mode == "slide":
+        slide_body = ("\\begingroup\n\\renewcommand{\\conditionalpause}[1][instructor]{}\n"
+                      + slide_body + "\n\\endgroup\n")
+    call_state = ""
+    if preview_mode == "slide":
+        call_state = (f"\\setSlideVersion{{{slide_version}}}\n" if slide_version is not None
+                      else "\\global\\SMSlideVersionSetfalse\n")
+        if steps is not None:
+            call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
+        if omitted:
+            call_state += "\\global\\SMOmittedSlidetrue\n"
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{_presenter_mode_line(presenter)}{preamble}"
         f"{_frame_number_line(frame_number)}{_overlay_line(overlay)}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"{_preview_timestamp_line(footer_timestamp)}"
+        f"{_preview_timestamp_line(footer_timestamp, render_stamp)}"
         f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n"
-        f"{slide_body}\n\\end{{document}}\n"
+        f"{call_state}{slide_body}\n\\end{{document}}\n"
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
@@ -597,7 +617,7 @@ def render_slide_text_to_pdf(
     )
     return compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build, cancel=cancel,
+        reuse_build=reuse_build, cancel=cancel, **({'force_build': True} if force_build else {}),
     )
 
 

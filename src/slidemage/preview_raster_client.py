@@ -39,6 +39,46 @@ def render(data, sizes, full_size):
     return tuple(_ask(request, "Cannot prepare preview images", len(sizes))["images"])
 
 
+def render_sequence(data):
+    """Return complete-page raster evidence, never a last-page proxy."""
+    from .preview_raster import SEQUENCE_DPI, SEQUENCE_SCHEMA
+    import hashlib
+    import math
+
+    response = _ask(dict(op="sequence", pdf=base64.b64encode(data).decode("ascii")),
+                    "Cannot prepare preview sequence", timeout=LAYOUT_TIMEOUT)
+    try:
+        configuration = response["configuration"]
+        if (configuration.get("schema") != SEQUENCE_SCHEMA
+                or configuration.get("dpi") != SEQUENCE_DPI
+                or configuration.get("colorspace") != "rgb"
+                or configuration.get("alpha") is not False
+                or configuration.get("annots") is not True
+                or not isinstance(configuration.get("renderer"), str)):
+            raise ValueError("Unsupported preview sequence configuration")
+        pages = response["pages"]
+        if not isinstance(pages, list) or not pages or len(pages) != len(response["images"]):
+            raise ValueError("Incomplete preview sequence")
+        for page in pages:
+            if (not isinstance(page, dict) or set(page) != {"size", "pixels", "sha256"}
+                    or len(page["size"]) != 2 or len(page["pixels"]) != 2
+                    or any(not isinstance(n, (int, float)) or not math.isfinite(n) or n <= 0
+                           for n in page["size"])
+                    or any(type(n) is not int or n <= 0 for n in page["pixels"])
+                    or not isinstance(page["sha256"], str) or len(page["sha256"]) != 64
+                    or any(c not in "0123456789abcdef" for c in page["sha256"])):
+                raise ValueError("Invalid preview sequence page")
+        evidence = dict(configuration=configuration, pages=pages)
+        signature = hashlib.sha256(json.dumps(evidence, sort_keys=True,
+                                  separators=(",", ":")).encode()).hexdigest()
+        if response["signature"] != signature:
+            raise ValueError("Invalid preview sequence signature")
+        return dict(**evidence, signature=signature, images=tuple(response["images"]))
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        close()
+        raise RuntimeError(f"Cannot prepare preview sequence: {exc}") from exc
+
+
 def read_document(path, op, start=1, count=1, dpi=110):
     """Ask the child to read a file for the chat (ops of preview_raster.document): the response with
     "count", and "texts" (str) or "images" (PNG bytes). RuntimeError when it cannot."""

@@ -106,7 +106,7 @@ MORE_COLUMNS = (
      ("", ("archive_deck",))),
     (("Project", ("palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck")),
      ("Housekeeping", ("housekeeping", "archive_unused")),
-     ("Info", ("version_history", "check_updates", "project_compat"))),
+     ("Info", ("wizard_preview", "version_history", "check_updates", "project_compat"))),
 )
 MORE_FOOTER = ("settings",)
 MORE_NOTE = "Everything here is also in ⌘K / Ctrl+K"

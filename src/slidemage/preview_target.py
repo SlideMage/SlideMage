@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import project, slide_language, slide_preview, slide_snapshot
-from .deck_editor import VIEW_INSTRUCTOR, SlideCall
+from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import Deck
 
 
@@ -27,10 +27,18 @@ class PreviewTarget:
     macro: str
     id_slug: str
     version: Optional[str]
-    conditions: Optional[list]
+    conditions: Optional[tuple[str, ...]]
     steps: Optional[str]
     frame_number: Optional[int]
     preamble_text: Optional[str]    # the deck's; None: the default template's
+
+    occurrence_key: tuple = ()
+    hidden: bool = False
+    presenter_frame_number: Optional[int] = None
+
+    def __post_init__(self):
+        if self.conditions is not None:
+            object.__setattr__(self, 'conditions', tuple(self.conditions))
 
     @property
     def bare_id(self) -> str:
@@ -59,16 +67,59 @@ class PreviewTarget:
         """What a render depends on besides the view and the language."""
         return (self.macro, self.id_slug, self.version, tuple(self.conditions or ()), self.steps,
                 self.frame_number, self.template,
-                hashlib.sha256((self.preamble_text or '').encode()).hexdigest())
+                hashlib.sha256((self.preamble_text or '').encode()).hexdigest()) + ((self.occurrence_key,) if self.occurrence_key else ()) + (
+                    (self.presenter_frame_number,) if self.presenter_frame_number is not None else ())
 
 
-def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position: int, language: Optional[str] = None) -> PreviewTarget:
+def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position: int, language: Optional[str] = None, *, frame_number: Optional[int] = None,
+             occurrence_key: tuple = (), hidden: bool = False) -> PreviewTarget:
     """`call`, the `position`-th slide call of `deck`, as the deck typesets it."""
     if language is not None:
         from .deck_language import resolve_call
         call = resolve_call(call, language, slide_language.TranslationLinks(ctx.slides_dir))
+    presenter_frame = None
+    if occurrence_key:
+        from .deck_outline import resolve_slots
+        presenter_frame = next((r.frame_number for r in resolve_slots(ctx, deck, VIEW_INSTRUCTOR, language or "EN")
+                                if r.key == occurrence_key), None)
     return PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions, call.steps,
-                         position, deck.preamble_text)
+                         position if frame_number is None else frame_number, deck.preamble_text, occurrence_key, hidden, presenter_frame)
+
+
+def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:
+    requested = selected_view if view is None else view
+    if requested == "all":
+        return VIEWS
+    if requested not in VIEWS:
+        raise ValueError(f"Invalid preview view: {requested!r}; expected {', '.join((*VIEWS, 'all'))}")
+    return (requested,)
+
+
+def resolve_views(ctx: project.ProjectContext, deck: Deck | None, path: Path, view: str | None,
+                  language: str, *, selected_view: str = VIEW_INSTRUCTOR,
+                  occurrence_key: tuple | None = None) -> tuple[tuple[str, PreviewTarget], ...]:
+    """Resolve one occurrence independently in each view, without changing workspace state.
+
+    A slide-id lookup uses the focused occurrence when supplied, otherwise the first logical
+    occurrence. A frozen file opened separately remains standalone unless the deck pins it.
+    Hidden deck calls retain their identity and are never rendered as standalone slides.
+    """
+    from . import deck_outline
+
+    views = requested_views(view, selected_view)
+    result = []
+    for canonical in views:
+        row = (deck_outline.slide_row(ctx, deck, slide_language.bare_id(path.name), canonical, language,
+                                      occurrence_key=occurrence_key) if deck is not None else None)
+        if row is not None and (row.call.source_filename == path.name or '-current.tex' in path.name):
+            target = for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number,
+                              occurrence_key=row.key, hidden=row.hidden)
+        else:
+            target = for_path(ctx, path)
+        if target is None:
+            raise ValueError(f"{path.name} is not a slide file")
+        result.append((canonical, target))
+    return tuple(result)
 
 
 def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]:
@@ -95,28 +146,41 @@ def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
 
 
 def render(target: PreviewTarget, view: str, language: str, *, footer_timestamp: bool, log,
-           capture_snapshot: bool = True, cancel=None) -> Path:
+           capture_snapshot: bool = True, cancel=None, render_stamp=None, force_build=False) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     Raises RuntimeError with the compile log's tail on failure."""
+    if target.hidden:
+        raise ValueError(f"Slide {target.id_slug} is hidden in {view}")
     return slide_preview.render_slide_to_pdf(
         target.context, target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(), footer_timestamp=footer_timestamp,
         preamble_text=target.preamble_text, frame_number=target.frame_number,
-        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel)
+        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
+        **({'render_stamp': render_stamp} if render_stamp is not None else {}),
+        **({'force_build': True} if force_build else {}))
 
 
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, footer_timestamp: bool, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
-    capture_snapshot: bool = True, cancel=None,
+    capture_snapshot: bool = True, cancel=None, render_stamp=None, force_build=False,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
     text cropped); `overlay` shows only that reveal step of each frame.
     A presenter render is the instructor version with beamer's second screen."""
+    if target.hidden and not presenter:
+        raise ValueError(f"Slide {target.id_slug} is hidden in {view}")
     return slide_preview.render_slide_text_to_pdf(
         target.context, target.id_slug, text,
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         footer_timestamp=footer_timestamp, presenter=presenter, preamble_text=target.preamble_text,
-        frame_number=target.frame_number, log=log, preview_mode=mode, overlay=overlay,
-        capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel)
+        frame_number=(target.presenter_frame_number if presenter and target.presenter_frame_number is not None
+                      else target.frame_number), log=log, preview_mode=mode, overlay=overlay,
+        steps=target.steps if mode == "slide" else None,
+        final=target.macro == "slidefinal" and mode == "slide",
+        slide_version=target.version if mode == "slide" else None,
+        omitted=target.macro in ("omitslide", "omitslideversion") and mode == "slide",
+        capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
+        **({'render_stamp': render_stamp} if render_stamp is not None else {}),
+        **({'force_build': True} if force_build else {}))

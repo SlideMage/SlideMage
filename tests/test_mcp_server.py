@@ -157,9 +157,11 @@ def test_read_buffer_shows_unsaved_edits_and_only_of_open_files(mcp):
     assert mcp.call("read_buffer", path="../outside.tex")["isError"]
 
 
-def test_render_preview_comes_back_as_an_image_content(mcp, monkeypatch):
+def test_render_preview_comes_back_as_an_image_content(mcp_tools, monkeypatch):
+    mcp = mcp_tools
     monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: mcp.root / "x.pdf")
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda pdf, width: b"\x89PNG-bytes")
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
+                        lambda *a: ((b"\x89PNG-bytes", b"\x89PNG-bytes"), ()))
     content = mcp.call("render_preview")["content"]
     assert content[0]["type"] == "text" and content[1]["type"] == "image"
     assert content[1]["mimeType"] == "image/png" and base64.b64decode(content[1]["data"]) == b"\x89PNG-bytes"
@@ -284,3 +286,83 @@ def test_a_failure_inside_a_request_is_an_error_response_not_a_dropped_connectio
         assert status == 200 and body["id"] == 7 and "the window is gone" in body["error"]["message"]
     finally:
         server.stop()
+
+
+@pytest.mark.parametrize('hidden,failed', [(False, False), (True, False), (False, True)])
+def test_all_preview_images_are_labelled_through_mcp_serialization(mcp_tools, monkeypatch, hidden, failed):
+    client = mcp_tools
+    if hidden:
+        deck = client.workspace.context().deck.path
+        deck.write_text(deck.read_text().replace(r'\slide{abc-EN-Hello}',
+                        r'\conditionalslide[instructor,after-course]{abc-EN-Hello}'))
+    seen = []
+
+    def render(target, text, view, language, **kwargs):
+        seen.append((view, text))
+        if failed and view == 'during-course':
+            raise RuntimeError('! During course failed')
+        return client.root / f'{view}.pdf'
+
+    monkeypatch.setattr(preview_target, 'render_text', render)
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images',
+                        lambda pdf, *a: ((b'\x89PNG-' + pdf.stem.encode(),) * 2, ()))
+    draft = LF + '% captured draft\n'
+    client.workspace.open(client.root / SLIDE, draft)
+    original_context = client.workspace.context()
+    response = client.call('render_preview', view='all')
+    assert not response['isError']
+    text = response['content'][0]['text']
+    expected = ['instructor', 'after-course'] if hidden or failed else ['instructor', 'during-course', 'after-course']
+    images = response['content'][1:]
+    assert [base64.b64decode(item['data']) for item in images] == [b'\x89PNG-' + v.encode() for v in expected]
+    for index, view in enumerate(expected, 1):
+        assert f'image #{index} = {view}, EN' in text
+    assert text.index('abc: instructor') < text.index('abc: during-course') < text.index('abc: after-course')
+    if hidden:
+        assert 'during-course, EN: hidden;' in text
+    if failed:
+        assert 'during-course, EN: failed;' in text and '! During course failed' in text
+    assert all(source == draft for _, source in seen)
+    assert client.workspace.context() == original_context
+
+
+def test_explicit_during_course_preview_returns_that_view(mcp_tools, monkeypatch):
+    client = mcp_tools
+    seen = []
+    monkeypatch.setattr(preview_target, 'render_text',
+                        lambda target, text, view, *a, **kw: seen.append(view) or client.root / 'x.pdf')
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images',
+                        lambda *a: ((b'\x89PNG-during',) * 2, ()))
+    result = client.call('render_preview', view='during-course')
+    assert not result['isError'] and seen == ['during-course']
+    assert 'image #1 = during-course, EN' in result['content'][0]['text']
+    assert base64.b64decode(result['content'][1]['data']) == b'\x89PNG-during'
+
+
+@pytest.mark.parametrize('selected', ['instructor', 'during-course', 'after-course'])
+def test_claude_refresh_without_view_populates_every_course_view(mcp_tools, monkeypatch, selected):
+    from dataclasses import replace
+    client = mcp_tools
+    client.workspace._context = replace(client.workspace.context(), view=selected)
+    seen = []
+    monkeypatch.setattr(preview_target, 'render_text',
+                        lambda target, text, view, *a, **kw: seen.append(view) or client.root / f'{view}.pdf')
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'PNG', b'PNG'), ()))
+    response = client.call('refresh_preview')
+    assert not response['isError']
+    assert seen == ['instructor', 'during-course', 'after-course']
+    assert len(response['content']) == 1  # refresh reports statuses; render_preview returns images
+    text = response['content'][0]['text']
+    assert all(f'abc: {view}, EN: rendered' in text for view in seen)
+    assert client.workspace.context().view == selected
+
+
+def test_claude_refresh_with_explicit_instructor_stays_single_view(mcp_tools, monkeypatch):
+    client = mcp_tools
+    seen = []
+    monkeypatch.setattr(preview_target, 'render_text',
+                        lambda target, text, view, *a, **kw: seen.append(view) or client.root / 'x.pdf')
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'PNG', b'PNG'), ()))
+    response = client.call('refresh_preview', view='instructor')
+    assert not response['isError'] and seen == ['instructor']
+    assert 'abc: instructor, EN: rendered' in response['content'][0]['text']
