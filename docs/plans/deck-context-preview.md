@@ -78,7 +78,7 @@ Where the title comes from (read from the slide file; **no LaTeX**):
 - a `\SMAgendaTitle{text}` in the slide wins over the frame title (as in the real recording, where the first writer for an id wins: `\SM@agenda@title` guards with `SM@ag@titled@<id>`; the scan applies the same precedence by order of appearance);
 - frames without a title (`\quoteframe`, `\fullbleedframe`, ...): no `\SMAgendaTitle`; the agenda falls back to the slug label exactly as the real deck does (`\SM@ag@entry`, `:6900-6905`);
 - multi-frame slide files: only the first titled frame counts (the real recording is once per id);
-- titles with macros: kept verbatim (detokenized by the recording macro just as in the real compile), compiled in the same preamble; a macro defined inside the same slide file (`\newcommand` before the frame) would be undefined in the skeleton; the scan then takes the stale-aux title if present (below) or omits the title, falling back to the slug label;
+- titles with macros: kept verbatim (detokenized by the recording macro just as in the real compile), compiled in the same preamble; a macro defined inside the same slide file (`\newcommand` before the frame) would be undefined in the skeleton; the scan then takes the title recorded by the last full compile's aux (even if stale; owner decision) and falls back to the slug/ID label only when no such title exists;
 - language variants: read the file the call resolves to (`deck_language.resolve_call`, `deck_language.py`, with the previewed language), the same function `preview_target.for_call` uses (`preview_target.py:66-71`);
 - pinned versions: `\slideversion`/`\slidefinal` -> read the frozen file the call names (`SlideCall.source_filename`, `deck_editor.py:95-101`).
 
@@ -142,7 +142,6 @@ Copy `.toc/.nav/.aux/.snm` from the full compile into `.build/preview-cache/<sli
 
 ## 11. Open questions for the owner
 
-Decided: only slides whose own content needs it get the deck-context render; approach A needs one full compile of the version first and keeps its helper files with the compile record (already so, section 5A); approach B emits all sections and, via B2, frameless agenda records with scanned titles; no manual "Render with deck context" switch.
+Decided: only slides whose own content needs it get the deck-context render; approach A needs one full compile of the version first and keeps its helper files with the compile record (already so, section 5A); approach B emits all sections and, via B2, frameless agenda records with scanned titles; a title built from a macro defined inside the slide file is taken from the last full compile's aux (even if stale), and only when none exists does the slug/ID label show; no manual "Render with deck context" switch.
 
 1. B2 relies on `\SMAgendaTitle`/`\setSlideID` writing the agenda records without a frame. This is read from the source (`Slidemaster_preamble_base.tex:6849-6935`); confirm with one real-TeX experiment before building (a three-section deck, `\SMChapterAgenda` slide in section 2).
-2. Titles that depend on macros defined in the slide file itself: accept the slug-label fallback in B, or compile such titles via the stale-aux fallback only?
