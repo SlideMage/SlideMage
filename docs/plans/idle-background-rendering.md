@@ -402,6 +402,8 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 
 1. Default: on. 2. Wrappers/build caches for background renders may live outside the project (spike in Phase 0 decides how). 3. Footer timestamp deprecated and removed, version stays (prerequisite change, see 3.5). 4. Briefly wrong page numbers after inserting a slide are acceptable. 5. All decks in order of recency, all versions; unchanged decks are not touched again. 6. Pause on battery by default. Idle = 30 s.
 
+**Decided (owner confirmation):** the footer-timestamp functionality is removed entirely: the template's `\SMFooterTimestampOverride`, the wrapper lines (`slide_preview`, `compiler.wrapper_text`), the toolbar checkbox and the `.timestamp` mechanism. Own small PR before Phase 2.
+
 ### Still open
 
 - **Hash of the slide source:** raw bytes (a line-ending flip by sync re-renders once, recommended) or normalised text?
@@ -409,4 +411,4 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 - **Recency:** only decks opened on this machine, or also decks with recent file changes / upcoming course sessions?
 - **Budget:** is 2 GB / 30 days right for the store when all decks are in scope (it may fill; the chip says so), and should "Remove temp files" offer to clear it?
 - **Reveal-slider coordination:** OK to ask that session to build its neighbour queue as a producer into this shared scheduler and store renders through `render_store`?
-- **Timestamp removal scope:** also from whole-deck compiles and the template's `\SMFooterTimestampOverride` (assumed yes), as its own small PR before Phase 2?
+
