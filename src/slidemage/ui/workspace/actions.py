@@ -21,6 +21,7 @@ from ... import ai_review
 from ...deck_scan import TAG_COURSE, TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
+from ..presentation import launch
 from ..text import plural
 from . import compare_rendered, compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
@@ -236,6 +237,8 @@ def build_registry() -> CommandRegistry:
             visible=section_chosen, enabled=_section_enabled(name))
 
     # Deck -----------------------------------------------------------------------------
+    add("present", "Present deck", DECK, lambda w: launch.on_present(w, w.state.deck), icon="slideshow", shortcut="F5",
+        meta="full-screen, with notes", enabled=_active_deck)
     add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
     add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
         enabled=lambda w: _has_deck(w) and not _keeps_group(w))

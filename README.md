@@ -2352,16 +2352,11 @@ panel and get silently cut off (LaTeX doesn't reflow a note page onto a
 second physical page) — if you're writing a long one, compile and check
 its actual notes page rather than assuming it fits.
 
-**You need presenter software that knows this layout to actually use it
-live** — opening the PDF in a plain viewer just shows the wide combined
-page on both screens, which defeats the point. This project's own
-recommendation is **[pympress](https://github.com/Cimbali/pympress)** (free,
-open source, actively maintained, native Windows support): point it at the
-presenter PDF, tell it which physical screen is the projector, and it shows
-the plain slide there while your own screen gets the current slide, the
-next slide, your notes, and a timer. **pdfpc** is the other name worth
-knowing (same idea, well-regarded), but it's Linux/GTK-first and
-noticeably less smooth to get running on Windows.
+**Present it from SlideMage.** Press **F5** (or Ctrl+K, "Present deck") and SlideMage shows the presenter PDF itself: the projector (the second screen) gets only the current slide, full-screen; your own screen gets the current slide, the next slide and your notes, plus an optional clock and timer. With one screen, or with duplicated screens, only the full-screen slide appears. If the deck has no Presenter PDF yet, or an older one than the deck, SlideMage asks whether to compile it first; it can also present a normal PDF, without notes. The computer stays awake and the screensaver off while you present.
+
+Controls: the mouse wheel, the arrow keys and a clicker's Page Up/Page Down move through the pages (each reveal step is a page); digits and Enter jump to the slide with that number (the one printed in the footer; the PDF page when SlideMage has no frame data for the PDF); `B` or `.` blacks out the projector, `F` freezes it on the slide it shows while you move ahead on your own screen (press again to catch up); hold **Ctrl** and the left mouse button on the small current slide for a laser pointer; `D` draws, `E` erases, `Delete` clears the page's drawings (Shift: all pages); links in the slide work (`Alt+Left` goes back from a jump); `T` starts or pauses the timer, `P` switches the presenter layout, `Esc` ends the presentation. The timer is optional: click it to set an end time of day or a duration; it flashes red when the time is up.
+
+Other presenter software works with the same PDF, too: **[pympress](https://github.com/Cimbali/pympress)** and **pdfpc** understand this wide layout (a plain PDF viewer would show the combined page on both screens).
 
 Not every slide needs a note — beamer's own layout handles a slide with no
 `\note{}` call fine (an empty panel, nothing breaks), so write one only
