@@ -747,13 +747,6 @@ def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, mo
     assert app_settings.get(EXAMPLE_PROJECT, "tab_width_chars") == 4
 
 
-def test_the_build_options_footer_timestamp_is_the_states(window):
-    box = window.build_options.footer_timestamp_checkbox
-    assert not box.isChecked() and not window.state.footer_timestamp
-    box.setChecked(True)
-    assert window.state.footer_timestamp
-
-
 def test_closing_asks_about_a_pending_side_panel_edit_too(window, monkeypatch):
     saved = []
     panel = window.side_panels.panels["transcript"]

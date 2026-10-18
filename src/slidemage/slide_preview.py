@@ -12,7 +12,6 @@ duplicating them.
 """
 from __future__ import annotations
 
-from datetime import datetime
 import re
 import shutil
 import tempfile
@@ -319,31 +318,13 @@ def _deck_language_line(deck_language: Optional[str]) -> str:
     return f"\\decklanguage[{deck_language}]\n"
 
 
-def _footer_timestamp_line(footer_timestamp: bool) -> str:
-    """`\\def\\SMFooterTimestampOverride{0}`, the same hook
-    compiler.py's own wrapper defines for a full-deck compile when the
-    main toolbar's "Include footer timestamp" checkbox is unticked
-    (2026-08-26, direct report -- the slide-source editor's own "Render to
-    PDF" ignored that checkbox entirely, always showing the timestamp).
-    Unlike _deck_version_line/_deck_language_line above, this can't be
-    placed after `preamble` in the wrapper -- Slidemaster_preamble_base.tex
-    (which is what actually reads \\SMFooterTimestampOverride) is
-    \\input{}'d *inside* `preamble` itself, near its top, so the \\def has
-    to come first for \\ifdefined to see it in time. Only emitted when
-    False, same as compiler.py's own `if not job.footer_timestamp`."""
-    if footer_timestamp:
-        return ""
-    return "\\def\\SMFooterTimestampOverride{0}\n"
-
-
 def _presenter_mode_line(presenter: bool) -> str:
     """`\\def\\SMPresenterModeOverride{1}`, the same hook compiler.py's
     own wrapper defines for a real "Presenter" job (CompileJob.presenter)
     -- turns on beamer's dual-screen presenter mechanism
     (Slidemaster_preamble_base.tex's own \\ifdefined\\SMPresenterModeOverride
-    block: pgfpages "show notes on second screen"). Same placement
-    constraint as _footer_timestamp_line above (has to come before
-    `preamble`, since that's what \\input{}s Slidemaster_preamble_base.tex),
+    block: pgfpages "show notes on second screen"). It has to come before
+    `preamble`, since that's what \\input{}s Slidemaster_preamble_base.tex,
     and same "only emitted when true" shape as compiler.py's own
     `if job.presenter`."""
     if not presenter:
@@ -456,7 +437,6 @@ def render_slide_to_pdf(
     conditions: Optional[list] = None,
     deck_version: Optional[str] = None,
     deck_language: Optional[str] = None,
-    footer_timestamp: bool = True,
     preamble_text: Optional[str] = None,
     frame_number: Optional[int] = None,
     log: Optional[LogCallback] = None,
@@ -492,15 +472,6 @@ def render_slide_to_pdf(
     does `capture_snapshot=False` (a frozen version looked at on its own is not
     what the slide's thumbnail should show).
 
-    `footer_timestamp` (2026-08-30, direct report) mirrors the main
-    toolbar's own "Include footer timestamp" checkbox, the same
-    _footer_timestamp_line hook render_slide_text_to_pdf's own docstring
-    already explains -- this function (the Preview's "Render now",
-    preview_target.render()) ignored it entirely too,
-    always showing the timestamp regardless of the checkbox's state; the
-    2026-08-26 fix only reached render_slide_text_to_pdf's own separate
-    "Render to PDF" button, this sibling function was missed.
-
     Refreshes this slide's compile-time PNG snapshot (slide_snapshot.py) as
     a side effect, but only when rendering the instructor version -- `None`
     here means "whatever the preamble defaults to", which is instructor
@@ -520,9 +491,8 @@ def render_slide_to_pdf(
     # render nothing for a call listed only for the student versions.
     call = format_call(macro, id_slug, version, None if macro == "slidestep" else conditions, steps)
     wrapper_text = (
-        f"{_footer_timestamp_line(footer_timestamp)}{preamble}"
+        f"{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"{_preview_timestamp_line(footer_timestamp)}"
         f"{context_before}{_frame_number_line(frame_number)}{_overlay_line(overlay, all_steps)}"
         f"\t{call}\n{context_after}\\end{{document}}\n"
     )
@@ -544,7 +514,6 @@ def render_slide_text_to_pdf(
     slide_body: str,
     deck_version: Optional[str] = None,
     deck_language: Optional[str] = None,
-    footer_timestamp: bool = True,
     presenter: bool = False,
     preamble_text: Optional[str] = None,
     log: Optional[LogCallback] = None,
@@ -579,11 +548,6 @@ def render_slide_text_to_pdf(
     same file shows. `deck_language` overrides \\decklanguage the same way
     `deck_version` already overrides \\deckversion, letting a
     \\multilingualtext{}{} slide be spot-checked in either language.
-
-    `footer_timestamp` (2026-08-26, direct report) mirrors the main
-    toolbar's own "Include footer timestamp" checkbox, which this render
-    path previously ignored entirely -- see _footer_timestamp_line for why
-    it has to come before `preamble`, unlike the other two overrides.
 
     `presenter` (2026-09-25, direct instruction: "include 'Presenter' as
     a version for the render version") turns on beamer's dual-screen
@@ -620,10 +584,9 @@ def render_slide_text_to_pdf(
         raise ValueError("Use Instructor instead of Presenter for an element preview")
     preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
     wrapper_text = (
-        f"{_footer_timestamp_line(footer_timestamp)}{_presenter_mode_line(presenter)}{preamble}"
+        f"{_presenter_mode_line(presenter)}{preamble}"
         f"{context_before}{_frame_number_line(frame_number)}{_overlay_line(overlay, all_steps)}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"{_preview_timestamp_line(footer_timestamp)}"
         f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n"
         f"{slide_body}\n{context_after}\\end{{document}}\n"
     )
@@ -716,21 +679,3 @@ def _region_source(preamble: str, body: str, mode: str) -> tuple[str, str]:
              "\\makeatletter\\providecommand{\\beamer@cramped}{}\\makeatother\n")
     preamble = preamble.replace(marker, setup + marker, 1)
     return preamble, "\\begin{preview}\n" + body + "\n\\end{preview}"
-
-
-def _preview_timestamp_line(enabled: bool, stamp: Optional[str] = None) -> str:
-    """Refresh the timestamp file, preserving the framework's normal input path.
-
-    The literal value is stable across latexmk passes but changes on the next
-    request in a new minute. Loading this file also preserves TeX whitespace
-    in examples that measure the timestamp without displaying it.
-    """
-    if not enabled:
-        return ""
-    stamp = stamp or datetime.now().strftime("%Y-%m-%d %H:%M")
-    return (
-        "\\immediate\\openout\\SMCompileTimestampFile=\\jobname.timestamp\\relax\n"
-        "\\immediate\\write\\SMCompileTimestampFile{"
-        f"\\string\\gdef\\string\\SMCompileTimestampValue{{{stamp}}}" + "}\n"
-        "\\immediate\\closeout\\SMCompileTimestampFile\n"
-    )

@@ -42,8 +42,7 @@ def main():
                 def render(revision):
                     return slide_preview.render_slide_text_to_pdf(ctx,
                         slug, body + f'\n\\def\\SMPreviewBenchmarkRevision{{{revision}}}',
-                        preamble_text=deck.preamble_text, footer_timestamp=False,
-                        preview_mode='element', reuse_build=cache, log=log.append)
+                        preamble_text=deck.preamble_text, preview_mode='element', reuse_build=cache, log=log.append)
                 start = time.perf_counter()
                 try:
                     pdf = render(0)

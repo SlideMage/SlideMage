@@ -92,11 +92,11 @@ def _mark_template_level(entry: readability.SlideReport, source: str) -> None:
         finding.template_level = finding.rule == readability.TEXT_SIZE and finding.cls == readability.CITATION
 
 
-def check_slide(ctx: ProjectContext, target, text: str, view: str, language: str, timestamp: bool, cancel,
+def check_slide(ctx: ProjectContext, target, text: str, view: str, language: str, cancel,
                 renders: Optional[RenderService] = None, log=lambda _line: None) -> readability.Report:
     """Render `text` as the slide `target` (a preview_target.PreviewTarget) and check the draft. RuntimeError when
     it does not compile or `cancel` is set."""
-    pdf = (renders or RenderService()).request(target, text, view, language, timestamp, log).wait(cancel)[0]
+    pdf = (renders or RenderService()).request(target, text, view, language, log).wait(cancel)[0]
     return check_pdf(ctx, pdf, target.bare_id, text=text)
 
 

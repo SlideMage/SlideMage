@@ -87,20 +87,20 @@ class RenderService:
         for request in requests:
             request.cancel.request_stop()
 
-    def request(self, target, text, view, language, timestamp, log, *, saved=False,
+    def request(self, target, text, view, language, log, *, saved=False,
                 presenter=False, mode='slide', overlay=None, all_steps=False):
         revision = target.source_path.stat().st_mtime_ns
         key = (target.source_path.resolve(), target.key, text, revision, view, language,
-               timestamp, presenter, mode, overlay, saved if target.macro != "slide" or target.conditions else None,
+               presenter, mode, overlay, saved if target.macro != "slide" or target.conditions else None,
                all_steps)
 
         def work(cancel):
             if saved:
-                pdf = preview_target.render(target, view, language, footer_timestamp=timestamp,
+                pdf = preview_target.render(target, view, language,
                                             log=log, capture_snapshot=False, cancel=cancel, all_steps=all_steps)
             else:
                 pdf = preview_target.render_text(
-                    target, text, view, language, footer_timestamp=timestamp, log=log,
+                    target, text, view, language, log=log,
                     presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
                     all_steps=all_steps)
             if all_steps:

@@ -24,33 +24,21 @@
 			\end{itemize}
 		\end{column}
 	\end{columns}
-	% x positions measured on the compiled footer. The id block is flush right,
-	% so without the compile timestamp everything left of it moves right by the
-	% width of " | <timestamp>" (\dx, measured here) -- up to the page edge, where
-	% the labels no longer fit to the right of their arrows. Then they end at
-	% their arrows instead, the leftmost arrow with the lowest label so that no
-	% arrow runs through a label. The footer text's arrow is the same either way.
-	\sbox0{\fontsize{4}{4}\selectfont\ | \SMCompileTimestamp}%
-	\pgfmathsetmacro{\dx}{\ifSMShowCompileTimestamp 0\else\the\wd0\fi}%
+	% x positions measured on the compiled footer. The id block is flush right
+	% and ends where the former compile date and time started: the arrows sit
+	% \dx (the width of " | 2026-10-18 12:00", measured here) right of that.
+	% The labels end at their arrows, the leftmost arrow with the lowest label.
+	\sbox0{\fontsize{4}{4}\selectfont\ | 2026-10-18 12:00}%
+	\pgfmathsetmacro{\dx}{\the\wd0}%
 	\begin{tikzpicture}[overlay, remember picture, x=1pt, y=1pt,
 			every node/.style={font=\scriptsize, text=c_primary_highlight, inner sep=1.5pt},
 			lbl/.style={gotham arrow, c_primary_highlight}]
 		\coordinate (o) at (current page.south west);
 		\draw[lbl] ($(o)+(32,44)$) node[above right=0pt and -10pt] {the deck's \SMCmd{FooterText}} -- ($(o)+(32,9)$);
 		\draw[lbl] ($(o)+(122,26)$) node[above right=0pt and -10pt] {navigation links (\SMCmd{SMNavigationBar})} -- ($(o)+(122,9)$);
-		\ifSMShowCompileTimestamp
-		% the labels staggered in height, reaching right of their arrows
-		\draw[lbl] ($(o)+(348,66)$) node[above] {slide ID} -- ($(o)+(348,9)$);
-		\draw[lbl] ($(o)+(362,54)$) node[above right=0pt and -6pt] {version and language} -- ($(o)+(362,9)$);
-		\draw[lbl] ($(o)+(386,42)$) node[above right=0pt and -6pt] {deck version} -- ($(o)+(386,9)$);
-		\draw[lbl] ($(o)+(418,30)$) node[above right=0pt and -8pt] {compiled} -- ($(o)+(418,9)$);
-		% above the other labels: its arrow runs down past their right ends
-		\draw[lbl] ($(o)+(444,78)$) node[above left=0pt and -2pt] {slide number} -- ($(o)+(444,9)$);
-		\else
 		\draw[lbl] ($(o)+(348+\dx,30)$) node[above left=0pt and -6pt] {slide ID} -- ($(o)+(348+\dx,9)$);
 		\draw[lbl] ($(o)+(362+\dx,42)$) node[above left=0pt and -6pt] {version and language} -- ($(o)+(362+\dx,9)$);
 		\draw[lbl] ($(o)+(386+\dx,54)$) node[above left=0pt and -6pt] {deck version} -- ($(o)+(386+\dx,9)$);
 		\draw[lbl] ($(o)+(444,66)$) node[above left=0pt and -2pt] {slide number} -- ($(o)+(444,9)$);
-		\fi
 	\end{tikzpicture}%
 \end{standardframe}

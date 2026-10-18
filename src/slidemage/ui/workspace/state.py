@@ -40,7 +40,6 @@ class WorkspaceState(QObject):
     focused_slide_changed = Signal(object)   # bare slide id | None
     view_changed = Signal(str)
     language_changed = Signal(str)
-    footer_timestamp_changed = Signal(bool)
     selection_changed = Signal(object)       # tuple of bare slide ids
     mode_changed = Signal(str)
     dirty_changed = Signal(bool)
@@ -58,9 +57,6 @@ class WorkspaceState(QObject):
         self.mode = MODES[0]
         self.dirty = False   # some source or side panel has unsaved edits
         self._dirty_by: dict[str, bool] = {}
-        # The Build options' "Include footer timestamp", which the Preview renders with too.
-        # Read when a render starts, so it has no signal.
-        self.footer_timestamp = False
         self.lint_errors = 0   # errors the static check finds in the source being edited
 
     def set_deck(self, deck: Optional[Deck]) -> bool:
@@ -151,11 +147,6 @@ class WorkspaceState(QObject):
             return False
         self.ai_route_changed.emit(self.ai_route)
         return True
-
-    def set_footer_timestamp(self, enabled: bool) -> None:
-        if self.footer_timestamp != enabled:
-            self.footer_timestamp = enabled
-            self.footer_timestamp_changed.emit(enabled)
 
     def selected_or_focused(self) -> tuple[str, ...]:
         """The selected slides, else the focused one."""

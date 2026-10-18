@@ -55,8 +55,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   every version the old deck table's checkboxes made (Instructor, During course, After
   course, *All views*, *After course, one PDF per chapter*, *Presenter*), the pages of the
   selected slides, *Pages by number…*, *Several decks…*, *All decks except archive*, the
-  accessible transcripts, *Stop compilation* and *Build options…* (footer timestamp,
-  appendix TOC, pages replace theirs, auto-open). Runs show as a floating **card** (one
+  accessible transcripts, *Stop compilation* and *Build options…* (appendix TOC, pages replace theirs, auto-open). Runs show as a floating **card** (one
   line per job with its state, a progress bar, Stop, *Retry failed*, *Open PDFs*); the
   **log drawer** (Ctrl+L) streams the `latexmk` output and opens by itself on a failure,
   with *Open in Source* on the failed line. Compiles still run on background threads, one job
@@ -82,7 +81,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   Conflict / Preview failed / Stopped / Setup needed; Back to conversation leaves a pill
   in the header. Batches, image tasks and the summary use the task row (`task_row.py`).
 - **Compare rendered** (v8.13.0, `compare_rendered.py`): a non-modal dialog, not in the 360 px column, that typesets
-  two texts of one slide as drafts for the same target, view, language and timestamp as Check preview
+  two texts of one slide as drafts for the same target, view and language as Check preview
   (`preview_view.render_context`) and shows "Before" and "After" in equal panes. Both go through a `RenderService` of
   the dialog's own (the Preview pane's compile slot and build locks; nothing is written), each on a `QThread`
   that also reads the PDF's pages as PNGs in the raster child (`preview_raster_client.read_document`); ‹ › and the

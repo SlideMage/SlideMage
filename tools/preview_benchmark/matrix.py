@@ -32,16 +32,11 @@ def run_matrix(args):
     original_build = original.build_dir
     original_compile = slide_preview.compile_and_extract
     revision = 0
-    reference_stamp = ""
 
     def compile_revision(wrapper, *a, **kw):
         # Forces an actual TeX rerun while keeping rendered pixels unchanged.
         # This is a changed-input rebuild, NOT a cache-hit or word-edit timing.
         wrapper = wrapper.replace(r'\end{document}', f'\\def\\SMPreviewBenchmarkRevision{{{revision}}}\n' + r'\end{document}')
-        # The footer-annotation example measures timestamp width even with
-        # its visible timestamp disabled. Freeze it to the baseline PDF clock.
-        wrapper = wrapper.replace(r'\begin{document}', r'\begin{document}' +
-                                  '\n' + slide_preview._preview_timestamp_line(True, reference_stamp), 1)
         return original_compile(wrapper, *a, **kw)
 
     slide_preview.compile_and_extract = compile_revision
@@ -66,13 +61,10 @@ def run_matrix(args):
                 continue
             if cache:
                 ctx = project.ProjectContext(original.root, original_build / ('benchmark-' + stage) / f'{i:03}')
-            with pymupdf.open(args.output / 'baseline' / f'{i:03}.pdf') as ref:
-                date = ref.metadata['creationDate'][2:14]
-                reference_stamp = f'{date[:4]}-{date[4:6]}-{date[6:8]} {date[8:10]}:{date[10:12]}'
             log = []
             row = dict(stage=stage, index=i, slide=call.id_slug, macro=call.macro, steps=call.steps)
             common = dict(preamble_text=deck.preamble_text, frame_number=i,
-                          footer_timestamp=False, log=log.append,
+                          log=log.append,
                           reuse_build=cache, overlay=1 if overlay else None)
             if region:
                 source = (ctx.root / 'slides' / call.source_filename).read_text()

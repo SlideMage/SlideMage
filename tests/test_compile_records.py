@@ -21,7 +21,7 @@ WRAPPER = "\\def\\deckversionoverride{instructor}\n\\input{t-Deck.tex}\n"
 @pytest.fixture
 def compiled(tmp_path, monkeypatch):
     """A finished compile: project files, an invocation dir with .fls/.log/
-    .blg/.timestamp, and the PDF published to pdf/."""
+    .blg, and the PDF published to pdf/."""
     monkeypatch.setattr(compile_records, "engine_version", lambda: "LuaHBTeX 1.22.0")
     root = tmp_path / "Proj"
     deck = write(root / "decks" / "t-Deck.tex", "deck\n")
@@ -44,7 +44,6 @@ def compiled(tmp_path, monkeypatch):
     ]) + "\n")
     write(inv / "t-Deck-instructor.log", "LaTeX2e <2025-11-01>\nPackage: beamer 2026/01/22 v3.77 x\n")
     write(inv / "t-Deck-instructor.blg", f"INFO - Found BibTeX data source '{bib}'\n")
-    write(inv / "t-Deck-instructor.timestamp", "\\gdef\\SMCompileTimestampValue{2026-10-08 09:00}\n")
     write(inv / "t-Deck-instructor.aux", "aux")
     pdf = write(root / "pdf" / "t-Deck-instructor.pdf", b"%PDF instructor")
     started = time.time() + 1          # every file above is older than the compile
@@ -68,7 +67,6 @@ def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     assert sorted(p.name for p in fresh.inputs) == [
         "1aa-EN-One-current.tex", "Slidemaster.bib", "a.png", "t-Deck.tex"]
     assert fresh.bib_sources == [Path(os.path.normpath(c["bib"]))]
-    assert "SMCompileTimestampValue{2026-10-08 09:00}" in fresh.timestamp
     assert "Package: beamer 2026/01/22 v3.77" in fresh.log_text
     assert fresh.started == int(c["started"])
     data = json.loads((c["build"] / "compile-records" / "t-Deck-instructor.json").read_text())
@@ -95,7 +93,7 @@ def test_stale_when_pdf_or_input_changes(compiled, change, reason):
 
 def test_stale_when_settings_or_engine_change(compiled, monkeypatch):
     record(compiled)
-    other = WRAPPER.replace("instructor", "instructor}\\def\\SMFooterTimestampOverride{0")
+    other = WRAPPER.replace("instructor", "instructor}\\def\\SMPresenterModeOverride{1")
     assert fresh_output(compiled["build"], "t-Deck-instructor", other) == (
         None, "the deck's version settings changed")
     monkeypatch.setattr(compile_records, "engine_version", lambda: "LuaHBTeX 1.23.0")
@@ -173,7 +171,7 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
     c = compiled
     ctx = ProjectContext.at(c["build"].parent)
     write(c["inv"] / "t-Deck-during-course.pdf", b"%PDF during")
-    for ext in (".fls", ".log", ".blg", ".timestamp"):
+    for ext in (".fls", ".log", ".blg"):
         src = c["inv"] / f"t-Deck-instructor{ext}"
         write(c["inv"] / f"t-Deck-during-course{ext}", src.read_bytes())
     deck = deck_scan.Deck(name="t-Deck", path=c["deck"], archived=False, text="deck\n",

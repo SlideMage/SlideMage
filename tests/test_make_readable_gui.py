@@ -49,7 +49,7 @@ class Measure:
     def __init__(self, *answers):
         self.answers, self.texts = list(answers), []
 
-    def __call__(self, _ctx, target, text, view, language, timestamp, cancel, **kwargs):
+    def __call__(self, _ctx, target, text, view, language, cancel, **kwargs):
         self.texts.append(text)
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
         if isinstance(answer, Exception):

@@ -91,7 +91,7 @@ def test_tool_wait_cancels_shared_running_request(tmp_path, monkeypatch, timeout
 
     monkeypatch.setattr(preview_target, 'render_text', render)
     service = preview_requests.RenderService()
-    request = service.request(target, 'BODY', 'instructor', 'EN', False, lambda _: None)
+    request = service.request(target, 'BODY', 'instructor', 'EN', lambda _: None)
     cancel = compiler.CancelToken()
     if not timeout:
         stopper = threading.Thread(target=lambda: (started.wait(2), cancel.request_stop()))

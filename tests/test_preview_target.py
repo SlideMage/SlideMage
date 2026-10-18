@@ -39,20 +39,20 @@ def target_of(body, index=0):
 def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(renders):
     _, target = target_of("\\slide{aaa-EN-One}\n\\slidestep{bbb-EN-Two}{1,2}\n", 1)
     assert target.macro == "slidestep" and target.frame_number == 2 and target.template == "uni-ibk"
-    assert preview_target.render(target, "during-course", "DE", footer_timestamp=True, log=print) == "a.pdf"
+    assert preview_target.render(target, "during-course", "DE", log=print) == "a.pdf"
     kind, args, kwargs = renders[0]
     assert args[1:3] == ("slidestep", "bbb-EN-Two")
     assert kwargs["deck_version"] == "during-course" and kwargs["deck_language"] == "de"
-    assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2" and kwargs["footer_timestamp"]
+    assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2"
     assert kwargs["capture_snapshot"]
     assert kwargs["preamble_text"].startswith("\\documentclass{beamer}")
 
 
 def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instructor(renders):
     _, target = target_of("\\slide{aaa-EN-One}\n")
-    preview_target.render_text(target, "BODY", "after-course", "EN", footer_timestamp=False, log=print,
+    preview_target.render_text(target, "BODY", "after-course", "EN", log=print,
                                mode="region", overlay=2)
-    preview_target.render_text(target, "BODY", "after-course", "EN", footer_timestamp=False, log=print,
+    preview_target.render_text(target, "BODY", "after-course", "EN", log=print,
                                presenter=True)
     (_, args, kwargs), (_, _, presenter) = renders
     assert args[1:] == ("aaa-EN-One", "BODY")
@@ -78,7 +78,7 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     assert frozen.is_frozen_alone
     slide_snapshot.snapshot_path(ctx, "abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
     assert preview_target.cached_image(frozen) is None
-    preview_target.render(frozen, "instructor", "EN", footer_timestamp=False, log=print)
+    preview_target.render(frozen, "instructor", "EN", log=print)
     assert renders[0][2]["capture_snapshot"] is False
     # a deck that pins the version does show it, so the snapshot is its to refresh
     _, pinned = target_of("\\slideversion{abc-EN-Demo}{1-0-0}\n")

@@ -31,7 +31,7 @@ def rendered(box, root, tmp_path, monkeypatch):
     draws = [slide(pct=2.8)]
 
     def render_text(target, text, view, language, **kwargs):
-        seen.append((target.bare_id, text, view, language, kwargs["footer_timestamp"], kwargs["capture_snapshot"]))
+        seen.append((target.bare_id, text, view, language, kwargs["capture_snapshot"]))
         if draws[0] is None:
             raise RuntimeError("Render failed\n! Undefined control sequence.\nmore")
         return pdf_of(tmp_path, draws[0], name=f"draft-{len(seen)}.pdf")
@@ -56,7 +56,7 @@ def test_the_tool_is_read_only_and_offered_to_claude_code_without_asking():
 
 def test_the_focused_slide_is_rendered_as_a_draft_in_the_users_view_and_measured(box, rendered):
     out = box.ok("check_readability")
-    assert rendered == [("abc", LF, "instructor", "EN", True, False)]            # the file's text, as a draft, nothing captured
+    assert rendered == [("abc", LF, "instructor", "EN", False)]            # the file's text, as a draft, nothing captured
     assert out.startswith("abc-EN-Hello-current.tex (file) as instructor, EN: 1 slide checked · 1 with errors · 0 with warnings.")
     assert "abc (abc-EN-Hello-current.tex), page 1:" in out
     assert "error · body text · 2.8 % of slide height, needs ≥ 3.3 · 3 lines" in out

@@ -108,7 +108,7 @@ def preview_target_render_with(ctx, target, skeleton):
     from slidemage import slide_preview
 
     return slide_preview.render_slide_to_pdf(
-        ctx, target.macro, target.id_slug, deck_version="instructor", footer_timestamp=False,
+        ctx, target.macro, target.id_slug, deck_version="instructor",
         preamble_text=target.preamble_text, frame_number=target.frame_number, capture_snapshot=False,
         context_before=skeleton.before, context_after=skeleton.after)
 
@@ -120,7 +120,7 @@ def test_without_any_context_the_same_slide_has_an_empty_contents_list(tiny):
     from slidemage import slide_preview
 
     pdf = slide_preview.render_slide_to_pdf(
-        ctx, target.macro, target.id_slug, deck_version="instructor", footer_timestamp=False,
+        ctx, target.macro, target.id_slug, deck_version="instructor",
         preamble_text=target.preamble_text, frame_number=2, capture_snapshot=False)
     (text,) = pages_text(pdf)
     assert "Alpha" not in text and "Beta" not in text

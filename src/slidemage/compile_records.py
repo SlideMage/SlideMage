@@ -11,9 +11,9 @@ record of it in .build/compile-records/<jobname>.json:
   (.fls: deck, slides, snippets, media, image descriptions, template,
   framework, TeX packages) plus the .bib files biber read (.blg);
 - the SHA-256 of the wrapper file the compile ran (deck version, presenter
-  mode, footer timestamp and appendix choices, the generated appendix);
+  mode and appendix choices, the generated appendix);
 - the TeX engine's version line;
-- the footer timestamp the compile printed, the time it started, and the
+- the time it started, and the
   published PDF's path and SHA-256.
 
 deck_snapshot.py asks fresh_output() for each version it needs: when every
@@ -55,7 +55,7 @@ RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
 # The auxiliary files kept with a record (aux_dir()).
 DECK_COPY_NAME = "deck.tex"
-AUX_EXTENSIONS = (".aux", ".nav", ".toc", ".snm", ".out", ".bbl", ".top", ".ovl", ".timestamp")
+AUX_EXTENSIONS = (".aux", ".nav", ".toc", ".snm", ".out", ".bbl", ".top", ".ovl")
 
 # Matches the .log's "Package: beamer 2025/06/02 v3.75 ..." family of lines.
 LOG_FILE_LINE_RE = re.compile(
@@ -200,7 +200,6 @@ class FreshOutput:
     inputs: list[Path]
     bib_sources: list[Path]
     log_text: str            # the format and package lines of its .log
-    timestamp: Optional[str]  # the .timestamp file's text
     started: int              # Unix time the compile started
     created: str              # ISO time the record was written
     # norm(original path) -> the copy kept in the record (slide previews):
@@ -286,7 +285,6 @@ def write_record(
                 target.unlink(missing_ok=True)
                 return None
             entries.append({"path": str(path), "sha256": sha256(path)})
-        stamp = invocation_dir / f"{jobname}.timestamp"
         record = {
             "format": RECORD_FORMAT,
             "jobname": jobname,
@@ -296,7 +294,6 @@ def write_record(
             "wrapper_sha256": wrapper_sha256(wrapper_text),
             "pdf": str(pdf),
             "pdf_sha256": sha256(pdf),
-            "timestamp": stamp.read_text(encoding="utf-8") if stamp.is_file() else None,
             "bib_sources": [str(p) for p in bib_sources],
             "log_lines": version_lines(log_text),
             "inputs": entries,
@@ -383,7 +380,7 @@ def fresh_output(build_dir: Path, jobname: str, wrapper_text: str
         jobname=jobname, pdf=Path(record["pdf"]),
         inputs=[Path(e["path"]) for e in record["inputs"]],
         bib_sources=[Path(p) for p in record.get("bib_sources", [])],
-        log_text=record.get("log_lines", ""), timestamp=record.get("timestamp"),
+        log_text=record.get("log_lines", ""),
         started=int(record.get("started", 0)), created=str(record.get("created", "")),
         copies={norm(e["path"]): aux / e["copy"] for e in record["inputs"] if e.get("copy")},
     ), ""

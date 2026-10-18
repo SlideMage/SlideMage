@@ -178,7 +178,7 @@ def test_check_preview_renders_the_slide_in_the_view_and_language_being_edited(f
     fake.reply({"answer": FIX})
     click(env, "Fix LaTeX errors")
     assert "The preview is current." in settled(env) and env.window.state.mode == "split"
-    ((target, text, view, language, _timestamp, _cancel),) = fake.renders
+    ((target, text, view, language, _cancel),) = fake.renders
     assert target.source_path == env.path and text == LF and (view, language) == ("instructor", "EN")
     assert env.window.assistant.tasks.card.where == "abc · Instructor · EN"
 
