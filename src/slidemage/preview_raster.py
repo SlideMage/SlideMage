@@ -45,7 +45,7 @@ def raster(data, sizes, full_size):
         return [images[tuple(size)] for size in sizes]
 
 
-def document(path, op, start=1, count=1, dpi=110):
+def document(path, op, start=1, count=1, dpi=110, width=None):
     """The chat's file reads: op "pdf" gives the page count and the text of `count` pages from page
     `start`; "pdf_images" the same pages as PNGs; "drawing" an SVG or EPS file as one PNG; "layout" what the
     readability check reads of every page (readability_pdf.read_pages)."""
@@ -62,6 +62,10 @@ def document(path, op, start=1, count=1, dpi=110):
     with pymupdf.open(path) as doc:
         pages = range(start, min(start + count, doc.page_count + 1))
         if op == "pdf_images":
+            if width is not None:   # every page `width` pixels wide, at its own aspect ratio
+                return dict(count=doc.page_count, images=[
+                    doc[n - 1].get_pixmap(matrix=pymupdf.Matrix(width / doc[n - 1].rect.width, width / doc[n - 1].rect.width)).tobytes("png")
+                    for n in pages])
             return dict(count=doc.page_count, images=[doc[n - 1].get_pixmap(dpi=dpi).tobytes("png") for n in pages])
         return dict(count=doc.page_count, texts=[doc[n - 1].get_text() for n in pages])
 
