@@ -981,7 +981,10 @@ class PreviewPane(Surface):
         key, text, draft, scan = self._current_steps(target)
         pages = self._step_pages.get(key)
         if pages is None:
-            bar.setVisible(False)
+            if scan.may_reveal and key not in self._step_failed:
+                bar.show_counting()
+            else:
+                bar.setVisible(False)
             self._probe.start(PROBE_MS)
             return
         self._step_pages.move_to_end(key)

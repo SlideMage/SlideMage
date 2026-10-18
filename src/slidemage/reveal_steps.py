@@ -34,6 +34,10 @@ _FINAL_FLAG_RE = re.compile(r"^[ \t]*\\SMFinalStateForStudents[ \t]*(?:%.*)?\r?$
 _FINAL_FLAG_ANY_RE = re.compile(r"\\SMFinalStateForStudents(?![A-Za-z@])")
 _OWN_SPEC_RE = re.compile(r"\\begin\s*\{frame\}\s*<([^<>]*)>")
 _FRAMEBREAKS_RE = re.compile(r"allowframebreaks")
+# Anything that may make reveal steps: only a hint for the bar to say it is counting (the render decides).
+_MAY_REVEAL_RE = re.compile(
+    r"\\(?:pause|onslide|only|uncover|visible|invisible|alt|temporal|action|conditionalpause|deck[A-Za-z]+)(?![A-Za-z@])"
+    r"|<[0-9+.,\-\s()|]*>|visible on\s*=")
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,7 @@ class SlideScan:
     final_flag: bool = False             # \SMFinalStateForStudents
     own_frame_spec: Optional[str] = None  # `2-3` of the slide's own \begin{frame}<2-3>
     frame_breaks: bool = False           # allowframebreaks: pages are not overlays
+    may_reveal: bool = False             # an overlay command or spec: the slide probably has reveal steps
 
 
 def scan_slide(text: str) -> SlideScan:
@@ -53,7 +58,8 @@ def scan_slide(text: str) -> SlideScan:
         version_dependent=_VERSION_DEPENDENT_RE.search(masked) is not None,
         final_flag=_FINAL_FLAG_ANY_RE.search(masked) is not None,
         own_frame_spec=spec.group(1).strip() if spec else None,
-        frame_breaks=_FRAMEBREAKS_RE.search(masked) is not None)
+        frame_breaks=_FRAMEBREAKS_RE.search(masked) is not None,
+        may_reveal=_MAY_REVEAL_RE.search(masked) is not None)
 
 
 @dataclass(frozen=True)

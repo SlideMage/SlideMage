@@ -2414,3 +2414,9 @@ NEW: Faster, consistent course previews, saved Claude chat defaults and version 
 - Right-click multiple selected slides and choose Update versions… to use one shared Patch, Minor or Major choice.
 - German slides and decks receive German short and long image descriptions in media/alt-text.json.
 - Keep develop's render cleanup settings, optional version reminders and Windows layout fixes.
+
+v8.27.1 (2026-10-18, owner reports: "The previews indicator overlaps the slide id on my screen" and "this slide definitely has reveal steps, yet where is the slider?"): the background renders' dial and status chip are laid out in a row of their own under the centre column's views (CentreColumn.status_row; background_previews places them there and shows the row only while the dial is shown) instead of floating over the bottom-left corner of the views, where they covered the Preview's slide id and the Source view's last lines. The reveal-step bar appears at once for a slide whose text has an overlay command or spec (reveal_steps.SlideScan.may_reveal: \pause, \only, \uncover, \onslide, \visible, \alt, \conditionalpause, \deck..., <...> specs, visible on=) and says "Counting reveal steps…" until the all-steps render (some seconds) has counted them (RevealBar.show_counting); before, it stayed hidden until then. Slides without such commands show no bar while they are counted. Tests in tests/test_background_previews_gui.py, tests/test_reveal_bar_gui.py and tests/test_reveal_steps.py.
+
+NEW: The background-render status no longer covers the slide id, and the reveal-step bar shows up at once.
+- The background-render dial and its status sit in their own row under the slide, so they never cover the slide id or the editor.
+- For a slide with reveal steps the step bar appears straight away and says "Counting reveal steps…" until the steps are known.

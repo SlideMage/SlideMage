@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 
 from slidemage import app_settings, background_renders
 from slidemage.background_renders import DeckProgress, Progress
@@ -228,7 +228,11 @@ def test_the_dial_sits_at_the_bottom_left_and_a_click_opens_the_status_window(wi
     controller = window.background
     controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
     controller.refresh()
-    assert controller.dial.x() > 100 and controller.dial.y() > 500           # in the centre column, clear of the slide list
+    corner = controller.dial.mapTo(window, QPoint(0, 0))
+    assert corner.x() > 100 and corner.y() > 500                             # in the centre column, clear of the slide list
+    dial = QRect(corner, controller.dial.size())
+    slide_id = window.centre.preview._id
+    assert not dial.intersects(QRect(slide_id.mapTo(window, QPoint(0, 0)), slide_id.size()))  # nor over the slide id
     controller.dial.clicked.emit()
     dialog = controller._status_dialog
     assert dialog is not None and dialog.isVisible()

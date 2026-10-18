@@ -335,7 +335,7 @@ def test_expanding_counts_the_other_versions_only_when_the_slide_depends_on_them
     wait_for(lambda: centre.preview._reveal.isVisibleTo(centre.preview))
     bar = centre.preview._reveal
     bar.set_expanded(True)
-    wait_for(lambda: all(not track.counting for _note, track in bar._rows_widgets.values()), 30)
+    wait_for(lambda: bar._rows_widgets and all(not track.counting for _note, track in bar._rows_widgets.values()), 30)
     assert {v: t.stops for v, (_n, t) in bar._rows_widgets.items()} == {
         "instructor": [1, 2, 3, 4], "during-course": [1, 2, 3, 4], "after-course": [1, 2, 3, 4]}
     # render(target, view, ...) or render_text(target, text, view, ...): saved renders take either path
@@ -350,7 +350,7 @@ def test_a_slide_without_version_logic_needs_no_other_renders(centre, steps_rend
     centre.preview.render_now()
     wait_for(lambda: centre.preview._reveal.isVisibleTo(centre.preview))
     centre.preview._reveal.set_expanded(True)
-    wait_for(lambda: all(not track.counting for _note, track in centre.preview._reveal._rows_widgets.values()))
+    wait_for(lambda: centre.preview._reveal._rows_widgets and all(not track.counting for _note, track in centre.preview._reveal._rows_widgets.values()))
     assert len(mine(steps_renders)) == 1
 
 
@@ -386,6 +386,20 @@ def test_while_idle_the_neighbouring_slides_get_their_steps_counted_too(centre, 
     assert all(call[3].get("all_steps") for call in steps_renders)
     centre.state.set_focused_slide("bbb")                            # already counted: the bar is there at once
     assert preview._reveal.isVisibleTo(preview) and preview._reveal.track.stops == [1, 2, 3, 4]
+
+
+def test_a_slide_with_reveal_commands_shows_the_bar_counting_until_its_steps_are_known(centre, steps_renders, project):
+    (project / "aaa-EN-One-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    bar = centre.preview._reveal
+    assert bar.isVisibleTo(centre.preview) and bar.label.full_text() == "Counting reveal steps…"
+    wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)
+    assert bar.label.full_text().startswith("Step 4 of 4")
+
+
+def test_a_slide_without_reveal_commands_shows_no_bar_while_counting(centre, steps_renders):
+    centre.state.set_focused_slide("bbb")
+    assert centre.preview._reveal.isHidden()
 
 
 def test_a_failing_background_render_is_not_asked_for_again(centre, steps_renders, monkeypatch):
@@ -496,7 +510,7 @@ def test_version_dependent_slides_are_editable_with_a_warning(centre, deck, step
     wait_for(lambda: centre.preview._reveal.isVisibleTo(centre.preview))
     bar = centre.preview._reveal
     bar.set_expanded(True)
-    wait_for(lambda: all(not t.counting for _n, t in bar._rows_widgets.values()), 30)
+    wait_for(lambda: bar._rows_widgets and all(not t.counting for _n, t in bar._rows_widgets.values()), 30)
     note, track = bar._rows_widgets["during-course"]
     assert track.edit_mode and note.full_text().startswith("Numbered per version")
 

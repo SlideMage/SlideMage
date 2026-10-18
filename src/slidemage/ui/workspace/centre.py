@@ -26,7 +26,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget)
+    QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
 from ... import app_settings, deck_outline, slide_language, slide_source, slide_versioning
 from ...ai.tools.slidemage import slide_target
@@ -111,9 +111,19 @@ class CentreColumn(QFrame):
         self._pages.setObjectName(q.SURFACE)
         self._pages.addWidget(self._split)
         self._pages.addWidget(self.details)
-        layout = QHBoxLayout(self)
+        # A row of its own under the views for the background renders' dial and status (background_previews):
+        # floating over the views it covered the Preview's slide id and the editor's last lines.
+        self.status_row = QWidget()
+        row = QHBoxLayout(self.status_row)
+        row.setContentsMargins(12, 0, 12, 8)
+        row.setSpacing(8)
+        row.addStretch(1)
+        self.status_row.hide()
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._pages)
+        layout.setSpacing(0)
+        layout.addWidget(self._pages, 1)
+        layout.addWidget(self.status_row)
         self.setObjectName(q.CARD)   # the white card on the grey page
 
         self.source.dirty_changed.connect(self._update_dirty)

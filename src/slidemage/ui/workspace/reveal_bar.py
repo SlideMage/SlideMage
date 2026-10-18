@@ -227,6 +227,7 @@ class RevealBar(QWidget):
         self._step = 0
         self._draft = False
         self._expanded = False
+        self._counting = False
         self._rows_widgets: dict[str, tuple[QLabel, StepTrack]] = {}
 
         outer = QVBoxLayout(self)
@@ -288,19 +289,27 @@ class RevealBar(QWidget):
             self._relayout()
             self.expanded_changed.emit(expanded)
 
+    def show_counting(self) -> None:
+        """The steps of the slide on show are being counted (an all-steps render, some seconds): the bar is there at
+        once and says so, rather than appearing out of nowhere when the count arrives."""
+        self._counting, self._rows, self._step = True, {}, 0
+        self._relayout()
+
     def set_state(self, view: str, step: int, rows: dict[str, RowSpec], draft: bool) -> None:
         """`rows`: the timeline of every version the bar knows (a missing one is left out)."""
         self._view, self._step, self._rows, self._draft = view, step, rows, draft
+        self._counting = False
         self.track.view = view
         self._relayout()
 
     def _relayout(self) -> None:
         main = self._rows.get(self._view)
         plan = main.plan if main else None
-        self.setVisible(plan is not None and plan.n > 1 or self._expanded and any(
+        self.setVisible(self._counting or plan is not None and plan.n > 1 or self._expanded and any(
             row.plan is not None and row.plan.n > 1 for row in self._rows.values()))
         only = self.deck_only.isChecked()
         self.track.set_plan(plan, only, self._step, self._draft)
+        self.track.counting = self._counting
         stops = self.track.stops
         marked = plan is not None and plan.marked
         self.deck_only.setVisible(marked)
@@ -317,14 +326,16 @@ class RevealBar(QWidget):
                          "slide": " · left out by the slide itself"}.get(state, "")
             if self._draft:
                 text += " · buffer"
+        elif self._counting:
+            text = "Counting reveal steps…"
         self.label.set_full_text(text)
         if plan is not None and plan.note:
             self.label.setToolTip(f"{text}\n{plan.note}")
         self._previous.setEnabled(position > 1)
         self._next.setEnabled(0 < position < len(stops))
         self.expand.setVisible(bool(self._rows) and len(self._rows) > 1)
-        self._rows_holder.setVisible(self._expanded)
-        if self._expanded:
+        self._rows_holder.setVisible(self._expanded and not self._counting)
+        if self._expanded and not self._counting:
             self._build_rows()
 
     def _build_rows(self) -> None:

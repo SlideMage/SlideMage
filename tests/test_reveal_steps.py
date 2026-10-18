@@ -52,7 +52,8 @@ def test_format_steps_needs_a_step():
 
 def test_scan_reads_the_things_that_matter_and_ignores_comments():
     plain = reveal_steps.scan_slide("\\begin{standardframe}{T}\n\\only<2>{x}\\pause y <+->\n\\end{standardframe}\n")
-    assert plain == reveal_steps.SlideScan()
+    assert plain == reveal_steps.SlideScan(may_reveal=True)       # plain beamer reveals: no version logic
+    assert not reveal_steps.scan_slide("\\begin{standardframe}{T}\nText, a < b > c\n\\end{standardframe}\n").may_reveal
     scan = reveal_steps.scan_slide(
         "\\SMFinalStateForStudents\n\\begin{frame}<2-3>{T}\n\\conditionalpause\n\\deckitem<3-> x\n\\end{frame}\n")
     assert scan.final_flag and scan.version_dependent and scan.own_frame_spec == "2-3"

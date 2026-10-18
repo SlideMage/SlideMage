@@ -213,6 +213,11 @@ class BackgroundPreviews(QObject):
         self.dial.clicked.connect(self.show_status)
         self._status_dialog: Optional[StatusDialog] = None
         self._central = central
+        # In the centre column's own status row when there is one (laid out, so it never covers the views).
+        self._row = getattr(getattr(window, "centre", None), "status_row", None)
+        if self._row is not None:
+            self._row.layout().insertWidget(0, self.dial)
+            self._row.layout().insertWidget(1, self.chip)
         central.installEventFilter(self)
         stack = getattr(window, "stack", None)
         if stack is not None:
@@ -371,6 +376,8 @@ class BackgroundPreviews(QObject):
         if renderer is None or not renderer.enabled or not renderer.progress.scanned_at:
             self.dial.hide()
             self.chip.hide()
+            if self._row is not None:
+                self._row.hide()
             return
         progress = renderer.progress
         self.dial.set_value(progress.percent, self.dial_state())
@@ -383,13 +390,18 @@ class BackgroundPreviews(QObject):
             self.chip.adjustSize()
         self.chip.setVisible(bool(text))
         self.dial.show()
+        if self._row is not None:
+            self._row.show()
         self._place()
         self.dial.raise_()
         if text:
             self.chip.raise_()
 
     def _place(self) -> None:
-        """Bottom left of the centre column (not over the slide list's buttons): follows the splitter and the window."""
+        """Bottom left of the centre column (not over the slide list's buttons): follows the splitter and the window.
+        Only without the centre column's status row, which lays the two out itself."""
+        if self._row is not None:
+            return
         stack = getattr(self.window, "stack", None)
         if stack is not None and stack.isVisible():
             corner = self._central.mapFromGlobal(stack.mapToGlobal(QPoint(0, stack.height())))
