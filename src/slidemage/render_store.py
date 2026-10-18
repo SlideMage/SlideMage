@@ -83,7 +83,8 @@ class RenderStore:
 
     # -- objects -----------------------------------------------------------------
 
-    def put(self, key: str, origin: str, pdf: Path, pages: list[bytes], meta: dict, *, decks: Iterable[str] = ()) -> str:
+    def put(self, key: str, origin: str, pdf: Path, pages: list[bytes], meta: dict, *, decks: Iterable[str] = (),
+            replace: bool = False) -> str:
         """Store a render and return its object name. A background render replaces the provisional render of
         the same key; a reveal render is not stored when the background one is there."""
         name = key + BG_SUFFIX if origin == ORIGIN_BACKGROUND else key
@@ -91,6 +92,8 @@ class RenderStore:
             if origin == ORIGIN_REVEAL and self._exists(key + BG_SUFFIX):
                 self.link_decks(key + BG_SUFFIX, decks)
                 return key + BG_SUFFIX
+            if replace:
+                self.delete(name)           # same inputs, other page number: the new render takes its place
             if self._exists(name):
                 self.link_decks(name, decks)
                 return name
