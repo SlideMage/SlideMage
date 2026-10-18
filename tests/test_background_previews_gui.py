@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QMessageBox
 
 from slidemage import app_settings, background_renders
 from slidemage.background_renders import DeckProgress, Progress
-from slidemage.ui.dialogs.settings import GENERAL, SettingsSheet
-from conftest import EXAMPLE_PROJECT, build_window, qapp as qapp
+from slidemage.ui.dialogs.settings import SettingsSheet
+from conftest import build_window, qapp as qapp
 from test_settings_gui import FakeApp
 
 
@@ -117,7 +115,7 @@ def test_the_gate_waits_for_a_compile_a_dialog_and_the_preview(window, monkeypat
 def test_archiving_a_deck_tells_the_renderer(window, monkeypatch):
     told = []
     monkeypatch.setattr(window.background, "deck_archived", told.append)
-    monkeypatch.setattr(deck_archive := __import__("slidemage.archive", fromlist=["archive_deck"]), "archive_deck", lambda *a: None)
+    monkeypatch.setattr(__import__("slidemage.archive", fromlist=["archive_deck"]), "archive_deck", lambda *a: None)
     from slidemage.ui.workspace import deck_actions
     monkeypatch.setattr(window, "reload_decks", lambda: None)
     deck_actions.do_archive_deck(window, window.state.deck)
@@ -156,7 +154,6 @@ def test_the_settings_have_the_background_controls_and_save_them(qapp, monkeypat
 
 def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(window, tmp_path):
     import os
-    import shutil
     import time
 
     from slidemage import deck_editor, preview_target
@@ -189,7 +186,7 @@ def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(windo
     finally:
         path.write_bytes(original)
         os.utime(path, (old, old))
-        shutil.rmtree(controller.store.root, ignore_errors=True)       # the example project is shared by the tests
+        controller.store.clear()
 
 
 # -- the dial and the status window ---------------------------------------------------------------

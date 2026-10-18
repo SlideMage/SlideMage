@@ -181,7 +181,7 @@ class RenderScheduler:
             error = exc
         finished = self._clock()
         with self._cond:
-            current = self._running.pop(job.key, None)
+            self._running.pop(job.key, None)
             was_cancelled = job.cancel.is_set()
             if was_cancelled and error is not None:
                 # cancelled before it was done: put back when it was displaced, dropped when it was cancelled

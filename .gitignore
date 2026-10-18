@@ -370,8 +370,6 @@ alt-text-bakeoff.md
 
 # Persistent preview maintenance lock and local, checksummed benchmark evidence.
 **/.previews/preview-maintenance.lock
-# Background renders (render_store.py): shared objects, regenerable
-**/.previews/render-store/
 **/.previews/benchmarks/
 
 # SlideMage's own local UI preferences (app_settings.py -- currently

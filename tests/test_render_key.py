@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import time
 from pathlib import Path
 
@@ -259,19 +258,44 @@ def test_background_version_replaces_the_provisional_reveal_render_and_is_not_re
     assert store.count() == 1
 
 
-def test_objects_survive_the_loss_of_the_index_and_arrive_by_rescan(ctx, resolver, store, tmp_path):
+def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, resolver, store, tmp_path):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     unit = unit_for(ctx)
     key, meta = make_record(resolver, ctx, unit, [unit.source_path])
     store_render(store, key, meta)
-    other = render_store.RenderStore(ctx, tmp_path / "second-machine")          # another machine: same objects, no index
+    local = store.local_dir
+    store.close()
+    (local / "index.sqlite").unlink()
+    again_store = render_store.RenderStore(ctx, local)
     try:
-        assert other.count() == 0 and other.rescan() == 1
-        again = render_key.Resolver(ctx, dep_hash.HashCache(other.db, other.lock), other, engine_fp=lambda: "LuaHBTeX 1.22|Windows")
+        assert again_store.count() == 0 and again_store.rescan() == 1
+        again = render_key.Resolver(ctx, dep_hash.HashCache(again_store.db, again_store.lock), again_store,
+                                    engine_fp=lambda: "LuaHBTeX 1.22|Windows")
         assert again.lookup(unit).state is Freshness.FRESH
-        assert other.page(again.lookup(unit).record, 1).startswith(b"\x89PNG")
+        assert again_store.page(again.lookup(unit).record, 1).startswith(b"\x89PNG")
     finally:
-        other.close()
+        again_store.close()
+
+
+def test_the_store_creates_nothing_in_the_project_and_removes_an_earlier_copy_there(ctx, tmp_path):
+    old = ctx.root / ".previews" / "render-store" / "objects" / "ab" / "cd"
+    old.mkdir(parents=True)
+    (old / "slide.pdf").write_bytes(b"%PDF")
+    before = {p.relative_to(ctx.root).as_posix() for p in ctx.root.rglob("*") if ".previews" not in p.parts}
+    local = tmp_path / "cache" / "store"
+    store = render_store.RenderStore(ctx, local)
+    try:
+        pdf = write(tmp_path / "x.pdf", "%PDF")
+        store.put("k" * 64, "background", pdf, [b"\x89PNG1"], dict(unit="u", manifest=[], rendered_at=1.0), decks=["d"])
+        store.touch_deck("d", opened=True)
+        store.rescan()
+        assert store.root == local and (local / "objects").is_dir() and store.work_dir == local / "work"
+    finally:
+        store.close()
+    assert not (ctx.root / ".previews" / "render-store").exists()                 # the old copy is gone
+    after = {p.relative_to(ctx.root).as_posix() for p in ctx.root.rglob("*") if ".previews" not in p.parts}
+    assert after == before
+    assert not list(ctx.root.rglob("render-store*"))
 
 
 def test_an_incomplete_object_is_ignored_until_it_is_complete(ctx, store, tmp_path):

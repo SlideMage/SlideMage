@@ -305,7 +305,7 @@ class BackgroundPreviews(QObject):
         renderer = self.renderer
         if renderer is None or self.store is None or not renderer.enabled:
             return None
-        if target.macro == "slidestep" and target.steps:
+        if target.needs_context or (target.macro == "slidestep" and target.steps):
             return None
         deck = self.window.state.deck
         try:

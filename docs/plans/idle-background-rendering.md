@@ -424,3 +424,11 @@ Covered in 1.4/3.3: shared immutable objects in the project plus a per-machine i
 None at present; remaining decisions are measurements from Phase 0.
 
 **Implementation notes (v8.25.0).** Aliasing one render across views (5.3) was dropped: the footer names the deck version (\SMDeckVersionText), so the three views never render identically. The dial and status window (share of up-to-date renders, per deck and version) were added at the owner's request.
+
+**Revision after the first implementation (owner, 2026-10-18), these override the sections above.**
+
+1. *The store is not in the project.* A synced project must not carry up to 2 GB of renders. Objects and index both live in the user's cache folder, per computer and per project (`project.cache_dir()/render-store/<hash of the project folder>/`); an old `.previews/render-store/` in a project is deleted when the store opens. Renders are therefore not shared between computers (each computer renders its own). Sections 1.4 and 4.1 (shared objects, trusting renders of another computer) are replaced by this.
+2. *No wrapper files in the project.* Background renders keep their wrapper `.tex`, latexmk build caches and precompiled formats in `<store>/work/`; latexmk runs in the project's `decks/` folder with `-cd-` on the wrapper's absolute path, so TeX sees the same folders as for a wrapper in `decks/` (the `../` of the deck preambles). Nothing is created in the project. The foreground Preview still uses `decks/` (not changed).
+3. *All reveal steps* are rendered with `all_steps` (the reveal-step bar's render), so a student version that keeps only its final state still gets every page. Slides that need their deck (contents, agenda, section: `deck_context`) are not background-rendered; the Preview typesets them with their deck when shown.
+4. *Version reuse is deferred.* Rendering one slide once for several views is not possible by itself (the footer names the deck version). The ui-redesign branch groups equivalent course views before compiling (`preview_equivalence.py`, `preview_cache.py`); version reuse will build on that once that work is merged.
+5. The footer timestamp is gone (v8.25.0), so the "background renders omit it" workaround is removed.

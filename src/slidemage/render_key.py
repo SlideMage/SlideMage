@@ -19,7 +19,6 @@ import hashlib
 import json
 import os
 import platform
-import sys
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -33,7 +32,7 @@ from .project import ProjectContext
 
 # Bump when the wrapper logic (slide_preview) or this key changes what a render looks like. A test
 # guards the wrapper helpers' source (tests/test_render_key.py).
-RENDER_SCHEMA = 1
+RENDER_SCHEMA = 2     # 2: every reveal step (all_steps) whatever the slide restricts
 
 KIND_PROJECT = "project"        # under the project folder: rel path from the root
 KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_snapshot.framework_dirs): rel path from it

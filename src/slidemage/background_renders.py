@@ -17,12 +17,11 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterator, Optional
+from typing import Callable, Optional
 
 from . import app_settings, course_schedule, deck_language, deck_settings, render_key, render_store, slide_language
 from . import power_status, preview_build, preview_target, slide_preview
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
-from .compiler import CancelToken
 from .deck_scan import Deck
 from .dep_hash import HashCache
 from .idle_gate import IdleGate
@@ -78,6 +77,8 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
         if not call.included_in(view) or not (ctx.slides_dir / call.source_filename).is_file():
             continue
         target = preview_target.for_call(ctx, deck, call, position)
+        if target.needs_context:
+            continue        # a contents or agenda slide is typeset with its deck when it is shown (deck_context), not here
         units.append(render_key.unit_for(target, view, language, deck.name))
     return units[start_index:] + units[:start_index] if start_index else units
 
@@ -419,8 +420,9 @@ class BackgroundRenderer:
     def _render_pdf(self, unit: render_key.Unit, cancel) -> Path:
         return slide_preview.render_slide_to_pdf(
             self.ctx, unit.macro, unit.id_slug, unit.version, unit.render_conditions, deck_version=unit.view,
-            deck_language=unit.language.lower(), footer_timestamp=False, preamble_text=unit.preamble_text,
-            frame_number=unit.frame_number, log=lambda line: None, steps=None, capture_snapshot=False, cancel=cancel)
+            deck_language=unit.language.lower(), preamble_text=unit.preamble_text,
+            frame_number=unit.frame_number, log=lambda line: None, steps=None, capture_snapshot=False, cancel=cancel,
+            all_steps=True, workspace=self.store.work_dir)
 
     def _rasterise(self, pdf: Path, cancel) -> list[bytes]:
         raster = self._raster or self._shared_raster()

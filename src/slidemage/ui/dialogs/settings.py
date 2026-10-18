@@ -189,8 +189,8 @@ class GeneralTab(Page):
         layout.addWidget(caption(
             "When you have not touched SlideMage for 30 seconds, it renders the slides of your decks, with all their "
             "reveal steps, most recently used decks first and the instructor version first, so they are ready when you "
-            "open them. The previews are kept in the project folder (.previews/render-store) and shared with your other "
-            "computers; a deck can be left out in the chip that shows the progress."))
+            "open them. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
+            "a deck can be left out in the chip that shows the progress."))
         self._background_size()
 
     def _background_controller(self):

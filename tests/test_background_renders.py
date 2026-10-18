@@ -12,7 +12,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import background_renders, deck_scan, render_key, render_store
+from slidemage import background_renders, deck_scan, render_store
 from slidemage.background_renders import BackgroundRenderer
 from slidemage.deck_editor import VIEWS
 from slidemage.idle_gate import IdleGate
@@ -311,3 +311,37 @@ def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project
     assert progress.total == mine.total and progress.fresh == 5 and 0 < progress.percent < 10
     assert progress.decks_up_to_date == 0 and not mine.up_to_date
     assert progress.scanned_at > 0
+
+
+@pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
+def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the_foreground_render(project, store, tmp_path):
+    """The wrapper, the build caches and the format are in the store's work folder; TeX still runs in decks/, so the
+    pages are what the foreground Preview renders."""
+    from slidemage import slide_preview
+
+    os.environ.setdefault("SLIDEMASTER_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
+    decks = deck_scan.scan_decks(project)
+    gate = IdleGate(startup_delay=0, idle_after=0, only_on_mains=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
+    renderer = BackgroundRenderer(project, store, gate=gate, decks=lambda: decks)
+    deck = next(d for d in decks if d.name == "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")
+    unit = next(u for u in units if "Reveal" in u.id_slug or "Title" in u.id_slug)
+
+    def listing():
+        return {p.relative_to(project.root).as_posix() for p in project.root.rglob("*")}
+
+    before = listing()
+    name = renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    assert name is not None and listing() == before                                  # not one file in the project
+    assert (store.work_dir / "decks").is_dir() and list((store.work_dir / "decks").glob("_slidemage_preview-*.tex"))
+    assert [d.name for d in deck_scan.scan_decks(project)] == [d.name for d in decks]
+    found = renderer.resolver.lookup(unit)
+    assert found.final and found.record["pages"] >= 1
+
+    foreground = slide_preview.render_slide_to_pdf(
+        project, unit.macro, unit.id_slug, unit.version, unit.render_conditions, deck_version=unit.view,
+        deck_language=unit.language.lower(), preamble_text=unit.preamble_text, frame_number=unit.frame_number,
+        log=lambda line: None, capture_snapshot=False, all_steps=True)
+    with pymupdf.open(foreground) as theirs, pymupdf.open(store.pdf_path(found.record)) as ours:
+        assert len(ours) == len(theirs) == found.record["pages"]
+        assert [p.get_text() for p in ours] == [p.get_text() for p in theirs]

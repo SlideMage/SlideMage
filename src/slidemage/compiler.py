@@ -425,13 +425,14 @@ def run_streamed(
             cancel._set_process(None)
 
 
-def latexmk_command(wrapper: Path, jobname: str, outdir: Path, *options: str, cwd: Path, aux: bool = True) -> list[str]:
+def latexmk_command(wrapper: Path, jobname: str, outdir: Path, *options: str, cwd: Path, aux: bool = True,
+                    absolute: bool = False) -> list[str]:
     """latexmk on `wrapper` (given relative to `cwd`, the folder latexmk runs in), its output in
     `outdir` -- also its auxiliary files unless `aux` is False. -recorder (the .fls list of every file
     read, which compile_records keeps for deck snapshots) is among the `options` of the jobs that need it."""
     out = outdir.as_posix()
     return ["latexmk", *options, f"-jobname={jobname}", f"-outdir={out}", *([f"-auxdir={out}"] if aux else []),
-            os.path.relpath(wrapper, cwd)]
+            str(wrapper) if absolute else os.path.relpath(wrapper, cwd)]
 
 
 @dataclass

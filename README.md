@@ -1221,8 +1221,8 @@ details); clicking it opens a window with every deck, its three versions and wha
 A prepared render is only used while everything it was made from is unchanged: the slide,
 the deck's preamble, the template files, the images and the bibliography it reads, and the TeX
 engine. It is never shown as current otherwise, and a slide that fails to render is tried again
-only after you changed something. The renders are kept in `.previews/render-store/` in the project
-(shared with your other computers through the sync, each computer keeps its own index) up to
+only after you changed something. The renders are kept on this computer, outside the project folder (your user cache folder, so a synced project
+never carries them) up to
 the disk limit in **Settings → General → Background previews** (2 GB by default); archiving a deck
 removes the renders only it used. Set `SLIDEMAGE_NO_BACKGROUND_PREVIEWS=1` to keep SlideMage from
 starting it.

@@ -1,15 +1,18 @@
 """The store of background renders (docs/plans/idle-background-rendering.md, section 4).
 
-**Objects** live in the project, `.previews/render-store/objects/<ab>/<name>/`, and sync with it: write-once
-folders holding `slide.pdf`, one `pNNN.png` per page (every reveal step) and `meta.json`, written last, with
-the sizes of the other files. `<name>` is the render's key, or `<key>.bg` for a render made by the
-background sweep (the reveal slider's own render of the same key is the provisional `<key>`, which the
-`.bg` one replaces). Nothing in an object is ever modified, so a sync client never finds a conflict, and
-an object without a complete `meta.json` (still arriving from another machine) is ignored.
+Everything lives on this computer, in the user's cache folder (`project.cache_dir()/render-store/<project id>/`),
+never in the project: projects live in cloud-synced folders and the renders can be gigabytes. The project id is a
+hash of the project's folder, so two projects (or two copies of one) never share a store.
 
-The **index** is a SQLite file *outside* the project (`project.cache_dir()`; SQLite and sync clients do not
-mix): a cache of the `meta.json` files (rebuilt by rescan()), the file hashes (dep_hash), the failures the
-sweep remembers and the decks' usage on this machine. Free of Qt.
+**Objects** are write-once folders, `objects/<ab>/<name>/`, holding `slide.pdf`, one `pNNN.png` per page (every
+reveal step) and `meta.json`, written last, with the sizes of the other files. `<name>` is the render's key, or
+`<key>.bg` for a render made by the background sweep (the reveal slider's own render of the same key is the
+provisional `<key>`, which the `.bg` one replaces). An object without a complete `meta.json` is ignored.
+
+The **index** is a SQLite file beside them: a cache of the `meta.json` files (rebuilt by rescan()), the file hashes
+(dep_hash), the failures the sweep remembers and the decks' usage. `work/` holds what the renders' LaTeX runs
+need outside the project: their wrapper files, build caches and precompiled preamble formats.
+Free of Qt.
 """
 from __future__ import annotations
 
@@ -54,7 +57,8 @@ BACKOFF_SECONDS = (300, 1800, 3 * 3600)
 MAX_TRANSIENT_ATTEMPTS = 3
 
 
-def store_root(ctx: project.ProjectContext) -> Path:
+def project_copy(ctx: project.ProjectContext) -> Path:
+    """Where an earlier version kept the renders, inside the project: now never used."""
     return ctx.root / ".previews" / "render-store"
 
 
@@ -66,8 +70,10 @@ class RenderStore:
     def __init__(self, ctx: project.ProjectContext, local_dir: Optional[Path] = None,
                  clock: Callable[[], float] = time.time) -> None:
         self.ctx = ctx
-        self.root = store_root(ctx)
         self.local_dir = Path(local_dir) if local_dir is not None else project.cache_dir() / "render-store" / project_id(ctx.root)
+        self.root = self.local_dir
+        self.work_dir = self.local_dir / "work"
+        self.forget_project_copy(ctx)
         self._clock = clock
         self._lock = threading.RLock()
         self.local_dir.mkdir(parents=True, exist_ok=True)
@@ -76,6 +82,12 @@ class RenderStore:
             self.db.executescript(SCHEMA)
             self.db.commit()
         self.lock = self._lock
+
+    @staticmethod
+    def forget_project_copy(ctx: project.ProjectContext) -> None:
+        """An earlier version kept the renders in the project, where the sync would carry them to every computer.
+        It is only a cache: delete it."""
+        shutil.rmtree(project_copy(ctx), ignore_errors=True)
 
     def close(self) -> None:
         with self._lock:
