@@ -30,7 +30,7 @@ from .project import ProjectContext
 from .render_scheduler import P_IDLE, P_NEIGHBOURS, Job, RenderScheduler
 from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL, RenderStore
 
-STORE_WIDTH = 1280
+STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
 RASTER_CHUNK = 4                # pages per raster request, so another reader of a raster child never waits long
 QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
 REPLAN_SECONDS = 120.0

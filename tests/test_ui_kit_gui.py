@@ -53,13 +53,15 @@ def styled(widget: QWidget, theme: ThemeManager, dark: bool) -> None:
 
 
 def test_font_files_are_bundled_and_registered(qapp):
-    for name in ("Roboto-Regular.ttf", "Roboto-Medium.ttf", "Roboto-Bold.ttf", "RobotoMono-Regular.ttf",
-                 "RobotoMono-Medium.ttf", "MaterialIcons-Regular.ttf"):
+    for name in ("Roboto-Regular.ttf", "Roboto-Medium.ttf", "Roboto-Bold.ttf", "Roboto[ital,wdth,wght].ttf",
+                 "RobotoMono-Regular.ttf", "RobotoMono-Medium.ttf", "MaterialIcons-Regular.ttf"):
         assert (FONT_DIR / name).is_file()
     families = QFontDatabase.families()
     for family in (FONT_SANS, FONT_MONO, FONT_ICONS):
         assert family in families
     assert {"Regular", "Medium", "Bold"} <= set(QFontDatabase.styles(FONT_SANS))
+    # 600 is a real SemiBold (the variable font), not Medium made fatter, whose w and W show dark gaps on Windows
+    assert "SemiBold" in QFontDatabase.styles(FONT_SANS) or "SemiBold" in QFontDatabase.styles(FONT_SANS + " SemiBold")
     assert load_fonts()  # idempotent
 
 

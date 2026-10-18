@@ -129,8 +129,8 @@ class AddSlideSheet(ModalSheet):
     def _build_source(self, where: str, source: str) -> None:
         self.where_label = QLabel(where)
         self.where_label.setObjectName(q.PANEL_CAPTION)
-        self.where_label.setVisible(bool(where))
         self._add(self.where_label)
+        self.where_label.setVisible(bool(where))      # after it has a parent, or it flashes up as a window
         self.source = SegmentedControl(SOURCES, current=source)
         self.source.changed.connect(self._on_source)
         self._add(self.source)

@@ -59,8 +59,8 @@ class ReplaceImageSheet(ModalSheet):
         self.problem = caption("")
         page.body.addWidget(self.problem)
         self.on_others = QCheckBox(f"Replace it on the {len(others)} other slide(s) using it too: {', '.join(others)}")
-        self.on_others.setVisible(bool(others))
         page.body.addWidget(self.on_others)
+        self.on_others.setVisible(bool(others))       # after it has a parent, or it flashes up as a window
         self.add_tab("Replace image", page)
         self.add_button("Cancel", role="reject")
         self.replace_button = self.add_button("Replace", kind="primary", role="accept")

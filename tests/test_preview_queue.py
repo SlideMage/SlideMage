@@ -372,10 +372,11 @@ def test_background_selection_keeps_pixels_during_revalidation_and_records_laten
     assert view._page.pixmap is not None and view._image_selection.fresh
     assert view._selection_metrics['dependency_bytes'] == 12
     assert view._selection_metrics['gui_event_latency_seconds'] >= 0
-    # A periodic recheck retains the same pixels as explicitly old until validated.
+    # A periodic recheck of the same text keeps the verified image current while it runs (no flickering status).
     view._selection_validated_at = 0
     view._refresh()
-    assert view._page.pixmap is not None and view._image_selection.state == 'previous'
+    assert view._page.pixmap is not None and view._image_selection.state == 'verified'
+    assert view._selection_pending is not None and not view._status_chip.isVisibleTo(view)
 
 
 def test_selection_keeps_pixels_when_prune_holds_cache_lock(pane, tmp_path, qapp):

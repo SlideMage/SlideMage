@@ -508,6 +508,10 @@ class PreviewPane(Surface):
                     pass
 
             future.add_done_callback(finished)
+        if self._selection_result_key == key:
+            # A routine recheck of the same text: the verified image stays current while it runs (marking it
+            # "Checking…" every few seconds made the status flicker); a check that finds it stale replaces it.
+            return self._selection_result
         if retained is not None and retained.image is not None and retained.state == 'verified':
             return replace(retained, state='previous', pdf=None,
                            note='Checking current source and settings…')
@@ -667,7 +671,9 @@ class PreviewPane(Surface):
                     mode_key in self._context_modes):
                 jump = icon == "language" and partner is not None
                 compile_deck = icon == "warning" and target.needs_context and row is not None
-                chip = Chip(text, tone, icon, pressable=jump or compile_deck)
+                chip = Chip(text, tone, icon, self, pressable=jump or compile_deck)   # made in the pane: a widget without
+                # a parent is briefly a window of its own, and that closes any open menu or popup (every 5 s, as the
+                # background check refreshes the pane)
                 chip.setToolTip(tooltip)
                 if jump:
                     chip.clicked.connect(lambda path=partner.path: self._show_partner(path))

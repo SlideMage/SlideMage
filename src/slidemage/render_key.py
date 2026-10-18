@@ -32,7 +32,7 @@ from .project import ProjectContext
 
 # Bump when the wrapper logic (slide_preview) or this key changes what a render looks like. A test
 # guards the wrapper helpers' source (tests/test_render_key.py).
-RENDER_SCHEMA = 2     # 2: every reveal step (all_steps) whatever the slide restricts
+RENDER_SCHEMA = 3     # 2: every reveal step (all_steps) whatever the slide restricts; 3: pages 1920 px wide
 
 KIND_PROJECT = "project"        # under the project folder: rel path from the root
 KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_snapshot.framework_dirs): rel path from it

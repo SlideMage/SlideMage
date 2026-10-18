@@ -510,9 +510,9 @@ class Chip(ClickFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8 - ring, 2 - ring, 9 - ring, 2 - ring)
         layout.setSpacing(4)
-        self._icon = IconLabel(icon or "", 14)
+        self._icon = IconLabel(icon or "", 14, self)   # parented now: setVisible on a parentless one shows a window
         self._icon.setVisible(bool(icon))
-        self._label = QLabel(text)
+        self._label = QLabel(text, self)
         layout.addWidget(self._icon)
         layout.addWidget(self._label)
 

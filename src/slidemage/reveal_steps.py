@@ -22,7 +22,9 @@ from typing import Optional
 from . import preview_raster_client
 from .deck_editor import DEFAULT_CONDITIONS, SlideCall, expand_steps
 
-PAGE_DPI = 130
+# Every step page as wide as the Preview's own image (slide_snapshot.FULL_SIZE): at 130 dpi a 16:9 page was
+# 820 px, blurred on a screen that shows the slide 1500 px wide.
+PAGE_WIDTH = 1920
 MAX_PAGES = 60
 INSTRUCTOR = DEFAULT_CONDITIONS[0]
 
@@ -113,9 +115,10 @@ def plan_for(call: Optional[SlideCall], view: str, n: int, scan: SlideScan) -> S
     return StepPlan(n, everything, own_excluded, marked=bool(own_excluded), reliable=reliable)
 
 
-def read_pages(pdf: Path, dpi: int = PAGE_DPI) -> list[bytes]:
-    """The pages of a rendered slide as PNG bytes (at most MAX_PAGES), read in the raster child process."""
-    return list(preview_raster_client.read_document(pdf, "pdf_images", 1, MAX_PAGES, dpi)["images"])
+def read_pages(pdf: Path, width: int = PAGE_WIDTH) -> list[bytes]:
+    """The pages of a rendered slide as PNG bytes `width` pixels wide (at most MAX_PAGES), read in the raster child
+    process."""
+    return list(preview_raster_client.read_document(pdf, "pdf_images", 1, MAX_PAGES, width=width)["images"])
 
 
 # -- the final-state flag that no deck needs any longer (docs/plans/reveal-step-slider.md, 4c.1) ------------

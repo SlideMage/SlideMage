@@ -94,12 +94,12 @@ class _IssueRow(Surface):
         buttons.addWidget(self.note, 1)
         self.apply_button = Button("Apply", "primary", compact=True)
         self.apply_button.clicked.connect(self.apply)
-        self.apply_button.setVisible(bool(issue.suggested_fix))
         discard = Button("Discard", "ghost", compact=True)
         discard.clicked.connect(lambda: self.discarded.emit(issue))
         buttons.addWidget(discard)
         buttons.addWidget(self.apply_button)
         layout.addLayout(buttons)
+        self.apply_button.setVisible(bool(issue.suggested_fix))   # once it has a parent, or it flashes up as a window
         self.update_state()
 
     @staticmethod
