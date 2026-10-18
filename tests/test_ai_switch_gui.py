@@ -282,11 +282,13 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert setup.heads[CLAUDE_CODE].text() == "Cloud · Claude Code"
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
     assert cloud_chat.isVisible() and cloud_chat.currentData() == ""
+    assert cloud_chat.currentText() in cloud_chat.toolTip() and "Restart Claude Code" in cloud_chat.toolTip()
     cloud_chat.setCurrentIndex(cloud_chat.findData("sonnet:high"))
     cloud_chat.activated.emit(cloud_chat.currentIndex())
     assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.CHAT) == "sonnet:high"
     setup.refresh()
     assert cloud_chat.currentData() == "sonnet:high"
+    assert cloud_chat.currentText() in cloud_chat.toolTip() and "Restart Claude Code" in cloud_chat.toolTip()
     assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
     image.setCurrentIndex(1)
     image.activated.emit(1)
@@ -299,6 +301,24 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     cloud.activated.emit(cloud.currentIndex())
     assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.TRANSLATION) == "opus:high"
     assert ai_profile.model_choice(window.project, LOCAL, ai_profile.TRANSLATION) == ""      # each side its own
+
+
+def test_ai_setup_lists_show_full_model_names_when_opened(window, qapp):
+    # v8.23.0: the cells are a fixed share of the popover; the open list is as wide as its longest name
+    long_name = "hf.co/unsloth/translategemma-12b-it-GGUF:Q8_0"
+    window.local_models.fill([*INSTALLED, InstalledModel(long_name, 1, "")])
+    setup = open_setup(window)
+    combo = setup.cells[(LOCAL, ai_profile.TRANSLATION)]
+    index = combo.findData(long_name)
+    assert index > 0
+    combo.setCurrentIndex(index)
+    combo.activated.emit(index)
+    assert combo.toolTip() == long_name                                          # the closed box
+    assert combo.width() < combo.view().fontMetrics().horizontalAdvance(long_name)
+    combo.showPopup()
+    qapp.processEvents()
+    assert combo.view().width() >= combo.view().fontMetrics().horizontalAdvance(long_name)   # the open list
+    combo.hidePopup()
 
 
 def test_the_side_not_in_use_is_greyed_but_editable(window):
@@ -341,8 +361,11 @@ def test_ai_setup_closes_on_escape_and_on_a_click_outside_but_not_on_its_anchor(
     QTest.keyClick(setup, Qt.Key.Key_Escape)
     assert not setup.isVisible()
     setup = open_setup(window)
-    # A real outside click lands on the overlay; QTest sends directly to the supplied widget.
-    QTest.mouseClick(setup._scrim, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
+    # a click where the slide list is, through the window as a mouse's arrives: the popover's catcher is on
+    # top there (QTest.mouseClick on the slide list widget itself bypasses it on Windows)
+    QTest.mouseClick(window.windowHandle(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                     window.slide_list.mapTo(window, QPoint(5, 5)))
+    qapp.processEvents()
     assert not setup.isVisible()
     open_setup(window)
     window.topbar.ai_switch.caret.click()                                  # the ▾ again closes it

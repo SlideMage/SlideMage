@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import queue
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -174,9 +175,28 @@ def run_json(claude: Path, task: claude_tasks.Task, request: str, model: str, ef
              cancel: threading.Event, images: Sequence[Path] = ()) -> Run:
     """One process for `task` with `request` (and `images`): what it answered, unchecked. `deadline` is a
     time.monotonic() value."""
-    with tempfile.TemporaryDirectory(prefix="slidemage-claude-task-") as empty:
-        return _run(_command(claude, task, model, effort, bool(images)), _stdin(request, images), Path(empty),
+    empty = Path(tempfile.mkdtemp(prefix="slidemage-claude-task-"))
+    try:
+        return _run(_command(claude, task, model, effort, bool(images)), _stdin(request, images), empty,
                     clean_environment(claude), deadline, cancel)
+    finally:
+        _remove_folder(empty)
+
+
+def _remove_folder(folder: Path, tries: int = 40, delay: float = 0.05) -> None:
+    """Delete the process's working folder (empty, unless Claude wrote into it). On Windows it can stay in use for a moment after the
+    process ended (a child it started, e.g. the Python behind a launcher .exe, ends a little later), so this
+    retries for up to two seconds and then leaves it: an empty folder in the temp directory must not turn
+    an answer that arrived into a failed task."""
+    for attempt in range(tries):
+        try:
+            shutil.rmtree(folder)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt + 1 < tries:
+                time.sleep(delay)
 
 
 def judge(ctx: ProjectContext, task: claude_tasks.Task, captured: str, answer: dict | None, outcome: Outcome,

@@ -244,7 +244,7 @@ def test_insert_action_creates_the_slides_and_opens_the_first(tmp_path, monkeypa
     assert opened == [tmp_path / "new-current.tex"]
 
 
-def test_settings_action_refuses_while_the_deck_source_has_unsaved_edits(tmp_path, monkeypatch, qapp):
+def test_settings_action_refuses_while_the_deck_source_has_edits_that_could_not_be_saved(tmp_path, monkeypatch, qapp):
     deck = make_deck(tmp_path)
     told = []
     monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))

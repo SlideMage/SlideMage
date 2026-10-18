@@ -21,7 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_log, compiler, open_path, preview_build, project
+from . import app_settings, compile_log, compiler, open_path, preview_build, project
 from . import slide_language, slide_snapshot
 from .compiler import build_env
 from .deck_editor import format_call
@@ -46,11 +46,41 @@ _STALE_PREVIEW_AGE = 3600
 # Single-slide renders (the slide editor's "Render to PDF", a Preview popup's
 # "Render now") leave their PDF in a folder of its own under the OS temp
 # directory so the viewer opens it; nothing else ever deleted them. They are
-# removed once they are at least this old (seconds) -- 24 hours, direct
-# instruction 2026-10-11 -- by sweep_old_renders(), which runs shortly after
-# the app starts and after every render, so "sometime after" 24 hours.
+# removed once they are at least this old (seconds) -- 24 hours by default,
+# direct instruction 2026-10-11 -- by sweep_old_renders(), which runs shortly
+# after the app starts and after every render, so "sometime after" that age.
+# Since v8.21.0 the age is a setting (Settings -> General, app_settings key
+# RENDER_CLEANUP_SETTING_KEY, in hours; 0 = never delete them).
 RENDER_FOLDER_PREFIX = preview_build.RENDER_FOLDER_PREFIX
 RENDER_MAX_AGE = 24 * 3600
+RENDER_CLEANUP_SETTING_KEY = "render_cleanup_hours"
+RENDER_CLEANUP_NEVER = 0
+RENDER_CLEANUP_CHOICES = (     # (hours, label) for Settings -> General
+    (1, "After 1 hour"), (24, "After 24 hours"), (72, "After 3 days"), (168, "After 1 week"),
+    (720, "After 30 days"), (RENDER_CLEANUP_NEVER, "Never"))
+RENDER_CLEANUP_DEFAULT_HOURS = RENDER_MAX_AGE // 3600
+
+
+def render_cleanup_hours(ctx: project.ProjectContext) -> int:
+    """The project's cleanup setting in hours (RENDER_CLEANUP_NEVER: never); a missing or
+    unreadable value means the default, 24 hours."""
+    try:
+        hours = int(app_settings.get(ctx, RENDER_CLEANUP_SETTING_KEY, RENDER_CLEANUP_DEFAULT_HOURS))
+    except (TypeError, ValueError, OSError):
+        return RENDER_CLEANUP_DEFAULT_HOURS
+    return hours if hours >= 0 else RENDER_CLEANUP_DEFAULT_HOURS
+
+
+def sweep_renders(ctx: project.ProjectContext, temp_dir: Optional[Path] = None) -> int:
+    """sweep_old_renders() with the project's cleanup setting; does nothing when it is Never.
+    Best-effort and silent, like sweep_old_renders()."""
+    try:
+        hours = render_cleanup_hours(ctx)
+    except Exception:  # noqa: BLE001 -- a cleanup must never break a render or the start
+        return 0
+    if hours == RENDER_CLEANUP_NEVER:
+        return 0
+    return sweep_old_renders(hours * 3600, temp_dir)
 
 
 def sweep_old_renders(max_age: float = RENDER_MAX_AGE, temp_dir: Optional[Path] = None) -> int:

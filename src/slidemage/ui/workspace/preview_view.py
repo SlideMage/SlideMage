@@ -829,7 +829,7 @@ class PreviewPane(Surface):
             self._finished.emit(job)
         except RuntimeError:  # Qt owner was destroyed while TeX finished.
             self._discard(job)
-        slide_preview.sweep_old_renders()   # renders older than 24 h; best effort, never raises
+        slide_preview.sweep_renders(self.app.project)   # renders older than the cleanup setting; never raises
 
     _discard = staticmethod(_discard_job)
 

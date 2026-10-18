@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 import os
+import sys
 import time
 
 import pytest
@@ -147,7 +148,8 @@ def _fake_engine(monkeypatch, log='Success\nBeginning to dump on file preamble.f
         return SimpleNamespace(returncode=1)  # the dump's own Lua noise makes TeX exit 1
 
     monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '1')
-    monkeypatch.setattr(preview_format.shutil, 'which', lambda *a, **k: '/bin/lualatex')
+    # an executable that exists everywhere: the build's configuration key stats what `which` found
+    monkeypatch.setattr(preview_format.shutil, 'which', lambda *a, **k: sys.executable)
     monkeypatch.setattr(preview_format.subprocess, 'run', run)
     return runs
 

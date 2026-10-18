@@ -1066,12 +1066,12 @@ the revision itself. A version file is a point-in-time snapshot, never
 touched again once written; `current.tex` is the only file that changes day
 to day. This means old versions stay usable: you can pin a specific version
 in one deck (e.g. an older lecture you don't want to silently change) while
-another deck follows whatever is current. SlideMage's own **Update Version** (in the Source view)
+another deck follows whatever is current. SlideMage's own **Update version** (in the Source view)
 does this freeze-then-bump step automatically (see "Creating and revising a
 slide" below) -- R's `slide.archive()` is still there for anyone editing
 outside SlideMage.
 
-When Update Version creates a new version of a slide that is used in more than one
+When Update version creates a new version of a slide that is used in more than one
 deck, is pinned somewhere, or has a translation, SlideMage first shows
 "Where this slide is used": per deck, *Move to current* (the default: a pinned
 `\slideversion` / `\omitslideversion` becomes `\slide` / `\omitslide`; a call
@@ -1192,7 +1192,7 @@ footer `v1.2.0+`): the content is no longer exactly that version. The first
 time a slide is edited, the content as it was is frozen as its version (a slide
 with no version line counts as `1.0.0`), so no history is lost.
 
-When the changes are worth a version, press **Update Version**: it asks how
+When the changes are worth a version, press **Update version**: it asks how
 significant the change since the last version is -- **Major**, **Minor** or
 **Patch**, each shown with the number it would bump to -- writes the line as
 that version without the **+**, freezes the slide as it is now as
@@ -1203,16 +1203,16 @@ number is never reused. A typo fix needs no version at all: keep typing, the
 **+** stays. `current.tex` itself is never renamed -- only the frozen snapshot
 gets the `-v<version>.tex` suffix, exactly as in the manual workflow. The
 **Slide versions** panel adds **Freeze as vX.Y.Z** (Major, Minor or Patch),
-which does the same as Update Version from there.
+which does the same as Update version from there.
 
 **Settings → General → Render the Preview after each autosave** (off by
 default) renders the slide again a moment after each autosave while the
-Preview or Split view shows it. **⋮ → This deck → Update Version of all changed
+Preview or Split view shows it. **⋮ → This deck → Update version of all changed
 slides** asks major / minor / patch once and makes a version of every slide of
 the deck that has a **+**; a snapshot or PowerPoint export warns when a deck
 has such slides. An edit made outside the app (Claude Code in the terminal)
 gets the **+** too, the next time the slide is shown. Select multiple slides and
-right-click → **Update Versions…** to update just those slides with one shared
+right-click → **Update versions…** to update just those slides with one shared
 Patch / Minor / Major choice; existing deck calls keep following current or their pinned version.
 
 If the file changes on disk while you have edits (Claude Code in the

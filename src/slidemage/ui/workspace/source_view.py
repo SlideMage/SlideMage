@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import latex_edit
+from ... import latex_edit, slide_versioning
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs.citation import CitationDialog
@@ -37,6 +37,10 @@ from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
 from .source_file import SourceFile
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+VERSION_TIP = ("Make the slide as it is now a version: it is frozen, and decks can keep using it. "
+               "Asks how significant the change is. (Edits are saved as you type.)")
 
 
 class SourcePane(Surface):
@@ -113,11 +117,9 @@ class SourcePane(Surface):
         self._find_button = IconButton("search", "Find and replace (Ctrl+F, Ctrl+H)")
         self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
         top.addWidget(self._find_button)
-        self._version_button = Button("Update Version", "primary", compact=True)
-        self._version_button.setToolTip(
-            "Make the slide as it is now a version: it is frozen, and decks can keep using it. "
-            "Asks how significant the change is. (Edits are saved as you type.)")
+        self._version_button = Button("Update version", "primary", compact=True)
         self._version_button.clicked.connect(self.update_version)
+        self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
         top.addWidget(self._version_button)
         outer.addLayout(top)
 
@@ -333,13 +335,29 @@ class SourcePane(Surface):
         self._elsewhere_chip.setToolTip("Click to show the next file whose edits could not be saved.")
         self._find_button.setEnabled(has)
         self._version_button.setVisible(has and file.is_current_slide)
-        self._version_button.setEnabled(has and not read_only)
+        changes, why_not = self._changes_since_version(file) if has and file.is_current_slide else (False, "")
+        self._version_button.setEnabled(changes and not read_only)
+        self._version_button.setToolTip(VERSION_TIP if changes else why_not)
         self._format_row.setEnabled(has and not read_only)
         self._tools_button.setEnabled(has)
         frozen = has and file.is_slide and not file.is_current_slide
         self._frozen_bar.setVisible(frozen)
         self._unlock_button.setEnabled(read_only)
         self._jump_bar.setVisible(has and file.is_bib)
+
+    @staticmethod
+    def _changes_since_version(file: SourceFile) -> tuple[bool, str]:
+        """(whether Update version has something to make a version of -- edits waiting for their autosave,
+        a "+", or content that differs from the frozen version --, and if not, why not for the tooltip)."""
+        if file.dirty:
+            return True, ""
+        try:
+            new, base = slide_versioning.plan_update(file.path, file.id_slug, file.editor.text(), "patch")
+        except ValueError as exc:
+            return False, str(exc)
+        if new == base:     # not frozen yet, but unchanged: the first edit freezes it by itself
+            return False, f"No changes since v{slide_versioning.format_dot(base)}."
+        return True, ""
 
     def _with_file(self, action: Callable[[SourceFile], None]) -> None:
         if self._current is not None:

@@ -29,9 +29,23 @@ QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
 @pytest.fixture(scope="session")
 def qapp():
+    """The application, styled as ui/app.main() styles it (the bundled fonts, the kit's light stylesheet)
+    before any widget exists: the stylesheet sizes every button, and unstyled the platform style would --
+    Windows gives each text button a minimum width of about 80 px that SlideMage never shows."""
     from PySide6.QtWidgets import QApplication
 
-    return QApplication.instance() or QApplication([])
+    from slidemage.ui.kit.fonts import load_fonts
+    from slidemage.ui.kit.theme import ThemeManager
+
+    app = QApplication.instance() or QApplication([])
+    load_fonts()
+    if not _KIT_QSS:
+        _KIT_QSS.append(ThemeManager()._build_qss())
+    app.setStyleSheet(_KIT_QSS[0])
+    return app
+
+
+_KIT_QSS: list[str] = []       # the light stylesheet every test starts with (qapp)
 
 
 @pytest.fixture(autouse=True)
@@ -134,12 +148,16 @@ def build_window(monkeypatch, context=EXAMPLE_PROJECT):
 def _free_windows():
     yield
     from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
 
     while _windows:
         window = _windows.pop()
         window.hide()   # not close(): that asks about unsaved edits
         window.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app = QApplication.instance()
+    if app is not None and _KIT_QSS and app.styleSheet() != _KIT_QSS[0]:
+        app.setStyleSheet(_KIT_QSS[0])    # a test that switched the theme: the next one starts as the app does
 
 
 def pytest_sessionfinish(session):

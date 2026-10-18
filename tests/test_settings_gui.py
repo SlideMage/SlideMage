@@ -550,3 +550,39 @@ def test_the_model_list_of_the_translation_page_follows_the_models_and_keeps_wha
     page.set_models(["a", "b"])
     assert page.model_combo.currentText() == "typed-model"
     assert [page.model_combo.itemText(i) for i in range(page.model_combo.count())] == ["a", "b"]
+
+
+def test_the_render_cleanup_offers_never_and_saves_the_choice(tmp_path, qapp):
+    from slidemage import slide_preview
+
+    context = ProjectContext.at(tmp_path / "project")
+    app = FakeApp(context)
+    sheet = open_sheet(qapp, app)
+    combo = sheet.general.cleanup_combo
+    assert [combo.itemData(i) for i in range(combo.count())] == [1, 24, 72, 168, 720, 0]
+    assert combo.currentData() == 24 and combo.itemText(combo.count() - 1) == "Never"
+    combo.setCurrentIndex(combo.findData(slide_preview.RENDER_CLEANUP_NEVER))
+    assert app_settings.get(context, slide_preview.RENDER_CLEANUP_SETTING_KEY) == 0
+    assert slide_preview.render_cleanup_hours(context) == slide_preview.RENDER_CLEANUP_NEVER
+    combo.setCurrentIndex(combo.findData(168))
+    assert slide_preview.render_cleanup_hours(context) == 168
+    assert app.logged[-1] == "Single-slide renders: after 1 week"
+
+
+def test_a_cleanup_age_set_by_hand_is_shown(tmp_path, qapp):
+    from slidemage import slide_preview
+
+    context = ProjectContext.at(tmp_path / "project")
+    app_settings.set(context, slide_preview.RENDER_CLEANUP_SETTING_KEY, 5)
+    combo = open_sheet(qapp, FakeApp(context)).general.cleanup_combo
+    assert combo.currentData() == 5 and combo.currentText() == "After 5 hours"
+
+
+def test_asking_about_update_version_on_leaving_is_off_by_default_and_saved(tmp_path, qapp):
+    from slidemage import slide_versioning
+
+    context = ProjectContext.at(tmp_path / "project")
+    check = open_sheet(qapp, FakeApp(context)).general.ask_version_check
+    assert not check.isChecked()
+    check.setChecked(True)
+    assert app_settings.get(context, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is True

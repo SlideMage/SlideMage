@@ -234,7 +234,7 @@ def build_registry() -> CommandRegistry:
     add("slide:section_before", "Add section before", SLIDE, _run_slide("section_before"), visible=_one_slide)
     add("slide:remove", _remove_label, SLIDE, _run_slide("remove"), tone="danger",
         visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
-    add("slide:update_versions", "Update Versions…", SLIDE,
+    add("slide:update_versions", "Update versions…", SLIDE,
         lambda w: w.centre.update_selected_versions(), visible=lambda w: len(_slide_targets(w)) > 1)
     add("slide:clear", "Clear selection", SLIDE, _run_slide("clear"), meta="Esc",
         visible=lambda w: len(_slide_targets(w)) > 1)
@@ -268,7 +268,7 @@ def build_registry() -> CommandRegistry:
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,
         enabled=_has_deck)
-    add("update_deck_versions", "Update Version of all changed slides…", DECK,
+    add("update_deck_versions", "Update version of all changed slides…", DECK,
         lambda w: w.centre.update_deck_versions(), enabled=_has_deck)
     add("deck:readability", "Check readability of this deck", DECK,
         lambda w: w.assistant.check_readability(DECK_SCOPE), icon="visibility", meta="no AI", enabled=_has_deck)

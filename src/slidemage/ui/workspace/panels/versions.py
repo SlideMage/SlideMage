@@ -151,11 +151,11 @@ class SlideVersions(SidePanel):
         try:
             new, _base = slide_versioning.plan_update(current, id_slug, source, level)
         except ValueError as exc:
-            freeze.setText("Update Version")
+            freeze.setText("Update version")
             freeze.setEnabled(False)
             freeze.setToolTip(str(exc))
             return
-        freeze.setText(f"Update Version to v{slide_versioning.format_dot(new)}")
+        freeze.setText(f"Update version to v{slide_versioning.format_dot(new)}")
         freeze.setEnabled(True)
         freeze.setToolTip("Make the current content a frozen version, which decks can keep using.")
 

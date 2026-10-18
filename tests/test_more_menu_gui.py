@@ -24,7 +24,7 @@ LEFT = [("header", "This deck"), "deck_settings", "admin_slides", "deck_source",
         "export_pptx", "create_snapshot", "rerender_deck_previews", "update_deck_versions", ("sep",), "archive_deck"]
 RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck",
          ("header", "Housekeeping"), "housekeeping", "archive_unused",
-         ("header", "Info"), "version_history", "check_updates", "project_compat"]
+         ("header", "Info"), "wizard_preview", "version_history", "check_updates", "project_compat"]
 
 # Every entry the old one-column menu had and the new one has not: they are ⌘K commands.
 LEFT_OUT = ["column:left", "column:right", "open_pdf", "import_presentation", "refresh_decks", "log", "empty_pdf",
@@ -77,7 +77,9 @@ def test_the_popover_is_520_wide_with_the_right_column_divided_and_the_footer_be
     menu = build_more_menu(None, command_context(COURSE))
     menu.popup_at(QPoint(10, 10))
     try:
-        assert menu.width() == 520 and menu.property("columns")
+        # 520 wide, wider only as far as its longest entry needs (Windows' text is a few px wider: 533)
+        assert 520 <= menu.width() <= 560
+        assert menu.property("columns")
         columns = menu.findChildren(QFrame, q.MENU_COLUMN)
         assert [c.property("divided") for c in columns] == [False, True]
         assert columns[0].width() == pytest.approx(columns[1].width(), abs=6)

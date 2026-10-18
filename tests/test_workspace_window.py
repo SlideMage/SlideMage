@@ -19,6 +19,7 @@ from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import compile_actions, deck_actions, maintenance, side_panels, slide_list, window as window_module
+from slidemage.ui.workspace.topbar import DECK_MAX_WIDTHS, DENSITIES
 from slidemage.ui.workspace.actions import VIEW_AND_BUILD
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
@@ -177,7 +178,8 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
         assert bar._images.isHidden()            # only while the Images page is open
         assert bar._save.text() == ("●" if density == "tiny" else "Saved")
         assert bar._compile.text() == ("Compile" if short else "Compile PDF · Instructor")
-        assert bar._deck_button.text() == MANUAL.name
+        assert bar._deck_button.text() == MANUAL.name or (density == "tiny" and bar._deck_button.text().endswith("…"))
+        assert bar._deck_button.toolTip() == MANUAL.name
         assert [button.text() for button in bar._views._buttons.values()] == (
             ["Instr.", "During", "After"] if short else ["Instructor", "During course", "After course"])
         assert [button.text() for button in bar._modes._buttons.values()] == (
@@ -203,7 +205,7 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     window.state.set_dirty(True)
     qapp.processEvents()
     assert bar._density == "tiny" and bar.minimumSizeHint().width() <= 1024
-    assert bar._deck_button.width() <= 170 and bar._deck_button.text().endswith("…")
+    assert bar._deck_button.width() <= DECK_MAX_WIDTHS["tiny"] and bar._deck_button.text().endswith("…")
     assert bar._deck_button.toolTip() == name
     assert bar._views.toolTip() == "View as"
     assert [button.toolTip() for button in bar._views._buttons.values()] == [
@@ -225,7 +227,7 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     bar.resize(2000, bar.height())
     qapp.processEvents()
     assert bar._density == "full"
-    assert bar._deck_button.width() <= 170 and bar._deck_button.toolTip() == name
+    assert bar._deck_button.width() <= DECK_MAX_WIDTHS["full"] and bar._deck_button.toolTip() == name
 
 
 def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, window, qapp, monkeypatch):
@@ -262,15 +264,24 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
 
 def test_top_bar_rechecks_density_when_content_changes(topbar, window):
     bar = topbar
-    bar.resize(1800, bar.height())
     window.state.set_deck(make_deck("W" * 24))
-    assert bar.width() == 1800 and bar._density == "full"
+    # A width between what the full bar needs with "Saved" and with "Unsaved changes", measured here: the
+    # fonts differ by platform (Windows' text is a little narrower than macOS', so no fixed width works).
+    bar.resize(2400, bar.height())
+    saved = bar.minimumSizeHint().width()
+    window.state.set_dirty(True)
+    unsaved = bar.minimumSizeHint().width()
+    window.state.set_dirty(False)
+    width = max(DENSITIES[0][1], (saved + unsaved) // 2)
+    assert saved < width < unsaved
+    bar.resize(width, bar.height())
+    assert bar.width() == width and bar._density == "full"
     window.state.set_dirty(True)
     assert bar._density == "narrow" and bar.minimumSizeHint().width() <= bar.width()
     window.state.set_dirty(False)
     assert bar._density == "full"
     window.state.set_deck(make_deck("W" * 100))
-    assert bar._density == "full"       # a long name is elided at 170 px and cannot make the bar wider
+    assert bar._density == "full"       # a long name is elided (DECK_MAX_WIDTHS) and cannot make the bar wider
     window.state.set_deck(COURSE)
     assert bar._density == "full"
 
@@ -286,7 +297,8 @@ def test_top_bar_allows_the_window_to_shrink_after_full_density(window, qapp):
     qapp.processEvents()
     # A full-density minimum must not stop the parent delivering the smaller width.
     assert window.width() == 1100
-    assert bar.width() == 1100 and bar._density == "tiny"
+    assert bar.width() == 1100 and bar._density in ("tight", "tiny")    # tight fits there with Windows' fonts
+    assert bar.minimumSizeHint().width() <= 1100
     window.resize(1700, 800)
     qapp.processEvents()
     assert bar.width() == 1700 and bar._density == "full"

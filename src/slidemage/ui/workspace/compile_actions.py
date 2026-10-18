@@ -226,7 +226,7 @@ def _confirm_changed_slides(window, decks: list[Deck], what: str) -> bool:
     box.setText(f"Some slides have edits that are not a version yet (the \"+\" after the version number):\n\n"
                 + "\n".join(lines)
                 + f"\n\n{what} records them as they are now. To have a version for each first, cancel and use "
-                "⋮ → This deck → Update Version of all changed slides.")
+                "⋮ → This deck → Update version of all changed slides.")
     go = box.addButton(f"{what} anyway", QMessageBox.ButtonRole.AcceptRole)
     box.addButton(QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(go)
