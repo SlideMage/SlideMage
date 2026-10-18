@@ -1,5 +1,6 @@
 """Batch ordering, partial results and shared-request consumer lifetimes."""
 from dataclasses import replace
+import os
 import threading
 from types import SimpleNamespace
 
@@ -145,9 +146,17 @@ def test_headless_publication_only_refreshes_current_instructor_snapshot(tmp_pat
     for request in requests:
         assert workspace.publish_preview_result(preview_requests.PreviewResult(request), None) == 'cached'
     assert len(published) == 1
-    requests[0].target.source_path.write_text('NEW SOURCE')
+    edit_later(requests[0].target.source_path, 'NEW SOURCE')
     assert workspace.publish_preview_result(preview_requests.PreviewResult(requests[0]), None) == 'superseded'
     assert len(published) == 1
+
+
+def edit_later(path, text):
+    """Edit `path` as a user would, after the capture: an edit in the same instant can keep Windows' file time
+    unchanged, and the file time is what tells a captured draft that the file moved on."""
+    path.write_text(text)
+    stamp = path.stat().st_mtime_ns + 2_000_000_000
+    os.utime(path, ns=(stamp, stamp))
 
 
 def test_prepared_batch_uses_click_time_text_after_source_edit(tmp_path):
@@ -155,7 +164,7 @@ def test_prepared_batch_uses_click_time_text_after_source_edit(tmp_path):
     workspace = Workspace(request.target.context)
     workspace._preview_service = Service()
     captured = workspace.prepare_preview_batch(request.target.source_path)
-    request.target.source_path.write_text('LATER EDIT')
+    edit_later(request.target.source_path, 'LATER EDIT')
     results = workspace.render_preview_batch(request.target.source_path, requests=captured)
     assert [r.request.revision.text for r in results] == ['BODY'] * 3
     assert [r.publication_status for r in results] == ['superseded'] * 3
