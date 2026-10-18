@@ -136,7 +136,6 @@ def test_the_settings_have_the_background_controls_and_save_them(qapp, monkeypat
     changed = []
     app.background = type("C", (), {"store": None, "settings_changed": lambda self: changed.append(1)})()
     sheet = SettingsSheet(app)
-    sheet.show()
     project = app.project
     general = next(w for w in sheet.findChildren(object) if hasattr(w, "bg_check"))
     assert general.bg_check.isChecked() and general.bg_mains_check.isChecked()
