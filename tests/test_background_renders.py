@@ -14,6 +14,7 @@ import pytest
 from conftest import EXAMPLE
 from slidemage import background_renders, deck_scan, render_store
 from slidemage.background_renders import BackgroundRenderer
+from slidemage.compiler import CancelToken
 from slidemage.deck_editor import VIEWS
 from slidemage.idle_gate import IdleGate
 from slidemage.preview_raster_client import RasterClient
@@ -140,13 +141,13 @@ def test_rendering_a_unit_stores_every_step_and_then_it_is_fresh(project, store,
     tex = FakeTeX(project, pages=3)
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
-    name = r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    name = r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert name.endswith(".bg")
     found = r.resolver.lookup(unit)
     assert found.state is Freshness.FRESH and found.final and found.record["pages"] == 3
     assert store.page(found.record, 3).startswith(b"\x89PNG") and store.page(found.record, 4) is None
     assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))          # the temp folder is gone
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert len(tex.calls) == 1                                                        # nothing to do the second time
 
 
@@ -154,7 +155,7 @@ def test_editing_the_slide_or_what_it_reads_makes_it_outstanding_again(project, 
     tex = FakeTeX(project)
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[2]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert r.resolver.lookup(unit).final
     unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
     time.sleep(0.01)
@@ -169,7 +170,7 @@ def test_a_render_by_the_slider_is_provisional_and_the_sweep_replaces_it(project
     tex = FakeTeX(project)
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[1]
-    cancel = background_renders.CancelToken
+    cancel = CancelToken
     r.render_unit(unit, background_renders.ORIGIN_REVEAL, cancel())
     first = r.resolver.lookup(unit)
     assert first.state is Freshness.FRESH and not first.final and first.record["origin"] == "reveal"
@@ -184,11 +185,11 @@ def test_a_page_number_that_moved_is_refreshed_last(project, store, raster):
     r = make(project, store, raster, tex=tex)
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")
-    r.render_unit(units[3], background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    r.render_unit(units[3], background_renders.ORIGIN_BACKGROUND, CancelToken())
     from dataclasses import replace
     moved = replace(units[3], frame_number=units[3].frame_number + 1)
     assert r.resolver.lookup(moved).state is Freshness.FRESH_NUMBERING_DIFFERS
-    r.render_unit(moved, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    r.render_unit(moved, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert r.resolver.lookup(moved).state is Freshness.FRESH and len(tex.calls) == 2
     assert store.count() == 1
 
@@ -200,12 +201,12 @@ def test_a_failing_slide_is_remembered_and_not_planned_again_until_it_changes(pr
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
     tex.fail[unit.id_slug] = "Render failed for x:\n! Undefined control sequence."
     with pytest.raises(RuntimeError):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert r.resolver.lookup(unit).state is Freshness.FAILED
     plan = r.scan()
     assert unit.label not in [u.label for _, u in plan]
     assert r.progress.deck("slidemage-manual").failed >= 1
-    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken()) is None   # no loop
+    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None   # no loop
     assert len(tex.calls) == 1
     unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + "\n% fixed\n", encoding="utf-8")
     old = time.time() - 60
@@ -246,7 +247,7 @@ def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, sto
     r = make(project, store, raster, tex=tex)
     deck = deck_named(r, "slidemage-manual-copy")
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert store.count() == 1
     deck.archived = True
     r.deck_archived(deck)
@@ -270,7 +271,7 @@ def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(proje
     r._rasterise = lambda pdf, cancel: []
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     with pytest.raises(RuntimeError):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert r.resolver.lookup(unit).state is Freshness.FAILED
 
 
@@ -300,7 +301,7 @@ def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")
     for unit in units[:5]:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     background_renders.app_settings.set(project, background_renders.DECKS_OFF_KEY, ["slidemage-manual-copy"])
     r.scan()
     progress = r.progress
@@ -331,7 +332,7 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
         return {p.relative_to(project.root).as_posix() for p in project.root.rglob("*")}
 
     before = listing()
-    name = renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, background_renders.CancelToken())
+    name = renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert name is not None and listing() == before                                  # not one file in the project
     assert (store.work_dir / "decks").is_dir() and list((store.work_dir / "decks").glob("_slidemage_preview-*.tex"))
     assert [d.name for d in deck_scan.scan_decks(project)] == [d.name for d in decks]
