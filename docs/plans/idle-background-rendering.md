@@ -4,6 +4,8 @@ Status: plan only (no code). Base: develop @ b3acd47 (v8.23.1). Branch: `claude/
 
 Companion plans (other branches, same base): `docs/plans/reveal-step-slider.md` and `docs/plans/deck-context-preview.md` (branch `claude/plan-reveal-slider-aa950d`), and the presentation-mode session. Where this plan touches them it says so (section 5.3).
 
+**Owner decisions (2026-10-18), applied below:** idle means 30 s without input; the feature is on by default; background renders may keep wrappers and build caches outside the project; the footer timestamp is deprecated and removed (the version stays); a page number that is briefly off after inserting a slide is acceptable; scope is all decks in order of recency, all versions, and a deck whose inputs did not change is never touched again; pause on battery.
+
 Goal from the owner: whenever SlideMage is idle it brings previews up to date, so that opening a deck rarely finds slides not yet rendered, **with all reveal steps**. Most recently used decks first; within a deck the instructor version first, then the other versions.
 
 ---
@@ -41,7 +43,7 @@ Goal from the owner: whenever SlideMage is idle it brings previews up to date, s
 
 **Preview build cache** (`preview_build.py`): `configuration_key` (`:119-146`) = SHA-256[:24] of {schema, project root, slide id-slug, wrapper **preamble** text (before `\begin{document}`), env vars (TEX*, LUA*, BIB*, FONTCONFIG*, LATEXMK*, MIKTEX*, PATH, ...), executable path+size+mtime of latexmk/lualatex/pdflatex/xelatex/biber/bibtex, contents of every `.latexmkrc` candidate}. It names a directory `.build/preview-cache/<key>/` and a wrapper `decks/_slidemage_preview-<key>.tex`. Per slide **and** preamble, **not** per view/language (those lines are after `\begin{document}`, so latexmk's own dependency check handles a change by re-running). With a precompiled format (`preview_format.ensure`) the key also takes the format's `st_mtime_ns`. Slide body, media and `latex/` files are tracked only by latexmk (`.fdb_latexmk`: mtime+md5), i.e. by *running* latexmk. The result is a "temporary PDF" copied to `slidemage_preview_*` in the OS temp dir (`publish_preview`, `:278-290`), plus `<pdf>.inputs.json` listing the recorded inputs (`recorded_inputs`, `:67-90`; used by the external-viewer watch) - note this dependency list **already exists** for every render and is the natural source for section 3.2.
 
-**Footer timestamp.** The wrapper embeds the current minute literally (`_preview_timestamp_line`, `slide_preview.py:690-707`) when "Include footer timestamp" is on. So the wrapper text, and therefore the PDF bytes, change every minute. Any content key must exclude it (decision in 3.5).
+**Footer timestamp.** The wrapper embeds the current minute literally (`_preview_timestamp_line`, `slide_preview.py:690-707`) when "Include footer timestamp" is on. So the wrapper text, and therefore the PDF bytes, change every minute. Any content key must exclude it; the owner has decided to remove the timestamp altogether (3.5).
 
 **`slide_snapshot`** (`slide_snapshot.py`): PNGs in `.previews/slide_previews/<bare id>[-<Lang>]-<Template>-<w>-<h>.png` (full 1920x1080 and thumb 304x171), instructor view, last page only. Key = (bare id, language segment of the id-slug, template, size). `is_fresh` (`:395-407`) = `png.stat().st_mtime >= slide_path.stat().st_mtime` - the docstring says plainly it is a best-effort signal, "not a hash". `publish_preview` (`:229-240`) `touch()`es an identical PNG to "refresh freshness". An in-memory `_PNG_CACHE` keyed by (PDF SHA-256, size) is the only content-addressed piece: 16 entries / 32 MB, never persisted. The 665-snapshot legacy cache (module docstring) has no LRU on disk; `update_all_previews` prunes by "no deck needs it".
 
@@ -70,14 +72,14 @@ Goal from the owner: whenever SlideMage is idle it brings previews up to date, s
 - **Deck context.** `frame_number` is in `PreviewTarget.key`; section/agenda/contents/citation numbering needs the deck-context plan (aux files of a whole-deck compile): not tracked anywhere for single-slide renders.
 - **Engine and TeX distribution.** `configuration_key` stat()s executables but a MiKTeX package update changes neither the executable nor the key; `compile_records` records the engine line and package version lines but a per-slide render has none of that persisted.
 - **Wrapper/template logic.** A change to `slide_preview` (new `\deckversion` handling, overlay patch) changes the output of every render with no key change.
-- **Footer timestamp** changes the wrapper every minute (see 1.1).
+- **Footer timestamp** changes the wrapper every minute (see 1.1); to be removed (3.5).
 - **Negative dependencies.** A file that did not exist when the slide was rendered and appears later (a project-level `Slidemaster_preamble_uni-graz.tex` now shadowing the framework copy found via `TEXINPUTS`) is invisible to `.fls`. `compile_records` documents the same limit.
 - **Frozen vs current.** Snapshots are not kept for a frozen version shown alone (`is_frozen_alone`), so those always re-render.
 - **Reveal steps.** Snapshots keep the last page only; the pages for earlier steps are never persisted anywhere.
 
 ### 1.4 Cloud sync and cross-machine (the project lives in `D:\uniCLOUD`)
 
-- `.build/`, `.previews/` and `decks/_slidemage_preview-*.tex` wrappers are **inside the synced project folder** (`project.py:466-473`, `ctx.build_dir = root/.build`). Build caches contain absolute machine paths and are useless on a second machine; they still get uploaded (the format `.fmt`, latexmk state, 2 wrappers per slide/preamble). Background rendering of hundreds of slides multiplies that churn unless the new store sits elsewhere (5.2) and the wrapper-in-`decks/` problem is solved (open question Q2).
+- `.build/`, `.previews/` and `decks/_slidemage_preview-*.tex` wrappers are **inside the synced project folder** (`project.py:466-473`, `ctx.build_dir = root/.build`). Build caches contain absolute machine paths and are useless on a second machine; they still get uploaded (the format `.fmt`, latexmk state, 2 wrappers per slide/preamble). Background rendering of hundreds of slides multiplies that churn unless the new store sits elsewhere (5.2) and the wrapper-in-`decks/` problem is solved (owner approved moving them out).
 - `is_fresh` can say **fresh when it is stale**: a sync client that restores the *remote* modification time can leave a source file with an older mtime than a local snapshot even though its content changed on the other machine. `RenderService` keys on mtime only within a session, so it is unaffected. This is the one real correctness bug class found; content hashing removes it.
 - Cloud placeholders ("files on demand") make `stat` free but reading a file hydrates (downloads) it; sync may also write a file in several steps. The design therefore hashes only when `(size, mtime_ns)` changed, never hashes files modified in the last seconds, and re-checks size/mtime after hashing (git's "racy" rule).
 - Snapshots in `.previews/slide_previews` *are* shared between machines through sync - that is a feature (a fresh machine sees thumbnails) and a risk (a snapshot made by machine A with a different TeX/fonts replaced by B). It stays that way; the background store is deliberately per-machine.
@@ -125,7 +127,7 @@ fast_key = SHA-256 of canonical JSON {
 }
 ```
 
-Deliberately **not** in the key (recorded with the render instead, "decoration"): `frame_number`, footer timestamp text, the render time. See 3.5.
+Deliberately **not** in the key (recorded with the render instead, "decoration"): `frame_number` and the render time (the footer timestamp is being removed, 3.5). See 3.5.
 
 `manifest` = every file the render read, from the `.fls`/`.fdb_latexmk` of the render (the same data `recorded_inputs` writes to `<pdf>.inputs.json`) plus the `.bib` files biber read (`.blg`, `compile_records.parse_blg_sources`). Partitioned into:
 
@@ -140,7 +142,7 @@ A stored render is **valid** iff `fast_key` equals and every manifest entry's cu
 - **File hash cache** (`dep_hash.py`, SQLite table `filehash(path, size, mtime_ns, sha256, checked_at)`): `current_hash(path)` = `stat`; if `(size, mtime_ns)` equal the row, return the stored hash, else hash the file and update. Cost per check: one `stat` per dependency. A deck with 80 slides x ~15 project deps (~100 distinct files, most shared) costs about a hundred `stat`s, i.e. well under 10 ms warm.
 - **Racy files:** if `mtime_ns` is within `RACY_SECONDS` (3 s) of now, do not trust the shortcut and do not store the hash; defer the unit (sync may still be writing). After hashing, `stat` again; if it moved, retry later.
 - **Slide hash** is the same cache applied to the slide file; EOL-normalisation is applied *after* hashing raw bytes only for the key (hash the raw bytes in the cache, key on `sha(normalise(text))` computed when the raw hash changed). Simpler: key on the raw bytes hash; a CRLF/LF flip from sync just causes one extra render. (Open question Q6: which.)
-- **Change detection without scanning everything on every tick:** keep an inverted index `dep path -> render ids`. Triggers: (a) deck open / app start: stat-sweep the union of manifest paths of the top-N decks' renders (a few thousand `stat`s, tens of ms); (b) `QFileSystemWatcher` on the project's `slides/`, `snippets/`, `media/`, `latex/` and the preamble layers is an *optimisation* (low-latency dirty marking) but the stat-sweep stays the authority, because watchers miss events on synced folders and network drives; (c) an idle "audit" tick that re-verifies a rolling slice of the manifests, including a full content re-hash (ignoring the stat shortcut) of a few files per tick, to catch same-size-same-mtime edits that only a sync client can produce.
+- **Change detection without scanning everything on every tick:** keep an inverted index `dep path -> render ids`. Triggers: (a) deck open / app start: stat-sweep the union of manifest paths of the all decks' renders (a few thousand `stat`s, tens of ms); (b) `QFileSystemWatcher` on the project's `slides/`, `snippets/`, `media/`, `latex/` and the preamble layers is an *optimisation* (low-latency dirty marking) but the stat-sweep stays the authority, because watchers miss events on synced folders and network drives; (c) an idle "audit" tick that re-verifies a rolling slice of the manifests, including a full content re-hash (ignoring the stat shortcut) of a few files per tick, to catch same-size-same-mtime edits that only a sync client can produce.
 - **Dependency list for the *next* check** comes from the render that was just made; no TeX parsing in Python. If a render's inputs changed *during* it (any manifest file's mtime > render start, as `compile_records` does) the render is shown but stored as *unstable*: not trusted as fresh, re-rendered next idle slot.
 
 ### 3.4 `engine_fp`
@@ -149,8 +151,8 @@ A stored render is **valid** iff `fast_key` equals and every manifest entry's cu
 
 ### 3.5 Frame number, timestamp, deck context
 
-- **Frame number** (page number in the footer; set by `\setcounter{framenumber}`): excluded from `fast_key`, stored on the render. Lookup returns `FRESH` when it matches, `FRESH_NUMBERING_DIFFERS` when only this differs (the image is correct apart from the footer number; UI shows it without an "outdated" badge but with a quiet marker, and the scheduler re-renders it at the lowest priority). Rationale: inserting one slide at the front would otherwise stale every later slide in every version of the deck, and a slide used in several decks (identical preamble) would be rendered once per position. If the owner prefers strictness the field can move into the key (one line), at the cost of those re-renders (Q4).
-- **Footer timestamp:** when the toolbar setting is on, a background render shows the minute it was rendered. It is not part of the key. Every consumer must treat "rendered at HH:MM" as truthful, not as "current". To stop the wrapper itself changing every minute (which defeats latexmk's no-rewrite rule, `preview_build._compile_reserved`, and rewrites a file in the synced `decks/` folder) the plan proposes moving the stamp from a literal in the wrapper to the `\jobname.timestamp` file that the wrapper already writes, i.e. `decks/` wrapper text becomes stable per (slide, preamble) (Q3).
+- **Frame number** (page number in the footer; set by `\setcounter{framenumber}`): excluded from `fast_key`, stored on the render. Lookup returns `FRESH` when it matches, `FRESH_NUMBERING_DIFFERS` when only this differs (the image is correct apart from the footer number; UI shows it without an "outdated" badge but with a quiet marker, and the scheduler re-renders it at the lowest priority). Rationale: inserting one slide at the front would otherwise stale every later slide in every version of the deck, and a slide used in several decks (identical preamble) would be rendered once per position. The owner accepted this (page number may be briefly off). Strictness would be a one-line change if ever wanted.
+- **Footer timestamp: deprecated (owner decision).** The footer keeps the version and drops the date/time. Consequence for this plan: no timestamp in the wrapper (`_preview_timestamp_line`, `_footer_timestamp_line`, the `footer_timestamp` argument and the toolbar's "Include footer timestamp" checkbox go away in a separate prerequisite change, also in `compiler.wrapper_text` and the `SMFooterTimestampOverride` / `.timestamp` mechanism of the template), so the wrapper text is stable per (slide, preamble), PDF bytes are reproducible, latexmk's no-rewrite rule works, and nothing time-dependent is in the key. Until that change lands, the key ignores the timestamp and a background render simply shows its render time.
 - **Deck context** (deck-context plan: contents/agenda/section slides, real citation labels): such units get a `context_sha` in the key = id of the whole-deck compile record they used (or the "skeleton B" input hash). Until that plan lands, units the scan flags as context-dependent are rendered like today (standalone) and carry `context: none`; when the deck-context plan lands the flagged units re-key and re-render once. Units flagged as needing a context that does not exist yet are **not** background-rendered (a wrong image would be worse than none).
 
 ### 3.6 Invalidation, precisely
@@ -203,7 +205,7 @@ Persistence across restarts needs a durable index and SQLite gives atomic multi-
 ### 4.3 Budget and eviction
 
 - Estimate: ~100 KB/page PNG x ~4 pages x 3 views + PDFs ~ 1.5 MB per slide when every version differs, much less after dedup; 700 slides in recent decks is on the order of 0.5-1 GB. Default budget **2 GB** (setting), plus a free-disk guard: no background rendering when free space on the volume is under 5 GB.
-- Eviction order when over budget (run after each render and at start): (1) superseded renders of units that have a newer one; (2) renders of slides/decks that no longer exist; (3) decks outside the top-N recent whose `last_used` is oldest; (4) LRU over the rest. Renders belonging to the open deck and to the recent-N decks' *current* keys are protected unless the store is 2x over budget. `last_used` is updated when the Preview/slider reads a render.
+- Eviction order when over budget (run after each render and at start): (1) superseded renders of units that have a newer one; (2) renders of slides/decks that no longer exist; (3) decks least recently opened (`last_used` oldest); (4) LRU over the rest. Renders belonging to the open deck and the most recently used decks' *current* keys are protected unless the store is 2x over budget. With all decks in scope the budget is what bounds the store: when it is reached, background rendering of the oldest decks stops rather than evicting recent ones (shown in the chip). `last_used` is updated when the Preview/slider reads a render.
 - The previous valid-then-superseded render of a unit is kept until its replacement exists, so the UI can show an "outdated" image rather than nothing while re-rendering.
 
 ### 4.4 Interaction with the render cleanup setting and `sweep_renders`
@@ -242,7 +244,7 @@ For a unit the worker: builds the target (`preview_target.for_call` with the dec
 
 Candidate generation (the producer, cheap, runs only when idle):
 
-1. Decks: from `deck_usage`, ordered by `last_opened` desc, then (tie-breaker/secondary signal for decks never opened on this machine) newest `decks/<deck>.tex` mtime; capped at **N recent decks** (setting, default 5). Optional boost (Q8): decks whose course sessions (`course_schedule`) fall in the next 7 days. Archived decks excluded. The open deck is always rank 0, even if only just opened.
+1. Decks: from `deck_usage`, ordered by `last_opened` desc, then (tie-breaker/secondary signal for decks never opened on this machine) newest `decks/<deck>.tex` mtime; **all non-archived decks, in order of recency** (no cap; the cost is bounded because a deck whose manifests all still validate is never touched again, and by the disk budget). A setting "Recent decks to prepare" can limit it (default: all). Optional boost (open question below): decks whose course sessions (`course_schedule`) fall in the next 7 days. Archived decks excluded. The open deck is always rank 0, even if only just opened.
 2. Per deck, version-major: **instructor** for the whole deck, then **during-course**, then **after-course** (the owner's order). A version is skipped for a call whose conditions exclude it (recorded as "absent", counted done). Unflagged slides (no version logic anywhere in the slide or its recorded dependency files) are rendered once and **aliased** to the other two views through the dedup in 4.1 (saves two thirds of the compiles for most slides); a slide's first full set of three renders validates the alias heuristic once, and a mismatch (different PDFs for unflagged slides) switches that slide to per-view renders and logs a warning.
 3. Within a version: slides in deck order **starting at the last-viewed slide of that deck** (`deck_usage.last_slide_id`), wrapping around; for the open deck, outward from the current selection (distance order) so the next slides the user is likely to visit come first, and the currently selected view/language first.
 4. Language: the deck's own language, plus the UI's last-used language for that deck; the other language of a multilingual deck only after everything else (low priority, optional setting).
@@ -274,7 +276,7 @@ Options: (A) one run per unit (isolated); (B) one wrapper with many `\slide{}` c
 
 **Idle detector** (`idle_monitor.py`, Qt adapter around a Qt-free predicate): the scheduler may *start* a P2 job when all hold:
 
-- no user input in the app for `IDLE_AFTER` = **8 s** (an application-wide event filter on `QApplication` recording `MouseMove/Button/KeyPress/Wheel/TouchBegin`; no OS-wide hooks). While the app window is inactive/minimised, input silence is assumed after 2 s;
+- no user input in the app for `IDLE_AFTER` = **30 s** (owner decision) (an application-wide event filter on `QApplication` recording `MouseMove/Button/KeyPress/Wheel/TouchBegin`; no OS-wide hooks). While the app window is inactive/minimised, the same 30 s apply (measured from the last input);
 - no P0 request queued or running, no deck compile running (`compile_status`), no AI/Claude Code job streaming into the UI, no export (pptx/pdf) or "Update previews" in progress, and no modal dialog open;
 - power: not on battery (default; "also on battery above 60 %" optional), not in battery-saver mode. Windows: `GetSystemPowerStatus` via `ctypes` (no new dependency); macOS: `pmset -g batt`; Linux: `/sys/class/power_supply`;
 - CPU: system busy below 70 % averaged over 5 s (Windows `GetSystemTimes`, Linux `/proc/stat`, macOS `os.getloadavg`) - protects against competing with a video call or the owner's Slidemaster compile in a terminal;
@@ -289,14 +291,14 @@ Options: (A) one run per unit (isolated); (B) one wrapper with many `\slide{}` c
 
 ### 5.7 Raster in the background
 
-The rasteriser child is a shared single process (`preview_raster_client._ask` under a global lock). Background rasterisation sends ≤ 4 pages per request so a foreground raster waits at most one small request (target ≤ 200 ms). Alternatively start a second raster child for background use (cheap, one more process) - decide at implementation (Q7). All pages are rasterised at `STORE_WIDTH` 1280 (matching the 1280 display width already requested in `RenderService.work`); the 304x171 thumb is derived for the last page only when the snapshot-adoption path is on.
+The rasteriser child is a shared single process (`preview_raster_client._ask` under a global lock). Background rasterisation sends ≤ 4 pages per request so a foreground raster waits at most one small request (target ≤ 200 ms). Alternatively start a second raster child for background use (cheap, one more process) - decide at implementation (open question below). All pages are rasterised at `STORE_WIDTH` 1280 (matching the 1280 display width already requested in `RenderService.work`); the 304x171 thumb is derived for the last page only when the snapshot-adoption path is on.
 
 ### 5.8 UI: "work remaining" and states
 
 - **Status chip** in the main window's status area (single line, hidden when nothing to do): `Preparing previews - 37 left (open deck ready)`. States: *working* (spinner), *waiting* ("paused: you're active / on battery / compile running"), *done* (shown briefly, then hidden), *attention* ("3 slides can't be rendered"). Click opens a small popover: per deck progress bars in priority order with per-version counts, [Pause/Resume], [Render now] (override idle rules for this session), [Show failed slides], [Settings].
 - **Slide list rows** get a tiny state dot only when not fresh (no dot = fresh): amber *outdated*, spinner *rendering*, red *failed*, hollow *not yet rendered*.
 - **Preview pane / slider:** `FRESH` and `FRESH_NUMBERING_DIFFERS` show instantly with no spinner; `STALE` shows the previous image dimmed with "outdated - updating..." and a foreground render is queued; `MISSING` triggers the normal foreground render; `FAILED` shows the saved error tail with a "Retry" button. **A stale image is never presented as fresh**: only an exact `fast_key` + manifest match returns `FRESH`.
-- Settings (Settings -> General, next to the render cleanup choice in `ui/dialogs/settings.py`): *Prepare previews in the background* (on/off, default **on** after the MVP has soaked; the MVP ships default **off**), *Recent decks to prepare* (1-10, default 5), *Versions* (instructor only / all, default all), *Processes* (1-3, default 1), *Profile* (Gentle/Normal/Fast), *Only when plugged in* (default on), *Disk budget* (default 2 GB), *Keep for* (default 30 days), button *Clear background previews*.
+- Settings (Settings -> General, next to the render cleanup choice in `ui/dialogs/settings.py`): *Prepare previews in the background* (on/off, default **on**, owner decision), *Decks to prepare* (default all, in order of recency; optional cap), *Versions* (default all; instructor first), *Processes* (1-3, default 1), *Profile* (Gentle/Normal/Fast), *Only when plugged in* (default on), *Disk budget* (default 2 GB), *Keep for* (default 30 days), button *Clear background previews*.
 
 ---
 
@@ -312,7 +314,7 @@ One function `app_busy()` (compile running, AI running, export, update-all-previ
 
 ### 6.3 Across restarts
 
-The SQLite index and files on disk are the state; startup does: open index, drop `tmp/`, drop rows whose files vanished, schedule a stat-sweep (3.3) for the top-N decks after the start delay, rebuild `deck_usage` ranks. Interrupted jobs leave only `tmp/` debris. If the TeX distribution or the OS changed, `engine_fp` changes and the sweep simply finds everything stale.
+The SQLite index and files on disk are the state; startup does: open index, drop `tmp/`, drop rows whose files vanished, schedule a stat-sweep (3.3) for the all decks after the start delay, rebuild `deck_usage` ranks. Interrupted jobs leave only `tmp/` debris. If the TeX distribution or the OS changed, `engine_fp` changes and the sweep simply finds everything stale.
 
 ### 6.4 Failures: no retry loops
 
@@ -323,19 +325,19 @@ The SQLite index and files on disk are the state; startup does: open index, drop
 
 ### 6.5 Sync folders and two machines
 
-Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with racy-file deferral; no writes to shared locations except `decks/_slidemage_preview-*.tex` wrappers (Q2) and, in phase 3, snapshots. If two machines use the same project simultaneously there is no shared mutable state in the new design. Conflicted copies (`file (1).tex`, `.conflict` files) are not slides/decks and are ignored by the scanners already; they are not manifest members unless TeX read them.
+Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with racy-file deferral; no writes to shared locations except `decks/_slidemage_preview-*.tex` wrappers (owner approved) and, in phase 3, snapshots. If two machines use the same project simultaneously there is no shared mutable state in the new design. Conflicted copies (`file (1).tex`, `.conflict` files) are not slides/decks and are ignored by the scanners already; they are not manifest members unless TeX read them.
 
 ---
 
 ## 7. Phases (MVP first)
 
-**Phase 0 - measurements (no feature code; 0.5 day).** On `example/` (never the owner's Slidemaster decks): per-slide wall time with the format cache warm/cold; share of time in latexmk start vs TeX; cost of the stat-sweep and hashing for a 100-slide deck; page counts; PNG sizes at 1280; can the wrapper live outside `decks/` (Q2) and can `ctx.build_dir` point at a local dir without building the format twice; batching feasibility numbers (5.5). Output: numbers appended to this doc; decides defaults (idle seconds, duty cycle, budget).
+**Phase 0 - measurements (no feature code; 0.5 day).** On `example/` (never the owner's Slidemaster decks): per-slide wall time with the format cache warm/cold; share of time in latexmk start vs TeX; cost of the stat-sweep and hashing for a 100-slide deck; page counts; PNG sizes at 1280; can the wrapper live outside `decks/` (owner approved) and can `ctx.build_dir` point at a local dir without building the format twice; batching feasibility numbers (5.5). Output: numbers appended to this doc; decides defaults (idle seconds, duty cycle, budget).
 
 **Phase 1 - key, hash cache, store (no scheduler, no UI; the base).** `dep_hash.py`, `render_key.py`, `render_store.py` (SQLite), `deck_usage.py` recording deck opens. `slide_preview` store entry (render unit -> store). Pane consults the store before rendering (instant display when valid) - already a user-visible win for any slide rendered earlier, including after restart.
 
-**Phase 2 - MVP: idle sweep of the open deck, instructor view.** `scheduler` core, `idle_monitor` (input silence + app-busy + foreground preemption, 1 process, below-normal priority), producer for the open deck only, setting on/off (default off for the first release), minimal status chip with counts, failure memory with backoff. Success criteria 1-3 and 6 of section 7 apply to the open deck, instructor view.
+**Phase 2 - MVP: idle sweep of the open deck, instructor view.** `scheduler` core, `idle_monitor` (input silence + app-busy + foreground preemption, 1 process, below-normal priority), producer for the open deck only, setting on/off (default on), minimal status chip with counts, failure memory with backoff. Success criteria 1-3 and 6 of section 7 apply to the open deck, instructor view.
 
-**Phase 3 - the owner's full order.** Recent decks (N), all versions with aliasing, last-viewed ordering, the popover with per-deck progress, AC-power/battery/CPU/disk predicates, duty-cycle profiles, store budget + eviction + Housekeeping entry, `FRESH_NUMBERING_DIFFERS` handling, snapshot key sidecar and optional adoption, wiring the reveal-slider P1 producer into the shared scheduler, default on.
+**Phase 3 - the owner's full order.** All decks by recency, all versions with aliasing, last-viewed ordering, the popover with per-deck progress, AC-power/battery/CPU/disk predicates, duty-cycle profiles, store budget + eviction + Housekeeping entry, `FRESH_NUMBERING_DIFFERS` handling, snapshot key sidecar and optional adoption, wiring the reveal-slider P1 producer into the shared scheduler, default on from the start (owner decision).
 
 **Phase 4 - optimisations (each behind a benchmark).** Batching (5.5), `QFileSystemWatcher` dirty marking, cross-deck sharing statistics, deck-context units when that plan has landed, optional second language, course-schedule boost.
 
@@ -353,7 +355,7 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 
 - `preview_target.py` - `unit_for(...)`, steps-free key helper (shared with the reveal plan).
 - `preview_requests.py` - make `RenderService` the P0 submitter into the scheduler; store lookup in `request`.
-- `slide_preview.py`, `preview_build.py` - render-to-store entry (no snapshot, no overlay), return the inputs; optional priority argument; wrapper timestamp via file (Q3).
+- `slide_preview.py`, `preview_build.py` - render-to-store entry (no snapshot, no overlay), return the inputs; optional priority argument; wrapper timestamp via file (decided).
 - `compiler.py` (`run_streamed`/`latexmk_command`) - low-priority creation flag.
 - `slide_snapshot.py` - key sidecar, `is_fresh` fallback (phase 3).
 - `housekeeping.py`, `ui/dialogs/housekeeping.py`, `ui/dialogs/settings.py`, `app_settings` keys.
@@ -387,7 +389,7 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 
 ### Risks
 
-- **Wrappers and build caches in the synced folder.** Today each (slide, preamble) pair gets `decks/_slidemage_preview-<key>.tex` plus `.build/preview-cache/<key>/`; background rendering of hundreds of slides creates hundreds of files in a sync tree and uploads them. Mitigation: stable wrapper text (Q3), local `build_dir` for background builds (Q2), and Phase 0 measurement before enabling by default.
+- **Wrappers and build caches in the synced folder.** Today each (slide, preamble) pair gets `decks/_slidemage_preview-<key>.tex` plus `.build/preview-cache/<key>/`; background rendering of hundreds of slides creates hundreds of files in a sync tree and uploads them. Mitigation (owner approved moving them out): wrapper text is stable once the timestamp is gone; background builds use a local `build_dir`/wrapper location outside the project; Phase 0 spikes how, and measures, before the default-on release.
 - **Format duplication.** A second `build_dir` means a second precompiled preamble format per preamble; need to share the format dir while splitting the per-slide caches.
 - **Hidden TeX state differences** between a background render and the foreground render (we use the same code path, one slide per run, so this is only an issue if batching is adopted).
 - **Dependency blind spots:** negative dependencies and generated files; mitigated by the idle audit and a visible "Re-render all previews of this deck" action (the existing `rerender_deck()` can call into the store to invalidate).
@@ -396,16 +398,15 @@ Covered in 1.4/3.3: per-machine store outside the sync tree; hash shortcut with 
 - **Disk use** of PNGs if the owner has many large decks: budget + eviction + clear button.
 - **SQLite on Windows with antivirus/indexers:** WAL files in the local cache dir (not the synced tree) avoid the worst of it; retry on `database is locked`.
 
-### Open questions for the owner
+### Decided by the owner (2026-10-18)
 
-1. **Default:** ship the background renderer off by default in the first release (my recommendation), on from the next one?
-2. **Where wrappers live:** may background renders use a wrapper and build cache outside the project (`decks/` untouched)? It needs a short spike on `.latexmkrc` and relative `../` paths; if impossible, are hundreds of stable `decks/_slidemage_preview-*.tex` files acceptable in the synced folder (they exist today, one per previewed slide)?
-3. **Footer timestamp:** is it fine that a background render shows the time it was rendered (not the time you open it)? And OK to move the stamp from the wrapper into the `\jobname.timestamp` file so the wrapper stops changing every minute?
-4. **Numbering:** is "fresh, numbering differs" (page number may be off until refreshed) acceptable, or must every inserted slide re-render all following slides (strict)?
-5. **Scope defaults:** how many recent decks (5?), and all three versions in the background or instructor-only until you open the deck? Should the second language of a deck be prepared at all?
-6. **Hash of the slide source:** raw bytes (a line-ending flip by sync re-renders once) or normalised text?
-7. **Raster child:** share the existing single rasteriser (chunked) or start a second one for background work?
-8. **Recency:** should "recently used" be only decks opened on *this* machine, or also decks with recent file changes / upcoming course sessions (`course_schedule`) on other machines?
-9. **Power:** pause on battery by default (my recommendation), or run on battery above a charge level?
-10. **Budget:** is 2 GB and 30 days a good default for the store, and should "Remove temp files" also offer to clear it?
-11. **Reveal-slider coordination:** OK to ask that session to build its neighbour queue as a producer into this shared scheduler and to store renders through `render_store`, with the unit definition above?
+1. Default: on. 2. Wrappers/build caches for background renders may live outside the project (spike in Phase 0 decides how). 3. Footer timestamp deprecated and removed, version stays (prerequisite change, see 3.5). 4. Briefly wrong page numbers after inserting a slide are acceptable. 5. All decks in order of recency, all versions; unchanged decks are not touched again. 6. Pause on battery by default. Idle = 30 s.
+
+### Still open
+
+- **Hash of the slide source:** raw bytes (a line-ending flip by sync re-renders once, recommended) or normalised text?
+- **Raster child:** share the existing single rasteriser (chunked) or start a second one for background work? (Decide in Phase 1.)
+- **Recency:** only decks opened on this machine, or also decks with recent file changes / upcoming course sessions?
+- **Budget:** is 2 GB / 30 days right for the store when all decks are in scope (it may fill; the chip says so), and should "Remove temp files" offer to clear it?
+- **Reveal-slider coordination:** OK to ask that session to build its neighbour queue as a producer into this shared scheduler and store renders through `render_store`?
+- **Timestamp removal scope:** also from whole-deck compiles and the template's `\SMFooterTimestampOverride` (assumed yes), as its own small PR before Phase 2?
