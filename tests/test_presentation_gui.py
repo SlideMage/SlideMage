@@ -1,0 +1,249 @@
+"""The presentation windows and their controls, offscreen (docs/plans/presentation-mode.md). Two screens are
+made up from the one real offscreen screen, so the plan's placement logic runs; real monitors are for the
+manual checklist in the plan."""
+from __future__ import annotations
+
+import pytest
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QLabel
+
+from presentation_fixtures import JUMP_SPOT, URI_SPOT, make_pdf
+from slidemage.presentation.keep_awake import KeepAwake
+from slidemage.presentation.pdf_source import PresentationDeck
+from slidemage.presentation.screens import ScreenInfo
+from slidemage.presentation.settings import PresentationSettings
+from slidemage.ui.presentation.controller import PresentationController
+from slidemage.ui.presentation.slide_canvas import SlideCanvas
+from slidemage.ui.presentation.timer_widget import TimerButton
+from slidemage.ui.presentation.views import AudienceView, CurrentView
+
+LAPTOP = ScreenInfo("laptop", 0, 0, 1280, 720, primary=True)
+PROJECTOR = ScreenInfo("projector", 1280, 0, 1280, 720)
+
+
+class Backend:
+    def __init__(self):
+        self.calls = []
+
+    def start(self):
+        self.calls.append("start")
+
+    def stop(self):
+        self.calls.append("stop")
+
+
+@pytest.fixture
+def make(tmp_path, qapp):
+    made = []
+
+    def build(*, two_screens=True, two_up=True, settings=None, **extra):
+        deck = PresentationDeck(make_pdf(tmp_path / f"d{len(made)}.pdf", two_up=two_up))
+        screen = qapp.primaryScreen()
+        screens = [(LAPTOP, screen), (PROJECTOR, screen)] if two_screens else [(LAPTOP, screen)]
+        backend = Backend()
+        opened = []
+        controller = PresentationController(
+            deck, settings or PresentationSettings(), screens=screens, main_screen=screen,
+            keep_awake=KeepAwake(backend), open_uri=opened.append, confirm=lambda _w, _u: True, **extra)
+        controller.backend, controller.opened = backend, opened
+        made.append(controller)
+        controller.start()
+        return controller
+
+    yield build
+    for controller in made:
+        controller.end()
+
+
+def canvases(window, view_type):
+    return [c for c in window.findChildren(SlideCanvas) if type(c.view) is view_type]
+
+
+def spot(canvas, fraction):
+    rect = canvas.target()
+    return QPoint(int(rect.x() + fraction[0] * rect.width()), int(rect.y() + fraction[1] * rect.height()))
+
+
+def press_key(controller, key, modifier=Qt.KeyboardModifier.NoModifier):
+    QTest.keyClick(controller.presenter or controller.audience, key, modifier)
+
+
+def test_two_screens_open_a_presenter_and_an_audience_window(make):
+    controller = make()
+    assert controller.dual and controller.presenter.isVisible() and controller.audience.isVisible()
+    assert controller.backend.calls == ["start"]                       # the computer is kept awake
+    assert controller.audience.geometry().x() == 1280                  # the audience window is on the second screen
+    kinds = sorted(type(c.view).__name__ for c in controller.presenter.findChildren(SlideCanvas))
+    assert kinds == ["CurrentView", "NextView", "NotesView"]
+    assert len(canvases(controller.audience, AudienceView)) == 1
+
+
+def test_one_screen_shows_only_the_slide_full_screen_and_freeze_is_off(make):
+    controller = make(two_screens=False)
+    assert not controller.dual and controller.presenter is None and controller.audience.isVisible()
+    press_key(controller, Qt.Key.Key_F)
+    assert not controller.session.frozen
+    press_key(controller, Qt.Key.Key_B)
+    assert controller.session.black
+
+
+def test_the_audience_window_shows_nothing_but_the_slide(make):
+    controller = make()
+    audience = controller.audience
+    assert not audience.findChildren(QLabel, options=Qt.FindChildOption.FindChildrenRecursively) or all(
+        not label.isVisible() for label in audience.findChildren(QLabel))
+    assert not audience.findChildren(TimerButton)
+
+
+def test_keys_clicker_keys_digits_and_the_wheel_navigate(make):
+    controller = make()
+    session = controller.session
+    for key, page in ((Qt.Key.Key_Right, 1), (Qt.Key.Key_PageDown, 2), (Qt.Key.Key_Space, 3), (Qt.Key.Key_Left, 2),
+                      (Qt.Key.Key_PageUp, 1), (Qt.Key.Key_Up, 0), (Qt.Key.Key_Down, 1), (Qt.Key.Key_End, 5),
+                      (Qt.Key.Key_Home, 0)):
+        press_key(controller, key)
+        assert session.page == page, key
+    press_key(controller, Qt.Key.Key_4)
+    assert session.page == 0
+    press_key(controller, Qt.Key.Key_Return)
+    assert session.page == 3                                          # "4", Enter: slide 4
+    for delta, page in ((-120, 4), (-120, 5), (120, 4), (60, 4), (60, 3)):
+        controller.wheel(QWheelEvent(QPointF(10, 10), QPointF(10, 10), QPoint(0, 0), QPoint(0, delta),
+                                     Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                                     Qt.ScrollPhase.NoScrollPhase, False))
+        assert session.page == page, delta
+
+
+def test_black_and_dot_alias_and_freeze_with_their_badge(make):
+    controller = make()
+    session = controller.session
+    current = canvases(controller.presenter, CurrentView)[0]
+    press_key(controller, Qt.Key.Key_B)
+    assert session.black and current.view.status()[0] == "PROJECTOR BLACK"
+    press_key(controller, Qt.Key.Key_Period)
+    assert not session.black
+    press_key(controller, Qt.Key.Key_F)
+    press_key(controller, Qt.Key.Key_Right)
+    assert session.frozen and session.page == 1 and session.audience_page == 0
+    assert current.view.status() == ("PROJECTOR FROZEN: page 1", "frozen")
+    press_key(controller, Qt.Key.Key_F)
+    assert session.audience_page == 1 and current.view.status() is None
+
+
+def test_escape_ends_the_presentation_at_once_and_lets_the_computer_sleep_again(make):
+    controller = make()
+    finished = []
+    controller.finished.connect(lambda: finished.append(True))
+    press_key(controller, Qt.Key.Key_Escape)
+    assert finished == [True] and controller.presenter is None and controller.audience is None
+    assert controller.backend.calls == ["start", "stop"]
+    controller.end()
+    assert finished == [True]
+
+
+def test_closing_a_window_also_ends_it(make):
+    controller = make()
+    controller.presenter.close()
+    assert controller.ended and controller.backend.calls == ["start", "stop"]
+
+
+def test_ctrl_and_the_left_button_shows_the_laser_on_both_screens_until_release(make):
+    controller = make()
+    current = canvases(controller.presenter, CurrentView)[0]
+    audience = canvases(controller.audience, AudienceView)[0]
+    at = spot(current, (0.5, 0.5))
+    QTest.mousePress(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, at)
+    assert controller.session.pointer == pytest.approx((0.5, 0.5), abs=0.02)
+    assert audience.view.pointer() is not None
+    QTest.mouseRelease(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, at)
+    assert controller.session.pointer is None
+    QTest.mouseMove(current, at)                     # no laser without a button
+    assert controller.session.pointer is None
+
+
+def test_a_plain_click_follows_links_but_ctrl_click_does_not(make):
+    controller = make()
+    current = canvases(controller.presenter, CurrentView)[0]
+    QTest.mouseClick(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, spot(current, JUMP_SPOT))
+    assert controller.session.page == 0
+    QTest.mouseClick(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, JUMP_SPOT))
+    assert controller.session.page == 3
+    assert controller.session.back() and controller.session.page == 0
+    QTest.mouseClick(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, URI_SPOT))
+    assert controller.opened == ["https://example.org/x"]
+
+
+def test_links_ask_first_and_only_web_and_mail_addresses_open(make):
+    answers = []
+    controller = make()
+    controller._confirm = lambda _w, uri: answers.append(uri) or False
+    controller.session.request_link("https://example.org/a")
+    assert answers == ["https://example.org/a"] and controller.opened == []
+    controller._confirm = lambda _w, uri: True
+    controller.session.request_link("file:///etc/passwd")
+    assert controller.opened == []
+    controller.session.request_link("mailto:a@b.org")
+    assert controller.opened == ["mailto:a@b.org"]
+
+
+def test_the_pen_draws_without_ctrl_and_ctrl_still_lases_and_clear_empties_the_page(make):
+    controller = make()
+    session = controller.session
+    current = canvases(controller.presenter, CurrentView)[0]
+    press_key(controller, Qt.Key.Key_D)
+    start, end = spot(current, (0.3, 0.3)), spot(current, (0.6, 0.6))
+    QTest.mousePress(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(current, end)
+    QTest.mouseRelease(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+    assert len(session.strokes[0]) == 1 and len(session.strokes[0][0].points) >= 2
+    QTest.mousePress(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, start)
+    assert session.pointer is not None and len(session.strokes[0]) == 1
+    QTest.mouseRelease(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, start)
+    press_key(controller, Qt.Key.Key_Right)
+    press_key(controller, Qt.Key.Key_Left)
+    assert len(session.strokes[0]) == 1                          # still there after navigating away and back
+    press_key(controller, Qt.Key.Key_Delete)
+    assert 0 not in session.strokes
+
+
+def test_the_presenter_window_draws_the_slide_notes_and_drawing(make):
+    controller = make()
+    controller.session.begin_stroke("#ff0000", 0.05, (0.5, 0.5))
+    controller.session.extend_stroke((0.9, 0.5))
+    controller.presenter.resize(1200, 700)
+    for canvas in controller.presenter.findChildren(SlideCanvas):
+        assert not canvas.grab().isNull()
+    audience = canvases(controller.audience, AudienceView)[0]
+    image = audience.grab().toImage()
+    centre = audience.target().center()
+    assert image.pixelColor(centre.x(), centre.y()).red() > 200      # the stroke is drawn on the projector too
+
+
+def test_a_plain_pdf_presents_with_a_notes_hint(make):
+    controller = make(two_up=False)
+    notes = [c for c in controller.presenter.findChildren(SlideCanvas) if c.empty_text.startswith("No notes")]
+    assert len(notes) == 1
+
+
+def test_switching_the_layout_profile_rebuilds_the_presenter_and_is_saved(make):
+    saved = []
+    controller = make(save_settings=lambda s: saved.append(s.profile))
+    press_key(controller, Qt.Key.Key_P)
+    assert controller.profile.name == "Next large" and saved == ["Next large"]
+    assert len(controller.presenter.findChildren(SlideCanvas)) == 3
+    press_key(controller, Qt.Key.Key_P)
+    assert controller.profile.name == "Current large"
+
+
+def test_a_duration_timer_starts_on_the_first_slide_change_and_t_toggles_it(make):
+    controller = make()
+    controller.timer.set_duration(600)
+    assert not controller.timer.running
+    press_key(controller, Qt.Key.Key_Right)
+    assert controller.timer.running
+    press_key(controller, Qt.Key.Key_T)
+    assert not controller.timer.running
+    press_key(controller, Qt.Key.Key_T, Qt.KeyboardModifier.ShiftModifier)
+    assert controller.timer.text() == "10:00"
