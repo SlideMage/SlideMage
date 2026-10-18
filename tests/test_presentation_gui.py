@@ -247,3 +247,44 @@ def test_a_duration_timer_starts_on_the_first_slide_change_and_t_toggles_it(make
     assert not controller.timer.running
     press_key(controller, Qt.Key.Key_T, Qt.KeyboardModifier.ShiftModifier)
     assert controller.timer.text() == "10:00"
+
+
+def test_the_settings_tab_saves_each_change_and_resets(qapp, ctx):
+    from slidemage.ui.presentation.settings_page import PresentationTab
+    tab = PresentationTab(ctx)
+    tab.confirm_links.setChecked(False)
+    tab.timer_minutes.setValue(30)
+    tab.timer_mode.setCurrentIndex(tab.timer_mode.findData("duration"))
+    tab.profile_combo.setCurrentText("Next large")
+    tab.pen_width.setValue(2.0)
+    saved = PresentationSettings.load(ctx)
+    assert (saved.confirm_links, saved.timer_duration_minutes, saved.timer_mode, saved.profile, saved.pen_width) == (
+        False, 30, "duration", "Next large", 0.02)
+    assert tab.audience_screen.itemData(0) == "" and tab.audience_screen.count() >= 2
+    tab._reset()
+    assert PresentationSettings.load(ctx) == PresentationSettings()
+    assert tab.confirm_links.isChecked() and tab.timer_minutes.value() == 45
+
+
+def test_a_drawing_lands_on_the_same_spot_of_the_slide_on_screens_of_different_size_and_shape(make):
+    settings = PresentationSettings(pen_color="#ffff0000", pen_width=0.08)
+    controller = make(settings=settings)
+    controller.presenter.resize(900, 640)
+    controller.audience.resize(1000, 800)               # taller than 16:9: the slide is letterboxed top and bottom
+    qapp_events = QTest.qWait
+    qapp_events(10)
+    current = canvases(controller.presenter, CurrentView)[0]
+    audience = canvases(controller.audience, AudienceView)[0]
+    assert current.target().size() != audience.target().size()
+    press_key(controller, Qt.Key.Key_D)
+    QTest.mousePress(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.2, 0.5)))
+    QTest.mouseMove(current, spot(current, (0.8, 0.5)))
+    QTest.mouseMove(current, spot(current, (1.0, 0.5)) + QPoint(60, 0))      # the margin beside the slide
+    QTest.mouseRelease(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.8, 0.5)))
+    assert max(x for x, _y in controller.session.strokes[0][0].points) == 1.0     # clamped to the slide's edge
+    for canvas in (current, audience):
+        image = canvas.grab().toImage()
+        for fraction, drawn in (((0.5, 0.5), True), ((0.25, 0.5), True), ((0.5, 0.9), False), ((0.5, 0.1), False)):
+            at = spot(canvas, fraction)
+            colour = image.pixelColor(at.x(), at.y())
+            assert (colour.red() > 200 and colour.green() < 60) == drawn, (canvas.view, fraction)

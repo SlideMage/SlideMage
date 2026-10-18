@@ -13,6 +13,13 @@ from ...presentation.settings import PresentationSettings
 
 CLICK_SLOP = 0.01     # a click that moves more than this fraction of the slide is not a click
 
+
+def clamp(x: float, y: float) -> tuple[float, float]:
+    """A point on the slide: a press in the margin around it lands on its nearest edge, so a stroke or the
+    laser never leaves the slide on either screen."""
+    return min(1.0, max(0.0, x)), min(1.0, max(0.0, y))
+
+
 IDLE, LASER, PEN, ERASE, CLICK, IGNORE = "idle", "laser", "pen", "erase", "click", "ignore"
 
 
@@ -24,6 +31,7 @@ class SlideInput:
 
     def press(self, x: float, y: float, ctrl: bool) -> None:
         session = self.session
+        x, y = clamp(x, y)
         self._press = (x, y)
         if ctrl:
             self.mode = LASER
@@ -39,6 +47,7 @@ class SlideInput:
 
     def move(self, x: float, y: float, ctrl: bool) -> None:
         mode, session = self.mode, self.session
+        x, y = clamp(x, y)
         if mode == LASER:
             if ctrl:
                 session.set_pointer((x, y))
