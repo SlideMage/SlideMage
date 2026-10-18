@@ -19,7 +19,7 @@ def pdf_bytes(text="one"):
 
 @pytest.mark.parametrize("failure", ["bad_pdf", "crash"])
 def test_helper_reuses_one_process_and_recovers_from_failure(failure):
-    client = preview_raster_client
+    client = preview_raster_client._shared
     client.close()
     data = pdf_bytes()
     first = client.render(data, ((160, 90), (160, None)), (160, 90))
@@ -55,7 +55,7 @@ def test_frozen_dispatch_uses_the_same_executable_without_starting_a_window(tmp_
     import json
     from unittest.mock import patch
 
-    client = preview_raster_client
+    client = preview_raster_client._shared
     client.close()
     image = preview_raster.raster(pdf_bytes(), ((160, 90),), (160, 90))[0]
     commands = []
@@ -118,7 +118,7 @@ def test_windowed_helper_restores_redirected_pipes_when_standard_streams_are_non
 
 @pytest.mark.parametrize("reads_input", [True, False])
 def test_unresponsive_helper_is_killed_reaped_and_next_request_recovers(monkeypatch, reads_input):
-    client = preview_raster_client
+    client = preview_raster_client._shared
     client.close()
     # Exercise both a stalled response and a full request pipe.
     script = "import sys,time; " + ("sys.stdin.readline(); " if reads_input else "") + "time.sleep(60)"
@@ -149,7 +149,7 @@ def test_invalid_protocol_response_is_rejected_and_helper_closed(monkeypatch, re
     from types import SimpleNamespace
     import io
     import json
-    client = preview_raster_client
+    client = preview_raster_client._shared
     client.close()
     client._process = SimpleNamespace(
         stdin=io.StringIO(), stdout=io.StringIO(json.dumps(response) + "\n"),

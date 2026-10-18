@@ -1205,6 +1205,28 @@ the deck that has a **+**; a snapshot or PowerPoint export warns when a deck
 has such slides. An edit made outside the app (Claude Code in the terminal)
 gets the **+** too, the next time the slide is shown.
 
+### Previews prepared in the background
+
+When you have not touched SlideMage for 30 seconds, it renders the slides of your decks
+in the background, with every reveal step, so they are ready when you open a deck. The
+decks go in the order you used them (the open deck first; a deck whose course session is
+coming up, from the schedule SlideMage already fetched, counts as used), within a deck the
+instructor version comes first, then During course and After course, and within a version
+the slides start where you last looked. A deck whose files did not change is not rendered
+again. Whatever you do stops it: a render you ask for, a compile or an AI task goes first, and
+the slider's renders never wait for it. A small dial at the bottom of the centre column shows how much of all your decks' previews is up to date (hover for
+details); clicking it opens a window with every deck, its three versions and what is outstanding, with **Pause** and
+**Render now**. A chip next to it says how many are left and can leave the open deck out; on battery nothing runs.
+
+A prepared render is only used while everything it was made from is unchanged: the slide,
+the deck's preamble, the template files, the images and the bibliography it reads, and the TeX
+engine. It is never shown as current otherwise, and a slide that fails to render is tried again
+only after you changed something. The renders are kept on this computer, outside the project folder (your user cache folder, so a synced project
+never carries them) up to
+the disk limit in **Settings → General → Background previews** (2 GB by default); archiving a deck
+removes the renders only it used. Set `SLIDEMAGE_NO_BACKGROUND_PREVIEWS=1` to keep SlideMage from
+starting it.
+
 If the file changes on disk while you have edits (Claude Code in the
 terminal), saving pauses and the bar above the editor lets you choose; the top
 bar says **Unsaved changes** only while edits cannot be saved. Going back is

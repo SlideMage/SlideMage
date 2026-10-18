@@ -335,7 +335,7 @@ def _presenter_mode_line(presenter: bool) -> str:
 @measure('build')
 def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback,
                          snapshot_template: Optional[str] = None,
-                         reuse_build: bool = True, cancel=None) -> Path:
+                         reuse_build: bool = True, cancel=None, workspace: Optional[Path] = None) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
     render_slide_text_to_pdf(): build the wrapper (preview_build.run_preview),
     check the log for a real fatal error, move the finished PDF to its own
@@ -355,7 +355,7 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
     asked to see.
     """
     env = build_env(ctx)
-    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel) if reuse_build
+    dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel, workspace=workspace) if reuse_build
                 else _compile_fresh(ctx, wrapper_text, id_slug, log, env, cancel))
     if snapshot_template is not None:
         # bare id, not the full id_slug -- capture_deck() (the "Update
@@ -448,6 +448,7 @@ def render_slide_to_pdf(
     all_steps: bool = False,
     context_before: str = "",
     context_after: str = "",
+    workspace: Optional[Path] = None,
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -503,7 +504,7 @@ def render_slide_to_pdf(
     )
     return _with_context(compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build, cancel=cancel,
+        reuse_build=reuse_build, cancel=cancel, workspace=workspace,
     ), context_after)
 
 

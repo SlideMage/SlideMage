@@ -7,11 +7,13 @@ preamble/slide pair has a separate job and an interprocess lock.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import dataclasses
 from collections import deque
 import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Optional
 import shutil
 import tempfile
 import time
@@ -163,13 +165,17 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()[:24]
 
 
-def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cancel=None):
+def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cancel=None, workspace: Optional[Path] = None):
     """Build with the preamble precompiled when that works, else the ordinary way.
 
     A run that fails only with the format is repeated without it, so a preamble
     the format cannot reproduce costs one slower build, never a wrong preview.
     """
     check_cancel(cancel)
+    if workspace is not None:
+        # Background renders keep everything of theirs outside the project: the wrapper, the build caches and
+        # the precompiled format live in `workspace`; TeX still runs in the project's decks/ folder.
+        ctx = dataclasses.replace(ctx, build_dir=workspace / 'build')
     preamble, marker, body = wrapper_text.partition(r'\begin{document}')
     format_dir = None
     if marker:
@@ -179,18 +185,20 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
     if format_dir is not None:
         try:
             return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
-                                   key_text=wrapper_text, format_dir=format_dir, cancel=cancel)
+                                   key_text=wrapper_text, format_dir=format_dir, cancel=cancel, workspace=workspace)
         except RuntimeError as exc:
             check_cancel(cancel)
             log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
-    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel)
+    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel,
+                          workspace=workspace)
     if format_dir is not None:
         # The slide builds without the format but not with it: stop using it.
         preview_format.disable(format_dir)
     return pdf
 
 
-def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None):
+def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None,
+                    workspace: Optional[Path] = None):
     key = configuration_key(key_text, id_slug, ctx.root, env)
     if format_dir is not None:
         # A rebuilt format means changed preamble inputs, which latexmk's own
@@ -198,9 +206,9 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
         built = (format_dir / 'preamble.fmt').stat().st_mtime_ns
         key = key[:16] + hashlib.sha256(f'{built}'.encode()).hexdigest()[:8]
     cache = ctx.build_dir / 'preview-cache' / key
-    prune_unused(ctx.root, ctx.build_dir)
+    prune_unused(workspace if workspace is not None else ctx.root, ctx.build_dir)
     jobname = 'preview-' + key
-    wrapper = ctx.root / 'decks' / ('_slidemage_' + jobname + '.tex')
+    wrapper = (workspace if workspace is not None else ctx.root) / 'decks' / ('_slidemage_' + jobname + '.tex')
     with active_build(cache, wrapper, cancel):
         cache.mkdir(parents=True, exist_ok=True)
         (cache / 'build.lock').touch()
@@ -244,6 +252,14 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
                            extra=preview_format.inputs(format_dir) if format_dir is not None else ())
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        Path(os.path.abspath(path)).relative_to(os.path.abspath(root))
+        return True
+    except ValueError:
+        return False
+
+
 def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, outdir: Path, log, *, env, reusable: bool,
                 options=(), cancel=None) -> tuple[Path, bool]:
     """latexmk on a preview wrapper into `outdir`: the one execution of a fresh build (a folder of its
@@ -265,11 +281,22 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
         output_tail.append(line)
         record_line(line)
 
+    if not _is_within(wrapper, ctx.root):
+        # The wrapper is outside the project (a background render). latexmk's rc files make it change into the
+        # source's folder, so it is told not to, and runs in decks/ itself: TeX then sees the same folders as for
+        # a wrapper in decks/ (the ../ of the deck preambles). The project's own rc file is read from there.
+        rc = ctx.decks_dir / '.latexmkrc'
+        extra = ['-cd-'] + (['-r', str(ctx.root / '.latexmkrc')] if not rc.is_file() and (ctx.root / '.latexmkrc').is_file() else [])
+        command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *extra, *options, cwd=ctx.decks_dir, aux=reusable,
+                                           absolute=True)
+        run_cwd = ctx.decks_dir
+    else:
+        command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable)
+        run_cwd = ctx.root
     with stage('latexmk'):
         try:
             build = compiler.run_latexmk(
-                compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable),
-                jobname=jobname, outdir=outdir, cwd=ctx.root, env=env, log=log, on_line=on_line, bufsize=-1, cancel=cancel)
+                command, jobname=jobname, outdir=outdir, cwd=run_cwd, env=env, log=log, on_line=on_line, bufsize=-1, cancel=cancel)
         except FileNotFoundError as exc:
             raise RuntimeError('latexmk not found on PATH -- is a TeX distribution installed?') from exc
         finish_rules()
