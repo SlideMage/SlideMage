@@ -25,16 +25,17 @@ from threading import Thread
 import shutil
 import time
 import weakref
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QRectF, Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import latex_lint, preview_target, slide_preview, slide_snapshot, slide_source, slide_versioning
+from ... import (deck_context, deck_editor, latex_lint, preview_target, reveal_steps, slide_preview, slide_snapshot, slide_source,
+                 slide_versioning)
 from ...ai.claude_tasks import LANGUAGE_NAMES
 from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
@@ -42,15 +43,20 @@ from ...preview_target import PreviewTarget
 from ...preview_requests import RenderRequest, RenderService
 from ...preview_metrics import PreviewMetrics
 from ...slide_language import TRANSLATION_LANGUAGES, TranslationLink, own_language, translation_link
+from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface, clear_layout
 from . import render_check
 from .menus import VIEW_LABELS
-from .state import WorkspaceState
+from .reveal_bar import RevealBar, RowSpec
+from .state import VIEWS, WorkspaceState
 
 PAGE_ASPECT = 16 / 9
+PROBE_MS = 1500          # idle time before the step bar counts a slide's steps in the background
+STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
+NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
 # Menu keys.
 BUFFER, OVERLAY, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "overlay", "presenter", "transcript", "open_pdf"
@@ -66,7 +72,8 @@ def partner_link(target: PreviewTarget, link: Optional[TranslationLink]) -> Opti
 
 
 def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str,
-              link: Optional[TranslationLink] = None) -> list[tuple]:
+              link: Optional[TranslationLink] = None, context_mode: Optional[str] = None,
+              rendered: bool = False) -> list[tuple]:
     """(icon, text, tone, tooltip) of the chips above the page. `row` is the
     slide's row in the open deck, None for a file shown alone; `link` the translation
     partner of the file shown, if it has one."""
@@ -88,6 +95,8 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
         if row.missing_translation:
             chips.append(("translate", f"No {language} version", "warning",
                           f"The slide has no translation into {language}."))
+    if target.needs_context:
+        chips.append(context_chip(target, view, context_mode, rendered))
     if link is not None and link.outdated:
         chips.append(("translate", "Translation outdated", "warning",
                       "The original was saved after the translation was last written (Language panel)."))
@@ -99,6 +108,25 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
     elif own:
         chips.append(("language", own, "neutral", "The slide's language; it has no translation."))
     return chips
+
+
+def context_chip(target: PreviewTarget, view: str, mode: Optional[str], rendered: bool) -> tuple:
+    """The chip of a slide that needs its deck (deck_context): whether the page shows it in the deck's context."""
+    why = deck_context.describe(target.needs_context)
+    if mode == deck_context.DECK:
+        return ("account_tree", "In the deck's context", "info",
+                f"This slide shows {why}. It was typeset in the last compile of the deck, so those are the real ones.")
+    if mode == deck_context.SKELETON:
+        return ("warning", "Rendered without the deck: may differ from the full deck", "warning",
+                f"This slide shows {why}. It was typeset with the deck's sections and agenda around it, but page "
+                f"numbers of sections are not the real ones. Compile the deck ({VIEW_LABELS[view]}) once, then render "
+                "again: click here to compile it.")
+    if rendered:
+        return ("warning", "Rendered without deck context: may differ from the full deck", "warning",
+                f"This slide shows {why}, which a single-slide render cannot know. Click to compile the deck "
+                f"({VIEW_LABELS[view]}); a render after that uses it.")
+    return ("account_tree", "Needs the deck around it", "muted",
+            f"This slide shows {why}: a render typesets it with the deck's context.")
 
 
 def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str, bool]]:
@@ -134,6 +162,7 @@ class _Job:
     request: Optional[RenderRequest] = None
     revision_text: Optional[str] = None
     remote: bool = False
+    steps_ok: bool = True           # a whole-slide render: the step bar can use its PDF
 
 
 def _discard_job(job: _Job) -> None:
@@ -156,6 +185,7 @@ class _Lifetime:
         if owner is not None:
             # Only Python attributes; the C++ QWidget may already be gone.
             owner._renders.close()
+            owner._steps.close()
             owner._pending = None
             owner._generation += 1
         if self.job is not None:
@@ -227,7 +257,9 @@ class PageView(QWidget):
 class PreviewPane(Surface):
     rendered = Signal()           # a render finished; the slide's snapshot (the list's thumbnail) may be new
     partner_requested = Signal(object)   # the language chip: the Path of the slide's file in the other language
+    compile_requested = Signal(str)      # the deck-context chip: compile the deck in this view
     _finished = Signal(object)    # a _Job, from the worker thread
+    _steps_ready = Signal(object, object, str)   # (key, PNG pages, error), from the step queue's thread
 
     def __init__(self, app, state: WorkspaceState,
                  buffer: Callable[[], Optional[tuple[str, str]]]) -> None:
@@ -268,7 +300,26 @@ class PreviewPane(Surface):
         # The latest render of the editor buffer: (target.key, view, language) -> (pixmap, note).
         self._adhoc: Optional[tuple[tuple, QPixmap, str]] = None
         self._adhoc_text: Optional[str] = None
+        self._adhoc_full = False       # the buffer render is a whole slide (the step bar may use it)
+        # The step bar: page lists of all-steps renders, rendered one at a time in the background.
+        self._steps = StepRenderQueue(self._steps_busy, self._steps_done)
+        self._step_pages: OrderedDict[tuple, list[bytes]] = OrderedDict()
+        self._step_choice: dict[Path, int] = {}      # the step picked per slide; none: the last one
+        self._step_pixmap: Optional[tuple[tuple, int, QPixmap]] = None
+        self._scans: dict[tuple, reveal_steps.SlideScan] = {}
+        self._step_failed: set[tuple] = set()      # page lists that did not render: not asked for again
+        self._context_modes: dict[tuple, Optional[str]] = {}   # (target key, view, language) -> deck_context mode
+        # An edit of the open deck, (failed title, summary, change(path, text), cleanup) -> done: the slide list's
+        # `edit`, which the window hands over. Without it the ticks of the step bar are not editable.
+        self.edit_deck: Optional[Callable[..., bool]] = None
+        # The slides around the focused one, [(target, row)]: the centre column knows the deck's order.
+        self.neighbours: Callable[[], list] = lambda: []
         self._finished.connect(self._on_finished)
+        self._steps_ready.connect(self._on_steps_ready)
+        self._probe = QTimer(self)
+        self._probe.setSingleShot(True)
+        self._probe.setInterval(PROBE_MS)
+        self._probe.timeout.connect(self._probe_steps)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 12, 24, 12)
@@ -279,6 +330,16 @@ class PreviewPane(Surface):
         self._page = PageView(lambda: self.app.theme.tokens)
         self._page.render_button.clicked.connect(self.render_now)
         layout.addWidget(self._page, 1)
+        self._reveal = RevealBar(lambda: self.app.theme.tokens)
+        self._reveal.step_selected.connect(self._on_step_selected)
+        self._reveal.view_requested.connect(self.state.set_view)
+        self._reveal.expanded_changed.connect(self._on_reveal_expanded)
+        self._reveal.tick_toggled.connect(self._on_tick_toggled)
+        layout.addWidget(self._reveal)
+        for key, delta in ((Qt.Key.Key_Left, -1), (Qt.Key.Key_Right, 1)):
+            shortcut = QShortcut(QKeySequence(Qt.Modifier.ALT | key), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(lambda delta=delta: self._reveal.move(delta))
 
         status = QHBoxLayout()
         status.setSpacing(8)
@@ -332,6 +393,7 @@ class PreviewPane(Surface):
         if changed:
             self._error = ""
             self._adhoc = None
+            self._steps.drop_background()
         self._target, self._row, self._title, self._message = target, row, title, message
         self._language = language
         self._shown_mtime = mtime
@@ -412,12 +474,18 @@ class PreviewPane(Surface):
         if target is not None:
             link = translation_link(self.app.project, target.id_slug)
             partner = partner_link(target, link)
-            for icon, text, tone, tooltip in chips_for(target, row, view, language, link):
+            mode_key = (target.key, view, language)
+            for icon, text, tone, tooltip in chips_for(
+                    target, row, view, language, link, self._context_modes.get(mode_key),
+                    mode_key in self._context_modes):
                 jump = icon == "language" and partner is not None
-                chip = Chip(text, tone, icon, pressable=jump)
+                compile_deck = icon == "warning" and target.needs_context and row is not None
+                chip = Chip(text, tone, icon, pressable=jump or compile_deck)
                 chip.setToolTip(tooltip)
                 if jump:
                     chip.clicked.connect(lambda path=partner.path: self._show_partner(path))
+                elif compile_deck:
+                    chip.clicked.connect(lambda v=view: self.compile_requested.emit(v))
                 self._chips.addWidget(chip)
         self._chips.addStretch(1)
 
@@ -468,6 +536,269 @@ class PreviewPane(Surface):
         self._status_button.setVisible(can_render)
         self._error_label.setText(self._error)
         self._error_label.setVisible(bool(self._error))
+        self._update_reveal(target, row, shown, shown and self._image(target) is not None)
+
+    # -- the reveal steps --------------------------------------------------------------------
+
+    def _steps_busy(self) -> bool:
+        """The pane is rendering for the user: background step renders wait (read from the queue's thread)."""
+        return self._active is not None or self._pending is not None
+
+    def _steps_done(self, key: tuple, pages: list[bytes], error: str) -> None:
+        try:
+            self._steps_ready.emit(key, pages, error)
+        except RuntimeError:     # the pane is gone
+            pass
+
+    def _steps_key(self, target: PreviewTarget, view: str, language: str, timestamp: bool, draft: bool,
+                   stamp) -> tuple:
+        """What a page list depends on. `stamp`: the source's mtime (a saved render) or the buffer's text."""
+        identity = target.key[1:3] + target.key[5:]       # not the macro, the versions or the steps of the call
+        return ("draft" if draft else "saved", str(target.source_path), identity, view, language, timestamp,
+                hash(stamp) if draft else stamp)
+
+    def _scan_of(self, path: Path, text: Optional[str], stamp) -> reveal_steps.SlideScan:
+        key = (str(path), stamp if text is not None else _mtime(path))
+        scan = self._scans.get(key)
+        if scan is None:
+            if text is None:
+                try:
+                    text = slide_source.read_slide_source(path)[0]
+                except OSError:
+                    text = ""
+            scan = self._scans[key] = reveal_steps.scan_slide(text)
+            while len(self._scans) > 64:
+                self._scans.pop(next(iter(self._scans)))
+        return scan
+
+    def _current_steps(self, target: PreviewTarget):
+        """(key, text, draft, scan) of the page list that belongs to what the pane shows now."""
+        view, language, timestamp = self.state.view, self.language, self._footer_timestamp()
+        shown = (target.key, view, language, timestamp)
+        if self._adhoc is not None and self._adhoc[0] == shown and self._adhoc_full and self._adhoc_text is not None:
+            text = self._adhoc_text
+            key = self._steps_key(target, view, language, timestamp, True, text)
+            return key, text, True, self._scan_of(target.source_path, text, hash(text))
+        mtime = _mtime(target.source_path)
+        return (self._steps_key(target, view, language, timestamp, False, mtime), None, False,
+                self._scan_of(target.source_path, None, mtime))
+
+    def _after_render(self, job: _Job) -> None:
+        """A render of the slide was accepted: its pages are the step list when it kept every step."""
+        target = self._target
+        if target is None or not job.steps_ok:
+            return
+        draft = bool(job.note)
+        text = job.buffer_text if draft else job.revision_text
+        key = self._steps_key(target, job.view, job.language, job.timestamp, draft,
+                              text if draft else job.mtime)
+        if key in self._step_pages or self._steps.pending(key):
+            return
+        scan = self._scan_of(target.source_path, text, hash(text) if draft else job.mtime)
+        adoptable = (job.pdf is not None and job.request is not None and target.macro not in ("slidestep",)
+                     and scan.own_frame_spec is None and not scan.frame_breaks
+                     and not (scan.final_flag and job.view != reveal_steps.INSTRUCTOR))
+        if adoptable:
+            pdf = job.pdf
+            self._steps.submit(key, FOREGROUND, lambda _cancel: pdf)
+        else:
+            self._request_steps(target, key, text, draft, FOREGROUND)
+
+    def _request_steps(self, target: PreviewTarget, key: tuple, text: Optional[str], draft: bool,
+                       priority: int) -> None:
+        """Queue the all-steps render for `key` (kind, path, target key, view, language, timestamp, stamp)."""
+        view, language, timestamp = key[3], key[4], key[5]
+        if text is None:
+            try:
+                text = target.source_path.read_text(encoding='utf-8')
+            except OSError:
+                return
+        service, log = self._renders, self.app.log
+
+        def build(cancel):
+            request = service.request(target, text, view, language, timestamp, log, saved=not draft, all_steps=True)
+            return request.wait(cancel)[0]
+
+        self._steps.submit(key, priority, build)
+
+    def _probe_steps(self) -> None:
+        """Idle: count the steps of the slide on show (and of its other versions when its reveals depend on them)."""
+        target = self._target
+        if target is None or self._closed or (self._row is not None and self._row.hidden):
+            return
+        if self._steps_busy():
+            self._probe.start(PROBE_MS)       # the user's own render first; ask again afterwards
+            return
+        key, text, draft, scan = self._current_steps(target)
+        if key not in self._step_pages and key not in self._step_failed:
+            self._request_steps(target, key, text, draft, BACKGROUND)
+        if scan.version_dependent and self._reveal.expanded:
+            self._request_other_views(target, key, text, draft, self._served_views())
+        view, language, timestamp = self.state.view, self.language, self._footer_timestamp()
+        for other, _row in self.neighbours()[:NEIGHBOURS]:
+            other_key = self._steps_key(other, view, language, timestamp, False, _mtime(other.source_path))
+            if other_key not in self._step_pages and other_key not in self._step_failed:
+                self._request_steps(other, other_key, None, False, BACKGROUND)
+
+    def _block_calls(self, row: Optional[SlideRow]) -> tuple[list, list]:
+        """(every slide call of the open deck, the calls that decide the steps at `row`'s place)."""
+        deck = self.state.deck
+        if row is None or deck is None:
+            return [], []
+        calls = deck_editor.parse_slide_calls(deck)
+        physical = row.deck_call
+        if not any(c.call_start == physical.call_start for c in calls):
+            return calls, []
+        return calls, deck_editor.step_block(deck.text, calls, physical)
+
+    def _served_views(self) -> list[str]:
+        """The versions the selected place of the deck typesets; all of them for a slide shown without the deck."""
+        if self._row is None:
+            return list(VIEWS)
+        block = self._block_calls(self._row)[1] or [self._row.call]
+        return [v for v in VIEWS if any(c.included_in(v) for c in block)]
+
+    def _request_other_views(self, target: PreviewTarget, key: tuple, text: Optional[str], draft: bool,
+                             views: list[str]) -> None:
+        for view in views:
+            other = key[:3] + (view,) + key[4:]
+            if view != key[3] and other not in self._step_pages and other not in self._step_failed:
+                self._request_steps(target, other, text, draft, BACKGROUND)
+
+    def _on_steps_ready(self, key: tuple, pages: list[bytes], error: str) -> None:
+        if self._closed:
+            return
+        if error:
+            self._step_failed.add(key)
+            self.app.log(f"    (reveal steps not counted: {error})")
+            return
+        self._step_failed.discard(key)
+        self._step_pages[key] = pages
+        self._step_pages.move_to_end(key)
+        while len(self._step_pages) > STEP_CACHE:
+            self._step_pages.popitem(last=False)
+        self._refresh()
+
+    def _on_tick_toggled(self, view: str, step: int) -> None:
+        """A tick of the step bar was clicked: add the step to (or take it from) what `view` typesets at this place of
+        the open deck, by rewriting the deck's \\slidestep calls (deck_editor.steps_edit)."""
+        target, row, deck, edit = self._target, self._row, self.state.deck, self.edit_deck
+        if target is None or row is None or deck is None or edit is None:
+            return
+        key, _text, draft, scan = self._current_steps(target)
+        pages = self._step_pages.get(key)
+        if pages is None:
+            return
+        rows = self._step_rows(target, row, key, len(pages), scan, draft)
+        spec = rows[view]
+        if not spec.editable or spec.plan is None:
+            return
+        steps = set(spec.plan.included) ^ {step}
+        if not steps:
+            self.app.toast.show_message("A version must keep at least one step: hide the slide in the "
+                                        "visibility matrix instead.")
+            return
+        calls, block = self._block_calls(row)
+        served = [v for v in VIEWS if any(c.included_in(v) for c in block)]
+        counts = {v: len(self._step_pages.get(key[:3] + (v,) + key[4:]) or ()) or
+                  (len(pages) if not scan.version_dependent else 0) for v in served}
+        call = row.deck_call
+        id_slug, project = call.id_slug, self.app.project
+        wording = deck_editor.format_steps(steps, counts[view]) if len(steps) < counts[view] else "all steps"
+        edit("Change steps failed", f"Set the steps of {id_slug} in {VIEW_LABELS[view]} to {wording} in {deck.name}",
+             lambda path, text: deck_editor.set_steps_for_version(
+                 path, text, calls, call, view, steps, counts, scan.final_flag),
+             cleanup=lambda: reveal_steps.drop_dead_final_flag(project, id_slug))
+
+    def _on_reveal_expanded(self, expanded: bool) -> None:
+        if expanded:
+            self._probe.start(0)
+
+    def _on_step_selected(self, step: int) -> None:
+        target = self._target
+        if target is not None:
+            self._step_choice[target.source_path] = step
+            self._refresh()
+
+    def _step_rows(self, target: PreviewTarget, row: Optional[SlideRow], key: tuple, n: int,
+                   scan: reveal_steps.SlideScan, draft: bool = False) -> dict[str, RowSpec]:
+        call = row.call if row is not None else None
+        calls, block = self._block_calls(row) if self.edit_deck is not None else ([], [])
+        served = [v for v in VIEWS if any(c.included_in(v) for c in block)]
+        counts: dict[str, int] = {}
+        for view in VIEWS:
+            pages = self._step_pages.get(key[:3] + (view,) + key[4:])
+            counts[view] = len(pages) if pages is not None else (n if not scan.version_dependent else 0)
+        rows: dict[str, RowSpec] = {}
+        for view in VIEWS:
+            present = call is None or call.included_in(view)
+            plan = reveal_steps.plan_for(call, view, counts[view], scan) if counts[view] and present else None
+            editable, reason = False, ""
+            if plan is not None and block:
+                editable, reason = self._row_edit(block, view, served, counts, scan, plan, draft, key)
+                if editable and not plan.marked:
+                    plan = replace(plan, marked=True)      # a plain call: its ticks are all "in", and can be clicked
+            rows[view] = RowSpec(view, plan, editable=editable, reason=reason, present=present)
+        return rows
+
+    def _row_edit(self, block: list, view: str, served: list[str], counts: dict[str, int],
+                  scan: reveal_steps.SlideScan, plan: reveal_steps.StepPlan, draft: bool, key: tuple):
+        """(whether the ticks of `view` can be edited, why not or what to know) for the selected place."""
+        owner = next((c for c in block if c.included_in(view)), None)
+        problem = deck_editor.step_edit_problem(owner or block[0], view)
+        if problem is not None:
+            return False, problem
+        if scan.own_frame_spec is not None or scan.frame_breaks or not plan.reliable:
+            return False, ("The slide's own frame decides which steps exist (\\begin{frame}<spec> or "
+                           "allowframebreaks); \\slidestep has no effect on it.")
+        if draft:
+            saved = self._step_pages.get(("saved",) + key[1:6] + (_mtime(self._target.source_path),)) \
+                if self._target is not None else None
+            if saved is None or len(saved) != counts[view]:
+                return False, "Save the slide to edit its steps: the editor buffer may have other steps."
+        if any(not counts.get(v) for v in served):
+            return False, "Counting the steps of the other versions\u2026"
+        notes = []
+        if scan.version_dependent:
+            notes.append("Numbered per version: the same step number can be other content in another version.")
+        if plan.final_only:
+            notes.append("Students see only the final state (\\SMFinalStateForStudents); an edit writes explicit "
+                         "\\slidestep calls that override it.")
+        return True, " ".join(notes)
+
+    def _update_reveal(self, target: Optional[PreviewTarget], row: Optional[SlideRow], shown: bool,
+                       has_image: bool) -> None:
+        """Show the step bar for the slide on show, and the page of the step picked."""
+        bar = self._reveal
+        if target is None or not shown:
+            bar.setVisible(False)
+            return
+        key, text, draft, scan = self._current_steps(target)
+        pages = self._step_pages.get(key)
+        if pages is None:
+            bar.setVisible(False)
+            self._probe.start(PROBE_MS)
+            return
+        self._step_pages.move_to_end(key)
+        self._probe.start(PROBE_MS)
+        n = len(pages)
+        view = self.state.view
+        rows = self._step_rows(target, row, key, n, scan, draft)
+        step = min(max(self._step_choice.get(target.source_path, n), 1), n)
+        bar.set_state(view, step, rows, draft)
+        if bar.expanded and scan.version_dependent:
+            self._probe.start(0)
+        restricted = (target.macro == "slidestep" or scan.own_frame_spec is not None or scan.frame_breaks
+                      or (scan.final_flag and view != reveal_steps.INSTRUCTOR))
+        if n > 1 and (step != n or restricted or not has_image):
+            if self._step_pixmap is None or self._step_pixmap[:2] != (key, step):
+                pixmap = QPixmap()
+                if pixmap.loadFromData(pages[step - 1]):
+                    self._step_pixmap = (key, step, pixmap)
+                else:
+                    self._step_pixmap = None
+            if self._step_pixmap is not None and self._step_pixmap[:2] == (key, step):
+                self._page.show_image(self._step_pixmap[2])
 
     def _rebuild_menu(self) -> None:
         if self._menu is not None:
@@ -534,6 +865,7 @@ class PreviewPane(Surface):
     def _start(self, work: Callable[[], Path], job: _Job, *, debounce: bool = False) -> None:
         """One running compile and one replaceable latest request; never overlap."""
         self._generation += 1
+        self._steps.preempt()
         job.generation = self._generation
         job.requested = time.perf_counter()
         self._shown_mtime = job.mtime
@@ -628,6 +960,10 @@ class PreviewPane(Surface):
                 except Exception as exc:
                     self.app.log(f"    (preview snapshot not updated: {exc})")
             self._last_pdf = job.pdf
+            if self._target is not None and self._target.needs_context and not job.external:
+                self._context_modes[(job.target_key, job.view, job.language)] = deck_context.mode_of(job.pdf)
+                while len(self._context_modes) > 64:
+                    self._context_modes.pop(next(iter(self._context_modes)))
             if job.external:
                 slide_preview.open_pdf(job.pdf)
             else:
@@ -637,6 +973,7 @@ class PreviewPane(Surface):
                     if job.note:
                         self._adhoc = (key, pixmap, job.note)
                         self._adhoc_text = job.buffer_text
+                        self._adhoc_full = job.steps_ok
                     else:
                         self._adhoc = None
                         self._pixmaps[key] = (pixmap, job.mtime)
@@ -644,6 +981,8 @@ class PreviewPane(Surface):
                         while len(self._pixmaps) > 12:
                             self._pixmaps.popitem(last=False)
             self.rendered.emit()
+            if not job.external:
+                self._after_render(job)
         self._launch_pending()
         self._refresh()
         if job.metrics is not None:
@@ -726,7 +1065,8 @@ class PreviewPane(Surface):
         job = self._job(target, external=presenter, buffer_text=text, revision_text=text,
                         snapshot_template=target.template if view == 'instructor' and not presenter
                         and scope == 'slide' and overlay is None and not target.is_frozen_alone else None,
-                        note="Rendered from the editor buffer, not the saved file")
+                        note="Rendered from the editor buffer, not the saved file",
+                        steps_ok=scope == "slide" and overlay is None and not presenter)
         job.request = self._renders.request(target, body, view, language, timestamp, self.app.log,
                                             presenter=presenter, mode=scope, overlay=overlay)
         self._start(lambda: None, job)

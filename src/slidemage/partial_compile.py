@@ -180,6 +180,7 @@ class PartialPlan:
     aux: Path
     record: dict
     other_changed: list[str] = field(default_factory=list)  # slide ids changed, not asked for
+    extra_lines: str = ""           # TeX put right after \begin{document}: the Preview's all-steps selection
 
     @property
     def frames(self) -> list[int]:
@@ -375,6 +376,8 @@ def wrapper_text(plan: PartialPlan) -> str:
     out: list[str] = [text[:deck.preamble_end]]
     if job.language:
         out.append("\n" + deck_language.language_line(deck_language.language_for_job(job)))
+    if plan.extra_lines:
+        out.append("\n" + plan.extra_lines)
     pos = deck.preamble_end
     # Include folded translation calls here so they are removed too.
     for call in sorted(deck_language.calls_in(text, deck.chapters), key=lambda c: c.line_start):

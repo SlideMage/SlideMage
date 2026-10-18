@@ -11,6 +11,8 @@
 * Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
 * Prompts: the system prompts of image descriptions and translation:
   ui/dialogs/settings_prompts.py.
+* Presentation: layout, laser and pen colours, links, timer and clock, projector screen:
+  ui/presentation/settings_page.py.
 
 Every control applies when it changes and is saved at once, as before; only a prompt has its own
 Save button, and closing the sheet asks about prompt text not yet saved. The installed Ollama models come
@@ -33,9 +35,10 @@ from .. import background
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, caption, columns, row
 from .settings_ollama import OllamaTab
+from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
 
-GENERAL, AI, CLOUD, OLLAMA, PROMPTS = range(5)
+GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION = range(6)
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
@@ -342,8 +345,10 @@ class SettingsSheet(ModalSheet):
         self.cloud = CloudTab(app.project)
         self.ollama = OllamaTab(app)
         self.prompts = PromptsTab(app)
+        self.presentation = PresentationTab()
         for label, tab_widget in (("General", self.general), ("AI", self.ai), ("Cloud", self.cloud),
-                                  ("Ollama", self.ollama), ("Prompts", self.prompts)):
+                                  ("Ollama", self.ollama), ("Prompts", self.prompts),
+                                  ("Presentation", self.presentation)):
             self.add_tab(label, tab_widget)
         self.add_button("Close", kind="primary", role="accept")
         self.cloud.cloud_changed.connect(self.reload_models)

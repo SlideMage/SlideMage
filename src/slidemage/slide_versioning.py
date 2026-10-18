@@ -250,7 +250,7 @@ def mark_external_edit(ctx: ProjectContext, path: Path) -> bool:
     version = marker[0] if marker is not None else DEFAULT_BASELINE
     id_slug = call_for_slide_path(path)[1]
     frozen = frozen_path(path, id_slug, version)
-    if not frozen.exists() or _content(slide_source.read_slide_source(frozen)[0]) == _content(text):
+    if not frozen.exists() or not _changed_since(slide_source.read_slide_source(frozen)[0], text):
         return False
     slide_source.save_slide_source(ctx, path, set_marker(text, version, changed=True), eol,
                                    expected_text=text, backup=False)
@@ -283,6 +283,18 @@ def _content(text: str) -> str:
     return strip_marker(body_of(text.replace("\r\n", "\n"))).strip()
 
 
+def _changed_since(frozen_text: str, text: str) -> bool:
+    """Whether the current `text` has content its frozen version does not. Taking out the
+    \\SMFinalStateForStudents line that no deck needs any longer (reveal_steps.drop_dead_final_flag) is no
+    change: the slide typesets as before. Adding the flag is one: students would see something else."""
+    from .reveal_steps import remove_final_flag
+
+    if _content(frozen_text) == _content(text):
+        return False
+    stripped = remove_final_flag(frozen_text)
+    return not (stripped is not None and remove_final_flag(text) is None and _content(stripped) == _content(text))
+
+
 def plan_update(current_path: Path, id_slug: str, text: str, level: BumpLevel) -> tuple[Version, Version]:
     """(the version Update Version makes of `text`, the version it moves on
     from). With no "+" and that version not frozen yet, it is frozen as it
@@ -296,7 +308,7 @@ def plan_update(current_path: Path, id_slug: str, text: str, level: BumpLevel) -
     base = marker[0] if marker is not None else DEFAULT_BASELINE
     base_path = frozen_path(current_path, id_slug, base)
     changed = marker is not None and marker[1] or (
-        base_path.exists() and _content(slide_source.read_slide_source(base_path)[0]) != _content(text))
+        base_path.exists() and _changed_since(slide_source.read_slide_source(base_path)[0], text))
     if changed:
         new = bump(base, level)
     elif not base_path.exists():

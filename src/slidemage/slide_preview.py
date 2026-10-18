@@ -465,6 +465,9 @@ def render_slide_to_pdf(
     overlay: Optional[int] = None,
     capture_snapshot: bool = True,
     cancel=None,
+    all_steps: bool = False,
+    context_before: str = "",
+    context_after: str = "",
 ) -> Path:
     """Compile one \\macro{id_slug}[{version}] call to a standalone PDF in
     a fresh OS temp directory (never pdf/ -- this is a scratch preview, not
@@ -520,17 +523,18 @@ def render_slide_to_pdf(
         f"{_footer_timestamp_line(footer_timestamp)}{preamble}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
         f"{_preview_timestamp_line(footer_timestamp)}"
-        f"{_frame_number_line(frame_number)}{_overlay_line(overlay)}"
-        f"\t{call}\n\\end{{document}}\n"
+        f"{context_before}{_frame_number_line(frame_number)}{_overlay_line(overlay, all_steps)}"
+        f"\t{call}\n{context_after}\\end{{document}}\n"
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
-        if capture_snapshot and deck_version in (None, "instructor") and overlay is None else None
+        if capture_snapshot and deck_version in (None, "instructor") and overlay is None and not all_steps
+        and not (context_before or context_after) else None
     )
-    return compile_and_extract(
+    return _with_context(compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build, cancel=cancel,
-    )
+    ), context_after)
 
 
 @measure('render')
@@ -550,6 +554,9 @@ def render_slide_text_to_pdf(
     frame_number: Optional[int] = None,
     capture_snapshot: bool = True,
     cancel=None,
+    all_steps: bool = False,
+    context_before: str = "",
+    context_after: str = "",
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -614,21 +621,33 @@ def render_slide_text_to_pdf(
     preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
     wrapper_text = (
         f"{_footer_timestamp_line(footer_timestamp)}{_presenter_mode_line(presenter)}{preamble}"
-        f"{_frame_number_line(frame_number)}{_overlay_line(overlay)}"
+        f"{context_before}{_frame_number_line(frame_number)}{_overlay_line(overlay, all_steps)}"
         f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
         f"{_preview_timestamp_line(footer_timestamp)}"
         f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n"
-        f"{slide_body}\n\\end{{document}}\n"
+        f"{slide_body}\n{context_after}\\end{{document}}\n"
     )
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and not presenter
-        and preview_mode == "slide" and overlay is None else None
+        and preview_mode == "slide" and overlay is None and not all_steps
+        and not (context_before or context_after) else None
     )
-    return compile_and_extract(
+    return _with_context(compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build, cancel=cancel,
-    )
+    ), context_after)
+
+
+def _with_context(pdf: Path, context_after: str) -> Path:
+    """A render that had the deck's sections written after the slide (deck_context.skeleton) ends with the page of the
+    frame that ships them: it comes off, and the PDF is marked as made without the deck itself."""
+    if context_after:
+        from . import deck_context
+
+        deck_context.drop_last_page(pdf)
+        deck_context.remember_mode(pdf, deck_context.SKELETON)
+    return pdf
 
 
 def open_pdf(pdf_path: Path) -> None:
@@ -636,13 +655,23 @@ def open_pdf(pdf_path: Path) -> None:
 
 
 
-def _overlay_line(overlay: Optional[int]) -> str:
+def _overlay_line(overlay: Optional[int], all_steps: bool = False) -> str:
     """Apply a frame-level restriction, including to raw Beamer frames.
 
     Default action specifications affect item visibility, not which PDF pages
     are produced. Patch the frame loop instead and fail explicitly on changes
     to Beamer's interface. An explicit selection overrides a slidestep filter.
+    `all_steps` selects every overlay (`1-`), so it overrides a \\slidestep's steps, the final-state
+    flag and a spec written on the slide's own raw frame: page k is then overlay k.
     """
+    if all_steps and overlay is None:
+        return (
+            "\\makeatletter\n"
+            "\\pretocmd{\\beamer@doseveralframes}"
+            "{\\gdef\\beamer@whichframes{1-}}"
+            "{}{\\PackageError{SlideMage}{Cannot select all preview overlays}{}}\n"
+            "\\makeatother\n"
+        )
     if overlay is None:
         return ""
     if isinstance(overlay, bool) or not isinstance(overlay, int) or overlay < 1:

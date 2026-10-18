@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, deck_editor, deck_outline
+from ... import ai_review, deck_editor, deck_outline, reveal_steps
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
@@ -43,6 +43,13 @@ from .slide_tree import SlideTree
 from .state import VIEWS, WorkspaceState
 
 UNDO_LIMIT = 20
+
+
+class DeckUndo(str):
+    """The deck text from before an edit that also changed a slide (`slide`: path, text before, text after): it
+    compares and stores as the plain text, and Undo puts the slide back too."""
+
+    slide: Optional[tuple[Path, str, str]] = None
 WIDTH = 280   # the default width of the column
 MIN_WIDTH = 220
 MAX_WIDTH = 520
@@ -538,9 +545,13 @@ class SlideList(QWidget):
 
     # -- edits ---------------------------------------------------------------------
 
-    def edit(self, failed: str, summary: str, change: Callable[[Path, str], str]) -> bool:
+    def edit(self, failed: str, summary: str, change: Callable[[Path, str], str],
+             cleanup: Optional[Callable[[], Optional[tuple[Path, str, str]]]] = None) -> bool:
         """Run `change(deck path, deck text)` (a deck_editor function); on success the
-        window rescans and calls deck_edited(). False when it was refused or changed nothing."""
+        window rescans and calls deck_edited(). False when it was refused or changed nothing.
+        `cleanup()` runs once the deck is written: it may change a slide the edit made redundant work in (a
+        \\SMFinalStateForStudents no deck needs any longer) and says (path, text before, text after); Undo then
+        takes that back with the deck edit."""
         deck = self.deck
         previous = deck.text
         try:
@@ -550,8 +561,31 @@ class SlideList(QWidget):
             return False
         if new == previous:
             return False
-        self.app.after_deck_edit(deck.path, summary, previous_text=previous)
+        undo_text = previous
+        slide_change = cleanup() if cleanup is not None else None
+        if slide_change is not None:
+            undo_text = DeckUndo(previous)
+            undo_text.slide = slide_change
+            summary += f" (and took \\SMFinalStateForStudents out of {slide_change[0].name}: no deck needs it now)"
+        self.app.after_deck_edit(deck.path, summary, previous_text=undo_text)
         return True
+
+    def _flag_cleanup(self, id_slugs: list[str]) -> Callable[[], Optional[tuple[Path, str, str]]]:
+        """The `cleanup` of an edit that changed the calls of `id_slugs`: take a \\SMFinalStateForStudents out of
+        the first slide that no deck needs it in any longer (reveal_steps.drop_dead_final_flag)."""
+        def run() -> Optional[tuple[Path, str, str]]:
+            from ...slide_language import current_name
+
+            centre = getattr(self.app, "centre", None)
+            for id_slug in id_slugs:
+                # A slide whose edits are open in the Source view is left alone unless they could be written first.
+                if centre is not None and centre.unsaved(self.app.project.slides_dir / current_name(id_slug)):
+                    continue
+                changed = reveal_steps.drop_dead_final_flag(self.app.project, id_slug)
+                if changed is not None:
+                    return changed
+            return None
+        return run
 
     def deck_edited(self, deck_path: Path, summary: str, previous_text: Optional[str]) -> None:
         """The window's after_deck_edit() calls this once the deck is rescanned: remember
@@ -576,7 +610,11 @@ class SlideList(QWidget):
             stack.append(previous)
             QMessageBox.critical(self, "Undo failed", str(exc))
             return
-        self.app.after_deck_edit(deck.path, f"Undid last change to {deck.name}")
+        slide = getattr(previous, "slide", None)
+        note = ""
+        if slide is not None and not reveal_steps.restore_final_flag(self.app.project, *slide):
+            note = f" ({slide[0].name} changed since: its \\SMFinalStateForStudents stays out)"
+        self.app.after_deck_edit(deck.path, f"Undid last change to {deck.name}{note}")
 
     def _change_variant(self, row: SlideRow, macro: str, version: Optional[str]) -> None:
         call = row.deck_call
@@ -593,7 +631,8 @@ class SlideList(QWidget):
             "Change variant failed",
             f"Changed {call.id_slug} in {self.deck.name}: \\{call.macro} -> \\{macro}",
             lambda path, text: deck_editor.change_slide_call_variant(
-                path, text, call, macro, version, conditions, steps))
+                path, text, call, macro, version, conditions, steps),
+            cleanup=self._flag_cleanup([call.id_slug]))
 
     def _set_visibility(self, rows: list[SlideRow], view: str, visible: bool) -> None:
         calls = [r.deck_call for r in rows]
@@ -601,7 +640,8 @@ class SlideList(QWidget):
         self.edit(
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {what} in {VIEW_LABELS[view]} of {self.deck.name}",
-            lambda path, text: deck_editor.set_calls_visibility(path, text, calls, view, visible))
+            lambda path, text: deck_editor.set_calls_visibility(path, text, calls, view, visible),
+            cleanup=self._flag_cleanup([c.id_slug for c in calls]))
 
     def _bulk_toggle_visibility(self) -> None:
         rows = self.tree.selected_rows()

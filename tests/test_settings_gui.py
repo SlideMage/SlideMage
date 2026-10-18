@@ -80,7 +80,7 @@ def answer(monkeypatch, button_text):
 
 def test_the_sheet_has_a_tab_for_each_group_of_settings_and_a_sensible_width(qapp):
     sheet = open_sheet(qapp)
-    assert tab_names(sheet) == ["General", "AI", "Cloud", "Ollama", "Prompts"]
+    assert tab_names(sheet) == ["General", "AI", "Cloud", "Ollama", "Prompts", "Presentation"]
     sheet.show()
     qapp.processEvents()
     assert sheet.width() < 1000            # unwrapped notes once made this ~2200 px wide
