@@ -17,17 +17,17 @@ from PySide6.QtGui import QFontDatabase
 
 FONT_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 
-_FONT_FILES = (
-    "Roboto-Regular.ttf",
-    "Roboto-Medium.ttf",
-    "Roboto-Bold.ttf",
-    # Roboto 3 has no static SemiBold: weight 600 comes from the variable font (the static files keep 400/500/700).
-    # Without it Windows fattened Medium for 600 and the strokes of w and W overlapped into dark gaps.
-    "Roboto[ital,wdth,wght].ttf",
-    "RobotoMono-Regular.ttf",
-    "RobotoMono-Medium.ttf",
-    "MaterialIcons-Regular.ttf",
-)
+
+def _font_files() -> tuple[str, ...]:
+    """Every bundled font file: the static ones first, then the variable ones (named like `Roboto[wght].ttf`).
+    Qt then takes a weight or style that has a static file from it, and only the others (SemiBold, ExtraLight, ...)
+    from the variable font, instead of thickening or slanting a neighbouring style itself (whose overlapping
+    strokes, as in w and W, then show dark gaps on Windows). A new file in the folder is picked up by itself."""
+    files = sorted(path.name for path in FONT_DIR.glob("*.ttf"))
+    return tuple([name for name in files if "[" not in name] + [name for name in files if "[" in name])
+
+
+_FONT_FILES = _font_files()
 
 _loaded = False
 

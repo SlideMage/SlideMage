@@ -13,6 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
 from slidemage.ui.kit import kit_qss
+from slidemage.ui.kit import fonts as fonts_module
 from slidemage.ui.kit.fonts import FONT_DIR, load_fonts
 from slidemage.ui.kit.gallery import KitGallery
 from slidemage.ui.kit.theme import ThemeManager
@@ -53,9 +54,12 @@ def styled(widget: QWidget, theme: ThemeManager, dark: bool) -> None:
 
 
 def test_font_files_are_bundled_and_registered(qapp):
-    for name in ("Roboto-Regular.ttf", "Roboto-Medium.ttf", "Roboto-Bold.ttf", "Roboto[ital,wdth,wght].ttf",
-                 "RobotoMono-Regular.ttf", "RobotoMono-Medium.ttf", "MaterialIcons-Regular.ttf"):
-        assert (FONT_DIR / name).is_file()
+    for name in ("Roboto-Regular.ttf", "Roboto-Medium.ttf", "Roboto-Bold.ttf", "Roboto-Italic.ttf", "Roboto-Black.ttf",
+                 "Roboto[ital,wdth,wght].ttf", "RobotoMono-Regular.ttf", "RobotoMono-Bold.ttf", "RobotoMono-Italic.ttf",
+                 "RobotoMono[wght].ttf", "RobotoMono-Italic[wght].ttf", "MaterialIcons-Regular.ttf"):
+        assert (FONT_DIR / name).is_file() and name in fonts_module._FONT_FILES
+    files = fonts_module._FONT_FILES
+    assert max(i for i, n in enumerate(files) if "[" not in n) < min(i for i, n in enumerate(files) if "[" in n)
     families = QFontDatabase.families()
     for family in (FONT_SANS, FONT_MONO, FONT_ICONS):
         assert family in families
