@@ -245,6 +245,51 @@ def normalize_steps(steps: str) -> str:
     return cleaned
 
 
+def expand_steps(spec: Optional[str], n: int) -> frozenset[int]:
+    """The overlay numbers in 1..n that the overlay specification `spec` selects: `a`, `a-b`, `a-`
+    (to n), `-b`, joined by commas. None or an empty spec selects all of 1..n. ValueError on
+    anything else, so a spec the editor cannot read is never guessed at."""
+    if spec is None or not spec.strip():
+        return frozenset(range(1, n + 1))
+    chosen: set[int] = set()
+    for part in re.sub(r"\s+", "", spec).split(","):
+        match = re.fullmatch(r"(\d*)(-?)(\d*)", part)
+        if not part or match is None or not (match.group(1) or match.group(3)):
+            raise ValueError(f"{spec!r} is not an overlay specification")
+        first, dash, last = match.groups()
+        if not dash:
+            chosen.add(int(first))
+        else:
+            chosen.update(range(int(first) if first else 1, (int(last) if last else n) + 1))
+    return frozenset(step for step in chosen if 1 <= step <= n)
+
+
+def format_steps(steps, n: int, like: Optional[str] = None) -> str:
+    """The shortest overlay specification for the step numbers `steps` (1..n): runs as `a-b`, a run
+    that reaches n as the open `a-` when `like` (the spec being replaced) was open-ended too."""
+    numbers = sorted(set(steps))
+    if not numbers:
+        raise ValueError("a version must keep at least one step")
+    open_ended = like is not None and re.search(r"\d-(?:,|$)", re.sub(r"\s+", "", like)) is not None
+    parts: list[str] = []
+    start = previous = numbers[0]
+    for number in numbers[1:] + [None]:
+        if number is not None and number == previous + 1:
+            previous = number
+            continue
+        if open_ended and previous == n and start < n:
+            parts.append(f"{start}-")
+        elif start == previous:
+            parts.append(str(start))
+        elif previous == start + 1:
+            parts.extend((str(start), str(previous)))
+        else:
+            parts.append(f"{start}-{previous}")
+        if number is not None:
+            start = previous = number
+    return ",".join(parts)
+
+
 # Matches a bare `\end{document}` at the start of its own line (any leading
 # whitespace) -- used only by empty_deck_insert_point() below.
 _END_DOCUMENT_RE = re.compile(r"^[ \t]*\\end\{document\}", re.MULTILINE)
@@ -454,6 +499,146 @@ def set_calls_visibility(
         return text
 
     return apply(deck_path, expected_text, mutate)
+
+
+# -- reveal steps per deck version (docs/plans/reveal-step-slider.md, 4c) ---------------------------------
+
+STEP_EDIT_MACROS = {"slide", "conditionalslide", "slidestep"}
+FULL_STEPS = "1-"
+_BLANK_OR_COMMENT_RE = re.compile(r"^[ \t]*(?:%.*)?\r?$")
+
+
+def _full(n: int) -> frozenset[int]:
+    return frozenset(range(1, n + 1))
+
+
+def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[SlideCall]:
+    r"""The calls that together decide which versions typeset which steps at `call`'s place: for a \slidestep, the
+    run of \slidestep calls of the same slide next to each other (alternatives: each version has one of them), with
+    only blank or comment lines between; any other call stands alone."""
+    if call.macro != "slidestep":
+        return [call]
+    index = next(i for i, c in enumerate(calls) if c.call_start == call.call_start)
+
+    def joined(first: SlideCall, second: SlideCall) -> bool:
+        between = text[first.line_end:second.line_start]
+        return (first.macro == second.macro == "slidestep" and first.id_slug == second.id_slug == call.id_slug
+                and all(_BLANK_OR_COMMENT_RE.match(line) for line in between.split("\n")))
+
+    low = index
+    while low > 0 and joined(calls[low - 1], calls[low]):
+        low -= 1
+    high = index
+    while high + 1 < len(calls) and joined(calls[high], calls[high + 1]):
+        high += 1
+    return calls[low:high + 1]
+
+
+def step_edit_problem(call: SlideCall, view: str) -> Optional[str]:
+    r"""Why the steps of `call` cannot be changed for `view` from the step bar, or None when they can."""
+    if not call.editable:
+        return call.readonly_reason or "This call cannot be edited."
+    if call.macro not in STEP_EDIT_MACROS:
+        return f"\\{call.macro} has no steps to choose (it loads a pinned version or is an instructor-only slide)."
+    if not call.included_in(view):
+        return "The deck does not typeset this call in this version (the visibility matrix changes that)."
+    if call.macro == "conditionalslide" and any(not call.included_in(v) for v in VIEWS):
+        return ("Changing steps of a \\conditionalslide that is not in every version would change the frame "
+                "numbers of the others: use Call as \u2192 Reveal steps in the slide list first.")
+    return None
+
+
+def steps_edit(text: str, calls: list[SlideCall], call: SlideCall, view: str, steps, n_by_view: dict[str, int],
+               final_flag: bool = False) -> str:
+    r"""`text` (the deck) with the steps `view` typesets of `call`'s place set to `steps` (numbers in 1..n of that
+    view's own numbering). Only the calls that must change are rewritten: a call that served only `view` gets its
+    `{steps}`; one shared with other versions is split (the others keep their text, a new \slidestep for `view`
+    follows); a plain \slide becomes \slidestep calls; calls with the same steps merge; when every version
+    typesets every step again the place is a plain \slide. `n_by_view`: the number of steps of every version the
+    place serves; `final_flag`: the slide has \SMFinalStateForStudents (students then see only the last step)."""
+    block = step_block(text, calls, call)
+    problem = step_edit_problem(next((c for c in block if c.included_in(view)), call), view)
+    if problem is not None:
+        raise ValueError(problem)
+    versions = [v for v in VIEWS if any(c.included_in(v) for c in block)]
+    uncounted = [v for v in versions if not n_by_view.get(v)]
+    if uncounted:
+        raise ValueError(f"The steps of {', '.join(uncounted)} are not counted yet.")
+    owner = {v: next(c for c in block if c.included_in(v)) for v in versions}
+    current: dict[str, frozenset[int]] = {}
+    for v in versions:
+        n = n_by_view[v]
+        if owner[v].macro == "slidestep":
+            current[v] = expand_steps(owner[v].steps, n)
+        elif final_flag and v != VIEW_INSTRUCTOR:
+            current[v] = frozenset({n})
+        else:
+            current[v] = _full(n)
+    new = frozenset(step for step in steps if 1 <= step <= n_by_view[view])
+    if not new:
+        raise ValueError("A version must keep at least one step (hide the slide in the visibility matrix instead).")
+    if new == current[view]:
+        return text
+    state = dict(current)
+    state[view] = new
+
+    def spec_of(v: str) -> str:
+        n, c = n_by_view[v], owner[v]
+        if v != view and c.macro == "slidestep":
+            return re.sub(r"\s+", "", c.steps or DEFAULT_STEPS)            # untouched: its own text
+        if state[v] == _full(n):
+            return FULL_STEPS
+        return format_steps(state[v], n, like=c.steps if c.macro == "slidestep" else None)
+
+    groups: dict[str, list[str]] = {}
+    for v in versions:
+        groups.setdefault(spec_of(v), []).append(v)
+    everything_full = all(state[v] == _full(n_by_view[v]) for v in versions)
+    revert = len(groups) == 1 and everything_full and versions == list(VIEWS)
+    tokens = ([format_call("slide", call.id_slug)] if revert else
+              [format_call("slidestep", call.id_slug, None, vs, spec) for spec, vs in groups.items()])
+    # Calls that already say exactly this stay as they are.
+    kept: dict[int, str] = {}
+    pending = list(tokens)
+    if not revert:
+        for c in block:
+            for token in list(pending):
+                if c.macro == "slidestep" and token == format_call("slidestep", c.id_slug, None, [
+                        v for v in VIEWS if c.included_in(v)], re.sub(r"\s+", "", c.steps or DEFAULT_STEPS)):
+                    kept[c.call_start] = token
+                    pending.remove(token)
+                    break
+    newline = "\r\n" if "\r\n" in text else "\n"
+    pieces: list[str] = [text[:block[0].line_start]]
+    position = block[0].line_start
+    placed = False
+    for c in block:
+        pieces.append(text[position:c.line_start])
+        line = text[c.line_start:c.line_end]
+        if c.call_start in kept:
+            pieces.append(line)
+        elif not placed:
+            placed = True
+            first, rest = (pending[0], pending[1:]) if pending else (None, [])
+            if first is not None:                     # (else nothing is left to say here: the call goes)
+                pieces.append(line[:c.call_start - c.line_start] + first + line[c.call_end - c.line_start:])
+                if rest and not line.endswith("\n"):
+                    pieces.append(newline)
+                for token in rest:
+                    pieces.append(c.indent + token + newline)
+        position = c.line_end
+    pieces.append(text[position:])
+    if not placed:
+        # every old call was kept: nothing to rewrite (the groups equal what is there)
+        return text
+    return "".join(pieces)
+
+
+def set_steps_for_version(deck_path: Path, expected_text: str, calls: list[SlideCall], call: SlideCall, view: str,
+                          steps, n_by_view: dict[str, int], final_flag: bool = False) -> str:
+    r"""steps_edit() as one stale-checked edit of the deck file; returns the new deck text."""
+    return apply(deck_path, expected_text,
+                 lambda text: steps_edit(text, calls, call, view, steps, n_by_view, final_flag))
 
 
 def _section_title(title: str) -> str:

@@ -52,7 +52,7 @@ from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
-from . import side_panels, slide_list
+from . import compile_actions, side_panels, slide_list
 from .actions import build_registry
 from .ai_fix import AiFixPanel
 from .ai_route import AiRoute
@@ -176,6 +176,8 @@ class WorkspaceWindow(QMainWindow):
         # launch, and deliberately not a launch-time *write* to media/alt-text.json.
         self.stack = _CurrentPageStack()
         self.centre = CentreColumn(self, self.state)
+        self.centre.preview.edit_deck = self.slide_list.edit       # the ticks of the Preview's step bar edit the deck
+        self.centre.preview.compile_requested.connect(lambda view: compile_actions.compile_current(self, view))
         self.centre.duplicate_requested.connect(lambda id_slug: self.slide_list.add_slide("duplicate", id_slug))
         self.stack.addWidget(self.centre)
         self.images_page = ImagesPage(self, self.state, self.centre)

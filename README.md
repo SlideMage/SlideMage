@@ -3005,6 +3005,51 @@ preamble are serialized; each caller gets its own temporary PDF. Failed edits
 never return a previously successful PDF. “Remove temp files” clears these
 builds and their `_slidemage_preview-*` wrappers.
 
+**Reveal steps in the Preview.** A slide with reveal steps (overlays) gets a step bar under its page: a slider
+with one tick per step, ‹ › buttons, Alt+← / Alt+→ and, with the bar focused, the arrow keys, Home and End. A slide
+opens on its last step. The ticks show what the selected deck call includes in the view being edited: filled for
+a step the call typesets, hollow for one it leaves out (a `\slidestep` call's `steps`, or the last step only for a
+student version of a slide with `\SMFinalStateForStudents`), crossed for one the slide's own `\begin{frame}<spec>`
+drops. **Deck steps only** narrows the slider to the included steps. Ticks with dashed outlines come from the
+editor buffer, not the saved file. The chevron at the right expands the bar into one timeline per deck version
+(Instructor, During course, After course); a slide that uses `\conditionalpause` or the `\deck...` macros can have
+a different number of steps in each version, so every timeline is numbered by its own version, exactly as a
+`\slidestep` call's steps are. The steps come from one extra render that keeps every overlay; SlideMage makes it
+in the background while the Preview is idle (also for the slides next to the selected one) and never while you
+render yourself.
+
+In the expanded bar a click on a tick of a version's timeline adds that step to, or takes it from, what that
+version typesets at the selected place of the open deck. SlideMage rewrites the deck's `\slidestep` calls for
+it: a call that served only that version gets its `steps` changed; a call shared with other versions is split
+(the others keep their text, a new `\slidestep` for the version follows); a plain `\slide` becomes `\slidestep`
+calls, one per different set of steps; calls that say the same merge; when every version typesets every step
+again the place is a plain `\slide` once more. Each click is one Undo step of the slide list. A version must keep
+at least one step (hide the slide in the Details' visibility matrix instead). Not editable, with the reason
+shown: pinned versions, `\slidefinal` and `\omitslide`; a `\conditionalslide` that is not in every version
+(use **Call as → Reveal steps…** first: a `\slidestep` does not step the frame counter in versions it does not
+typeset, so converting it silently would renumber the others); slides whose own raw `\begin{frame}<spec>` decides
+the steps; and renders of the editor buffer (save first). Slides that use `\conditionalpause` or the `\deck...`
+macros are editable with a note that step numbers are per version. A student version of a slide with
+`\SMFinalStateForStudents` starts with only its last step ticked; the first edit writes explicit `\slidestep`
+calls, which override the flag. Once no deck needs the flag any longer (every call of the slide in every deck,
+archived ones too, is a `\slidestep` for the student versions it typesets, is not typeset in them, or pins a frozen
+file), SlideMage takes `\SMFinalStateForStudents` out of the slide file on its own, with no new version, no "+"
+and no frozen file, and the same Undo puts it back.
+
+**Slides that need the deck around them.** A slide whose own text shows something that only exists in a whole deck
+(`\tableofcontents`, `\SMDeckAgenda`, `\SMChapterAgenda`, `\insertsection...`, `\secname`, `\insertframenumber` in its
+body, `\ref`, `\pageref`, `\hyperlink`, a `sectionframe`) is typeset with its deck around it, and a chip above the
+page says how. **In the deck's context**: SlideMage ran a page compile of that slide on top of the auxiliary files of
+the last whole-deck compile of that version (the ones kept under `.build/compile-records/<deck>-<version>/`, which
+*Remove temp files* leaves alone and which survive closing the app), so the contents, agendas, section, numbers and
+links are the real ones; it needs that compile and a deck unchanged before the slide, as the page compile of the
+Compile menu does. **Rendered without the deck**: with no usable compile, the slide is typeset with the deck's
+`\section` and `\subsection` commands before it and after it (so a contents slide lists every section) and an
+agenda record for every other slide of the version, with its title read from the slide file (for a title built from
+a macro the slide defines itself, the one the last compile recorded). Section page numbers are not the real ones
+then. The chip offers to compile the deck, and a render after that is in the deck's context. A render without the
+deck never replaces the slide's cached picture; only one in the deck does.
+
 The Source view's **Render** menu also offers **Selection as frame** (a complete
 frame, or self-contained text wrapped in a frame) and **Selection as element**
 (a cropped formula, graphic or text fragment using `preview.sty`). Select the
