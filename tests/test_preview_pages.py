@@ -41,7 +41,8 @@ def test_reopening_and_identical_pdf_path_reuse_pages(pdf, tmp_path):
 def test_corrupt_pages_raster_again_and_same_stat_edit_misses(pdf, tmp_path):
     path, calls = pdf
     first = preview_pages.read_document(path, project_root=tmp_path)
-    cache = next((tmp_path / '.previews' / 'page-images').glob('*.json'))
+    from slidemage.project import preview_cache_dir
+    cache = next((preview_cache_dir(tmp_path) / 'page-images').glob('*.json'))
     data = json.loads(cache.read_text())
     data['images'][0] = data['images'][1]
     cache.write_text(json.dumps(data))

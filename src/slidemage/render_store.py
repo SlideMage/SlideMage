@@ -392,5 +392,4 @@ class RenderStore:
 
 
 def project_id(root: Path) -> str:
-    import hashlib
-    return hashlib.sha256(os.path.normcase(os.path.normpath(str(root.resolve()))).encode()).hexdigest()[:16]
+    return project.project_id(root)

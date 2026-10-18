@@ -2420,3 +2420,8 @@ v8.27.1 (2026-10-18, owner reports: "The previews indicator overlaps the slide i
 NEW: The background-render status no longer covers the slide id, and the reveal-step bar shows up at once.
 - The background-render dial and its status sit in their own row under the slide, so they never cover the slide id or the editor.
 - For a slide with reveal steps the step bar appears straight away and says "Counting reveal steps…" until the steps are known.
+
+v8.27.2 (2026-10-18, owner decision: move the preview cache of the ui-redesign work out of the synced project folder): the completed-render cache (preview_cache.PreviewCache: rendered PDFs, their images and records) and the page-image cache (preview_pages) live in this computer's cache folder, project.preview_cache_dir(root) = project.cache_dir()/preview-cache/<project id>/render-results and /page-images, not in the project's .previews/ (which a synced project folder such as a cloud drive carried along). An earlier copy in .previews/render-results is deleted when the cache opens; it is only a cache. project.project_id(root) is shared with the background renders' store (render_store.project_id). The slide snapshots in .previews/slide_previews stay where they are. Tests in tests/test_preview_requests.py and tests/test_preview_pages.py.
+
+NEW: Preview caches stay on your computer.
+- Rendered previews are cached in SlideMage's own folder on this computer, so a project in a cloud folder no longer syncs them.

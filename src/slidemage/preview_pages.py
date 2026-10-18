@@ -53,7 +53,8 @@ def read_document(pdf: Path, *, project_root: Path, start=1, count=60, dpi=130) 
         renderer = f'bundled-{VERSION_NUMBER}'
     identity = dict(schema=SCHEMA, pdf=checksum, renderer=renderer,
                     start=start, count=count, dpi=dpi)
-    root = Path(project_root) / '.previews' / 'page-images'
+    from .project import preview_cache_dir
+    root = preview_cache_dir(Path(project_root)) / 'page-images'     # this computer's, not the synced project's
     key = digest(identity)
     path = root / f'{key}.json'
 

@@ -285,7 +285,12 @@ class ValidationPass:
 class PreviewCache:
     def __init__(self, project_root: Path):
         self.project_root = project_root.resolve()
-        self.root = self.project_root / '.previews' / 'render-results'
+        from .project import preview_cache_dir
+        self.root = preview_cache_dir(self.project_root) / 'render-results'
+        # An earlier build kept this cache inside the project (synced along with it): it is only a cache.
+        old = self.project_root / '.previews' / 'render-results'
+        if old.is_dir():
+            shutil.rmtree(old, ignore_errors=True)
         self._thumbnail_original = {}
 
     def canonical_image_id(self, path: Path) -> str:

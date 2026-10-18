@@ -197,7 +197,8 @@ def test_completed_service_cache_survives_restart_and_validates_content(tmp_path
     first = request(first_service, stamp='2026-10-15 10:00:00')
     assert first.preview_result.status == 'rendered'
     assert first.preview_result.dependencies == (theme, source)
-    assert first.result[0].is_relative_to(root / '.previews')
+    from slidemage.project import preview_cache_dir
+    assert first.result[0].is_relative_to(preview_cache_dir(root)) and not (root / '.previews' / 'render-results').exists()
     # Immutable result records keep their PDF alive after the future is released.
     import gc
     from slidemage.preview_cache import PreviewCache

@@ -120,6 +120,18 @@ def config_dir() -> Path:
     return base / "slidemage"
 
 
+def project_id(root: Path) -> str:
+    """A short, stable name for the project folder `root` on this computer (its normalised path, hashed)."""
+    import hashlib
+    return hashlib.sha256(os.path.normcase(os.path.normpath(str(Path(root).resolve()))).encode()).hexdigest()[:16]
+
+
+def preview_cache_dir(root: Path) -> Path:
+    """This computer's rebuildable preview caches for the project at `root` (rendered PDFs and their page images):
+    outside the project, so a synced project folder never carries them."""
+    return cache_dir() / "preview-cache" / project_id(root)
+
+
 def cache_dir() -> Path:
     """Where this machine keeps what can be rebuilt (not roaming, never synced): the background renders' index."""
     if sys.platform == "win32":
