@@ -61,7 +61,9 @@ def test_mixed_cached_failed_hidden_batch_keeps_order(tmp_path):
     assert published == ['instructor']
     assert results[0].display_png == b'image' and results[1].error == 'bad TeX'
     assert len({r.options.render_stamp for r in service.calls}) == 1
-    assert [e.status for e in events] == ['rendering', 'cached', 'rendering', 'failed', 'hidden']
+    # the views render at once: their events interleave, but each view starts before it ends, and `done` counts up
+    assert sorted(e.status for e in events) == sorted(['rendering', 'cached', 'rendering', 'failed', 'hidden'])
+    assert [e.done for e in events if e.status != 'rendering'] == [1, 2, 3]
 
 
 def test_stop_retains_completed_result_and_cancels_remaining(tmp_path):

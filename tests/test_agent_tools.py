@@ -493,7 +493,8 @@ def fake_render(monkeypatch, root, fail=None):
         seen.append((target.id_slug, target.frame_number, view, language, kwargs.get("capture_snapshot", True)))
         if fail:
             raise RuntimeError(fail)
-        folder = root / f"slidemage_preview_{target.bare_id}"
+        # one folder per render, as a real render has (the service deletes it afterwards; views render at once)
+        folder = root / f"slidemage_preview_{target.bare_id}_{view}_{len(seen)}"
         folder.mkdir(exist_ok=True)
         pdf = folder / "x.pdf"
         with pymupdf.open() as doc:
@@ -710,7 +711,7 @@ def test_render_preview_default_is_selected_view_and_refresh_default_is_all_view
     assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE).exists()
     result = box.ok('refresh_preview')
     assert all(f'{view}, EN' in result for view in ('instructor', 'during-course', 'after-course'))
-    assert [row[2] for row in seen[-3:]] == ['instructor', 'during-course', 'after-course']
+    assert sorted(row[2] for row in seen[-3:]) == sorted(['instructor', 'during-course', 'after-course'])     # the views render at once, in any order
     assert slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE, id_slug='abc-EN-Hello').exists()
     assert box.ws.context().view == 'during-course'
 
@@ -729,7 +730,7 @@ def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root
     monkeypatch.setattr(preview_target, 'render_text', capture)
     result = box.run('refresh_preview', **args)
     assert not result.is_error and result.images == []
-    assert [row[2] for row in seen] == ['instructor', 'during-course', 'after-course']
+    assert sorted(row[2] for row in seen) == sorted(['instructor', 'during-course', 'after-course'])          # the views render at once, in any order
     assert all(text == (root / SLIDE).read_text() for text in captures)
     assert 'saved source' in result.text and 'cached for after-course' in result.text
 

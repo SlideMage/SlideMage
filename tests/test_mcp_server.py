@@ -352,7 +352,7 @@ def test_claude_refresh_without_view_populates_every_course_view(mcp_tools, monk
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'PNG', b'PNG'), ()))
     response = client.call('refresh_preview')
     assert not response['isError']
-    assert seen == ['instructor', 'during-course', 'after-course']
+    assert sorted(seen) == sorted(['instructor', 'during-course', 'after-course'])                            # the views render at once, in any order
     assert len(response['content']) == 1  # refresh reports statuses; render_preview returns images
     text = response['content'][0]['text']
     assert all(f'abc: {view}, EN: rendered' in text for view in seen)
