@@ -387,7 +387,7 @@ class BackgroundPreviews(QObject):
         progress = renderer.progress
         left = progress.left
         if left > 0:
-            if progress.working is not None:
+            if renderer.sweeping():
                 return f"Preparing previews · {left} left", "info"
             reason = progress.paused_because
             return (f"Previews paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
@@ -409,7 +409,7 @@ class BackgroundPreviews(QObject):
             lines.append(f"{progress.left} outstanding, most recently used decks first, instructor version first.")
         if progress.failures:
             lines.append(f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered.")
-        if progress.working is not None:
+        if renderer.sweeping():
             lines.append("Rendering now.")
         elif progress.left and progress.paused_because:
             lines.append(f"Waiting: {progress.paused_because}.")
@@ -420,7 +420,7 @@ class BackgroundPreviews(QObject):
 
     def dial_state(self) -> str:
         progress = self.renderer.progress
-        if progress.working is not None:
+        if self.renderer.sweeping():
             return "working"
         if progress.left == 0:
             return "failed" if progress.failures else "done"

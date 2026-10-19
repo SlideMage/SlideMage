@@ -118,7 +118,7 @@ def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, 
     window = build_window(monkeypatch)
     assert window.slide_list.deck is WORK
     assert window.stack.currentWidget() is window.centre
-    assert "Double-click" in window.centre.preview._page.message
+    assert "Click" in window.centre.preview._page.message
     window.state.set_deck(COURSE)
     assert window.slide_list.deck is COURSE
     decks[:] = [WORK]                                               # course archived or removed

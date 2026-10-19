@@ -48,6 +48,10 @@ class IdleGate:
     def note_input(self) -> None:
         self.last_input = self._clock()
 
+    def sweeping(self) -> bool:
+        """Rendering is under way: a job started less than SWEEP_SECONDS ago."""
+        return self._clock() < self.sweep_until
+
     def note_started(self) -> None:
         """A background job starts: rendering is under way, the idle and CPU rules wait until it stops."""
         self.sweep_until = self._clock() + SWEEP_SECONDS

@@ -25,6 +25,7 @@ import tempfile
 import threading
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
@@ -416,7 +417,9 @@ def confirm_safe_update(window, release: updater.Release) -> bool:
 
 def download_and_install_update(window, release: updater.Release) -> None:
     executable = Path(sys.executable)
-    binary_name = updater.ASSETS[sys.platform][1]
+    binary_name = updater.asset_names()[1]
+    folder_build = updater.install_flavour() == updater.FOLDER
+    staging: Optional[Path] = None
     progress = QProgressDialog(
         f"Downloading SlideMage {release.tag}…", "Cancel", 0, 0, window)
     progress.setWindowTitle("Updating SlideMage")
@@ -438,7 +441,10 @@ def download_and_install_update(window, release: updater.Release) -> None:
             progress.setLabelText("Installing…")
             progress.setCancelButton(None)
             QApplication.processEvents()
-            updater.install_zip(zip_path, executable, binary_name)
+            if folder_build:
+                staging = updater.stage_folder_update(zip_path, executable.parent, binary_name)
+            else:
+                updater.install_zip(zip_path, executable, binary_name)
         except updater.UpdateError as exc:
             progress.close()
             QMessageBox.warning(window, "Update failed", str(exc))
@@ -447,20 +453,33 @@ def download_and_install_update(window, release: updater.Release) -> None:
 
     reply = QMessageBox.question(
         window, "Update installed",
-        f"SlideMage {release.tag} is installed in {executable.parent}.\n\n"
-        "Restart now to use it?",
+        f"SlideMage {release.tag} is {'ready to be installed in' if folder_build else 'installed in'} "
+        f"{executable.parent}.\n\n"
+        + ("Restart now to install and use it? (Otherwise it is installed when you close SlideMage.)"
+           if folder_build else "Restart now to use it?"),
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.Yes,
     )
-    if reply != QMessageBox.StandardButton.Yes:
-        return
-    if window.compiling:
+    restart = reply == QMessageBox.StandardButton.Yes
+    if restart and window.compiling:
         QMessageBox.information(
             window, "Update installed",
             "A compile run is in progress -- restart SlideMage once it finishes.",
         )
+        restart = False
+    if folder_build and staging is not None:
+        # The helper swaps the folders once this process has ended, and starts the new version when asked to.
+        try:
+            updater.spawn_folder_swap(executable.parent, staging, binary_name,
+                                      ["--project", str(window.project.root)] if restart else None)
+        except updater.UpdateError as exc:
+            QMessageBox.warning(window, "Update failed", str(exc))
+            return
+        if restart:
+            window.restart_after_update()
         return
-    window.relaunch_with_project(window.project.root)
+    if restart:
+        window.relaunch_with_project(window.project.root)
 
 
 def housekeeping_sheet(window, page: int = LIST_PAGE) -> HousekeepingSheet:

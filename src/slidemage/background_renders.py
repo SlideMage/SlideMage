@@ -223,6 +223,15 @@ class BackgroundRenderer:
         """Something that decides what is outstanding changed (a deck opened, a setting): look again soon."""
         self._replan.set()
 
+    def sweeping(self) -> bool:
+        """The sweep is at work: a job runs, or it is between two jobs (the rest after one, the next being queued)
+        and nothing holds it back. The status chip shows that as one piece of work, not a flicker of "preparing" and
+        "waiting"."""
+        progress = self.progress
+        if progress.working is not None:
+            return True
+        return progress.left > 0 and not progress.paused_because and self.gate.sweeping()
+
     def user_active(self) -> None:
         """The user did something: no new background job starts for a while. Nothing running is stopped."""
         self.gate.note_input()

@@ -522,7 +522,7 @@ def test_details_follow_the_focused_slide(centre):
     assert "Visibility in this deck" not in texts and "Versions" not in texts   # side panels now
     state.set_focused_slide(None)
     assert [label.text() for label in centre.details.findChildren(QLabel)] == [
-        "Select a slide in the list. Double-click it to open its source."]
+        "Select a slide in the list. Click it to open its source."]
     centre.state.deck.path.write_text(DECK, encoding="utf-8")
     centre.open_file(centre.state.deck.path)
     state.set_mode("details")

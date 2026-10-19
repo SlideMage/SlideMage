@@ -953,3 +953,17 @@ def test_async_thumbnail_rejects_same_mtime_external_source_edit(make_list, monk
         time.sleep(.01)
     assert calls == ['FIRST', 'OTHER']
     assert item_of(listing, 'abc').data(0, Qt.ItemDataRole.UserRole).thumbnail_note == 'OTHER'
+
+
+def test_a_single_click_opens_a_slide_but_a_click_with_ctrl_only_selects(make_list):
+    slide_list, window, _path = make_list("\\slide{aaa-One}\n\\slide{bbb-Two}\n")
+    slide_list.tree.itemClicked.emit(item_of(slide_list, "aaa"), 0)
+    assert [p.name for p in window.opened] == ["aaa-One-current.tex"]
+    from PySide6.QtGui import QGuiApplication
+    original = QGuiApplication.keyboardModifiers
+    QGuiApplication.keyboardModifiers = staticmethod(lambda: Qt.KeyboardModifier.ControlModifier)
+    try:
+        slide_list.tree.itemClicked.emit(item_of(slide_list, "bbb"), 0)
+    finally:
+        QGuiApplication.keyboardModifiers = original
+    assert [p.name for p in window.opened] == ["aaa-One-current.tex"]

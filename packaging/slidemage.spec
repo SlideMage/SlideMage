@@ -1,8 +1,8 @@
-# Build a one-file SlideMage executable, for whichever OS this actually
+# Build SlideMage as a one-file executable and as a folder, for whichever OS this actually
 # runs on -- PyInstaller never cross-compiles. From the repo root, with
 # pyinstaller installed (pip install -e ".[build]"):
 #     pyinstaller packaging/slidemage.spec
-# Output lands in dist/SlideMage(.exe). The exe finds its project via
+# Output lands in dist/SlideMage(.exe) and dist/SlideMage-folder/. The exe finds its project via
 # --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
 # last project opened, or a folder picker.
 import sys
@@ -110,4 +110,25 @@ exe = EXE(
     name="SlideMage",
     console=False,
     icon=icon,
+)
+
+# The same program as a folder (dist/SlideMage-folder/: SlideMage[.exe] and _internal/). It does not unpack itself
+# at every start, so it starts in about a quarter of the time (v8.33.0); the release publishes both and an
+# installation updates itself with the build it is (updater.install_flavour()).
+folder_exe = EXE(
+    pyz,
+    a.scripts,
+    *([splash] if splash_parts else []),
+    [],
+    exclude_binaries=True,
+    name="SlideMage",
+    console=False,
+    icon=icon,
+)
+folder = COLLECT(
+    folder_exe,
+    a.binaries,
+    a.datas,
+    *([splash.binaries] if splash_parts else []),
+    name="SlideMage-folder",
 )

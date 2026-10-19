@@ -288,3 +288,17 @@ def test_the_status_window_lists_every_deck_with_its_versions_and_state(window):
     assert controller.renderer.gate.paused and dialog.pause.text() == "Resume"
     dialog.reject()
 
+
+
+def test_the_chip_stays_blue_between_two_jobs_of_one_sweep(window):
+    controller = window.background
+    renderer = controller.renderer
+    renderer.progress = Progress([DeckProgress("a", total=10, fresh=4)], scanned_at=1.0)
+    assert controller.summary() == ("Previews · 6 left", "muted")          # nothing has started
+    renderer.gate.note_started()                                           # a job started a moment ago ...
+    assert renderer.progress.working is None                               # ... and has ended, the next is not yet running
+    assert controller.summary() == ("Preparing previews · 6 left", "info")
+    assert controller.dial_state() == "working"
+    renderer.progress.paused_because = "waiting for a compile"             # something holds it back: now it is waiting
+    assert controller.summary() == ("Previews paused (waiting for a compile) · 6 left", "muted")
+    assert controller.dial_state() == "waiting"

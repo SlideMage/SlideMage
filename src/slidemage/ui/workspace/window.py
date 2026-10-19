@@ -126,6 +126,8 @@ class WorkspaceWindow(QMainWindow):
         self.setMinimumSize(1024, 640)
         if updater.can_self_update():
             updater.remove_leftover_binary(Path(sys.executable))
+            if updater.install_flavour() == updater.FOLDER:
+                updater.remove_leftover_folder(Path(sys.executable).parent)
 
         # Open Project... relaunches the process only after the same dirty
         # editor resolution used by closeEvent. That path has already
@@ -573,6 +575,17 @@ class WorkspaceWindow(QMainWindow):
         project.relaunch_with_project(root)
         self._dirty_edits_resolved_for_close = True
         self.close()
+
+    def restart_after_update(self) -> bool:
+        """Close this window so that the update helper (updater.spawn_folder_swap), already started, can install the
+        new version and start it; False when the user keeps their unsaved edits (the helper then waits for the
+        next time SlideMage ends and starts nothing)."""
+        if not self._resolve_dirty_edits():
+            return False
+        project.save_last_project(self.project.root)
+        self._dirty_edits_resolved_for_close = True
+        self.close()
+        return True
 
     def _on_import_presentation(self) -> None:
         ImportPresentationSheet(self, self.state.deck).exec()

@@ -25,7 +25,7 @@ from typing import Callable, Optional
 import weakref
 
 from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
@@ -118,6 +118,7 @@ class SlideList(QWidget):
         self.tree = SlideTree(theme, state)
         self.tree.currentItemChanged.connect(self._on_current_changed)
         self.tree.itemSelectionChanged.connect(self._on_selection_changed)
+        self.tree.itemClicked.connect(self._on_item_clicked)
         self.tree.itemDoubleClicked.connect(lambda item, _col: self._open_item(item))
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
         self.tree.command.connect(self._on_command)
@@ -544,6 +545,14 @@ class SlideList(QWidget):
             self.tree.rename(self.tree.currentItem())
         elif command in ("move_up", "move_down"):
             self._step(-1 if command == "move_up" else 1)
+
+    def _on_item_clicked(self, item: Optional[QTreeWidgetItem], _column: int = 0) -> None:
+        """A plain click on a slide opens it (a click with Ctrl or Shift is part of choosing several slides; a section
+        marker keeps its double click)."""
+        if QGuiApplication.keyboardModifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
+            return
+        if isinstance(self.tree.data_of(item), SlideRow):
+            self._open_item(item)
 
     def _open_item(self, item: Optional[QTreeWidgetItem]) -> None:
         row = self.tree.data_of(item)

@@ -99,17 +99,22 @@ jobs:
             "${{ matrix.binary_path }}" \
             src/slidemage/assets/icon.svg \
             packaging/slidemage.desktop.template
+          # The folder build: a zip with one top-level folder, which the updater of a folder installation unpacks.
+          python -c "import shutil; shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path out | Out-Null
           Compress-Archive -Path "${{ matrix.binary_path }}" -DestinationPath "out/${{ matrix.asset_name }}.zip"
+          python -c "import shutil; shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          files: out/${{ matrix.asset_name }}.zip
+          files: |
+            out/${{ matrix.asset_name }}.zip
+            out/${{ matrix.asset_name }}-folder.zip
           fail_on_unmatched_files: true
           body_path: release_notes.md
           # release_notes.py writes the changelog link itself, under a
