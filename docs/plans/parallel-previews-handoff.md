@@ -124,6 +124,38 @@ All three steps done on `feat/parallel-previews` (nothing pushed or merged):
 - Side findings: example slide `neg-EN-Installing-LaTeX-Linux` fails to render (`\faLinux` undefined; also on old
   code). Raster pool (4 children) is not a bottleneck (3.4 s summed for 17 slides).
 
+## State when the owner said "stop here and write a handoff" (2026-10-20, ~00:15)
+
+Owner's prompt, verbatim: **"Actually, stop here and write a handoff."**
+
+- Branch `feat/parallel-previews`, HEAD **9e4eab0** (v8.36.0 plus a fix found by the full suite), then this file.
+  Nothing pushed, merged or tagged. Working tree clean after this commit.
+- The full suite on 1e0b2c8 had **2 failures**, both fixed in 9e4eab0:
+  1. `test_release_notes.py::test_current_release_has_a_new_paragraph`: the CHANGELOG paragraph started "FIXED:"; only
+     "NEW:" is parsed (`version.NEW_PREFIX`). Changed to "NEW:".
+  2. `test_background_renders.py::test_a_real_background_render_...matches_the_foreground_render` (fails only when the
+     whole file runs; new in v8.36.0): with the format, a citation-free slide can finish without biber; latexmk then
+     records the bibliography as a missing source (`"Slidemaster.bib" 0 -1 0 ""` in .fdb_latexmk); `recorded_inputs`
+     made it `decks/Slidemaster.bib` (nonexistent) -> manifest unstable -> render never FRESH. Fix: database entries
+     with size -1 are skipped (`preview_build.recorded_inputs`); test case added in `tests/test_preview_dependencies.py`.
+     The affected files pass (55 tests: preview_dependencies, background_renders, preview_build, release_notes).
+- **Open, interrupted:** the full suite on 9e4eab0 and the exe build of 9e4eab0 were started and then **stopped** at
+  the owner's request. Next session: run the full suite on 9e4eab0 (expect green apart from the known intermittent
+  `test_chat_gui.py::test_create_slide_shows_its_returned_preview_in_the_real_window`), then build 9e4eab0, smoke-test,
+  replace `dist\SlideMage-folder` while no SlideMage runs.
+- **The owner's app right now:** `dist\SlideMage-folder` = the v8.36.0 build of **1e0b2c8** (smoke-tested: window
+  "SlideMage — v8.36.0"; it LACKS the 9e4eab0 fix, so background previews of citation-free slides may stay "outdated"
+  in the store). Backups: `dist\SlideMage-folder.v8.34.0.bak`, `dist\SlideMage-folder.v8.33.0.bak`.
+  `C:\smrc\src` is checked out at 9e4eab0; `C:\smrc\dist836` holds the 1e0b2c8 build.
+- Still unanswered from before: repoint the Start-menu shortcut to `dist\SlideMage-folder\SlideMage.exe`? (only on yes)
+- Decisions for the owner: 2b (LuaLaTeX directly, with Jürgen) and 2a (skip biber), see above; merging the branch
+  into develop; telling Jürgen that the precompiled preamble now works on Windows (his module `preview_format`
+  changed: `fmt_option`, forward slashes, fontspec reload, SCHEMA 4, shared-lock freshness check, race guard).
+- Scratch tools in `C:\smrc`: `bench_deck_par.py` (WARM_FORMAT=1 prebuilds the format), `batch_trace.py` (timeline,
+  lock waits, stack samples), `split_time.py` / `pass_replay.py` (one render's passes), `fmt_pixels.py` (format vs
+  full preamble, pixel compare), `tex_scale.py` (N bare LuaLaTeX at once; reproduces the font-cache race at 24),
+  `bib_compare.py` (-bibtex- experiment), `cpu_top2.ps1` (CPU sampling with an extra argument).
+
 ## Working rules (from memory and this session)
 - Tests: `PYTHONPATH=src QT_QPA_PLATFORM=offscreen C:/smrc/v/Scripts/python.exe -m pytest -q -p no:cacheprovider`
   from `D:\uniCLOUD\SlideMage` (full suite ~18 min; run in background; `-o faulthandler_timeout=180` to catch hangs).
