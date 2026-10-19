@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The compatibility change "bibliography-in-template": decks that carry their
 own copy of the house citation format move to SMUseBibliography, and the
 format goes into the deck's template file."""

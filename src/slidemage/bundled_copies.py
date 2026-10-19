@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keep a project's copies of the framework and of the SlideMage manual up to
 date with the ones this SlideMage carries (2026-10-05, direct instruction: "can
 SlideMage be made to show the user an info dialog when the manual has changed,

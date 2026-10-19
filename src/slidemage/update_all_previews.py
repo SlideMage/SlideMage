@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """"Update previews": regenerate every slide's compile-time preview
 snapshot (slide_snapshot.py) so it matches what every deck in the project
 actually needs, and delete whatever's cached that no deck needs any more.
@@ -50,7 +52,7 @@ JOBNAME_PREFIX = "preview_all_"
 
 # Matches a cached snapshot's own filename (slide_snapshot.snapshot_path):
 # "<bare id>-<TemplateDisplayName>-<width>-<height>.png", e.g.
-# "22s-UniGraz-1920-1080.png" (bare id first since 2026-08-17, direct
+# "22s-<Template>-1920-1080.png" (bare id first since 2026-08-17, direct
 # instruction: "shift the three-letter slug to the front of the filename
 # to facilitate searching" -- was "<TemplateDisplayName>-<bare id>-..."
 # before that). A bare slide id can never itself contain "-" (\setSlideID
@@ -61,7 +63,7 @@ JOBNAME_PREFIX = "preview_all_"
 # a stray file this module didn't itself produce.
 _SNAPSHOT_FILENAME_RE = re.compile(
     r"^(?P<bare_id>[^-]+)(?:-(?:EN|DE|mult))?-(?P<template_name>" +
-    "|".join(re.escape(name) for name in slide_snapshot.TEMPLATES.values()) +
+    r"[A-Za-z0-9_]+" +
     r")-\d+-\d+\.png$"
 )
 # The optional (?:-(?:EN|DE|mult))? group above (2026-08-24) recognizes
@@ -240,7 +242,7 @@ def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelTo
         template_name = slide_snapshot.TEMPLATES.get(template, template)
         if not slide_ids:
             # A real, if unusual, case -- e.g. this project's own
-            # test-ibk.tex/test-mci.tex \input{} a shared test-slides
+            # a project's test decks \input{} a shared test-slides
             # fragment rather than calling \slide{} directly, so they
             # detect a template with nothing of their own to compile.
             # Still counts toward _prune_stale_snapshots() below (an

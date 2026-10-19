@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Stand-ins for the agent tests: a workspace with editor buffers and a scripted model."""
 from __future__ import annotations
 

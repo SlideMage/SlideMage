@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Find and Replace behavior in the shared source editor."""
 from __future__ import annotations
 

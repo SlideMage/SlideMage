@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Maintain each slides/*-current.tex file's own "Included in decks: ..."
 header comment, from what actually \\slide{}s/\\slidefinal{}s/\\slideversion{}s/
 \\omitslide{}s/\\omitslideversion{}s it across every decks/*.tex file.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Putting a file the user brings (paperclip, drop, pasted image) into the project, for the Chat and the
 Claude Code terminal alike: a file inside the project stays where it is, any other is copied into sources/."""
 from __future__ import annotations

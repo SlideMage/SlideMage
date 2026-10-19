@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Claude Code tasks (ai/claude_tasks.py): the request text, and the check that decides whether an answer
 may be applied: well formed, every edit's `before` found exactly once, protected parts of the slide unchanged,
 no lint error the captured text did not have."""

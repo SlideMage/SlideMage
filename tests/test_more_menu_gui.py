@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The ⋮ menu: one popover in two columns and a footer (menus.py, PopoverMenu's columns layout),
 what it lists, its keyboard and that everything left out of it is still a ⌘K command."""
 from __future__ import annotations

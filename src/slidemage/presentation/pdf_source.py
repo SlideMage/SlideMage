@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The presenter PDF as slides and notes.
 
 SlideMage's "Presenter" compile (latex/Slidemaster_preamble_base.tex, \\SMPresenterModeOverride) makes one

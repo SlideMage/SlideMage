@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The tasks of the assistant card (ui/workspace/terminal/tasks.py, assistant.py and assistant_header.py), with the fake
 `claude -p` of tests/fake_claude.py: which tasks the focus and the lint offer, a fix applied into the open buffer, a
 translation that creates the partner only on success, the conflicts (typing, a changed source), Stop, the

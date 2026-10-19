@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Print the timeline of the latest request in a project's .slidemage/timing.jsonl (see slidemage/timing.py):
 every event since the last "prompt", as seconds after it.   python tools/timing_summary.py <project folder>"""
 import json

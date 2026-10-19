@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The store of background renders (docs/plans/idle-background-rendering.md, section 4).
 
 Everything lives on this computer, in the user's cache folder (`project.cache_dir()/render-store/<project id>/`),
@@ -32,6 +34,7 @@ from .fileio import write_json
 STORE_FORMAT = 1
 ORIGIN_BACKGROUND = "background"
 ORIGIN_REVEAL = "reveal"
+ORIGIN_COMPILE = "compile"      # the last page of a slide, taken from a deck compile (no slide PDF)
 BG_SUFFIX = ".bg"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 DEFAULT_KEEP_DAYS = 30
@@ -95,8 +98,8 @@ class RenderStore:
 
     # -- objects -----------------------------------------------------------------
 
-    def put(self, key: str, origin: str, pdf: Path, pages: list[bytes], meta: dict, *, decks: Iterable[str] = (),
-            replace: bool = False) -> str:
+    def put(self, key: str, origin: str, pdf: Optional[Path], pages: list[bytes], meta: dict, *,
+            decks: Iterable[str] = (), replace: bool = False) -> str:
         """Store a render and return its object name. A background render replaces the provisional render of
         the same key; a reveal render is not stored when the background one is there."""
         name = key + BG_SUFFIX if origin == ORIGIN_BACKGROUND else key
@@ -113,8 +116,10 @@ class RenderStore:
             tmp = self.root / "tmp" / uuid.uuid4().hex
             tmp.mkdir(parents=True)
             try:
-                shutil.copyfile(pdf, tmp / "slide.pdf")
-                sizes = {"slide.pdf": (tmp / "slide.pdf").stat().st_size}
+                sizes = {}
+                if pdf is not None:                 # a deck compile's page has no PDF of its own
+                    shutil.copyfile(pdf, tmp / "slide.pdf")
+                    sizes["slide.pdf"] = (tmp / "slide.pdf").stat().st_size
                 for number, data in enumerate(pages, start=1):
                     (tmp / f"p{number:03d}.png").write_bytes(data)
                     sizes[f"p{number:03d}.png"] = len(data)
@@ -307,7 +312,7 @@ class RenderStore:
             cutoff = self._clock() - keep_days * 86400
             for name, key, origin, size, used, decks in rows:
                 deck_list = json.loads(decks)
-                if origin == ORIGIN_REVEAL and key + BG_SUFFIX in names:
+                if origin in (ORIGIN_REVEAL, ORIGIN_COMPILE) and key + BG_SUFFIX in names:
                     rank = 0
                 elif used < cutoff and not set(deck_list) & protected:
                     rank = 1

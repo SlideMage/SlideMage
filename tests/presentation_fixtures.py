@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A presenter-like PDF built without LaTeX: double-width pages, the slide (a colour block) on the left and a
 note on the right, as SlideMage's Presenter compile makes them (measured in docs/plans/presentation-mode.md)."""
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: F811 -- the fixtures of test_centre_gui are imported and used by name
 """The Preview's chip for a slide that needs the deck around it."""
 from __future__ import annotations

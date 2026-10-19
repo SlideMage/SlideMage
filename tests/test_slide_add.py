@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Everything the Add slide sheet needs besides widgets: new slide files from the frames, copies and
 translations, the deck call for a way of loading a slide, and the slides to pick from."""
 from __future__ import annotations

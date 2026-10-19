@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render a `\\tikzillustration{ID}` to a cached PNG for the vision-model
 drafting pipeline (tikz-illustration extension of the
 alt-text system -- see alt_blocks.py/alt_images.py for the rest of it).

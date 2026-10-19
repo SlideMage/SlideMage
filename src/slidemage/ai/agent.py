@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent loop of the chat (2026-10-10, UI redesign step 10a): send the conversation to a model,
 stream its answer, run the tools it calls, send the results back, and repeat until it is done.
 

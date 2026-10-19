@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Smoke an actual frozen SlideMage executable and its persistent raster child."""
 from __future__ import annotations
 

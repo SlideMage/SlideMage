@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Entry point: settle which Slidemaster project to open, then start the GUI."""
 from __future__ import annotations
 
@@ -25,10 +27,15 @@ def _prepare_gui(project_root: Path | None) -> None:
 def _ask_for_project() -> Path | None:
     from .ui.dialogs.open_project import OpenProjectSheet
 
+    from .ui.presentation.launch import present_pdf_file
+
     _prepare_gui(None)
-    sheet = OpenProjectSheet(first_run=True)
-    sheet.exec()
-    return sheet.chosen
+    while True:
+        sheet = OpenProjectSheet(first_run=True)
+        sheet.exec()
+        if sheet.pdf is None:
+            return sheet.chosen
+        present_pdf_file(sheet.pdf)      # no project needed; afterwards the start screen comes back
 
 
 def _confirm_newer_project(root: Path, info: dict) -> bool:

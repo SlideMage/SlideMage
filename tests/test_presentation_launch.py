@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The "Present deck" command: which PDF it starts with, and what it asks when there is none or it is old."""
 from __future__ import annotations
 

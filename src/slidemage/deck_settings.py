@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A deck's deck-wide settings: the lines of its preamble the Deck settings sheet
 (ui/dialogs/deck_settings.py) reads and writes -- template, language, footer
 text, course link, output folders and the appendix TOC.
@@ -145,18 +147,10 @@ def from_form(
 
 def template_choices(root: Path) -> list[tuple[str, str]]:
     """[(key, label)] of every template the project's decks can \\input: the
-    known ones first, then any other Slidemaster_preamble_<name>.tex in the
-    project folder or the framework."""
+    Slidemaster_preamble_<name>.tex in the project folder or the framework."""
     from . import slide_snapshot
 
-    keys = list(slide_snapshot.available_templates(root))
-    prefix = "Slidemaster_preamble_"
-    for folder in (root, *slide_snapshot.framework_dirs(root)):
-        for file in sorted(folder.glob(f"{prefix}*.tex")):
-            key = file.stem[len(prefix):]
-            if key != "base" and key not in keys:
-                keys.append(key)
-    return [(key, slide_snapshot.TEMPLATE_LABELS.get(key, key)) for key in keys]
+    return [(key, slide_snapshot.template_label(key, root)) for key in slide_snapshot.available_templates(root)]
 
 
 # ---- reading -------------------------------------------------------------

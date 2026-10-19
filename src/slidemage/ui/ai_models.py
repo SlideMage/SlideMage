@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Qt glue shared by every AI model picker (UI redesign step 2, reworked by the workspace v6 route audit): filling
 a picker with the models of the active route, turning the selection into a Route, and the one-time privacy
 confirmation before the first cloud request in a project. One helper set so the pickers behave alike.

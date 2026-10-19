@@ -1,4 +1,6 @@
-"""The Admin slides tab of the Deck settings sheet (UI_REDESIGN_PLAN.md, step 9): fetch the Uni Graz
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The Admin slides tab of the Deck settings sheet (UI_REDESIGN_PLAN.md, step 9): fetch the online
 course the deck links and choose which admin slides to generate -- a title slide naming some of the
 lecturers, and the sessions table of one group -- and where in the deck they go.
 
@@ -143,7 +145,7 @@ class AdminSlidesTab(Page):
             self.group_combo.setVisible(len(result.groups) > 1)
             status = f"{len(result.groups)} group(s) found."
             if result.truncated:
-                status += " Uni Graz returned only some of this course's groups -- check the course page."
+                status += " The course system returned only some of this course's groups -- check the course page."
             self.sessions_status.setText(status)
             self.sessions_section.setEnabled(True)
         else:

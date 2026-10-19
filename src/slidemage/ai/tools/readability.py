@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The readability check as an agent tool: can an audience read a slide or a deck? Deterministic, no model, nothing
 written (v8.14.0). The rules and the thresholds are readability.py's; readability_check.py renders a slide as a
 draft, or reads the deck's compiled PDF when it is current. A deck whose PDF is out of date is not compiled here:

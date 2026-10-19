@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The review state of an image's source (citation): stored in media/alt-text.json apart from the
 description's status, set back to "to review" by every writer of a source (alt_images.set_source and
 flag_source_change), and confirmed only by a person (mark_source_reviewed)."""

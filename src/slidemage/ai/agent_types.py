@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The provider-neutral vocabulary of the agent chat (2026-10-10, UI redesign
 step 10a): what the model may call, what it said and called, what came back,
 and the events the loop reports to the chat UI.

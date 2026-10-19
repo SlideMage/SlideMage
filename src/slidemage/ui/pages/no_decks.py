@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The "No decks" state (UI_REDESIGN_PLAN.md, step 9): what the window shows, in place of the
 slide list, centre and side panels, while the project has no deck.
 

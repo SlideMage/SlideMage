@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The deck's slide list as the workspace shows it (UI_REDESIGN_PLAN.md, step 4):
 sections with their slides, and for each slide what is worth a glance --
 its title, a lint error in its source, a preview older than its source, not

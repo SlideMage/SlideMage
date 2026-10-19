@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Prompts tab of the Settings sheet: the system prompts the AI tasks send, one page each --
 image descriptions (alt_draft) and translation (translation_prompts.py).
 They are kept with the project (.slidemage/), not per deck.

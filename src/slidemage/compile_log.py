@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """SlideMage's status-line protocol: exact log text and its recognizers.
 
 Patterns deliberately keep the existing parsers' groups and prefix matching.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The compile slot: one run at a time, its worker thread, stopping and what a run reports.
 No window here; compile_controller.CompileController only emits signals."""
 from __future__ import annotations

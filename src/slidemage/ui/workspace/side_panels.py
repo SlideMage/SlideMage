@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The right column (UI_REDESIGN_PLAN.md, steps 6 and 10; workspace v6 handoff, section 3): a panel picker and the
 chosen panel for the focused slide, and below them, 12 px apart, the assistant card (assistant.py). The panels
 take 38 % of the column and the assistant the rest, but the assistant is never shorter than 380 px, so the panels

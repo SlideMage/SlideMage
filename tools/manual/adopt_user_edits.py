@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Bring edits made to the SlideMage manual in a project's copy back into
 SlideMage's own manual (example/), so future versions carry them.
 

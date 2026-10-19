@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The tasks SlideMage hands to a one-shot `claude -p` (Claude Code tasks plan, step 1): the rules the model
 gets, the request text, the shape of the answer, and the check of an answer before anything is written.
 

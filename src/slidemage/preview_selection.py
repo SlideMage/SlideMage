@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """One final-page selection policy for the main Preview and deck thumbnails.
 
 Freshness is established only by a current validated cache lookup. Historical

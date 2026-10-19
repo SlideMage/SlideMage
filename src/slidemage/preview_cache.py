@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Verified, immutable preview artifacts, independent of Qt and the render workers.
 
 Recorder inputs are hashed by content. Search-root inventories additionally catch

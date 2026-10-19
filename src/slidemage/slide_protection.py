@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the Claude Code hook and the chat tools share about protecting a slide: which file is a slide's live or frozen
 version, and whether an edit touches the protected parts. Dependency-light so the hook process starts fast."""
 from __future__ import annotations

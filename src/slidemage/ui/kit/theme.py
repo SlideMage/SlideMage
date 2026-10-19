@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Qt-side theme manager: the light/dark choice, and the one application
 stylesheet (kit_qss.py) built from the design tokens (tokens.py) for it.
 

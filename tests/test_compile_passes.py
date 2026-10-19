@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The progress bar's pass count comes from the deck's last compile (v5.15.0)."""
 from types import SimpleNamespace
 

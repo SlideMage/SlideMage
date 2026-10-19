@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The readability check: can an audience read a rendered slide? Deterministic, no AI, no MuPDF and no Qt in here.
 
 readability_pdf.py reads a rendered PDF (in the raster child process) into `Page` data; `analyse()` classifies the

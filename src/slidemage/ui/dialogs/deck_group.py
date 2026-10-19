@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The sheet for a deck's group tag (UI_REDESIGN_PLAN.md, step 9): ⋮ "Tags…" asks for the group
 alone, "Duplicate deck…" also for the copy's name. The group is stored in the deck's own file as
 \\decktags{...} (deck_editor.set_deck_tags), where it decides the section of the deck switcher

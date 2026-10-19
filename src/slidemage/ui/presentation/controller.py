@@ -1,13 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Runs a presentation: picks the screens, opens the windows, maps keys, the wheel and clicks to the session."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QLocale, QObject, QRect, QTime, QTimer, QUrl, Qt, Signal
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QScreen
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QToolButton, QWidget
+from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication, QScreen
+from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSlider,
+                               QToolButton, QWidget, QWidgetAction)
 
 from ...presentation import layout
 from ...presentation.frames import FrameMap
@@ -25,6 +29,8 @@ from .timer_widget import TimerButton
 from .views import AudienceView, CurrentView, NextView, NotesView
 
 WHEEL_STEP = 120
+# A tool that is switched on (pen, eraser, black, freeze) is lit, so the state is clear at a glance.
+ACTIVE_STYLE = "QToolButton:checked { background: #1976d2; color: #ffffff; font-weight: bold; }"
 ALLOWED_SCHEMES = ("http", "https", "mailto")
 Key = Qt.Key
 NEXT_KEYS = {Key.Key_Right, Key.Key_Down, Key.Key_PageDown, Key.Key_Space, Key.Key_Return, Key.Key_Enter}
@@ -51,6 +57,8 @@ class PresentationController(QObject):
                  open_uri: Callable[[str], None] = lambda uri: QDesktopServices.openUrl(QUrl(uri))) -> None:
         super().__init__()
         self.deck, self.settings, self.frames = deck, settings, frames
+        # What is saved: the pen set in the presenter window changes `settings` for this presentation only.
+        self._stored = replace(settings)
         self.session = PresentationSession(deck.page_count, start_page, self)
         self.timer = timer or PresentationTimer()
         self.keep_awake = keep_awake if keep_awake is not None else KeepAwake()
@@ -121,7 +129,7 @@ class PresentationController(QObject):
                 empty_text: str = "", top: bool = False) -> SlideCanvas:
         slide_input = SlideInput(self.session, self.deck, self.settings) if interactive else None
         canvas = SlideCanvas(self.deck, view, part=part, laser_color=self.settings.laser_color,
-                             background=background, empty_text=empty_text, top=top, slide_input=slide_input)
+                             laser_size=self.settings.laser_size, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
         self.session.changed.connect(canvas.update)
         return canvas
 
@@ -185,18 +193,33 @@ class PresentationController(QObject):
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
 
-        def button(text: str, tip: str, action: Callable[[], None], checked: Optional[Callable[[], bool]] = None) -> None:
+        bar.setStyleSheet(ACTIVE_STYLE)
+
+        def button(text: str, tip: str, action: Callable[[], None],
+                   checked: Optional[Callable[[], bool]] = None) -> QToolButton:
             tool = QToolButton()
             tool.setText(text)
             tool.setToolTip(tip)
             tool.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            tool.clicked.connect(lambda: action())
+
+            def clicked() -> None:
+                action()
+                if checked is not None:
+                    tool.setChecked(checked())      # a click must not flip the lit state on its own
+            tool.clicked.connect(clicked)
             if checked is not None:
                 tool.setCheckable(True)
+                tool.setChecked(checked())
                 session.changed.connect(lambda: tool.setChecked(checked()))
             row.addWidget(tool)
+            return tool
 
-        button("Pen", "Draw (D)", lambda: session.set_tool(TOOL_PEN), lambda: session.tool == TOOL_PEN)
+        def pen_clicked() -> None:
+            session.set_tool(TOOL_PEN)
+            self._pen_menu(pen).popup(pen.mapToGlobal(pen.rect().bottomLeft()))
+
+        pen = button("Pen", "Draw (D); opens the pen's colour and width for this presentation",
+                     pen_clicked, lambda: session.tool == TOOL_PEN)
         button("Eraser", "Erase strokes (E)", lambda: session.set_tool(TOOL_ERASER), lambda: session.tool == TOOL_ERASER)
         button("Clear", "Clear the drawings of this page (Delete; Shift: all pages)", self.clear_drawings)
         button("Black", "Black out the projector (B)", session.toggle_black, lambda: session.black)
@@ -204,6 +227,47 @@ class PresentationController(QObject):
         button("Profile", "Next layout (P)", self.next_profile)
         button("End", "End the presentation (Esc)", self.end)
         return bar
+
+    def _pen_menu(self, parent: QWidget) -> QMenu:
+        """Colour and width of the pen. They change the settings of this presentation only; the saved ones (the
+        Settings sheet) are not touched."""
+        menu = QMenu(parent)
+        panel = QWidget()
+        column = QHBoxLayout(panel)
+        column.addWidget(QLabel("Pen"))
+        swatch = QPushButton("Colour")
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(2, 50)                                     # tenths of a percent of the slide height
+        slider.setValue(round(self.settings.pen_width * 1000))
+        slider.setFixedWidth(140)
+        size = QLabel()
+
+        def paint() -> None:
+            color = QColor(self.settings.pen_color)
+            swatch.setStyleSheet(f"border-left: 22px solid {color.name()}; padding: 3px 8px;")
+            size.setText(f"{slider.value() / 10:g} %")
+
+        def pick() -> None:
+            color = QColorDialog.getColor(QColor(self.settings.pen_color), panel, "Pen colour",
+                                          QColorDialog.ColorDialogOption.ShowAlphaChannel)
+            if color.isValid():
+                self.settings.pen_color = color.name(QColor.NameFormat.HexArgb)
+                paint()
+
+        def resize(value: int) -> None:
+            self.settings.pen_width = value / 1000
+            paint()
+        swatch.clicked.connect(pick)
+        slider.valueChanged.connect(resize)
+        for widget in (swatch, slider, size):
+            column.addWidget(widget)
+        paint()
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(panel)
+        menu.addAction(action)
+        menu.setToolTipsVisible(True)
+        menu.setToolTip("For this presentation only; the Settings sheet keeps its own pen.")
+        return menu
 
     # -- actions ----------------------------------------------------------------------
 
@@ -222,10 +286,10 @@ class PresentationController(QObject):
         names = [p.name for p in layout.BUILTINS]
         position = names.index(self.profile.name) if self.profile.name in names else -1
         self.profile = layout.BUILTINS[(position + 1) % len(layout.BUILTINS)]
-        self.settings.profile = self.profile.name
+        self.settings.profile = self._stored.profile = self.profile.name
         self.presenter.apply_profile(self.profile)
         if self._save_settings is not None:
-            self._save_settings(self.settings)
+            self._save_settings(self._stored)
 
     def _toast(self, text: str, milliseconds: int = 4000) -> None:
         window = self.presenter or self.audience

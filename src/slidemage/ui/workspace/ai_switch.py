@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The AI switch of the top bar (workspace v6 handoff, section 1): one Local | Cloud control for every AI task of
 the project, the connection Cloud means, and the ▾ that opens AI setup.
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A slide's frozen versions in the centre column: making one the current version, and Update
 Version of the current one (the Slide versions panel is in test_side_panels_gui.py)."""
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Presentation mode without windows: the PDF source, the session, the screen plan, layouts, the timer, settings
 and keep-awake (docs/plans/presentation-mode.md)."""
 from __future__ import annotations

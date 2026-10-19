@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The task card (workspace v6 handoff, section 4): the run of one AI task on one slide, shown in the assistant's body
 in place of the conversation, with Back to conversation above it.
 

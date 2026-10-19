@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile only some slides of a deck, numbered as in the whole deck, and
 optionally swap them into the deck's existing PDF (v5.35.0, direct
 instruction: "compile individual pages or page ranges of pages of a deck,

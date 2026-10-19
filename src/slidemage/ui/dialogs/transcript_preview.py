@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The transcript preview (UI_REDESIGN_PLAN.md, step 9): one slide's transcript entry, rendered
 the way a transcript shows it, in a sheet of its own.
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Test the research's mylatexformat approach against the actual manual preamble.
 
 Run only outside timed benchmarks. Retains diagnostic output even on failure.

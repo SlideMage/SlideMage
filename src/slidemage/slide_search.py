@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Full-text search of the project's own source files, for the command palette
 (2026-10-10; the slide search dialog of 2026-08-26 became its "Text in project
 files" group).

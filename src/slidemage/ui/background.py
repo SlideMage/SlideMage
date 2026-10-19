@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Threads for network calls that outlive the sheet which asked for them.
 
 A sheet closed while its request is still out must neither wait for the answer nor destroy a

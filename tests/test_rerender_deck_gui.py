@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rerender all previews for this deck: the command, its item in the ⋮ menu and the action, which runs the
 shared update_all_previews.rerender_deck() on the current deck through the window's compile flow (job
 panel, Log drawer), asking first like the project-wide Update slide previews."""

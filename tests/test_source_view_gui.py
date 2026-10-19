@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Source view: the editor's commands, saving as you type (and edits that survive
 switching when they cannot be saved), Update Version, frozen versions, the .bib."""
 from __future__ import annotations

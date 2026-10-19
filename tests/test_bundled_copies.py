@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """bundled_copies: a project's copies of the framework and the manual follow
 the versions this SlideMage carries -- updated where unchanged in the project,
 kept where the user changed them, with a backup of everything replaced."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The transcript preview sheet: one slide's entry, rendered from text, nothing written."""
 from __future__ import annotations
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Slide / Deck scope of the embedded Claude Code: the focus file, the context block of
 every prompt, and the edit guard of the hook."""
 from __future__ import annotations

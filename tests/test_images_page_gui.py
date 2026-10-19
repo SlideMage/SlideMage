@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Images page (ui/pages/images.py and friends): what its forms save, how a slide is left, and
 how a drafting or translating job runs, stops and gives the Ollama slot back."""
 from __future__ import annotations

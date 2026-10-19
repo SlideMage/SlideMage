@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent tool check_readability (ai/tools/readability.py) on a throwaway project: a slide is rendered as a draft by a stand-in for
 the LaTeX render that writes a synthetic PDF, a deck is read from its compiled PDF while a compile record vouches for it, and
 a stale deck PDF is reported, never compiled. Read-only, so it is offered to Claude Code without asking."""

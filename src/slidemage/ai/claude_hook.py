@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The hooks that record Claude writes and keep the embedded Claude Code away from what SlideMage manages (UI redesign
 step 10c). Claude Code runs this command before every Edit, Write or MultiEdit, with the call as JSON on
 stdin; exit code 2 blocks the call and hands stderr to Claude as the reason, any other code lets it go.

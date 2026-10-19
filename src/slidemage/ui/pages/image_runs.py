@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the Images page runs on a model: drafting a slide or the whole project, translating, tuning
 the prompt.
 

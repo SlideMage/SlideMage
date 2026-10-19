@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The keyboard order of the workspace's top bar (workspace v6 follow-up): Tab and Shift+Tab walk the bar left to
 right and go on into the slide list, the centre and the side panels; the deck switcher is a Tab stop that opens with
 Enter, Space and Down; every stop of the bar activates from the keyboard and shows the focus ring."""

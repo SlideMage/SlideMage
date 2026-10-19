@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The SlideMage manual's own deck group: tag `manual`, its own section in
 the deck switcher, above the test decks, never offered as a choice, and the manual's Tags
 entry is disabled -- so the manual always stays in its section."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The queue behind the step bar: one job at a time, the user's own renders first, background jobs patient."""
 from __future__ import annotations
 

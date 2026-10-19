@@ -1,4 +1,6 @@
-"""Admin slides: a title slide and/or a course-sessions table generated from the Uni Graz course
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Admin slides: a title slide and/or a course-sessions table generated from the online course
 a deck links (the Admin slides tab of the Deck settings sheet, ui/dialogs/admin_slides.py).
 
 The slides follow the deck's own \\decklanguage: an English deck gets English table headings, its

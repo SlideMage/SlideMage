@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Resolve citation keys against Slidemaster.bib.
 
 Without this a transcript renders `\\fullcite{loughran1995}` as the bare key

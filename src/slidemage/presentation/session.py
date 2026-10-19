@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the presentation shows: one object both windows read (plan 4.8, 4.12).
 
 The page the presenter is on, the projector's own state (black, frozen), the laser dot and the drawings.

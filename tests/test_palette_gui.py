@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The command palette (Ctrl+K): what it lists for a text, the keys, going to a slide, and the
 text search of the project's files."""
 from __future__ import annotations

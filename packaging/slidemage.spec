@@ -74,6 +74,10 @@ a = Analysis(
     datas=[
         (str(ASSETS), "slidemage/assets"),
         (str(ROOT / "src" / "slidemage" / "CHANGELOG.md"), "slidemage"),
+        # The licences, for the About sheet (app_info.license_text) and for everyone who gets the executable.
+        (str(ROOT / "LICENSE"), "slidemage/legal"),
+        (str(ROOT / "THIRD_PARTY_NOTICES.md"), "slidemage/legal"),
+        (str(ROOT / "LICENSES"), "slidemage/legal/LICENSES"),
         *TEMPLATE_DATAS,
     ],
     hiddenimports=HIDDEN_IMPORTS,

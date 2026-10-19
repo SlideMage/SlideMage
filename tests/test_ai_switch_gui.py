@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The AI switch of the top bar (workspace v6, step 2): its request flow and popovers, the commit (labels, pickers,
 per-route conversations, toast), AI setup, the keyboard, and the commands. Nothing here reaches Ollama or the cloud."""
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Citations: the keys the focused slide cites, resolved against Slidemaster.bib.
 
 A key the file has shows its author, year and title; a missing one is marked in the error color

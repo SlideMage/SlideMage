@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Chat view: the conversation with the agent of ai/agent.py about the focused slide or the whole deck.
 
 The user asks in the composer (Enter sends, Shift+Enter breaks the line); the answer streams in as text,

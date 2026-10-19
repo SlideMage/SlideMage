@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The flows around a build: what the Compile menu, Export PPTX, Update previews and deck snapshots
 ask and check before a run, and the work each hands to the compile controller (compile_controller.py).
 

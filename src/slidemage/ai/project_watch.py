@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Which text files of the project changed on disk (UI redesign step 10c: Claude Code edits
 files, SlideMage keeps its views in step). A cheap poll instead of OS file watching: `scan()` stats the
 project's text files, `diff()` compares two scans. No Qt.

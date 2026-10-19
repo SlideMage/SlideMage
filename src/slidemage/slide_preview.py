@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render a single slide to a standalone, temporary PDF and open it --
 used by the workspace's Preview (ui/workspace/preview_view.py, through
 preview_target.py) with the open deck's own preamble, so theme/colors/footer
@@ -191,7 +193,7 @@ GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
 \def\input@path{{../}}
 \makeatother
 \graphicspath{{../}}
-\input{Slidemaster_preamble_uni-graz}
+\input{Slidemaster_preamble_slidemage}
 
 \usepackage[style=authoryear, backend=biber, giveninits=true, uniquename=init, maxcitenames=3, mincitenames=1, maxbibnames=3, minbibnames=1]{biblatex}
 \addbibresource{../Slidemaster.bib}
@@ -256,16 +258,16 @@ GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
 # GENERIC_PREAMBLE's template line; template_preamble() swaps it for another
 # template's (2026-10-03: the default render template is a setting now, see
 # slide_snapshot.render_template()).
-_GRAZ_INPUT = "\\input{Slidemaster_preamble_uni-graz}"
+_DEFAULT_INPUT = "\\input{Slidemaster_preamble_slidemage}"
 
 
 def template_preamble(template: str) -> str:
-    """GENERIC_PREAMBLE rendering in `template` (a slide_snapshot.TEMPLATES
-    key; an unknown one falls back to slide_snapshot.DEFAULT_TEMPLATE)."""
-    if template not in slide_snapshot.TEMPLATES:
+    """GENERIC_PREAMBLE rendering in `template` (a template key; one that is not
+    a plain name falls back to slide_snapshot.DEFAULT_TEMPLATE)."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", template or ""):
         template = slide_snapshot.DEFAULT_TEMPLATE
     return GENERIC_PREAMBLE.replace(
-        _GRAZ_INPUT, f"\\input{{Slidemaster_preamble_{template}}}")
+        _DEFAULT_INPUT, f"\\input{{Slidemaster_preamble_{template}}}")
 
 
 def default_preamble(ctx: project.ProjectContext) -> str:
@@ -366,8 +368,8 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
         # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
         # derives from everything before the *first* "-"). Passing the
         # full id_slug here instead produced e.g.
-        # "kcc-Reasons-Repurchases-UniGraz-1920-1080.png" alongside the
-        # correct "kcc-UniGraz-1920-1080.png" a full compile would
+        # "kcc-Reasons-Repurchases-<Template>-1920-1080.png" alongside the
+        # correct "kcc-<Template>-1920-1080.png" a full compile would
         # cache -- two different files for the same slide, one of them
         # never found by any lookup (snapshot_path()/is_fresh() only
         # ever look up the bare id) and therefore silently dead weight.
@@ -486,7 +488,7 @@ def render_slide_to_pdf(
     snapshot with it. The snapshot is captured under whichever institution
     template `preamble` itself selects (slide_snapshot.detect_template()),
     not a fixed one -- a deck row previewing under its own preamble ends up
-    caching the *right* template's image, not always Graz.
+    caching the *right* template's image, not always the default one.
     """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text

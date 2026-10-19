@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Which route answers an AI request, and with which model (workspace v6 handoff, step 1: the one resolver).
 
 Every AI request SlideMage makes asks `resolve(ctx, task)` and runs on what it gets back; nothing picks a

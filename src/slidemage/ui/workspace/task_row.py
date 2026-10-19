@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The task row of the assistant card: the status line of what has no task card (workspace v6 handoff, step 4) --
 a deck batch, the image tasks and the summary. What the TaskRunner (terminal/tasks.py) says while one runs and when
 it has ended, with Stop while it runs and "Show result" for a batch's report, the result a conflict in it did not

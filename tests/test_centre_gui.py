@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The centre column: which view shows what for the focused slide, the Preview's
 states and renders (the renderer is faked), and unsaved edits across slides."""
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Isolated Qt cache-display probe with seeded artifacts; never invokes TeX.
 
 The synthetic cache fixtures exercise validation/painting, not output equivalence.

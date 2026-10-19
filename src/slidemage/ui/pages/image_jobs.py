@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The runs of the Images page that take a model: drafting descriptions, translating them.
 
 A run is a QThread (`Job`) so that the window can always stop it (`background.stop_worker`) and

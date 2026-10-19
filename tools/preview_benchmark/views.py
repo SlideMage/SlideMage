@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real LuaLaTeX acceptance probe; isolated inputs and JSON timing evidence.
 
 Run: .venv/bin/python tools/preview_benchmark/views.py --output /tmp/preview-views

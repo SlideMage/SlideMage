@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Application start, called by cli.main() (`slidemage`) once the project is chosen: the
 QApplication, the bundled fonts, the theme and the main window (workspace/window.py)."""
 from __future__ import annotations

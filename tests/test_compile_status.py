@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compile_status: per-job state and error location read off a compile log, and
 the per-job stop and skip of compiler.CancelToken / run_jobs that feed it."""
 from __future__ import annotations

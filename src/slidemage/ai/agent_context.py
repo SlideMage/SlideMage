@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the agent is told: the fixed system prompt, and the context block that opens each
 request (2026-10-10, UI redesign step 10a).
 

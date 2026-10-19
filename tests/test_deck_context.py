@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""Slides that need the rest of the deck: finding them, and the deck's sections and agenda records around them."""
 from __future__ import annotations
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Claude Code view of the assistant area (ui/workspace/terminal/): the not-installed state, a terminal
 that runs a stand-in for `claude` (fake_claude.py; the real CLI is never started and no model is called),
 restart, the ended state, the MCP server reaching the window's editor buffers, shutdown ending the process,

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Freeze inputs and compare four manual calls in adjacent before/after order."""
 
 from __future__ import annotations

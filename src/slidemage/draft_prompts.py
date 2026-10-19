@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Persisted, user-editable system prompt for alt_draft.py's image-description
 drafting (2026-09-23, review finding -- it used to be a hardcoded
 SYSTEM_PROMPT constant with no way to tune it without editing source,

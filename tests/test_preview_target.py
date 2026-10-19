@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the Preview renders: the call, the deck context, the view and language."""
 from __future__ import annotations
 

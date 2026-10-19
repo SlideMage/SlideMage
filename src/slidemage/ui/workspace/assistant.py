@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The assistant card of the right column (workspace v6 handoff, section 3): one card for every route, in place of
 the Chat | Claude Code tabs.
 

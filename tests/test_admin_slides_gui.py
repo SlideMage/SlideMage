@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Admin slides tab of the Deck settings sheet: fetch results, which slides are planned, and
 where they go. (The slides themselves are tested in test_admin_slides.py.)"""
 from __future__ import annotations

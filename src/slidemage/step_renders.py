@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The page lists behind the Preview's step bar, rendered one at a time in the background.
 
 A step list is the pages of an all-steps render (slide_preview `all_steps`) as PNG bytes. Jobs run on one
@@ -29,6 +31,7 @@ class _Job:
     note: str = ""
     cancel: CancelToken = field(default_factory=CancelToken)
     requeue: bool = False
+    on_pages: Optional[Callable[[Path, list[bytes]], None]] = None   # the worker hands over the PDF and its pages
 
 
 class StepRenderQueue:
@@ -48,7 +51,8 @@ class StepRenderQueue:
 
     # -- submitting ---------------------------------------------------------------------
 
-    def submit(self, key: tuple, priority: int, pdf: Callable[[CancelToken], Path]) -> bool:
+    def submit(self, key: tuple, priority: int, pdf: Callable[[CancelToken], Path],
+               on_pages: Optional[Callable[[Path, list[bytes]], None]] = None) -> bool:
         """Queue `key` unless it is queued or running already (a foreground request then lifts a queued
         background one to the front). True when a job was added or promoted."""
         with self._condition:
@@ -60,9 +64,13 @@ class StepRenderQueue:
                     job.priority = min(job.priority, priority)
                     self._condition.notify_all()
                     return promoted
-            if self._running is not None and self._running.key == key:
+            running = self._running
+            if running is not None and running.key == key:
                 return False
-            self._jobs.append(_Job(key, priority, pdf))
+            if priority == FOREGROUND and running is not None and running.priority == BACKGROUND:
+                running.requeue = True          # a neighbour's count must not make the slide on show wait
+                running.cancel.request_stop()
+            self._jobs.append(_Job(key, priority, pdf, on_pages=on_pages))
             if self._thread is None:
                 self._thread = threading.Thread(target=self._work, daemon=True, name="step-renders")
                 self._thread.start()
@@ -127,12 +135,17 @@ class StepRenderQueue:
                 pages = self._read_pages(pdf)
                 if not pages:
                     error = "the render has no pages"
+                elif job.on_pages is not None:
+                    try:
+                        job.on_pages(pdf, pages)
+                    except Exception:  # noqa: BLE001 -- keeping the pages for later is a help, never a failure
+                        pass
             except Exception as exc:  # noqa: BLE001 -- reported through `finished`, the worker must go on
                 error = str(exc) or type(exc).__name__
             with self._condition:
                 self._running = None
                 if job.requeue and not self._closed and (error and job.cancel.is_set()):
-                    self._jobs.append(_Job(job.key, job.priority, job.pdf))
+                    self._jobs.append(_Job(job.key, job.priority, job.pdf, on_pages=job.on_pages))
                     continue
                 closed = self._closed
             if closed or (error and job.cancel.is_set()):

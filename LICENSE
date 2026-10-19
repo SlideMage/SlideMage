@@ -1,34 +1,34 @@
 Slidemaster / SlideMage
-Copyright (c) Stefan Palan, University of Graz
+Copyright (c) 2026 Stefan Palan, Jürgen Fleiß
 
-This project -- the Slidemaster LaTeX/beamer framework (the Gotham theme
-customization layer, the institution preambles, the slide-ID/versioning/
-deck-version system) and the SlideMage application built on top of it --
-is licensed under the Creative Commons Attribution-ShareAlike 4.0
-International License (CC BY-SA 4.0).
+This repository holds material under three licences. The full texts are in
+the LICENSES/ folder (one SPDX identifier per file name); the licence of
+every file is also given in its header or in REUSE.toml.
 
-You are free to:
-  - Share -- copy and redistribute the material in any medium or format
-  - Adapt -- remix, transform, and build upon the material
-  for any purpose, even commercially.
+  Part                                   Paths                                              Licence
+  -------------------------------------  -------------------------------------------------  ------------------
+  The SlideMage application              src/, tools/, packaging/, tests/, pyproject.toml   GPL-3.0-or-later
+  The Slidemaster LaTeX framework        latex/ (Slidemaster_preamble_*.tex, *.lua, logos)  LPPL-1.3c+
+  The Gotham beamer theme (third party)  latex/beamer*gotham.sty, latex/gotham*             LPPL-1.3c, unchanged,
+                                                                                            (c) Romain Noël
+  Documentation and example project     README.md, docs/, example/                         CC-BY-SA-4.0
 
-Under the following terms:
-  - Attribution -- You must give appropriate credit to Stefan Palan /
-    University of Graz, provide a link to the license, and indicate if
-    changes were made.
-  - ShareAlike -- If you remix, transform, or build upon the material,
-    you must distribute your contributions under the same license as
-    the original.
+* GPL-3.0-or-later   LICENSES/GPL-3.0-or-later.txt   https://www.gnu.org/licenses/gpl-3.0.html
+* LPPL-1.3c          LICENSES/LPPL-1.3c.txt          https://www.latex-project.org/lppl/lppl-1-3c/
+* CC-BY-SA-4.0       LICENSES/CC-BY-SA-4.0.txt       https://creativecommons.org/licenses/by-sa/4.0/legalcode
 
-No additional restrictions -- you may not apply legal terms or
-technological measures that legally restrict others from doing anything
-the license permits.
+The slides and PDFs that people make with SlideMage are not covered by any of
+these licences.
 
-Full legal text: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+The released executable bundles third-party software under its own licences,
+listed in THIRD_PARTY_NOTICES.md (among them PyMuPDF, AGPL-3.0, and Qt for
+Python, LGPL-3.0). The complete corresponding source of every release is
+attached to it as a source archive and is in this repository.
 
-This license covers the framework, its documentation, and the demo/
-template content shipped with it. Individual course slides, media files,
-and other real course content built on top of this framework -- where
-present in a given copy of this project -- may carry their own separate
-sourcing/attribution (see that copy's media/alt-text.json "source"
-field per image) and are not necessarily covered by this license.
+Releases published before the licence change (up to and including v8.30.0)
+were published under CC BY-SA 4.0 and stay available under it for whoever
+has them. Individual course slides, media files and other real course content
+built on top of this framework -- where present in a given copy of this
+project -- may carry their own separate sourcing/attribution (see that copy's
+media/alt-text.json "source" field per image) and are not necessarily covered
+by these licences.

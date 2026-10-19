@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Encoding/EOL-safe slide-source read/save, with a full timestamped
 backup history kept on every save (not a single rolling backup -- an
 explicit scope decision, see SESSION_HANDOFF.md).

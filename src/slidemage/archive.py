@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Move a deck's .tex file into decks/archive/, patching its own path
 fallbacks so it keeps compiling from one directory deeper than decks/.
 

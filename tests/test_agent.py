@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent loop with a scripted model: tool rounds, events, Stop, the turn limit, errors, and the cloud rules."""
 from __future__ import annotations
 

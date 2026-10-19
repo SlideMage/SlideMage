@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The slide-source helpers behind the side panels: \\note calls and when a slide was last saved
 (slide_source), a slide's translation partner and whether it is outdated (slide_language), the key
 lookup of Slidemaster.bib, and storing one image's description for one slide (alt_images)."""

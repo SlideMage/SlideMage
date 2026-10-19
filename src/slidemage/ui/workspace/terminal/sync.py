@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keeping SlideMage's views in step with what Claude Code does to the project's files (UI redesign step
 10c). While the terminal runs, a timer compares a cheap scan of the project's text files (ai/project_watch.py)
 with the last one, and for each change decides what the window shows:

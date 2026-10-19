@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The header of the assistant card (workspace v6 handoff, section 3), four rows:
 
 1. the route (icon, name in amber on Cloud, what the conversation runs on), Focus and New conversation;

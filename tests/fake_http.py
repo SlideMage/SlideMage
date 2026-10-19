@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A throwaway local HTTP server standing in for Ollama and the Anthropic API (no external
 network), and the streaming wire formats of both for it to answer with."""
 from __future__ import annotations

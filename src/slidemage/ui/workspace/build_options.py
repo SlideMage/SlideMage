@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile -> "Build options…": the checkboxes the compile flows (compile_actions.py) and the
 editor tabs read."""
 from __future__ import annotations

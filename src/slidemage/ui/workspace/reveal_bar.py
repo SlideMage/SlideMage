@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The reveal-step bar under the Preview's page: a slider over the steps of the slide, tick marks for
 what the selected deck call includes, and, expanded, one timeline per deck version.
 
@@ -326,8 +328,7 @@ class RevealBar(QWidget):
                          "slide": " · left out by the slide itself"}.get(state, "")
             if self._draft:
                 text += " · buffer"
-        elif self._counting:
-            text = "Counting reveal steps…"
+        # While counting, the track already says "Counting steps…": the label stays empty.
         self.label.set_full_text(text)
         if plan is not None and plan.note:
             self.label.setToolTip(f"{text}\n{plan.note}")

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The command palette, Ctrl+K (⌘K on a Mac): one box for everything (UI_REDESIGN_PLAN.md, step 8).
 
 A centred overlay over the window. Typing filters, word by word, the commands of the

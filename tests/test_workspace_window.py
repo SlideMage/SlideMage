@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The main window: top bar (deck switcher, view, language, Compile, Images, the
 ⋮ menu), the hosted pages and where the old deck table's and menu bar's
 actions went."""

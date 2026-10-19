@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The readability check of a slide or a deck, from the rendered PDF to the report (readability.py has the rules).
 
 - A slide is rendered as a draft, in the view and language being edited, through a RenderService (the same locked

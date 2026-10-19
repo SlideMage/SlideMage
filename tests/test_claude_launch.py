@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """How the embedded Claude Code is found and started (ai/claude_launch.py): where `claude` is looked for, the
 exact flags and JSON, the environment of the child, and that nothing is written into the user's Claude
 configuration or the project (only flags and environment variables carry the setup)."""

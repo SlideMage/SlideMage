@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Duplicate a deck's .tex file under a new name.
 
 No content rewriting needed, unlike archive.py's own archive_deck(): a

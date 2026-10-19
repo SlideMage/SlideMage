@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Measure result 2 and 1+2 on four actual manual selections, separately from full slides."""
 import argparse
 import json

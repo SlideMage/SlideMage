@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Cancellation reaches lock waits and the complete TeX process tree, without sockets."""
 from types import SimpleNamespace
 import os

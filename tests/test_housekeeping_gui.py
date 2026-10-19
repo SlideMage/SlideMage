@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Housekeeping: what pdf/ and the temp folders hold (housekeeping.py), the actions of the
 window, and the sheet that offers them in one place."""
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Insert menu's forms and the "Cite" popover, and the lint status line of the Source view."""
 from __future__ import annotations
 

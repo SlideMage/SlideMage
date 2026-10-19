@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What every side panel is, and the few pieces its content is built from.
 
 A panel shows one aspect of the focused slide (WorkspaceState.focused_slide in the

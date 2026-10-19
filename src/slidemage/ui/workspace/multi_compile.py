@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile -> "Several decks…": the old deck table's checkboxes as one dialog.
 
 One row per active deck (grouped as in the deck switcher) with a checkbox for

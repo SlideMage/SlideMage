@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Per-slide version tracking (SlideMage's own freeze-then-bump workflow,
 2026-08-20 direct instruction; since v8.18.0 with continuous saving).
 

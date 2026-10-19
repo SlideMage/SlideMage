@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The idle gate and the busy registry (no Qt)."""
 from slidemage import busy, idle_gate
 
@@ -23,6 +25,19 @@ def test_idle_means_thirty_seconds_without_input_after_the_start_up_delay():
     assert g.reason() == "you are working"
     g.t["now"] = 62
     assert g.allowed()
+
+
+def test_input_and_cpu_load_only_keep_a_job_from_starting_not_the_next_one_once_rendering_is_under_way():
+    g = gate()
+    g.t["now"] = 31
+    assert g.allowed()
+    g.note_started()
+    g.note_input()
+    g._cpu_load = lambda: 0.95
+    g.t["now"] = 40
+    assert g.allowed()                       # a sweep is under way: neither input nor load stops it
+    g.t["now"] = 31 + idle_gate.SWEEP_SECONDS + 1
+    assert g.reason() == "the computer is busy"
 
 
 def test_battery_cpu_disk_busy_and_switch():

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Protected regions of a slide (protected_regions.py) and the edit rule built on them (edits.protected_problem)."""
 from __future__ import annotations
 

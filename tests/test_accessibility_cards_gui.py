@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keyboard and live-region support of the assistant (workspace v6, step 7): the Tab order of its header, the task
 card's initial focus, focus kept on a phase's buttons and given back when the card closes, the announcements of its
 phases and of an image batch's end, and the accessible names of the icons. The tasks run on the stand-in for `claude`

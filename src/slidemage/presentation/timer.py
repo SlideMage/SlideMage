@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The optional presentation timer (plan 4.5): a countdown to an end time of day, or for a duration.
 
 Plain logic with an injected monotonic clock and time of day, so the tests never wait.

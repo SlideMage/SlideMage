@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the readability check reads from a rendered PDF (readability.py judges it).
 
 This is MuPDF work, so it runs in the raster child process (preview_raster.py asks for op "layout"; the GUI

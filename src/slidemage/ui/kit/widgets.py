@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Reusable widgets of the redesigned UI (UI_REDESIGN_PLAN.md, step 1).
 
 All colors, radii and fonts come from kit_qss.py (driven by the tokens), so a

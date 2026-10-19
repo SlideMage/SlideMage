@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Output fixtures for the streamlining plan (docs/STREAMLINING_BASELINE.md).
 
 Compiles part of example/ (in a disposable copy) through the app's own compile and preview

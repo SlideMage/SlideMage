@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A stand-in for the `claude` program, for the tests of the Claude Code view: a script that logs what it
 was started with (argv, cwd, selected environment) to $FAKE_CLAUDE_LOG, prints a banner, echoes what is typed
 (raw terminal) and ends at "/exit". With `-p` it is a one-shot task: it logs the call and the request it read

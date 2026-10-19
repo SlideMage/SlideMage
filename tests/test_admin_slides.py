@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Admin slides backend: the slide sources, which slides a choice makes, and their insertion."""
 from __future__ import annotations
 

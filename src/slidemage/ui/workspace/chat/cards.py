@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The things the chat shows in its message list: the user's bubble, the model's text, tool cards,
 diff cards (a proposed, applied or rejected edit) and notices. Plain widgets: they report clicks as
 signals and the chat (view.py) decides what they mean."""

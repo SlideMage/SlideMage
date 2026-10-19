@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Design tokens taken from the Prototype v3 (2026-10-09), as plain data.
 
 The prototype defines light colors only: its "dark mode" is a CSS

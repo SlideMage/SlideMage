@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The text rules of the source editor, without Qt: what each insert command,
 format button and Enter key does to the LaTeX text, and a few file-level
 helpers (reindenting, the hyperlink command, the header comment, the citation
@@ -282,7 +284,7 @@ def insert_edit(insert: Insert, selected: str, indent: str) -> Optional[Edit]:
 FORMAT_MACROS = [("I", "textit"), ("B", "textbf"), ("U", "underline"), ("Tt", "texttt")]
 WORD_MACROS = [("Source", "source"), ("Footnote", "footnote")]
 
-# The text colors of the uni-graz preamble, which nearly every deck \inputs.
+# The text colors of the institution preamble, which nearly every deck \inputs.
 # A few names resolve to another hex per institution, so a swatch is an
 # approximation of the color a slide gets under its deck's template.
 TEXTCOLOR_SWATCHES = {

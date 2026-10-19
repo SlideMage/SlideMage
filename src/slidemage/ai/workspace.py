@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent's window into the application: what the user has open, and the few
 things only the application can do for it (2026-10-10, UI redesign step 10a).
 

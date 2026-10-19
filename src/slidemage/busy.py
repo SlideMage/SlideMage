@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What keeps the machine busy for background rendering: a deck compile, an AI job, an export, a dialog.
 
 Code that starts such work holds `working("reason")` while it runs; the idle gate (idle_gate.py) and the

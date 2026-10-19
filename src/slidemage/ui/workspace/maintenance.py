@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Project and application maintenance of the main window:
 
 * checks that run shortly after start -- project compatibility (compat.py),

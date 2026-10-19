@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Pre-render, image-sequence equivalence for the audited SlideMage framework.
 
 This is evidence for the request scheduler, not a TeX interpreter. A group is
@@ -17,21 +19,24 @@ import re
 from . import compiler, slide_preview
 
 CONTRACT = 2
-AUDITED_GENERIC_PREAMBLE = "8ba8bfb858ab149ed9d40ba4b04ba659154d8cfea514d6ca4f16af76e2a479d3"
+AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
 AUDITED_FRAMEWORK = {
-    "Slidemaster_preamble_base.tex": "e526bb903d4b085a84cbb2060a1ef6511d7cc1af9934f2d40cb758f344d79b8a",
-    "Slidemaster_preamble_slidemage.tex": "50b4e3ce0e9a120251cded5e4c46ee6d00a218bc5326f703f60df30701ae45ba",
+    "Slidemaster_preamble_base.tex": "da5161a30efa009ded7abd579fb84754a8d93cf5daea495a39024048e3fe8098",
+    "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
-    "beamerouterthemegotham.sty": "e864c6968fd744051c28f33373c122126081bc4564c6c740c8f305d397a13126",
+    "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
     "beamerinnerthemegotham.sty": "9a2c86be77ba4e322a6c868f7d23d0136870a9c2fa6734ca7df4738d962ab8fc",
     "beamercolorthemegotham.sty": "2479108c0ff99173a036d326cab8338fd33f44a94fc8000885a64b8bc36446a5",
     "beamerfontthemegotham.sty": "08065ad8fd5767ac036e5c53cc1e0c428962c9bdad6afa3f9fa9199ef64a6824",
-    "Slidemaster_alt.lua": "5e538da2a2ca5bd05e408a8ce70254696ba7ee21457accf4718adc0409c7c6a3",
-    "Slidemaster_layout.lua": "b04862d938cd06fbcc2957b09ed8b9dbdd9240fb2a0f59162492d63827bcb3fe",
+    "Slidemaster_alt.lua": "653ffc1ea0292eb01c33f2b050925e051dbbfb4f08e49fbb92819de02117e2a2",
+    "Slidemaster_layout.lua": "80b3e57240e08353b4d7e0d1e9b642c876b39508fd3f0e8ba685e9c5d2860277",
 }
-AUDITED_PROJECT_TEMPLATES = {
-    "Slidemaster_preamble_uni-graz.tex": "fb8bcd1fea2a69ec2086dc8df7843ec336e5801f5ccc467e291095643f578338",
-}
+# SHA-256 of the project-root institution templates (Slidemaster_preamble_<key>.tex) whose rules were audited; a
+# template with another digest is isolated (rendered on its own), never shared between views.
+AUDITED_PROJECT_TEMPLATES = frozenset({
+    "fb8bcd1fea2a69ec2086dc8df7843ec336e5801f5ccc467e291095643f578338",
+    "13c039dcf2d7e9bdc38363ee782ccd5a34e14fc6786322950bd0cb22f6e11ff8",   # the same with its "template name" line
+})
 AUDITED_LATEXMKRC = {
     ".latexmkrc": "b1a1ce4d46229a854d936d870af6e849af21708642c62f7e3c0242fd4625f8e4",
     "decks/.latexmkrc": "d0588c58f270e748a4eb36576ca122b2801da7da075a3449890b58b92457bd15",
@@ -316,10 +321,8 @@ def _preamble(spec, dependencies: dict[str, str]):
             framework_imports.append(name)
             if _brace_depth(reduced, match.start()) != 0:
                 return deck_hidden, "scoped or delayed framework import"
-            if name not in ("Slidemaster_preamble_slidemage", "Slidemaster_preamble_uni-graz"):
-                return deck_hidden, f"unclassified preamble {name}"
-            if name == "Slidemaster_preamble_uni-graz":
-                path = root / "Slidemaster_preamble_uni-graz.tex"
+            if name != "Slidemaster_preamble_slidemage":
+                path = root / f"{name}.tex"
                 if (root / "decks" / path.name).exists():
                     return deck_hidden, "deck shadows institution preamble"
                 try:
@@ -327,7 +330,7 @@ def _preamble(spec, dependencies: dict[str, str]):
                 except OSError:
                     return deck_hidden, "institution preamble unavailable"
                 dependencies[str(path.resolve())] = digest
-                if digest != AUDITED_PROJECT_TEMPLATES[path.name]:
+                if digest not in AUDITED_PROJECT_TEMPLATES:
                     return deck_hidden, "unaudited institution preamble"
         else:
             return deck_hidden, f"custom preamble input {name}"

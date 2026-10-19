@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Idle-time rendering: what is outstanding, in which order, what a render stores (a fake TeX; MuPDF writes the PDFs)."""
 from __future__ import annotations
 
@@ -346,3 +348,67 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
     with pymupdf.open(foreground) as theirs, pymupdf.open(store.pdf_path(found.record)) as ours:
         assert len(ours) == len(theirs) == found.record["pages"]
         assert [p.get_text() for p in ours] == [p.get_text() for p in theirs]
+
+
+# -- the slides of a deck compile ------------------------------------------------------------
+
+
+def _compiled_pdf(tmp_path, units):
+    """A deck PDF as a compile makes it: every slide's pages (two steps each) with their slide id in the footer."""
+    pdf = tmp_path / "deck.pdf"
+    doc = pymupdf.open()
+    for unit in units:
+        for step in (1, 2):
+            page = doc.new_page(width=453, height=255)
+            page.insert_text((20, 40), f"slide id: {unit.id_slug.split('-')[0]}  step {step}")
+    doc.save(pdf)
+    doc.close()
+    return pdf
+
+
+def _record(pdf, deck, units, ctx):
+    from slidemage import compile_records
+
+    paths = [deck.path, *{u.source_path for u in units}, ctx.root / "Slidemaster.bib"]
+    return {"pdf_sha256": compile_records.sha256(pdf),
+            "inputs": [{"path": str(p), "sha256": compile_records.sha256(p)} for p in paths if p.is_file()]}
+
+
+def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_depends_on_changes(project, store, raster, tmp_path):
+    from slidemage.compiler import CompileJob
+
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[:6]
+    pdf = _compiled_pdf(tmp_path, units)
+    job = CompileJob(deck, "instructor", None)
+    assert r.ingest_compile(job, pdf, _record(pdf, deck, units, project)) >= 1
+    unit = units[0]
+    found = r.resolver.lookup(unit)
+    assert found.usable and found.record["partial"] and found.record["origin"] == render_store.ORIGIN_COMPILE
+    assert store.page(found.record, 1) is not None and found.record["pages"] == 1
+    assert not found.final                     # the idle sweep still renders it in full
+    # another slide changing does not change this slide's page ...
+    other = units[1].source_path
+    other.write_text(other.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+    assert r.resolver.lookup(unit).usable
+    # ... the slide itself does
+    unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+    assert not r.resolver.lookup(unit).usable
+
+
+def test_a_compile_page_is_not_a_list_of_steps_and_gives_way_to_the_steps_render(project, store, raster, tmp_path):
+    from slidemage.compiler import CompileJob
+
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[:3]
+    pdf = _compiled_pdf(tmp_path, units)
+    assert r.ingest_compile(CompileJob(deck, "instructor", None), pdf, _record(pdf, deck, units, project)) >= 1
+    unit = units[0]
+    assert r.resolver.lookup(unit).record["partial"]
+    steps_pdf = _compiled_pdf(tmp_path / "x", [unit]) if (tmp_path / "x").mkdir() is None else None
+    pages = [b"png1", b"png2"]
+    r.store_reveal(unit, steps_pdf, pages)
+    record = r.resolver.lookup(unit).record
+    assert not record.get("partial") and record["pages"] == 2

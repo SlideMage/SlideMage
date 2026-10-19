@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Deck context with real TeX (skipped without latexmk): a contents slide listing every section of a tiny deck, as
 a page compile in the deck's last whole-deck compile (approach A) and with the skeleton around it (approach B)."""
 from __future__ import annotations

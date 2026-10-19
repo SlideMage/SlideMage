@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Chat providers: the only code in SlideMage that makes AI HTTP requests
 (2026-10-09, UI redesign step 2; before this ai_draft, alt_draft,
 syntax_check and the Settings dialog each carried their own Ollama calls).

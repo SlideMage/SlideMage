@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The scheduler behind background renders: classes, preemption, the idle gate, the rest between jobs."""
 from __future__ import annotations
 
@@ -86,7 +88,7 @@ def test_a_request_as_urgent_as_the_running_job_joins_it():
     assert s.ran == [("unit", P_IDLE)]
 
 
-def test_user_input_lets_a_young_idle_job_finish_and_cancels_an_old_one():
+def test_user_input_never_stops_a_running_idle_job():
     now = {"t": 100.0}
     s = make(grace=20, clock=lambda: now["t"])
     s.box["during"] = {"young": lambda job: (now.__setitem__("t", 110.0), s.user_active()),
@@ -94,10 +96,8 @@ def test_user_input_lets_a_young_idle_job_finish_and_cancels_an_old_one():
     s.submit("young", None, P_IDLE, (1,))
     s.submit("old", None, P_IDLE, (2,))
     s.run_next()
-    assert s.completed == 1                     # 10 s into the job: left to finish
-    now["t"] = 200.0
     s.run_next()
-    assert s.completed == 1 and s.pending() == 1   # 50 s in: cancelled, queued again
+    assert s.completed == 2 and s.pending() == 0     # however long they ran, both finished
 
 
 def test_cancel_group_drops_queued_and_stops_running_jobs():

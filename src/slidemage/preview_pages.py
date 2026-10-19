@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Content-addressed PDF page images shared by comparisons and inspection tools.
 
 Call on a worker: PDF hashing, cache validation and raster IPC perform I/O.

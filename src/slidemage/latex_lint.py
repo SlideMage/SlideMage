@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Fast, static pre-render check of the LaTeX that is about to be compiled
 (2026-09-26, direct instruction: "check for obvious syntax errors before
 rendering a pdf -- for a single slide, a deck, or everything -- scoped to

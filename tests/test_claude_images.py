@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Claude Code backends of the image pipeline (ai/claude_images.py) with the fake `claude -p`: a description
 and a translation go through alt_draft's own apply_one_draft / apply_one_translation and batches, the image
 reaches the process inline, and a draft is labelled "Claude <model>". The project is a throwaway one."""

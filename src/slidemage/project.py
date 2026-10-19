@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Locate the Slidemaster project (the folder holding slide_ids.csv) to operate on.
 
 Deliberately free of side effects and of imports from the rest of the package.
@@ -39,7 +41,7 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     real, current for the repo's own example/ demo copy since it's
     actually been compiled, but nothing a *brand-new* project should
     start out with; a new project compiles its own from scratch. NOT a
-    blanket "*.pdf" skip: schemes/scheme_uni_graz/*.pdf is a real,
+    blanket "*.pdf" skip: a scheme folder's logo PDF is a real,
     tracked logo asset the preamble \\includegraphics's, needed for the
     copy to actually compile."""
     skip = {".build", ".previews", ".backups", "pdf", "__pycache__"}

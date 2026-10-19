@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The application stylesheet, built from the tokens by ThemeManager (theme.py).
 
 The widgets in widgets.py carry only object names and dynamic properties

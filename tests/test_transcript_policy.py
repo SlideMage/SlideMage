@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Transcript policy explicitly confirmed while addressing the code review."""
 import re
 from pathlib import Path

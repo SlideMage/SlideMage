@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Source view: a compact toolbar over the editor of the file being edited.
 
 It edits slides, a deck's own .tex file and Slidemaster.bib alike, one

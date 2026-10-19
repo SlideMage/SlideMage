@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Measure every applicable full-slide combination of results 1, 3 and 4.
 
 R1 is reusable latexmk state (the format probe records whether .fmt is viable).

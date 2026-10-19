@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The project picker, the "Made with a newer SlideMage" sheet, and the recent-projects list and
 status they show (project.py)."""
 from __future__ import annotations

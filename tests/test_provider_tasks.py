@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A Claude Code task on a Local or API provider (ai/provider_tasks.py): the rules and the schema go to the provider's chat, the
 reply is parsed as JSON and checked as a Claude answer is, a refused or non-JSON reply gets one repair round, and an
 abort or an error ends it. A stand-in provider answers; no model is used."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Shared image provenance, including display-only history of group aliases."""
 from dataclasses import replace
 import hashlib

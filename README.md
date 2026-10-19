@@ -1,8 +1,8 @@
 # SlideMage
 
 LaTeX/beamer setup for research and teaching slides, built on the
-[Gotham beamer theme](https://github.com/) with a Uni Graz color/logo
-customization, plus SlideMage, a PySide6 desktop app (one workspace per deck, with an
+[Gotham beamer theme](https://gitlab.com/RomainNOEL/beamertheme-gotham) with institution color/logo
+customization layers, plus SlideMage, a PySide6 desktop app (one workspace per deck, with an
 AI assistant) for compiling decks and managing slide IDs, image descriptions, and
 accessible transcripts.
 
@@ -414,7 +414,7 @@ copied package files in `texmf/` record the exact originals.
   → Slide rendering, which lists every template a deck of the project can
   find: the project's own `Slidemaster_preamble_<name>.tex` files plus the
   framework's SlideMage template. Out of the box that is the SlideMage
-  template; if it can't be found, Graz, then whichever template there is.
+  template; if it can't be found, the first other template there is.
   A deck's own renders always use the deck's template.
 - `slides/` — one set of files per slide, named by a permanent, opaque ID
   (see below). This is where actual slide content lives.
@@ -446,7 +446,7 @@ copied package files in `texmf/` record the exact originals.
   slide files and `media/alt-text.json`, and is regenerated on demand.
 - `.previews/slide_previews/` — two PNGs per slide per institution template
   (`<bare id>-<TemplateName>-<width>-<height>.png`, e.g.
-  `22s-UniGraz-1920-1080.png` and `22s-UniGraz-304-171.png` — bare id
+  `22s-MyUniversity-1920-1080.png` and `22s-MyUniversity-304-171.png` — bare id
   first, to sort/glob-match by slide before institution), refreshed as
   a side effect of any compile that touches that slide, for one deck via
   **⋮ → This deck → Rerender all previews for this deck**, or for the whole project via
@@ -758,12 +758,12 @@ SlideMage manual: app updates replace the manual.
 SlideMage stores the course URL just before \begin{document}, as a LaTeX
 comment:
 
-    %% SlideMage course URL: https://online.uni-graz.at/kfu_online/...
+    %% SlideMage course URL: https://campus.example.edu/campus_online/...
 
 The comment does not change the compiled slides. The link stays with the
 deck when it is moved or archived.
 
-For a linked Uni Graz course, open the **Admin slides** tab of the Deck settings.
+For a linked CAMPUSonline course, open the **Admin slides** tab of the Deck settings.
 SlideMage reads the course's Abhaltungstermine page when the tab is first shown, asks
 which group to use when several are listed (**Course sessions**), and previews the LaTeX
 table. Choose a deck position and click **Insert slides** to create an editable schedule
@@ -778,7 +778,7 @@ English deck, group names ("Standardgruppe"), session types ("Abhaltung",
 "Prüfung", ...) and remarks are translated from a fixed word list in
 `course_schedule.py`; a remark with a word that isn't on the list stays
 German rather than half-translated, and dates, times and rooms are kept as
-UNIGRAZonline lists them.
+the course system lists them.
 
 ### Decks with a bibliography (`\fullcite{}`/`Slidemaster.bib`)
 
@@ -3161,3 +3161,18 @@ The v6.1.1 review fixes passed 1,491 tests and the four-slide subset benchmark
 completed 80 requests in 7 minutes 54 seconds without failures or PDF mismatches.
 Saved unchanged median improved from 0.235 s to 0.138 s; visible-edit speed was
 essentially unchanged.
+
+## Licence
+
+| Part | Licence |
+|---|---|
+| The SlideMage application (`src/`, `tools/`, `packaging/`, `tests/`) | GPL-3.0-or-later |
+| The Slidemaster LaTeX framework (`latex/`, except Gotham) | LPPL 1.3c or later |
+| The Gotham beamer theme (`latex/beamer*gotham.sty`, `gotham*`), unchanged | LPPL 1.3c, © Romain Noël |
+| This documentation and the example project (`README.md`, `docs/`, `example/`) | CC BY-SA 4.0 |
+
+The full texts are in `LICENSES/`, the overview in `LICENSE`, the licences of the bundled third-party software in
+`THIRD_PARTY_NOTICES.md` (also shown in SlideMage under Info → About → License). The executable bundles PyMuPDF
+(AGPL-3.0) and Qt for Python (LGPL-3.0); the complete source of every release is attached to it as a source archive.
+Slides and PDFs made with SlideMage are not covered by these licences. Releases up to v8.30.0 were published under
+CC BY-SA 4.0 and stay available under it.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The presentation options (plan 4.11), kept per user and machine (ui/layout_settings.py, outside the project)
 under one key: the layout and the screens depend on the presenter's computer, not on the deck. Every field has
 a default, so presenting works with the settings page never opened."""
@@ -15,6 +17,7 @@ TIMER_END, TIMER_DURATION = "end", "duration"
 class PresentationSettings:
     profile: str = "Current large"
     laser_color: str = "#ff2020"
+    laser_size: float = 0.02           # the dot's radius, as a fraction of the slide height
     pen_color: str = "#c0ffd400"       # a translucent yellow: a highlighter
     pen_width: float = 0.012           # fraction of the slide height
     confirm_links: bool = True

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Claude's slide changes awaiting explicit review, shared with the hook process.
 
 Every read/modify/write holds the existing OS-owned build_lock on a stable

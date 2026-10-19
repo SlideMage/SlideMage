@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Managing the local Ollama model store from Settings: delete, update
 (pull), and relink a custom model to its refreshed base (moved here from
 alt_draft.py in the 2026-10-09 AI provider layer, unchanged: these are

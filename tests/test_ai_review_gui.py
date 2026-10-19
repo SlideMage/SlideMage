@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Review controls and text task application without a terminal socket or model."""
 from types import SimpleNamespace
 from unittest.mock import Mock

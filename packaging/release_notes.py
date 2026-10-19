@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Print a release's notes for the GitHub release (release.yml), built from
 the history entries in src/slidemage/CHANGELOG.md of every version since the
 previous release, and refuse a release whose notes would be incomplete.

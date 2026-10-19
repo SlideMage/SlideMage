@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The one AI resolver (ai_profile.resolve) and the state it reads: the session's mode, the cloud connection,
 the project's policy, the first-use flag and the models of each route, with the migration of the settings of
 the earlier version; and what ai/resolver.py makes of a Route, never another route or model than the one named."""

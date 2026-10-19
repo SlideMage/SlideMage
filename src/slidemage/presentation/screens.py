@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Which screen is for the presenter and which for the audience (plan 4.3). Pure data in, a plan out, so it
 is tested with made-up screens; the window code turns QScreens into ScreenInfos."""
 from __future__ import annotations

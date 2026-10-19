@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Preview view: the focused slide as a page, in the view (Instructor /
 During course / After course) and language the top bar says.
 
@@ -205,9 +207,12 @@ class PageView(QWidget):
     or, when there is none, a surface-colored one with a message. `tokens()` gives the
     theme's colors."""
 
+    wheeled = Signal(int)         # one notch of the mouse wheel: +1 forward (wheel down), -1 back
+
     def __init__(self, tokens: Callable[[], Tokens]) -> None:
         super().__init__()
         self._tokens = tokens
+        self._wheel = 0
         self.pixmap: Optional[QPixmap] = None
         self.message = ""
         self.setMinimumSize(320, 180)
@@ -241,6 +246,13 @@ class PageView(QWidget):
         super().resizeEvent(event)
         self._place_button()
 
+    def wheelEvent(self, event) -> None:
+        self._wheel += event.angleDelta().y()
+        while abs(self._wheel) >= 120:
+            self.wheeled.emit(-1 if self._wheel > 0 else 1)
+            self._wheel -= 120 if self._wheel > 0 else -120
+        event.accept()
+
     def paintEvent(self, event) -> None:
         page = self._page_rect()
         painter = QPainter(self)
@@ -267,6 +279,7 @@ class PreviewPane(Surface):
     rendered_target = Signal(object)  # exact source path for affected thumbnail rows
     partner_requested = Signal(object)   # the language chip: the Path of the slide's file in the other language
     compile_requested = Signal(str)      # the deck-context chip: compile the deck in this view
+    slide_requested = Signal(int)        # the wheel ran past the first/last reveal step: -1 the slide before, +1 after
     _finished = Signal(object)    # a _Job, from the worker thread
     _batch_progressed = Signal(object)
     _batch_finished = Signal(object, str)
@@ -362,6 +375,7 @@ class PreviewPane(Surface):
         layout.addLayout(self._chips)
         self._page = PageView(lambda: self.app.theme.tokens)
         self._page.render_button.clicked.connect(self.render_now)
+        self._page.wheeled.connect(self._on_wheel)
         layout.addWidget(self._page, 1)
         self._reveal = RevealBar(lambda: self.app.theme.tokens)
         self._reveal.step_selected.connect(self._on_step_selected)
@@ -405,6 +419,7 @@ class PreviewPane(Surface):
         footer.addWidget(self._render)
         layout.addLayout(footer)
         self._menu: Optional[PopoverMenu] = None
+        self._menu_stale = False
 
         state.view_changed.connect(self._on_context_changed)
         state.language_changed.connect(self._on_context_changed)
@@ -825,12 +840,39 @@ class PreviewPane(Surface):
             except OSError:
                 return
         service, log = self._renders, self.app.log
+        if not draft and self._adopt_stored_steps(target, key):
+            return
 
         def build(cancel):
             request = service.request(target, text, view, language, log, saved=not draft, all_steps=True)
             return request.wait(cancel)[0]
 
-        self._steps.submit(key, priority, build)
+        keep = None
+        background = getattr(self.app, "background", None)
+        if not draft and background is not None:
+            stamp = key[5]
+
+            def keep(pdf, pages):
+                # Only when the slide is still the one that was typeset (the store keys a render by the file's hash).
+                if _mtime(target.source_path) == stamp:
+                    background.store_steps(target, view, language, pdf, pages)
+
+        self._steps.submit(key, priority, build, keep)
+
+    def _adopt_stored_steps(self, target: PreviewTarget, key: tuple) -> bool:
+        """Take the step pages of the saved slide from a current render in the store (the background sweep's, or the
+        bar's own earlier one) instead of rendering them. True when `key` has its pages now."""
+        if key in self._step_pages:
+            return True
+        background = getattr(self.app, "background", None)
+        pages = background.stored_pages(target, key[3], key[4]) if background is not None else None
+        if not pages:
+            return False
+        self._step_pages[key] = pages
+        self._step_pages.move_to_end(key)
+        while len(self._step_pages) > STEP_CACHE:
+            self._step_pages.popitem(last=False)
+        return True
 
     def _probe_steps(self) -> None:
         """Idle: count the steps of the slide on show (and of its other versions when its reveals depend on them)."""
@@ -925,6 +967,25 @@ class PreviewPane(Surface):
         if expanded:
             self._probe.start(0)
 
+    def _on_wheel(self, direction: int) -> None:
+        """As in a presentation: the wheel goes through the reveal steps of the slide, then on to the next slide
+        (back: the previous one)."""
+        stops = self._reveal.track.stops if self._reveal.isVisibleTo(self) else []
+        step = self._reveal.step
+        if stops and step in stops:
+            position = stops.index(step) + direction
+            if 0 <= position < len(stops):
+                self._on_step_selected(stops[position])
+                return
+        self.slide_requested.emit(direction)
+
+    def set_step_choice(self, path: Path, step: Optional[int]) -> None:
+        """Which step the slide in `path` opens at (None: its last one)."""
+        if step is None:
+            self._step_choice.pop(path, None)
+        else:
+            self._step_choice[path] = step
+
     def _on_step_selected(self, step: int) -> None:
         target = self._target
         if target is not None:
@@ -985,10 +1046,15 @@ class PreviewPane(Surface):
             bar.setVisible(False)
             return
         key, text, draft, scan = self._current_steps(target)
+        if key not in self._step_pages and not draft and key not in self._step_failed:
+            self._adopt_stored_steps(target, key)           # a current render in the store: no counting at all
         pages = self._step_pages.get(key)
         if pages is None:
             if scan.may_reveal and key not in self._step_failed:
                 bar.show_counting()
+                # The user is looking at "Counting": do it now, ahead of any neighbour's count, not after the idle wait.
+                if not self._steps_busy():
+                    self._request_steps(target, key, text, draft, FOREGROUND)
             else:
                 bar.setVisible(False)
             self._probe.start(PROBE_MS)
@@ -1015,6 +1081,11 @@ class PreviewPane(Surface):
                 self._page.show_image(self._step_pixmap[2])
 
     def _rebuild_menu(self) -> None:
+        if self._menu is not None and self._menu.isVisible():
+            # Every refresh (the background checks too) lands here: replacing an open menu closed it under the cursor.
+            self._menu_stale = True
+            return
+        self._menu_stale = False
         if self._menu is not None:
             self._menu.deleteLater()
         menu = PopoverMenu(self, min_width=260)
@@ -1045,6 +1116,7 @@ class PreviewPane(Surface):
             menu.add_separator()
             menu.add_item(STOP, "Stop rendering all views")
         menu.triggered.connect(self._on_menu)
+        menu.closed.connect(lambda: self._menu_stale and self._rebuild_menu())
         self._menu = menu
         self._render.set_menu(menu)
 

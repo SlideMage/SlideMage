@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The readability check in the window: the findings panel in the assistant (grouping, severity, a click that focuses the slide,
 Check again, Back), the two commands, the header's Check readability button, and the deck flow (a stale PDF is never compiled
 silently; Compile the deck first starts the normal compile and the check runs when it is over). The slide is rendered by a

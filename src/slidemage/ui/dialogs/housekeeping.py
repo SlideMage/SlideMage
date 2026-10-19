@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Housekeeping sheet (UI_REDESIGN_PLAN.md, step 9): the clean-up and update jobs of a project in one place.
 
 Cleanup: empty pdf/, remove temp files (.build/, leftover wrappers, .temp/), archive unused

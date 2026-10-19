@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The citation format is the template's job (v5.32.0): a deck calls
 SMUseBibliography; the institution templates define SMBiblatexOptions and
 SMBibliographyStyle."""

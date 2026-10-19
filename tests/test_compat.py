@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compat.py: warn about incompatible SlideMage changes when a project is opened,
 and update the project where that can be done."""
 from __future__ import annotations

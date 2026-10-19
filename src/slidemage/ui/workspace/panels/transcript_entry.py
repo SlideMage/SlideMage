@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Transcript entry: what the focused slide contributes to a student transcript (During or After
 course; transcript.generate_single_slide() renders it from the slide's text as the Source view
 holds it), and its summary.

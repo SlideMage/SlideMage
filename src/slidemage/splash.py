@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Closing the one-file build's splash screen.
 
 packaging/slidemage.spec gives the Windows one-file build a PyInstaller

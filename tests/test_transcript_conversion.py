@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Slide text to transcript text: the constructs the SlideMage manual uses
 (v5.13.4). Each case was a visible artifact in the manual's transcript."""
 from pathlib import Path

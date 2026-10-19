@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the Preview shows: one slide as its deck typesets it, in the view and
 language being edited, and how to render it.
 

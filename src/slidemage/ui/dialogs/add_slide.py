@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Add slide sheet (UI_REDESIGN_PLAN.md, step 9): one place to put a slide into the open deck.
 
 The slide comes from one of four sources:

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Per-(model, source language, target language) translation prompt
 configuration -- lets the Settings dialog tune exactly how
 alt_draft.ModelTranslationBackend talks to a given Ollama model, since

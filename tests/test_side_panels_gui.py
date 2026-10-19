@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The right column: the panel picker and the eight panels (Used in decks, Slide versions, Visibility,
 Citations, Language, Image descriptions, Transcript entry, Speaker notes)."""
 from __future__ import annotations

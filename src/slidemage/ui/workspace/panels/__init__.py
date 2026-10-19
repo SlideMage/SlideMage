@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The side panels of the right column, in the order of the picker's menu (side_panels.py).
 
 A new panel is a SidePanel subclass in its own module (base.py says how) and one entry here."""

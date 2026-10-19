@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The timer element of the presenter window and the small dialog that sets it (plan 4.5)."""
 from __future__ import annotations
 

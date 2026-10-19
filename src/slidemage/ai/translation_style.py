@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The project's rules for translations by Claude Code (Claude Code tasks plan, step 2): how German addresses the
 audience, `de_address` ("Sie" or "du") in .slidemage/project.json, and the optional .slidemage/glossary.md
 ("EN = DE" lines) that goes into every translation request as it is. No Qt."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The pieces a compat.py registry entry is made of (split off so that an
 entry module can import them without importing compat.py itself)."""
 from __future__ import annotations

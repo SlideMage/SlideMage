@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The content-addressed key of a background render, and the test whether a stored render is still current.
 
 docs/plans/idle-background-rendering.md, section 3. A *unit* is what the Preview would render for one slide

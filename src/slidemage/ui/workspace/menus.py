@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The top bar's menus: deck switcher, Compile caret menu and the ⋮ menu, and the
 helper the slide list's context menus use too.
 

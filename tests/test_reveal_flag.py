@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""\SMFinalStateForStudents that no deck needs any longer is taken out of the slide, silently: no version, no "+",
 no frozen file, and one undo."""
 from __future__ import annotations

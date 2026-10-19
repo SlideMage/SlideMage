@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rename this project's own \\gotham... names to \\SM... (v5.3.0, 2026-10-01).
 
 Direct instruction: "rename all \\gotham... commands that this project newly

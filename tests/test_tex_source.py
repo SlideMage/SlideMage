@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """tex_source.py: the one place that knows where a comment starts and where a braced argument ends."""
 from slidemage.protected_regions import mask_protected_regions
 from slidemage.tex_source import blanked_verbatim, braced_argument, comment_start, masked_same_length

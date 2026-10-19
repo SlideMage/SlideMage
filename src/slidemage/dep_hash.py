@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """SHA-256 of files with a (size, mtime) shortcut, for telling what a render depends on has changed.
 
 The mtime is only a shortcut: a file whose size and modification time are as they were when it was last

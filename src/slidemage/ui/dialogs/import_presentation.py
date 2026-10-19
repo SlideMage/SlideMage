@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Deck -> "Import PPTX/ODP…": each slide of a PowerPoint (.pptx) or OpenDocument Presentation
 (.odp) file becomes a new slide at the end of a deck (slide_import.import_presentation)."""
 from __future__ import annotations

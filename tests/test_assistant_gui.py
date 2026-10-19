@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The assistant card of the right column (workspace v6, step 3): the body that follows the route, the header's four
 rows (route, scope and target, the two task buttons, the running pill), New conversation for one route only, the
 card that replaces the terminal while Claude Code cannot be used, and the caption under the terminal. The terminal runs

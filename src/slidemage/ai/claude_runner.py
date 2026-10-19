@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Running one Claude Code task as its own `claude -p` process (Claude Code tasks plan, step 1).
 
 The request goes to stdin, the answer comes back as the structured result of the stream-json events; the

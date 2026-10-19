@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The project's snippets/ folder: the small files that \\SMCodeFile{path}
 shows on a slide as highlighted LaTeX source, so the slide needs no [fragile]
 frame. By convention a slide's snippets are named after it,

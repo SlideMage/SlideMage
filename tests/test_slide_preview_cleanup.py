@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A render that succeeded must not die on a build file that is locked for a moment.
 
 direct report 2026-10-11: compiling single slides several times in a row left the status bar

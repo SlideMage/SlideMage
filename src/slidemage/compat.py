@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Project compatibility (v5.29.0): tell the user, when a project is opened,
 what a newer SlideMage changed that may affect it -- and, where possible, fix it.
 

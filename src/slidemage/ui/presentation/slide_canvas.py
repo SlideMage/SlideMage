@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The widget that shows one slide (or one note page) with the laser and drawings over it (plan 4.1)."""
 from __future__ import annotations
 
@@ -24,10 +26,10 @@ class View(Protocol):
 
 class SlideCanvas(QWidget):
     def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = "#ff2020",
-                 background: str = "#000000", empty_text: str = "", top: bool = False,
+                 laser_size: float = 0.02, background: str = "#000000", empty_text: str = "", top: bool = False,
                  slide_input: Optional[SlideInput] = None, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.deck, self.view, self.part = deck, view, part
+        self.deck, self.view, self.part, self.laser_size = deck, view, part, laser_size
         self.laser_color, self.background, self.empty_text, self.top = laser_color, background, empty_text, top
         self.input = slide_input
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -98,7 +100,7 @@ class SlideCanvas(QWidget):
 
     def _laser(self, painter: QPainter, rect: QRect, pointer: Point) -> None:
         centre = QPointF(rect.x() + pointer[0] * rect.width(), rect.y() + pointer[1] * rect.height())
-        radius = max(6.0, 0.02 * rect.height())
+        radius = max(3.0, self.laser_size * rect.height())
         color = QColor(self.laser_color)
         halo = QColor(color)
         halo.setAlpha(0)

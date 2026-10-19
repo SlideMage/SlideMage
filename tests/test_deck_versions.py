@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Edits made outside the app get the "+", and a deck's changed slides are found (slide_versioning)."""
 from slidemage import deck_scan
 from slidemage import slide_versioning as sv

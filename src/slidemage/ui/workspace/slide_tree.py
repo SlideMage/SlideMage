@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The slide list's tree: sections with their slides, painted as in the prototype
 (thumbnail, id line, title, call-variant chip) -- the view half of slide_list.py.
 

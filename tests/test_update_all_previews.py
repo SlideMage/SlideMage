@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Exact deck request routing, partial outcomes, reuse and legacy project pruning."""
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from slidemage.deck_scan import scan_decks
 from slidemage.project import ProjectContext
 
 OTHER_DECK = "\\documentclass{beamer}\n\\begin{document}\n\\slide{abd-EN-Second}\n\\slide{zzz-EN-Zed}\n\\end{document}\n"
-TEMPLATE = "uni-graz"      # what a deck without an \input of a template detects
+TEMPLATE = slide_snapshot.DEFAULT_TEMPLATE      # what a deck without an \input of a template detects
 
 
 @pytest.fixture

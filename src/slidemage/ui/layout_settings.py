@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Preferences of this user and machine, outside the project: the window layout, and the model and effort the
 Claude Code tab runs its tasks with."""
 from __future__ import annotations

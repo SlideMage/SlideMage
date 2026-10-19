@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the Add slide sheet (ui/dialogs/add_slide.py) does besides drawing itself: the new slide
 files, the deck call that adds a slide to a deck, and the list of slides to pick from.
 

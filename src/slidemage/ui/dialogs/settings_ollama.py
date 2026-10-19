@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Ollama tab of the Settings sheet: the server's address, and the models installed there --
 update (pull) and delete, as `ollama pull` and `ollama rm` would (ai/ollama_admin.py).
 

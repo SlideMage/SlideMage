@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Reveal steps: reading overlay specs, what a slide's text says about its steps, which steps a deck call includes."""
 from __future__ import annotations
 

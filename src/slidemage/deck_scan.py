@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Discover and parse the decks this project knows how to compile.
 
 A "deck" is any *.tex file directly inside decks/ or decks/archive/ that

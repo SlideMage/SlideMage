@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The lint status line and "Ask AI to fix" of the Source view (the model is faked)."""
 from __future__ import annotations
 

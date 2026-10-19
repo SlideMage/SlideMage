@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Settings sheet (UI_REDESIGN_PLAN.md, step 9): the preferences that are not about one deck.
 
 * General: dark mode, the Source editor's tab width, live rendering after an autosave, whether leaving a changed slide asks
@@ -104,7 +106,7 @@ class GeneralTab(Page):
         self.template_combo = QComboBox()
         current = slide_snapshot.render_template(self.app.project)
         for key in slide_snapshot.available_templates(self.app.project.root):
-            self.template_combo.addItem(slide_snapshot.TEMPLATES[key], key)
+            self.template_combo.addItem(slide_snapshot.template_label(key, self.app.project.root), key)
         self.template_combo.setCurrentIndex(max(self.template_combo.findData(current), 0))
         self.template_combo.currentIndexChanged.connect(self._on_template)
         layout.addWidget(Field("Default template for slides rendered on their own", self.template_combo))
@@ -151,7 +153,7 @@ class GeneralTab(Page):
         key = self.template_combo.itemData(index)
         if key:
             slide_snapshot.set_render_template(self.app.project, key)
-            self.app.log(f"Default render template set to {slide_snapshot.TEMPLATES[key]}")
+            self.app.log(f"Default render template set to {slide_snapshot.template_label(key, self.app.project.root)}")
 
     def _add_background_previews(self, layout) -> None:
         """Prepare previews in the background: on/off, only on mains power, speed, disk limit, clear."""

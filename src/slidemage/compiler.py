@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build a compile job's wrapper .tex and run it through latexmk.
 
 Reuses compile-all-versions.bat's own proven trick for picking a deck
@@ -289,6 +291,17 @@ def display_path(ctx: project.ProjectContext, path: Path) -> str:
 FATAL_ERROR_RE = re.compile(r"^!|^\S.*:[0-9]+: ", re.MULTILINE)
 
 LogCallback = Callable[[str], None]
+
+# Called as listener(ctx, job, pdf) on a thread of its own after every successful whole-deck compile whose PDF is
+# published and recorded (compile_records.py): the render store keeps the slides of it (background_renders.py).
+COMPILE_LISTENERS: list[Callable] = []
+
+
+def _notify_listener(listener: Callable, ctx, job, pdf: Path) -> None:
+    try:
+        listener(ctx, job, pdf)
+    except Exception:  # noqa: BLE001 -- what a listener does with a compile never fails the compile
+        pass
 
 
 def lower_priority(proc: subprocess.Popen) -> None:
@@ -789,6 +802,10 @@ def _relocate_pdf_and_finish(
     log(compile_log.passed(jobname, display_path(ctx, dest_pdf), suffix))
     if on_relocated is not None:
         on_relocated(True, dest_pdf)
+    if record is not None and _is_latest_output_success(destination_key, generation):
+        for listener in list(COMPILE_LISTENERS):
+            threading.Thread(target=_notify_listener, args=(listener, ctx, job, dest_pdf), daemon=True,
+                             name="compile-listener").start()
     _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
 
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Actions on a deck: Open pdf, Settings, Source, Duplicate, Tags, Archive and Create Transcript.
 The top bar's menus (menus.py) start them for the current deck.
 
@@ -223,7 +225,7 @@ def on_new_deck(window) -> None:
     template = slide_snapshot.detect_template(deck.preamble_text) if deck is not None \
         else slide_snapshot.render_template(window.project)
     available = slide_snapshot.available_templates(window.project.root) or [template]
-    labels = [(key, slide_snapshot.TEMPLATE_LABELS.get(key, key)) for key in available]
+    labels = [(key, slide_snapshot.template_label(key, window.project.root)) for key in available]
     sheet = DeckGroupSheet(
         window, "New deck", deck.group if deck is not None else "", ok_text="Create",
         name_prompt="Name of the new deck (the file decks/<name>.tex)",
@@ -238,7 +240,7 @@ def on_new_deck(window) -> None:
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "New deck failed", str(exc))
         return
-    window.log(f"Created {dest.name} ({slide_snapshot.TEMPLATES.get(sheet.template or template, template)})")
+    window.log(f"Created {dest.name} ({slide_snapshot.template_label(sheet.template or template, window.project.root)})")
     window.reload_decks()
     created = next((d for d in window.decks if d.path == dest), None)
     if created is not None:

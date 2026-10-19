@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Composite slide edits with fake buffers/rendering and socket-free MCP."""
 import base64
 import importlib.util

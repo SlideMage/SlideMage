@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Exports a compiled deck PDF as a PowerPoint file with one full-bleed
 image per PDF page (2026-08-27, direct instruction) -- lets PowerPoint's
 own recording/presenter tools be used with a SlideMaster deck, which

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""Which decks use a slide, and moving them to the new version or keeping the old one."""
 from pathlib import Path
 

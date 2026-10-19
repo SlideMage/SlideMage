@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Idle-time rendering of every slide of every deck, with all reveal steps (docs/plans/idle-background-rendering.md).
 
 `BackgroundRenderer` joins the pieces: the store and the render key (what is current), the scheduler (what
@@ -20,15 +22,15 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, course_schedule, deck_language, deck_settings, render_key, render_store, slide_language
-from . import power_status, preview_build, preview_target, slide_preview
+from . import compile_records, power_status, preview_build, preview_target, slide_preview, slide_snapshot
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
-from .dep_hash import HashCache
+from .dep_hash import HashCache, norm
 from .idle_gate import IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
 from .render_scheduler import P_IDLE, P_NEIGHBOURS, Job, RenderScheduler
-from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL, RenderStore
+from .render_store import ORIGIN_BACKGROUND, ORIGIN_COMPILE, ORIGIN_REVEAL, RenderStore
 
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
 RASTER_CHUNK = 4                # pages per raster request, so another reader of a raster child never waits long
@@ -170,7 +172,7 @@ class BackgroundRenderer:
         self._clock = clock
         profile = setting(ctx, PROFILE_KEY, DEFAULT_PROFILE)
         workers, duty = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
-        self.scheduler = RenderScheduler(self._work, can_start=lambda job: self.gate.allowed(),
+        self.scheduler = RenderScheduler(self._work, can_start=self._may_start,
                                          on_change=self._changed, on_error=self._failed, workers=workers, duty=duty)
         self.progress = Progress()
         self._plan: list = []
@@ -222,8 +224,14 @@ class BackgroundRenderer:
         self._replan.set()
 
     def user_active(self) -> None:
+        """The user did something: no new background job starts for a while. Nothing running is stopped."""
         self.gate.note_input()
-        self.scheduler.user_active()
+
+    def _may_start(self, job) -> bool:
+        if not self.gate.allowed():
+            return False
+        self.gate.note_started()
+        return True
 
     # -- what is outstanding ---------------------------------------------------------------
 
@@ -359,6 +367,96 @@ class BackgroundRenderer:
     def submit_neighbours(self, unit: render_key.Unit, rank: tuple = ()) -> None:
         """The reveal slider's render of a unit (class P_NEIGHBOURS): it runs before any idle job and never waits for one."""
         self.scheduler.submit(unit.label, (unit, ORIGIN_REVEAL), P_NEIGHBOURS, rank, group="reveal")
+
+    def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes]) -> Optional[str]:
+        """Keep the all-steps render the reveal bar made (its PDF and page images) as a provisional store object, so
+        the next count of this slide, in this session or the next, is read from the store, not rendered."""
+        key = self.resolver.fast_key(unit)
+        if key is None:
+            return None
+        found = self.resolver.lookup(unit, key)
+        if found.state is render_key.Freshness.FRESH and not (found.record or {}).get("partial"):
+            return None
+        inputs_file = pdf.with_suffix(".inputs.json")
+        inputs = json.loads(inputs_file.read_text(encoding="utf-8")) if inputs_file.is_file() else []
+        manifest = self.resolver.build_manifest(inputs)
+        if not manifest.stable or not pages:
+            return None
+        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=manifest.entries,
+                    tex_digest=manifest.tex_digest, tex_files=manifest.tex_files, machine=render_key.machine_id(),
+                    engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
+        return self.store.put(key, ORIGIN_REVEAL, pdf, pages, meta, decks=[unit.deck] if unit.deck else [],
+                              replace=bool((found.record or {}).get("partial")))        # the page of a compile gives way
+
+    def ingest_compile(self, job, pdf: Path, record: dict) -> int:
+        """Keep the slides of a whole-deck compile in the store: the last page of every slide the PDF shows, for the
+        view and language the deck was compiled in, so the Preview shows it as a current render, with no note, for as
+        long as what the slide depends on is unchanged. The dependencies are the compile record's (compile_records.py):
+        every file the compile read, with its SHA-256, except the other slides, and media or snippets this slide
+        does not mention. Returns how many slides were stored. Run off the GUI thread."""
+        if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
+            return 0
+        if compile_records.sha256(pdf) != record.get("pdf_sha256"):
+            return 0                                    # not the PDF the record describes (another compile replaced it)
+        view = job.version or VIEW_INSTRUCTOR
+        language = (getattr(job, "language", None) or deck_language_code(job.deck)).upper()
+        recorded = {norm(entry["path"]): (Path(entry["path"]), entry["sha256"])
+                    for entry in record.get("inputs", []) if not entry.get("copy")}
+        import pymupdf
+        try:
+            doc = pymupdf.open(pdf)
+        except Exception:  # noqa: BLE001
+            return 0
+        try:
+            runs: dict[str, list[int]] = {}
+            for slide_id, pages in slide_snapshot.slide_runs([slide_snapshot.slide_id_of(page) for page in doc]):
+                runs.setdefault(slide_id, pages)        # the first showing of a slide that appears twice
+        finally:
+            doc.close()
+        raster, stored = self._raster or self._shared_raster(), 0
+        for unit in deck_units(self.ctx, job.deck, view, language):
+            pages = runs.get(slide_language.bare_id(unit.id_slug))
+            known = recorded.get(norm(unit.source_path))
+            if unit.macro == "slidestep" or not pages or known is None:
+                continue
+            key = self.resolver.fast_key(unit)
+            if key is None or self.hashes.hash(unit.source_path) != known[1]:
+                continue                                # the slide changed since the compile
+            if self.resolver.lookup(unit, key).usable:
+                continue                                # a render of it is current already
+            entries = self._compile_manifest(recorded, unit)
+            response = raster.read_document(pdf, "pdf_images", pages[-1] + 1, 1, width=STORE_WIDTH)
+            if not response["images"]:
+                continue
+            meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=entries, tex_digest="",
+                        machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp,
+                        frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH, partial=True)
+            self.store.put(key, ORIGIN_COMPILE, None, [response["images"][0]], meta,
+                           decks=[unit.deck] if unit.deck else [])
+            stored += 1
+        return stored
+
+    def _compile_manifest(self, recorded: dict, unit: render_key.Unit) -> list:
+        """What a slide's page in a deck compile depends on, from the compile record's hashes."""
+        try:
+            text = unit.source_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        slides, optional = self.ctx.slides_dir, (self.ctx.root / "media", self.ctx.root / "snippets")
+        entries = []
+        for key, (path, sha) in recorded.items():
+            if any(part in key for part in render_key._SKIPPED_PARTS):
+                continue
+            if compile_records.is_within(path, slides):
+                if key != norm(unit.source_path):
+                    continue                            # another slide: it does not change this one's page
+            elif any(compile_records.is_within(path, folder) for folder in optional) and path.name not in text:
+                continue                                # a picture or snippet this slide does not use
+            where = self.resolver._relative(path)
+            if where is not None:
+                entries.append([where[0], where[1], sha])
+        entries.sort()
+        return entries
 
     def deck_archived(self, deck: Deck) -> None:
         self.scheduler.cancel_group(deck.name)

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The workspace's centre column: Preview, Source, Split (both side by side) and
 Details of the focused slide (docs/UI_REDESIGN_PLAN.md, step 5).
 
@@ -94,8 +96,10 @@ class CentreColumn(QFrame):
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
         self.preview.neighbours = self._neighbour_targets
+        self.preview.slide_requested.connect(self._go_adjacent)
         self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
+        self.details.open_requested.connect(lambda path: self.open_file(path))
         ratio = layout_settings.get(SPLIT_SETTING)
         self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
                              and 0.1 <= ratio <= 0.9 else DEFAULT_SPLIT)
@@ -551,6 +555,29 @@ class CentreColumn(QFrame):
                   else for_path(state.project, self._path))
         title = deck_outline.slide_file_title(self._path, id_slug) if target else ""
         return target, row if partner else None, title, own if partner else None
+
+    def _go_adjacent(self, direction: int) -> None:
+        """The Preview's wheel ran past the last (first) reveal step: focus the slide after (before) the focused one,
+        opening at its first step going forward, at its last going back -- as in a presentation."""
+        state, row = self.state, self._focused_row()
+        if state.deck is None or row is None:
+            return
+        rows = [r for section in deck_outline.build_outline(state.project, state.deck, state.view, state.language)
+                for r in section.rows]
+        index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
+        if index is None:
+            return
+        index += direction
+        while 0 <= index < len(rows) and rows[index].hidden:
+            index += direction
+        if not 0 <= index < len(rows):
+            return
+        other = rows[index]
+        target = for_call(state.project, state.deck, other.call, other.position, frame_number=other.frame_number,
+                          occurrence_key=other.key, hidden=other.hidden)
+        if target is not None:
+            self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
+        state.set_focused_slide(other.call.id, occurrence_key=other.key)
 
     def _neighbour_targets(self) -> list:
         """[(target, row)] of the slides nearest to the focused one in the deck (one before, one after, two before,

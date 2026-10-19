@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Single per-image store for everything the accessibility system knows
 about an image: `media/alt-text.json`. Replaces two former stores --
 alt_manifest.py's `media/alt-text.csv` (role/status/short_alt only) and the
@@ -87,10 +89,16 @@ SOURCE_LABELS = {SOURCE_TO_REVIEW: "To review", SOURCE_REVIEWED: "Reviewed"}
 # Same scan targets/guesses as the old alt_manifest.py. The three scheme_*
 # dirs moved under schemes/ 2026-09-18 (were project-root siblings of
 # media/ before that).
-IMAGE_DIRS = ("media", "schemes/scheme_uni_graz", "schemes/scheme_uni_ibk", "schemes/scheme_mci")
+IMAGE_DIRS = ("media",)         # plus every schemes/<scheme>/ folder (scheme_dirs())
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".pdf", ".eps")
 _DECORATIVE_PREFIXES = ("midjourney-", "icon-", "chapter-logo-", "logo-", "logo_")
-_DECORATIVE_DIRS = ("schemes/scheme_uni_graz", "schemes/scheme_uni_ibk", "schemes/scheme_mci")
+
+
+def scheme_dirs(root: Path) -> list[str]:
+    """The template schemes' folders (schemes/<name>/, logos and backgrounds), root-relative."""
+    folder = root / "schemes"
+    return [f"schemes/{path.name}" for path in sorted(folder.iterdir()) if path.is_dir()] if folder.is_dir() else []
+
 
 # Review states for one slide's *use* of one image, worst first -- same
 # four-state shape the old per-slide %%ALT block state machine used, now
@@ -494,7 +502,7 @@ def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> N
 
 def _guess_role(image: str) -> str:
     directory, _, name = image.rpartition("/")
-    if directory in _DECORATIVE_DIRS:
+    if directory.startswith("schemes/"):
         return ROLE_DECORATIVE
     lowered = name.lower()
     if any(lowered.startswith(p) for p in _DECORATIVE_PREFIXES):
@@ -505,7 +513,7 @@ def _guess_role(image: str) -> str:
 def scan_images(ctx: ProjectContext) -> list[str]:
     """Every includable image in the project, as root-relative posix paths."""
     found: list[str] = []
-    for dirname in IMAGE_DIRS:
+    for dirname in (*IMAGE_DIRS, *scheme_dirs(ctx.root)):
         directory = ctx.root / dirname
         if not directory.is_dir():
             continue

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Local SlideMage UI preferences -- dark mode, the Ollama host, and the saved
 settings of the AI routes (ai/ai_profile.py reads and writes those keys).
 A plain JSON file lives inside SlideMage/ itself, not the Windows registry (2026-08-25,

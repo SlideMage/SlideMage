@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Multi-language parsing primitives shared by the SlideMage GUI's
 language badges (deck_outline.py, the Add slide sheet,
 the Details view) and slide_rename.py's translation-link repair

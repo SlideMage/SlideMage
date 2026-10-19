@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The SlideMage tools: the deck's slides, lint, previews, new slides, citations, compiling and
 the guides (2026-10-10, UI redesign step 10a). Each is a thin layer over the backend module that
 does the real work for the rest of the application (deck_outline, latex_lint, preview_target,

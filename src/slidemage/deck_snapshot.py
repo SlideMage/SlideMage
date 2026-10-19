@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Deck snapshots: a frozen, self-contained copy of one deck (v5.33.0,
 docs/DECK_SNAPSHOT_PLAN.md).
 

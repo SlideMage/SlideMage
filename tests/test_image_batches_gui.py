@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Image batches on a route (workspace v6 handoff, section 5): what the route in use shows on the buttons that send
 content, the question before a batch, the route a batch captures, and the results panel with Retry failed: for the
 Images page, for "Stop and switch" and for the assistant's image tasks. The pipeline's own part, what became of each

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """"Ask AI to fix": a syntax check by a language model, shown inline above the
 editor of the file it checks (docs/UI_REDESIGN_PLAN.md, step 5; it replaces the
 old "Check syntax" dialog).

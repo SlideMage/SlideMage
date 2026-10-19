@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the Prompts tab of Settings stores: the draft prompts and the translation prompts."""
 from __future__ import annotations
 

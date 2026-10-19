@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Progress of a PDF compile, derived from the log lines the compile already
 produces (2026-09-27, direct instruction: a thin progress bar at the top edge
 of the log window; 4 compile passes assumed, 3 for a deck without a

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The popovers that answer a move of the AI switch (workspace v6 handoff, section 2, "Popups"): busy, busy after
 the work ended, Claude Code session, project setting Local, first use of Cloud.
 

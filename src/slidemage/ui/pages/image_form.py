@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """One image of the slide shown on the Images page: its picture and the fields that describe it.
 
 Everything about an image (role, short and long description, source, the German counterparts)

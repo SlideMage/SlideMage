@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""Where a slide is used, and what a new version means for those decks
 (v5.23.0, direct instruction).
 

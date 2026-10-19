@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare a real editing workflow with original fresh jobs and retained state."""
 
 from __future__ import annotations

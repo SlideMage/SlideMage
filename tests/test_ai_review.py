@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Claude provenance persists until explicit review, across all writing processes."""
 from datetime import datetime
 from hashlib import sha256

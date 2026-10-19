@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A Claude Code task (claude_tasks.Task) on a Local or API provider: the same rules, request, answer shape and check
 as claude_runner.run_task, with the provider's chat in place of the `claude -p` process.
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The pseudo-terminal wrapper (pty_process.py): a child gets a terminal of the asked size, its output
 arrives in order, input reaches it, the exit code is reported, and stop() ends it politely, then by force."""
 from __future__ import annotations

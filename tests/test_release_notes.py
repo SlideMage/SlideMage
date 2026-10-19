@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """packaging/release_notes.py: the BREAKING: marker is required for a major bump."""
 from __future__ import annotations
 

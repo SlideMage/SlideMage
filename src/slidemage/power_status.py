@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Power, CPU and disk facts for background rendering, without new dependencies. Each returns None when
 the platform does not say, which the idle gate treats as "fine"."""
 from __future__ import annotations

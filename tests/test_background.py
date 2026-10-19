@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Threads that outlive the sheet which started them (slidemage.ui.background)."""
 from __future__ import annotations
 

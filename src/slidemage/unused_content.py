@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Find and archive media/ and slides/ files nothing references anymore.
 
 Two independent scans (find_unused_media(), find_unused_slides()), archived by archive_files():
@@ -26,8 +28,7 @@ Two independent scans (find_unused_media(), find_unused_slides()), archived by a
   there,
   not just ones with \\documentclass (i.e. not deck_scan.scan_decks()):
   decks/test-slides.tex is a shared \\input{}-ed fragment with real
-  \\slide{}/\\omitslide{} calls of its own (test.tex/test-mci.tex/
-  test-ibk.tex/test-student.tex all \\input{} it rather than listing slides
+  \\slide{}/\\omitslide{} calls of its own (test.tex/test-student.tex and the other test decks all \\input{} it rather than listing slides
   directly), so it has to be scanned too or its slides would look unused.
 
 A 2026-09-27 direct report found two real false positives from this batch

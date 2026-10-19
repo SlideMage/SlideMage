@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The compile slot: one run at a time, owned here and only displayed by the window.
 
 `CompileController` holds everything a run is made of -- the cancel token, the worker thread, the
@@ -14,7 +16,7 @@ from typing import Any, Callable, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal
 
-from ... import compile_progress, project
+from ... import compile_progress, project, status_trace
 from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, STOPPED, JobRow, RunStatus
 from ...compiler import CancelToken, CompileJob
 from .. import background
@@ -64,6 +66,7 @@ class CompileController(QObject):
         self._stop_requested = False
         self._on_done: Optional[Callable[[Any], None]] = None
         self._result: Any = None
+        self._trace: Optional[status_trace.StatusTrace] = None    # what the card showed, and when
         self.log.connect(self._feed)
         self.preview_progress.connect(self._preview_progress)
 
@@ -82,6 +85,12 @@ class CompileController(QObject):
         "<failure> failed". `on_done(result)` runs once the slot is free again."""
         self.progress = compile_progress.BatchProgress()
         self.progress.reset(specs)
+        if self._trace is not None:
+            self._trace.close()
+        self._trace = status_trace.StatusTrace()
+        self._trace.header(f"{verb or 'run'}: " + ", ".join(
+            f"{name} ({spec.passes} passes{' est.' if spec.estimated else ''}, {spec.slides} slides)"
+            for name, spec in specs.items()))
         self.jobs = {job.jobname: job for job in jobs or []}
         self.run = RunStatus(labels, root=self.context.root, verb=verb, pdfs=pdfs,
                              decks={name: job.deck.path for name, job in self.jobs.items()})
@@ -106,6 +115,8 @@ class CompileController(QObject):
         self.worker = self.cancel = None
         self.run.finish(self._stop_requested)
         self.over = True
+        if self._trace is not None:
+            self._trace.record("worker ended", self.progress, self.run)
         self.ended.emit()
         self._update()
         if self._on_done is not None:
@@ -134,6 +145,8 @@ class CompileController(QObject):
                     row.state = STOPPED
                 elif row.state not in (FAILED, STOPPED):
                     row.state = DONE if completed == event.total else RUNNING
+        if self._trace is not None:
+            self._trace.record(f"preview {event.view} {event.status}", self.progress, self.run)
         self._update()
 
     def _feed(self, line: str) -> None:
@@ -141,6 +154,8 @@ class CompileController(QObject):
         row = self.run.feed(line) if self.run is not None else None
         if row is not None and row.state == DONE and row.pdf is not None and self._opens_pdfs:
             self.pdf_ready.emit(row.pdf)
+        if self._trace is not None:
+            self._trace.record(line, self.progress, self.run)
         if progress_update is not None or row is not None:
             self._update()
 

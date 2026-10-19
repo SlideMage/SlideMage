@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """SlideMage's MCP server for the embedded Claude Code (ai/mcp_server.py) over real HTTP on localhost: the
 handshake, the token and host checks, each tool through tools/call on a throwaway project, and what it does
 not do (no other methods, no GET, no foreign hosts). No Qt, no model."""

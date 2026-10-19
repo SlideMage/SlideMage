@@ -1,10 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compat.py change "bibliography-in-template" (v5.32.0): the citation format
 moved from the course decks into the institution template.
 
 Before: every deck that used references carried the same ~90 lines (biblatex
 with the house options, the .bib lookup, name format, field formats and four
 bibliography drivers). Now a deck says SMUseBibliography and its template
-(Slidemaster_preamble_uni-graz.tex, the SlideMage template, ...) defines the
+(an institution template, the SlideMage template, ...) defines the
 format once (bibliography_house.BLOCK).
 
 Not breaking -- a deck with its own copy still compiles -- but it is the

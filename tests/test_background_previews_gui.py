@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The window's side of background rendering: the input watcher, the deck usage, the chip and its menu, the settings."""
 from __future__ import annotations
 
@@ -44,8 +46,31 @@ def test_user_input_anywhere_in_the_application_resets_the_idle_clock(window):
 
     gate = window.background.renderer.gate
     gate.last_input = -1000.0
+    # Qt's own mouse moves (widgets appearing under a still cursor) are not the user: the sent event is not spontaneous
     QApplication.sendEvent(window.topbar, QMouseEvent(
         QEvent.Type.MouseMove, QPointF(3, 3), Qt.MouseButton.NoButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier))
+    assert gate.last_input == -1000.0
+
+    class Move:                       # a real mouse move: spontaneous, with a position
+        def __init__(self, x):
+            self.x = x
+
+        def type(self):
+            return QEvent.Type.MouseMove
+
+        def spontaneous(self):
+            return True
+
+        def globalPosition(self):
+            return QPointF(self.x, 5)
+
+    watcher = window.background._watcher
+    watcher.eventFilter(window.topbar, Move(10))
+    assert gate.last_input > -1000.0
+    gate.last_input = -1000.0
+    watcher.eventFilter(window.topbar, Move(10))        # the cursor did not move
+    assert gate.last_input == -1000.0
+    watcher.eventFilter(window.topbar, Move(11))
     assert gate.last_input > -1000.0
     gate.last_input = -1000.0
     QApplication.sendEvent(window.topbar, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Shift, Qt.KeyboardModifier.NoModifier))

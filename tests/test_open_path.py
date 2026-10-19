@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """External viewers must not inherit PyInstaller's private Linux libraries."""
 import sys
 from pathlib import Path

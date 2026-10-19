@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent's tools on a throwaway project (never the real example/): path confinement, reading,
 finding, the edit rules (buffer or disk, protected parts, frozen versions, ask / auto), the
 SlideMage tools over their backends, and the context block."""
@@ -507,7 +509,7 @@ def test_refresh_preview_rerenders_the_focused_slide_and_an_explicit_one(box, ro
     seen = fake_render(monkeypatch, root)
     assert "abc: instructor, EN: rendered; cached for instructor." in box.ok("refresh_preview", view="instructor")          # the slide in focus
     assert seen == [("abc-EN-Hello", 1, "instructor", "EN", False)]                    # as the open deck calls it
-    assert slide_snapshot.snapshot_path(box.ws.project, "abc", "uni-graz", id_slug="abc-EN-Hello").is_file()
+    assert slide_snapshot.snapshot_path(box.ws.project, "abc", slide_snapshot.DEFAULT_TEMPLATE, id_slug="abc-EN-Hello").is_file()
     assert "abd: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="abd")
     assert seen[-1][:2] == ("abd-EN-Second", 2)
     assert "abc: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="slides/abc-EN-Hello-current.tex")
@@ -695,7 +697,7 @@ def test_refresh_preview_headless_rejects_a_source_edit_during_render(box, root,
     monkeypatch.setattr(preview_target, 'render_text', changed)
     result = box.ok('refresh_preview')
     assert 'rendered' in result and 'superseded' in result and 'displayed' not in result
-    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', 'uni-graz').exists()
+    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE).exists()
 
 
 def test_render_preview_default_is_selected_view_and_refresh_default_is_all_views(box, root, monkeypatch):
@@ -705,11 +707,11 @@ def test_render_preview_default_is_selected_view_and_refresh_default_is_all_view
     box.ws.open(root / SLIDE, LF + '% draft\n')
     assert box.run('render_preview').images
     assert seen[-1][2] == 'during-course'
-    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', 'uni-graz').exists()
+    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE).exists()
     result = box.ok('refresh_preview')
     assert all(f'{view}, EN' in result for view in ('instructor', 'during-course', 'after-course'))
     assert [row[2] for row in seen[-3:]] == ['instructor', 'during-course', 'after-course']
-    assert slide_snapshot.snapshot_path(box.ws.project, 'abc', 'uni-graz', id_slug='abc-EN-Hello').exists()
+    assert slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE, id_slug='abc-EN-Hello').exists()
     assert box.ws.context().view == 'during-course'
 
 

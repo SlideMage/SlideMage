@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The dialog badge, keyboard support and live region of the AI switch (workspace v6, step 7): the read-only route
 badge under the title of every dialog that runs or configures AI, the keyboard paths of the switch, its popovers
 and AI setup, the shared `announce` helper and the accessible names. Nothing here reaches Ollama or the cloud."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Generate an accessible companion transcript for a deck.
 
 Markdown is the source format, HTML the delivered one. Generated on demand and

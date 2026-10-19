@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Physical and code-bearing Python lines under <root>/src/slidemage (see docs/STREAMLINING_PLAN.md)."""
 import ast
 import io

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the window shows of the compile slot (compile_controller.py): the run's job panel
 (job_panel.py), the Log drawer (log_drawer.py) and a toast that answers a single job's end.
 

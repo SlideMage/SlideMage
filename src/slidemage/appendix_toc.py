@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile-time-generated appendix: an agenda slide plus one or more
 thumbnail-grid slides per chapter, hyperlinked to and from the main deck.
 
@@ -26,7 +28,7 @@ FRONT_MATTER_ORDER = 0
 # registers (\paperwidth, \gothamFrametitleRightpading, \SMFooterBoxHeight,
 # \SMTitleBarBottomAlign) rather than a hardcoded cm value, so it adapts
 # automatically to whichever institution's logo/padding the compiling deck
-# actually uses (Graz/Innsbruck/MCI each set these differently). Left-aligned
+# actually uses (each institution template sets these differently). Left-aligned
 # to the .45cm text margin, scaled up until either the right edge reaches
 # the logo's own right edge or the row height runs out -- whichever binds
 # first (direct instruction, 2026-09-15) -- with a 2% safety margin on both

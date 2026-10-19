@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The tasks the assistant header offers and what a click does (Claude Code tasks plan, step 2).
 
 `bubbles(window)` says which tasks fit the slide in the Source view (and translation partner); `contextual` picks the

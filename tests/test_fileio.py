@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """fileio.py: complete-or-nothing writes and tolerant JSON reads."""
 import os
 import pytest

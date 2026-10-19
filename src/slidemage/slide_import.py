@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Import a PowerPoint (.pptx) or OpenDocument Presentation (.odp) file as
 new Slidemaster slides, with real, editable LaTeX text -- not a rendered
 image of each source slide. Direct instruction, 2026-09-23.

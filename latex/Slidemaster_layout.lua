@@ -1,3 +1,5 @@
+-- SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+-- SPDX-License-Identifier: LPPL-1.3c+
 -- Slidemaster_layout.lua -- Lua half of the layout helpers in
 -- Slidemaster_preamble_base.tex. In its own file, not inline in \directlua,
 -- for the same reason as Slidemaster_alt.lua: TeX tokenizes a \directlua

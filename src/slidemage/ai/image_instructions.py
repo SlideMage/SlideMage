@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Shared image-description instructions for interactive assistants and the image guide."""
 
 IMAGE_DESCRIPTION_RULES = (

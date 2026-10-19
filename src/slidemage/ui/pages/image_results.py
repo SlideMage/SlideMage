@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The two things around an image batch that name its route (workspace v6 handoff, section 5): the question asked
 before it starts, and the results panel shown when it ends, is stopped or is cancelled by a switch of the route.
 

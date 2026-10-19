@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Save-time dialog for a slide that is used in several decks (v5.23.0,
 direct instruction): per deck, move on to the new version or stay on the
 previous one -- see slide_usage.py for what each choice does to the deck.

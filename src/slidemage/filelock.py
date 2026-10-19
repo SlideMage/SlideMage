@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The cross-process file lock (`build_lock`) shared by preview builds and the review store; light enough for the
 Claude Code hook process to import (no Qt, compiler or PDF libraries)."""
 from __future__ import annotations

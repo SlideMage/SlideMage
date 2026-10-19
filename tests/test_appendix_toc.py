@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The generated appendix (agenda + thumbnail grids): which compiles carry it, and which slides it lists."""
 from __future__ import annotations
 

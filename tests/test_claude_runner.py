@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Running a Claude Code task (ai/claude_runner.py) against the fake `claude` of tests/fake_claude.py: the
 command line and environment of the process, the outcomes (done, nothing to change, failed, cancelled), the
 repair attempt, the deadline, Stop, and that a changed file is not overwritten."""

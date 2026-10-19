@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Reusable latexmk builds for interactive previews.
 
 Keep TeX's own dependency graph and auxiliary files between edits. This caches

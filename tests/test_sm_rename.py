@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """sm_rename: this project's \\gotham... names become \\SM..., the Gotham theme's stay."""
 from slidemage import sm_rename
 

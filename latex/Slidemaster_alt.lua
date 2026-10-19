@@ -1,3 +1,5 @@
+-- SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+-- SPDX-License-Identifier: LPPL-1.3c+
 -- Lua side of the alt-text manifest (ALT_TEXT_NOTES.md, phase 1).
 --
 -- Loaded from Slidemaster_preamble_base.tex's "Alt-text manifest" block.

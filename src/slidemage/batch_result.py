@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What became of each image of a drafting or translating run (workspace v6 handoff, section 5).
 
 alt_draft's batches say what happened to every image they work through (`ItemOutcome`); the Images page and the

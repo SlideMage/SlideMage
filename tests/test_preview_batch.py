@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Batch ordering, partial results and shared-request consumer lifetimes."""
 from dataclasses import replace
 import os

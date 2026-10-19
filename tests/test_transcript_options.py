@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Transcript parsing of the optional arguments added 2026-09-30:
 \\begin{gothamtable}[gap=...]{spec} and \\begin{gothamfloating*block}[top=...]{width}{title}."""
 from slidemage import transcript

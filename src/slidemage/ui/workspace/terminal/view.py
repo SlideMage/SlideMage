@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Claude Code body of the assistant card (assistant.py), shown while the route is Cloud · Claude Code: the
 user's own `claude`, running in a terminal in the project folder, connected to SlideMage (session.py).
 

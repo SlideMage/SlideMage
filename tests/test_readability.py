@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The readability check: its rules on synthetic PDFs built with MuPDF (text of chosen sizes, colours and positions, images,
 figures) read by the real measurement code (readability_pdf.read_pages, in this process; one test goes through the raster
 child), the classification of the text, the pages of a deck becoming slides, the reports, and the deck PDF's freshness. No

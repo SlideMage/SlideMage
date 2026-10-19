@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Serialize preview raster requests through one reusable child process.
 
 The module-level functions use one shared child (the Preview's and the chat's). A `RasterClient` of

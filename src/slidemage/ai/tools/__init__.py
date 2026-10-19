@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent's tools (2026-10-10, UI redesign step 10a): `build_toolbox()` gives a run its
 ToolBox. Generic file tools: files.py; changing files and the rules for it: edits.py; the
 SlideMage tools: slidemage.py; the cached-preview refreshes: previews.py; the readability check: readability.py;

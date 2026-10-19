@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Change a slide's own language segment (<id>-<slug> -> <id>-<LANG>-<slug>,
 or <id>-<OLDLANG>-<slug> -> <id>-<LANG>-<slug>), and keep translation
 cross-reference header comments honest afterward.

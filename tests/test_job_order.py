@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compiler.order_jobs: a multi-job compile runs version by version, then deck by deck."""
 from __future__ import annotations
 

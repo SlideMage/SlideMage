@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Opt-in real engine gate; regular tests cover the same branches without TeX."""
 import os
 from pathlib import Path

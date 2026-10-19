@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Claude Code as the backend of the image pipeline in alt_draft.py (Claude Code tasks plan, step 4).
 
 ClaudeDraftBackend and ClaudeTranslationBackend are the DraftBackend and TranslationBackend of the Ollama and

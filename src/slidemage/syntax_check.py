@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Check a slide/deck's raw LaTeX for likely syntax problems via a local
 (Ollama) or cloud (Claude) model (2026-08-31, direct instruction: a "Check
 syntax" button in the slide/deck edit tabs; any ChatProvider since

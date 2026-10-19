@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The reveal steps of a slide, for the Preview's step bar.
 
 A step is a beamer overlay: page k of a render that keeps every overlay is step k (slide_preview's

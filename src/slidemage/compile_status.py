@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Per-job state of a compile run, read off the log lines the compile already
 writes (the same lines compile_progress.py follows for the progress bar).
 

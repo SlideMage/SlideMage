@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Renders .pdf media references to a cached PNG (2026-08-26, direct
 instruction) -- both the Images tab's own preview and the Ollama vision
 model need a raster image; a .pdf media file (icons, diagrams, occasional

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """ChatProvider implementations against a throwaway local HTTP server (no
 external network): request shape, response parsing, error mapping; plus the
 API-key sources. (The route resolver and its settings are in test_ai_profile.py.)"""

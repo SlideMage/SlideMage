@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Model pickers (ai_models): only the models of the active route, the default preselection, the Route a pick
 makes, and the once-per-project cloud confirmation."""
 from __future__ import annotations

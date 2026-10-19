@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keep the computer awake and the screensaver off while presenting (plan 4.3).
 
 One small backend per platform, none needing a new dependency:

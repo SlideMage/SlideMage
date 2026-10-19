@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """UI kit (slidemage.ui.kit): fonts, tokens, widgets and the debug gallery in
 light and dark mode. No golden screenshots: the checks are structural
 (non-empty render, fonts registered, icon ligatures draw a glyph)."""

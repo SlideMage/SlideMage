@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Create an empty deck: a `decks/<name>.tex` with the preamble every deck of the project shares (the template's
 own preamble, the deck-version and -language defaults, the group tag) and no slides yet.
 

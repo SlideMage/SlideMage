@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """In-flight preview sharing; pixels and build state keep their existing caches.
 
 Requests own immutable source/context keys. Consumers may await the same build,

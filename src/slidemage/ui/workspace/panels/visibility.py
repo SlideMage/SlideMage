@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""Visibility: in which views (Instructor, During course, After course) the open deck typesets
 the focused slide, one row per call of it -- the whole slide, or the reveal steps of a
 \slidestep call.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The compile job panel (prototype v3): a card at the bottom of the window with
 the run's progress, one row per job (state, what it is doing, Stop) and, once
 the run is over, what became of it with Log, Retry failed and Open PDF.
@@ -174,7 +176,10 @@ class JobPanel(QFrame):
         run = self._run
         failed = run.failed
         done = over and run.settled
-        busy = next((r for r in run.rows.values() if r.state in (RUNNING, MOVING)), None)
+        # The job being compiled is the one on show: an earlier job whose PDF is still being moved into place (a
+        # background step of 30 s and more) is only shown while nothing else runs.
+        busy = (next((r for r in run.rows.values() if r.state == RUNNING), None)
+                or next((r for r in run.rows.values() if r.state == MOVING), None))
         for name, widget in self._rows.items():
             widget.update_row(run.rows[name], progress, can_stop=self._per_job_stop and not over)
         if done:

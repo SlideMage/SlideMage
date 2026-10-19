@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Focused offscreen regressions for GUI data-loss cases from the 2026-09 review."""
 from __future__ import annotations
 

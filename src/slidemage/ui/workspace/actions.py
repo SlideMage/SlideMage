@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Every action of the workspace window, as a command of the registry (ui/commands.py).
 
 `build_registry()` is called once by the window. A command runs with the window

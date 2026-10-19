@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A child process on a pseudo-terminal, for the terminal of the Claude Code view
 (UI redesign step 10c). No Qt: the owner passes plain callbacks.
 

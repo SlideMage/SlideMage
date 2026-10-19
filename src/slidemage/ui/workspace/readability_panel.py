@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The readability check in the assistant: the results panel and the flow behind the two commands.
 
 `ReadabilityPanel` takes the place of the conversation (assistant.py), like the image results, until Back to

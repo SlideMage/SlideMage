@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Bundled fonts (Roboto, Roboto Mono, Material Icons), registered with Qt.
 
 They ship inside the app (assets/fonts/, see README.md there for sources and

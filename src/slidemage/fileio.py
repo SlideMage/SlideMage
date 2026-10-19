@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Safe file writes and tolerant JSON reads with no SlideMage dependencies: every store and record SlideMage
 keeps is written complete beside its target and renamed into place, so a crash or a second process never
 sees half a file."""

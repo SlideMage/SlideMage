@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """GUI half of the pre-render syntax check (latex_lint.py): every path that
 starts a PDF render calls `confirm_render()` first.
 

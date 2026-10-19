@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Two projects side by side in one process: every module takes the ProjectContext it works on, so
 needs no module reload, no patched path globals and no "current project"."""
 from __future__ import annotations

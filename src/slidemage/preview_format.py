@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Precompiled preamble formats for interactive previews.
 
 Loading a deck's preamble (beamer, tikz, pgfplots, biblatex, the theme and

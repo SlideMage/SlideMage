@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A selection of a slide's text, captured for an AI task (Claude Code reviews plan, step R1): the file, its whole text
 at that moment and the range that was selected. The task works on the range only and the proposal goes back into
 exactly it, so a selection that touches a protected part of the slide (protected_regions: the header comment, the

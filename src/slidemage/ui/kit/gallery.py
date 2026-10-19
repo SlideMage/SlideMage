@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Debug-only gallery of every kit widget, in light or dark mode:
 
     python -m slidemage.ui.kit.gallery [--light]

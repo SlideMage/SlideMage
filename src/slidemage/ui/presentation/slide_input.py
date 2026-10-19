@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the mouse does on a slide view (plan 4.7, 4.8), decided at the press and free of widgets.
 
 Ctrl + left button is the laser (never a link, never a stroke); else with the pen the button draws, with

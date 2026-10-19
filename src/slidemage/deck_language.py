@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Resolve a deck's logical slide slots to their language partners.
 
 Deck files remain unchanged. The original call owns placement, visibility

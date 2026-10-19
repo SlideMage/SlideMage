@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """One file open in the Source view: its editor, find bar and header-fold
 button, and what saving, reverting and reloading it mean.
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The compile flow of the workspace: pre-check, job panel, Log drawer, the failure
 toast that jumps to the failing line, stopping, retrying and closing mid-compile.
 The compiler is replaced by a script that writes the log lines a real run writes."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Make readable (small UI todos S4b): the task card from the findings of a check to the Done state, with the stand-in for
 `claude -p` (fake_claude.py), a stand-in for the preview's render and a stand-in for the readability measurement (it
 answers the reports a test queues, and notes the text it was asked to measure). The header's button, the findings panel's,

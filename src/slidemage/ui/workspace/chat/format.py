@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Plain-text helpers of the chat's cards: the rows of a diff and the one-line summary of a tool call.
 No Qt, so they are tested without a window."""
 from __future__ import annotations

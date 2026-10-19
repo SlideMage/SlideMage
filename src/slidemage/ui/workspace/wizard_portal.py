@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Transparent Qt wizard overlay. No video codecs or extra runtime dependencies.
 
 Call play_wizard(window) on the GUI thread; connect overlay.cast to a visual change.

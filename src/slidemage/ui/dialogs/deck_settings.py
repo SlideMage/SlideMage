@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Deck settings sheet (UI_REDESIGN_PLAN.md, step 9): the deck-wide settings that live in the
 deck's own file -- template, language, footer text, course link, the PDF shown by "Open pdf", where
 the PDFs go, the appendix TOC (deck_settings.py reads and writes them) -- and, as a third tab, the
@@ -123,7 +125,7 @@ class DeckSettingsSheet(ModalSheet):
         layout.addWidget(Field("Footer shows", shown))
 
         self.url_edit = QLineEdit(settings.course_url)
-        self.url_edit.setPlaceholderText("https://online.uni-graz.at/...")
+        self.url_edit.setPlaceholderText("https://… (the course page)")
         self.open_button = Button("Open", compact=True)
         self.open_button.setEnabled(bool(settings.course_url.strip()))
         self.url_edit.textChanged.connect(lambda text: self.open_button.setEnabled(bool(text.strip())))

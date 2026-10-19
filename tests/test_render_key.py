@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The file hash cache, the render key and the store of background renders (no TeX)."""
 from __future__ import annotations
 

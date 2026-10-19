@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The one queue behind every render that is not the user waiting for it (docs/plans/idle-background-rendering.md, 5.1).
 
 Three priority classes, strictly in this order:
@@ -8,8 +10,7 @@ Three priority classes, strictly in this order:
 
 A job of a better class never waits for a worse one, not even for one with the same key: the running job is
 cancelled (its process tree is killed) and put back in the queue, then the better job runs. Cancelling is
-never a failure. User input while an idle job runs lets a job that has run for less than `grace` seconds
-finish and cancels a longer one. One worker thread per allowed process; after each idle job the worker
+never a failure. User input never stops an idle job; it only keeps the next one from starting (the gate). One worker thread per allowed process; after each idle job the worker
 rests for `duty` times the job's duration (a cap of REST_CAP seconds), so a laptop does not run hot.
 
 Free of Qt: the idle gate is a callable the caller supplies.
@@ -128,14 +129,8 @@ class RenderScheduler:
         return dropped
 
     def user_active(self) -> None:
-        """The user did something. An idle job that has run for longer than the grace period is cancelled (and
-        requeued); a shorter one is left to finish. Nothing new starts until the gate allows it again."""
-        now = self._clock()
-        with self._cond:
-            for job in self._running.values():
-                if job.priority == P_IDLE and now - job.started > self.grace and not job.cancelled_for_requeue:
-                    job.cancelled_for_requeue = True
-                    job.cancel.request_stop()
+        """The user did something. Nothing running is stopped (only a job of a better class does that, in submit());
+        the gate (`can_start`) decides whether the next idle job starts."""
 
     # -- state -------------------------------------------------------------------------
 

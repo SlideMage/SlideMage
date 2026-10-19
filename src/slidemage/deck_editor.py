@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Parse and edit a single deck file's own \\slide{}-family call list.
 
 Pure parsing/editing on top of deck_scan.Deck/Chapter -- no GUI code here,

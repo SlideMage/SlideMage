@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Details view: facts about the focused slide and the slide-level actions.
 
 What the slide is (file, frame, version, language, slug) and Rename / Duplicate /
@@ -47,6 +49,7 @@ def _label(text: str, name: str) -> QLabel:
 
 class DetailsPane(Surface):
     duplicate_requested = Signal(str)   # the id-slug of the slide to duplicate into a deck
+    open_requested = Signal(object)     # the Path of a slide file (a translation, a frozen version) to open in the Source view
 
     def __init__(self, app, state: WorkspaceState, is_dirty: Callable[[Path], bool]) -> None:
         """`is_dirty(path)`: whether the Source view holds edits of that file that could not be saved (writing the others first)."""
@@ -86,6 +89,7 @@ class DetailsPane(Surface):
         else:
             layout.addWidget(self._build_header())
             layout.addWidget(self._build_facts())
+            layout.addWidget(self._build_related())
             layout.addLayout(self._build_actions())
             layout.addStretch(1)
         self._scroll.setWidget(page)
@@ -140,6 +144,47 @@ class DetailsPane(Surface):
         rename.clicked.connect(self._rename)
         grid.addWidget(rename, 4, 2)
         grid.setColumnStretch(1, 1)
+        layout.addLayout(grid)
+        return panel
+
+    def _related_row(self, grid: QGridLayout, index: int, name: str, value: str, path: Path, chip: str = "") -> None:
+        grid.addWidget(_label(name, q.DETAILS_LABEL), index, 0, Qt.AlignmentFlag.AlignTop)
+        grid.addWidget(_label(value, q.DETAILS_VALUE), index, 1)
+        if chip:
+            grid.addWidget(Chip(chip, "warning"), index, 2)
+        open_button = Button("Open", "secondary", compact=True)
+        open_button.setToolTip(f"Open {path.name} in the Source view")
+        open_button.clicked.connect(lambda _checked=False, p=path: self.open_requested.emit(p))
+        grid.addWidget(open_button, index, 3)
+
+    def _build_related(self) -> QWidget:
+        """The other language of the slide and its frozen earlier versions, each with a way to open the file."""
+        project = self.app.project
+        panel, layout = self._panel("Other languages and earlier versions")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+        grid.setColumnStretch(1, 1)
+        index = 0
+        try:
+            link = slide_language.translation_link(project, self._id_slug)
+        except OSError:
+            link = None
+        if link is not None:
+            role = "Original" if not link.is_translation else "Translation of"
+            self._related_row(grid, index, f"{link.language or 'Other language'}", f"{role}: {link.path.name}", link.path,
+                              "may be out of date" if link.outdated else "")
+            index += 1
+        frozen = []
+        for path in project.slides_dir.glob(f"{self._id_slug}-v*.tex"):
+            match = slide_language.FROZEN_RE.search(path.name)
+            if match and path.name[:match.start()] == self._id_slug:
+                frozen.append((tuple(int(part) for part in match.group(1).split("-")), match.group(1), path))
+        for _key, version, path in sorted(frozen, reverse=True):
+            self._related_row(grid, index, slide_versioning.version_label(version), path.name, path)
+            index += 1
+        if index == 0:
+            grid.addWidget(_label("No translation and no frozen earlier version.", q.DETAILS_LABEL), 0, 0, 1, 4)
         layout.addLayout(grid)
         return panel
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """AnthropicProvider.stream_turn through the real SDK against a local server: the request the
 agent loop sends (tools, caching, effort), streamed text, tool calls, replaying the history,
 usage, and Stop."""

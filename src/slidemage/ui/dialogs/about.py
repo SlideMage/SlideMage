@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The About sheet (UI_REDESIGN_PLAN.md, step 9): SlideMage's release history and license.
 
 The history is version.parse_history(), read from CHANGELOG.md, so a new history

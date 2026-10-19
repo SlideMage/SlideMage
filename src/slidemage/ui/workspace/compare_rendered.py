@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare rendered: one slide's text before and after an AI edit, typeset side by side.
 
 A dialog of its own (not modal, wider than the assistant's 360 px column) that every place showing an AI edit opens:

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The small shared helpers: plural(), version_label(), current_name() and is_current_file()."""
 from __future__ import annotations
 

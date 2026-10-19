@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Images page (UI_REDESIGN_PLAN.md, step 9): review the descriptions of every image.
 
 Slide-centric, as the review always was: the left column lists the slides that show images with

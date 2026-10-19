@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Presenting a deck from SlideMage (docs/plans/presentation-mode.md): the parts that need no window.
 
 pdf_source reads the presenter PDF, session holds what both screens show, screens picks the screens,

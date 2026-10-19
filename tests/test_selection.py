@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rewrite selection and Proofread selection, the parts without a window (Claude Code reviews plan, step R1): the
 capture of a selection (selection.py), the requests, and claude_tasks.check on a range of the file: every character
 outside the range stays, the protected parts and the lint errors are the whole file's, an edit's `before` must occur

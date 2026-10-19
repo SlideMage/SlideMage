@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The update check on start (v4.1.0): modes, the four answers to the
 "Update available" question, and breaking releases asked about even in
 "auto" mode. Runs maintenance.py's functions on a stand-in window, with the

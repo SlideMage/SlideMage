@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The terminal's colours (ui/workspace/terminal/theme.py): every ANSI colour must be readable on the card
 it is drawn on, in both themes (the stock xterm palette has yellow and white that vanish on white)."""
 from __future__ import annotations

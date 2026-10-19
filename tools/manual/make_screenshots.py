@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Screenshots of SlideMage's workspace window, made offscreen from the real widgets.
 
     python tools/manual/make_screenshots.py OUT_DIR [--only NAME ...] [--scale N] [--list]

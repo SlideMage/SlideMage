@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The tools only the Claude Code connection has (UI redesign step 10c): what the user is looking at, bringing
 a slide into view, and the editor buffer with its unsaved edits. Claude Code reads and edits files on disk with its own tools;
 these show what SlideMage's window knows beyond the disk."""

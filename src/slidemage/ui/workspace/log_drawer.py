@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Log drawer (prototype v3): a dark panel over the bottom of the centre
 column, closed until the job panel's Log button, the toast's Log action, a
 failed compile or the ⋮ menu opens it. Every log writer (the window's `log()`,

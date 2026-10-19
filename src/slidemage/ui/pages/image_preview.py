@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """An image as the Images page shows it: large enough to check a number against the chart, on
 the white of a slide with a thin outline that shows where the picture ends.
 

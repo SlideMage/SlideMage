@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What runs a Route (workspace v6 handoff, step 1): ai_profile.resolve() says which route and model answer a
 task; this module turns that Route into a provider or a backend, or says why it cannot.
 

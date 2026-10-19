@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The generic file tools -- read, find, search -- and the one place that decides
 which paths the agent may touch at all (2026-10-10, UI redesign step 10a).
 

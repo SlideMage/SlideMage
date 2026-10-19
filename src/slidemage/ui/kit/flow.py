@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A layout that puts its widgets side by side and wraps them to the next line when the row is full (Qt's
 "flow layout" example, trimmed): the assistant header's task buttons."""
 from __future__ import annotations

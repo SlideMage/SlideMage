@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Opening a project (UI_REDESIGN_PLAN.md, step 9): the project picker and the "Made with a newer
 SlideMage" sheet.
 
@@ -38,6 +40,7 @@ class OpenProjectSheet(ModalSheet):
         import it. After exec(), `chosen` is the folder of the project to open, or None."""
         super().__init__("Open a project", parent, width=620)
         self.chosen: Optional[Path] = None
+        self.pdf: Optional[Path] = None      # the start screen's "Present a PDF…": no project, just a presentation
         self._current = current.resolve() if current is not None else None
         self._app_version = app_version
         self._needs_check = needs_check
@@ -62,6 +65,10 @@ class OpenProjectSheet(ModalSheet):
             self.add_footer_note(caption("Opening another project restarts SlideMage."))
         if not first_run:
             self.add_button("Cancel", role="reject")
+        if first_run:
+            present = self.add_button("Present a PDF…")
+            present.setToolTip("Present a presenter PDF (slides and notes) or any plain PDF, without a project")
+            present.clicked.connect(self._on_present_pdf)
         new_project = self.add_button("New project…")
         new_project.clicked.connect(lambda: self._show_form(self._base / NEW_FOLDER_NAME))
         open_folder = self.add_button("Open folder…", kind="primary")
@@ -170,6 +177,12 @@ class OpenProjectSheet(ModalSheet):
         self.status.setText(text)
         set_property(self.status, "tone", "error" if error else "")
         self.status.setVisible(bool(text))
+
+    def _on_present_pdf(self) -> None:
+        chosen, _filter = QFileDialog.getOpenFileName(self, "Present a PDF", str(self._base), "PDF files (*.pdf)")
+        if chosen:
+            self.pdf = Path(chosen)
+            self.accept()
 
     def _on_open_folder(self) -> None:
         chosen = QFileDialog.getExistingDirectory(

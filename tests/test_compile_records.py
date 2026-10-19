@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compile_records: what a compile read, so a deck snapshot can reuse a
 version's PDF when nothing it read has changed since."""
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Short guides the agent can load on demand with read_guide (2026-10-10, UI redesign step
 10a). Condensed from README.md and docs/SlidemasterManual.md; the frame skeletons come from
 slide_add, so they are the ones the Add slide sheet writes. A guide is kept short on purpose:

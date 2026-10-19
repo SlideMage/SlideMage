@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Optional wall-clock tracing of one preview, isolated per worker/context.
 
 latexmk rule durations run from its pass-start line to its next log-reading

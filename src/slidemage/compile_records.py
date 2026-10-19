@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What a compile read, so a later deck snapshot can tell whether that PDF is
 still current (v5.34.0, direct instruction: "Is there a way to check whether
 there were any changes since the last time a particular version was compiled,

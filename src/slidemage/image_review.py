@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Image descriptions, review side: what the Images page works out and stores, without any widget.
 
 Each slide that shows an image is a SlideView (its scan row, the worst review state across its

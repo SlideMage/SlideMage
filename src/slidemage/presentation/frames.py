@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Which PDF pages are the reveal steps of one slide (frame), from beamer's .nav file.
 
 The PDF alone cannot tell (its named destinations exist for every page), but beamer writes one

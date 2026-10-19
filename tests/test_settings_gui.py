@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Settings sheet: each tab's controls, what they save, and what changes live (the theme, the tab
 width, the model pickers). Ollama and Claude are fakes; nothing here touches the network."""
 from __future__ import annotations
@@ -104,7 +106,7 @@ def test_the_render_template_offers_the_project_templates_and_saves_the_choice(t
     app = FakeApp(context)
     sheet = open_sheet(qapp, app)
     combo = sheet.general.template_combo
-    assert [combo.itemData(i) for i in range(combo.count())] == ["uni-graz", "uni-ibk", "mci", "slidemage"]
+    assert [combo.itemData(i) for i in range(combo.count())] == ["slidemage", "mci", "uni-graz", "uni-ibk"]
     assert combo.currentData() == "slidemage"           # out of the box
     combo.setCurrentIndex(combo.findData("mci"))
     assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"

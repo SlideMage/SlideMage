@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""Slides that need the rest of the deck, rendered in a deck's context (docs/plans/deck-context-preview.md).
 
 A contents slide, a chapter agenda, a slide that prints the current section or refers to another slide looks

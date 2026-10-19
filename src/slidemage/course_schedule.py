@@ -1,4 +1,6 @@
-"""Fetch, parse, and render public Uni Graz course data.
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Fetch, parse, and render public course data.
 
 The public course detail page is a client-rendered app, so this module
 doesn't scrape it directly -- everything here comes from the same two
@@ -18,9 +20,10 @@ from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
 
 
-_UNIGRAZ_HOST = "online.uni-graz.at"
-_COURSE_GROUPS_PATH = "/kfu_online/ee/rest/slc.tm.cp/student/courseGroups/firstGroups"
-_COURSE_DATA_PATH = "/kfu_online/ee/rest/slc.tm.cp/student/courses"
+# The course system is a CAMPUSonline installation: its pages live under https://<host>/<instance>/..., its public
+# REST API under https://<host>/<instance>/ee/rest/... Host and instance come from the course URL the deck links.
+_COURSE_GROUPS_PATH = "/ee/rest/slc.tm.cp/student/courseGroups/firstGroups"
+_COURSE_DATA_PATH = "/ee/rest/slc.tm.cp/student/courses"
 _LATEX_SPECIALS = {
     "\\": r"\textbackslash{}",
     "&": r"\&",
@@ -75,34 +78,40 @@ class CourseDetail:
     languages: tuple[str, ...] = ()
 
 
-def _course_number(course_url: str) -> str:
-    """Return the public Uni Graz course number or raise ``ValueError``."""
+def _course_parts(course_url: str) -> tuple[str, str, str]:
+    """(base URL "https://<host>/<instance>", course number) of a public course URL, or raise ``ValueError``."""
     if not isinstance(course_url, str):
         raise ValueError("course URL must be a string")
     parsed = urlsplit(course_url)
-    if parsed.scheme != "https" or parsed.hostname != _UNIGRAZ_HOST:
-        raise ValueError("course URL must use https://online.uni-graz.at")
+    instance = next((part for part in parsed.path.split("/") if part), "")
+    if parsed.scheme != "https" or not parsed.hostname or not re.fullmatch(r"[A-Za-z0-9_.-]+", instance):
+        raise ValueError("course URL must be an https:// link to a course page (https://<host>/<instance>/...)")
     values = parse_qs(parsed.query, keep_blank_values=True).get("pStpSpNr", [])
     if len(values) != 1 or not values[0].isdigit():
         raise ValueError("course URL must contain one numeric pStpSpNr parameter")
-    return values[0]
+    return f"https://{parsed.hostname}/{instance}", values[0], parsed.hostname
+
+
+def _course_number(course_url: str) -> str:
+    """Return the public course number or raise ``ValueError``."""
+    return _course_parts(course_url)[1]
 
 
 def course_groups_url(course_url: str) -> str:
-    """Build the public course-groups REST URL for a public Uni Graz course URL."""
-    number = _course_number(course_url)
-    return f"https://{_UNIGRAZ_HOST}{_COURSE_GROUPS_PATH}/{number}"
+    """Build the public course-groups REST URL for a public course URL."""
+    base, number, _host = _course_parts(course_url)
+    return f"{base}{_COURSE_GROUPS_PATH}/{number}"
 
 
 def course_data_url(course_url: str) -> str:
-    """Build the public course-data REST URL for a public Uni Graz course URL.
+    """Build the public course-data REST URL for a public course URL.
 
     This is the same JSON endpoint the course detail page's Angular app
     calls (and, unlike that page, answers without a browser or a session)
     -- it's what supplies title/number/semester/lecturers.
     """
-    number = _course_number(course_url)
-    return f"https://{_UNIGRAZ_HOST}{_COURSE_DATA_PATH}/{number}"
+    base, number, _host = _course_parts(course_url)
+    return f"{base}{_COURSE_DATA_PATH}/{number}"
 
 
 def _get_json(url: str, label: str) -> bytes:
@@ -112,19 +121,19 @@ def _get_json(url: str, label: str) -> bytes:
     request = Request(url, headers={"Accept": "application/json", "Accept-Language": "de"})
     try:
         with urlopen(request, timeout=15) as response:  # nosec B310: URL is validated by the caller
-            if urlsplit(response.geturl()).hostname != _UNIGRAZ_HOST:
-                raise RuntimeError(f"Uni Graz {label} request redirected to another host")
+            if urlsplit(response.geturl()).hostname != urlsplit(url).hostname:
+                raise RuntimeError(f"The course system's {label} request redirected to another host")
             return response.read()
     except HTTPError as exc:
-        raise RuntimeError(f"Uni Graz {label} request failed (HTTP {exc.code})") from exc
+        raise RuntimeError(f"The course system's {label} request failed (HTTP {exc.code})") from exc
     except URLError as exc:
-        raise RuntimeError(f"Unable to reach Uni Graz {label}: {exc.reason}") from exc
+        raise RuntimeError(f"Unable to reach the course system ({label}): {exc.reason}") from exc
     except TimeoutError as exc:
-        raise RuntimeError(f"Uni Graz {label} request timed out") from exc
+        raise RuntimeError(f"The course system's {label} request timed out") from exc
 
 
 def fetch_schedule(course_url: str) -> CourseSchedule:
-    """Download and parse a public Uni Graz course's session groups."""
+    """Download and parse a public course's session groups."""
     schedule = parse_schedule(_get_json(course_groups_url(course_url), "course groups"))
     remember_schedule(course_url, schedule)
     return schedule
@@ -175,7 +184,7 @@ def session_soon(course_url: Optional[str], *, days: int = 7, today: Optional[da
 
 
 def fetch_course_detail(course_url: str, language: str = "de") -> CourseDetail:
-    """Download and parse a public Uni Graz course's title/number/semester/lecturers,
+    """Download and parse a public course's title/number/semester/lecturers,
     with the title and semester in `language` ("de" or "en") where UGO has it."""
     return parse_course_detail(_get_json(course_data_url(course_url), "course data"), language)
 
@@ -298,7 +307,7 @@ def _escape_latex(text: str) -> str:
 
 
 # The slide's own wording per deck language ("de"/"en", as
-# transcript.deck_language_of() reports it). UNIGRAZonline serves the
+# transcript.deck_language_of() reports it). The course system serves the
 # schedule in German; an English deck gets its table translated by
 # translate_to_english() below (v4.1.0, direct instruction).
 LABELS = {
@@ -314,7 +323,7 @@ LABELS = {
     },
 }
 
-# German terms UNIGRAZonline uses in group names, event types and
+# German terms the course system uses in group names, event types and
 # remarks. Whole words only, longest first. Group names and event types
 # are translated term by term ("Gruppe Wirtschaftsinformatik" -> "Group
 # Wirtschaftsinformatik"); a free-text remark only when every word in it

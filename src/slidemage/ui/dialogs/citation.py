@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The sheet behind the Source view's "Add reference to .bib…" and the Cite menu's footer: a
 small form for adding a new entry to Slidemaster.bib without hand-writing BibTeX. It only ever
 *creates* a .bib entry; it never inserts a citation call for one. Picking a source type

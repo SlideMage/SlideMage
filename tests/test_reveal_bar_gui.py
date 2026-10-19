@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: F811 -- the fixtures of test_centre_gui are imported and used by name
 """The reveal-step bar: the widget on its own, and in the Preview (renders are faked; the PDFs are real)."""
 from __future__ import annotations
@@ -392,9 +394,37 @@ def test_a_slide_with_reveal_commands_shows_the_bar_counting_until_its_steps_are
     (project / "aaa-EN-One-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
     centre.state.set_focused_slide("aaa")
     bar = centre.preview._reveal
-    assert bar.isVisibleTo(centre.preview) and bar.label.full_text() == "Counting reveal steps…"
+    assert bar.isVisibleTo(centre.preview) and bar.track.counting and bar.label.full_text() == ""
     wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)
     assert bar.label.full_text().startswith("Step 4 of 4")
+
+
+def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_renders, project):
+    from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+    from PySide6.QtGui import QImage
+
+    image, data = QImage(16, 9, QImage.Format.Format_RGB32), QByteArray()
+    image.fill(0xFFFFFF)
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    png = bytes(data)
+
+    class Stored:                      # the background renders' store, with a current render of the slide
+        def stored_pages(self, target, view, language):
+            return [png] * 4
+
+        def stored_page(self, target, view, language):
+            return None
+
+        def store_steps(self, *args):
+            raise AssertionError("nothing was rendered, so nothing is stored")
+
+    (project / "aaa-EN-One-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
+    centre.preview.app.background = Stored()
+    centre.state.set_focused_slide("aaa")
+    bar = centre.preview._reveal
+    assert bar.track.stops == [1, 2, 3, 4] and not steps_renders
 
 
 def test_a_slide_without_reveal_commands_shows_no_bar_while_counting(centre, steps_renders):

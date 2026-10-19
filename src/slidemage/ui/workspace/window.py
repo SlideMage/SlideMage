@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The main window of the redesigned UI (docs/UI_REDESIGN_PLAN.md, step 3).
 
 A top bar (topbar.py) over three columns -- slide list, centre, side panels --

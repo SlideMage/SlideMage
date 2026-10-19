@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Language: the focused slide's language, its translation partner and whether that is outdated.
 
 The facts are slide_language's (the id-slug's language segment and the "Translation of" /

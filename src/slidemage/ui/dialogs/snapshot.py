@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Snapshots sheet (UI_REDESIGN_PLAN.md, step 9; docs/DECK_SNAPSHOT_PLAN.md): pick one or more
 decks, folder or .zip, and whether the LaTeX package files and the SlideMage app go in.
 

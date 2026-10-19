@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Prove unchanged audited pinned calls survive a batch creating a frozen sibling."""
 from __future__ import annotations
 import argparse

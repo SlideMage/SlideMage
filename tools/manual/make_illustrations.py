@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile tools/manual/illustrations.tex and split its pages into the
 SlideMage manual's media files (example/media/). Rerun after editing the
 illustrations; vector PDFs, one page each. Name files to write only those

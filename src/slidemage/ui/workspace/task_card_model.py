@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The state of a task card and what it says (workspace v6 handoff, sections 4 and 8). Pure: no Qt.
 
 A task card is the host-managed run of one AI task on one slide: Generate, Review, Apply, Check preview, and the

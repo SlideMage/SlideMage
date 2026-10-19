@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile-time PNG snapshots of each slide's final build step.
 
 Every compile that touches a slide -- a single-slide preview render, or a
@@ -20,20 +22,20 @@ approach (every compiled page's footer carries "slide id: XXX", read via
 proved PyMuPDF works cleanly for this project's PDFs.
 
 **Template- and resolution-specific since 2026-08-15.** A slide can be
-compiled under any of this project's three institution templates (Graz,
-Innsbruck, MCI -- see TEMPLATES below), and looks meaningfully different
+compiled under any of this project's institution templates (see
+TEMPLATES below), and looks meaningfully different
 under each (different colors/logo). A single shared cache keyed only by
 slide id would show whichever institution happened to compile it last,
 regardless of which deck's preview you were actually looking at -- wrong
 often enough to be worse than no cache. Every capture/lookup is keyed by
 (template, bare id, pixel size) instead, filename
 `<Template>-<bare id>-<width>-<height>.png`, e.g.
-`UniGraz-22s-1920-1080.png`. Lookups are strict: no cross-template
-fallback, so a Graz deck never shows an Innsbruck-only cached image by
+`<Template>-22s-1920-1080.png`. Lookups are strict: no cross-template
+fallback, so a deck never shows another template's cached image by
 accident -- it just shows "not captured yet".
 
 **Filename is `<bare id>-<Template>-<width>-<height>.png`** (bare id
-first, e.g. `22s-UniGraz-1920-1080.png`), not the reverse -- changed
+first, e.g. `22s-<Template>-1920-1080.png`), not the reverse -- changed
 2026-08-17 (direct instruction: "shift the three-letter slug to the front
 of the filename to facilitate searching") from the original
 `<Template>-<bare id>-...` order this module used through 2026-08-16. A
@@ -45,7 +47,7 @@ order couldn't do without a wildcard *before* the id too.
 
 **Gains an optional `<Lang>` segment right after the bare id (2026-08-24)**
 for a slide whose own id-slug carries a language
-segment (`EN`/`DE`/`mult` -- see slide_language.py): `22s-DE-UniGraz-
+segment (`EN`/`DE`/`mult` -- see slide_language.py): `22s-DE-<Template>-
 1920-1080.png`. Resolved from disk inside snapshot_path() itself, not
 passed in by any caller, so this needed no changes anywhere else in the
 app. A legacy, not-yet-migrated slide's filename is completely unchanged
@@ -84,43 +86,62 @@ _PNG_LOCK = threading.RLock()
 SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 
 # Every institution template is a one-line \input{} swap on top of an
-# otherwise-shared preamble (confirmed directly, 2026-08-15: all four
-# decks/test*.tex files share an identical skeleton apart from which of
-# these three files they \input) -- so detecting which one a deck uses is
-# one regex against its own preamble text, not a whole-file diff.
-# "uni-graz" is what GENERIC_PREAMBLE (slide_preview.py) and every current
-# real deck actually use, so it's the reasonable default when detection
-# finds nothing (a deck with a preamble this regex doesn't recognize at
-# all, not merely "no institution chosen" -- there's no such thing as a
-# deck with no institution). "slidemage" (2026-10-03) is the generic
-# SlideMage template shipped in example/, not an institution's.
-TEMPLATE_RE = re.compile(
-    r"\\input\{Slidemaster_preamble_(uni-graz|uni-ibk|mci|slidemage)\}")
-TEMPLATES = {
-    "uni-graz": "UniGraz",
-    "uni-ibk": "UniIbk",
-    "mci": "Mci",
-    "slidemage": "SlideMage",
-}
-# How the deck settings dialog names the templates (a key not listed shows as is).
-TEMPLATE_LABELS = {
-    "slidemage": "SlideMage",
-    "uni-graz": "University of Graz",
-    "uni-ibk": "University of Innsbruck",
-    "mci": "MCI",
-}
-DEFAULT_TEMPLATE = "uni-graz"
+# otherwise-shared preamble, so detecting which one a deck uses is one regex
+# against its own preamble text, not a whole-file diff. A template is any
+# Slidemaster_preamble_<key>.tex the project (or the framework next to it)
+# holds; the app knows none by name except its own, "slidemage", the generic
+# template shipped in latex/. It is also the default when detection finds
+# nothing (a deck with a preamble this regex doesn't recognize at all).
+TEMPLATE_PREFIX = "Slidemaster_preamble_"
+TEMPLATE_RE = re.compile(r"\\input\{Slidemaster_preamble_([A-Za-z0-9_-]+)\}")
+DEFAULT_TEMPLATE = "slidemage"
+_NOT_TEMPLATES = ("base",)           # the shared layer every template inputs, never a deck's choice
+_LABEL_RE = re.compile(r"^%+\s*SlideMage template name:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def template_name(key: str) -> str:
+    """The name a template has in cached preview file names: "my-template" -> "MyTemplate" (each hyphen-separated part
+    capitalised), the app's own "slidemage" -> "SlideMage"."""
+    return "SlideMage" if key == DEFAULT_TEMPLATE else "".join(part.capitalize() for part in key.split("-"))
+
+
+class _TemplateNames:
+    """TEMPLATES[key] / TEMPLATES.get(key, default): the file-name form of any template key."""
+
+    def __getitem__(self, key: str) -> str:
+        return template_name(key)
+
+    def get(self, key: str, default: str = "") -> str:
+        return template_name(key) if key else default
+
+
+TEMPLATES = _TemplateNames()
+
+
+def template_label(key: str, root: Path | None = None) -> str:
+    """How the dialogs name a template: the `% SlideMage template name: ...` line in the first lines of its preamble
+    file when it has one, else its key read as words ("my-template" -> "My Template")."""
+    if root is not None:
+        try:
+            head = "\n".join(preamble_file(key, root).read_text(encoding="utf-8", errors="replace").splitlines()[:30])
+        except OSError:
+            head = ""
+        found = _LABEL_RE.search(head)
+        if found:
+            return found.group(1)
+    return "SlideMage" if key == DEFAULT_TEMPLATE else " ".join(part.capitalize() for part in key.split("-"))
 
 
 def detect_template(preamble_text: str) -> str:
-    """The template key (one of TEMPLATES) a deck's own preamble selects,
-    defaulting to DEFAULT_TEMPLATE when the pattern isn't found."""
-    match = TEMPLATE_RE.search(preamble_text)
-    return match.group(1) if match else DEFAULT_TEMPLATE
+    """The template key a deck's own preamble selects, defaulting to DEFAULT_TEMPLATE when the pattern isn't found."""
+    for match in TEMPLATE_RE.finditer(preamble_text):
+        if match.group(1) not in _NOT_TEMPLATES:
+            return match.group(1)
+    return DEFAULT_TEMPLATE
 
 
 def _template_name(template: str) -> str:
-    return TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
+    return template_name(template)
 
 
 # The template a slide is rendered in when no deck is involved -- the slide
@@ -128,7 +149,7 @@ def _template_name(template: str) -> str:
 # direct instruction: chosen in Settings -> General, out of the box the
 # generic SlideMage template). Only a template whose preamble file a deck of
 # this project can find is offered; otherwise the choice falls back to the
-# SlideMage template, then Graz, then whichever template there is.
+# SlideMage template, then the default one, then whichever template there is.
 RENDER_TEMPLATE_SETTING_KEY = "default_template"
 OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
 
@@ -159,9 +180,12 @@ def preamble_file(template: str, root: Path) -> Path:
 
 
 def available_templates(root: Path) -> list[str]:
-    """The TEMPLATES keys whose preamble file a deck of the project can find
-    (project root or framework), in TEMPLATES order."""
-    return [key for key in TEMPLATES if preamble_file(key, root).is_file()]
+    """The keys of the templates whose preamble file a deck of the project can find (project root or framework):
+    the app's own first, then the others alphabetically."""
+    keys = {file.stem[len(TEMPLATE_PREFIX):] for folder in (root, *framework_dirs(root))
+            for file in folder.glob(f"{TEMPLATE_PREFIX}*.tex")}
+    keys -= set(_NOT_TEMPLATES)
+    return sorted(keys, key=lambda key: (key != DEFAULT_TEMPLATE, key))
 
 
 def render_template(ctx: project.ProjectContext) -> str:
@@ -177,10 +201,10 @@ def render_template(ctx: project.ProjectContext) -> str:
 
 
 def set_render_template(ctx: project.ProjectContext, key: str) -> None:
-    """Choose the template single-slide renders use (a TEMPLATES key)."""
+    """Choose the template single-slide renders use (a template key)."""
     from . import app_settings
 
-    if key not in TEMPLATES:
+    if key not in available_templates(ctx.root):
         raise ValueError(f"'{key}' is not a template.")
     app_settings.set(ctx, RENDER_TEMPLATE_SETTING_KEY, key)
 

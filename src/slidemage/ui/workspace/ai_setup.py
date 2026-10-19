@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """AI setup, the popover of the AI switch's ▾ (workspace v6 handoff, section 2): the default model of every task on
 each side, what Cloud means, and the project's own setting.
 

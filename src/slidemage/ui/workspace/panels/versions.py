@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Slide versions: the focused slide's current text and frozen versions, which deck uses which,
 and the actions on them.
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The PreToolUse hook of the embedded Claude Code (ai/claude_hook.py) with hook JSON as Claude Code sends it:
 protected parts and frozen versions are blocked (exit code 2, the reason on stderr), everything else is
 allowed, and so is anything the hook cannot work out."""

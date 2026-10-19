@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Benchmark of the Claude Code tasks (docs/CLAUDE_CODE_TASKS_PLAN.md, step 1) on a disposable copy of the
 demo project: translation (EN to DE) and LaTeX fix over five representative slides, once per setup (a model
 and an effort level) with the runner's isolation, a fresh process per task and edit lists for fixes.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Draft image descriptions with a vision model.
 
 Produces **unreviewed drafts** only. Everything this writes lands as state

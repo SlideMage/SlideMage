@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The workspace's shared state: one signal per field, emitted only on a real
 change, and the view, language and mode remembered for each deck."""
 from __future__ import annotations

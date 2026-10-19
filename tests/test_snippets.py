@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The snippets/ folder behind \\SMCodeFile, and the call and the citation search that use it."""
 from __future__ import annotations
 

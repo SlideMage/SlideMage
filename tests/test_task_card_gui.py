@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The task card (workspace v6, step 4; ui/workspace/task_card.py and task_card_model.py) phase by phase: what it
 says, which buttons it offers and what they do, with the stand-in for `claude -p` (fake_claude.py) and a stand-in for
 the preview's render (the Check preview step compiles or fails at will). The project is a throwaway one."""

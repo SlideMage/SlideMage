@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """OllamaProvider.stream_turn against a local server that streams /api/chat the way Ollama does
 (NDJSON): the request the agent loop sends, streamed text, tool calls, replaying the history, Stop,
 the errors, and the tool-capable model list. A whole Agent round trip is in the middle."""

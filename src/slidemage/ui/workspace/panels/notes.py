@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 r"""Speaker notes: the \note{...} calls of the focused slide, as plain editable text.
 
 Beamer's notes are the instructor's and never reach a student transcript. The parsing and the

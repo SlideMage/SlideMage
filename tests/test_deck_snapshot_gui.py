@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The ⋮ menu's Decks section, the "Create deck snapshot" dialog, the snapshot run on the
 compile slot and the archive question that offers a snapshot first."""
 from __future__ import annotations

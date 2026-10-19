@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Publish measured benchmark rows and a speed table; never extrapolate missing rows."""
 import argparse
 import json

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render single slides of compiled decks as images ("crops") for the
 SlideMage manual: example/media/screenshot-slide-<name>.png, shown on the
 manual's slides like any other image (\\includegraphics).

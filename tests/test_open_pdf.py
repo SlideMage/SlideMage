@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """"Open pdf": the instructor PDF, unless a newer PDF of the deck comes from
 another compile run (2026-10-08, direct instructions). Every PDF of one click
 on Create PDF carries the same /SlideMageRun in its info dictionary."""

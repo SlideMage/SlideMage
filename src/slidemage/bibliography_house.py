@@ -1,6 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The house citation format (v5.32.0, 2026-10-07): the one block of LaTeX that
 the institution templates carry (latex/Slidemaster_preamble_slidemage.tex, a
-project's Slidemaster_preamble_uni-graz.tex, ...) and that every course deck
+project's own institution template, ...) and that every course deck
 used to copy. compat_bibliography.py compares decks against it and writes it
 into a template; tests/test_bibliography_template.py keeps the shipped
 templates equal to it."""

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Thumbnails follow exact view/source/call renders; references never claim a match."""
 from io import BytesIO
 import os

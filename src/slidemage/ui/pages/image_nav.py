@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The left column of the Images page: which slides to look at.
 
 Every slide that shows at least one image, filtered (image_review.FILTERS), ordered by the open

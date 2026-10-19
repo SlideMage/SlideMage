@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """How many LaTeX passes each deck's compile needed last time (v5.15.0,
 direct instruction: the progress label should show the number of passes a
 deck really needs, not a fixed guess).

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Opt-in checks against real models: SLIDEMAGE_LIVE_AI=1 (Ollama must be
 running with at least one model; the Claude checks also need
 ANTHROPIC_API_KEY). Never part of the normal run."""

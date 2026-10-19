@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rewrite selection and Proofread selection (Claude Code reviews plan, step R1): the menu items the Source editor's
 context menu shows, and the menu and the form that ask what a rewrite should do. The choices are the labels of
 claude_tasks.REWRITE_PRESETS and CUSTOM, which asks for the instruction in a popover (insert_popovers.py). What a choice

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Choose left-panel images from the same verified full-slide renders as Preview.
 
 The old flat snapshots are Instructor references shared by decks, versions and

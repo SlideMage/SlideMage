@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A minimal MCP client over HTTP for the tests of the SlideMage MCP server (what Claude Code sends)."""
 from __future__ import annotations
 

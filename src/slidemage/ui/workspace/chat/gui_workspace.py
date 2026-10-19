@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The agent's window into the main window (UI_REDESIGN_PLAN.md, step 10b): the `Workspace` of ai/workspace.py
 answered from the real editor buffers, dialogs and job panel.
 

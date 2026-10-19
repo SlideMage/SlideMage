@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Layout profiles of the presenter window (plan 4.10): a split tree whose leaves hold the elements.
 
 A node is a split ("h": a left of b, "v": a above b) with a ratio for `a`, or a leaf: one big element

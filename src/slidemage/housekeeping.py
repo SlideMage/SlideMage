@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What "Empty pdf folder" and "Remove temp files" (Housekeeping) would delete, and the deleting.
 
 Free of Qt: the Housekeeping sheet (ui/dialogs/housekeeping.py) shows the counts, the window

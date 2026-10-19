@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The slide list, the workspace's left column (UI_REDESIGN_PLAN.md, step 4).
 
 It replaces the old deck editor tab: sections that collapse and rename inline,

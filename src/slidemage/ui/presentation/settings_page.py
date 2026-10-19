@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Presentation tab of the Settings sheet (plan 4.11): everything about presenting in one place. Like the
 other tabs, a control applies and is saved when it changes."""
 from __future__ import annotations
@@ -45,9 +47,17 @@ class PresentationTab(Page):
         self.pen_width.setSuffix(" % of the slide height")
         self.pen_width.setValue(values.pen_width * 100)
         self.pen_width.valueChanged.connect(lambda v: self._set("pen_width", round(v / 100, 4)))
-        body.addWidget(columns(Field("Laser pointer colour", self.laser_button), Field("Pen colour", self.pen_button),
-                               Field("Pen width", self.pen_width)))
-        body.addWidget(caption("The laser shows while you hold Ctrl and the left mouse button on the current slide."))
+        self.laser_size = QDoubleSpinBox()
+        self.laser_size.setRange(0.5, 6.0)
+        self.laser_size.setSingleStep(0.5)
+        self.laser_size.setSuffix(" % of the slide height")
+        self.laser_size.setValue(values.laser_size * 100)
+        self.laser_size.valueChanged.connect(lambda v: self._set("laser_size", round(v / 100, 4)))
+        body.addWidget(columns(Field("Laser pointer colour", self.laser_button), Field("Laser pointer size", self.laser_size)))
+        body.addWidget(columns(Field("Pen colour", self.pen_button), Field("Pen width", self.pen_width)))
+        body.addWidget(caption("The laser shows while you hold Ctrl and the left mouse button on the current slide. "
+                               "While presenting, the Pen button changes the pen's colour and width for that "
+                               "presentation only."))
 
         self.confirm_links = QCheckBox("Ask before opening a web link")
         self.confirm_links.setChecked(values.confirm_links)
@@ -119,6 +129,7 @@ class PresentationTab(Page):
         _swatch(self.laser_button, defaults.laser_color)
         _swatch(self.pen_button, defaults.pen_color)
         self.pen_width.setValue(defaults.pen_width * 100)
+        self.laser_size.setValue(defaults.laser_size * 100)
         self.confirm_links.setChecked(defaults.confirm_links)
         self.timer_mode.setCurrentIndex(self.timer_mode.findData(defaults.timer_mode))
         self.timer_minutes.setValue(defaults.timer_duration_minutes)

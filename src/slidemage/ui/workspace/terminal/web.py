@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """xterm.js in a Qt web view, as a widget (UI redesign step 10c). The page (assets/terminal/) is vendored
 xterm.js plus a few lines of glue, loaded from disk: no network, no CDN. Python and the page talk over a
 QWebChannel: `TerminalBridge` is the page's one object.

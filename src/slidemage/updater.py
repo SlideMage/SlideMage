@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Info -> "Check for updates…": compare this build's VERSION_NUMBER with
 the newest GitHub release, and install that release's zip over the
 running PyInstaller binary.

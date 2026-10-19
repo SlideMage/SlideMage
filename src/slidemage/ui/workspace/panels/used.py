@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Used in decks: every deck that calls the focused slide, how, and where in the deck.
 
 Clicking a row opens that deck at that slide. What a version change means for these decks is

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The workspace's top bar (prototype v6): logo, deck switcher, the AI switch (ai_switch.py), "View as",
 EN/DE, save status, Preview/Split/Source/Details, Compile and ⋮. While the Images page is open, a "Close images"
 button stands before ⋮ (Images itself is in ⋮ and ⌘K).

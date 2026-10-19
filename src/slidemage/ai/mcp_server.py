@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """SlideMage's MCP server for the embedded Claude Code (UI redesign step 10c): a local HTTP endpoint that
 speaks the Model Context Protocol ("streamable HTTP" transport, JSON responses) and offers the tools of
 `ai/tools` to the one client that holds its secret. No Qt.

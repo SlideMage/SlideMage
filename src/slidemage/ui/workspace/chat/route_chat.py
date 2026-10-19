@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What the assistant keeps of each route's conversation while another route is on (workspace v6 handoff,
 section 2, "Commit"): the composer's draft, the attached files, the history the agent continues from, the
 messages as they were shown and the model picked for that chat. Keyed by route (`ai_profile.LOCAL`, `CLAUDE_CODE`, `API`); nothing is copied or sent

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Composite slide creation with a fake workspace/renderer; no model or listening socket."""
 from dataclasses import replace
 from types import SimpleNamespace

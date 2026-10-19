@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Slide-scanning utilities shared by the accessibility system: which images
 a slide references, its id/title, and a few brace-matching helpers TeX text
 needs that a naive regex gets wrong.

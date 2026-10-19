@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The classifier proves only the audited framework rules it understands."""
 from dataclasses import replace
 from pathlib import Path

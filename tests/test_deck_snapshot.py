@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """deck_snapshot: a deck's frozen, self-contained copy in <project>/snapshots/.
 
 The LaTeX compile itself is faked here (run_recorded_compile): these tests

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Changing files: `edit_file` and `write_file`, and the rules every change follows
 (2026-10-10, UI redesign step 10a).
 

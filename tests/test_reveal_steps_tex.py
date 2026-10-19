@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Reveal steps with real TeX (skipped without latexmk): an all-steps render has page k = step k, whatever the
 call, the final-state flag or the slide's own frame says, and the version macros change the count per version."""
 from __future__ import annotations

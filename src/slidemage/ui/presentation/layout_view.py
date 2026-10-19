@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A layout profile turned into widgets (plan 4.10): nested splitters, with the info strip a fixed-height bar."""
 from __future__ import annotations
 

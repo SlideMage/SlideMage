@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Mint slide IDs and scaffold new slide files -- Python port of
 .scripts/R_Slidemaster/R/{slide.new.id,SPslide,slide.new}.R for the GUI's
 own "create new slide" path, so it doesn't need R/RStudio installed.

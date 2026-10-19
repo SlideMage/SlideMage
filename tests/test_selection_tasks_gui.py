@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rewrite selection and Proofread selection through the window (Claude Code reviews plan, step R1): the capture in the
 Source view, the header's buttons, the palette's commands, the editor's context menu, and the task card from Generate
 to Done on the three routes with stand-ins for `claude -p` and the providers. The project is a throwaway one."""

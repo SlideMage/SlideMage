@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The citation of an image in both views, the Images page's form and the side panel's Image descriptions:
 the same field and review state, one store, each showing what the other saved when it is next shown."""
 from __future__ import annotations

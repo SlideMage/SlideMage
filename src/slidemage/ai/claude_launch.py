@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Starting the user's own Claude Code inside SlideMage (UI redesign step 10c): where `claude` is, and the
 command line and environment that connect it to SlideMage's MCP server and protected-region hook.
 

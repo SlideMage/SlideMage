@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Moving the AI switch (workspace v6 handoff, section 2): `request(mode, conn)` is the one way the route of all
 AI work changes in the running app (the switch, the palette, AI setup's cloud connection).
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The v5.x figure helpers name their image as an argument: the image scan and
 the pre-render check must see it."""
 from slidemage import alt_blocks, latex_lint

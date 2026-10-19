@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render a slide/region/element, optionally watching its source for changes.
 
 Example: python -m slidemage.preview_cli slides/foo-current.tex --watch

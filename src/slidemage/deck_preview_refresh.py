@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Resolve and render the actual preview requests of one deck.
 
 The plan is immutable: each logical occurrence is resolved in each requested

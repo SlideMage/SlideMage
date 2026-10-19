@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What each kind of canvas shows of the session (see slide_canvas.View)."""
 from __future__ import annotations
 

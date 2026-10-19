@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The poll that notices files Claude Code changed (ai/project_watch.py): what it looks at and what it
 reports."""
 from __future__ import annotations

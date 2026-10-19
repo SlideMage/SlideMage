@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """What counts as AI work that is running (workspace v6 handoff, section 2: the busy popup of the AI switch).
 
 Every place that starts AI work answers `running_work()` with a `RunningWork` per thing it has under way, built

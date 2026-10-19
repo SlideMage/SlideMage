@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """SlideMage's version string and release-history parser.
 
 See CHANGELOG.md for the release history, bump rules and BREAKING convention.
@@ -10,7 +12,7 @@ from pathlib import Path
 
 from .processes import command_output
 
-VERSION_NUMBER = "v8.27.3"
+VERSION_NUMBER = "v8.32.0"
 
 # Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md,
 # skipping the introduction.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The tools that refresh the cached previews (the PNG snapshots the Preview, the slide list's pages and
 the appendix show without compiling anything): one slide, or every slide of one deck (v8.11.0).
 

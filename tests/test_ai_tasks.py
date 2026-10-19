@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Each AI task runs on any ChatProvider: these use a fake one (no HTTP) and
 check that the prompt/verification logic of the task modules is unchanged
 by which provider answers."""

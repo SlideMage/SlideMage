@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """One chat conversation: its history and the agent thread that answers a request (which model answers is
 ai_profile.resolve's: the view asks it for each request).
 

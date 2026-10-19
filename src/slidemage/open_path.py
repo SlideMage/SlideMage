@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Cross-platform "open in the OS's default app" helper. os.startfile()
 (used everywhere this project opens a compiled PDF/PPTX/image) is a
 Windows-only stdlib attribute -- calling it on Linux raises AttributeError,

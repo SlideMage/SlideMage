@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """One embedded Claude Code: the MCP server it talks to, the process on its pty, and the watch over the
 files it changes (UI redesign step 10c).
 

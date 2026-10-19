@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render the workspace offscreen in light and dark on an isolated example copy.
 
 Usage: .venv/bin/python tools/ui_screenshots.py [OUTPUT] [--sizes WxH ...] [--mode preview|split|source|details]

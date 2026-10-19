@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The project compatibility sheet (UI_REDESIGN_PLAN.md, step 9; compat.py): what a newer
 SlideMage changed that may affect this project, with the choices the user has.
 

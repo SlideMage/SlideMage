@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The terminal's colours from the kit's design tokens (no Qt): the background and text of the card, and an
 ANSI palette whose every colour reads on that background, light or dark (so "black" is mid-grey on the dark
 card and "white" mid-grey on the light one: a terminal programs draws text in them, not only fills)."""

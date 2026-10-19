@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare rendered (ui/workspace/compare_rendered.py): the dialog with a stand-in for the render service (no LaTeX, no
 MuPDF) and the places that open it: the task card (Review, Conflict, Done), the chat's diff cards, the palette command
 and the Details view for the text before a Claude Code edit. The projects are throwaway ones."""

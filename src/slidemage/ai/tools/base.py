@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The shape of an agent tool: a spec the model sees, a function that runs it, and
 the context every function gets (2026-10-10, UI redesign step 10a)."""
 from __future__ import annotations

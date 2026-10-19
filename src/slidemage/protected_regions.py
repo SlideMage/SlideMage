@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Protected regions of a slide: what a model must never rewrite (2026-08-31, direct instruction;
 moved here from ai_draft.py when the whole-slide rewrite dialog was replaced by the chat's edit tools).
 

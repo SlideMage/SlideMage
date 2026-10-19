@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The slide list (left column): what it shows and every edit it can make to the
 deck file -- through keys, drops, the context menu and the bulk bar."""
 from __future__ import annotations

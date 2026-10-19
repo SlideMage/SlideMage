@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Repeated real-title-edit benchmark on a frozen manual corpus.
 
 Use --label before with frozen source imports, then --label after with new code.

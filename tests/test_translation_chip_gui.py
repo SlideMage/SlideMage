@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The language chip above the Preview in the whole workspace window: it shows the translation partner of the
 slide (and back) while the slide list, the editor and the top bar keep their place. Nothing is rendered here."""
 from __future__ import annotations

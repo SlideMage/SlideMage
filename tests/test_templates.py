@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The generic SlideMage template is a known template like the institution
 ones: detected from a deck's preamble, previews named after it, the
 "Update previews" preamble built from it, and shipped with the framework
@@ -28,7 +30,8 @@ def test_institution_templates_unchanged():
     for key in ("uni-graz", "uni-ibk", "mci"):
         assert slide_snapshot.detect_template(
             f"\\input{{Slidemaster_preamble_{key}}}") == key
-    assert slide_snapshot.detect_template("no template here") == "uni-graz"
+    assert slide_snapshot.detect_template("no template here") == "slidemage"
+    assert slide_snapshot.detect_template("\\input{Slidemaster_preamble_base}") == "slidemage"
 
 
 def test_update_previews_preamble_uses_slidemage_template():
@@ -68,7 +71,7 @@ def test_every_project_next_to_the_framework_offers_the_slidemage_template(tmp_p
     framework = _framework(tmp_path / "latex", "slidemage")
     project = _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci")
     assert slide_snapshot.framework_dirs(project) == [framework]
-    assert slide_snapshot.available_templates(project) == ["uni-graz", "uni-ibk", "mci", "slidemage"]
+    assert slide_snapshot.available_templates(project) == ["slidemage", "mci", "uni-graz", "uni-ibk"]
     assert slide_snapshot.preamble_file("slidemage", project) == framework / "Slidemaster_preamble_slidemage.tex"
     assert slide_snapshot.render_template(ProjectContext.at(project)) == "slidemage"
     # A project's own copy wins over the framework's.
@@ -87,12 +90,12 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
 
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
     ctx = ProjectContext.at(tmp_path / "project")
-    # A project with only institution layers and no framework next to it: Graz.
+    # A project with only institution layers and no framework next to it: the first of them.
     root = _project(tmp_path / "project", "uni-graz", "mci")
-    assert slide_snapshot.render_template(ProjectContext.at(root)) == "uni-graz"
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "mci"
     # A saved choice whose file is gone falls back too.
     app_settings.set(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-ibk")
-    assert slide_snapshot.render_template(ProjectContext.at(root)) == "uni-graz"
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "mci"
     only_mci = _project(tmp_path / "other", "mci")
     assert slide_snapshot.render_template(ProjectContext.at(only_mci)) == "mci"
 
@@ -110,7 +113,7 @@ def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, 
     _framework(tmp_path / "latex", "slidemage")
     root = _project(tmp_path / "project", "uni-graz", "mci", "slidemage")
     ctx = ProjectContext.at(root)
-    assert slide_snapshot.available_templates(root) == ["uni-graz", "mci", "slidemage"]
+    assert slide_snapshot.available_templates(root) == ["slidemage", "mci", "uni-graz"]
     assert slide_snapshot.render_template(ProjectContext.at(root)) == "slidemage"
     slide_snapshot.set_render_template(ctx, template)
     assert app_settings.get(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == template
@@ -118,3 +121,13 @@ def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, 
     with pytest.raises(ValueError, match="not a template"):
         slide_snapshot.set_render_template(ctx, "nope")
     assert slide_snapshot.render_template(ctx) == template
+
+
+def test_templates_are_found_in_the_project_and_named_from_their_keys(tmp_path):
+    root = _project(tmp_path / "project", "my-uni", "other")
+    (root / "Slidemaster_preamble_my-uni.tex").write_text("%% SlideMage template name: My University\n", encoding="utf-8")
+    assert slide_snapshot.detect_template("\\input{Slidemaster_preamble_my-uni}") == "my-uni"
+    assert slide_snapshot.TEMPLATES["my-uni"] == "MyUni" and slide_snapshot.TEMPLATES["slidemage"] == "SlideMage"
+    assert slide_snapshot.template_label("my-uni", root) == "My University"      # declared in the file
+    assert slide_snapshot.template_label("other", root) == "Other"               # read from the key
+    assert slide_snapshot.template_label("slidemage") == "SlideMage"

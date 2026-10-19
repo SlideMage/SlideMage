@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The window's side of background rendering (background_renders.py): it feeds the idle gate with the user's input
 and with what keeps the machine busy, tells the store which decks are used and where, shows what is left in a
 small chip, and stops everything when the window closes.
@@ -17,7 +19,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMenu, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from ... import app_settings, background_renders, render_key, render_store
+from ... import app_settings, background_renders, compile_records, compiler, render_key, render_store
 from ...background_renders import BackgroundRenderer
 from ..kit.widgets import Chip
 
@@ -189,10 +191,20 @@ class _InputWatcher(QObject):
     def __init__(self, on_input, parent: QObject) -> None:
         super().__init__(parent)
         self._on_input = on_input
+        self._mouse = None
 
     def eventFilter(self, watched, event) -> bool:      # noqa: N802 -- Qt's name
-        if event.type() in INPUT_EVENTS:
-            self._on_input()
+        kind = event.type()
+        if kind not in INPUT_EVENTS:
+            return False
+        if kind == QEvent.Type.MouseMove:
+            # Qt also sends mouse moves of its own when widgets appear or change under a still cursor (the Preview
+            # refreshes every few seconds): only the mouse actually moving is "the user is here".
+            position = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else None
+            moved, self._mouse = position != self._mouse, position
+            if not event.spontaneous() or not moved:
+                return False
+        self._on_input()
         return False
 
 
@@ -234,6 +246,7 @@ class BackgroundPreviews(QObject):
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
             on_change=self.changed.emit)
         self.renderer.gate._busy = self._busy_reasons
+        compiler.COMPILE_LISTENERS.append(self._on_compiled)
         self._watcher = _InputWatcher(self.renderer.user_active, self)
         QApplication.instance().installEventFilter(self._watcher)
         state = window.state
@@ -295,7 +308,19 @@ class BackgroundPreviews(QObject):
                 self._timer.start()
         self.refresh()
 
+    def _on_compiled(self, ctx, job, pdf) -> None:
+        """A whole-deck compile of this project ended (called on a thread of its own): its slides go to the store, and
+        the Preview shows them as current renders (background_renders.ingest_compile)."""
+        renderer = self.renderer
+        if renderer is None or self.store is None or not renderer.enabled or ctx.root != self.project.root:
+            return
+        record = compile_records.read_record(ctx.build_dir, job.jobname)
+        if record is not None and renderer.ingest_compile(job, pdf, record):
+            self.changed.emit()
+
     def stop(self) -> None:
+        if self._on_compiled in compiler.COMPILE_LISTENERS:
+            compiler.COMPILE_LISTENERS.remove(self._on_compiled)
         self._timer.stop()
         if self.renderer is not None:
             self.renderer.stop()
@@ -321,6 +346,36 @@ class BackgroundPreviews(QObject):
             return self.store.page(found.record, found.record["pages"])
         except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
             return None
+
+    def stored_pages(self, target, view: str, language: str):
+        """Every page (reveal step) of the stored render of `target` as PNG bytes if a current one is there, else
+        None. The reveal bar takes its steps from here instead of counting them with a render."""
+        renderer = self.renderer
+        if renderer is None or self.store is None or not renderer.enabled:
+            return None
+        if target.needs_context or (target.macro == "slidestep" and target.steps):
+            return None
+        deck = self.window.state.deck
+        try:
+            unit = render_key.unit_for(target, view, language, deck.name if deck is not None else "")
+            found = renderer.resolver.lookup(unit)
+            if not found.usable or found.record.get("partial"):
+                return None                 # a deck compile's page is the last step only: not the list of steps
+            pages = [self.store.page(found.record, number) for number in range(1, int(found.record["pages"]) + 1)]
+            return pages if pages and all(pages) else None
+        except Exception:  # noqa: BLE001 -- the store is a help
+            return None
+
+    def store_steps(self, target, view: str, language: str, pdf, pages) -> None:
+        """Keep the reveal bar's own all-steps render in the store (called from its worker thread)."""
+        renderer = self.renderer
+        if renderer is None or self.store is None or not renderer.enabled:
+            return
+        if target.needs_context or (target.macro == "slidestep" and target.steps):
+            return
+        deck = self.window.state.deck
+        unit = render_key.unit_for(target, view, language, deck.name if deck is not None else "")
+        renderer.store_reveal(unit, pdf, pages)
 
     # -- the chip --------------------------------------------------------------------------------
 

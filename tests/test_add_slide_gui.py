@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Add slide sheet: each source, the ways of loading a slide, the presets the other parts of the
 window start it with, its checks, and a translation that runs while the sheet is open. No LaTeX and no
 model: the files are a throwaway project's and the provider is a fake."""

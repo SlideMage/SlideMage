@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Check the page layout of a compiled deck against the deck-wide margins.
 
 Checks, per page (all coordinates in PDF units, the same "pt" every measurement

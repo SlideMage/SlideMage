@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The chat in the right column: streaming, tool and diff cards, Apply / Reject / Undo against the real editor
 buffers, Stop, closing mid-run, the model chip, the palette row and the route's own conversation. The model
 is scripted (agent_fakes); the project is a throwaway one, never example/."""
@@ -10,7 +12,7 @@ from functools import partial
 
 import pytest
 
-from slidemage import slide_versioning
+from slidemage import slide_snapshot, slide_versioning
 from agent_fakes import ScriptedProvider, call, reply
 from conftest import build_window, make_project, wait_until as _wait_until
 from PySide6.QtCore import QPoint, QRect
@@ -782,7 +784,7 @@ def test_refreshing_a_decks_previews_runs_on_the_compile_slot_and_returns_its_re
     monkeypatch.setattr(update_all_previews, "rerender_deck", rerender)
     result = refresh(env)
     assert (result.refreshed, result.failed) == (["abc-EN-Hello"], ["abd-EN-Second"])
-    assert given == [("test", {"uni-graz": {"abc-EN-Hello", "abd-EN-Second"}})]       # this deck's slides only
+    assert given == [("test", {slide_snapshot.DEFAULT_TEMPLATE: {"abc-EN-Hello", "abd-EN-Second"}})]       # this deck's slides only
     row, = env.window.compile.run.rows.values()
     assert row.label == "Rerender previews of test"                          # the window's own job panel
     assert settings[0]['service'] is env.window.centre.preview._renders

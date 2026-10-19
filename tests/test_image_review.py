@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Images page's backend: slide views and their filters, saving a slide's forms, replacing an image."""
 from pathlib import Path
 

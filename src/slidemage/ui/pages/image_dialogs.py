@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The two sheets of the Images page: replacing an image, and tuning the prompt that drafts one."""
 from __future__ import annotations
 
